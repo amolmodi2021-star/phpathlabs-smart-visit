@@ -1,46 +1,39 @@
 
 
-## Fix: Tests Not Saving — Silent Database Errors
+## Fix: "Failed to Fetch" — Restrictive RLS Policies Blocking All Access
 
 ### Problem
-When you save a test, it shows "Test saved" but the test never actually appears. This is because the code doesn't check if the database operation succeeded — it always assumes success.
+All database tables have RLS policies set to **RESTRICTIVE** mode. In the database's security model, restrictive policies can only further limit access granted by permissive policies. Since there are no permissive policies, all reads and writes are blocked — causing "TypeError: Failed to fetch" on every operation.
 
-### What Will Change
+### Solution
+Run a single database migration that drops all existing restrictive policies and recreates them as **PERMISSIVE** policies. This is a single-user app with fixed credentials, so open permissive policies are appropriate.
 
-**Add proper error handling to all database operations** across these files:
-
-1. **TestManagement.tsx** — Fix save, delete, and upload mutations to check for database errors before showing success
-2. **CreateEstimate.tsx** — Fix the save mutation to throw on database errors  
-3. **EstimateDashboard.tsx** — Fix delete mutation error handling
-4. **HomeVisits.tsx** — Fix status update and phlebotomist assignment mutations
-5. **PhlebotomistManagement.tsx** — Fix save and delete mutations
-6. **MessageTemplates.tsx** — Fix template save mutation
+### Tables Affected
+- tests
+- estimates
+- estimate_tests
+- home_visits
+- phlebotomists
+- message_templates
 
 ### Technical Details
 
-Every Supabase call returns `{ data, error }`. Currently the code ignores `error`. The fix adds error checking like:
+The migration will run this pattern for each table:
 
-```typescript
-// BEFORE (broken - ignores errors)
-await supabase.from("tests").insert(payload);
-
-// AFTER (fixed - throws on error so mutation catches it)
-const { error } = await supabase.from("tests").insert(payload);
-if (error) throw error;
+```sql
+DROP POLICY IF EXISTS "Allow all on tests" ON public.tests;
+CREATE POLICY "Allow all on tests" ON public.tests
+  AS PERMISSIVE FOR ALL TO anon, authenticated
+  USING (true) WITH CHECK (true);
 ```
 
-This pattern will be applied to every `supabase.from(...)` call in all mutation functions. An `onError` handler will also be added to mutations that are missing one, so errors display as toast notifications.
+The key difference is `AS PERMISSIVE` and granting to both `anon` and `authenticated` roles explicitly.
 
 ### Files Modified
-- `src/pages/TestManagement.tsx`
-- `src/pages/CreateEstimate.tsx`
-- `src/pages/EstimateDashboard.tsx`
-- `src/pages/HomeVisits.tsx`
-- `src/pages/PhlebotomistManagement.tsx`
-- `src/pages/MessageTemplates.tsx`
+- New database migration only (no code changes needed)
 
 ### After the Fix
-- Failed saves will show an error message instead of "Test saved"
-- Successful saves will correctly display the new test in the list
-- You'll be able to see the actual error if something goes wrong
+- All database operations (read, write, update, delete) will work immediately
+- Tests will save and display in Test Management
+- All other modules will function correctly
 
