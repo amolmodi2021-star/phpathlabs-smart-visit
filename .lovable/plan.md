@@ -1,62 +1,87 @@
 
+## Stabilize Test Saving (Database-Only) and Stop “Failed to fetch” Loops
 
-## Fix: Remove localStorage, Use Database Only, Fix WhatsApp Sharing
+### What I found from investigation
+1. **Current code is already database-only** (no test localStorage fallback remains):
+   - `src/lib/tests.ts` uses direct database calls only (`getTests`, `saveTest`, `deleteTest`, `bulkInsertTests`).
+2. **RLS/data-access policies are currently correct**:
+   - Policies on `tests`, `estimates`, `estimate_tests`, etc. are `PERMISSIVE` for `anon` and `authenticated`.
+3. **The failure is network-level from your preview session**:
+   - Your captured requests show `TypeError: Failed to fetch` for `GET/POST /rest/v1/tests` before any database error body is returned.
+   - In a clean browser session I tested, the same endpoints returned `200`, which means backend configuration is not the blocker right now.
+4. **Impact**:
+   - When this transient network failure happens, test create/read both fail, so the UI appears “broken again”.
 
-### What's Wrong
+### Implementation approach
+I will harden the app so transient network failures do not feel random, while keeping data strictly in the database (no local storage caching).
 
-1. **localStorage fallback in `src/lib/tests.ts`**: When database calls fail, tests are silently saved to localStorage instead of showing an error. This means tests may appear to save but never actually reach the database. You want everything in the database only.
+### Planned code changes
 
-2. **WhatsApp not opening**: In Create Estimate, the code saves to the database first, and only opens WhatsApp after that succeeds. If the DB save fails for any reason, WhatsApp never opens.
+#### 1) Add robust retry + timeout wrapper for test API calls
+**File:** `src/lib/tests.ts`
 
-3. **Database is healthy**: I verified the database connection works and RLS policies are correct (PERMISSIVE). The tests table currently has 0 rows — any tests you added previously were only in localStorage.
+- Add a small helper around async DB operations:
+  - Retries for network errors (`Failed to fetch`) with exponential backoff (e.g., 3 attempts).
+  - Request timeout guard (e.g., 10s–12s) so operations don’t hang.
+  - Normalize error messages into human-readable text:
+    - “Network issue connecting to backend. Please retry.”
+    - vs raw technical exceptions.
+- Apply wrapper to:
+  - `getTests`
+  - `saveTest`
+  - `deleteTest`
+  - `bulkInsertTests`
+- Keep behavior strict:
+  - **No local storage fallback**
+  - Throw error if all retries fail.
 
-### What Will Change
+#### 2) Improve Test Management UX for failure states
+**File:** `src/pages/TestManagement.tsx`
 
-**File 1: `src/lib/tests.ts` — Rewrite without localStorage**
+- Add query error handling from `useQuery`:
+  - Show clear inline error block when tests cannot load.
+  - Add a **Retry** button wired to `refetch()`.
+- Improve mutation toasts:
+  - For failed save: explicit “Could not save to database due to network issue. Please retry.”
+- Disable Save button while pending to prevent duplicate submissions.
 
-- Remove all localStorage code (cache read/write, `TESTS_CACHE_KEY`)
-- All functions will call the database directly and throw errors on failure
-- `getTests()` — fetches from database, throws on error
-- `saveTest()` — inserts or updates in database, throws on error  
-- `deleteTest()` — deletes from database, throws on error
-- `bulkInsertTests()` — bulk inserts to database, throws on error
+#### 3) Tune React Query resilience for test list
+**File:** `src/pages/TestManagement.tsx` (query config)
 
-**File 2: `src/pages/CreateEstimate.tsx` — Fix WhatsApp sharing**
+- Set query retry/backoff settings explicitly for `["tests"]`:
+  - retry on network errors
+  - bounded retries
+  - reasonable stale/refetch behavior
+- This complements the `tests.ts` retry wrapper and improves load reliability after temporary drops.
 
-- Build the WhatsApp message and open WhatsApp FIRST (before database save)
-- Then attempt the database save
-- If DB save fails, still show a warning but WhatsApp will have already opened
-- This ensures the user always gets the WhatsApp message regardless of DB issues
+#### 4) Keep Create Estimate behavior aligned
+**File:** `src/pages/CreateEstimate.tsx`
 
-**File 3: `src/pages/TestManagement.tsx` — Update imports**
+- Confirm it still reads tests from the same `getTests` path (it does now).
+- After retry wrapper is added in `tests.ts`, Create Estimate automatically benefits from improved resilience when loading test options.
 
-- Update function names to match the renamed exports from `tests.ts` (no more "WithFallback" suffix)
+### Why this addresses your issue
+- Your failures are currently intermittent fetch failures, not table schema/policy logic.
+- Retries + timeout + clear recoverable UI give stability without violating your requirement:
+  - **all data in database only**
+  - **no local caching of tests**
 
-### Technical Details
+### End-to-end verification I will run after implementation
+1. Open `/tests`, create a test, confirm success toast.
+2. Confirm new row appears in test list immediately.
+3. Open Create Estimate, confirm same test appears in selector.
+4. Trigger create estimate + share flow to ensure this path still works.
+5. Confirm test record exists in backend by direct read query.
+6. Re-test with temporary network interruption behavior to confirm graceful retry/error messaging.
 
+### Technical notes
 ```text
-Current flow (CreateEstimate):
-  Click "Create & Share" 
-    -> Save to DB 
-    -> IF success: open WhatsApp 
-    -> IF fail: show error, WhatsApp never opens
+Current failure pattern:
+- Browser fetch fails before HTTP response -> “TypeError: Failed to fetch”
+- No reliable response body -> user only sees generic toast
 
-New flow:
-  Click "Create & Share"
-    -> Build message + open WhatsApp immediately
-    -> Save to DB (best effort)
-    -> IF DB fails: show warning (WhatsApp already opened)
+Planned resilience pattern:
+- DB op -> retry (network-only) -> timeout -> normalized error
+- UI shows actionable retry controls
+- No local persistence fallback
 ```
-
-```text
-Current flow (tests.ts):
-  saveTest -> try DB -> catch: save to localStorage silently
-
-New flow:
-  saveTest -> try DB -> catch: throw error to caller
-```
-
-### Files Modified
-- `src/lib/tests.ts` — Remove all localStorage, direct DB calls only
-- `src/pages/CreateEstimate.tsx` — WhatsApp opens first, DB save second
-- `src/pages/TestManagement.tsx` — Updated imports for renamed functions
