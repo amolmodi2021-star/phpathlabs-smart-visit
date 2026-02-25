@@ -11,10 +11,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { Download, Phone, MapPin, ChevronDown, ChevronUp, Pencil, Trash2 } from "lucide-react";
 import { exportToExcel } from "@/lib/excel";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 import EditHomeVisitDialog from "@/components/EditHomeVisitDialog";
+import { format, isToday, parseISO } from "date-fns";
 
 const statusColors: Record<string, string> = {
   Pending: "bg-warning text-warning-foreground",
@@ -119,6 +121,27 @@ const HomeVisits = () => {
 
   const openEditDialog = (v: any) => setEditVisit(v);
 
+  // Sort: Today's visits (time asc) → Pending (date+time asc) → Completed (date+time desc)
+  const sortedVisits = useMemo(() => {
+    const toTime = (v: any) => {
+      const [h, m] = (v.visit_time || "00:00").split(":");
+      return parseInt(h) * 60 + parseInt(m);
+    };
+    const toDateTime = (v: any) => new Date(`${v.visit_date}T${v.visit_time || "00:00"}`).getTime();
+
+    const todayPending = visits.filter((v: any) => v.status === "Pending" && isToday(parseISO(v.visit_date)));
+    const otherPending = visits.filter((v: any) => v.status === "Pending" && !isToday(parseISO(v.visit_date)));
+    const completed = visits.filter((v: any) => v.status === "Completed");
+    const cancelled = visits.filter((v: any) => v.status === "Cancelled");
+
+    todayPending.sort((a: any, b: any) => toTime(a) - toTime(b));
+    otherPending.sort((a: any, b: any) => toDateTime(a) - toDateTime(b));
+    completed.sort((a: any, b: any) => toDateTime(b) - toDateTime(a));
+    cancelled.sort((a: any, b: any) => toDateTime(b) - toDateTime(a));
+
+    return [...todayPending, ...otherPending, ...completed, ...cancelled];
+  }, [visits]);
+
   const handleExport = () => {
     exportToExcel(visits.map((v: any) => ({
       "Visit Date": v.visit_date,
@@ -150,28 +173,50 @@ const HomeVisits = () => {
       </div>
 
       {/* Select All */}
-      {visits.length > 0 && (
+      {sortedVisits.length > 0 && (
         <div className="flex items-center gap-2">
           <Checkbox
-            checked={selectedIds.size === visits.length && visits.length > 0}
+            checked={selectedIds.size === sortedVisits.length && sortedVisits.length > 0}
             onCheckedChange={toggleSelectAll}
           />
-          <span className="text-xs text-muted-foreground">Select All ({visits.length})</span>
+          <span className="text-xs text-muted-foreground">Select All ({sortedVisits.length})</span>
         </div>
       )}
 
-      {isLoading ? <p className="text-sm text-muted-foreground">Loading...</p> : visits.length === 0 ? (
+      {isLoading ? <p className="text-sm text-muted-foreground">Loading...</p> : sortedVisits.length === 0 ? (
         <p className="text-sm text-muted-foreground text-center py-8">No home visits yet.</p>
       ) : (
         <div className="grid gap-2">
-          {visits.map((v: any) => {
+          {sortedVisits.map((v: any, idx: number) => {
             const est = v.estimates;
             const tests = est?.estimate_tests || [];
             const isExpanded = expandedCards.has(v.id);
             const isSelected = selectedIds.has(v.id);
 
+            // Date divider logic
+            const prevVisit = idx > 0 ? sortedVisits[idx - 1] : null;
+            const currentDate = v.visit_date;
+            const prevDate = prevVisit?.visit_date;
+            const currentStatus = v.status === "Completed" || v.status === "Cancelled" ? v.status : "Pending";
+            const prevStatus = prevVisit ? (prevVisit.status === "Completed" || prevVisit.status === "Cancelled" ? prevVisit.status : "Pending") : null;
+            const showDivider = idx === 0 || currentDate !== prevDate || currentStatus !== prevStatus;
+
+            const dateLabel = isToday(parseISO(currentDate))
+              ? `Today — ${format(parseISO(currentDate), "dd MMM yyyy")}`
+              : format(parseISO(currentDate), "dd MMM yyyy");
+
             return (
-              <Card key={v.id} className={`glass-card ${isSelected ? 'ring-2 ring-primary' : ''}`}>
+              <div key={v.id}>
+                {showDivider && (
+                  <div className="flex items-center gap-2 mt-3 mb-2">
+                    <Separator className="flex-1" />
+                    <span className="text-xs font-medium text-muted-foreground whitespace-nowrap px-2">
+                      {currentStatus !== "Pending" ? `${currentStatus} — ${dateLabel}` : dateLabel}
+                    </span>
+                    <Separator className="flex-1" />
+                  </div>
+                )}
+              <Card className={`glass-card ${isSelected ? 'ring-2 ring-primary' : ''}`}>
                 <CardContent className="p-3 space-y-2">
                   {/* Header row */}
                   <div className="flex items-start justify-between flex-wrap gap-2">
@@ -288,6 +333,7 @@ const HomeVisits = () => {
                   </div>
                 </CardContent>
               </Card>
+              </div>
             );
           })}
         </div>
