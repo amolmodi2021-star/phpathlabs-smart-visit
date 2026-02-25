@@ -19,26 +19,29 @@ interface SaveTestPayload {
   description: string;
 }
 
-const isNetworkError = (err: unknown): boolean => {
-  if (err instanceof TypeError && err.message.includes("Failed to fetch")) return true;
-  if (err instanceof DOMException && err.name === "AbortError") return true;
-  return false;
-};
-
-async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, timeoutMs = 12000): Promise<T> {
+async function invoke(body: Record<string, unknown>) {
+  const maxRetries = 3;
   let lastError: unknown;
+
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
-      const result = await fn();
-      clearTimeout(timer);
-      return result;
-    } catch (err) {
+      const { data, error } = await supabase.functions.invoke("tests-crud", {
+        body,
+      });
+
+      if (error) throw new Error(error.message || "Request failed");
+      if (data?.error) throw new Error(data.error);
+      return data;
+    } catch (err: any) {
       lastError = err;
-      if (!isNetworkError(err)) throw err; // non-network error, don't retry
+      const isNetwork =
+        (err instanceof TypeError && err.message.includes("Failed to fetch")) ||
+        (err instanceof DOMException && err.name === "AbortError") ||
+        err?.message?.includes("Failed to fetch");
+
+      if (!isNetwork) throw err;
       if (attempt < maxRetries - 1) {
-        await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt))); // exponential backoff
+        await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)));
       }
     }
   }
@@ -46,35 +49,22 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, timeoutMs = 12
 }
 
 export const getTests = async (): Promise<TestItem[]> => {
-  return withRetry(async () => {
-    const { data, error } = await supabase.from("tests").select("*").order("test_name");
-    if (error) throw error;
-    return (data || []) as TestItem[];
-  });
+  const result = await invoke({ action: "list" });
+  return (result?.data || []) as TestItem[];
 };
 
 export const saveTest = async (payload: SaveTestPayload, editingId?: string) => {
-  return withRetry(async () => {
-    if (editingId) {
-      const { error } = await supabase.from("tests").update(payload).eq("id", editingId);
-      if (error) throw error;
-      return;
-    }
-    const { error } = await supabase.from("tests").insert(payload);
-    if (error) throw error;
-  });
+  if (editingId) {
+    await invoke({ action: "update", payload, id: editingId });
+  } else {
+    await invoke({ action: "create", payload });
+  }
 };
 
 export const deleteTest = async (id: string) => {
-  return withRetry(async () => {
-    const { error } = await supabase.from("tests").delete().eq("id", id);
-    if (error) throw error;
-  });
+  await invoke({ action: "delete", id });
 };
 
 export const bulkInsertTests = async (tests: SaveTestPayload[]) => {
-  return withRetry(async () => {
-    const { error } = await supabase.from("tests").insert(tests);
-    if (error) throw error;
-  });
+  await invoke({ action: "bulk_insert", payload: tests });
 };

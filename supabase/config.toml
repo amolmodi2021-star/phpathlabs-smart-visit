@@ -1,1 +1,4 @@
 project_id = "rpbkilhzulaugzrlatts"
+
+[functions.tests-crud]
+verify_jwt = false
