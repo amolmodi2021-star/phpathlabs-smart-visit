@@ -60,7 +60,6 @@ const CreateEstimate = () => {
     !selectedTests.find(s => s.test_id === t.id) &&
     (testSearch === "" || t.test_name.toLowerCase().includes(testSearch.toLowerCase()))
   );
-  };
 
   const removeTest = (testId: string) => setSelectedTests(prev => prev.filter(t => t.test_id !== testId));
 
