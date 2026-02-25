@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Search, Download, Upload, Trash2, Pencil } from "lucide-react";
@@ -85,7 +85,10 @@ const TestManagement = () => {
           <Dialog open={dialogOpen} onOpenChange={(o) => { setDialogOpen(o); if (!o) resetForm(); }}>
             <DialogTrigger asChild><Button size="sm"><Plus className="h-4 w-4 mr-1" />Add Test</Button></DialogTrigger>
             <DialogContent>
-              <DialogHeader><DialogTitle>{editing ? "Edit Test" : "Add Test"}</DialogTitle></DialogHeader>
+              <DialogHeader>
+                <DialogTitle>{editing ? "Edit Test" : "Add Test"}</DialogTitle>
+                <DialogDescription>{editing ? "Update the test details below." : "Fill in the test details below."}</DialogDescription>
+              </DialogHeader>
               <form onSubmit={(e) => { e.preventDefault(); saveMutation.mutate(form); }} className="space-y-4">
                 <div><Label>Test Name *</Label><Input value={form.test_name} onChange={(e) => setForm(p => ({ ...p, test_name: e.target.value }))} required /></div>
                 <div><Label>Price (₹) *</Label><Input type="number" value={form.price} onChange={(e) => setForm(p => ({ ...p, price: e.target.value }))} required /></div>
