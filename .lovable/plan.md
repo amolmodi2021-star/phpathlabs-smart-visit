@@ -1,39 +1,62 @@
 
 
-## Fix: "Failed to Fetch" — Restrictive RLS Policies Blocking All Access
+## Fix: Remove localStorage, Use Database Only, Fix WhatsApp Sharing
 
-### Problem
-All database tables have RLS policies set to **RESTRICTIVE** mode. In the database's security model, restrictive policies can only further limit access granted by permissive policies. Since there are no permissive policies, all reads and writes are blocked — causing "TypeError: Failed to fetch" on every operation.
+### What's Wrong
 
-### Solution
-Run a single database migration that drops all existing restrictive policies and recreates them as **PERMISSIVE** policies. This is a single-user app with fixed credentials, so open permissive policies are appropriate.
+1. **localStorage fallback in `src/lib/tests.ts`**: When database calls fail, tests are silently saved to localStorage instead of showing an error. This means tests may appear to save but never actually reach the database. You want everything in the database only.
 
-### Tables Affected
-- tests
-- estimates
-- estimate_tests
-- home_visits
-- phlebotomists
-- message_templates
+2. **WhatsApp not opening**: In Create Estimate, the code saves to the database first, and only opens WhatsApp after that succeeds. If the DB save fails for any reason, WhatsApp never opens.
+
+3. **Database is healthy**: I verified the database connection works and RLS policies are correct (PERMISSIVE). The tests table currently has 0 rows — any tests you added previously were only in localStorage.
+
+### What Will Change
+
+**File 1: `src/lib/tests.ts` — Rewrite without localStorage**
+
+- Remove all localStorage code (cache read/write, `TESTS_CACHE_KEY`)
+- All functions will call the database directly and throw errors on failure
+- `getTests()` — fetches from database, throws on error
+- `saveTest()` — inserts or updates in database, throws on error  
+- `deleteTest()` — deletes from database, throws on error
+- `bulkInsertTests()` — bulk inserts to database, throws on error
+
+**File 2: `src/pages/CreateEstimate.tsx` — Fix WhatsApp sharing**
+
+- Build the WhatsApp message and open WhatsApp FIRST (before database save)
+- Then attempt the database save
+- If DB save fails, still show a warning but WhatsApp will have already opened
+- This ensures the user always gets the WhatsApp message regardless of DB issues
+
+**File 3: `src/pages/TestManagement.tsx` — Update imports**
+
+- Update function names to match the renamed exports from `tests.ts` (no more "WithFallback" suffix)
 
 ### Technical Details
 
-The migration will run this pattern for each table:
+```text
+Current flow (CreateEstimate):
+  Click "Create & Share" 
+    -> Save to DB 
+    -> IF success: open WhatsApp 
+    -> IF fail: show error, WhatsApp never opens
 
-```sql
-DROP POLICY IF EXISTS "Allow all on tests" ON public.tests;
-CREATE POLICY "Allow all on tests" ON public.tests
-  AS PERMISSIVE FOR ALL TO anon, authenticated
-  USING (true) WITH CHECK (true);
+New flow:
+  Click "Create & Share"
+    -> Build message + open WhatsApp immediately
+    -> Save to DB (best effort)
+    -> IF DB fails: show warning (WhatsApp already opened)
 ```
 
-The key difference is `AS PERMISSIVE` and granting to both `anon` and `authenticated` roles explicitly.
+```text
+Current flow (tests.ts):
+  saveTest -> try DB -> catch: save to localStorage silently
+
+New flow:
+  saveTest -> try DB -> catch: throw error to caller
+```
 
 ### Files Modified
-- New database migration only (no code changes needed)
-
-### After the Fix
-- All database operations (read, write, update, delete) will work immediately
-- Tests will save and display in Test Management
-- All other modules will function correctly
-
+- `src/lib/tests.ts` — Remove all localStorage, direct DB calls only
+- `src/pages/CreateEstimate.tsx` — WhatsApp opens first, DB save second
+- `src/pages/TestManagement.tsx` — Updated imports for renamed functions
