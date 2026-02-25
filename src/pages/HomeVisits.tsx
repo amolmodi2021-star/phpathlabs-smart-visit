@@ -14,6 +14,7 @@ import { exportToExcel } from "@/lib/excel";
 import { useState, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
+import EditHomeVisitDialog from "@/components/EditHomeVisitDialog";
 
 const statusColors: Record<string, string> = {
   Pending: "bg-warning text-warning-foreground",
@@ -29,8 +30,7 @@ const HomeVisits = () => {
   const [assignSelectOpenFor, setAssignSelectOpenFor] = useState<string | null>(null);
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [editDialog, setEditDialog] = useState<any>(null);
-  const [editForm, setEditForm] = useState({ visit_date: "", visit_time: "", address: "" });
+  const [editVisit, setEditVisit] = useState<any>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const { data: visits = [], isLoading } = useQuery({
@@ -66,14 +66,6 @@ const HomeVisits = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const updateVisit = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: { visit_date: string; visit_time: string; address: string } }) => {
-      const { error } = await supabase.from("home_visits").update(data).eq("id", id);
-      if (error) throw error;
-    },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["home_visits"] }); toast.success("Visit updated"); setEditDialog(null); },
-    onError: (e: Error) => toast.error(e.message),
-  });
 
   const deleteVisits = useMutation({
     mutationFn: async (ids: string[]) => {
@@ -125,10 +117,7 @@ const HomeVisits = () => {
     }
   }, [selectedIds.size, visits]);
 
-  const openEditDialog = (v: any) => {
-    setEditForm({ visit_date: v.visit_date, visit_time: v.visit_time, address: v.address });
-    setEditDialog(v);
-  };
+  const openEditDialog = (v: any) => setEditVisit(v);
 
   const handleExport = () => {
     exportToExcel(visits.map((v: any) => ({
@@ -318,32 +307,7 @@ const HomeVisits = () => {
       </Dialog>
 
       {/* Edit dialog */}
-      <Dialog open={!!editDialog} onOpenChange={(o) => !o && setEditDialog(null)}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Edit Visit Details</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Visit Date</Label>
-              <Input type="date" value={editForm.visit_date} onChange={(e) => setEditForm(f => ({ ...f, visit_date: e.target.value }))} />
-            </div>
-            <div>
-              <Label>Visit Time</Label>
-              <Input type="time" value={editForm.visit_time} onChange={(e) => setEditForm(f => ({ ...f, visit_time: e.target.value }))} />
-            </div>
-            <div>
-              <Label>Address</Label>
-              <Textarea value={editForm.address} onChange={(e) => setEditForm(f => ({ ...f, address: e.target.value }))} rows={2} />
-            </div>
-            <Button
-              className="w-full"
-              disabled={!editForm.visit_date || !editForm.visit_time || !editForm.address.trim()}
-              onClick={() => updateVisit.mutate({ id: editDialog.id, data: editForm })}
-            >
-              Save Changes
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <EditHomeVisitDialog visit={editVisit} open={!!editVisit} onClose={() => setEditVisit(null)} />
 
       {/* Delete confirmation dialog */}
       <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
