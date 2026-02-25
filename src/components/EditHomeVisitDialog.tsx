@@ -196,7 +196,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
           homeVisitDisclaimer: templates.home_visit_disclaimer,
           footer: templates.footer_text,
           visitDate: format(new Date(visitDate), "dd-MM-yyyy"),
-          visitTime: visitTime,
+          visitTime: (() => { const [h, m] = visitTime.split(":"); const hour = parseInt(h, 10); return `${hour % 12 || 12}:${m} ${hour >= 12 ? "PM" : "AM"}`; })(),
           address: address,
         });
         shareOnWhatsApp(cleanNumber, msg);
