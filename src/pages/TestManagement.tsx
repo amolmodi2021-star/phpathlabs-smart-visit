@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Plus, Search, Download, Upload, Trash2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { exportToExcel, parseExcelFile, downloadTemplate } from "@/lib/excel";
-import { getTestsWithFallback, saveTestWithFallback, deleteTestWithFallback, bulkInsertTestsWithFallback } from "@/lib/tests";
+import { getTests, saveTest, deleteTest, bulkInsertTests } from "@/lib/tests";
 
 const TestManagement = () => {
   const qc = useQueryClient();
@@ -22,22 +22,20 @@ const TestManagement = () => {
 
   const { data: tests = [], isLoading } = useQuery({
     queryKey: ["tests"],
-    queryFn: async () => {
-      return await getTestsWithFallback();
-    },
+    queryFn: getTests,
   });
 
   const saveMutation = useMutation({
     mutationFn: async (values: typeof form) => {
       const payload = { ...values, price: parseFloat(values.price) || 0 };
-      await saveTestWithFallback(payload, editing?.id);
+      await saveTest(payload, editing?.id);
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["tests"] }); setDialogOpen(false); resetForm(); toast.success("Test saved"); },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (id: string) => { await deleteTestWithFallback(id); },
+    mutationFn: async (id: string) => { await deleteTest(id); },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["tests"] }); toast.success("Test deleted"); },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -53,7 +51,7 @@ const TestManagement = () => {
         description: r["Description"] || "",
       })).filter(t => t.test_name);
       if (tests.length === 0) throw new Error("No valid tests found");
-      await bulkInsertTestsWithFallback(tests);
+      await bulkInsertTests(tests);
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["tests"] }); toast.success("Tests uploaded"); },
     onError: (e: Error) => toast.error(e.message),

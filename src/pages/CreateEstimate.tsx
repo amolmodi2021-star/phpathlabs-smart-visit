@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import { useMessageTemplates } from "@/hooks/useMessageTemplates";
 import { buildEstimateMessage, shareOnWhatsApp } from "@/lib/whatsapp";
 import { Send, Plus, X } from "lucide-react";
-import { getTestsWithFallback } from "@/lib/tests";
+import { getTests } from "@/lib/tests";
 
 interface SelectedTest {
   test_id: string;
@@ -36,7 +36,7 @@ const CreateEstimate = () => {
 
   const { data: tests = [] } = useQuery({
     queryKey: ["tests"],
-    queryFn: async () => await getTestsWithFallback(),
+    queryFn: async () => await getTests(),
   });
 
   const addTest = (testId: string) => {
@@ -90,36 +90,7 @@ const CreateEstimate = () => {
       if (!whatsappNumber || whatsappNumber.length < 10) throw new Error("Valid WhatsApp number required");
       if (selectedTests.length === 0) throw new Error("Select at least one test");
 
-      const { data: est, error } = await supabase.from("estimates").insert({
-        patient_name: patientName || null,
-        whatsapp_number: whatsappNumber,
-        total_amount: calculations.totalAmount,
-        discount_amount: calculations.totalDiscount,
-        home_visit_charges: homeVisitCharges,
-        final_amount: calculations.finalAmount,
-        global_discount_type: globalDiscountValue > 0 ? globalDiscountType : null,
-        global_discount_value: globalDiscountValue,
-        status: "Estimate Created",
-      }).select().single();
-
-      if (error) throw error;
-
-      const testRows = calculations.testDetails.map(t => ({
-        estimate_id: est.id,
-        test_id: t.test_id,
-        test_name: t.test_name,
-        price: t.price,
-        fasting_required: t.fasting_required,
-        discount_applicable: t.discount_applicable,
-        individual_discount_type: t.individual_discount_type,
-        individual_discount_value: t.individual_discount_value,
-        discounted_price: t.discountedPrice,
-      }));
-
-      const { error: testError } = await supabase.from("estimate_tests").insert(testRows);
-      if (testError) throw testError;
-
-      // Share on WhatsApp
+      // Build and share WhatsApp message FIRST
       if (templates) {
         const msg = buildEstimateMessage({
           tests: calculations.testDetails.map(t => ({ name: t.test_name, price: t.price, fasting: t.fasting_required })),
@@ -134,10 +105,45 @@ const CreateEstimate = () => {
         });
         shareOnWhatsApp(whatsappNumber, msg);
       }
+
+      // Then save to database
+      try {
+        const { data: est, error } = await supabase.from("estimates").insert({
+          patient_name: patientName || null,
+          whatsapp_number: whatsappNumber,
+          total_amount: calculations.totalAmount,
+          discount_amount: calculations.totalDiscount,
+          home_visit_charges: homeVisitCharges,
+          final_amount: calculations.finalAmount,
+          global_discount_type: globalDiscountValue > 0 ? globalDiscountType : null,
+          global_discount_value: globalDiscountValue,
+          status: "Estimate Created",
+        }).select().single();
+
+        if (error) throw error;
+
+        const testRows = calculations.testDetails.map(t => ({
+          estimate_id: est.id,
+          test_id: t.test_id,
+          test_name: t.test_name,
+          price: t.price,
+          fasting_required: t.fasting_required,
+          discount_applicable: t.discount_applicable,
+          individual_discount_type: t.individual_discount_type,
+          individual_discount_value: t.individual_discount_value,
+          discounted_price: t.discountedPrice,
+        }));
+
+        const { error: testError } = await supabase.from("estimate_tests").insert(testRows);
+        if (testError) throw testError;
+      } catch (dbError) {
+        console.error("DB save failed:", dbError);
+        toast.warning("WhatsApp opened but estimate could not be saved to database");
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["estimates"] });
-      toast.success("Estimate created & shared!");
+      toast.success("Estimate shared on WhatsApp!");
       setPatientName(""); setWhatsappNumber(""); setSelectedTests([]);
       setGlobalDiscountValue(0); setHomeVisitCharges(0);
     },
