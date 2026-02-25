@@ -12,6 +12,7 @@ import { Download, Phone, MapPin } from "lucide-react";
 import { exportToExcel } from "@/lib/excel";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 
 const statusColors: Record<string, string> = {
   Pending: "bg-warning text-warning-foreground",
@@ -23,6 +24,7 @@ const HomeVisits = () => {
   const qc = useQueryClient();
   const [cancelDialog, setCancelDialog] = useState<any>(null);
   const [cancelReason, setCancelReason] = useState("");
+  const [exportDialog, setExportDialog] = useState(false);
 
   const { data: visits = [], isLoading } = useQuery({
     queryKey: ["home_visits"],
@@ -91,7 +93,7 @@ const HomeVisits = () => {
     <div className="space-y-4 animate-fade-in">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Home Visits</h1>
-        <Button size="sm" variant="outline" onClick={handleExport}><Download className="h-4 w-4 mr-1" />Excel</Button>
+        <Button size="sm" variant="outline" onClick={() => setExportDialog(true)}><Download className="h-4 w-4 mr-1" />Excel</Button>
       </div>
 
       {isLoading ? <p className="text-sm text-muted-foreground">Loading...</p> : visits.length === 0 ? (
@@ -166,6 +168,8 @@ const HomeVisits = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      <ExportPasswordDialog open={exportDialog} onOpenChange={setExportDialog} onSuccess={handleExport} />
     </div>
   );
 };
