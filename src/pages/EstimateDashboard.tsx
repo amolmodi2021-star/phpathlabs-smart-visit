@@ -11,11 +11,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import { Download, Trash2, Calendar, MapPin } from "lucide-react";
+import { Download, Trash2, MapPin, Pencil } from "lucide-react";
 import { exportToExcel } from "@/lib/excel";
 import { useMessageTemplates } from "@/hooks/useMessageTemplates";
 import { buildVisitMessage, shareOnWhatsApp } from "@/lib/whatsapp";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
+import EditEstimateDialog from "@/components/EditEstimateDialog";
 
 const EstimateDashboard = () => {
   const qc = useQueryClient();
@@ -24,6 +25,7 @@ const EstimateDashboard = () => {
   const [bookingEstimate, setBookingEstimate] = useState<any>(null);
   const [visitForm, setVisitForm] = useState({ visit_date: "", visit_time: "", address: "", phlebotomist_id: "" });
   const [exportDialog, setExportDialog] = useState(false);
+  const [editEstimate, setEditEstimate] = useState<any>(null);
 
   const { data: estimates = [], isLoading } = useQuery({
     queryKey: ["estimates", "dashboard"],
@@ -148,10 +150,15 @@ const EstimateDashboard = () => {
                       {Number(est.discount_amount) > 0 && <span className="text-success">-₹{est.discount_amount}</span>}
                       <span className="font-bold">Final: ₹{est.final_amount}</span>
                     </div>
-                  </div>
-                  <Button size="sm" variant="outline" onClick={() => setBookingEstimate(est)}>
-                    <MapPin className="h-3.5 w-3.5 mr-1" />Book Visit
-                  </Button>
+                   </div>
+                   <div className="flex gap-1">
+                     <Button size="sm" variant="ghost" onClick={() => setEditEstimate(est)}>
+                       <Pencil className="h-3.5 w-3.5" />
+                     </Button>
+                     <Button size="sm" variant="outline" onClick={() => setBookingEstimate(est)}>
+                       <MapPin className="h-3.5 w-3.5 mr-1" />Book Visit
+                     </Button>
+                   </div>
                 </div>
               </CardContent>
             </Card>
@@ -181,6 +188,7 @@ const EstimateDashboard = () => {
         </DialogContent>
       </Dialog>
 
+      <EditEstimateDialog estimate={editEstimate} open={!!editEstimate} onClose={() => setEditEstimate(null)} />
       <ExportPasswordDialog open={exportDialog} onOpenChange={setExportDialog} onSuccess={handleExport} />
     </div>
   );
