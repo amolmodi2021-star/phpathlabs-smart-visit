@@ -141,9 +141,10 @@ const HomeVisits = () => {
                     </Select>
 
                     {est?.whatsapp_number && (
-                      <Button size="sm" variant="ghost" onClick={() => window.open(`https://wa.me/91${est.whatsapp_number}`, "_blank")}>
+                      <a href={`tel:${est.whatsapp_number}`} className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
                         <Phone className="h-3.5 w-3.5" />
-                      </Button>
+                        <span>{est.whatsapp_number}</span>
+                      </a>
                     )}
                   </div>
                 </CardContent>
