@@ -37,8 +37,9 @@ const EstimateDashboard = () => {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (ids: string[]) => { await supabase.from("estimates").delete().in("id", ids); },
+    mutationFn: async (ids: string[]) => { const { error } = await supabase.from("estimates").delete().in("id", ids); if (error) throw error; },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["estimates"] }); setSelected([]); toast.success("Deleted"); },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const bookVisitMutation = useMutation({
@@ -46,15 +47,17 @@ const EstimateDashboard = () => {
       if (!visitForm.visit_date || !visitForm.visit_time || !visitForm.address) throw new Error("Fill all required fields");
       const est = bookingEstimate;
 
-      await supabase.from("home_visits").insert({
+      const { error: visitError } = await supabase.from("home_visits").insert({
         estimate_id: est.id,
         visit_date: visitForm.visit_date,
         visit_time: visitForm.visit_time,
         address: visitForm.address,
         phlebotomist_id: visitForm.phlebotomist_id || null,
       });
+      if (visitError) throw visitError;
 
-      await supabase.from("estimates").update({ status: "Home Visit Booked" }).eq("id", est.id);
+      const { error: statusError } = await supabase.from("estimates").update({ status: "Home Visit Booked" }).eq("id", est.id);
+      if (statusError) throw statusError;
 
       // WhatsApp
       if (templates) {
