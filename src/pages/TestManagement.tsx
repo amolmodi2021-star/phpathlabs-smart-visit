@@ -8,10 +8,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Search, Download, Upload, Trash2, Pencil, Wifi, WifiOff, Loader2 } from "lucide-react";
+import { Plus, Search, Download, Upload, Trash2, Pencil, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { exportToExcel, parseExcelFile, downloadTemplate } from "@/lib/excel";
-import { getTests, saveTest, deleteTest, bulkInsertTests, checkConnection } from "@/lib/tests";
+import { getTests, saveTest, deleteTest, bulkInsertTests } from "@/lib/tests";
 
 const TestManagement = () => {
   const qc = useQueryClient();
@@ -19,13 +19,12 @@ const TestManagement = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [form, setForm] = useState({ test_name: "", price: "", fasting_required: false, discount_applicable: true, description: "" });
-  const [connStatus, setConnStatus] = useState<"idle" | "checking" | "ok" | "fail">("idle");
 
   const { data: tests = [], isLoading, isError, error: queryError, refetch } = useQuery({
     queryKey: ["tests"],
     queryFn: getTests,
-    retry: 1,
-    retryDelay: 2000,
+    retry: 2,
+    retryDelay: 3000,
   });
 
   const saveMutation = useMutation({
@@ -68,24 +67,12 @@ const TestManagement = () => {
     setDialogOpen(true);
   };
 
-  const handleCheckConnection = async () => {
-    setConnStatus("checking");
-    const ok = await checkConnection();
-    setConnStatus(ok ? "ok" : "fail");
-    toast(ok ? "Connected to backend" : "Could not reach backend", { icon: ok ? "✅" : "❌" });
-  };
-
   const filtered = tests.filter((t: any) => t.test_name.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div className="space-y-4 animate-fade-in">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <h1 className="text-xl font-bold">Test Management</h1>
-          <Button size="icon" variant="ghost" onClick={handleCheckConnection} title="Check connection">
-            {connStatus === "checking" ? <Loader2 className="h-4 w-4 animate-spin" /> : connStatus === "ok" ? <Wifi className="h-4 w-4 text-green-500" /> : connStatus === "fail" ? <WifiOff className="h-4 w-4 text-destructive" /> : <Wifi className="h-4 w-4 text-muted-foreground" />}
-          </Button>
-        </div>
+        <h1 className="text-xl font-bold">Test Management</h1>
         <div className="flex gap-2 flex-wrap">
           <Button size="sm" variant="outline" onClick={downloadTemplate}><Download className="h-4 w-4 mr-1" />Template</Button>
           <Button size="sm" variant="outline" onClick={() => document.getElementById("excel-upload")?.click()}>
