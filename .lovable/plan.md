@@ -1,95 +1,78 @@
 
-I understand how frustrating this is. I checked your current code and logs in detail, and the real blocker is this:
+I hear you. Based on the current code and the captured requests, this is not a “form validation” issue — it’s a transport failure between the browser preview and the backend endpoint.
 
-- The app is correctly using database-only storage now (no local cache for tests).
-- But in your session, browser requests to the backend REST endpoint are intermittently failing with `TypeError: Failed to fetch` before the request even gets a response.
-- In a clean session, the same endpoint works. So this is a transport/reachability problem, not a table schema problem.
+What I confirmed:
+- Your `/tests` page is calling `tests-crud` correctly.
+- The backend function itself is alive and returns data when called from backend tooling.
+- In your browser session, requests to both:
+  - backend function endpoint (`/functions/v1/tests-crud`)
+  - regular table endpoint (`/rest/v1/...`)
+  are failing with **“Failed to fetch”** before a response arrives.
+- So the app logic is mostly correct, but current retry behavior creates repeated failures and poor UX.
 
-I will implement a hardening pass focused on making this reliable in your real session, not just in ideal conditions.
+What I will implement next to make this reliable:
 
-## What I will change
+1) Harden backend function CORS/preflight handling
+- File: `supabase/functions/tests-crud/index.ts`
+- Add missing CORS fields and strict preflight response:
+  - `Access-Control-Allow-Methods: POST, OPTIONS`
+  - keep existing allowed headers
+  - return a valid `200/ok` preflight body consistently
+- Ensure every success/error response includes the same CORS headers.
+- This removes a common source of browser-side “Failed to fetch” on function calls.
 
-### 1) Replace direct test CRUD calls with backend function calls (same database, no localStorage)
-Why:
-- Your failing calls are specifically on `/rest/v1/tests`.
-- Moving test operations to backend functions gives a different request path and lets us add controlled retries + better error handling server-side.
-
-Scope:
-- Add backend function(s) for:
+2) Add dual transport path (database-only, no local storage)
+- File: `src/lib/tests.ts`
+- Keep database-only persistence.
+- Implement a transport strategy:
+  - First try function call (`tests-crud`)
+  - If it fails with transport-level error (`Failed to fetch`, `AbortError`, function fetch error), automatically retry via direct DB SDK call for the same operation
+- Applies to:
   - list tests
-  - create test
-  - update test
-  - delete test
-  - bulk insert tests
-- Keep storage strictly database-only.
-- No fallback to local cache.
+  - create/update/delete test
+  - bulk insert
+- This gives resilience when one route is flaky while still writing directly to the database.
 
-Files affected:
-- `supabase/functions/tests-crud/index.ts` (new)
-- `src/lib/tests.ts` (switch from direct `.from("tests")` calls to `supabase.functions.invoke(...)`)
+3) Remove retry explosion and make retries deterministic
+- Files: `src/lib/tests.ts`, `src/pages/TestManagement.tsx`
+- Right now retries stack (query retries + internal retries), causing noisy repeated failures.
+- I’ll centralize retries in one layer with bounded attempts and jittered backoff.
+- UI query retries will be reduced to avoid cascaded loops.
 
-### 2) Add deterministic client-side network handling in one place
-Why:
-- Current retry logic exists, but it retries only around SDK calls and doesn’t provide clear operational states.
-- We need clear “loading / retrying / failed connection” states with user actions.
+4) Improve error feedback so it’s actionable
+- File: `src/pages/TestManagement.tsx`
+- Replace generic errors with explicit messages:
+  - “Could not reach backend. Please retry.”
+  - “Backend reachable but save failed. Try again.”
+- Keep a clear Retry action in the error card.
+- Disable save while in-flight and show saving state to prevent duplicate submits.
 
-Scope:
-- Centralize retry/backoff in `src/lib/tests.ts` around function invocations.
-- Add timeout guard for each operation.
-- Normalize user-facing errors to actionable messages:
-  - “Connection issue. Please retry.”
-  - “Request timed out. Please retry.”
-  - preserve backend validation errors as-is.
+5) Add lightweight backend connectivity check on `/tests`
+- File: `src/pages/TestManagement.tsx`
+- Add a “Check Connection” action that performs a tiny health read and displays:
+  - Connected
+  - Not reachable
+- This gives immediate visibility instead of guessing why save failed.
 
-### 3) Improve Test Management UX for failure recovery
-Why:
-- Right now it can look like “nothing works” when connection is unstable.
+Why this plan should fix your exact complaint:
+- If function preflight/CORS is the blocker, step 1 fixes it.
+- If only one transport path is flaky, step 2 still saves the test.
+- If network is truly down, step 4/5 gives immediate, clear feedback instead of repeated silent failure loops.
+- At no point do we store tests in local storage.
 
-Scope in `src/pages/TestManagement.tsx`:
-- Keep inline error state with retry.
-- Add explicit status text while retrying.
-- Keep Save button disabled while pending.
-- Show precise toast messages for create/update/delete/upload failures.
-
-### 4) Align Create Estimate test loading with same transport path
-Why:
-- Test list must match exactly between Test Management and Create Estimate.
-
-Scope in `src/pages/CreateEstimate.tsx`:
-- Use the same updated `getTests` implementation from `src/lib/tests.ts`.
-- Add explicit empty/error states for test selector when test list cannot be fetched.
-- Preserve current WhatsApp-open-first behavior for estimate sharing flow.
-
-### 5) Clean the dialog warnings (non-blocking but noisy)
-I will also fix these warnings seen in your console:
-- `Function components cannot be given refs` in dialog header chain
-- missing `DialogDescription` warning
-
-This won’t fix network transport, but it reduces noise and avoids confusion during debugging.
-
-Files:
-- `src/components/ui/dialog.tsx`
-- `src/pages/TestManagement.tsx` (add description in dialog content)
-
-## End-to-end verification I will run after implementation
-
-1. Login and open `/tests`.
-2. Add a test (e.g., CBC 1500) and confirm success toast.
-3. Confirm test appears in the list immediately.
-4. Refresh `/tests` and confirm data persists from database.
-5. Open `/` (Create Estimate), confirm same test appears in selector.
-6. Select test and run Create & Share flow to confirm WhatsApp opens and estimate path still works.
-7. Confirm inserted test rows exist in database via read query.
-
-## Technical notes
-
+Technical implementation sequence:
 ```text
-Root issue observed:
-- Client-side requests to /rest/v1/tests fail with "TypeError: Failed to fetch"
-- Failure occurs before HTTP response parsing
-
-Mitigation strategy:
-- Shift tests CRUD path to backend function invocations
-- Add robust timeout + retry + explicit UX recovery
-- Keep persistence strictly database-only (no local storage fallback)
+A. Fix tests-crud CORS + OPTIONS handling
+B. Refactor tests.ts into one request layer with dual transport fallback
+C. Tune React Query retries to avoid compounded loops
+D. Update TestManagement UX messaging + connection check
+E. Validate end-to-end on /tests: add, edit, delete, list, upload
 ```
+
+Verification checklist I will run after implementation:
+1. Open `/tests` and click “Check Connection” (must show connected).
+2. Add a test (e.g., CBC 1700) and confirm success toast.
+3. Confirm it appears in list immediately and persists after refresh.
+4. Edit and delete the same test.
+5. Upload via Excel template and verify inserted rows.
+6. Confirm all operations are database-backed only (no local cache path).
