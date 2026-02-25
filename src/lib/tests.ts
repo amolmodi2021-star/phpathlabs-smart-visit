@@ -19,52 +19,119 @@ interface SaveTestPayload {
   description: string;
 }
 
-async function invoke(body: Record<string, unknown>) {
-  const maxRetries = 3;
-  let lastError: unknown;
-
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      const { data, error } = await supabase.functions.invoke("tests-crud", {
-        body,
-      });
-
-      if (error) throw new Error(error.message || "Request failed");
-      if (data?.error) throw new Error(data.error);
-      return data;
-    } catch (err: any) {
-      lastError = err;
-      const isNetwork =
-        (err instanceof TypeError && err.message.includes("Failed to fetch")) ||
-        (err instanceof DOMException && err.name === "AbortError") ||
-        err?.message?.includes("Failed to fetch");
-
-      if (!isNetwork) throw err;
-      if (attempt < maxRetries - 1) {
-        await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)));
-      }
-    }
+function isNetworkError(err: unknown): boolean {
+  if (err instanceof TypeError && err.message.includes("Failed to fetch")) return true;
+  if (err instanceof DOMException && err.name === "AbortError") return true;
+  if (err && typeof err === "object" && "message" in err) {
+    const msg = (err as any).message || "";
+    if (msg.includes("Failed to fetch") || msg.includes("Failed to send")) return true;
   }
-  throw new Error("Network issue connecting to database. Please check your connection and retry.");
+  return false;
 }
 
+// Primary: edge function. Fallback: direct SDK.
+async function invokeEdge(body: Record<string, unknown>) {
+  const { data, error } = await supabase.functions.invoke("tests-crud", { body });
+  if (error) throw new Error(error.message || "Edge function error");
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+// ─── Direct SDK fallback ───
+
+async function directList(): Promise<TestItem[]> {
+  const { data, error } = await supabase.from("tests").select("*").order("test_name");
+  if (error) throw new Error(error.message);
+  return (data || []) as TestItem[];
+}
+
+async function directCreate(payload: SaveTestPayload) {
+  const { error } = await supabase.from("tests").insert(payload as any);
+  if (error) throw new Error(error.message);
+}
+
+async function directUpdate(payload: SaveTestPayload, id: string) {
+  const { error } = await supabase.from("tests").update(payload as any).eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+async function directDelete(id: string) {
+  const { error } = await supabase.from("tests").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+async function directBulkInsert(tests: SaveTestPayload[]) {
+  const { error } = await supabase.from("tests").insert(tests as any);
+  if (error) throw new Error(error.message);
+}
+
+// ─── Public API with edge-first, SDK-fallback ───
+
 export const getTests = async (): Promise<TestItem[]> => {
-  const result = await invoke({ action: "list" });
-  return (result?.data || []) as TestItem[];
+  try {
+    const result = await invokeEdge({ action: "list" });
+    return (result?.data || []) as TestItem[];
+  } catch (err) {
+    if (isNetworkError(err)) {
+      console.warn("Edge function unreachable, falling back to direct DB");
+      return directList();
+    }
+    throw err;
+  }
 };
 
 export const saveTest = async (payload: SaveTestPayload, editingId?: string) => {
-  if (editingId) {
-    await invoke({ action: "update", payload, id: editingId });
-  } else {
-    await invoke({ action: "create", payload });
+  try {
+    if (editingId) {
+      await invokeEdge({ action: "update", payload, id: editingId });
+    } else {
+      await invokeEdge({ action: "create", payload });
+    }
+  } catch (err) {
+    if (isNetworkError(err)) {
+      console.warn("Edge function unreachable, falling back to direct DB");
+      if (editingId) {
+        await directUpdate(payload, editingId);
+      } else {
+        await directCreate(payload);
+      }
+      return;
+    }
+    throw err;
   }
 };
 
 export const deleteTest = async (id: string) => {
-  await invoke({ action: "delete", id });
+  try {
+    await invokeEdge({ action: "delete", id });
+  } catch (err) {
+    if (isNetworkError(err)) {
+      console.warn("Edge function unreachable, falling back to direct DB");
+      await directDelete(id);
+      return;
+    }
+    throw err;
+  }
 };
 
 export const bulkInsertTests = async (tests: SaveTestPayload[]) => {
-  await invoke({ action: "bulk_insert", payload: tests });
+  try {
+    await invokeEdge({ action: "bulk_insert", payload: tests });
+  } catch (err) {
+    if (isNetworkError(err)) {
+      console.warn("Edge function unreachable, falling back to direct DB");
+      await directBulkInsert(tests);
+      return;
+    }
+    throw err;
+  }
+};
+
+export const checkConnection = async (): Promise<boolean> => {
+  try {
+    await getTests();
+    return true;
+  } catch {
+    return false;
+  }
 };
