@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { useMessageTemplates } from "@/hooks/useMessageTemplates";
 import { buildEstimateMessage, shareOnWhatsApp } from "@/lib/whatsapp";
 import { Send, Plus, X } from "lucide-react";
+import { getTestsWithFallback } from "@/lib/tests";
 
 interface SelectedTest {
   test_id: string;
@@ -35,7 +36,7 @@ const CreateEstimate = () => {
 
   const { data: tests = [] } = useQuery({
     queryKey: ["tests"],
-    queryFn: async () => { const { data } = await supabase.from("tests").select("*").order("test_name"); return data || []; },
+    queryFn: async () => await getTestsWithFallback(),
   });
 
   const addTest = (testId: string) => {
