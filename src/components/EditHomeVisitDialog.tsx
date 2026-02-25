@@ -8,8 +8,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { X, Search, Save } from "lucide-react";
+import { X, Search, Send } from "lucide-react";
 import { getTests } from "@/lib/tests";
+import { useMessageTemplates } from "@/hooks/useMessageTemplates";
+import { buildVisitMessage, shareOnWhatsApp } from "@/lib/whatsapp";
+import { format } from "date-fns";
 
 interface EditTest {
   id?: string; // existing estimate_test id
@@ -30,6 +33,7 @@ interface EditHomeVisitDialogProps {
 
 const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps) => {
   const qc = useQueryClient();
+  const { data: templates } = useMessageTemplates();
   const searchRef = useRef<HTMLInputElement>(null);
 
   const est = visit?.estimates;
@@ -176,11 +180,32 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
         address: address,
       }).eq("id", visit.id);
       if (visitError) throw visitError;
+
+      // Share on WhatsApp
+      if (templates) {
+        const tests = calculations.testDetails.map(t => ({ name: t.test_name, price: t.price, fasting: t.fasting_required }));
+        const msg = buildVisitMessage({
+          tests,
+          totalAmount: calculations.totalAmount,
+          discountAmount: calculations.totalDiscount,
+          homeVisitCharges,
+          finalAmount: calculations.finalAmount,
+          header: templates.estimate_header,
+          visitHeader: templates.visit_confirmation_header,
+          fastingInstructions: templates.fasting_instructions,
+          homeVisitDisclaimer: templates.home_visit_disclaimer,
+          footer: templates.footer_text,
+          visitDate: format(new Date(visitDate), "dd-MM-yyyy"),
+          visitTime: visitTime,
+          address: address,
+        });
+        shareOnWhatsApp(cleanNumber, msg);
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["home_visits"] });
       qc.invalidateQueries({ queryKey: ["estimates"] });
-      toast.success("Record updated successfully!");
+      toast.success("Updated & WhatsApp confirmation sent!");
       onClose();
     },
     onError: (e: Error) => toast.error(e.message),
@@ -308,7 +333,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
           )}
 
           <Button className="w-full" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
-            <Save className="h-4 w-4 mr-2" />Save Changes
+            <Send className="h-4 w-4 mr-2" />Save & Send Visit Confirmation
           </Button>
         </div>
       </DialogContent>
