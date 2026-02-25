@@ -208,12 +208,12 @@ const HomeVisits = () => {
             return (
               <div key={v.id}>
                 {showDivider && (
-                  <div className="flex items-center gap-2 mt-3 mb-2">
-                    <Separator className="flex-1" />
-                    <span className="text-xs font-medium text-muted-foreground whitespace-nowrap px-2">
+                  <div className="flex items-center gap-3 mt-5 mb-3">
+                    <Separator className="flex-1 bg-foreground/30 h-[2px]" />
+                    <span className="text-sm font-semibold text-foreground whitespace-nowrap px-3 py-1 bg-muted rounded-full">
                       {currentStatus !== "Pending" ? `${currentStatus} — ${dateLabel}` : dateLabel}
                     </span>
-                    <Separator className="flex-1" />
+                    <Separator className="flex-1 bg-foreground/30 h-[2px]" />
                   </div>
                 )}
               <Card className={`glass-card ${isSelected ? 'ring-2 ring-primary' : ''}`}>
