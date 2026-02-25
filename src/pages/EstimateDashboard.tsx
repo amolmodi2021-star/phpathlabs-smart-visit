@@ -76,7 +76,7 @@ const EstimateDashboard = () => {
           homeVisitDisclaimer: templates.home_visit_disclaimer,
           footer: templates.footer_text,
           visitDate: format(new Date(visitForm.visit_date), "dd-MM-yyyy"),
-          visitTime: visitForm.visit_time,
+          visitTime: (() => { const [h, m] = visitForm.visit_time.split(":"); const hour = parseInt(h, 10); return `${hour % 12 || 12}:${m} ${hour >= 12 ? "PM" : "AM"}`; })(),
           address: visitForm.address,
         });
         shareOnWhatsApp(est.whatsapp_number, msg);
