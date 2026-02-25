@@ -135,7 +135,7 @@ const HomeVisits = () => {
                       </SelectContent>
                     </Select>
 
-                    <Select value={v.phlebotomist_id || ""} onValueChange={(pId) => assignPhlebotomist.mutate({ id: v.id, pId })}>
+                    <Select value={v.phlebotomist_id || ""} onValueChange={(pId) => { if (pId !== (v.phlebotomist_id || "")) assignPhlebotomist.mutate({ id: v.id, pId }); }}>
                       <SelectTrigger className="w-36 h-8 text-xs"><SelectValue placeholder="Assign..." /></SelectTrigger>
                       <SelectContent>
                         {phlebotomists.map((p: any) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
