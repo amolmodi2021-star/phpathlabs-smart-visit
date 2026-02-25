@@ -20,9 +20,11 @@ const TestManagement = () => {
   const [editing, setEditing] = useState<any>(null);
   const [form, setForm] = useState({ test_name: "", price: "", fasting_required: false, discount_applicable: true, description: "" });
 
-  const { data: tests = [], isLoading } = useQuery({
+  const { data: tests = [], isLoading, isError, error: queryError, refetch } = useQuery({
     queryKey: ["tests"],
     queryFn: getTests,
+    retry: 3,
+    retryDelay: (attempt) => Math.min(1000 * Math.pow(2, attempt), 10000),
   });
 
   const saveMutation = useMutation({
@@ -99,7 +101,14 @@ const TestManagement = () => {
 
       <div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Search tests..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
 
-      {isLoading ? <p className="text-muted-foreground text-sm">Loading...</p> : (
+      {isLoading ? <p className="text-muted-foreground text-sm">Loading...</p> : isError ? (
+        <Card className="glass-card">
+          <CardContent className="p-6 text-center space-y-3">
+            <p className="text-sm text-destructive font-medium">Could not load tests: {queryError?.message || "Network error"}</p>
+            <Button size="sm" variant="outline" onClick={() => refetch()}>Retry</Button>
+          </CardContent>
+        </Card>
+      ) : (
         <div className="grid gap-2">
           {filtered.map((t: any) => (
             <Card key={t.id} className="glass-card">
