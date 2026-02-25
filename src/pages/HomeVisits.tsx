@@ -41,16 +41,20 @@ const HomeVisits = () => {
     mutationFn: async ({ id, status, reason }: { id: string; status: string; reason?: string }) => {
       const update: any = { status };
       if (reason) update.cancellation_reason = reason;
-      await supabase.from("home_visits").update(update).eq("id", id);
+      const { error } = await supabase.from("home_visits").update(update).eq("id", id);
+      if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["home_visits"] }); toast.success("Updated"); setCancelDialog(null); setCancelReason(""); },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const assignPhlebotomist = useMutation({
     mutationFn: async ({ id, pId }: { id: string; pId: string }) => {
-      await supabase.from("home_visits").update({ phlebotomist_id: pId }).eq("id", id);
+      const { error } = await supabase.from("home_visits").update({ phlebotomist_id: pId }).eq("id", id);
+      if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["home_visits"] }); toast.success("Assigned"); },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const handleStatusChange = (visit: any, newStatus: string) => {

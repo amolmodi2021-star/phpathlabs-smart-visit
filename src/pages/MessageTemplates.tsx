@@ -35,10 +35,12 @@ const MessageTemplates = () => {
   const saveMutation = useMutation({
     mutationFn: async () => {
       for (const [key, value] of Object.entries(values)) {
-        await supabase.from("message_templates").update({ template_value: value }).eq("template_key", key);
+        const { error } = await supabase.from("message_templates").update({ template_value: value }).eq("template_key", key);
+        if (error) throw error;
       }
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["message_templates"] }); toast.success("Templates saved"); },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   if (isLoading) return <p className="text-sm text-muted-foreground p-4">Loading...</p>;

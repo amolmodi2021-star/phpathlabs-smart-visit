@@ -31,17 +31,21 @@ const TestManagement = () => {
     mutationFn: async (values: typeof form) => {
       const payload = { ...values, price: parseFloat(values.price) || 0 };
       if (editing) {
-        await supabase.from("tests").update(payload).eq("id", editing.id);
+        const { error } = await supabase.from("tests").update(payload).eq("id", editing.id);
+        if (error) throw error;
       } else {
-        await supabase.from("tests").insert(payload);
+        const { error } = await supabase.from("tests").insert(payload);
+        if (error) throw error;
       }
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["tests"] }); setDialogOpen(false); resetForm(); toast.success("Test saved"); },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (id: string) => { await supabase.from("tests").delete().eq("id", id); },
+    mutationFn: async (id: string) => { const { error } = await supabase.from("tests").delete().eq("id", id); if (error) throw error; },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["tests"] }); toast.success("Test deleted"); },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const uploadMutation = useMutation({
@@ -55,7 +59,8 @@ const TestManagement = () => {
         description: r["Description"] || "",
       })).filter(t => t.test_name);
       if (tests.length === 0) throw new Error("No valid tests found");
-      await supabase.from("tests").insert(tests);
+      const { error } = await supabase.from("tests").insert(tests);
+      if (error) throw error;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["tests"] }); toast.success("Tests uploaded"); },
     onError: (e: Error) => toast.error(e.message),

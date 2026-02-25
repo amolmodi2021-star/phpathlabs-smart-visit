@@ -25,15 +25,17 @@ const PhlebotomistManagement = () => {
 
   const saveMutation = useMutation({
     mutationFn: async (v: typeof form) => {
-      if (editing) await supabase.from("phlebotomists").update(v).eq("id", editing.id);
-      else await supabase.from("phlebotomists").insert(v);
+      if (editing) { const { error } = await supabase.from("phlebotomists").update(v).eq("id", editing.id); if (error) throw error; }
+      else { const { error } = await supabase.from("phlebotomists").insert(v); if (error) throw error; }
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["phlebotomists"] }); setDialogOpen(false); resetForm(); toast.success("Saved"); },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (id: string) => { await supabase.from("phlebotomists").delete().eq("id", id); },
+    mutationFn: async (id: string) => { const { error } = await supabase.from("phlebotomists").delete().eq("id", id); if (error) throw error; },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["phlebotomists"] }); toast.success("Deleted"); },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const resetForm = () => { setForm({ name: "", mobile: "", alternate_mobile: "", area_zone: "", status: "Active", notes: "" }); setEditing(null); };

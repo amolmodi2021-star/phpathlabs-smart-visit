@@ -115,7 +115,8 @@ const CreateEstimate = () => {
         discounted_price: t.discountedPrice,
       }));
 
-      await supabase.from("estimate_tests").insert(testRows);
+      const { error: testError } = await supabase.from("estimate_tests").insert(testRows);
+      if (testError) throw testError;
 
       // Share on WhatsApp
       if (templates) {
