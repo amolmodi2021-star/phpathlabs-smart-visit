@@ -1,34 +1,27 @@
 import * as XLSX from "xlsx";
-// @ts-ignore - xlsx-populate doesn't have types
-import XlsxPopulate from "xlsx-populate";
+import { BlobWriter, BlobReader, ZipWriter } from "@zip.js/zip.js";
 
 const EXPORT_PASSWORD = "9819111107";
 
 export async function exportToExcel(data: Record<string, unknown>[], filename: string) {
-  const workbook = await XlsxPopulate.fromBlankAsync();
-  const sheet = workbook.sheet(0);
+  // 1. Build Excel in memory
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+  const xlsxBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+  const xlsxBlob = new Blob([xlsxBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 
-  if (data.length === 0) return;
+  // 2. Wrap in password-protected ZIP
+  const zipBlobWriter = new BlobWriter("application/zip");
+  const zipWriter = new ZipWriter(zipBlobWriter, { password: EXPORT_PASSWORD });
+  await zipWriter.add(`${filename}.xlsx`, new BlobReader(xlsxBlob));
+  const zipBlob = await zipWriter.close();
 
-  const headers = Object.keys(data[0]);
-  
-  // Write headers (bold)
-  headers.forEach((h, i) => {
-    sheet.cell(1, i + 1).value(h).style("bold", true);
-  });
-
-  // Write data rows
-  data.forEach((row, ri) => {
-    headers.forEach((h, ci) => {
-      sheet.cell(ri + 2, ci + 1).value(row[h] as any);
-    });
-  });
-
-  const blob = await workbook.outputAsync({ password: EXPORT_PASSWORD });
-  const url = URL.createObjectURL(blob as Blob);
+  // 3. Download
+  const url = URL.createObjectURL(zipBlob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${filename}.xlsx`;
+  a.download = `${filename}.zip`;
   a.click();
   URL.revokeObjectURL(url);
 }
