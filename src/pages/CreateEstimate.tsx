@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -6,12 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { useMessageTemplates } from "@/hooks/useMessageTemplates";
 import { buildEstimateMessage, shareOnWhatsApp } from "@/lib/whatsapp";
-import { Send, Plus, X } from "lucide-react";
+import { Send, X, Search } from "lucide-react";
 import { getTests } from "@/lib/tests";
 
 interface SelectedTest {
@@ -33,6 +31,8 @@ const CreateEstimate = () => {
   const [globalDiscountType, setGlobalDiscountType] = useState<"percent" | "amount">("percent");
   const [globalDiscountValue, setGlobalDiscountValue] = useState(0);
   const [homeVisitCharges, setHomeVisitCharges] = useState(0);
+  const [testSearch, setTestSearch] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const { data: tests = [] } = useQuery({
     queryKey: ["tests"],
@@ -47,6 +47,19 @@ const CreateEstimate = () => {
       fasting_required: t.fasting_required, discount_applicable: t.discount_applicable,
       individual_discount_type: null, individual_discount_value: 0,
     }]);
+    setTestSearch("");
+    setTimeout(() => searchRef.current?.focus(), 50);
+  };
+
+  const formatWhatsApp = (raw: string): string => {
+    const digits = raw.replace(/\D/g, "");
+    return digits.slice(-10);
+  };
+
+  const availableTests = tests.filter((t: any) =>
+    !selectedTests.find(s => s.test_id === t.id) &&
+    (testSearch === "" || t.test_name.toLowerCase().includes(testSearch.toLowerCase()))
+  );
   };
 
   const removeTest = (testId: string) => setSelectedTests(prev => prev.filter(t => t.test_id !== testId));
@@ -87,7 +100,8 @@ const CreateEstimate = () => {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (!whatsappNumber || whatsappNumber.length < 10) throw new Error("Valid WhatsApp number required");
+      const cleanNumber = formatWhatsApp(whatsappNumber);
+      if (!cleanNumber || cleanNumber.length < 10) throw new Error("Valid WhatsApp number required");
       if (selectedTests.length === 0) throw new Error("Select at least one test");
 
       // Build and share WhatsApp message FIRST
@@ -103,14 +117,13 @@ const CreateEstimate = () => {
           homeVisitDisclaimer: templates.home_visit_disclaimer,
           footer: templates.footer_text,
         });
-        shareOnWhatsApp(whatsappNumber, msg);
+        shareOnWhatsApp(cleanNumber, msg);
       }
 
-      // Then save to database
       try {
         const { data: est, error } = await supabase.from("estimates").insert({
           patient_name: patientName || null,
-          whatsapp_number: whatsappNumber,
+          whatsapp_number: cleanNumber,
           total_amount: calculations.totalAmount,
           discount_amount: calculations.totalDiscount,
           home_visit_charges: homeVisitCharges,
@@ -157,19 +170,42 @@ const CreateEstimate = () => {
       <Card className="glass-card">
         <CardContent className="p-4 space-y-4">
           <div><Label>Patient Name (Optional)</Label><Input value={patientName} onChange={(e) => setPatientName(e.target.value)} /></div>
-          <div><Label>WhatsApp Number *</Label><Input type="tel" value={whatsappNumber} onChange={(e) => setWhatsappNumber(e.target.value.replace(/\D/g, ""))} placeholder="10-digit mobile number" maxLength={10} /></div>
+          <div>
+            <Label>WhatsApp Number *</Label>
+            <Input type="tel" value={whatsappNumber} onChange={(e) => setWhatsappNumber(e.target.value)} placeholder="Paste number (any format)" />
+            {whatsappNumber && <p className="text-xs text-muted-foreground mt-1">Formatted: {formatWhatsApp(whatsappNumber) || "Need 10+ digits"}</p>}
+          </div>
 
           {/* Test selection */}
           <div>
             <Label>Select Tests *</Label>
-            <Select onValueChange={addTest}>
-              <SelectTrigger><SelectValue placeholder="Add a test..." /></SelectTrigger>
-              <SelectContent>
-                {tests.filter((t: any) => !selectedTests.find(s => s.test_id === t.id)).map((t: any) => (
-                  <SelectItem key={t.id} value={t.id}>{t.test_name} - ₹{t.price}</SelectItem>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                ref={searchRef}
+                value={testSearch}
+                onChange={(e) => setTestSearch(e.target.value)}
+                placeholder="Search tests..."
+                className="pl-8"
+              />
+            </div>
+            {testSearch && availableTests.length > 0 && (
+              <div className="border rounded-md mt-1 max-h-48 overflow-y-auto">
+                {availableTests.map((t: any) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors"
+                    onClick={() => addTest(t.id)}
+                  >
+                    {t.test_name} - ₹{t.price}
+                  </button>
                 ))}
-              </SelectContent>
-            </Select>
+              </div>
+            )}
+            {testSearch && availableTests.length === 0 && (
+              <p className="text-xs text-muted-foreground mt-1">No matching tests</p>
+            )}
           </div>
 
           {/* Selected tests */}
