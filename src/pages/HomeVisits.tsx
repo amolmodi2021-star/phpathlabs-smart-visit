@@ -65,11 +65,21 @@ const HomeVisits = () => {
     }
   };
 
+  const formatTime12hr = (time: string) => {
+    if (!time) return "";
+    const [h, m] = time.split(":");
+    const hour = parseInt(h, 10);
+    const ampm = hour >= 12 ? "PM" : "AM";
+    const h12 = hour % 12 || 12;
+    return `${h12}:${m} ${ampm}`;
+  };
+
   const handleExport = () => {
     exportToExcel(visits.map((v: any) => ({
       "Visit Date": v.visit_date,
-      "Visit Time": v.visit_time,
+      "Visit Time": formatTime12hr(v.visit_time),
       "Patient": v.estimates?.patient_name || "",
+      "Mobile": v.estimates?.whatsapp_number || "",
       "Address": v.address,
       "Phlebotomist": v.phlebotomists?.name || "",
       "Status": v.status,
@@ -104,7 +114,7 @@ const HomeVisits = () => {
                   </div>
 
                   <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-                    <span>{v.visit_date} | {v.visit_time}</span>
+                    <span>{v.visit_date} | {formatTime12hr(v.visit_time)}</span>
                     {v.phlebotomists && <span>• {v.phlebotomists.name}</span>}
                     <span>• ₹{est?.home_visit_charges || 0}</span>
                   </div>
