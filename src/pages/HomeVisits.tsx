@@ -25,11 +25,12 @@ const HomeVisits = () => {
   const [cancelDialog, setCancelDialog] = useState<any>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [exportDialog, setExportDialog] = useState(false);
+  const [assignSelectOpenFor, setAssignSelectOpenFor] = useState<string | null>(null);
 
   const { data: visits = [], isLoading } = useQuery({
     queryKey: ["home_visits"],
     queryFn: async () => {
-      const { data } = await supabase.from("home_visits").select("*, estimates(*, estimate_tests(*)), phlebotomists(name, mobile)").order("visit_date", { ascending: false });
+      const { data } = await supabase.from("home_visits").select("*, estimates(*, estimate_tests(*)), phlebotomists(name, mobile)").order("visit_date", { ascending: false }).order("created_at", { ascending: false });
       return data || [];
     },
   });
@@ -55,7 +56,7 @@ const HomeVisits = () => {
       const { error } = await supabase.from("home_visits").update({ phlebotomist_id: pId }).eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["home_visits"] }); toast.success("Assigned"); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["home_visits"] }); toast.success("Assigned"); setAssignSelectOpenFor(null); },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -135,7 +136,7 @@ const HomeVisits = () => {
                       </SelectContent>
                     </Select>
 
-                    <Select value={v.phlebotomist_id || ""} onValueChange={(pId) => { if (pId !== (v.phlebotomist_id || "")) assignPhlebotomist.mutate({ id: v.id, pId }); }}>
+                    <Select value={v.phlebotomist_id || ""} onOpenChange={(open) => setAssignSelectOpenFor(open ? v.id : (assignSelectOpenFor === v.id ? null : assignSelectOpenFor))} onValueChange={(pId) => { if (assignSelectOpenFor !== v.id) return; if (pId !== (v.phlebotomist_id || "")) assignPhlebotomist.mutate({ id: v.id, pId }); }}>
                       <SelectTrigger className="w-36 h-8 text-xs"><SelectValue placeholder="Assign..." /></SelectTrigger>
                       <SelectContent>
                         {phlebotomists.map((p: any) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
