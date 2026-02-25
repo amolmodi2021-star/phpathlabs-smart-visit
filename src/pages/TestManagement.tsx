@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Plus, Search, Download, Upload, Trash2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { exportToExcel, parseExcelFile, downloadTemplate } from "@/lib/excel";
+import { getTestsWithFallback, saveTestWithFallback, deleteTestWithFallback, bulkInsertTestsWithFallback } from "@/lib/tests";
 
 const TestManagement = () => {
   const qc = useQueryClient();
@@ -22,28 +23,21 @@ const TestManagement = () => {
   const { data: tests = [], isLoading } = useQuery({
     queryKey: ["tests"],
     queryFn: async () => {
-      const { data } = await supabase.from("tests").select("*").order("test_name");
-      return data || [];
+      return await getTestsWithFallback();
     },
   });
 
   const saveMutation = useMutation({
     mutationFn: async (values: typeof form) => {
       const payload = { ...values, price: parseFloat(values.price) || 0 };
-      if (editing) {
-        const { error } = await supabase.from("tests").update(payload).eq("id", editing.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("tests").insert(payload);
-        if (error) throw error;
-      }
+      await saveTestWithFallback(payload, editing?.id);
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["tests"] }); setDialogOpen(false); resetForm(); toast.success("Test saved"); },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (id: string) => { const { error } = await supabase.from("tests").delete().eq("id", id); if (error) throw error; },
+    mutationFn: async (id: string) => { await deleteTestWithFallback(id); },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["tests"] }); toast.success("Test deleted"); },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -59,8 +53,7 @@ const TestManagement = () => {
         description: r["Description"] || "",
       })).filter(t => t.test_name);
       if (tests.length === 0) throw new Error("No valid tests found");
-      const { error } = await supabase.from("tests").insert(tests);
-      if (error) throw error;
+      await bulkInsertTestsWithFallback(tests);
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["tests"] }); toast.success("Tests uploaded"); },
     onError: (e: Error) => toast.error(e.message),
