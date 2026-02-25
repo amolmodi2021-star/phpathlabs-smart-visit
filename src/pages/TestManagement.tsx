@@ -4,14 +4,14 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Search, Download, Upload, Trash2, Pencil } from "lucide-react";
+import { Plus, Search, Download, Upload, Trash2, Pencil, Wifi, WifiOff, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { exportToExcel, parseExcelFile, downloadTemplate } from "@/lib/excel";
-import { getTests, saveTest, deleteTest, bulkInsertTests } from "@/lib/tests";
+import { getTests, saveTest, deleteTest, bulkInsertTests, checkConnection } from "@/lib/tests";
 
 const TestManagement = () => {
   const qc = useQueryClient();
@@ -19,12 +19,13 @@ const TestManagement = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [form, setForm] = useState({ test_name: "", price: "", fasting_required: false, discount_applicable: true, description: "" });
+  const [connStatus, setConnStatus] = useState<"idle" | "checking" | "ok" | "fail">("idle");
 
   const { data: tests = [], isLoading, isError, error: queryError, refetch } = useQuery({
     queryKey: ["tests"],
     queryFn: getTests,
-    retry: 3,
-    retryDelay: (attempt) => Math.min(1000 * Math.pow(2, attempt), 10000),
+    retry: 1,
+    retryDelay: 2000,
   });
 
   const saveMutation = useMutation({
@@ -33,13 +34,13 @@ const TestManagement = () => {
       await saveTest(payload, editing?.id);
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["tests"] }); setDialogOpen(false); resetForm(); toast.success("Test saved"); },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error("Save failed: " + e.message),
   });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => { await deleteTest(id); },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["tests"] }); toast.success("Test deleted"); },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error("Delete failed: " + e.message),
   });
 
   const uploadMutation = useMutation({
@@ -56,7 +57,7 @@ const TestManagement = () => {
       await bulkInsertTests(tests);
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["tests"] }); toast.success("Tests uploaded"); },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error("Upload failed: " + e.message),
   });
 
   const resetForm = () => { setForm({ test_name: "", price: "", fasting_required: false, discount_applicable: true, description: "" }); setEditing(null); };
@@ -67,12 +68,24 @@ const TestManagement = () => {
     setDialogOpen(true);
   };
 
+  const handleCheckConnection = async () => {
+    setConnStatus("checking");
+    const ok = await checkConnection();
+    setConnStatus(ok ? "ok" : "fail");
+    toast(ok ? "Connected to backend" : "Could not reach backend", { icon: ok ? "✅" : "❌" });
+  };
+
   const filtered = tests.filter((t: any) => t.test_name.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div className="space-y-4 animate-fade-in">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-xl font-bold">Test Management</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-bold">Test Management</h1>
+          <Button size="icon" variant="ghost" onClick={handleCheckConnection} title="Check connection">
+            {connStatus === "checking" ? <Loader2 className="h-4 w-4 animate-spin" /> : connStatus === "ok" ? <Wifi className="h-4 w-4 text-green-500" /> : connStatus === "fail" ? <WifiOff className="h-4 w-4 text-destructive" /> : <Wifi className="h-4 w-4 text-muted-foreground" />}
+          </Button>
+        </div>
         <div className="flex gap-2 flex-wrap">
           <Button size="sm" variant="outline" onClick={downloadTemplate}><Download className="h-4 w-4 mr-1" />Template</Button>
           <Button size="sm" variant="outline" onClick={() => document.getElementById("excel-upload")?.click()}>
@@ -95,7 +108,9 @@ const TestManagement = () => {
                 <div className="flex items-center gap-3"><Switch checked={form.fasting_required} onCheckedChange={(v) => setForm(p => ({ ...p, fasting_required: v }))} /><Label>Fasting Required</Label></div>
                 <div className="flex items-center gap-3"><Switch checked={form.discount_applicable} onCheckedChange={(v) => setForm(p => ({ ...p, discount_applicable: v }))} /><Label>Discount Applicable</Label></div>
                 <div><Label>Description</Label><Textarea value={form.description} onChange={(e) => setForm(p => ({ ...p, description: e.target.value }))} /></div>
-                <Button type="submit" className="w-full" disabled={saveMutation.isPending}>Save</Button>
+                <Button type="submit" className="w-full" disabled={saveMutation.isPending}>
+                  {saveMutation.isPending ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" />Saving...</> : "Save"}
+                </Button>
               </form>
             </DialogContent>
           </Dialog>
@@ -107,7 +122,7 @@ const TestManagement = () => {
       {isLoading ? <p className="text-muted-foreground text-sm">Loading...</p> : isError ? (
         <Card className="glass-card">
           <CardContent className="p-6 text-center space-y-3">
-            <p className="text-sm text-destructive font-medium">Could not load tests: {queryError?.message || "Network error"}</p>
+            <p className="text-sm text-destructive font-medium">Could not reach backend. {queryError?.message || ""}</p>
             <Button size="sm" variant="outline" onClick={() => refetch()}>Retry</Button>
           </CardContent>
         </Card>
