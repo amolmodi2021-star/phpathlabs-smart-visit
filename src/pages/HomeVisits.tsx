@@ -209,11 +209,11 @@ const HomeVisits = () => {
               <div key={v.id}>
                 {showDivider && (
                   <div className="flex items-center gap-3 mt-5 mb-3">
-                    <Separator className="flex-1 bg-foreground/30 h-[2px]" />
-                    <span className="text-sm font-semibold text-foreground whitespace-nowrap px-3 py-1 bg-muted rounded-full">
+                    <Separator className={`flex-1 h-[2px] ${isToday(parseISO(currentDate)) ? 'bg-success' : 'bg-foreground/30'}`} />
+                    <span className={`text-sm font-semibold whitespace-nowrap px-3 py-1 rounded-full ${isToday(parseISO(currentDate)) ? 'bg-success text-success-foreground' : 'text-foreground bg-muted'}`}>
                       {currentStatus !== "Pending" ? `${currentStatus} — ${dateLabel}` : dateLabel}
                     </span>
-                    <Separator className="flex-1 bg-foreground/30 h-[2px]" />
+                    <Separator className={`flex-1 h-[2px] ${isToday(parseISO(currentDate)) ? 'bg-success' : 'bg-foreground/30'}`} />
                   </div>
                 )}
               <Card className={`glass-card ${isSelected ? 'ring-2 ring-primary' : ''}`}>
