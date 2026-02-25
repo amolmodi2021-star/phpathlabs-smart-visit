@@ -1,10 +1,36 @@
 import * as XLSX from "xlsx";
+// @ts-ignore - xlsx-populate doesn't have types
+import XlsxPopulate from "xlsx-populate";
 
-export function exportToExcel(data: Record<string, unknown>[], filename: string) {
-  const ws = XLSX.utils.json_to_sheet(data);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
-  XLSX.writeFile(wb, `${filename}.xlsx`);
+const EXPORT_PASSWORD = "9819111107";
+
+export async function exportToExcel(data: Record<string, unknown>[], filename: string) {
+  const workbook = await XlsxPopulate.fromBlankAsync();
+  const sheet = workbook.sheet(0);
+
+  if (data.length === 0) return;
+
+  const headers = Object.keys(data[0]);
+  
+  // Write headers (bold)
+  headers.forEach((h, i) => {
+    sheet.cell(1, i + 1).value(h).style("bold", true);
+  });
+
+  // Write data rows
+  data.forEach((row, ri) => {
+    headers.forEach((h, ci) => {
+      sheet.cell(ri + 2, ci + 1).value(row[h] as any);
+    });
+  });
+
+  const blob = await workbook.outputAsync({ password: EXPORT_PASSWORD });
+  const url = URL.createObjectURL(blob as Blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${filename}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export function parseExcelFile(file: File): Promise<Record<string, unknown>[]> {
@@ -24,9 +50,9 @@ export function parseExcelFile(file: File): Promise<Record<string, unknown>[]> {
   });
 }
 
-export function downloadTemplate() {
+export async function downloadTemplate() {
   const template = [
     { "Test Name": "", Price: "", "Fasting Required": "No", "Discount Applicable": "Yes", Description: "" },
   ];
-  exportToExcel(template, "test_upload_template");
+  await exportToExcel(template, "test_upload_template");
 }
