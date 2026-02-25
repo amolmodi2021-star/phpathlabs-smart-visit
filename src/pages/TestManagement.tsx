@@ -12,12 +12,14 @@ import { Plus, Search, Download, Upload, Trash2, Pencil, Loader2 } from "lucide-
 import { toast } from "sonner";
 import { exportToExcel, parseExcelFile, downloadTemplate } from "@/lib/excel";
 import { getTests, saveTest, deleteTest, bulkInsertTests } from "@/lib/tests";
+import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 
 const TestManagement = () => {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
+  const [exportDialog, setExportDialog] = useState(false);
   const [form, setForm] = useState({ test_name: "", price: "", fasting_required: false, discount_applicable: true, description: "" });
 
   const { data: tests = [], isLoading, isError, error: queryError, refetch } = useQuery({
@@ -79,7 +81,7 @@ const TestManagement = () => {
             <Upload className="h-4 w-4 mr-1" />Upload
           </Button>
           <input id="excel-upload" type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { if (e.target.files?.[0]) uploadMutation.mutate(e.target.files[0]); e.target.value = ""; }} />
-          <Button size="sm" variant="outline" onClick={() => exportToExcel(tests.map((t: any) => ({ "Test Name": t.test_name, Price: t.price, "Fasting Required": t.fasting_required ? "Yes" : "No", "Discount Applicable": t.discount_applicable ? "Yes" : "No", Description: t.description })), "tests_export")}>
+          <Button size="sm" variant="outline" onClick={() => setExportDialog(true)}>
             <Download className="h-4 w-4 mr-1" />Export
           </Button>
           <Dialog open={dialogOpen} onOpenChange={(o) => { setDialogOpen(o); if (!o) resetForm(); }}>
@@ -136,6 +138,7 @@ const TestManagement = () => {
           {filtered.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">No tests found.</p>}
         </div>
       )}
+      <ExportPasswordDialog open={exportDialog} onOpenChange={setExportDialog} onSuccess={() => exportToExcel(tests.map((t: any) => ({ "Test Name": t.test_name, Price: t.price, "Fasting Required": t.fasting_required ? "Yes" : "No", "Discount Applicable": t.discount_applicable ? "Yes" : "No", Description: t.description })), "tests_export")} />
     </div>
   );
 };

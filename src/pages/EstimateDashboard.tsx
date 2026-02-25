@@ -15,6 +15,7 @@ import { Download, Trash2, Calendar, MapPin } from "lucide-react";
 import { exportToExcel } from "@/lib/excel";
 import { useMessageTemplates } from "@/hooks/useMessageTemplates";
 import { buildVisitMessage, shareOnWhatsApp } from "@/lib/whatsapp";
+import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 
 const EstimateDashboard = () => {
   const qc = useQueryClient();
@@ -22,6 +23,7 @@ const EstimateDashboard = () => {
   const [selected, setSelected] = useState<string[]>([]);
   const [bookingEstimate, setBookingEstimate] = useState<any>(null);
   const [visitForm, setVisitForm] = useState({ visit_date: "", visit_time: "", address: "", phlebotomist_id: "" });
+  const [exportDialog, setExportDialog] = useState(false);
 
   const { data: estimates = [], isLoading } = useQuery({
     queryKey: ["estimates", "dashboard"],
@@ -117,7 +119,7 @@ const EstimateDashboard = () => {
           <Button size="sm" variant="outline" onClick={() => deleteMutation.mutate(estimates.map((e: any) => e.id))} disabled={estimates.length === 0}>
             <Trash2 className="h-4 w-4 mr-1" />Delete All
           </Button>
-          <Button size="sm" variant="outline" onClick={handleExport}><Download className="h-4 w-4 mr-1" />Excel</Button>
+          <Button size="sm" variant="outline" onClick={() => setExportDialog(true)}><Download className="h-4 w-4 mr-1" />Excel</Button>
         </div>
       </div>
 
@@ -178,6 +180,8 @@ const EstimateDashboard = () => {
           </form>
         </DialogContent>
       </Dialog>
+
+      <ExportPasswordDialog open={exportDialog} onOpenChange={setExportDialog} onSuccess={handleExport} />
     </div>
   );
 };

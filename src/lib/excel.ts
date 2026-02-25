@@ -1,29 +1,16 @@
 import * as XLSX from "xlsx";
-import { BlobWriter, BlobReader, ZipWriter } from "@zip.js/zip.js";
 
 const EXPORT_PASSWORD = "9819111107";
 
-export async function exportToExcel(data: Record<string, unknown>[], filename: string) {
-  // 1. Build Excel in memory
+export function verifyExportPassword(input: string): boolean {
+  return input === EXPORT_PASSWORD;
+}
+
+export function exportToExcel(data: Record<string, unknown>[], filename: string) {
   const ws = XLSX.utils.json_to_sheet(data);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
-  const xlsxBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-  const xlsxBlob = new Blob([xlsxBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-
-  // 2. Wrap in password-protected ZIP
-  const zipBlobWriter = new BlobWriter("application/zip");
-  const zipWriter = new ZipWriter(zipBlobWriter, { password: EXPORT_PASSWORD });
-  await zipWriter.add(`${filename}.xlsx`, new BlobReader(xlsxBlob));
-  const zipBlob = await zipWriter.close();
-
-  // 3. Download
-  const url = URL.createObjectURL(zipBlob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${filename}.zip`;
-  a.click();
-  URL.revokeObjectURL(url);
+  XLSX.writeFile(wb, `${filename}.xlsx`);
 }
 
 export function parseExcelFile(file: File): Promise<Record<string, unknown>[]> {
@@ -43,9 +30,9 @@ export function parseExcelFile(file: File): Promise<Record<string, unknown>[]> {
   });
 }
 
-export async function downloadTemplate() {
+export function downloadTemplate() {
   const template = [
     { "Test Name": "", Price: "", "Fasting Required": "No", "Discount Applicable": "Yes", Description: "" },
   ];
-  await exportToExcel(template, "test_upload_template");
+  exportToExcel(template, "test_upload_template");
 }
