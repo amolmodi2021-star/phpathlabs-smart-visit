@@ -26,6 +26,7 @@ const EstimateDashboard = () => {
   const [visitForm, setVisitForm] = useState({ visit_date: "", visit_time: "", address: "", phlebotomist_id: "", home_visit_charges: "" });
   const [exportDialog, setExportDialog] = useState(false);
   const [editEstimate, setEditEstimate] = useState<any>(null);
+  const [search, setSearch] = useState("");
 
   const { data: estimates = [], isLoading } = useQuery({
     queryKey: ["estimates", "dashboard"],
@@ -111,6 +112,12 @@ const EstimateDashboard = () => {
     })), "estimates_export");
   };
 
+  const filteredEstimates = estimates.filter((e: any) => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return (e.patient_name || "").toLowerCase().includes(q) || (e.whatsapp_number || "").includes(q);
+  });
+
   return (
     <div className="space-y-4 animate-fade-in">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -128,11 +135,13 @@ const EstimateDashboard = () => {
         </div>
       </div>
 
-      {isLoading ? <p className="text-sm text-muted-foreground">Loading...</p> : estimates.length === 0 ? (
+      <Input placeholder="Search by patient name or mobile number..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full" />
+
+      {isLoading ? <p className="text-sm text-muted-foreground">Loading...</p> : filteredEstimates.length === 0 ? (
         <p className="text-sm text-muted-foreground text-center py-8">No estimates yet.</p>
       ) : (
         <div className="grid gap-2">
-          {estimates.map((est: any) => (
+          {filteredEstimates.map((est: any) => (
             <Card key={est.id} className="glass-card">
               <CardContent className="p-3">
                 <div className="flex items-start gap-3">
