@@ -137,7 +137,7 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
         final_amount: calculations.finalAmount,
         global_discount_type: globalDiscountValue > 0 ? globalDiscountType : null,
         global_discount_value: globalDiscountValue,
-        status: "Visit Booked",
+        status: "Home Visit Booked",
       }).select().single();
       if (estError) throw estError;
 
