@@ -9,13 +9,14 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { Download, Phone, MapPin, ChevronDown, ChevronUp, Pencil, Trash2 } from "lucide-react";
+import { Download, Phone, MapPin, ChevronDown, ChevronUp, Pencil, Trash2, Plus } from "lucide-react";
 import { exportToExcel } from "@/lib/excel";
 import { useState, useCallback, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 import EditHomeVisitDialog from "@/components/EditHomeVisitDialog";
+import AddHomeVisitDialog from "@/components/AddHomeVisitDialog";
 import { format, isToday, parseISO } from "date-fns";
 
 const statusColors: Record<string, string> = {
@@ -35,6 +36,7 @@ const HomeVisits = () => {
   const [editVisit, setEditVisit] = useState<any>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [addVisitOpen, setAddVisitOpen] = useState(false);
 
   const { data: visits = [], isLoading } = useQuery({
     queryKey: ["home_visits"],
@@ -184,6 +186,10 @@ const HomeVisits = () => {
       </div>
 
       <Input placeholder="Search by patient name or mobile number..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full" />
+
+      <Button size="sm" className="w-full" onClick={() => setAddVisitOpen(true)}>
+        <Plus className="h-4 w-4 mr-1" />Add New Home Visit
+      </Button>
 
       {/* Select All */}
       {filteredVisits.length > 0 && (
@@ -385,6 +391,7 @@ const HomeVisits = () => {
       </Dialog>
 
       <ExportPasswordDialog open={exportDialog} onOpenChange={setExportDialog} onSuccess={handleExport} />
+      <AddHomeVisitDialog open={addVisitOpen} onClose={() => setAddVisitOpen(false)} />
     </div>
   );
 };
