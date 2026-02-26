@@ -23,7 +23,7 @@ const EstimateDashboard = () => {
   const { data: templates } = useMessageTemplates();
   const [selected, setSelected] = useState<string[]>([]);
   const [bookingEstimate, setBookingEstimate] = useState<any>(null);
-  const [visitForm, setVisitForm] = useState({ visit_date: "", visit_time: "", address: "", phlebotomist_id: "" });
+  const [visitForm, setVisitForm] = useState({ visit_date: "", visit_time: "", address: "", phlebotomist_id: "", home_visit_charges: "" });
   const [exportDialog, setExportDialog] = useState(false);
   const [editEstimate, setEditEstimate] = useState<any>(null);
 
@@ -50,6 +50,7 @@ const EstimateDashboard = () => {
     mutationFn: async () => {
       if (!visitForm.visit_date || !visitForm.visit_time || !visitForm.address) throw new Error("Fill all required fields");
       const est = bookingEstimate;
+      const hvCharges = parseFloat(visitForm.home_visit_charges) || 0;
 
       const { error: visitError } = await supabase.from("home_visits").insert({
         estimate_id: est.id,
@@ -60,18 +61,20 @@ const EstimateDashboard = () => {
       });
       if (visitError) throw visitError;
 
-      const { error: statusError } = await supabase.from("estimates").update({ status: "Home Visit Booked" }).eq("id", est.id);
+      const newFinal = Number(est.total_amount) - Number(est.discount_amount) + hvCharges;
+      const { error: statusError } = await supabase.from("estimates").update({ status: "Home Visit Booked", home_visit_charges: hvCharges, final_amount: newFinal }).eq("id", est.id);
       if (statusError) throw statusError;
 
       // WhatsApp
       if (templates) {
         const tests = (est.estimate_tests || []).map((t: any) => ({ name: t.test_name, price: Number(t.price), fasting: t.fasting_required }));
+        const hvCharges = parseFloat(visitForm.home_visit_charges) || 0;
         const msg = buildVisitMessage({
           tests,
           totalAmount: Number(est.total_amount),
           discountAmount: Number(est.discount_amount),
-          homeVisitCharges: Number(est.home_visit_charges),
-          finalAmount: Number(est.final_amount),
+          homeVisitCharges: hvCharges,
+          finalAmount: Number(est.total_amount) - Number(est.discount_amount) + hvCharges,
           header: templates.estimate_header,
           visitHeader: templates.visit_confirmation_header,
           fastingInstructions: templates.fasting_instructions,
@@ -88,7 +91,7 @@ const EstimateDashboard = () => {
       qc.invalidateQueries({ queryKey: ["estimates"] });
       qc.invalidateQueries({ queryKey: ["home_visits"] });
       setBookingEstimate(null);
-      setVisitForm({ visit_date: "", visit_time: "", address: "", phlebotomist_id: "" });
+      setVisitForm({ visit_date: "", visit_time: "", address: "", phlebotomist_id: "", home_visit_charges: "" });
       toast.success("Home visit booked!");
     },
     onError: (e: Error) => toast.error(e.message),
@@ -174,6 +177,7 @@ const EstimateDashboard = () => {
             <div><Label>Visit Date *</Label><Input type="date" value={visitForm.visit_date} onChange={(e) => setVisitForm(p => ({ ...p, visit_date: e.target.value }))} required /></div>
             <div><Label>Visit Time *</Label><Input type="time" value={visitForm.visit_time} onChange={(e) => setVisitForm(p => ({ ...p, visit_time: e.target.value }))} required /></div>
             <div><Label>Address *</Label><Textarea value={visitForm.address} onChange={(e) => setVisitForm(p => ({ ...p, address: e.target.value }))} required rows={3} /></div>
+            <div><Label>Home Visit Charges (₹)</Label><Input type="number" value={visitForm.home_visit_charges} onChange={(e) => setVisitForm(p => ({ ...p, home_visit_charges: e.target.value }))} placeholder="0" /></div>
             <div>
               <Label>Assign Phlebotomist</Label>
               <Select value={visitForm.phlebotomist_id} onValueChange={(v) => setVisitForm(p => ({ ...p, phlebotomist_id: v }))}>
