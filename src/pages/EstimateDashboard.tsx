@@ -158,7 +158,7 @@ const EstimateDashboard = () => {
                      <Button size="sm" variant="ghost" onClick={() => setEditEstimate(est)}>
                        <Pencil className="h-3.5 w-3.5" />
                      </Button>
-                     <Button size="sm" variant="outline" onClick={() => setBookingEstimate(est)}>
+                     <Button size="sm" variant="outline" onClick={() => { setBookingEstimate(est); setVisitForm(p => ({ ...p, home_visit_charges: Number(est.home_visit_charges) > 0 ? String(est.home_visit_charges) : "" })); }}>
                        <MapPin className="h-3.5 w-3.5 mr-1" />Book Visit
                      </Button>
                    </div>
