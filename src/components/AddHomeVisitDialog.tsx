@@ -44,6 +44,12 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
   const [globalDiscountValue, setGlobalDiscountValue] = useState(0);
   const [homeVisitCharges, setHomeVisitCharges] = useState(0);
   const [testSearch, setTestSearch] = useState("");
+  const [phlebotomistId, setPhlebotomistId] = useState("");
+
+  const { data: phlebotomists = [] } = useQuery({
+    queryKey: ["phlebotomists", "active"],
+    queryFn: async () => { const { data } = await supabase.from("phlebotomists").select("*").eq("status", "Active"); return data || []; },
+  });
 
   const { data: allTests = [] } = useQuery({
     queryKey: ["tests"],
@@ -63,6 +69,7 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
       setGlobalDiscountValue(0);
       setHomeVisitCharges(0);
       setTestSearch("");
+      setPhlebotomistId("");
     }
   }, [open]);
 
@@ -162,6 +169,7 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
         visit_date: visitDate,
         visit_time: visitTime,
         address: address,
+        phlebotomist_id: phlebotomistId || null,
       });
       if (visitError) throw visitError;
 
@@ -230,6 +238,19 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
           <div>
             <Label>Address *</Label>
             <Textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={2} />
+          </div>
+
+          {/* Assign Phlebotomist */}
+          <div>
+            <Label>Assign Phlebotomist</Label>
+            <Select value={phlebotomistId} onValueChange={setPhlebotomistId}>
+              <SelectTrigger><SelectValue placeholder="Select phlebotomist..." /></SelectTrigger>
+              <SelectContent>
+                {phlebotomists.map((p: any) => (
+                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Test Search & Add */}
