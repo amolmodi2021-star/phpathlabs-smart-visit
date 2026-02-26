@@ -34,6 +34,7 @@ const HomeVisits = () => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editVisit, setEditVisit] = useState<any>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [search, setSearch] = useState("");
 
   const { data: visits = [], isLoading } = useQuery({
     queryKey: ["home_visits"],
@@ -142,6 +143,16 @@ const HomeVisits = () => {
     return [...todayPending, ...otherPending, ...completed, ...cancelled];
   }, [visits]);
 
+  const filteredVisits = useMemo(() => {
+    if (!search.trim()) return sortedVisits;
+    const q = search.toLowerCase();
+    return sortedVisits.filter((v: any) => {
+      const name = (v.estimates?.patient_name || "").toLowerCase();
+      const mobile = v.estimates?.whatsapp_number || "";
+      return name.includes(q) || mobile.includes(q);
+    });
+  }, [sortedVisits, search]);
+
   const handleExport = () => {
     exportToExcel(visits.map((v: any) => ({
       "Visit Date": v.visit_date,
@@ -172,29 +183,31 @@ const HomeVisits = () => {
         </div>
       </div>
 
+      <Input placeholder="Search by patient name or mobile number..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full" />
+
       {/* Select All */}
-      {sortedVisits.length > 0 && (
+      {filteredVisits.length > 0 && (
         <div className="flex items-center gap-2">
           <Checkbox
-            checked={selectedIds.size === sortedVisits.length && sortedVisits.length > 0}
+            checked={selectedIds.size === filteredVisits.length && filteredVisits.length > 0}
             onCheckedChange={toggleSelectAll}
           />
-          <span className="text-xs text-muted-foreground">Select All ({sortedVisits.length})</span>
+          <span className="text-xs text-muted-foreground">Select All ({filteredVisits.length})</span>
         </div>
       )}
 
-      {isLoading ? <p className="text-sm text-muted-foreground">Loading...</p> : sortedVisits.length === 0 ? (
+      {isLoading ? <p className="text-sm text-muted-foreground">Loading...</p> : filteredVisits.length === 0 ? (
         <p className="text-sm text-muted-foreground text-center py-8">No home visits yet.</p>
       ) : (
         <div className="grid gap-2">
-          {sortedVisits.map((v: any, idx: number) => {
+          {filteredVisits.map((v: any, idx: number) => {
             const est = v.estimates;
             const tests = est?.estimate_tests || [];
             const isExpanded = expandedCards.has(v.id);
             const isSelected = selectedIds.has(v.id);
 
             // Date divider logic
-            const prevVisit = idx > 0 ? sortedVisits[idx - 1] : null;
+            const prevVisit = idx > 0 ? filteredVisits[idx - 1] : null;
             const currentDate = v.visit_date;
             const prevDate = prevVisit?.visit_date;
             const currentStatus = v.status === "Completed" || v.status === "Cancelled" ? v.status : "Pending";
