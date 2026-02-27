@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Upload, Send, Trash2, Search } from "lucide-react";
+import { Upload, Send, Trash2, Search, RotateCcw } from "lucide-react";
 import { parseExcelFile } from "@/lib/excel";
 import { shareOnWhatsApp } from "@/lib/whatsapp";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
@@ -16,6 +16,7 @@ const AbnormalHistory = () => {
   const [search, setSearch] = useState("");
   const [uploading, setUploading] = useState(false);
   const [deleteDialog, setDeleteDialog] = useState<{ type: "all" | "single"; id?: string } | null>(null);
+  const [resetDialog, setResetDialog] = useState(false);
 
   const { data: records = [], isLoading } = useQuery({
     queryKey: ["abnormal_history"],
@@ -99,6 +100,18 @@ const AbnormalHistory = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const resetAll = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from("abnormal_history").update({ sent: false, sent_at: null, sent_context: null }).neq("id", "00000000-0000-0000-0000-000000000000");
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["abnormal_history"] });
+      toast.success("All sent dates reset");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const deleteSingle = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from("abnormal_history").delete().eq("id", id);
@@ -125,6 +138,9 @@ const AbnormalHistory = () => {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-xl font-bold">Abnormal History</h1>
         <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => setResetDialog(true)} disabled={sentCount === 0}>
+            <RotateCcw className="h-4 w-4 mr-1" />Reset Sent
+          </Button>
           <Button size="sm" variant="destructive" onClick={() => setDeleteDialog({ type: "all" })} disabled={records.length === 0}>
             <Trash2 className="h-4 w-4 mr-1" />Delete All
           </Button>
@@ -217,6 +233,13 @@ const AbnormalHistory = () => {
           else if (deleteDialog?.type === "single" && deleteDialog.id) deleteSingle.mutate(deleteDialog.id);
         }}
         description={deleteDialog?.type === "all" ? "Delete ALL abnormal history records?" : "Delete this record?"}
+      />
+
+      <DeletePasswordDialog
+        open={resetDialog}
+        onOpenChange={setResetDialog}
+        onSuccess={() => resetAll.mutate()}
+        description="Reset ALL sent dates and times to blank?"
       />
     </div>
   );
