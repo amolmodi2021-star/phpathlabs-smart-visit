@@ -45,7 +45,7 @@ const EstimateDashboard = () => {
 
   const deleteMutation = useMutation({
     mutationFn: async (ids: string[]) => { const { error } = await supabase.from("estimates").delete().in("id", ids); if (error) throw error; },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["estimates"] }); setSelected([]); toast.success("Deleted"); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["estimates"] }); qc.invalidateQueries({ queryKey: ["abnormal_history"] }); setSelected([]); toast.success("Deleted"); },
     onError: (e: Error) => toast.error(e.message),
   });
 
