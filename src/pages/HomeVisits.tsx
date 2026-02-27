@@ -19,7 +19,7 @@ import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import EditHomeVisitDialog from "@/components/EditHomeVisitDialog";
 import AddHomeVisitDialog from "@/components/AddHomeVisitDialog";
-import { format, isToday, parseISO } from "date-fns";
+import { format, isToday, isTomorrow, parseISO, addDays } from "date-fns";
 import { useAbnormalHistory } from "@/hooks/useAbnormalHistory";
 
 const statusColors: Record<string, string> = {
@@ -41,7 +41,7 @@ const HomeVisits = () => {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [addVisitOpen, setAddVisitOpen] = useState(false);
-  const [filterToday, setFilterToday] = useState(true);
+  const [dateFilter, setDateFilter] = useState<"today" | "tomorrow" | "dayafter" | "range">("today");
   const [filterFromDate, setFilterFromDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
   const [filterToDate, setFilterToDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
   const [filterStatus, setFilterStatus] = useState<string>("all");
@@ -161,8 +161,13 @@ const HomeVisits = () => {
     let result = sortedVisits;
 
     // Date filter
-    if (filterToday) {
+    if (dateFilter === "today") {
       result = result.filter((v: any) => isToday(parseISO(v.visit_date)));
+    } else if (dateFilter === "tomorrow") {
+      result = result.filter((v: any) => isTomorrow(parseISO(v.visit_date)));
+    } else if (dateFilter === "dayafter") {
+      const dayAfter = format(addDays(new Date(), 2), "yyyy-MM-dd");
+      result = result.filter((v: any) => v.visit_date === dayAfter);
     } else {
       if (filterFromDate) result = result.filter((v: any) => v.visit_date >= filterFromDate);
       if (filterToDate) result = result.filter((v: any) => v.visit_date <= filterToDate);
@@ -193,7 +198,7 @@ const HomeVisits = () => {
     }
 
     return result;
-  }, [sortedVisits, search, filterToday, filterFromDate, filterToDate, filterStatus, filterPhlebotomist]);
+  }, [sortedVisits, search, dateFilter, filterFromDate, filterToDate, filterStatus, filterPhlebotomist]);
 
   const handleExport = () => {
     exportToExcel(visits.map((v: any) => ({
@@ -234,25 +239,37 @@ const HomeVisits = () => {
           <span className="text-xs font-medium text-muted-foreground min-w-[40px]">Date:</span>
           <Button
             size="sm"
-            variant={filterToday ? "default" : "outline"}
+            variant={dateFilter === "today" ? "default" : "outline"}
             className="h-7 text-xs"
-            onClick={() => {
-              setFilterToday(true);
-              setFilterFromDate(format(new Date(), "yyyy-MM-dd"));
-              setFilterToDate(format(new Date(), "yyyy-MM-dd"));
-            }}
+            onClick={() => setDateFilter("today")}
           >
             Today
           </Button>
           <Button
             size="sm"
-            variant={!filterToday ? "default" : "outline"}
+            variant={dateFilter === "tomorrow" ? "default" : "outline"}
             className="h-7 text-xs"
-            onClick={() => setFilterToday(false)}
+            onClick={() => setDateFilter("tomorrow")}
+          >
+            Tomorrow
+          </Button>
+          <Button
+            size="sm"
+            variant={dateFilter === "dayafter" ? "default" : "outline"}
+            className="h-7 text-xs"
+            onClick={() => setDateFilter("dayafter")}
+          >
+            Day After
+          </Button>
+          <Button
+            size="sm"
+            variant={dateFilter === "range" ? "default" : "outline"}
+            className="h-7 text-xs"
+            onClick={() => setDateFilter("range")}
           >
             Date Range
           </Button>
-          {!filterToday && (
+          {dateFilter === "range" && (
             <div className="flex items-center gap-1.5 flex-wrap">
               <Input
                 type="date"
