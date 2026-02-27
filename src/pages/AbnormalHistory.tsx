@@ -9,12 +9,13 @@ import { toast } from "sonner";
 import { Upload, Send, Trash2, Search } from "lucide-react";
 import { parseExcelFile } from "@/lib/excel";
 import { shareOnWhatsApp } from "@/lib/whatsapp";
-import ExportPasswordDialog from "@/components/ExportPasswordDialog";
+import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 
 const AbnormalHistory = () => {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState<{ type: "all" | "single"; id?: string } | null>(null);
 
   const { data: records = [], isLoading } = useQuery({
     queryKey: ["abnormal_history"],
@@ -98,6 +99,18 @@ const AbnormalHistory = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const deleteSingle = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("abnormal_history").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["abnormal_history"] });
+      toast.success("Record deleted");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const filtered = records.filter((r: any) => {
     if (!search.trim()) return true;
     const q = search.toLowerCase();
@@ -112,7 +125,7 @@ const AbnormalHistory = () => {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-xl font-bold">Abnormal History</h1>
         <div className="flex gap-2">
-          <Button size="sm" variant="destructive" onClick={() => deleteAll.mutate()} disabled={records.length === 0}>
+          <Button size="sm" variant="destructive" onClick={() => setDeleteDialog({ type: "all" })} disabled={records.length === 0}>
             <Trash2 className="h-4 w-4 mr-1" />Delete All
           </Button>
         </div>
@@ -171,21 +184,40 @@ const AbnormalHistory = () => {
                     </div>
                     <p className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap line-clamp-3">{r.message}</p>
                   </div>
-                  {!r.sent && (
+                  <div className="flex gap-1">
+                    {!r.sent && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => sendMessage.mutate({ id: r.id, mobile: r.mobile_number, message: r.message })}
+                      >
+                        <Send className="h-3.5 w-3.5 mr-1" />Send
+                      </Button>
+                    )}
                     <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => sendMessage.mutate({ id: r.id, mobile: r.mobile_number, message: r.message })}
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => setDeleteDialog({ type: "single", id: r.id })}
                     >
-                      <Send className="h-3.5 w-3.5 mr-1" />Send
+                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
                     </Button>
-                  )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
           ))}
         </div>
       )}
+
+      <DeletePasswordDialog
+        open={!!deleteDialog}
+        onOpenChange={(o) => !o && setDeleteDialog(null)}
+        onSuccess={() => {
+          if (deleteDialog?.type === "all") deleteAll.mutate();
+          else if (deleteDialog?.type === "single" && deleteDialog.id) deleteSingle.mutate(deleteDialog.id);
+        }}
+        description={deleteDialog?.type === "all" ? "Delete ALL abnormal history records?" : "Delete this record?"}
+      />
     </div>
   );
 };

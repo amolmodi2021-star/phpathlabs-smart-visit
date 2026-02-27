@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { exportToExcel, parseExcelFile, downloadTemplate } from "@/lib/excel";
 import { getTests, saveTest, deleteTest, bulkInsertTests } from "@/lib/tests";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
+import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 
 const TestManagement = () => {
   const qc = useQueryClient();
@@ -20,6 +21,7 @@ const TestManagement = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [exportDialog, setExportDialog] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState<string | null>(null);
   const [form, setForm] = useState({ test_name: "", price: "", fasting_required: false, discount_applicable: true, description: "" });
 
   const { data: tests = [], isLoading, isError, error: queryError, refetch } = useQuery({
@@ -130,7 +132,7 @@ const TestManagement = () => {
                 </div>
                 <div className="flex gap-1">
                   <Button size="icon" variant="ghost" onClick={() => openEdit(t)}><Pencil className="h-3.5 w-3.5" /></Button>
-                  <Button size="icon" variant="ghost" onClick={() => deleteMutation.mutate(t.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                  <Button size="icon" variant="ghost" onClick={() => setDeleteDialog(t.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
                 </div>
               </CardContent>
             </Card>
@@ -139,6 +141,12 @@ const TestManagement = () => {
         </div>
       )}
       <ExportPasswordDialog open={exportDialog} onOpenChange={setExportDialog} onSuccess={() => exportToExcel(tests.map((t: any) => ({ "Test Name": t.test_name, Price: t.price, "Fasting Required": t.fasting_required ? "Yes" : "No", "Discount Applicable": t.discount_applicable ? "Yes" : "No", Description: t.description })), "tests_export")} />
+      <DeletePasswordDialog
+        open={!!deleteDialog}
+        onOpenChange={(o) => !o && setDeleteDialog(null)}
+        onSuccess={() => { if (deleteDialog) deleteMutation.mutate(deleteDialog); }}
+        description="Delete this test?"
+      />
     </div>
   );
 };

@@ -10,12 +10,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Search, Pencil, Trash2, Phone } from "lucide-react";
 import { toast } from "sonner";
+import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 
 const PhlebotomistManagement = () => {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
+  const [deleteDialog, setDeleteDialog] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", mobile: "", alternate_mobile: "", area_zone: "", status: "Active", notes: "" });
 
   const { data: list = [] } = useQuery({
@@ -92,13 +94,20 @@ const PhlebotomistManagement = () => {
               <div className="flex gap-1">
                 <Button size="icon" variant="ghost" onClick={() => window.open(`tel:${p.mobile}`)}><Phone className="h-3.5 w-3.5" /></Button>
                 <Button size="icon" variant="ghost" onClick={() => openEdit(p)}><Pencil className="h-3.5 w-3.5" /></Button>
-                <Button size="icon" variant="ghost" onClick={() => deleteMutation.mutate(p.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                <Button size="icon" variant="ghost" onClick={() => setDeleteDialog(p.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
               </div>
             </CardContent>
           </Card>
         ))}
         {filtered.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">No phlebotomists found.</p>}
       </div>
+
+      <DeletePasswordDialog
+        open={!!deleteDialog}
+        onOpenChange={(o) => !o && setDeleteDialog(null)}
+        onSuccess={() => { if (deleteDialog) deleteMutation.mutate(deleteDialog); }}
+        description="Delete this phlebotomist?"
+      />
     </div>
   );
 };
