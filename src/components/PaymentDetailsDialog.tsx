@@ -307,11 +307,6 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
                         <span className="font-medium">₹{t.discounted_price}</span>
                       </div>
                     </div>
-                    {t.price !== t.discounted_price && t.individual_discount_type && (t.individual_discount_value || 0) > 0 && (
-                      <span className="text-muted-foreground ml-5">
-                        Discount: {t.individual_discount_type === "percent" ? `${t.individual_discount_value}%` : `₹${t.individual_discount_value}`}
-                      </span>
-                    )}
                   </div>
                 ))}
               </div>
@@ -330,11 +325,6 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
                     <span className="text-muted-foreground">Discount:</span>
                     <span className="font-medium text-emerald-600 dark:text-emerald-400">
                       -₹{est?.discount_amount}
-                      {est?.global_discount_value && est.global_discount_value > 0 && (
-                        <span className="text-muted-foreground ml-1 text-xs">
-                          (Global: {est.global_discount_type === "percent" ? `${est.global_discount_value}%` : `₹${est.global_discount_value}`})
-                        </span>
-                      )}
                     </span>
                   </>
                 )}
