@@ -39,7 +39,12 @@ const HomeVisits = () => {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [addVisitOpen, setAddVisitOpen] = useState(false);
-  
+  const [filterToday, setFilterToday] = useState(true);
+  const [filterFromDate, setFilterFromDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
+  const [filterToDate, setFilterToDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterPhlebotomist, setFilterPhlebotomist] = useState<string>("all");
+
 
   const { data: visits = [], isLoading } = useQuery({
     queryKey: ["home_visits"],
@@ -151,14 +156,42 @@ const HomeVisits = () => {
   }, [visits]);
 
   const filteredVisits = useMemo(() => {
-    if (!search.trim()) return sortedVisits;
-    const q = search.toLowerCase();
-    return sortedVisits.filter((v: any) => {
-      const name = (v.estimates?.patient_name || "").toLowerCase();
-      const mobile = v.estimates?.whatsapp_number || "";
-      return name.includes(q) || mobile.includes(q);
-    });
-  }, [sortedVisits, search]);
+    let result = sortedVisits;
+
+    // Date filter
+    if (filterToday) {
+      result = result.filter((v: any) => isToday(parseISO(v.visit_date)));
+    } else {
+      if (filterFromDate) result = result.filter((v: any) => v.visit_date >= filterFromDate);
+      if (filterToDate) result = result.filter((v: any) => v.visit_date <= filterToDate);
+    }
+
+    // Status filter
+    if (filterStatus !== "all") {
+      result = result.filter((v: any) => v.status === filterStatus);
+    }
+
+    // Phlebotomist filter
+    if (filterPhlebotomist !== "all") {
+      if (filterPhlebotomist === "unassigned") {
+        result = result.filter((v: any) => !v.phlebotomist_id);
+      } else {
+        result = result.filter((v: any) => v.phlebotomist_id === filterPhlebotomist);
+      }
+    }
+
+    // Search filter
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter((v: any) => {
+        const name = (v.estimates?.patient_name || "").toLowerCase();
+        const mobile = v.estimates?.whatsapp_number || "";
+        return name.includes(q) || mobile.includes(q);
+      });
+    }
+
+    return result;
+  }, [sortedVisits, search, filterToday, filterFromDate, filterToDate, filterStatus, filterPhlebotomist]);
 
   const handleExport = () => {
     exportToExcel(visits.map((v: any) => ({
@@ -192,9 +225,103 @@ const HomeVisits = () => {
 
       <Input placeholder="Search by patient name or mobile number..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full" />
 
+      {/* Filter Bars */}
+      <div className="space-y-2">
+        {/* Date Filter */}
+        <div className="flex flex-wrap items-center gap-2 bg-muted/50 rounded-lg p-2">
+          <span className="text-xs font-medium text-muted-foreground min-w-[40px]">Date:</span>
+          <Button
+            size="sm"
+            variant={filterToday ? "default" : "outline"}
+            className="h-7 text-xs"
+            onClick={() => {
+              setFilterToday(true);
+              setFilterFromDate(format(new Date(), "yyyy-MM-dd"));
+              setFilterToDate(format(new Date(), "yyyy-MM-dd"));
+            }}
+          >
+            Today
+          </Button>
+          <Button
+            size="sm"
+            variant={!filterToday ? "default" : "outline"}
+            className="h-7 text-xs"
+            onClick={() => setFilterToday(false)}
+          >
+            Date Range
+          </Button>
+          {!filterToday && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Input
+                type="date"
+                value={filterFromDate}
+                onChange={(e) => setFilterFromDate(e.target.value)}
+                className="h-7 text-xs w-[130px]"
+              />
+              <span className="text-xs text-muted-foreground">to</span>
+              <Input
+                type="date"
+                value={filterToDate}
+                onChange={(e) => setFilterToDate(e.target.value)}
+                className="h-7 text-xs w-[130px]"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Status Filter */}
+        <div className="flex flex-wrap items-center gap-2 bg-muted/50 rounded-lg p-2">
+          <span className="text-xs font-medium text-muted-foreground min-w-[40px]">Status:</span>
+          {["all", "Pending", "Completed", "Cancelled"].map((s) => (
+            <Button
+              key={s}
+              size="sm"
+              variant={filterStatus === s ? "default" : "outline"}
+              className="h-7 text-xs"
+              onClick={() => setFilterStatus(s)}
+            >
+              {s === "all" ? "All" : s}
+            </Button>
+          ))}
+        </div>
+
+        {/* Phlebotomist Filter */}
+        <div className="flex flex-wrap items-center gap-2 bg-muted/50 rounded-lg p-2">
+          <span className="text-xs font-medium text-muted-foreground min-w-[40px]">Phleb:</span>
+          <Button
+            size="sm"
+            variant={filterPhlebotomist === "all" ? "default" : "outline"}
+            className="h-7 text-xs"
+            onClick={() => setFilterPhlebotomist("all")}
+          >
+            All
+          </Button>
+          <Button
+            size="sm"
+            variant={filterPhlebotomist === "unassigned" ? "default" : "outline"}
+            className="h-7 text-xs"
+            onClick={() => setFilterPhlebotomist("unassigned")}
+          >
+            Unassigned
+          </Button>
+          {phlebotomists.map((p: any) => (
+            <Button
+              key={p.id}
+              size="sm"
+              variant={filterPhlebotomist === p.id ? "default" : "outline"}
+              className="h-7 text-xs"
+              onClick={() => setFilterPhlebotomist(p.id)}
+            >
+              {p.name}
+            </Button>
+          ))}
+        </div>
+      </div>
+
       <Button size="sm" className="w-full" onClick={() => setAddVisitOpen(true)}>
         <Plus className="h-4 w-4 mr-1" />Add New Home Visit
       </Button>
+
 
       {/* Select All */}
       {filteredVisits.length > 0 && (
