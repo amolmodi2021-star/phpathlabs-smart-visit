@@ -53,6 +53,8 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
   const [remarks, setRemarks] = useState("");
   const [reviewOpen, setReviewOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [dueConfirmOpen, setDueConfirmOpen] = useState(false);
+  const [dueConfirmText, setDueConfirmText] = useState("");
 
   // Initialize from initialData
   useEffect(() => {
@@ -113,6 +115,12 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
   }, [selectedModes, modeAmounts]);
 
   const handleSave = () => {
+    if (selectedModes.size === 0 && paidAmount <= 0) {
+      // Entire amount is due - ask for DUE confirmation
+      setDueConfirmText("");
+      setDueConfirmOpen(true);
+      return;
+    }
     if (selectedModes.size === 0) {
       toast.error("Please select at least one payment mode");
       return;
@@ -122,6 +130,17 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
       return;
     }
     setReviewOpen(true);
+  };
+
+  const handleDueConfirm = () => {
+    if (dueConfirmText.trim().toUpperCase() !== "DUE") {
+      toast.error("Please type DUE to confirm");
+      return;
+    }
+    setDueConfirmOpen(false);
+    setDueConfirmText("");
+    // Skip review, go straight to final confirm with 0 paid
+    setConfirmOpen(true);
   };
 
   const handleReviewConfirm = () => {
@@ -327,6 +346,34 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* DUE Confirmation Dialog */}
+      <Dialog open={dueConfirmOpen} onOpenChange={(o) => { if (!o) { setDueConfirmOpen(false); setDueConfirmText(""); } }}>
+        <DialogContent className="max-w-xs">
+          <DialogHeader>
+            <DialogTitle>Entire Amount Due</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              The entire amount of <span className="font-semibold text-destructive">₹{finalAmount}</span> will be marked as due. Type <span className="font-bold">DUE</span> below to confirm.
+            </p>
+            <Input
+              value={dueConfirmText}
+              onChange={(e) => setDueConfirmText(e.target.value.toUpperCase())}
+              placeholder='Type "DUE" to confirm'
+              className="text-center font-semibold tracking-widest"
+            />
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => { setDueConfirmOpen(false); setDueConfirmText(""); }}>
+                Cancel
+              </Button>
+              <Button variant="destructive" className="flex-1" onClick={handleDueConfirm} disabled={dueConfirmText.trim() !== "DUE"}>
+                Confirm Due
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };
