@@ -56,6 +56,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
   const [testSearch, setTestSearch] = useState("");
   const [genderConfirmOpen, setGenderConfirmOpen] = useState(false);
   const [pendingGender, setPendingGender] = useState<"Male" | "Female" | "">("");
+  const [attempted, setAttempted] = useState(false);
 
   const handleTitleChange = (val: string) => {
     setTitle(val);
@@ -243,7 +244,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
           {/* Patient Info */}
           <div className="grid grid-cols-[120px_1fr] gap-2">
             <div>
-              <Label>Title</Label>
+              <Label className={attempted && !title ? "text-destructive" : ""}>Title *</Label>
               <Select value={title} onValueChange={handleTitleChange}>
                 <SelectTrigger className="h-10"><SelectValue placeholder="Title *" /></SelectTrigger>
                 <SelectContent>
@@ -258,7 +259,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
               </Select>
             </div>
             <div>
-              <Label>Patient Name *</Label>
+              <Label className={attempted && !patientName.trim() ? "text-destructive" : ""}>Patient Name *</Label>
               <Input value={patientName} onChange={(e) => setPatientName(e.target.value.toUpperCase())} placeholder="Enter patient name" />
             </div>
           </div>
@@ -275,7 +276,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
               </Select>
             </div>
             <div>
-              <Label>WhatsApp Number *</Label>
+              <Label className={attempted && (!whatsappNumber || whatsappNumber.replace(/\D/g, "").length < 10) ? "text-destructive" : ""}>WhatsApp Number *</Label>
               <Input type="tel" value={whatsappNumber} onChange={(e) => setWhatsappNumber(e.target.value)} />
             </div>
           </div>
@@ -295,7 +296,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <Label>DOB</Label>
+              <Label className={attempted && !dob ? "text-destructive" : ""}>DOB *</Label>
               <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} />
             </div>
             <div>
@@ -307,16 +308,16 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
           {/* Visit Details */}
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <Label>Visit Date *</Label>
+              <Label className={attempted && !visitDate ? "text-destructive" : ""}>Visit Date *</Label>
               <Input type="date" value={visitDate} onChange={(e) => setVisitDate(e.target.value)} />
             </div>
             <div>
-              <Label>Visit Time *</Label>
+              <Label className={attempted && !visitTime ? "text-destructive" : ""}>Visit Time *</Label>
               <Input type="time" value={visitTime} onChange={(e) => setVisitTime(e.target.value)} />
             </div>
           </div>
           <div>
-            <Label>Address *</Label>
+            <Label className={attempted && !address.trim() ? "text-destructive" : ""}>Address *</Label>
             <Textarea value={address} onChange={(e) => setAddress(e.target.value.toUpperCase())} rows={2} />
           </div>
 
@@ -394,7 +395,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
 
           {/* Home Visit Charges */}
           <div>
-            <Label>Home Visit Charges (₹) *</Label>
+            <Label className={attempted && (homeVisitCharges === "" || homeVisitCharges === null || homeVisitCharges === undefined) ? "text-destructive" : ""}>Home Visit Charges (₹) *</Label>
             <Input type="number" value={homeVisitCharges} onChange={(e) => setHomeVisitCharges(e.target.value)} placeholder="Enter charges (can be 0)" />
           </div>
 
@@ -408,7 +409,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
             </div>
           )}
 
-          <Button className="w-full" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+          <Button className="w-full" onClick={() => { setAttempted(true); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
             Save Changes
           </Button>
         </div>
