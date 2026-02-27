@@ -58,6 +58,9 @@ const EstimateDashboard = () => {
   const bookVisitMutation = useMutation({
     mutationFn: async () => {
       if (!visitForm.visit_date || !visitForm.visit_time || !visitForm.address) throw new Error("Fill all required fields");
+      const selectedDateTime = new Date(`${visitForm.visit_date}T${visitForm.visit_time}:00`);
+      if (Number.isNaN(selectedDateTime.getTime())) throw new Error("Invalid visit date/time");
+      if (selectedDateTime.getTime() < Date.now()) throw new Error("Cannot book for date/time that has already passed");
       const est = bookingEstimate;
       const hvCharges = parseFloat(visitForm.home_visit_charges) || 0;
 
@@ -204,8 +207,30 @@ const EstimateDashboard = () => {
         <DialogContent>
           <DialogHeader><DialogTitle>Book Home Visit</DialogTitle></DialogHeader>
           <form onSubmit={(e) => { e.preventDefault(); bookVisitMutation.mutate(); }} className="space-y-4">
-            <div><Label>Visit Date *</Label><Input type="date" value={visitForm.visit_date} onChange={(e) => setVisitForm(p => ({ ...p, visit_date: e.target.value }))} required /></div>
-            <div><Label>Visit Time *</Label><Input type="time" value={visitForm.visit_time} onChange={(e) => setVisitForm(p => ({ ...p, visit_time: e.target.value }))} required /></div>
+            <div><Label>Visit Date *</Label><Input type="date" value={visitForm.visit_date} min={format(new Date(), "yyyy-MM-dd")} onChange={(e) => {
+              const v = e.target.value;
+              const today = format(new Date(), "yyyy-MM-dd");
+              if (v && v.length === 10 && /^\d{4}-\d{2}-\d{2}$/.test(v) && v < today) {
+                setVisitForm(p => ({ ...p, visit_date: today }));
+                toast.error("Past dates are not allowed");
+                return;
+              }
+              setVisitForm(p => ({ ...p, visit_date: v }));
+              if (v === today && visitForm.visit_time && visitForm.visit_time < format(new Date(), "HH:mm")) {
+                setVisitForm(p => ({ ...p, visit_time: "" }));
+                toast.error("Selected time has already passed");
+              }
+            }} required /></div>
+            <div><Label>Visit Time *</Label><Input type="time" value={visitForm.visit_time} min={visitForm.visit_date === format(new Date(), "yyyy-MM-dd") ? format(new Date(), "HH:mm") : undefined} onChange={(e) => {
+              const v = e.target.value;
+              const today = format(new Date(), "yyyy-MM-dd");
+              if (visitForm.visit_date === today && v && v < format(new Date(), "HH:mm")) {
+                setVisitForm(p => ({ ...p, visit_time: "" }));
+                toast.error("Past time is not allowed for today");
+                return;
+              }
+              setVisitForm(p => ({ ...p, visit_time: v }));
+            }} required /></div>
             <div><Label>Address *</Label><Textarea value={visitForm.address} onChange={(e) => setVisitForm(p => ({ ...p, address: e.target.value }))} required rows={3} /></div>
             <div><Label>Home Visit Charges (₹)</Label><Input type="number" value={visitForm.home_visit_charges} onChange={(e) => setVisitForm(p => ({ ...p, home_visit_charges: e.target.value }))} placeholder="0" /></div>
             <div>
