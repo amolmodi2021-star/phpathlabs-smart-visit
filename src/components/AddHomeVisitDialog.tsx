@@ -98,6 +98,35 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
 
   const formatWhatsApp = (raw: string): string => raw.replace(/\D/g, "").slice(-10);
 
+  const handleVisitDateChange = (nextDate: string) => {
+    const today = format(new Date(), "yyyy-MM-dd");
+
+    if (nextDate && nextDate < today) {
+      setVisitDate(today);
+      toast.error("Past dates are not allowed");
+      return;
+    }
+
+    setVisitDate(nextDate);
+
+    if (nextDate === today && visitTime && visitTime < format(new Date(), "HH:mm")) {
+      setVisitTime("");
+      toast.error("Selected time has already passed");
+    }
+  };
+
+  const handleVisitTimeChange = (nextTime: string) => {
+    const today = format(new Date(), "yyyy-MM-dd");
+
+    if (visitDate === today && nextTime && nextTime < format(new Date(), "HH:mm")) {
+      setVisitTime("");
+      toast.error("Past time is not allowed for today");
+      return;
+    }
+
+    setVisitTime(nextTime);
+  };
+
   const calculations = useMemo(() => {
     let totalAmount = 0;
     let totalDiscount = 0;
@@ -133,9 +162,12 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
       if (!cleanNumber || cleanNumber.length < 10) throw new Error("Valid WhatsApp number required");
       if (selectedTests.length === 0) throw new Error("Select at least one test");
       if (!visitDate || !visitTime || !address.trim()) throw new Error("Visit date, time, and address are required");
-      const today = format(new Date(), "yyyy-MM-dd");
-      if (visitDate < today) throw new Error("Cannot book for a past date");
-      if (visitDate === today && visitTime < format(new Date(), "HH:mm")) throw new Error("Cannot book for a time that has already passed");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(visitDate)) throw new Error("Invalid visit date format");
+      if (!/^\d{2}:\d{2}$/.test(visitTime)) throw new Error("Invalid visit time format");
+
+      const selectedDateTime = new Date(`${visitDate}T${visitTime}:00`);
+      if (Number.isNaN(selectedDateTime.getTime())) throw new Error("Invalid visit date/time");
+      if (selectedDateTime.getTime() < Date.now()) throw new Error("Cannot book for date/time that has already passed");
 
       // Create estimate
       const { data: est, error: estError } = await supabase.from("estimates").insert({
@@ -231,11 +263,21 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
           <div className="grid grid-cols-2 gap-2">
             <div>
               <Label>Visit Date *</Label>
-              <Input type="date" value={visitDate} onChange={(e) => setVisitDate(e.target.value)} min={format(new Date(), "yyyy-MM-dd")} />
+              <Input
+                type="date"
+                value={visitDate}
+                onChange={(e) => handleVisitDateChange(e.target.value)}
+                min={format(new Date(), "yyyy-MM-dd")}
+              />
             </div>
             <div>
               <Label>Visit Time *</Label>
-              <Input type="time" value={visitTime} onChange={(e) => setVisitTime(e.target.value)} min={visitDate === format(new Date(), "yyyy-MM-dd") ? format(new Date(), "HH:mm") : undefined} />
+              <Input
+                type="time"
+                value={visitTime}
+                onChange={(e) => handleVisitTimeChange(e.target.value)}
+                min={visitDate === format(new Date(), "yyyy-MM-dd") ? format(new Date(), "HH:mm") : undefined}
+              />
               {visitDate === format(new Date(), "yyyy-MM-dd") && visitTime && visitTime < format(new Date(), "HH:mm") && (
                 <p className="text-xs text-destructive mt-1">Time has already passed</p>
               )}
