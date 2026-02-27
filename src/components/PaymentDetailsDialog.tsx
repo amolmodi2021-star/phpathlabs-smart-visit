@@ -15,13 +15,21 @@ interface VisitData {
   visit_time: string;
   address: string;
   estimates?: {
+    title?: string;
     patient_name?: string;
+    gender?: string;
+    email?: string;
+    doctor_name?: string;
+    umr_number?: string;
+    dob?: string;
     whatsapp_number?: string;
     total_amount?: number;
     discount_amount?: number;
     home_visit_charges?: number;
     final_amount?: number;
-    estimate_tests?: { test_name: string; price: number; discounted_price: number; fasting_required: boolean }[];
+    global_discount_type?: string;
+    global_discount_value?: number;
+    estimate_tests?: { test_name: string; price: number; discounted_price: number; fasting_required: boolean; individual_discount_type?: string; individual_discount_value?: number; discount_applicable?: boolean }[];
   };
   phlebotomists?: { name: string };
 }
@@ -230,14 +238,34 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
             <DialogTitle>Review All Details</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 text-sm">
-            {/* Patient Info */}
+           {/* Patient Info */}
             <div className="space-y-1">
-              <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Patient Info</h4>
-              <div className="grid grid-cols-2 gap-1">
+              <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Patient Information</h4>
+              <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
                 <span className="text-muted-foreground">Name:</span>
-                <span className="font-medium">{est?.patient_name || "—"}</span>
+                <span className="font-medium">{[est?.title, est?.patient_name].filter(Boolean).join(" ") || "—"}</span>
+                <span className="text-muted-foreground">Gender:</span>
+                <span className="font-medium">{est?.gender || "—"}</span>
+                <span className="text-muted-foreground">DOB:</span>
+                <span className="font-medium">{est?.dob ? new Date(est.dob).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}</span>
+                <span className="text-muted-foreground">Age:</span>
+                <span className="font-medium">{est?.dob ? `${Math.floor((Date.now() - new Date(est.dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000))} years` : "—"}</span>
                 <span className="text-muted-foreground">Mobile:</span>
                 <span className="font-medium">{est?.whatsapp_number || "—"}</span>
+                {est?.email && (
+                  <>
+                    <span className="text-muted-foreground">Email:</span>
+                    <span className="font-medium">{est.email}</span>
+                  </>
+                )}
+                <span className="text-muted-foreground">Doctor:</span>
+                <span className="font-medium">{est?.doctor_name || "SELF"}</span>
+                {est?.umr_number && (
+                  <>
+                    <span className="text-muted-foreground">UMR No:</span>
+                    <span className="font-medium">{est.umr_number}</span>
+                  </>
+                )}
               </div>
             </div>
 
@@ -246,9 +274,9 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
             {/* Visit Info */}
             <div className="space-y-1">
               <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Visit Details</h4>
-              <div className="grid grid-cols-2 gap-1">
+              <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
                 <span className="text-muted-foreground">Date:</span>
-                <span className="font-medium">{visitData?.visit_date || "—"}</span>
+                <span className="font-medium">{visitData?.visit_date ? new Date(visitData.visit_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}</span>
                 <span className="text-muted-foreground">Time:</span>
                 <span className="font-medium">{visitData?.visit_time ? formatTime12hr(visitData.visit_time) : "—"}</span>
                 <span className="text-muted-foreground">Address:</span>
@@ -263,20 +291,27 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
             {/* Tests */}
             <div className="space-y-1">
               <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Tests ({tests.length})</h4>
-              <div className="bg-muted/30 rounded p-2 space-y-1">
+              <div className="bg-muted/30 rounded p-2 space-y-1.5">
                 {tests.map((t, i) => (
-                  <div key={i} className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-muted-foreground">{i + 1}.</span>
-                      <span>{t.test_name}</span>
-                      {t.fasting_required && <Badge variant="outline" className="text-[10px] px-1 py-0">Fasting</Badge>}
+                  <div key={i} className="text-xs">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-muted-foreground">{i + 1}.</span>
+                        <span>{t.test_name}</span>
+                        {t.fasting_required && <Badge variant="outline" className="text-[10px] px-1 py-0">Fasting</Badge>}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {t.price !== t.discounted_price && (
+                          <span className="line-through text-muted-foreground">₹{t.price}</span>
+                        )}
+                        <span className="font-medium">₹{t.discounted_price}</span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {t.price !== t.discounted_price && (
-                        <span className="line-through text-muted-foreground">₹{t.price}</span>
-                      )}
-                      <span className="font-medium">₹{t.discounted_price}</span>
-                    </div>
+                    {t.price !== t.discounted_price && t.individual_discount_type && (t.individual_discount_value || 0) > 0 && (
+                      <span className="text-muted-foreground ml-5">
+                        Discount: {t.individual_discount_type === "percent" ? `${t.individual_discount_value}%` : `₹${t.individual_discount_value}`}
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>
@@ -287,15 +322,26 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
             {/* Financials */}
             <div className="space-y-1">
               <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Amount Details</h4>
-              <div className="grid grid-cols-2 gap-1">
+              <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
                 <span className="text-muted-foreground">Total Amount:</span>
                 <span className="font-medium">₹{est?.total_amount || 0}</span>
-                <span className="text-muted-foreground">Discount:</span>
-                <span className="font-medium text-emerald-600 dark:text-emerald-400">₹{est?.discount_amount || 0}</span>
+                {(est?.discount_amount || 0) > 0 && (
+                  <>
+                    <span className="text-muted-foreground">Discount:</span>
+                    <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                      -₹{est?.discount_amount}
+                      {est?.global_discount_value && est.global_discount_value > 0 && (
+                        <span className="text-muted-foreground ml-1 text-xs">
+                          (Global: {est.global_discount_type === "percent" ? `${est.global_discount_value}%` : `₹${est.global_discount_value}`})
+                        </span>
+                      )}
+                    </span>
+                  </>
+                )}
                 <span className="text-muted-foreground">Home Visit Charges:</span>
                 <span className="font-medium">₹{est?.home_visit_charges || 0}</span>
-                <span className="text-muted-foreground">Final Amount:</span>
-                <span className="font-semibold text-primary">₹{est?.final_amount || 0}</span>
+                <span className="text-muted-foreground font-semibold">Final Amount:</span>
+                <span className="font-bold text-primary">₹{est?.final_amount || 0}</span>
               </div>
             </div>
 
