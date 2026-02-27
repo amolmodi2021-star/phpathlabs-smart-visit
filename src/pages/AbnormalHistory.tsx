@@ -29,6 +29,15 @@ const AbnormalHistory = () => {
     },
   });
 
+  const { data: counts } = useQuery({
+    queryKey: ["abnormal_history_counts"],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("get_abnormal_history_counts");
+      if (error) throw error;
+      return data?.[0] ?? { total_records: 0, unsent_records: 0, sent_records: 0 };
+    },
+  });
+
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -63,6 +72,7 @@ const AbnormalHistory = () => {
       if (error) throw error;
 
       qc.invalidateQueries({ queryKey: ["abnormal_history"] });
+      qc.invalidateQueries({ queryKey: ["abnormal_history_counts"] });
       toast.success(`Uploaded ${inserts.length} records`);
     } catch (err: any) {
       toast.error(err.message || "Upload failed");
@@ -83,6 +93,7 @@ const AbnormalHistory = () => {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["abnormal_history"] });
+      qc.invalidateQueries({ queryKey: ["abnormal_history_counts"] });
       toast.success("Message sent");
     },
     onError: (e: Error) => toast.error(e.message),
@@ -95,6 +106,7 @@ const AbnormalHistory = () => {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["abnormal_history"] });
+      qc.invalidateQueries({ queryKey: ["abnormal_history_counts"] });
       toast.success("All records deleted");
     },
     onError: (e: Error) => toast.error(e.message),
@@ -107,6 +119,7 @@ const AbnormalHistory = () => {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["abnormal_history"] });
+      qc.invalidateQueries({ queryKey: ["abnormal_history_counts"] });
       toast.success("All sent dates reset");
     },
     onError: (e: Error) => toast.error(e.message),
@@ -119,6 +132,7 @@ const AbnormalHistory = () => {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["abnormal_history"] });
+      qc.invalidateQueries({ queryKey: ["abnormal_history_counts"] });
       toast.success("Record deleted");
     },
     onError: (e: Error) => toast.error(e.message),
@@ -130,8 +144,9 @@ const AbnormalHistory = () => {
     return r.mobile_number.includes(q) || r.message.toLowerCase().includes(q);
   });
 
-  const unsentCount = records.filter((r: any) => !r.sent).length;
-  const sentCount = records.filter((r: any) => r.sent).length;
+  const totalCount = counts?.total_records ?? 0;
+  const unsentCount = counts?.unsent_records ?? 0;
+  const sentCount = counts?.sent_records ?? 0;
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -141,7 +156,7 @@ const AbnormalHistory = () => {
           <Button size="sm" variant="outline" onClick={() => setResetDialog(true)} disabled={sentCount === 0}>
             <RotateCcw className="h-4 w-4 mr-1" />Reset Sent
           </Button>
-          <Button size="sm" variant="destructive" onClick={() => setDeleteDialog({ type: "all" })} disabled={records.length === 0}>
+          <Button size="sm" variant="destructive" onClick={() => setDeleteDialog({ type: "all" })} disabled={totalCount === 0}>
             <Trash2 className="h-4 w-4 mr-1" />Delete All
           </Button>
         </div>
@@ -149,7 +164,7 @@ const AbnormalHistory = () => {
 
       {/* Stats */}
       <div className="flex gap-3 text-xs">
-        <span className="bg-muted px-2 py-1 rounded">Total: {records.length}</span>
+        <span className="bg-muted px-2 py-1 rounded">Total: {totalCount}</span>
         <span className="bg-warning/20 text-warning-foreground px-2 py-1 rounded">Unsent: {unsentCount}</span>
         <span className="bg-success/20 text-success-foreground px-2 py-1 rounded">Sent: {sentCount}</span>
       </div>
