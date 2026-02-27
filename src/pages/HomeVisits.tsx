@@ -89,7 +89,7 @@ const HomeVisits = () => {
       const { error } = await supabase.from("home_visits").update({ phlebotomist_id: pId }).eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["home_visits"] }); toast.success("Assigned"); setAssignSelectOpenFor(null); },
+    onSuccess: (_, variables) => { qc.invalidateQueries({ queryKey: ["home_visits"] }); toast.success("Assigned"); setAssignSelectOpenFor(null); setPhlebUnlockedIds(prev => { const next = new Set(prev); next.delete(variables.id); return next; }); },
     onError: (e: Error) => toast.error(e.message),
   });
 
