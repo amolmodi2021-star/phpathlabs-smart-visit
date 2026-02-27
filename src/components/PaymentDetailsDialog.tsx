@@ -5,10 +5,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { format, addDays } from "date-fns";
 
 interface VisitData {
   visit_date: string;
@@ -63,6 +65,25 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [dueConfirmOpen, setDueConfirmOpen] = useState(false);
   const [dueConfirmText, setDueConfirmText] = useState("");
+  const [reportDate, setReportDate] = useState("");
+  const [reportTime, setReportTime] = useState("");
+
+  // Auto-fill report delivery date/time when review opens
+  useEffect(() => {
+    if (reviewOpen && !reportDate) {
+      const now = new Date();
+      const todayStr = format(now, "yyyy-MM-dd");
+      const currentHour = now.getHours();
+      const currentMin = now.getMinutes();
+      setReportDate(todayStr);
+      // Before 1:00 PM → 3:30 PM today, after 1:00 PM → 7:30 PM today
+      if (currentHour < 13 || (currentHour === 13 && currentMin === 0)) {
+        setReportTime("15:30");
+      } else {
+        setReportTime("19:30");
+      }
+    }
+  }, [reviewOpen]);
 
   // Initialize from initialData
   useEffect(() => {
@@ -314,7 +335,52 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
 
             <Separator />
 
-            {/* Financials */}
+            {/* Report Delivery */}
+            <div className="space-y-2">
+              <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Report Delivery</h4>
+              <div className="flex flex-wrap gap-1.5">
+                {[0, 1, 2].map(offset => {
+                  const d = addDays(new Date(), offset);
+                  const dateStr = format(d, "yyyy-MM-dd");
+                  const label = offset === 0 ? "Today" : offset === 1 ? "Tomorrow" : "Day After";
+                  return (
+                    <Button key={offset} type="button" size="sm" variant={reportDate === dateStr ? "default" : "outline"} className="h-7 text-xs"
+                      onClick={() => setReportDate(dateStr)}>
+                      {label} ({format(d, "dd MMM")})
+                    </Button>
+                  );
+                })}
+              </div>
+              <div className="flex items-center gap-2">
+                <Input type="date" value={reportDate} onChange={e => setReportDate(e.target.value)} className="flex-1 h-8 text-xs" />
+                <Select value={reportTime} onValueChange={setReportTime}>
+                  <SelectTrigger className="w-28 h-8 text-xs"><SelectValue placeholder="Time" /></SelectTrigger>
+                  <SelectContent>
+                    {(() => {
+                      const times: { val: string; label: string }[] = [];
+                      for (let hour = 8; hour <= 20; hour++) {
+                        const val = `${hour.toString().padStart(2, "0")}:00`;
+                        const label = `${hour % 12 || 12}:00 ${hour >= 12 ? "PM" : "AM"}`;
+                        times.push({ val, label });
+                      }
+                      // Add special 3:30 PM and 7:30 PM slots
+                      times.push({ val: "15:30", label: "3:30 PM" });
+                      times.push({ val: "19:30", label: "7:30 PM" });
+                      // Sort by time
+                      times.sort((a, b) => a.val.localeCompare(b.val));
+                      return times.map(t => <SelectItem key={t.val} value={t.val}>{t.label}</SelectItem>);
+                    })()}
+                  </SelectContent>
+                </Select>
+              </div>
+              {reportDate && reportTime && (
+                <p className="text-xs font-medium text-primary">
+                  📋 Reports by: {new Date(reportDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })} at {formatTime12hr(reportTime)}
+                </p>
+              )}
+            </div>
+
+            <Separator />
             <div className="space-y-1">
               <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Amount Details</h4>
               <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
