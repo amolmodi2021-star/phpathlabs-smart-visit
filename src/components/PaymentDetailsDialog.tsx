@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { format, addDays } from "date-fns";
 import html2canvas from "html2canvas";
 import { shareOnWhatsApp } from "@/lib/whatsapp";
+import { supabase } from "@/integrations/supabase/client";
 
 interface VisitData {
   visit_date: string;
@@ -68,6 +69,7 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
   const [dueConfirmText, setDueConfirmText] = useState("");
   const [reportDates, setReportDates] = useState<Record<number, string>>({});
   const [reportTimes, setReportTimes] = useState<Record<number, string>>({});
+  const [receiptNumber, setReceiptNumber] = useState("");
 
   const est = visitData?.estimates;
   const tests = est?.estimate_tests || [];
@@ -86,6 +88,26 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
       setReportTimes(times);
     }
   }, [reviewOpen, tests.length]);
+
+  // Generate receipt number when final review opens
+  useEffect(() => {
+    if (finalReviewOpen && !receiptNumber) {
+      const generateReceiptNumber = async () => {
+        const now = new Date();
+        const datePrefix = format(now, "ddMMyy");
+        // Count completed home visits today to determine sequence
+        const todayStart = format(now, "yyyy-MM-dd");
+        const { count } = await supabase
+          .from("home_visits")
+          .select("*", { count: "exact", head: true })
+          .eq("status", "Completed")
+          .gte("updated_at", `${todayStart}T00:00:00`);
+        const seq = ((count || 0) + 1).toString().padStart(4, "0");
+        setReceiptNumber(`HVR${datePrefix}${seq}`);
+      };
+      generateReceiptNumber();
+    }
+  }, [finalReviewOpen]);
 
   // Initialize from initialData
   useEffect(() => {
@@ -237,8 +259,9 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
   };
 
   const buildReceiptText = () => {
-    let msg = `📋 *Visit Receipt*\n\n`;
-    msg += `*Patient:* ${[est?.title, est?.patient_name].filter(Boolean).join(" ") || "—"}\n`;
+    let msg = `📋 *PH PathLabs — Home Visit Receipt*\n`;
+    if (receiptNumber) msg += `*Receipt No:* ${receiptNumber}\n`;
+    msg += `\n*Patient:* ${[est?.title, est?.patient_name].filter(Boolean).join(" ") || "—"}\n`;
     msg += `*Mobile:* ${est?.whatsapp_number || "—"}\n`;
     msg += `*Visit:* ${visitData?.visit_date ? new Date(visitData.visit_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"} | ${visitData?.visit_time ? formatTime12hr(visitData.visit_time) : "—"}\n`;
     msg += `*Address:* ${visitData?.address || "—"}\n\n`;
@@ -506,8 +529,9 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
             <div ref={receiptRef} className="bg-white text-black p-4 rounded-lg space-y-3" style={{ fontFamily: "Arial, sans-serif" }}>
               {/* Header */}
               <div className="text-center border-b-2 border-gray-800 pb-2">
-                <h2 className="text-base font-bold tracking-wide">PHP PATH LABS</h2>
+                <h2 className="text-base font-bold tracking-wide">PH PathLabs</h2>
                 <p className="text-[10px] text-gray-500">Home Visit Receipt</p>
+                {receiptNumber && <p className="text-[10px] font-semibold text-gray-700">Receipt No: {receiptNumber}</p>}
                 <p className="text-[10px] text-gray-500">{format(new Date(), "dd-MM-yyyy | hh:mm a")}</p>
               </div>
 
@@ -576,7 +600,7 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
 
               {/* Footer */}
               <div className="text-center border-t border-gray-300 pt-1">
-                <p className="text-[9px] text-gray-400">Thank you for choosing PHP Path Labs</p>
+                <p className="text-[9px] text-gray-400">Thank you for choosing PH PathLabs</p>
                 <p className="text-[9px] text-gray-400">(F) = Fasting Required</p>
               </div>
             </div>
