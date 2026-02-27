@@ -154,8 +154,12 @@ export type Database = {
           address: string
           cancellation_reason: string | null
           created_at: string
+          due_amount: number | null
           estimate_id: string
           id: string
+          paid_amount: number | null
+          payment_mode: string | null
+          payment_remarks: string | null
           phlebotomist_id: string | null
           status: string
           updated_at: string
@@ -166,8 +170,12 @@ export type Database = {
           address: string
           cancellation_reason?: string | null
           created_at?: string
+          due_amount?: number | null
           estimate_id: string
           id?: string
+          paid_amount?: number | null
+          payment_mode?: string | null
+          payment_remarks?: string | null
           phlebotomist_id?: string | null
           status?: string
           updated_at?: string
@@ -178,8 +186,12 @@ export type Database = {
           address?: string
           cancellation_reason?: string | null
           created_at?: string
+          due_amount?: number | null
           estimate_id?: string
           id?: string
+          paid_amount?: number | null
+          payment_mode?: string | null
+          payment_remarks?: string | null
           phlebotomist_id?: string | null
           status?: string
           updated_at?: string
