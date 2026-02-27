@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { Download, Phone, MapPin, ChevronDown, ChevronUp, Pencil, Trash2, Plus } from "lucide-react";
+import { Download, Phone, MapPin, ChevronDown, ChevronUp, Pencil, Trash2, Plus, AlertTriangle } from "lucide-react";
 import { exportToExcel } from "@/lib/excel";
 import { useState, useCallback, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +18,7 @@ import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 import EditHomeVisitDialog from "@/components/EditHomeVisitDialog";
 import AddHomeVisitDialog from "@/components/AddHomeVisitDialog";
 import { format, isToday, parseISO } from "date-fns";
+import { useAbnormalHistory } from "@/hooks/useAbnormalHistory";
 
 const statusColors: Record<string, string> = {
   Pending: "bg-warning text-warning-foreground",
@@ -37,6 +38,7 @@ const HomeVisits = () => {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [addVisitOpen, setAddVisitOpen] = useState(false);
+  const { getUnsentForMobile, sendMutation: abnormalSend } = useAbnormalHistory();
 
   const { data: visits = [], isLoading } = useQuery({
     queryKey: ["home_visits"],
@@ -253,6 +255,14 @@ const HomeVisits = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
+                      {est?.whatsapp_number && (() => {
+                        const abnormal = getUnsentForMobile(est.whatsapp_number);
+                        return abnormal ? (
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-warning" onClick={() => abnormalSend.mutate({ id: abnormal.id, mobile: est.whatsapp_number, message: abnormal.message, context: "home_visit" })}>
+                            <AlertTriangle className="h-3.5 w-3.5" />
+                          </Button>
+                        ) : null;
+                      })()}
                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditDialog(v)}>
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>

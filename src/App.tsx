@@ -12,6 +12,7 @@ import HomeVisits from "./pages/HomeVisits";
 import PhlebotomistManagement from "./pages/PhlebotomistManagement";
 import TestManagement from "./pages/TestManagement";
 import MessageTemplates from "./pages/MessageTemplates";
+import AbnormalHistory from "./pages/AbnormalHistory";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -35,6 +36,7 @@ const App = () => (
           <Route path="/phlebotomists" element={<ProtectedRoute><PhlebotomistManagement /></ProtectedRoute>} />
           <Route path="/tests" element={<ProtectedRoute><TestManagement /></ProtectedRoute>} />
           <Route path="/templates" element={<ProtectedRoute><MessageTemplates /></ProtectedRoute>} />
+          <Route path="/abnormal-history" element={<ProtectedRoute><AbnormalHistory /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

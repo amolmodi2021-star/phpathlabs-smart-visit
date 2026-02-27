@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { logout } from "@/lib/auth";
 import {
   FileText, LayoutDashboard, Home, Users, TestTubes, MessageSquare,
-  Menu, X, LogOut, FlaskConical,
+  Menu, X, LogOut, FlaskConical, AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -15,6 +15,7 @@ const navItems = [
   { to: "/phlebotomists", label: "Phlebotomists", icon: Users },
   { to: "/tests", label: "Test Management", icon: TestTubes },
   { to: "/templates", label: "Message Templates", icon: MessageSquare },
+  { to: "/abnormal-history", label: "Abnormal History", icon: AlertTriangle },
 ];
 
 const AppLayout = ({ children }: { children: React.ReactNode }) => {
