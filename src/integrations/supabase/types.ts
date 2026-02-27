@@ -108,6 +108,7 @@ export type Database = {
         Row: {
           created_at: string
           discount_amount: number
+          dob: string | null
           doctor_name: string | null
           email: string | null
           final_amount: number
@@ -127,6 +128,7 @@ export type Database = {
         Insert: {
           created_at?: string
           discount_amount?: number
+          dob?: string | null
           doctor_name?: string | null
           email?: string | null
           final_amount?: number
@@ -146,6 +148,7 @@ export type Database = {
         Update: {
           created_at?: string
           discount_amount?: number
+          dob?: string | null
           doctor_name?: string | null
           email?: string | null
           final_amount?: number
