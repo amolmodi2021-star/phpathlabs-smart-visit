@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,6 +19,7 @@ const templateFields = [
 ];
 
 const MessageTemplates = () => {
+  useRealtimeSync("message_templates", ["message_templates"]);
   const qc = useQueryClient();
   const [values, setValues] = useState<Record<string, string>>({});
 
