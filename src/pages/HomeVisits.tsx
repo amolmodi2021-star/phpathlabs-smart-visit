@@ -19,6 +19,7 @@ import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import EditHomeVisitDialog from "@/components/EditHomeVisitDialog";
 import AddHomeVisitDialog from "@/components/AddHomeVisitDialog";
+import PaymentDetailsDialog from "@/components/PaymentDetailsDialog";
 import { format, isToday, isTomorrow, parseISO, addDays } from "date-fns";
 import { useAbnormalHistory } from "@/hooks/useAbnormalHistory";
 
@@ -46,6 +47,12 @@ const HomeVisits = () => {
   const [filterToDate, setFilterToDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterPhlebotomist, setFilterPhlebotomist] = useState<string>("all");
+  const [paymentVisit, setPaymentVisit] = useState<any>(null);
+  const [editPasswordDialog, setEditPasswordDialog] = useState(false);
+  const [pendingEditVisit, setPendingEditVisit] = useState<any>(null);
+  const [editPaymentVisit, setEditPaymentVisit] = useState<any>(null);
+  const [editPaymentPasswordDialog, setEditPaymentPasswordDialog] = useState(false);
+  const [pendingEditPaymentVisit, setPendingEditPaymentVisit] = useState<any>(null);
 
 
   const { data: visits = [], isLoading } = useQuery({
@@ -96,9 +103,62 @@ const HomeVisits = () => {
   const handleStatusChange = (visit: any, newStatus: string) => {
     if (newStatus === "Cancelled") {
       setCancelDialog(visit);
+    } else if (newStatus === "Completed") {
+      setPaymentVisit(visit);
     } else {
       updateStatus.mutate({ id: visit.id, status: newStatus });
     }
+  };
+
+  const savePaymentAndComplete = useMutation({
+    mutationFn: async ({ visitId, data }: { visitId: string; data: { paid_amount: number; due_amount: number; payment_mode: string; payment_remarks: string } }) => {
+      const { error } = await supabase.from("home_visits").update({
+        status: "Completed",
+        paid_amount: data.paid_amount,
+        due_amount: data.due_amount,
+        payment_mode: data.payment_mode,
+        payment_remarks: data.payment_remarks,
+      }).eq("id", visitId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["home_visits"] });
+      toast.success("Marked as Completed");
+      setPaymentVisit(null);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const updatePaymentDetails = useMutation({
+    mutationFn: async ({ visitId, data }: { visitId: string; data: { paid_amount: number; due_amount: number; payment_mode: string; payment_remarks: string } }) => {
+      const { error } = await supabase.from("home_visits").update({
+        paid_amount: data.paid_amount,
+        due_amount: data.due_amount,
+        payment_mode: data.payment_mode,
+        payment_remarks: data.payment_remarks,
+      }).eq("id", visitId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["home_visits"] });
+      toast.success("Payment details updated");
+      setEditPaymentVisit(null);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const openEditDialog = (v: any) => {
+    if (v.status === "Completed") {
+      setPendingEditVisit(v);
+      setEditPasswordDialog(true);
+    } else {
+      setEditVisit(v);
+    }
+  };
+
+  const openEditPaymentDialog = (v: any) => {
+    setPendingEditPaymentVisit(v);
+    setEditPaymentPasswordDialog(true);
   };
 
   const formatTime12hr = (time: string) => {
@@ -134,7 +194,7 @@ const HomeVisits = () => {
     }
   }, [selectedIds.size, visits]);
 
-  const openEditDialog = (v: any) => setEditVisit(v);
+  
 
   // Sort: Today's visits (time asc) → Pending (date+time asc) → Completed (date+time desc)
   const sortedVisits = useMemo(() => {
@@ -213,6 +273,10 @@ const HomeVisits = () => {
       "Discount": v.estimates?.discount_amount || 0,
       "Home Visit Charges": v.estimates?.home_visit_charges || 0,
       "Final Amount": v.estimates?.final_amount || 0,
+      "Paid Amount": v.paid_amount || 0,
+      "Due Amount": v.due_amount || 0,
+      "Payment Mode": v.payment_mode || "",
+      "Payment Remarks": v.payment_remarks || "",
     })), "home_visits_export");
   };
 
@@ -472,6 +536,24 @@ const HomeVisits = () => {
                     <p className="text-xs text-destructive">Reason: {v.cancellation_reason}</p>
                   )}
 
+                  {/* Payment details for completed visits */}
+                  {v.status === "Completed" && v.payment_mode && (
+                    <div className="bg-muted/50 rounded-lg p-2 space-y-1 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium">Payment Details</span>
+                        <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => openEditPaymentDialog(v)}>
+                          <Pencil className="h-3 w-3 mr-1" />Edit
+                        </Button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1">
+                        <span className="text-muted-foreground">Paid: <span className="text-foreground font-medium">₹{v.paid_amount || 0}</span></span>
+                        <span className="text-muted-foreground">Due: <span className={`font-medium ${(v.due_amount || 0) > 0 ? 'text-destructive' : 'text-success'}`}>₹{v.due_amount || 0}</span></span>
+                        <span className="text-muted-foreground">Mode: <span className="text-foreground font-medium">{v.payment_mode}</span></span>
+                        {v.payment_remarks && <span className="text-muted-foreground col-span-2">Remarks: {v.payment_remarks}</span>}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Actions row */}
                   <div className="flex flex-wrap gap-2 items-center">
                     <Select value={v.status} onValueChange={(s) => handleStatusChange(v, s)}>
@@ -548,6 +630,49 @@ const HomeVisits = () => {
 
       <ExportPasswordDialog open={exportDialog} onOpenChange={setExportDialog} onSuccess={handleExport} />
       <AddHomeVisitDialog open={addVisitOpen} onClose={() => setAddVisitOpen(false)} />
+
+      {/* Payment details dialog for marking as Completed */}
+      {paymentVisit && (
+        <PaymentDetailsDialog
+          open={!!paymentVisit}
+          onClose={() => setPaymentVisit(null)}
+          finalAmount={paymentVisit.estimates?.final_amount || 0}
+          isPending={savePaymentAndComplete.isPending}
+          onSave={(data) => savePaymentAndComplete.mutate({ visitId: paymentVisit.id, data })}
+        />
+      )}
+
+      {/* Password dialog for editing completed visits */}
+      <DeletePasswordDialog
+        open={editPasswordDialog}
+        onOpenChange={(o) => { setEditPasswordDialog(o); if (!o) setPendingEditVisit(null); }}
+        onSuccess={() => { setEditVisit(pendingEditVisit); setPendingEditVisit(null); }}
+        description="Enter password to edit a completed visit record."
+      />
+
+      {/* Password dialog for editing payment details of completed visits */}
+      <DeletePasswordDialog
+        open={editPaymentPasswordDialog}
+        onOpenChange={(o) => { setEditPaymentPasswordDialog(o); if (!o) setPendingEditPaymentVisit(null); }}
+        onSuccess={() => { setEditPaymentVisit(pendingEditPaymentVisit); setPendingEditPaymentVisit(null); }}
+        description="Enter password to edit payment details."
+      />
+
+      {/* Edit payment details dialog */}
+      {editPaymentVisit && (
+        <PaymentDetailsDialog
+          open={!!editPaymentVisit}
+          onClose={() => setEditPaymentVisit(null)}
+          finalAmount={editPaymentVisit.estimates?.final_amount || 0}
+          isPending={updatePaymentDetails.isPending}
+          initialData={{
+            paid_amount: editPaymentVisit.paid_amount || 0,
+            payment_mode: editPaymentVisit.payment_mode || "",
+            payment_remarks: editPaymentVisit.payment_remarks || "",
+          }}
+          onSave={(data) => updatePaymentDetails.mutate({ visitId: editPaymentVisit.id, data })}
+        />
+      )}
     </div>
   );
 };
