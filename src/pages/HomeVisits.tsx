@@ -565,16 +565,24 @@ const HomeVisits = () => {
                       </SelectContent>
                     </Select>
 
-                    <Select
-                      value={v.phlebotomist_id || ""}
-                      onOpenChange={(open) => setAssignSelectOpenFor(open ? v.id : (assignSelectOpenFor === v.id ? null : assignSelectOpenFor))}
-                      onValueChange={(pId) => { if (assignSelectOpenFor !== v.id) return; if (pId !== (v.phlebotomist_id || "")) assignPhlebotomist.mutate({ id: v.id, pId }); }}
-                    >
-                      <SelectTrigger className="w-36 h-8 text-xs"><SelectValue placeholder="Assign..." /></SelectTrigger>
-                      <SelectContent>
-                        {phlebotomists.map((p: any) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    {v.status === "Completed" ? (
+                      v.phlebotomists ? (
+                        <span className="text-xs text-muted-foreground px-2 py-1 bg-muted/50 rounded">{v.phlebotomists.name}</span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground px-2 py-1">No phlebotomist</span>
+                      )
+                    ) : (
+                      <Select
+                        value={v.phlebotomist_id || ""}
+                        onOpenChange={(open) => setAssignSelectOpenFor(open ? v.id : (assignSelectOpenFor === v.id ? null : assignSelectOpenFor))}
+                        onValueChange={(pId) => { if (assignSelectOpenFor !== v.id) return; if (pId !== (v.phlebotomist_id || "")) assignPhlebotomist.mutate({ id: v.id, pId }); }}
+                      >
+                        <SelectTrigger className="w-36 h-8 text-xs"><SelectValue placeholder="Assign..." /></SelectTrigger>
+                        <SelectContent>
+                          {phlebotomists.map((p: any) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    )}
 
                     {est?.whatsapp_number && (
                       <a href={`tel:${est.whatsapp_number}`} className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
