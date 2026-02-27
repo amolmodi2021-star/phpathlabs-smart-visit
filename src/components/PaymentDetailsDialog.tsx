@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,11 +6,12 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { format, addDays } from "date-fns";
+import html2canvas from "html2canvas";
+import { shareOnWhatsApp } from "@/lib/whatsapp";
 
 interface VisitData {
   visit_date: string;
@@ -62,7 +63,7 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
   const [modeAmounts, setModeAmounts] = useState<Record<string, number>>({});
   const [remarks, setRemarks] = useState("");
   const [reviewOpen, setReviewOpen] = useState(false);
-  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [finalReviewOpen, setFinalReviewOpen] = useState(false);
   const [dueConfirmOpen, setDueConfirmOpen] = useState(false);
   const [dueConfirmText, setDueConfirmText] = useState("");
   const [reportDates, setReportDates] = useState<Record<number, string>>({});
@@ -175,17 +176,81 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
 
   const handleReviewConfirm = () => {
     setReviewOpen(false);
-    setConfirmOpen(true);
+    setFinalReviewOpen(true);
   };
 
-  const confirmSave = () => {
-    setConfirmOpen(false);
+  const receiptRef = useRef<HTMLDivElement>(null);
+
+  const handleSaveAndShare = useCallback(async () => {
+    // First save
     onSave({
       paid_amount: paidAmount,
       due_amount: dueAmount,
       payment_mode: modeStr,
       payment_remarks: remarks,
     });
+
+    // Generate JPEG from receipt
+    if (receiptRef.current) {
+      try {
+        const canvas = await html2canvas(receiptRef.current, {
+          backgroundColor: "#ffffff",
+          scale: 2,
+          useCORS: true,
+        });
+        canvas.toBlob((blob) => {
+          if (!blob) return;
+          const file = new File([blob], "visit-receipt.jpg", { type: "image/jpeg" });
+          // Try native share with image
+          if (navigator.share && navigator.canShare?.({ files: [file] })) {
+            navigator.share({
+              files: [file],
+              title: "Visit Receipt",
+              text: `Visit receipt for ${est?.patient_name || "Patient"}`,
+            }).catch(() => {
+              // Fallback: download
+              downloadImage(canvas);
+            });
+          } else {
+            // Fallback: download image + open WhatsApp with text
+            downloadImage(canvas);
+            const phone = est?.whatsapp_number || "";
+            if (phone) {
+              const textMsg = buildReceiptText();
+              shareOnWhatsApp(phone, textMsg);
+            }
+          }
+        }, "image/jpeg", 0.95);
+      } catch {
+        toast.error("Could not generate receipt image");
+      }
+    }
+    setFinalReviewOpen(false);
+  }, [paidAmount, dueAmount, modeStr, remarks, onSave, est, tests, reportDates, reportTimes]);
+
+  const downloadImage = (canvas: HTMLCanvasElement) => {
+    const link = document.createElement("a");
+    link.download = `receipt-${est?.patient_name || "patient"}-${format(new Date(), "dd-MM-yyyy")}.jpg`;
+    link.href = canvas.toDataURL("image/jpeg", 0.95);
+    link.click();
+    toast.success("Receipt image downloaded — share it on WhatsApp");
+  };
+
+  const buildReceiptText = () => {
+    let msg = `📋 *Visit Receipt*\n\n`;
+    msg += `*Patient:* ${[est?.title, est?.patient_name].filter(Boolean).join(" ") || "—"}\n`;
+    msg += `*Mobile:* ${est?.whatsapp_number || "—"}\n`;
+    msg += `*Visit:* ${visitData?.visit_date ? new Date(visitData.visit_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"} | ${visitData?.visit_time ? formatTime12hr(visitData.visit_time) : "—"}\n`;
+    msg += `*Address:* ${visitData?.address || "—"}\n\n`;
+    msg += `*Tests & Report Delivery:*\n`;
+    tests.forEach((t, i) => {
+      const rd = reportDates[i] ? new Date(reportDates[i]).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : "";
+      const rt = reportTimes[i] ? formatTime12hr(reportTimes[i]) : "";
+      msg += `• ${t.test_name} — ₹${t.discounted_price}${rd ? ` (Report by: ${rd} at ${rt})` : ""}\n`;
+    });
+    msg += `\n*Final Amount:* ₹${est?.final_amount || 0}\n`;
+    msg += `*Paid:* ₹${paidAmount} | *Due:* ₹${dueAmount}\n`;
+    return msg;
   };
 
   // est and tests declared above near hooks
@@ -423,27 +488,111 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
                 Go Back & Edit
               </Button>
               <Button className="flex-1" onClick={handleReviewConfirm}>
-                Confirm & Save
+                Review Once Again & Save
               </Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirm Completion</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. The visit will be marked as Completed with the payment details you entered. Are you sure?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmSave}>Yes, Confirm</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Final Review Dialog with Receipt Card */}
+      <Dialog open={finalReviewOpen} onOpenChange={setFinalReviewOpen}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Final Review — Save & Share</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            {/* Receipt card for JPEG generation */}
+            <div ref={receiptRef} className="bg-white text-black p-4 rounded-lg space-y-3" style={{ fontFamily: "Arial, sans-serif" }}>
+              {/* Header */}
+              <div className="text-center border-b-2 border-gray-800 pb-2">
+                <h2 className="text-base font-bold tracking-wide">PHP PATH LABS</h2>
+                <p className="text-[10px] text-gray-500">Home Visit Receipt</p>
+                <p className="text-[10px] text-gray-500">{format(new Date(), "dd-MM-yyyy | hh:mm a")}</p>
+              </div>
+
+              {/* Patient Info */}
+              <div className="space-y-0.5 text-xs">
+                <div className="flex justify-between"><span className="text-gray-600">Patient:</span><span className="font-semibold">{[est?.title, est?.patient_name].filter(Boolean).join(" ") || "—"}</span></div>
+                <div className="flex justify-between"><span className="text-gray-600">Mobile:</span><span className="font-semibold">{est?.whatsapp_number || "—"}</span></div>
+                {est?.gender && <div className="flex justify-between"><span className="text-gray-600">Gender:</span><span className="font-semibold">{est.gender}</span></div>}
+                {est?.doctor_name && <div className="flex justify-between"><span className="text-gray-600">Doctor:</span><span className="font-semibold">{est.doctor_name}</span></div>}
+                {est?.umr_number && <div className="flex justify-between"><span className="text-gray-600">UMR No:</span><span className="font-semibold">{est.umr_number}</span></div>}
+              </div>
+
+              {/* Visit Info */}
+              <div className="border-t border-gray-200 pt-1 space-y-0.5 text-xs">
+                <div className="flex justify-between"><span className="text-gray-600">Visit Date:</span><span className="font-semibold">{visitData?.visit_date ? new Date(visitData.visit_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}</span></div>
+                <div className="flex justify-between"><span className="text-gray-600">Visit Time:</span><span className="font-semibold">{visitData?.visit_time ? formatTime12hr(visitData.visit_time) : "—"}</span></div>
+                <div className="flex justify-between"><span className="text-gray-600">Address:</span><span className="font-semibold text-right max-w-[60%]">{visitData?.address || "—"}</span></div>
+              </div>
+
+              {/* Tests with Report Delivery */}
+              <div className="border-t border-gray-200 pt-1">
+                <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Tests & Report Delivery</p>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-gray-300">
+                      <th className="text-left py-0.5 text-gray-600 font-medium">Test</th>
+                      <th className="text-right py-0.5 text-gray-600 font-medium">Amount</th>
+                      <th className="text-right py-0.5 text-gray-600 font-medium">Report By</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tests.map((t, i) => {
+                      const rd = reportDates[i] ? new Date(reportDates[i]).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : "";
+                      const rt = reportTimes[i] ? formatTime12hr(reportTimes[i]) : "";
+                      return (
+                        <tr key={i} className="border-b border-gray-100">
+                          <td className="py-1 pr-1">
+                            {t.test_name}
+                            {t.fasting_required && <span className="text-[9px] text-red-500 ml-1">(F)</span>}
+                          </td>
+                          <td className="py-1 text-right font-semibold">₹{t.discounted_price}</td>
+                          <td className="py-1 text-right text-[10px]">{rd} {rt}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Financials */}
+              <div className="border-t-2 border-gray-800 pt-1 space-y-0.5 text-xs">
+                <div className="flex justify-between"><span className="text-gray-600">Total Amount:</span><span className="font-semibold">₹{est?.total_amount || 0}</span></div>
+                {(est?.discount_amount || 0) > 0 && (
+                  <div className="flex justify-between"><span className="text-gray-600">Discount:</span><span className="font-semibold text-green-600">-₹{est?.discount_amount}</span></div>
+                )}
+                <div className="flex justify-between"><span className="text-gray-600">Home Visit:</span><span className="font-semibold">₹{est?.home_visit_charges || 0}</span></div>
+                <div className="flex justify-between text-sm font-bold border-t border-gray-300 pt-1"><span>Final Amount:</span><span>₹{est?.final_amount || 0}</span></div>
+              </div>
+
+              {/* Payment */}
+              <div className="border-t border-gray-200 pt-1 space-y-0.5 text-xs">
+                <div className="flex justify-between"><span className="text-gray-600">Paid:</span><span className="font-semibold text-green-700">₹{paidAmount}</span></div>
+                <div className="flex justify-between"><span className="text-gray-600">Due:</span><span className={`font-semibold ${dueAmount > 0 ? 'text-red-600' : 'text-green-700'}`}>₹{dueAmount}</span></div>
+                {modeStr && <div className="flex justify-between"><span className="text-gray-600">Mode:</span><span className="font-semibold">{modeStr}</span></div>}
+              </div>
+
+              {/* Footer */}
+              <div className="text-center border-t border-gray-300 pt-1">
+                <p className="text-[9px] text-gray-400">Thank you for choosing PHP Path Labs</p>
+                <p className="text-[9px] text-gray-400">(F) = Fasting Required</p>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-2 pt-1">
+              <Button variant="outline" className="flex-1" onClick={() => { setFinalReviewOpen(false); setReviewOpen(true); }}>
+                Go Back
+              </Button>
+              <Button className="flex-1 gap-1.5" onClick={handleSaveAndShare} disabled={isPending}>
+                💾 Save & Share
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* DUE Confirmation Dialog */}
       <Dialog open={dueConfirmOpen} onOpenChange={(o) => { if (!o) { setDueConfirmOpen(false); setDueConfirmText(""); } }}>
