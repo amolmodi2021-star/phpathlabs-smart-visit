@@ -22,7 +22,6 @@ import EditEstimateDialog from "@/components/EditEstimateDialog";
 const EstimateDashboard = () => {
   const qc = useQueryClient();
   const { data: templates } = useMessageTemplates();
-  const { getForMobile, sendMutation: abnormalSend } = useAbnormalHistory();
   const [selected, setSelected] = useState<string[]>([]);
   const [bookingEstimate, setBookingEstimate] = useState<any>(null);
   const [visitForm, setVisitForm] = useState({ visit_date: "", visit_time: "", address: "", phlebotomist_id: "", home_visit_charges: "" });
@@ -37,6 +36,8 @@ const EstimateDashboard = () => {
       return data || [];
     },
   });
+
+  const { getForMobile, sendMutation: abnormalSend } = useAbnormalHistory((estimates as any[]).map((e: any) => e.whatsapp_number));
 
   const { data: phlebotomists = [] } = useQuery({
     queryKey: ["phlebotomists", "active"],
