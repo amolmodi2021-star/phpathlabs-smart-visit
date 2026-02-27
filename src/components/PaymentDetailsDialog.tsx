@@ -139,8 +139,8 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
     }
     setDueConfirmOpen(false);
     setDueConfirmText("");
-    // Skip review, go straight to final confirm with 0 paid
-    setConfirmOpen(true);
+    // Show review dialog after DUE confirmation
+    setReviewOpen(true);
   };
 
   const handleReviewConfirm = () => {
