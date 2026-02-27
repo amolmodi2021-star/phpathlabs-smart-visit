@@ -155,6 +155,7 @@ const CreateEstimate = () => {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["estimates"] });
+      qc.invalidateQueries({ queryKey: ["abnormal_history"] });
       toast.success("Estimate shared on WhatsApp!");
       setPatientName(""); setWhatsappNumber(""); setSelectedTests([]);
       setGlobalDiscountValue(0); setHomeVisitCharges(0);
