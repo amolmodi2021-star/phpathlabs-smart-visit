@@ -53,6 +53,9 @@ const HomeVisits = () => {
   const [editPaymentVisit, setEditPaymentVisit] = useState<any>(null);
   const [editPaymentPasswordDialog, setEditPaymentPasswordDialog] = useState(false);
   const [pendingEditPaymentVisit, setPendingEditPaymentVisit] = useState<any>(null);
+  const [phlebUnlockedIds, setPhlebUnlockedIds] = useState<Set<string>>(new Set());
+  const [phlebPasswordDialog, setPhlebPasswordDialog] = useState(false);
+  const [pendingPhlebVisitId, setPendingPhlebVisitId] = useState<string | null>(null);
 
 
   const { data: visits = [], isLoading } = useQuery({
@@ -565,12 +568,17 @@ const HomeVisits = () => {
                       </SelectContent>
                     </Select>
 
-                    {v.status === "Completed" ? (
-                      v.phlebotomists ? (
-                        <span className="text-xs text-muted-foreground px-2 py-1 bg-muted/50 rounded">{v.phlebotomists.name}</span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground px-2 py-1">No phlebotomist</span>
-                      )
+                    {v.status === "Completed" && !phlebUnlockedIds.has(v.id) ? (
+                      <div className="flex items-center gap-1">
+                        {v.phlebotomists ? (
+                          <span className="text-xs text-muted-foreground px-2 py-1 bg-muted/50 rounded">{v.phlebotomists.name}</span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground px-2 py-1">No phlebotomist</span>
+                        )}
+                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setPendingPhlebVisitId(v.id); setPhlebPasswordDialog(true); }}>
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                      </div>
                     ) : (
                       <Select
                         value={v.phlebotomist_id || ""}
@@ -681,6 +689,14 @@ const HomeVisits = () => {
           onSave={(data) => updatePaymentDetails.mutate({ visitId: editPaymentVisit.id, data })}
         />
       )}
+
+      {/* Password dialog for phlebotomist change on completed visits */}
+      <DeletePasswordDialog
+        open={phlebPasswordDialog}
+        onOpenChange={(o) => { setPhlebPasswordDialog(o); if (!o) setPendingPhlebVisitId(null); }}
+        onSuccess={() => { if (pendingPhlebVisitId) setPhlebUnlockedIds(prev => new Set(prev).add(pendingPhlebVisitId)); setPendingPhlebVisitId(null); }}
+        description="Enter password to change phlebotomist for a completed visit."
+      />
     </div>
   );
 };
