@@ -38,7 +38,7 @@ const HomeVisits = () => {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [addVisitOpen, setAddVisitOpen] = useState(false);
-  const { getForMobile, sendMutation: abnormalSend } = useAbnormalHistory();
+  
 
   const { data: visits = [], isLoading } = useQuery({
     queryKey: ["home_visits"],
@@ -47,6 +47,8 @@ const HomeVisits = () => {
       return data || [];
     },
   });
+
+  const { getForMobile, sendMutation: abnormalSend } = useAbnormalHistory((visits as any[]).map((v: any) => v.estimates?.whatsapp_number));
 
   const { data: phlebotomists = [] } = useQuery({
     queryKey: ["phlebotomists", "active"],
