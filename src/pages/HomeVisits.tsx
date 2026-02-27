@@ -676,6 +676,7 @@ const HomeVisits = () => {
           finalAmount={paymentVisit.estimates?.final_amount || 0}
           isPending={savePaymentAndComplete.isPending}
           onSave={(data) => savePaymentAndComplete.mutate({ visitId: paymentVisit.id, data })}
+          visitData={paymentVisit}
         />
       )}
 
@@ -708,6 +709,7 @@ const HomeVisits = () => {
             payment_remarks: editPaymentVisit.payment_remarks || "",
           }}
           onSave={(data) => updatePaymentDetails.mutate({ visitId: editPaymentVisit.id, data })}
+          visitData={editPaymentVisit}
         />
       )}
 

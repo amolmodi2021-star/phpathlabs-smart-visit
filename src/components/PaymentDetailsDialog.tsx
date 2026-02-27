@@ -6,7 +6,25 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+
+interface VisitData {
+  visit_date: string;
+  visit_time: string;
+  address: string;
+  estimates?: {
+    patient_name?: string;
+    whatsapp_number?: string;
+    total_amount?: number;
+    discount_amount?: number;
+    home_visit_charges?: number;
+    final_amount?: number;
+    estimate_tests?: { test_name: string; price: number; discounted_price: number; fasting_required: boolean }[];
+  };
+  phlebotomists?: { name: string };
+}
 
 interface PaymentDetailsDialogProps {
   open: boolean;
@@ -15,14 +33,25 @@ interface PaymentDetailsDialogProps {
   onSave: (data: { paid_amount: number; due_amount: number; payment_mode: string; payment_remarks: string }) => void;
   isPending?: boolean;
   initialData?: { paid_amount: number; payment_mode: string; payment_remarks: string };
+  visitData?: VisitData;
 }
 
 const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card"];
 
-const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, initialData }: PaymentDetailsDialogProps) => {
+const formatTime12hr = (time: string) => {
+  if (!time) return "";
+  const [h, m] = time.split(":");
+  const hour = parseInt(h, 10);
+  const ampm = hour >= 12 ? "PM" : "AM";
+  const h12 = hour % 12 || 12;
+  return `${h12}:${m} ${ampm}`;
+};
+
+const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, initialData, visitData }: PaymentDetailsDialogProps) => {
   const [selectedModes, setSelectedModes] = useState<Set<string>>(new Set());
   const [modeAmounts, setModeAmounts] = useState<Record<string, number>>({});
   const [remarks, setRemarks] = useState("");
+  const [reviewOpen, setReviewOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   // Initialize from initialData
@@ -32,7 +61,6 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
       const newModes = new Set<string>();
       const newAmounts: Record<string, number> = {};
 
-      // Parse "Cash: 500, GPay: 500" format
       for (const part of modes) {
         const colonIdx = part.indexOf(": ₹");
         if (colonIdx !== -1) {
@@ -77,6 +105,13 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
 
   const dueAmount = useMemo(() => Math.max(0, finalAmount - paidAmount), [finalAmount, paidAmount]);
 
+  const modeStr = useMemo(() => {
+    return Array.from(selectedModes)
+      .filter(m => (modeAmounts[m] || 0) > 0)
+      .map(m => `${m}: ₹${modeAmounts[m] || 0}`)
+      .join(", ");
+  }, [selectedModes, modeAmounts]);
+
   const handleSave = () => {
     if (selectedModes.size === 0) {
       toast.error("Please select at least one payment mode");
@@ -86,17 +121,16 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
       toast.error("Enter paid amount");
       return;
     }
+    setReviewOpen(true);
+  };
+
+  const handleReviewConfirm = () => {
+    setReviewOpen(false);
     setConfirmOpen(true);
   };
 
   const confirmSave = () => {
     setConfirmOpen(false);
-    // Format: "Cash: ₹500, GPay: ₹500"
-    const modeStr = Array.from(selectedModes)
-      .filter(m => (modeAmounts[m] || 0) > 0)
-      .map(m => `${m}: ₹${modeAmounts[m] || 0}`)
-      .join(", ");
-
     onSave({
       paid_amount: paidAmount,
       due_amount: dueAmount,
@@ -104,6 +138,9 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
       payment_remarks: remarks,
     });
   };
+
+  const est = visitData?.estimates;
+  const tests = est?.estimate_tests || [];
 
   return (
     <>
@@ -161,8 +198,117 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
               <Textarea value={remarks} onChange={(e) => setRemarks(e.target.value)} rows={2} placeholder="Any notes..." />
             </div>
             <Button className="w-full" onClick={handleSave} disabled={isPending}>
-              Save & Mark Completed
+              Review & Save
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Review Dialog - shows all patient + payment details */}
+      <Dialog open={reviewOpen} onOpenChange={setReviewOpen}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Review All Details</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            {/* Patient Info */}
+            <div className="space-y-1">
+              <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Patient Info</h4>
+              <div className="grid grid-cols-2 gap-1">
+                <span className="text-muted-foreground">Name:</span>
+                <span className="font-medium">{est?.patient_name || "—"}</span>
+                <span className="text-muted-foreground">Mobile:</span>
+                <span className="font-medium">{est?.whatsapp_number || "—"}</span>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Visit Info */}
+            <div className="space-y-1">
+              <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Visit Details</h4>
+              <div className="grid grid-cols-2 gap-1">
+                <span className="text-muted-foreground">Date:</span>
+                <span className="font-medium">{visitData?.visit_date || "—"}</span>
+                <span className="text-muted-foreground">Time:</span>
+                <span className="font-medium">{visitData?.visit_time ? formatTime12hr(visitData.visit_time) : "—"}</span>
+                <span className="text-muted-foreground">Address:</span>
+                <span className="font-medium">{visitData?.address || "—"}</span>
+                <span className="text-muted-foreground">Phlebotomist:</span>
+                <span className="font-medium">{visitData?.phlebotomists?.name || "Not assigned"}</span>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Tests */}
+            <div className="space-y-1">
+              <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Tests ({tests.length})</h4>
+              <div className="bg-muted/30 rounded p-2 space-y-1">
+                {tests.map((t, i) => (
+                  <div key={i} className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-muted-foreground">{i + 1}.</span>
+                      <span>{t.test_name}</span>
+                      {t.fasting_required && <Badge variant="outline" className="text-[10px] px-1 py-0">Fasting</Badge>}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {t.price !== t.discounted_price && (
+                        <span className="line-through text-muted-foreground">₹{t.price}</span>
+                      )}
+                      <span className="font-medium">₹{t.discounted_price}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Financials */}
+            <div className="space-y-1">
+              <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Amount Details</h4>
+              <div className="grid grid-cols-2 gap-1">
+                <span className="text-muted-foreground">Total Amount:</span>
+                <span className="font-medium">₹{est?.total_amount || 0}</span>
+                <span className="text-muted-foreground">Discount:</span>
+                <span className="font-medium text-emerald-600 dark:text-emerald-400">₹{est?.discount_amount || 0}</span>
+                <span className="text-muted-foreground">Home Visit Charges:</span>
+                <span className="font-medium">₹{est?.home_visit_charges || 0}</span>
+                <span className="text-muted-foreground">Final Amount:</span>
+                <span className="font-semibold text-primary">₹{est?.final_amount || 0}</span>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Payment */}
+            <div className="space-y-1">
+              <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Payment Details</h4>
+              <div className="grid grid-cols-2 gap-1">
+                <span className="text-muted-foreground">Paid Amount:</span>
+                <span className="font-medium">₹{paidAmount}</span>
+                <span className="text-muted-foreground">Due Amount:</span>
+                <span className={`font-medium ${dueAmount > 0 ? 'text-destructive' : 'text-success'}`}>₹{dueAmount}</span>
+                <span className="text-muted-foreground">Payment Mode:</span>
+                <span className="font-medium">{modeStr || "—"}</span>
+                {remarks && (
+                  <>
+                    <span className="text-muted-foreground">Remarks:</span>
+                    <span className="font-medium">{remarks}</span>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <Button variant="outline" className="flex-1" onClick={() => setReviewOpen(false)}>
+                Go Back & Edit
+              </Button>
+              <Button className="flex-1" onClick={handleReviewConfirm}>
+                Confirm & Save
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
