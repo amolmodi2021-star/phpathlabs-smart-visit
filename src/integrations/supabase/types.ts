@@ -108,42 +108,57 @@ export type Database = {
         Row: {
           created_at: string
           discount_amount: number
+          doctor_name: string | null
+          email: string | null
           final_amount: number
+          gender: string | null
           global_discount_type: string | null
           global_discount_value: number | null
           home_visit_charges: number
           id: string
           patient_name: string | null
           status: string
+          title: string | null
           total_amount: number
+          umr_number: string | null
           updated_at: string
           whatsapp_number: string
         }
         Insert: {
           created_at?: string
           discount_amount?: number
+          doctor_name?: string | null
+          email?: string | null
           final_amount?: number
+          gender?: string | null
           global_discount_type?: string | null
           global_discount_value?: number | null
           home_visit_charges?: number
           id?: string
           patient_name?: string | null
           status?: string
+          title?: string | null
           total_amount?: number
+          umr_number?: string | null
           updated_at?: string
           whatsapp_number: string
         }
         Update: {
           created_at?: string
           discount_amount?: number
+          doctor_name?: string | null
+          email?: string | null
           final_amount?: number
+          gender?: string | null
           global_discount_type?: string | null
           global_discount_value?: number | null
           home_visit_charges?: number
           id?: string
           patient_name?: string | null
           status?: string
+          title?: string | null
           total_amount?: number
+          umr_number?: string | null
           updated_at?: string
           whatsapp_number?: string
         }

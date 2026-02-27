@@ -38,7 +38,12 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
 
   const est = visit?.estimates;
 
+  const [title, setTitle] = useState("");
   const [patientName, setPatientName] = useState("");
+  const [gender, setGender] = useState("");
+  const [email, setEmail] = useState("");
+  const [doctorName, setDoctorName] = useState("SELF");
+  const [umrInput, setUmrInput] = useState("");
   const [whatsappNumber, setWhatsappNumber] = useState("");
   const [visitDate, setVisitDate] = useState("");
   const [visitTime, setVisitTime] = useState("");
@@ -58,7 +63,14 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
   // Populate form when visit changes
   useEffect(() => {
     if (!visit || !est) return;
+    setTitle(est.title || "");
     setPatientName(est.patient_name || "");
+    setGender(est.gender || "");
+    setEmail(est.email || "");
+    setDoctorName(est.doctor_name || "SELF");
+    // Parse UMR number - strip "UMR" prefix for editing
+    const rawUmr = est.umr_number || "";
+    setUmrInput(rawUmr.startsWith("UMR") ? String(parseInt(rawUmr.slice(3)) || "") : rawUmr);
     setWhatsappNumber(est.whatsapp_number || "");
     setVisitDate(visit.visit_date || "");
     setVisitTime(visit.visit_time || "");
@@ -141,9 +153,17 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
 
       const cleanNumber = whatsappNumber.replace(/\D/g, "").slice(-10);
 
+      // Format UMR number
+      const formattedUmr = umrInput ? `UMR${String(parseInt(umrInput) || 0).padStart(7, "0")}` : null;
+
       // Update estimate
       const { error: estError } = await supabase.from("estimates").update({
+        title: title || null,
         patient_name: patientName || null,
+        gender: gender || null,
+        email: email || null,
+        doctor_name: doctorName || "SELF",
+        umr_number: formattedUmr,
         whatsapp_number: cleanNumber,
         total_amount: calculations.totalAmount,
         discount_amount: calculations.totalDiscount,
@@ -219,13 +239,57 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
         <DialogHeader><DialogTitle>Edit Home Visit Record</DialogTitle></DialogHeader>
         <div className="space-y-4">
           {/* Patient Info */}
-          <div>
-            <Label>Patient Name</Label>
-            <Input value={patientName} onChange={(e) => setPatientName(e.target.value)} />
+          <div className="grid grid-cols-[120px_1fr] gap-2">
+            <div>
+              <Label>Title</Label>
+              <Select value={title} onValueChange={setTitle}>
+                <SelectTrigger className="h-10"><SelectValue placeholder="Title" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Mr.">Mr.</SelectItem>
+                  <SelectItem value="Mrs.">Mrs.</SelectItem>
+                  <SelectItem value="Ms.">Ms.</SelectItem>
+                  <SelectItem value="Miss.">Miss.</SelectItem>
+                  <SelectItem value="Master.">Master.</SelectItem>
+                  <SelectItem value="Baby Of.">Baby Of.</SelectItem>
+                  <SelectItem value="Dr.">Dr.</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Patient Name</Label>
+              <Input value={patientName} onChange={(e) => setPatientName(e.target.value)} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label>Gender</Label>
+              <Select value={gender} onValueChange={setGender}>
+                <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Male">Male</SelectItem>
+                  <SelectItem value="Female">Female</SelectItem>
+                  <SelectItem value="Unspecified">Unspecified</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>WhatsApp Number *</Label>
+              <Input type="tel" value={whatsappNumber} onChange={(e) => setWhatsappNumber(e.target.value)} />
+            </div>
           </div>
           <div>
-            <Label>WhatsApp Number *</Label>
-            <Input type="tel" value={whatsappNumber} onChange={(e) => setWhatsappNumber(e.target.value)} />
+            <Label>Email ID</Label>
+            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="patient@example.com" />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label>Doctor's Name</Label>
+              <Input value={doctorName} onChange={(e) => setDoctorName(e.target.value)} />
+            </div>
+            <div>
+              <Label>UMR Number</Label>
+              <Input value={umrInput} onChange={(e) => setUmrInput(e.target.value.replace(/\D/g, ""))} placeholder="e.g. 123 → UMR0000123" />
+            </div>
           </div>
 
           {/* Visit Details */}
