@@ -301,7 +301,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_abnormal_history_counts: {
+        Args: never
+        Returns: {
+          sent_records: number
+          total_records: number
+          unsent_records: number
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
