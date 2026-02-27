@@ -582,6 +582,9 @@ const HomeVisits = () => {
 
                   {/* Actions row */}
                   <div className="flex flex-wrap gap-2 items-center">
+                    {v.status === "Completed" ? (
+                      <Badge className={statusColors["Completed"]}>Completed</Badge>
+                    ) : (
                     <Select value={v.status} onValueChange={(s) => handleStatusChange(v, s)}>
                       <SelectTrigger className="w-28 h-8 text-xs"><SelectValue /></SelectTrigger>
                       <SelectContent>
@@ -590,6 +593,7 @@ const HomeVisits = () => {
                         <SelectItem value="Cancelled">Cancelled</SelectItem>
                       </SelectContent>
                     </Select>
+                    )}
 
                     {v.status === "Completed" && !phlebUnlockedIds.has(v.id) ? (
                       <div className="flex items-center gap-1">
