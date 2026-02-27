@@ -11,16 +11,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import { Download, Trash2, MapPin, Pencil } from "lucide-react";
+import { Download, Trash2, MapPin, Pencil, AlertTriangle } from "lucide-react";
 import { exportToExcel } from "@/lib/excel";
 import { useMessageTemplates } from "@/hooks/useMessageTemplates";
 import { buildVisitMessage, shareOnWhatsApp } from "@/lib/whatsapp";
+import { useAbnormalHistory } from "@/hooks/useAbnormalHistory";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 import EditEstimateDialog from "@/components/EditEstimateDialog";
 
 const EstimateDashboard = () => {
   const qc = useQueryClient();
   const { data: templates } = useMessageTemplates();
+  const { getUnsentForMobile, sendMutation: abnormalSend } = useAbnormalHistory();
   const [selected, setSelected] = useState<string[]>([]);
   const [bookingEstimate, setBookingEstimate] = useState<any>(null);
   const [visitForm, setVisitForm] = useState({ visit_date: "", visit_time: "", address: "", phlebotomist_id: "", home_visit_charges: "" });
@@ -164,6 +166,14 @@ const EstimateDashboard = () => {
                     </div>
                    </div>
                    <div className="flex gap-1">
+                     {(() => {
+                       const abnormal = getUnsentForMobile(est.whatsapp_number);
+                       return abnormal ? (
+                         <Button size="sm" variant="ghost" className="text-warning" onClick={() => abnormalSend.mutate({ id: abnormal.id, mobile: est.whatsapp_number, message: abnormal.message, context: "estimate" })}>
+                           <AlertTriangle className="h-3.5 w-3.5" />
+                         </Button>
+                       ) : null;
+                     })()}
                      <Button size="sm" variant="ghost" onClick={() => setEditEstimate(est)}>
                        <Pencil className="h-3.5 w-3.5" />
                      </Button>

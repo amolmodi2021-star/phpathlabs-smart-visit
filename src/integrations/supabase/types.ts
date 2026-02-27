@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      abnormal_history: {
+        Row: {
+          created_at: string
+          id: string
+          message: string
+          mobile_number: string
+          sent: boolean
+          sent_at: string | null
+          sent_context: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message: string
+          mobile_number: string
+          sent?: boolean
+          sent_at?: string | null
+          sent_context?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message?: string
+          mobile_number?: string
+          sent?: boolean
+          sent_at?: string | null
+          sent_context?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       estimate_tests: {
         Row: {
           created_at: string
