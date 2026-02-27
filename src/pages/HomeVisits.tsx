@@ -48,7 +48,11 @@ const HomeVisits = () => {
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterPhlebotomist, setFilterPhlebotomist] = useState<string>("all");
   const [paymentVisit, setPaymentVisit] = useState<any>(null);
-
+  const [editPasswordDialog, setEditPasswordDialog] = useState(false);
+  const [pendingEditVisit, setPendingEditVisit] = useState<any>(null);
+  const [editPaymentVisit, setEditPaymentVisit] = useState<any>(null);
+  const [editPaymentPasswordDialog, setEditPaymentPasswordDialog] = useState(false);
+  const [pendingEditPaymentVisit, setPendingEditPaymentVisit] = useState<any>(null);
 
   const [phlebUnlockedIds, setPhlebUnlockedIds] = useState<Set<string>>(new Set());
   const [phlebPasswordDialog, setPhlebPasswordDialog] = useState(false);
@@ -129,15 +133,37 @@ const HomeVisits = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
-
+  const updatePaymentDetails = useMutation({
+    mutationFn: async ({ visitId, data }: { visitId: string; data: { paid_amount: number; due_amount: number; payment_mode: string; payment_remarks: string } }) => {
+      const { error } = await supabase.from("home_visits").update({
+        paid_amount: data.paid_amount,
+        due_amount: data.due_amount,
+        payment_mode: data.payment_mode,
+        payment_remarks: data.payment_remarks,
+      }).eq("id", visitId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["home_visits"] });
+      toast.success("Payment details updated");
+      setEditPaymentVisit(null);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
 
   const openEditDialog = (v: any) => {
     if (v.status === "Completed") {
-      toast.error("Completed records cannot be edited");
-      return;
+      setPendingEditVisit(v);
+      setEditPasswordDialog(true);
+    } else {
+      setEditVisit(v);
     }
-    setEditVisit(v);
+  };
+
+  const openEditPaymentDialog = (v: any) => {
+    setPendingEditPaymentVisit(v);
+    setEditPaymentPasswordDialog(true);
   };
 
   const formatTime12hr = (time: string) => {
@@ -468,11 +494,9 @@ const HomeVisits = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
-                      {v.status !== "Completed" && (
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditDialog(v)}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditDialog(v)}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
                       <Badge className={statusColors[v.status] || ""}>{v.status}</Badge>
                     </div>
                   </div>
@@ -541,7 +565,12 @@ const HomeVisits = () => {
                   {/* Payment details for completed visits */}
                   {v.status === "Completed" && v.payment_mode && (
                     <div className="bg-muted/50 rounded-lg p-2 space-y-1 text-xs">
-                      <span className="font-medium">Payment Details</span>
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium">Payment Details</span>
+                        <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => openEditPaymentDialog(v)}>
+                          <Pencil className="h-3 w-3 mr-1" />Edit
+                        </Button>
+                      </div>
                       <div className="grid grid-cols-2 gap-1">
                         <span className="text-muted-foreground">Paid: <span className="text-foreground font-medium">₹{v.paid_amount || 0}</span></span>
                         <span className="text-muted-foreground">Due: <span className={`font-medium ${(v.due_amount || 0) > 0 ? 'text-destructive' : 'text-success'}`}>₹{v.due_amount || 0}</span></span>
@@ -653,6 +682,39 @@ const HomeVisits = () => {
         />
       )}
 
+
+      {/* Password dialog for editing completed visits */}
+      <DeletePasswordDialog
+        open={editPasswordDialog}
+        onOpenChange={(o) => { setEditPasswordDialog(o); if (!o) setPendingEditVisit(null); }}
+        onSuccess={() => { setEditVisit(pendingEditVisit); setPendingEditVisit(null); }}
+        description="Enter password to edit a completed visit record."
+      />
+
+      {/* Password dialog for editing payment details of completed visits */}
+      <DeletePasswordDialog
+        open={editPaymentPasswordDialog}
+        onOpenChange={(o) => { setEditPaymentPasswordDialog(o); if (!o) setPendingEditPaymentVisit(null); }}
+        onSuccess={() => { setEditPaymentVisit(pendingEditPaymentVisit); setPendingEditPaymentVisit(null); }}
+        description="Enter password to edit payment details."
+      />
+
+      {/* Edit payment details dialog */}
+      {editPaymentVisit && (
+        <PaymentDetailsDialog
+          open={!!editPaymentVisit}
+          onClose={() => setEditPaymentVisit(null)}
+          finalAmount={editPaymentVisit.estimates?.final_amount || 0}
+          isPending={updatePaymentDetails.isPending}
+          initialData={{
+            paid_amount: editPaymentVisit.paid_amount || 0,
+            payment_mode: editPaymentVisit.payment_mode || "",
+            payment_remarks: editPaymentVisit.payment_remarks || "",
+          }}
+          onSave={(data) => updatePaymentDetails.mutate({ visitId: editPaymentVisit.id, data })}
+          visitData={editPaymentVisit}
+        />
+      )}
 
 
       {/* Password dialog for phlebotomist change on completed visits */}
