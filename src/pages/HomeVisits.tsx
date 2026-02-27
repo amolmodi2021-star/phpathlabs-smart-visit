@@ -15,6 +15,7 @@ import { useState, useCallback, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
+import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import EditHomeVisitDialog from "@/components/EditHomeVisitDialog";
 import AddHomeVisitDialog from "@/components/AddHomeVisitDialog";
 import { format, isToday, parseISO } from "date-fns";
@@ -391,21 +392,13 @@ const HomeVisits = () => {
       {/* Edit dialog */}
       <EditHomeVisitDialog visit={editVisit} open={!!editVisit} onClose={() => setEditVisit(null)} />
 
-      {/* Delete confirmation dialog */}
-      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Confirm Delete</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            Are you sure you want to delete {selectedIds.size} home visit{selectedIds.size !== 1 ? 's' : ''}? This action cannot be undone.
-          </p>
-          <div className="flex gap-2 justify-end mt-4">
-            <Button variant="outline" onClick={() => setDeleteConfirmOpen(false)}>Cancel</Button>
-            <Button variant="destructive" onClick={() => deleteVisits.mutate(Array.from(selectedIds))}>
-              Delete
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Delete password dialog */}
+      <DeletePasswordDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        onSuccess={() => deleteVisits.mutate(Array.from(selectedIds))}
+        description={`Delete ${selectedIds.size} home visit${selectedIds.size !== 1 ? 's' : ''}? This cannot be undone.`}
+      />
 
       <ExportPasswordDialog open={exportDialog} onOpenChange={setExportDialog} onSuccess={handleExport} />
       <AddHomeVisitDialog open={addVisitOpen} onClose={() => setAddVisitOpen(false)} />

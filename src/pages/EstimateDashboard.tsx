@@ -17,6 +17,7 @@ import { useMessageTemplates } from "@/hooks/useMessageTemplates";
 import { buildVisitMessage, shareOnWhatsApp } from "@/lib/whatsapp";
 import { useAbnormalHistory } from "@/hooks/useAbnormalHistory";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
+import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import EditEstimateDialog from "@/components/EditEstimateDialog";
 
 const EstimateDashboard = () => {
@@ -28,6 +29,7 @@ const EstimateDashboard = () => {
   const [exportDialog, setExportDialog] = useState(false);
   const [editEstimate, setEditEstimate] = useState<any>(null);
   const [search, setSearch] = useState("");
+  const [deleteDialog, setDeleteDialog] = useState<{ ids: string[]; description: string } | null>(null);
 
   const { data: estimates = [], isLoading } = useQuery({
     queryKey: ["estimates", "dashboard"],
@@ -127,11 +129,11 @@ const EstimateDashboard = () => {
         <h1 className="text-xl font-bold">Estimate Dashboard</h1>
         <div className="flex gap-2">
           {selected.length > 0 && (
-            <Button size="sm" variant="destructive" onClick={() => deleteMutation.mutate(selected)}>
+            <Button size="sm" variant="destructive" onClick={() => setDeleteDialog({ ids: selected, description: `Delete ${selected.length} selected estimate(s)?` })}>
               <Trash2 className="h-4 w-4 mr-1" />Delete ({selected.length})
             </Button>
           )}
-          <Button size="sm" variant="outline" onClick={() => deleteMutation.mutate(estimates.map((e: any) => e.id))} disabled={estimates.length === 0}>
+          <Button size="sm" variant="outline" onClick={() => setDeleteDialog({ ids: estimates.map((e: any) => e.id), description: "Delete ALL estimates? This cannot be undone." })} disabled={estimates.length === 0}>
             <Trash2 className="h-4 w-4 mr-1" />Delete All
           </Button>
           <Button size="sm" variant="outline" onClick={() => setExportDialog(true)}><Download className="h-4 w-4 mr-1" />Excel</Button>
@@ -219,6 +221,12 @@ const EstimateDashboard = () => {
 
       <EditEstimateDialog estimate={editEstimate} open={!!editEstimate} onClose={() => setEditEstimate(null)} />
       <ExportPasswordDialog open={exportDialog} onOpenChange={setExportDialog} onSuccess={handleExport} />
+      <DeletePasswordDialog
+        open={!!deleteDialog}
+        onOpenChange={(o) => !o && setDeleteDialog(null)}
+        onSuccess={() => { if (deleteDialog) deleteMutation.mutate(deleteDialog.ids); }}
+        description={deleteDialog?.description}
+      />
     </div>
   );
 };
