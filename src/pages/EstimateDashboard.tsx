@@ -166,24 +166,26 @@ const EstimateDashboard = () => {
                       <span className="font-bold">Final: ₹{est.final_amount}</span>
                     </div>
                    </div>
-                   <div className="flex gap-1">
+                   <div className="flex flex-col items-end gap-1">
+                     <div className="flex gap-1">
+                       <Button size="sm" variant="ghost" onClick={() => setEditEstimate(est)}>
+                         <Pencil className="h-3.5 w-3.5" />
+                       </Button>
+                       <Button size="sm" variant="outline" onClick={() => { setBookingEstimate(est); setVisitForm(p => ({ ...p, home_visit_charges: Number(est.home_visit_charges) > 0 ? String(est.home_visit_charges) : "" })); }}>
+                         <MapPin className="h-3.5 w-3.5 mr-1" />Book Visit
+                       </Button>
+                     </div>
                      {(() => {
                        const abnormal = getForMobile(est.whatsapp_number);
                        return abnormal ? (
-                         <div className="flex flex-col items-center">
-                           <Button size="sm" variant="ghost" className="text-warning" onClick={() => abnormalSend.mutate({ id: abnormal.id, mobile: est.whatsapp_number, message: abnormal.message, context: "estimate" })}>
+                         <div className="flex items-center gap-1">
+                           <Button size="sm" variant="ghost" className="h-6 px-1 text-warning" onClick={() => abnormalSend.mutate({ id: abnormal.id, mobile: est.whatsapp_number, message: abnormal.message, context: "estimate" })}>
                              <AlertTriangle className="h-3.5 w-3.5" />
                            </Button>
                            {abnormal.sent_at && <span className="text-[9px] text-muted-foreground leading-none">{format(new Date(abnormal.sent_at), "dd-MM HH:mm")}</span>}
                          </div>
                        ) : null;
                      })()}
-                     <Button size="sm" variant="ghost" onClick={() => setEditEstimate(est)}>
-                       <Pencil className="h-3.5 w-3.5" />
-                     </Button>
-                     <Button size="sm" variant="outline" onClick={() => { setBookingEstimate(est); setVisitForm(p => ({ ...p, home_visit_charges: Number(est.home_visit_charges) > 0 ? String(est.home_visit_charges) : "" })); }}>
-                       <MapPin className="h-3.5 w-3.5 mr-1" />Book Visit
-                     </Button>
                    </div>
                 </div>
               </CardContent>
