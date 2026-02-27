@@ -65,25 +65,26 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [dueConfirmOpen, setDueConfirmOpen] = useState(false);
   const [dueConfirmText, setDueConfirmText] = useState("");
-  const [reportDate, setReportDate] = useState("");
-  const [reportTime, setReportTime] = useState("");
+  const [reportDates, setReportDates] = useState<Record<number, string>>({});
+  const [reportTimes, setReportTimes] = useState<Record<number, string>>({});
 
-  // Auto-fill report delivery date/time when review opens
+  const est = visitData?.estimates;
+  const tests = est?.estimate_tests || [];
+
+  // Auto-fill report delivery date/time per test when review opens
   useEffect(() => {
-    if (reviewOpen && !reportDate) {
+    if (reviewOpen && Object.keys(reportDates).length === 0 && tests.length > 0) {
       const now = new Date();
       const todayStr = format(now, "yyyy-MM-dd");
       const currentHour = now.getHours();
-      const currentMin = now.getMinutes();
-      setReportDate(todayStr);
-      // Before 1:00 PM → 3:30 PM today, after 1:00 PM → 7:30 PM today
-      if (currentHour < 13 || (currentHour === 13 && currentMin === 0)) {
-        setReportTime("15:30");
-      } else {
-        setReportTime("19:30");
-      }
+      const defaultTime = currentHour < 13 ? "15:30" : "19:30";
+      const dates: Record<number, string> = {};
+      const times: Record<number, string> = {};
+      tests.forEach((_, i) => { dates[i] = todayStr; times[i] = defaultTime; });
+      setReportDates(dates);
+      setReportTimes(times);
     }
-  }, [reviewOpen]);
+  }, [reviewOpen, tests.length]);
 
   // Initialize from initialData
   useEffect(() => {
@@ -187,8 +188,7 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
     });
   };
 
-  const est = visitData?.estimates;
-  const tests = est?.estimate_tests || [];
+  // est and tests declared above near hooks
 
   return (
     <>
@@ -309,16 +309,16 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
 
             <Separator />
 
-            {/* Tests */}
+            {/* Tests with Report Delivery */}
             <div className="space-y-1">
-              <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Tests ({tests.length})</h4>
-              <div className="bg-muted/30 rounded p-2 space-y-1.5">
+              <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Tests & Report Delivery ({tests.length})</h4>
+              <div className="bg-muted/30 rounded p-2 space-y-3">
                 {tests.map((t, i) => (
-                  <div key={i} className="text-xs">
+                  <div key={i} className="text-xs space-y-1.5">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
                         <span className="text-muted-foreground">{i + 1}.</span>
-                        <span>{t.test_name}</span>
+                        <span className="font-medium">{t.test_name}</span>
                         {t.fasting_required && <Badge variant="outline" className="text-[10px] px-1 py-0">Fasting</Badge>}
                       </div>
                       <div className="flex items-center gap-2">
@@ -328,56 +328,52 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
                         <span className="font-medium">₹{t.discounted_price}</span>
                       </div>
                     </div>
+                    {/* Per-test report delivery */}
+                    <div className="ml-4 space-y-1 border-l-2 border-primary/20 pl-2">
+                      <span className="text-[10px] text-muted-foreground uppercase font-semibold">Report by:</span>
+                      <div className="flex flex-wrap gap-1">
+                        {[0, 1, 2].map(offset => {
+                          const d = addDays(new Date(), offset);
+                          const dateStr = format(d, "yyyy-MM-dd");
+                          const lbl = offset === 0 ? "Today" : offset === 1 ? "Tomorrow" : "Day After";
+                          return (
+                            <Button key={offset} type="button" size="sm"
+                              variant={reportDates[i] === dateStr ? "default" : "outline"}
+                              className="h-6 text-[10px] px-2"
+                              onClick={() => setReportDates(p => ({ ...p, [i]: dateStr }))}>
+                              {lbl}
+                            </Button>
+                          );
+                        })}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <Input type="date" value={reportDates[i] || ""} onChange={e => setReportDates(p => ({ ...p, [i]: e.target.value }))} className="flex-1 h-7 text-[10px]" />
+                        <Select value={reportTimes[i] || ""} onValueChange={v => setReportTimes(p => ({ ...p, [i]: v }))}>
+                          <SelectTrigger className="w-24 h-7 text-[10px]"><SelectValue placeholder="Time" /></SelectTrigger>
+                          <SelectContent>
+                            {(() => {
+                              const slots: { val: string; lbl: string }[] = [];
+                              for (let h = 8; h <= 20; h++) {
+                                slots.push({ val: `${h.toString().padStart(2, "0")}:00`, lbl: `${h % 12 || 12}:00 ${h >= 12 ? "PM" : "AM"}` });
+                              }
+                              slots.push({ val: "15:30", lbl: "3:30 PM" });
+                              slots.push({ val: "19:30", lbl: "7:30 PM" });
+                              slots.sort((a, b) => a.val.localeCompare(b.val));
+                              return slots.map(s => <SelectItem key={s.val} value={s.val}>{s.lbl}</SelectItem>);
+                            })()}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {reportDates[i] && reportTimes[i] && (
+                        <p className="text-[10px] font-medium text-primary">
+                          📋 {new Date(reportDates[i]).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })} at {formatTime12hr(reportTimes[i])}
+                        </p>
+                      )}
+                    </div>
+                    {i < tests.length - 1 && <Separator className="mt-2" />}
                   </div>
                 ))}
               </div>
-            </div>
-
-            <Separator />
-
-            {/* Report Delivery */}
-            <div className="space-y-2">
-              <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Report Delivery</h4>
-              <div className="flex flex-wrap gap-1.5">
-                {[0, 1, 2].map(offset => {
-                  const d = addDays(new Date(), offset);
-                  const dateStr = format(d, "yyyy-MM-dd");
-                  const label = offset === 0 ? "Today" : offset === 1 ? "Tomorrow" : "Day After";
-                  return (
-                    <Button key={offset} type="button" size="sm" variant={reportDate === dateStr ? "default" : "outline"} className="h-7 text-xs"
-                      onClick={() => setReportDate(dateStr)}>
-                      {label} ({format(d, "dd MMM")})
-                    </Button>
-                  );
-                })}
-              </div>
-              <div className="flex items-center gap-2">
-                <Input type="date" value={reportDate} onChange={e => setReportDate(e.target.value)} className="flex-1 h-8 text-xs" />
-                <Select value={reportTime} onValueChange={setReportTime}>
-                  <SelectTrigger className="w-28 h-8 text-xs"><SelectValue placeholder="Time" /></SelectTrigger>
-                  <SelectContent>
-                    {(() => {
-                      const times: { val: string; label: string }[] = [];
-                      for (let hour = 8; hour <= 20; hour++) {
-                        const val = `${hour.toString().padStart(2, "0")}:00`;
-                        const label = `${hour % 12 || 12}:00 ${hour >= 12 ? "PM" : "AM"}`;
-                        times.push({ val, label });
-                      }
-                      // Add special 3:30 PM and 7:30 PM slots
-                      times.push({ val: "15:30", label: "3:30 PM" });
-                      times.push({ val: "19:30", label: "7:30 PM" });
-                      // Sort by time
-                      times.sort((a, b) => a.val.localeCompare(b.val));
-                      return times.map(t => <SelectItem key={t.val} value={t.val}>{t.label}</SelectItem>);
-                    })()}
-                  </SelectContent>
-                </Select>
-              </div>
-              {reportDate && reportTime && (
-                <p className="text-xs font-medium text-primary">
-                  📋 Reports by: {new Date(reportDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })} at {formatTime12hr(reportTime)}
-                </p>
-              )}
             </div>
 
             <Separator />
