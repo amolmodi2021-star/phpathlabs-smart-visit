@@ -263,24 +263,45 @@ const HomeVisits = () => {
     return result;
   }, [sortedVisits, search, dateFilter, filterFromDate, filterToDate, filterStatus, filterPhlebotomist]);
 
+  const parsePaymentModeAmounts = (paymentMode: string | null) => {
+    const result = { Cash: 0, "Credit Card": 0, GPay: 0, Paytm: 0 };
+    if (!paymentMode) return result;
+    const parts = paymentMode.split(", ");
+    for (const part of parts) {
+      const colonIdx = part.indexOf(": ₹");
+      if (colonIdx !== -1) {
+        const mode = part.substring(0, colonIdx).trim();
+        const amount = parseFloat(part.substring(colonIdx + 3)) || 0;
+        if (mode in result) (result as any)[mode] = amount;
+      }
+    }
+    return result;
+  };
+
   const handleExport = () => {
-    exportToExcel(visits.map((v: any) => ({
-      "Visit Date": v.visit_date,
-      "Visit Time": formatTime12hr(v.visit_time),
-      "Patient": v.estimates?.patient_name || "",
-      "Mobile": v.estimates?.whatsapp_number || "",
-      "Address": v.address,
-      "Phlebotomist": v.phlebotomists?.name || "",
-      "Status": v.status,
-      "Total Amount": v.estimates?.total_amount || 0,
-      "Discount": v.estimates?.discount_amount || 0,
-      "Home Visit Charges": v.estimates?.home_visit_charges || 0,
-      "Final Amount": v.estimates?.final_amount || 0,
-      "Paid Amount": v.paid_amount || 0,
-      "Due Amount": v.due_amount || 0,
-      "Payment Mode": v.payment_mode || "",
-      "Payment Remarks": v.payment_remarks || "",
-    })), "home_visits_export");
+    exportToExcel(visits.map((v: any) => {
+      const modeAmounts = parsePaymentModeAmounts(v.payment_mode);
+      return {
+        "Visit Date": v.visit_date,
+        "Visit Time": formatTime12hr(v.visit_time),
+        "Patient": v.estimates?.patient_name || "",
+        "Mobile": v.estimates?.whatsapp_number || "",
+        "Address": v.address,
+        "Phlebotomist": v.phlebotomists?.name || "",
+        "Status": v.status,
+        "Total Amount": v.estimates?.total_amount || 0,
+        "Discount": v.estimates?.discount_amount || 0,
+        "Home Visit Charges": v.estimates?.home_visit_charges || 0,
+        "Final Amount": v.estimates?.final_amount || 0,
+        "Paid Amount": v.paid_amount || 0,
+        "Due Amount": v.due_amount || 0,
+        "Cash": modeAmounts.Cash,
+        "Credit Card": modeAmounts["Credit Card"],
+        "GPay": modeAmounts.GPay,
+        "Paytm": modeAmounts.Paytm,
+        "Payment Remarks": v.payment_remarks || "",
+      };
+    }), "home_visits_export");
   };
 
   return (
