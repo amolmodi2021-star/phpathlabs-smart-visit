@@ -98,37 +98,24 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
 
   const formatWhatsApp = (raw: string): string => raw.replace(/\D/g, "").slice(-10);
 
-  const handleVisitDateChange = (nextDate: string) => {
+  const handleVisitDateBlur = () => {
     const today = format(new Date(), "yyyy-MM-dd");
-
-    // Only validate fully typed dates (yyyy-MM-dd = 10 chars)
-    if (nextDate && nextDate.length === 10 && /^\d{4}-\d{2}-\d{2}$/.test(nextDate)) {
-      if (nextDate < today) {
-        setVisitDate(today);
-        toast.error("Past dates are not allowed");
-        return;
-      }
-      setVisitDate(nextDate);
-
-      if (nextDate === today && visitTime && visitTime < format(new Date(), "HH:mm")) {
-        setVisitTime("");
-        toast.error("Selected time has already passed");
-      }
-    } else {
-      setVisitDate(nextDate);
+    if (visitDate && /^\d{4}-\d{2}-\d{2}$/.test(visitDate) && visitDate < today) {
+      setVisitDate(today);
+      toast.error("Past dates are not allowed");
+    }
+    if (visitDate === today && visitTime && visitTime < format(new Date(), "HH:mm")) {
+      setVisitTime("");
+      toast.error("Selected time has already passed");
     }
   };
 
-  const handleVisitTimeChange = (nextTime: string) => {
+  const handleVisitTimeBlur = () => {
     const today = format(new Date(), "yyyy-MM-dd");
-
-    if (visitDate === today && nextTime && nextTime < format(new Date(), "HH:mm")) {
+    if (visitDate === today && visitTime && visitTime < format(new Date(), "HH:mm")) {
       setVisitTime("");
       toast.error("Past time is not allowed for today");
-      return;
     }
-
-    setVisitTime(nextTime);
   };
 
   const calculations = useMemo(() => {
@@ -270,7 +257,8 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
               <Input
                 type="date"
                 value={visitDate}
-                onChange={(e) => handleVisitDateChange(e.target.value)}
+                onChange={(e) => setVisitDate(e.target.value)}
+                onBlur={handleVisitDateBlur}
                 min={format(new Date(), "yyyy-MM-dd")}
               />
             </div>
@@ -279,12 +267,9 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
               <Input
                 type="time"
                 value={visitTime}
-                onChange={(e) => handleVisitTimeChange(e.target.value)}
-                min={visitDate === format(new Date(), "yyyy-MM-dd") ? format(new Date(), "HH:mm") : undefined}
+                onChange={(e) => setVisitTime(e.target.value)}
+                onBlur={handleVisitTimeBlur}
               />
-              {visitDate === format(new Date(), "yyyy-MM-dd") && visitTime && visitTime < format(new Date(), "HH:mm") && (
-                <p className="text-xs text-destructive mt-1">Time has already passed</p>
-              )}
             </div>
           </div>
           <div>
