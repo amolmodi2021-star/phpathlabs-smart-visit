@@ -40,6 +40,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
   const [email, setEmail] = useState("");
   const [doctorName, setDoctorName] = useState("SELF");
   const [umrInput, setUmrInput] = useState("");
+  const [dob, setDob] = useState("");
   const [whatsappNumber, setWhatsappNumber] = useState("");
   const [visitDate, setVisitDate] = useState("");
   const [visitTime, setVisitTime] = useState("");
@@ -67,6 +68,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
     // Parse UMR number - strip "UMR" prefix for editing
     const rawUmr = est.umr_number || "";
     setUmrInput(rawUmr.startsWith("UMR") ? String(parseInt(rawUmr.slice(3)) || "") : rawUmr);
+    setDob(est.dob || "");
     setWhatsappNumber(est.whatsapp_number || "");
     setVisitDate(visit.visit_date || "");
     setVisitTime(visit.visit_time || "");
@@ -160,6 +162,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
         email: email || null,
         doctor_name: doctorName || "SELF",
         umr_number: formattedUmr,
+        dob: dob || null,
         whatsapp_number: cleanNumber,
         total_amount: calculations.totalAmount,
         discount_amount: calculations.totalDiscount,
@@ -265,6 +268,16 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
             <div>
               <Label>UMR Number</Label>
               <Input value={umrInput} onChange={(e) => setUmrInput(e.target.value.replace(/\D/g, ""))} placeholder="e.g. 123 → UMR0000123" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label>DOB</Label>
+              <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} />
+            </div>
+            <div>
+              <Label>Age (Years)</Label>
+              <Input readOnly value={dob ? String(Math.floor((Date.now() - new Date(dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000))) : ""} className="bg-muted" />
             </div>
           </div>
 
