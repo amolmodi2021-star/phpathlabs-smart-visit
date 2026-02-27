@@ -38,7 +38,7 @@ const HomeVisits = () => {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [addVisitOpen, setAddVisitOpen] = useState(false);
-  const { getUnsentForMobile, sendMutation: abnormalSend } = useAbnormalHistory();
+  const { getForMobile, sendMutation: abnormalSend } = useAbnormalHistory();
 
   const { data: visits = [], isLoading } = useQuery({
     queryKey: ["home_visits"],
@@ -256,11 +256,14 @@ const HomeVisits = () => {
                     </div>
                     <div className="flex items-center gap-1">
                       {est?.whatsapp_number && (() => {
-                        const abnormal = getUnsentForMobile(est.whatsapp_number);
+                        const abnormal = getForMobile(est.whatsapp_number);
                         return abnormal ? (
-                          <Button variant="ghost" size="icon" className="h-7 w-7 text-warning" onClick={() => abnormalSend.mutate({ id: abnormal.id, mobile: est.whatsapp_number, message: abnormal.message, context: "home_visit" })}>
-                            <AlertTriangle className="h-3.5 w-3.5" />
-                          </Button>
+                          <div className="flex flex-col items-center">
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-warning" onClick={() => abnormalSend.mutate({ id: abnormal.id, mobile: est.whatsapp_number, message: abnormal.message, context: "home_visit" })}>
+                              <AlertTriangle className="h-3.5 w-3.5" />
+                            </Button>
+                            {abnormal.sent_at && <span className="text-[9px] text-muted-foreground leading-none">{format(new Date(abnormal.sent_at), "dd-MM HH:mm")}</span>}
+                          </div>
                         ) : null;
                       })()}
                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditDialog(v)}>

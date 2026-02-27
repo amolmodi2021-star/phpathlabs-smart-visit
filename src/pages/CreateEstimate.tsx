@@ -103,15 +103,6 @@ const CreateEstimate = () => {
       if (!cleanNumber || cleanNumber.length < 10) throw new Error("Valid WhatsApp number required");
       if (selectedTests.length === 0) throw new Error("Select at least one test");
 
-      // For a fresh estimate cycle on same mobile, re-enable abnormal-history send for this number
-      const { error: abnormalResetError } = await supabase
-        .from("abnormal_history")
-        .update({ sent: false, sent_at: null, sent_context: null })
-        .eq("mobile_number", cleanNumber);
-      if (abnormalResetError) {
-        console.warn("Could not reset abnormal history state:", abnormalResetError);
-      }
-
       // Build and share WhatsApp message FIRST
       if (templates) {
         const msg = buildEstimateMessage({
