@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { format } from "date-fns";
+import { format, addDays } from "date-fns";
 import { Download, Trash2, MapPin, Pencil, AlertTriangle } from "lucide-react";
 import { exportToExcel } from "@/lib/excel";
 import { useMessageTemplates } from "@/hooks/useMessageTemplates";
@@ -207,17 +207,34 @@ const EstimateDashboard = () => {
         <DialogContent>
           <DialogHeader><DialogTitle>Book Home Visit</DialogTitle></DialogHeader>
           <form onSubmit={(e) => { e.preventDefault(); bookVisitMutation.mutate(); }} className="space-y-4">
-            <div><Label>Visit Date *</Label><Input type="date" value={visitForm.visit_date} min={format(new Date(), "yyyy-MM-dd")} onChange={(e) => setVisitForm(p => ({ ...p, visit_date: e.target.value }))} onBlur={() => {
-              const today = format(new Date(), "yyyy-MM-dd");
-              if (visitForm.visit_date && /^\d{4}-\d{2}-\d{2}$/.test(visitForm.visit_date) && visitForm.visit_date < today) {
-                setVisitForm(p => ({ ...p, visit_date: today }));
-                toast.error("Past dates are not allowed");
-              }
-              if (visitForm.visit_date === today && visitForm.visit_time && visitForm.visit_time < format(new Date(), "HH:mm")) {
-                setVisitForm(p => ({ ...p, visit_time: "" }));
-                toast.error("Selected time has already passed");
-              }
-            }} required /></div>
+            <div>
+              <Label>Visit Date *</Label>
+              <div className="flex flex-wrap gap-1.5 mt-1 mb-2">
+                {[0, 1, 2].map(offset => {
+                  const d = addDays(new Date(), offset);
+                  const dateStr = format(d, "yyyy-MM-dd");
+                  const dayName = format(d, "EEEE");
+                  const dateLabel = format(d, "dd MMM");
+                  const label = offset === 0 ? `Today (${dayName}, ${dateLabel})` : offset === 1 ? `Tomorrow (${dayName}, ${dateLabel})` : `Day After (${dayName}, ${dateLabel})`;
+                  return (
+                    <Button key={offset} type="button" size="sm" variant={visitForm.visit_date === dateStr ? "default" : "outline"} className="h-7 text-xs" onClick={() => setVisitForm(p => ({ ...p, visit_date: dateStr }))}>
+                      {label}
+                    </Button>
+                  );
+                })}
+              </div>
+              <Input type="date" value={visitForm.visit_date} min={format(new Date(), "yyyy-MM-dd")} onChange={(e) => setVisitForm(p => ({ ...p, visit_date: e.target.value }))} onBlur={() => {
+                const today = format(new Date(), "yyyy-MM-dd");
+                if (visitForm.visit_date && /^\d{4}-\d{2}-\d{2}$/.test(visitForm.visit_date) && visitForm.visit_date < today) {
+                  setVisitForm(p => ({ ...p, visit_date: today }));
+                  toast.error("Past dates are not allowed");
+                }
+                if (visitForm.visit_date === today && visitForm.visit_time && visitForm.visit_time < format(new Date(), "HH:mm")) {
+                  setVisitForm(p => ({ ...p, visit_time: "" }));
+                  toast.error("Selected time has already passed");
+                }
+              }} required />
+            </div>
             <div><Label>Visit Time *</Label><Input type="time" value={visitForm.visit_time} onChange={(e) => setVisitForm(p => ({ ...p, visit_time: e.target.value }))} onBlur={() => {
               const today = format(new Date(), "yyyy-MM-dd");
               if (visitForm.visit_date === today && visitForm.visit_time && visitForm.visit_time < format(new Date(), "HH:mm")) {

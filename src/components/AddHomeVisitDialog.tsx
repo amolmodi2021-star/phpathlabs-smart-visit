@@ -12,7 +12,7 @@ import { X, Search, Send } from "lucide-react";
 import { getTests } from "@/lib/tests";
 import { useMessageTemplates } from "@/hooks/useMessageTemplates";
 import { buildVisitMessage, shareOnWhatsApp } from "@/lib/whatsapp";
-import { format } from "date-fns";
+import { format, addDays } from "date-fns";
 
 interface SelectedTest {
   test_id: string;
@@ -251,9 +251,23 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
           </div>
 
           {/* Visit Details */}
-          <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-2">
             <div>
               <Label>Visit Date *</Label>
+              <div className="flex flex-wrap gap-1.5 mt-1 mb-2">
+                {[0, 1, 2].map(offset => {
+                  const d = addDays(new Date(), offset);
+                  const dateStr = format(d, "yyyy-MM-dd");
+                  const dayName = format(d, "EEEE");
+                  const dateLabel = format(d, "dd MMM");
+                  const label = offset === 0 ? `Today (${dayName}, ${dateLabel})` : offset === 1 ? `Tomorrow (${dayName}, ${dateLabel})` : `Day After (${dayName}, ${dateLabel})`;
+                  return (
+                    <Button key={offset} type="button" size="sm" variant={visitDate === dateStr ? "default" : "outline"} className="h-7 text-xs" onClick={() => setVisitDate(dateStr)}>
+                      {label}
+                    </Button>
+                  );
+                })}
+              </div>
               <Input
                 type="date"
                 value={visitDate}
