@@ -257,7 +257,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
             </div>
             <div>
               <Label>Patient Name</Label>
-              <Input value={patientName} onChange={(e) => setPatientName(e.target.value)} />
+              <Input value={patientName} onChange={(e) => setPatientName(e.target.value.toUpperCase())} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2">
@@ -284,7 +284,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
           <div className="grid grid-cols-2 gap-2">
             <div>
               <Label>Doctor's Name</Label>
-              <Input value={doctorName} onChange={(e) => setDoctorName(e.target.value)} />
+              <Input value={doctorName} onChange={(e) => setDoctorName(e.target.value.toUpperCase())} />
             </div>
             <div>
               <Label>UMR Number</Label>
@@ -305,7 +305,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
           </div>
           <div>
             <Label>Address *</Label>
-            <Textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={2} />
+            <Textarea value={address} onChange={(e) => setAddress(e.target.value.toUpperCase())} rows={2} />
           </div>
 
           {/* Test Search & Add */}
