@@ -1,57 +1,65 @@
 
 
-## Fix Test Saving Reliability
+## Live Sync / Auto-Refresh for All Tabs
 
-### Root Cause Found
-Two compounding issues are blocking test saves:
+### What This Does
+When data changes on one device (e.g., a new home visit is added, a test is updated, an estimate is created), all other devices viewing the app will automatically refresh and show the updated data -- no manual refresh needed.
 
-1. **RLS Policy Type is Wrong**: The `tests` table has a RESTRICTIVE policy (`Permissive: No`). In PostgreSQL RLS, you need at least one PERMISSIVE policy to grant access. Without it, all direct SDK calls are denied silently -- even when the network works fine.
+### Implementation Steps
 
-2. **Edge Function transport failures**: The browser preview intermittently cannot reach `*.supabase.co` endpoints (both `/functions/v1/` and `/rest/v1/`). When the edge function fails, the fallback to direct SDK also fails because of issue #1.
+**Step 1: Database Migration -- Enable Realtime**
 
-### Fix Strategy
+Add all 7 core tables to the realtime publication so the database broadcasts changes:
+- `home_visits`
+- `estimates`
+- `estimate_tests`
+- `tests`
+- `phlebotomists`
+- `message_templates`
+- `abnormal_history`
 
-#### Step 1: Fix RLS Policy on `tests` table (Database Migration)
-- Drop the existing RESTRICTIVE policy
-- Create a new PERMISSIVE policy that allows all operations for anon and authenticated roles
-- This ensures direct SDK calls actually work when network is available
+**Step 2: Create a Reusable Realtime Hook**
 
-```sql
-DROP POLICY IF EXISTS "Allow all on tests" ON public.tests;
-CREATE POLICY "Allow all on tests" ON public.tests
-  FOR ALL USING (true) WITH CHECK (true);
-```
+Create a new hook `src/hooks/useRealtimeSync.ts` that:
+- Subscribes to Postgres changes on a given table
+- On any INSERT, UPDATE, or DELETE event, automatically invalidates the matching React Query cache keys
+- Cleans up the subscription when the component unmounts
 
-#### Step 2: Simplify `src/lib/tests.ts` to direct SDK only
-- Remove the edge function layer entirely (it adds complexity and a second failure point)
-- Use ONLY direct Supabase SDK calls (`.from("tests")`)
-- Add a simple retry wrapper (2 retries with 2s delay) for network errors only
-- This reduces the number of network hops from 2 (edge function attempt + fallback) to 1
+**Step 3: Wire Up Each Page**
 
-#### Step 3: Update `src/pages/TestManagement.tsx`
-- Remove the "Check Connection" button (unnecessary complexity)
-- Keep React Query retry at 2 with 3s delay
-- Keep the error state with Retry button
-- Keep save button disabled while pending
+Add the realtime hook to each page/component so queries auto-refresh:
 
-### Files to Change
-1. **Database migration** -- Fix RLS policy on `tests` table
-2. **`src/lib/tests.ts`** -- Remove edge function calls, use direct SDK with retry
-3. **`src/pages/TestManagement.tsx`** -- Simplify UI, remove connection check
+| Page | Table(s) Listened | Query Keys Invalidated |
+|------|-------------------|----------------------|
+| HomeVisits | `home_visits` | `home_visits` |
+| CreateEstimate | `tests` | `tests` |
+| EstimateDashboard | `estimates`, `estimate_tests` | `estimates` |
+| TestManagement | `tests` | `tests` |
+| PhlebotomistManagement | `phlebotomists` | `phlebotomists` |
+| MessageTemplates | `message_templates` | `message_templates` |
+| AbnormalHistory | `abnormal_history` | `abnormal_history`, `abnormal_history_counts` |
 
-### Why This Will Work
-- With PERMISSIVE RLS, direct SDK calls will succeed whenever the network is available
-- Removing the edge function eliminates one failure point and one network round-trip
-- Retry logic handles transient "Failed to fetch" errors
-- The reference app (med-estimate-text.lovable.app) uses a similar simple direct-SDK approach
+### Technical Details
 
-### Technical Notes
+The reusable hook will look like:
+
 ```text
-Current flow (2 network calls per operation):
-  Browser -> Edge Function -> Database
-  If fail: Browser -> REST API (blocked by RESTRICTIVE RLS)
-
-New flow (1 network call per operation):
-  Browser -> REST API (with PERMISSIVE RLS) -> Database
-  If fail: retry up to 2 times with delay
+useRealtimeSync(tableName, queryKeysToInvalidate[])
 ```
+
+It subscribes to `postgres_changes` on the specified table and calls `queryClient.invalidateQueries()` for each key whenever a change is detected. This triggers a fresh fetch from the database automatically.
+
+### Files to Create/Modify
+
+1. **New migration** -- SQL to add tables to `supabase_realtime` publication
+2. **New file**: `src/hooks/useRealtimeSync.ts` -- reusable realtime subscription hook
+3. **Modified**: `src/pages/HomeVisits.tsx` -- add `useRealtimeSync("home_visits", ...)`
+4. **Modified**: `src/pages/CreateEstimate.tsx` -- add `useRealtimeSync("tests", ...)`
+5. **Modified**: `src/pages/EstimateDashboard.tsx` -- add `useRealtimeSync("estimates", ...)` and `useRealtimeSync("estimate_tests", ...)`
+6. **Modified**: `src/pages/TestManagement.tsx` -- add `useRealtimeSync("tests", ...)`
+7. **Modified**: `src/pages/PhlebotomistManagement.tsx` -- add `useRealtimeSync("phlebotomists", ...)`
+8. **Modified**: `src/pages/MessageTemplates.tsx` -- add `useRealtimeSync("message_templates", ...)`
+9. **Modified**: `src/pages/AbnormalHistory.tsx` -- add `useRealtimeSync("abnormal_history", ...)`
+
+This is included in your Lovable Cloud usage and should be well within the free tier for a small team.
+
