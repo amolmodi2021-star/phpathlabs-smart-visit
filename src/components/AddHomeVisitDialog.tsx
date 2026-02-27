@@ -101,17 +101,21 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
   const handleVisitDateChange = (nextDate: string) => {
     const today = format(new Date(), "yyyy-MM-dd");
 
-    if (nextDate && nextDate < today) {
-      setVisitDate(today);
-      toast.error("Past dates are not allowed");
-      return;
-    }
+    // Only validate fully typed dates (yyyy-MM-dd = 10 chars)
+    if (nextDate && nextDate.length === 10 && /^\d{4}-\d{2}-\d{2}$/.test(nextDate)) {
+      if (nextDate < today) {
+        setVisitDate(today);
+        toast.error("Past dates are not allowed");
+        return;
+      }
+      setVisitDate(nextDate);
 
-    setVisitDate(nextDate);
-
-    if (nextDate === today && visitTime && visitTime < format(new Date(), "HH:mm")) {
-      setVisitTime("");
-      toast.error("Selected time has already passed");
+      if (nextDate === today && visitTime && visitTime < format(new Date(), "HH:mm")) {
+        setVisitTime("");
+        toast.error("Selected time has already passed");
+      }
+    } else {
+      setVisitDate(nextDate);
     }
   };
 
