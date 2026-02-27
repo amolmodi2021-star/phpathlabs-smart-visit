@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,6 +13,7 @@ import { shareOnWhatsApp } from "@/lib/whatsapp";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 
 const AbnormalHistory = () => {
+  useRealtimeSync("abnormal_history", ["abnormal_history", "abnormal_history_counts"]);
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [uploading, setUploading] = useState(false);
