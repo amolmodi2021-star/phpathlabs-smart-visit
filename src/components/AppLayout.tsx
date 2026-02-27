@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useHomeVisitNotifications } from "@/hooks/useHomeVisitNotifications";
 
 const navItems = [
   { to: "/", label: "Create Estimate", icon: FileText },
@@ -21,6 +22,7 @@ const navItems = [
 const AppLayout = ({ children }: { children: React.ReactNode }) => {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
+  useHomeVisitNotifications();
 
   const handleLogout = () => {
     logout();
