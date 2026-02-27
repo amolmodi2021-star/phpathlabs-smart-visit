@@ -10,6 +10,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { X, Search } from "lucide-react";
 import { getTests } from "@/lib/tests";
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
+} from "@/components/ui/alert-dialog";
 
 interface EditTest {
   id?: string;
@@ -48,8 +52,22 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
   const [selectedTests, setSelectedTests] = useState<EditTest[]>([]);
   const [globalDiscountType, setGlobalDiscountType] = useState<"percent" | "amount">("percent");
   const [globalDiscountValue, setGlobalDiscountValue] = useState(0);
-  const [homeVisitCharges, setHomeVisitCharges] = useState(0);
+  const [homeVisitCharges, setHomeVisitCharges] = useState<string>("0");
   const [testSearch, setTestSearch] = useState("");
+  const [genderConfirmOpen, setGenderConfirmOpen] = useState(false);
+  const [pendingGender, setPendingGender] = useState<"Male" | "Female" | "">("");
+
+  const handleTitleChange = (val: string) => {
+    setTitle(val);
+    if (val === "Mr." || val === "Master.") {
+      setGender("Male");
+    } else if (val === "Mrs." || val === "Ms." || val === "Miss.") {
+      setGender("Female");
+    } else if (val === "Dr." || val === "Baby Of.") {
+      setGenderConfirmOpen(true);
+      setPendingGender("");
+    }
+  };
 
   // Load all available tests
   const { data: allTests = [] } = useQuery({
@@ -75,7 +93,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
     setAddress(visit.address || "");
     setGlobalDiscountType((est.global_discount_type as "percent" | "amount") || "percent");
     setGlobalDiscountValue(Number(est.global_discount_value) || 0);
-    setHomeVisitCharges(Number(est.home_visit_charges) || 0);
+    setHomeVisitCharges(String(Number(est.home_visit_charges) || 0));
 
     const existingTests: EditTest[] = (est.estimate_tests || []).map((t: any) => ({
       id: t.id,
@@ -139,15 +157,20 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
       return { ...t, discountedPrice: t.price - discount, discount };
     });
 
-    const finalAmount = totalAmount - totalDiscount + homeVisitCharges;
-    return { totalAmount, totalDiscount, finalAmount, testDetails };
+    const hvCharges = parseFloat(homeVisitCharges) || 0;
+    const finalAmount = totalAmount - totalDiscount + hvCharges;
+    return { totalAmount, totalDiscount, finalAmount, testDetails, hvCharges };
   }, [selectedTests, globalDiscountType, globalDiscountValue, homeVisitCharges]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      if (!title) throw new Error("Title is required");
+      if (!patientName.trim()) throw new Error("Patient name is required");
+      if (!dob) throw new Error("Date of birth is required");
       if (!whatsappNumber || whatsappNumber.replace(/\D/g, "").length < 10) throw new Error("Valid WhatsApp number required");
       if (selectedTests.length === 0) throw new Error("Select at least one test");
       if (!visitDate || !visitTime || !address.trim()) throw new Error("Visit date, time, and address are required");
+      if (homeVisitCharges === "" || homeVisitCharges === null || homeVisitCharges === undefined) throw new Error("Home visit charges is required (can be 0)");
 
       const cleanNumber = whatsappNumber.replace(/\D/g, "").slice(-10);
 
@@ -166,7 +189,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
         whatsapp_number: cleanNumber,
         total_amount: calculations.totalAmount,
         discount_amount: calculations.totalDiscount,
-        home_visit_charges: homeVisitCharges,
+        home_visit_charges: calculations.hvCharges,
         final_amount: calculations.finalAmount,
         global_discount_type: globalDiscountValue > 0 ? globalDiscountType : null,
         global_discount_value: globalDiscountValue,
@@ -221,8 +244,8 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
           <div className="grid grid-cols-[120px_1fr] gap-2">
             <div>
               <Label>Title</Label>
-              <Select value={title} onValueChange={setTitle}>
-                <SelectTrigger className="h-10"><SelectValue placeholder="Title" /></SelectTrigger>
+              <Select value={title} onValueChange={handleTitleChange}>
+                <SelectTrigger className="h-10"><SelectValue placeholder="Title *" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Mr.">Mr.</SelectItem>
                   <SelectItem value="Mrs.">Mrs.</SelectItem>
@@ -235,8 +258,8 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
               </Select>
             </div>
             <div>
-              <Label>Patient Name</Label>
-              <Input value={patientName} onChange={(e) => setPatientName(e.target.value.toUpperCase())} />
+              <Label>Patient Name *</Label>
+              <Input value={patientName} onChange={(e) => setPatientName(e.target.value.toUpperCase())} placeholder="Enter patient name" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2">
@@ -371,8 +394,8 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
 
           {/* Home Visit Charges */}
           <div>
-            <Label>Home Visit Charges (₹)</Label>
-            <Input type="number" value={homeVisitCharges || ""} onChange={(e) => setHomeVisitCharges(parseFloat(e.target.value) || 0)} />
+            <Label>Home Visit Charges (₹) *</Label>
+            <Input type="number" value={homeVisitCharges} onChange={(e) => setHomeVisitCharges(e.target.value)} placeholder="Enter charges (can be 0)" />
           </div>
 
           {/* Summary */}
@@ -380,7 +403,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
             <div className="rounded-lg bg-muted p-4 space-y-1 text-sm">
               <div className="flex justify-between"><span>Total Amount</span><span className="font-medium">₹{calculations.totalAmount}</span></div>
               {calculations.totalDiscount > 0 && <div className="flex justify-between text-success"><span>Discount</span><span>-₹{calculations.totalDiscount}</span></div>}
-              {homeVisitCharges > 0 && <div className="flex justify-between"><span>Home Visit</span><span>+₹{homeVisitCharges}</span></div>}
+              {calculations.hvCharges > 0 && <div className="flex justify-between"><span>Home Visit</span><span>+₹{calculations.hvCharges}</span></div>}
               <div className="flex justify-between border-t pt-1 font-bold"><span>Final Amount</span><span>₹{calculations.finalAmount}</span></div>
             </div>
           )}
@@ -389,6 +412,25 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
             Save Changes
           </Button>
         </div>
+
+        {/* Gender confirmation dialog for Dr. / Baby Of. */}
+        <AlertDialog open={genderConfirmOpen} onOpenChange={setGenderConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirm Gender</AlertDialogTitle>
+              <AlertDialogDescription>Please select the gender for this patient.</AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="flex gap-2 py-2">
+              {["Male", "Female", "Unspecified"].map(g => (
+                <Button key={g} variant={pendingGender === g ? "default" : "outline"} size="sm" onClick={() => setPendingGender(g as any)}>{g}</Button>
+              ))}
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction disabled={!pendingGender} onClick={() => { setGender(pendingGender); setGenderConfirmOpen(false); }}>Confirm</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </DialogContent>
     </Dialog>
   );
