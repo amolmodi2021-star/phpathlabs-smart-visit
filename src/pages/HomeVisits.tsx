@@ -57,6 +57,9 @@ const HomeVisits = () => {
   const [phlebUnlockedIds, setPhlebUnlockedIds] = useState<Set<string>>(new Set());
   const [phlebPasswordDialog, setPhlebPasswordDialog] = useState(false);
   const [pendingPhlebVisitId, setPendingPhlebVisitId] = useState<string | null>(null);
+  const [statusUnlockedIds, setStatusUnlockedIds] = useState<Set<string>>(new Set());
+  const [statusPasswordDialog, setStatusPasswordDialog] = useState(false);
+  const [pendingStatusVisitId, setPendingStatusVisitId] = useState<string | null>(null);
 
 
   const { data: visits = [], isLoading } = useQuery({
@@ -582,10 +585,20 @@ const HomeVisits = () => {
 
                   {/* Actions row */}
                   <div className="flex flex-wrap gap-2 items-center">
-                    {v.status === "Completed" ? (
-                      <Badge className={statusColors["Completed"]}>Completed</Badge>
+                    {v.status === "Completed" && !statusUnlockedIds.has(v.id) ? (
+                      <div className="flex items-center gap-1">
+                        <Badge className={statusColors["Completed"]}>Completed</Badge>
+                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setPendingStatusVisitId(v.id); setStatusPasswordDialog(true); }}>
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                      </div>
                     ) : (
-                    <Select value={v.status} onValueChange={(s) => handleStatusChange(v, s)}>
+                    <Select value={v.status} onValueChange={(s) => {
+                      if (v.status === "Completed" && statusUnlockedIds.has(v.id)) {
+                        setStatusUnlockedIds(prev => { const next = new Set(prev); next.delete(v.id); return next; });
+                      }
+                      handleStatusChange(v, s);
+                    }}>
                       <SelectTrigger className="w-28 h-8 text-xs"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="Pending">Pending</SelectItem>
@@ -727,6 +740,13 @@ const HomeVisits = () => {
         onOpenChange={(o) => { setPhlebPasswordDialog(o); if (!o) setPendingPhlebVisitId(null); }}
         onSuccess={() => { if (pendingPhlebVisitId) setPhlebUnlockedIds(prev => new Set(prev).add(pendingPhlebVisitId)); setPendingPhlebVisitId(null); }}
         description="Enter password to change phlebotomist for a completed visit."
+      />
+      {/* Password dialog for status change on completed visits */}
+      <DeletePasswordDialog
+        open={statusPasswordDialog}
+        onOpenChange={(o) => { setStatusPasswordDialog(o); if (!o) setPendingStatusVisitId(null); }}
+        onSuccess={() => { if (pendingStatusVisitId) setStatusUnlockedIds(prev => new Set(prev).add(pendingStatusVisitId)); setPendingStatusVisitId(null); }}
+        description="Enter password to change the status of a completed visit."
       />
     </div>
   );
