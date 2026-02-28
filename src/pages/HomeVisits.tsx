@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { Download, Phone, MapPin, ChevronDown, ChevronUp, Pencil, Trash2, Plus, AlertTriangle } from "lucide-react";
+import { Download, Phone, MapPin, ChevronDown, ChevronUp, Pencil, Trash2, Plus, AlertTriangle, Clock } from "lucide-react";
 import { exportToExcel } from "@/lib/excel";
 import { useState, useCallback, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -55,6 +55,11 @@ const HomeVisits = () => {
   const [editPaymentVisit, setEditPaymentVisit] = useState<any>(null);
   const [editPaymentPasswordDialog, setEditPaymentPasswordDialog] = useState(false);
   const [pendingEditPaymentVisit, setPendingEditPaymentVisit] = useState<any>(null);
+
+  // Delay reason state
+  const [delayReasonDialog, setDelayReasonDialog] = useState<any>(null);
+  const [delayReasonType, setDelayReasonType] = useState<"custom" | "prefilled">("custom");
+  const [delayReasonText, setDelayReasonText] = useState("");
 
   const [phlebUnlockedIds, setPhlebUnlockedIds] = useState<Set<string>>(new Set());
   const [phlebPasswordDialog, setPhlebPasswordDialog] = useState(false);
@@ -109,15 +114,44 @@ const HomeVisits = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const isVisitDelayed = (visit: any): boolean => {
+    if (visit.status !== "Pending") return false;
+    const now = new Date();
+    const visitDateTime = new Date(`${visit.visit_date}T${visit.visit_time || "00:00"}`);
+    const diffMs = now.getTime() - visitDateTime.getTime();
+    return diffMs > 25 * 60 * 1000; // 25 minutes
+  };
+
   const handleStatusChange = (visit: any, newStatus: string) => {
     if (newStatus === "Cancelled") {
       setCancelDialog(visit);
     } else if (newStatus === "Completed") {
-      setPaymentVisit(visit);
+      // Check if delayed — ask for reason first
+      if (isVisitDelayed(visit) && !visit.delay_reason) {
+        setDelayReasonDialog(visit);
+        setDelayReasonType("custom");
+        setDelayReasonText("");
+      } else {
+        setPaymentVisit(visit);
+      }
     } else {
       updateStatus.mutate({ id: visit.id, status: newStatus });
     }
   };
+
+  const saveDelayReasonAndProceed = useMutation({
+    mutationFn: async ({ visitId, reason }: { visitId: string; reason: string }) => {
+      const { error } = await supabase.from("home_visits").update({ delay_reason: reason }).eq("id", visitId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["home_visits"] });
+      const visit = delayReasonDialog;
+      setDelayReasonDialog(null);
+      setPaymentVisit(visit);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const savePaymentAndComplete = useMutation({
     mutationFn: async ({ visitId, data }: { visitId: string; data: { paid_amount: number; due_amount: number; payment_mode: string; payment_remarks: string } }) => {
@@ -286,8 +320,9 @@ const HomeVisits = () => {
   };
 
   const handleExport = () => {
-    exportToExcel(visits.map((v: any) => {
+    exportToExcel(filteredVisits.map((v: any) => {
       const modeAmounts = parsePaymentModeAmounts(v.payment_mode);
+      const delayed = isVisitDelayed(v) || !!v.delay_reason;
       return {
         "Visit Date": v.visit_date,
         "Visit Time": formatTime12hr(v.visit_time),
@@ -296,6 +331,8 @@ const HomeVisits = () => {
         "Address": v.address,
         "Phlebotomist": v.phlebotomists?.name || "",
         "Status": v.status,
+        "Delayed Visit": delayed ? "Yes" : "No",
+        "Delay Reason": v.delay_reason || "",
         "Total Amount": v.estimates?.total_amount || 0,
         "Discount": v.estimates?.discount_amount || 0,
         "Home Visit Charges": v.estimates?.home_visit_charges || 0,
@@ -492,7 +529,7 @@ const HomeVisits = () => {
                     <Separator className={`flex-1 h-[2px] ${isToday(parseISO(currentDate)) ? 'bg-success' : 'bg-foreground/30'}`} />
                   </div>
                 )}
-              <Card className={`glass-card ${isSelected ? 'ring-2 ring-primary' : ''}`}>
+              <Card className={`glass-card ${isSelected ? 'ring-2 ring-primary' : ''} ${isVisitDelayed(v) ? 'bg-destructive/10 border-destructive/30' : ''}`}>
                 <CardContent className="p-3 space-y-2">
                   {/* Header row */}
                   <div className="flex items-start justify-between flex-wrap gap-2">
@@ -576,6 +613,21 @@ const HomeVisits = () => {
 
                   {v.status === "Cancelled" && v.cancellation_reason && (
                     <p className="text-xs text-destructive">Reason: {v.cancellation_reason}</p>
+                  )}
+
+                  {/* Delay indicator */}
+                  {isVisitDelayed(v) && (
+                    <div className="flex items-center gap-1 text-xs text-destructive">
+                      <Clock className="h-3 w-3" />
+                      <span className="font-medium">Delayed Visit</span>
+                      {v.delay_reason && <span className="text-muted-foreground">— {v.delay_reason}</span>}
+                    </div>
+                  )}
+                  {!isVisitDelayed(v) && v.delay_reason && (
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <Clock className="h-3 w-3" />
+                      <span>Delay Reason: {v.delay_reason}</span>
+                    </div>
                   )}
 
                   {/* Payment details for completed visits */}
@@ -692,6 +744,44 @@ const HomeVisits = () => {
             <div><Label>Reason *</Label><Textarea value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} rows={3} required /></div>
             <Button className="w-full" disabled={!cancelReason.trim()} onClick={() => updateStatus.mutate({ id: cancelDialog?.id, status: "Cancelled", reason: cancelReason })}>
               Confirm Cancellation
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delay reason dialog */}
+      <Dialog open={!!delayReasonDialog} onOpenChange={(o) => { if (!o) setDelayReasonDialog(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Visit Delayed — Reason Required</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">This visit is past its scheduled time by more than 25 minutes. Please provide a reason for the delay before proceeding.</p>
+          <div className="space-y-4">
+            <div className="flex flex-col gap-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="delayType" checked={delayReasonType === "custom"} onChange={() => setDelayReasonType("custom")} />
+                <span className="text-sm">Enter reason</span>
+              </label>
+              {delayReasonType === "custom" && (
+                <Textarea value={delayReasonText} onChange={(e) => setDelayReasonText(e.target.value)} placeholder="Enter delay reason..." rows={3} />
+              )}
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="delayType" checked={delayReasonType === "prefilled"} onChange={() => setDelayReasonType("prefilled")} />
+                <span className="text-sm">Other</span>
+              </label>
+              {delayReasonType === "prefilled" && (
+                <div className="bg-muted rounded p-2 text-sm text-muted-foreground italic">
+                  "Sorry Sir, Yeh meri galti hai"
+                </div>
+              )}
+            </div>
+            <Button
+              className="w-full"
+              disabled={delayReasonType === "custom" && !delayReasonText.trim() || saveDelayReasonAndProceed.isPending}
+              onClick={() => {
+                const reason = delayReasonType === "prefilled" ? "Sorry Sir, Yeh meri galti hai" : delayReasonText.trim();
+                saveDelayReasonAndProceed.mutate({ visitId: delayReasonDialog.id, reason });
+              }}
+            >
+              {saveDelayReasonAndProceed.isPending ? "Saving..." : "Submit & Proceed to Payment"}
             </Button>
           </div>
         </DialogContent>

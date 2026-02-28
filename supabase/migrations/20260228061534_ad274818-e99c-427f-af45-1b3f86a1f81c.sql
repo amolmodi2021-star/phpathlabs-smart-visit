@@ -1,0 +1,1 @@
+ALTER TABLE public.home_visits ADD COLUMN delay_reason text DEFAULT NULL;
