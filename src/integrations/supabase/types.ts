@@ -172,6 +172,7 @@ export type Database = {
           address: string
           cancellation_reason: string | null
           created_at: string
+          delay_reason: string | null
           due_amount: number | null
           estimate_id: string
           id: string
@@ -188,6 +189,7 @@ export type Database = {
           address: string
           cancellation_reason?: string | null
           created_at?: string
+          delay_reason?: string | null
           due_amount?: number | null
           estimate_id: string
           id?: string
@@ -204,6 +206,7 @@ export type Database = {
           address?: string
           cancellation_reason?: string | null
           created_at?: string
+          delay_reason?: string | null
           due_amount?: number | null
           estimate_id?: string
           id?: string
