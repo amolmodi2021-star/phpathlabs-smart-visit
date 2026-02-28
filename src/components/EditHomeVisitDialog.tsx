@@ -8,10 +8,12 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { X, Search } from "lucide-react";
+import { X, Search, Send } from "lucide-react";
 import { getTests } from "@/lib/tests";
 import TimeSlotPicker from "@/components/TimeSlotPicker";
 import { usePhlebotomistAvailability } from "@/hooks/usePhlebotomistAvailability";
+import { useMessageTemplates } from "@/hooks/useMessageTemplates";
+import { buildVisitMessage, shareOnWhatsApp } from "@/lib/whatsapp";
 import { format, addDays, parse, isValid, differenceInYears } from "date-fns";
 import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
@@ -42,9 +44,11 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
   const qc = useQueryClient();
   const searchRef = useRef<HTMLInputElement>(null);
   const { isAvailable, getUnavailableReason } = usePhlebotomistAvailability();
+  const { data: templates } = useMessageTemplates();
 
   const est = visit?.estimates;
 
+  // Patient demographic fields - only used in completionMode
   const [title, setTitle] = useState("");
   const [patientName, setPatientName] = useState("");
   const [gender, setGender] = useState("");
@@ -90,7 +94,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
     queryFn: async () => { const { data } = await supabase.from("phlebotomists").select("*").eq("status", "Active"); return data || []; },
   });
 
-  // DOB helpers: convert between dd-mm-yyyy display and yyyy-mm-dd storage
+  // DOB helpers
   const dobToDisplay = (isoDate: string) => {
     if (!isoDate) return "";
     const d = new Date(isoDate);
@@ -99,9 +103,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
   };
 
   const handleDobDisplayChange = (val: string) => {
-    // Allow only digits and dashes, auto-insert dashes
     let cleaned = val.replace(/[^\d-]/g, "");
-    // Auto-format: insert dashes after dd and mm
     const digits = cleaned.replace(/-/g, "");
     if (digits.length >= 4) {
       cleaned = `${digits.slice(0, 2)}-${digits.slice(2, 4)}-${digits.slice(4, 8)}`;
@@ -109,7 +111,6 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
       cleaned = `${digits.slice(0, 2)}-${digits.slice(2)}`;
     }
     setDobDisplay(cleaned);
-    // Parse complete date
     if (/^\d{2}-\d{2}-\d{4}$/.test(cleaned)) {
       const parsed = parse(cleaned, "dd-MM-yyyy", new Date());
       if (isValid(parsed) && parsed <= new Date()) {
@@ -157,7 +158,6 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
     setGender(est.gender || "");
     setEmail(est.email || "");
     setDoctorName(est.doctor_name || "SELF");
-    // Parse UMR number - strip "UMR" prefix for editing
     const rawUmr = est.umr_number || "";
     setUmrInput(rawUmr.startsWith("UMR") ? String(parseInt(rawUmr.slice(3)) || "") : rawUmr);
     setDob(est.dob || "");
@@ -240,17 +240,18 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (!title) throw new Error("Title is required");
+      // In completion mode, validate patient demographics
+      if (completionMode) {
+        if (!title) throw new Error("Title is required");
+        if (!dob) throw new Error("Date of birth is required");
+      }
       if (!patientName.trim()) throw new Error("Patient name is required");
-      if (!dob) throw new Error("Date of birth is required");
       if (!whatsappNumber || whatsappNumber.replace(/\D/g, "").length < 10) throw new Error("Valid WhatsApp number required");
       if (selectedTests.length === 0) throw new Error("Select at least one test");
       if (!visitDate || !visitTime || !address.trim()) throw new Error("Visit date, time, and address are required");
       if (homeVisitCharges === "" || homeVisitCharges === null || homeVisitCharges === undefined) throw new Error("Home visit charges is required (can be 0)");
 
       const cleanNumber = whatsappNumber.replace(/\D/g, "").slice(-10);
-
-      // Format UMR number
       const formattedUmr = umrInput ? `UMR${String(parseInt(umrInput) || 0).padStart(7, "0")}` : null;
 
       // Update estimate
@@ -300,15 +301,48 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
       }).eq("id", visit.id);
       if (visitError) throw visitError;
 
+      return cleanNumber;
     },
-    onSuccess: () => {
+    onSuccess: (cleanNumber) => {
       qc.invalidateQueries({ queryKey: ["home_visits"] });
       qc.invalidateQueries({ queryKey: ["estimates"] });
-      toast.success("Home visit updated successfully!");
-      onClose();
-      if (completionMode && onCompletionSave) {
-        // Small delay to let queries refetch
-        setTimeout(() => onCompletionSave(), 300);
+
+      if (completionMode) {
+        toast.success("Home visit updated successfully!");
+        onClose();
+        if (onCompletionSave) {
+          setTimeout(() => onCompletionSave(), 300);
+        }
+      } else {
+        // Non-completion mode: Save & Share via WhatsApp
+        toast.success("Home visit updated! Opening WhatsApp...");
+        onClose();
+
+        if (templates && cleanNumber) {
+          const tests = selectedTests.map(t => ({ name: t.test_name, price: t.price, fasting: t.fasting_required }));
+          const formatTime = (t: string) => {
+            const [h, m] = t.split(":");
+            const hour = parseInt(h);
+            return `${hour % 12 || 12}:${m} ${hour >= 12 ? "PM" : "AM"}`;
+          };
+          const msg = buildVisitMessage({
+            tests,
+            totalAmount: calculations.totalAmount,
+            discountAmount: calculations.totalDiscount,
+            homeVisitCharges: calculations.hvCharges,
+            finalAmount: calculations.finalAmount,
+            header: templates.estimate_header,
+            fastingInstructions: templates.fasting_instructions,
+            noFastingMessage: templates.no_fasting_message,
+            homeVisitDisclaimer: templates.home_visit_disclaimer,
+            footer: templates.footer_text,
+            visitDate: visitDate,
+            visitTime: formatTime(visitTime),
+            visitHeader: templates.visit_confirmation_header,
+            address: address.toUpperCase(),
+          });
+          shareOnWhatsApp(cleanNumber, msg);
+        }
       }
     },
     onError: (e: Error) => toast.error(e.message),
@@ -321,76 +355,95 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>{completionMode ? "Complete Missing Details" : "Edit Home Visit Record"}</DialogTitle></DialogHeader>
         <div className="space-y-4">
-          {/* Patient Info */}
-          <div className="grid grid-cols-[120px_1fr] gap-2">
-            <div>
-              <Label className={attempted && !title ? "text-destructive" : ""}>Title *</Label>
-              <Select value={title} onValueChange={handleTitleChange}>
-                <SelectTrigger className="h-10"><SelectValue placeholder="Title *" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Mr.">Mr.</SelectItem>
-                  <SelectItem value="Mrs.">Mrs.</SelectItem>
-                  <SelectItem value="Ms.">Ms.</SelectItem>
-                  <SelectItem value="Miss.">Miss.</SelectItem>
-                  <SelectItem value="Master.">Master.</SelectItem>
-                  <SelectItem value="Baby Of.">Baby Of.</SelectItem>
-                  <SelectItem value="Dr.">Dr.</SelectItem>
-                </SelectContent>
-              </Select>
+
+          {/* Patient demographics - only shown in completionMode */}
+          {completionMode && (
+            <>
+              <div className="grid grid-cols-[120px_1fr] gap-2">
+                <div>
+                  <Label className={attempted && !title ? "text-destructive" : ""}>Title *</Label>
+                  <Select value={title} onValueChange={handleTitleChange}>
+                    <SelectTrigger className="h-10"><SelectValue placeholder="Title *" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Mr.">Mr.</SelectItem>
+                      <SelectItem value="Mrs.">Mrs.</SelectItem>
+                      <SelectItem value="Ms.">Ms.</SelectItem>
+                      <SelectItem value="Miss.">Miss.</SelectItem>
+                      <SelectItem value="Master.">Master.</SelectItem>
+                      <SelectItem value="Baby Of.">Baby Of.</SelectItem>
+                      <SelectItem value="Dr.">Dr.</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className={attempted && !patientName.trim() ? "text-destructive" : ""}>Patient Name *</Label>
+                  <Input value={patientName} onChange={(e) => setPatientName(e.target.value.toUpperCase())} placeholder="Enter patient name" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label>Gender</Label>
+                  <Select value={gender} onValueChange={setGender}>
+                    <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Male">Male</SelectItem>
+                      <SelectItem value="Female">Female</SelectItem>
+                      <SelectItem value="Unspecified">Unspecified</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className={attempted && (!whatsappNumber || whatsappNumber.replace(/\D/g, "").length < 10) ? "text-destructive" : ""}>WhatsApp Number *</Label>
+                  <Input type="tel" value={whatsappNumber} onChange={(e) => setWhatsappNumber(e.target.value)} />
+                </div>
+              </div>
+              <div>
+                <Label>Email ID</Label>
+                <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="patient@example.com" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label>Doctor's Name</Label>
+                  <Input value={doctorName} onChange={(e) => setDoctorName(e.target.value.toUpperCase())} />
+                </div>
+                <div>
+                  <Label>UMR Number</Label>
+                  <Input value={umrInput} onChange={(e) => setUmrInput(e.target.value.replace(/\D/g, ""))} placeholder="e.g. 123 → UMR0000123" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className={attempted && !dob ? "text-destructive" : ""}>DOB * (dd-mm-yyyy)</Label>
+                  <Input
+                    type="text"
+                    inputMode="numeric"
+                    value={dobDisplay}
+                    onChange={(e) => handleDobDisplayChange(e.target.value)}
+                    placeholder="dd-mm-yyyy"
+                    maxLength={10}
+                  />
+                </div>
+                <div>
+                  <Label>Age (Years)</Label>
+                  <Input readOnly value={calculatedAge} className="bg-muted" />
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* In non-completion mode, show patient name and WhatsApp (needed for sharing) */}
+          {!completionMode && (
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className={attempted && !patientName.trim() ? "text-destructive" : ""}>Patient Name *</Label>
+                <Input value={patientName} onChange={(e) => setPatientName(e.target.value.toUpperCase())} placeholder="Enter patient name" />
+              </div>
+              <div>
+                <Label className={attempted && (!whatsappNumber || whatsappNumber.replace(/\D/g, "").length < 10) ? "text-destructive" : ""}>WhatsApp Number *</Label>
+                <Input type="tel" value={whatsappNumber} onChange={(e) => setWhatsappNumber(e.target.value)} />
+              </div>
             </div>
-            <div>
-              <Label className={attempted && !patientName.trim() ? "text-destructive" : ""}>Patient Name *</Label>
-              <Input value={patientName} onChange={(e) => setPatientName(e.target.value.toUpperCase())} placeholder="Enter patient name" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <Label>Gender</Label>
-              <Select value={gender} onValueChange={setGender}>
-                <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Male">Male</SelectItem>
-                  <SelectItem value="Female">Female</SelectItem>
-                  <SelectItem value="Unspecified">Unspecified</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className={attempted && (!whatsappNumber || whatsappNumber.replace(/\D/g, "").length < 10) ? "text-destructive" : ""}>WhatsApp Number *</Label>
-              <Input type="tel" value={whatsappNumber} onChange={(e) => setWhatsappNumber(e.target.value)} />
-            </div>
-          </div>
-          <div>
-            <Label>Email ID</Label>
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="patient@example.com" />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <Label>Doctor's Name</Label>
-              <Input value={doctorName} onChange={(e) => setDoctorName(e.target.value.toUpperCase())} />
-            </div>
-            <div>
-              <Label>UMR Number</Label>
-              <Input value={umrInput} onChange={(e) => setUmrInput(e.target.value.replace(/\D/g, ""))} placeholder="e.g. 123 → UMR0000123" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <Label className={attempted && !dob ? "text-destructive" : ""}>DOB * (dd-mm-yyyy)</Label>
-              <Input
-                type="text"
-                inputMode="numeric"
-                value={dobDisplay}
-                onChange={(e) => handleDobDisplayChange(e.target.value)}
-                placeholder="dd-mm-yyyy"
-                maxLength={10}
-              />
-            </div>
-            <div>
-              <Label>Age (Years)</Label>
-              <Input readOnly value={calculatedAge} className="bg-muted" />
-            </div>
-          </div>
+          )}
 
           {/* Visit Details */}
           <div className="space-y-2">
@@ -568,7 +621,9 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
           )}
 
           <Button className="w-full" onClick={() => { setAttempted(true); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
-            {completionMode ? "Save & Proceed to Payment" : "Save Changes"}
+            {completionMode ? "Save & Proceed to Payment" : (
+              <><Send className="h-4 w-4 mr-1" /> Save & Share</>
+            )}
           </Button>
         </div>
 
