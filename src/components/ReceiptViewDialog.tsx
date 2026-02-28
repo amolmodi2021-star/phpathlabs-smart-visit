@@ -81,9 +81,11 @@ const ReceiptViewDialog = ({ open, onClose, visitData }: ReceiptViewDialogProps)
     msg += `*Mobile:* ${est?.whatsapp_number || "—"}\n`;
     msg += `*Visit:* ${visitData?.visit_date ? new Date(visitData.visit_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"} | ${visitData?.visit_time ? formatTime12hr(visitData.visit_time) : "—"}\n`;
     msg += `*Address:* ${visitData?.address || "—"}\n\n`;
-    msg += `*Tests:*\n`;
+    msg += `*Tests & Report Delivery:*\n`;
     tests.forEach((t: any) => {
-      msg += `• ${t.test_name} — ₹${t.discounted_price}\n`;
+      const rd = t.report_date ? new Date(t.report_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : "";
+      const rt = t.report_time ? formatTime12hr(t.report_time) : "";
+      msg += `• ${t.test_name} — ₹${t.discounted_price}${rd ? ` (Report by: ${rd} at ${rt})` : ""}\n`;
     });
     msg += `\n*Final Amount:* ₹${est?.final_amount || 0}\n`;
     msg += `*Paid:* ₹${paidAmount} | *Due:* ₹${dueAmount}\n`;
@@ -131,24 +133,30 @@ const ReceiptViewDialog = ({ open, onClose, visitData }: ReceiptViewDialogProps)
 
             {/* Tests */}
             <div className="border-t border-gray-200 pt-1">
-              <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Tests</p>
+              <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Tests & Report Delivery</p>
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-gray-300">
                     <th className="text-left py-0.5 text-gray-600 font-medium">Test</th>
                     <th className="text-right py-0.5 text-gray-600 font-medium">Amount</th>
+                    <th className="text-right py-0.5 text-gray-600 font-medium">Report By</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {tests.map((t: any, i: number) => (
-                    <tr key={i} className="border-b border-gray-100">
-                      <td className="py-1 pr-1">
-                        {t.test_name}
-                        {t.fasting_required && <span className="text-[9px] text-red-500 ml-1">(F)</span>}
-                      </td>
-                      <td className="py-1 text-right font-semibold">₹{t.discounted_price}</td>
-                    </tr>
-                  ))}
+                  {tests.map((t: any, i: number) => {
+                    const rd = t.report_date ? new Date(t.report_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : "";
+                    const rt = t.report_time ? formatTime12hr(t.report_time) : "";
+                    return (
+                      <tr key={i} className="border-b border-gray-100">
+                        <td className="py-1 pr-1">
+                          {t.test_name}
+                          {t.fasting_required && <span className="text-[9px] text-red-500 ml-1">(F)</span>}
+                        </td>
+                        <td className="py-1 text-right font-semibold">₹{t.discounted_price}</td>
+                        <td className="py-1 text-right text-[10px]">{rd} {rt}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
