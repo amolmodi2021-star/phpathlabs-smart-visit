@@ -240,6 +240,22 @@ const EstimateDashboard = () => {
               }} required />
             </div>
             <div>
+              <Label>Assign Phlebotomist</Label>
+              <Select value={visitForm.phlebotomist_id} onValueChange={(v) => setVisitForm(p => ({ ...p, phlebotomist_id: v }))}>
+                <SelectTrigger><SelectValue placeholder="Select..." /></SelectTrigger>
+                <SelectContent>
+                  {phlebotomists.map((p: any) => {
+                    const reason = getUnavailableReason(p, visitForm.visit_date);
+                    return (
+                      <SelectItem key={p.id} value={p.id} disabled={!!reason}>
+                        {p.name}{reason ? ` (${reason})` : ""}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
               <Label>Visit Time *</Label>
               <Input type="time" value={visitForm.visit_time} onChange={(e) => setVisitForm(p => ({ ...p, visit_time: e.target.value }))} onBlur={() => {
                 const today = format(new Date(), "yyyy-MM-dd");
@@ -257,22 +273,6 @@ const EstimateDashboard = () => {
             </div>
             <div><Label>Address *</Label><Textarea value={visitForm.address} onChange={(e) => setVisitForm(p => ({ ...p, address: e.target.value }))} required rows={3} /></div>
             <div><Label>Home Visit Charges (₹)</Label><Input type="number" value={visitForm.home_visit_charges} onChange={(e) => setVisitForm(p => ({ ...p, home_visit_charges: e.target.value }))} placeholder="0" /></div>
-            <div>
-              <Label>Assign Phlebotomist</Label>
-              <Select value={visitForm.phlebotomist_id} onValueChange={(v) => setVisitForm(p => ({ ...p, phlebotomist_id: v }))}>
-                <SelectTrigger><SelectValue placeholder="Select..." /></SelectTrigger>
-                <SelectContent>
-                  {phlebotomists.map((p: any) => {
-                    const reason = getUnavailableReason(p, visitForm.visit_date);
-                    return (
-                      <SelectItem key={p.id} value={p.id} disabled={!!reason}>
-                        {p.name}{reason ? ` (${reason})` : ""}
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
-            </div>
             <Button type="submit" className="w-full" disabled={bookVisitMutation.isPending}>Book & Share on WhatsApp</Button>
           </form>
         </DialogContent>

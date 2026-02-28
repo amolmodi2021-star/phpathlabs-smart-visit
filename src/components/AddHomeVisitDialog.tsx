@@ -280,6 +280,25 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
                 min={format(new Date(), "yyyy-MM-dd")}
               />
             </div>
+
+            {/* Assign Phlebotomist - before time so slots show */}
+            <div>
+              <Label>Assign Phlebotomist</Label>
+              <Select value={phlebotomistId} onValueChange={setPhlebotomistId}>
+                <SelectTrigger><SelectValue placeholder="Select phlebotomist..." /></SelectTrigger>
+                <SelectContent>
+                  {phlebotomists.map((p: any) => {
+                    const reason = getUnavailableReason(p, visitDate);
+                    return (
+                      <SelectItem key={p.id} value={p.id} disabled={!!reason}>
+                        {p.name}{reason ? ` (${reason})` : ""}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div>
               <Label>Visit Time *</Label>
               <Input
@@ -299,24 +318,6 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
           <div>
             <Label>Address *</Label>
             <Textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={2} />
-          </div>
-
-          {/* Assign Phlebotomist */}
-          <div>
-            <Label>Assign Phlebotomist</Label>
-            <Select value={phlebotomistId} onValueChange={setPhlebotomistId}>
-              <SelectTrigger><SelectValue placeholder="Select phlebotomist..." /></SelectTrigger>
-              <SelectContent>
-                {phlebotomists.map((p: any) => {
-                  const reason = getUnavailableReason(p, visitDate);
-                  return (
-                    <SelectItem key={p.id} value={p.id} disabled={!!reason}>
-                      {p.name}{reason ? ` (${reason})` : ""}
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
           </div>
 
           {/* Test Search & Add */}
