@@ -642,9 +642,13 @@ const HomeVisits = () => {
                         <SelectContent>
                           {phlebotomists.map((p: any) => {
                             const reason = getUnavailableReason(p, v.visit_date);
+                            const hasTimeConflict = !reason && visits.some(
+                              (ov: any) => ov.id !== v.id && ov.phlebotomist_id === p.id && ov.visit_date === v.visit_date && ov.visit_time === v.visit_time && ov.status !== "Cancelled"
+                            );
+                            const disableReason = reason || (hasTimeConflict ? "Time slot occupied" : null);
                             return (
-                              <SelectItem key={p.id} value={p.id} disabled={!!reason}>
-                                {p.name}{reason ? ` (${reason})` : ""}
+                              <SelectItem key={p.id} value={p.id} disabled={!!disableReason}>
+                                {p.name}{disableReason ? ` (${disableReason})` : ""}
                               </SelectItem>
                             );
                           })}
