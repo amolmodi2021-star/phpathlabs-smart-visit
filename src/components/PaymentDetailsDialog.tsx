@@ -506,14 +506,36 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
               </div>
             </div>
 
-            <div className="flex gap-2 pt-2">
-              <Button variant="outline" className="flex-1" onClick={() => setReviewOpen(false)}>
-                Go Back & Edit
-              </Button>
-              <Button className="flex-1" onClick={handleReviewConfirm}>
-                Review Once Again & Save
-              </Button>
-            </div>
+            {(() => {
+              const missing: string[] = [];
+              if (!est?.title) missing.push("Title");
+              if (!est?.gender) missing.push("Gender");
+              if (!est?.dob) missing.push("DOB / Age");
+              if (missing.length > 0) {
+                return (
+                  <div className="space-y-2 pt-2">
+                    <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+                      <p className="font-semibold">⚠️ Missing mandatory fields:</p>
+                      <p>{missing.join(", ")}</p>
+                      <p className="mt-1 text-xs">Please go back and update patient details before saving.</p>
+                    </div>
+                    <Button variant="outline" className="w-full" onClick={() => setReviewOpen(false)}>
+                      Go Back & Modify
+                    </Button>
+                  </div>
+                );
+              }
+              return (
+                <div className="flex gap-2 pt-2">
+                  <Button variant="outline" className="flex-1" onClick={() => setReviewOpen(false)}>
+                    Go Back & Edit
+                  </Button>
+                  <Button className="flex-1" onClick={handleReviewConfirm}>
+                    Review Once Again & Save
+                  </Button>
+                </div>
+              );
+            })()}
           </div>
         </DialogContent>
       </Dialog>
