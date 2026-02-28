@@ -339,7 +339,7 @@ const HomeVisits = () => {
   const handleExport = () => {
     exportToExcel(filteredVisits.map((v: any) => {
       const modeAmounts = parsePaymentModeAmounts(v.payment_mode);
-      const delayed = isVisitDelayed(v) || !!v.delay_reason;
+      const delayed = isVisitDelayed(v) || (v.status === "Completed" && !!v.delay_reason);
       return {
         "Visit Date": v.visit_date,
         "Visit Time": formatTime12hr(v.visit_time),
