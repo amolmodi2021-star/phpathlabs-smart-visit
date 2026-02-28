@@ -410,14 +410,25 @@ const HomeVisits = () => {
           >
             All
           </Button>
-          <Button
-            size="sm"
-            variant={filterPhlebotomist === "unassigned" ? "default" : "outline"}
-            className="h-7 text-xs"
-            onClick={() => setFilterPhlebotomist("unassigned")}
-          >
-            Unassigned
-          </Button>
+          {(() => {
+            // Count unassigned visits in the current date-filtered set
+            let dateFiltered = sortedVisits;
+            if (dateFilter === "today") dateFiltered = dateFiltered.filter((v: any) => isToday(parseISO(v.visit_date)));
+            else if (dateFilter === "tomorrow") dateFiltered = dateFiltered.filter((v: any) => isTomorrow(parseISO(v.visit_date)));
+            else if (dateFilter === "dayafter") { const dayAfter = format(addDays(new Date(), 2), "yyyy-MM-dd"); dateFiltered = dateFiltered.filter((v: any) => v.visit_date === dayAfter); }
+            else { if (filterFromDate) dateFiltered = dateFiltered.filter((v: any) => v.visit_date >= filterFromDate); if (filterToDate) dateFiltered = dateFiltered.filter((v: any) => v.visit_date <= filterToDate); }
+            const unassignedCount = dateFiltered.filter((v: any) => !v.phlebotomist_id && v.status !== "Cancelled").length;
+            return (
+              <Button
+                size="sm"
+                variant={filterPhlebotomist === "unassigned" ? "default" : "outline"}
+                className={`h-7 text-xs ${unassignedCount > 0 && filterPhlebotomist !== "unassigned" ? "border-destructive text-destructive font-bold" : ""} ${unassignedCount > 0 && filterPhlebotomist === "unassigned" ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : ""}`}
+                onClick={() => setFilterPhlebotomist("unassigned")}
+              >
+                Unassigned{unassignedCount > 0 ? ` (${unassignedCount})` : ""}
+              </Button>
+            );
+          })()}
           {phlebotomists.map((p: any) => (
             <Button
               key={p.id}
