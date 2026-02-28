@@ -86,14 +86,35 @@ const TimeSlotPicker = ({ date, phlebotomistId, selectedTime, onSelectTime, excl
     }
   };
 
+  // Find odd-time bookings (not matching any standard slot)
+  const standardSlotValues = new Set(TIME_SLOTS.map(s => s.value));
+  const oddSlots = Object.entries(occupiedSlots)
+    .filter(([time]) => !standardSlotValues.has(time))
+    .map(([time, info]) => {
+      const [h, m] = time.split(":").map(Number);
+      const h12 = h % 12 || 12;
+      const ampm = h >= 12 ? "PM" : "AM";
+      return { value: time, label: `${h12}:${String(m).padStart(2, "0")} ${ampm}`, info };
+    })
+    .sort((a, b) => a.value.localeCompare(b.value));
+
+  // Merge standard + odd slots, sorted by time
+  const allSlots = [...TIME_SLOTS.map(s => ({ ...s, isOdd: false }))];
+  oddSlots.forEach(odd => {
+    // Insert in sorted position
+    const idx = allSlots.findIndex(s => s.value > odd.value);
+    allSlots.splice(idx === -1 ? allSlots.length : idx, 0, { value: odd.value, label: odd.label, isOdd: true });
+  });
+
   return (
     <>
       <p className="text-xs font-medium text-muted-foreground mt-2 mb-1">Available Time Slots</p>
       <div className="grid grid-cols-4 gap-1.5 max-h-48 overflow-y-auto border rounded-md p-2">
-        {TIME_SLOTS.map((slot) => {
+        {allSlots.map((slot) => {
           const isOccupied = !!occupiedSlots[slot.value];
           const isSelected = selectedTime === slot.value;
           const isPast = isSlotInPast(slot.value);
+          const isOdd = 'isOdd' in slot && slot.isOdd;
           const isDisabled = isPast && !isOccupied;
           return (
             <button
@@ -102,7 +123,9 @@ const TimeSlotPicker = ({ date, phlebotomistId, selectedTime, onSelectTime, excl
               onClick={() => handleSlotClick(slot)}
               disabled={isDisabled}
               className={`px-1 py-1.5 rounded text-xs font-medium border transition-colors ${
-                isOccupied
+                isOdd && isOccupied
+                  ? "bg-yellow-500 text-yellow-950 border-yellow-600 cursor-pointer"
+                  : isOccupied
                   ? "bg-destructive text-destructive-foreground border-destructive cursor-pointer"
                   : isPast
                   ? "bg-muted text-muted-foreground/40 border-border cursor-not-allowed line-through"
