@@ -21,6 +21,7 @@ import { useAbnormalHistory } from "@/hooks/useAbnormalHistory";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import EditEstimateDialog from "@/components/EditEstimateDialog";
+import TimeSlotPicker from "@/components/TimeSlotPicker";
 
 const EstimateDashboard = () => {
   useRealtimeSync("estimates", ["estimates"]);
@@ -238,13 +239,22 @@ const EstimateDashboard = () => {
                 }
               }} required />
             </div>
-            <div><Label>Visit Time *</Label><Input type="time" value={visitForm.visit_time} onChange={(e) => setVisitForm(p => ({ ...p, visit_time: e.target.value }))} onBlur={() => {
-              const today = format(new Date(), "yyyy-MM-dd");
-              if (visitForm.visit_date === today && visitForm.visit_time && visitForm.visit_time < format(new Date(), "HH:mm")) {
-                setVisitForm(p => ({ ...p, visit_time: "" }));
-                toast.error("Past time is not allowed for today");
-              }
-            }} required /></div>
+            <div>
+              <Label>Visit Time *</Label>
+              <Input type="time" value={visitForm.visit_time} onChange={(e) => setVisitForm(p => ({ ...p, visit_time: e.target.value }))} onBlur={() => {
+                const today = format(new Date(), "yyyy-MM-dd");
+                if (visitForm.visit_date === today && visitForm.visit_time && visitForm.visit_time < format(new Date(), "HH:mm")) {
+                  setVisitForm(p => ({ ...p, visit_time: "" }));
+                  toast.error("Past time is not allowed for today");
+                }
+              }} required />
+              <TimeSlotPicker
+                date={visitForm.visit_date}
+                phlebotomistId={visitForm.phlebotomist_id}
+                selectedTime={visitForm.visit_time}
+                onSelectTime={(t) => setVisitForm(p => ({ ...p, visit_time: t }))}
+              />
+            </div>
             <div><Label>Address *</Label><Textarea value={visitForm.address} onChange={(e) => setVisitForm(p => ({ ...p, address: e.target.value }))} required rows={3} /></div>
             <div><Label>Home Visit Charges (₹)</Label><Input type="number" value={visitForm.home_visit_charges} onChange={(e) => setVisitForm(p => ({ ...p, home_visit_charges: e.target.value }))} placeholder="0" /></div>
             <div>
