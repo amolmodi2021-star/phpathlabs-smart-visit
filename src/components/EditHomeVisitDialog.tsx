@@ -10,6 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { X, Search } from "lucide-react";
 import { getTests } from "@/lib/tests";
+import TimeSlotPicker from "@/components/TimeSlotPicker";
+import { usePhlebotomistAvailability } from "@/hooks/usePhlebotomistAvailability";
+import { format, addDays, parse, isValid, differenceInYears } from "date-fns";
 import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
@@ -35,6 +38,7 @@ interface EditHomeVisitDialogProps {
 const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps) => {
   const qc = useQueryClient();
   const searchRef = useRef<HTMLInputElement>(null);
+  const { isAvailable, getUnavailableReason } = usePhlebotomistAvailability();
 
   const est = visit?.estimates;
 
@@ -45,6 +49,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
   const [doctorName, setDoctorName] = useState("SELF");
   const [umrInput, setUmrInput] = useState("");
   const [dob, setDob] = useState("");
+  const [dobDisplay, setDobDisplay] = useState("");
   const [whatsappNumber, setWhatsappNumber] = useState("");
   const [visitDate, setVisitDate] = useState("");
   const [visitTime, setVisitTime] = useState("");
@@ -57,6 +62,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
   const [genderConfirmOpen, setGenderConfirmOpen] = useState(false);
   const [pendingGender, setPendingGender] = useState<"Male" | "Female" | "">("");
   const [attempted, setAttempted] = useState(false);
+  const [phlebotomistId, setPhlebotomistId] = useState("");
 
   const handleTitleChange = (val: string) => {
     setTitle(val);
@@ -76,6 +82,70 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
     queryFn: async () => await getTests(),
   });
 
+  const { data: phlebotomists = [] } = useQuery({
+    queryKey: ["phlebotomists", "active"],
+    queryFn: async () => { const { data } = await supabase.from("phlebotomists").select("*").eq("status", "Active"); return data || []; },
+  });
+
+  // DOB helpers: convert between dd-mm-yyyy display and yyyy-mm-dd storage
+  const dobToDisplay = (isoDate: string) => {
+    if (!isoDate) return "";
+    const d = new Date(isoDate);
+    if (!isValid(d)) return "";
+    return format(d, "dd-MM-yyyy");
+  };
+
+  const handleDobDisplayChange = (val: string) => {
+    // Allow only digits and dashes, auto-insert dashes
+    let cleaned = val.replace(/[^\d-]/g, "");
+    // Auto-format: insert dashes after dd and mm
+    const digits = cleaned.replace(/-/g, "");
+    if (digits.length >= 4) {
+      cleaned = `${digits.slice(0, 2)}-${digits.slice(2, 4)}-${digits.slice(4, 8)}`;
+    } else if (digits.length >= 2) {
+      cleaned = `${digits.slice(0, 2)}-${digits.slice(2)}`;
+    }
+    setDobDisplay(cleaned);
+    // Parse complete date
+    if (/^\d{2}-\d{2}-\d{4}$/.test(cleaned)) {
+      const parsed = parse(cleaned, "dd-MM-yyyy", new Date());
+      if (isValid(parsed) && parsed <= new Date()) {
+        setDob(format(parsed, "yyyy-MM-dd"));
+      } else {
+        setDob("");
+      }
+    } else {
+      setDob("");
+    }
+  };
+
+  const calculatedAge = useMemo(() => {
+    if (!dob) return "";
+    const d = new Date(dob);
+    if (!isValid(d)) return "";
+    return String(differenceInYears(new Date(), d));
+  }, [dob]);
+
+  const handleVisitDateBlur = () => {
+    const today = format(new Date(), "yyyy-MM-dd");
+    if (visitDate && /^\d{4}-\d{2}-\d{2}$/.test(visitDate) && visitDate < today) {
+      setVisitDate(today);
+      toast.error("Past dates are not allowed");
+    }
+    if (visitDate === today && visitTime && visitTime < format(new Date(), "HH:mm")) {
+      setVisitTime("");
+      toast.error("Selected time has already passed");
+    }
+  };
+
+  const handleVisitTimeBlur = () => {
+    const today = format(new Date(), "yyyy-MM-dd");
+    if (visitDate === today && visitTime && visitTime < format(new Date(), "HH:mm")) {
+      setVisitTime("");
+      toast.error("Past time is not allowed for today");
+    }
+  };
+
   // Populate form when visit changes
   useEffect(() => {
     if (!visit || !est) return;
@@ -88,10 +158,12 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
     const rawUmr = est.umr_number || "";
     setUmrInput(rawUmr.startsWith("UMR") ? String(parseInt(rawUmr.slice(3)) || "") : rawUmr);
     setDob(est.dob || "");
+    setDobDisplay(dobToDisplay(est.dob || ""));
     setWhatsappNumber(est.whatsapp_number || "");
     setVisitDate(visit.visit_date || "");
     setVisitTime(visit.visit_time || "");
     setAddress(visit.address || "");
+    setPhlebotomistId(visit.phlebotomist_id || "");
     setGlobalDiscountType((est.global_discount_type as "percent" | "amount") || "percent");
     setGlobalDiscountValue(Number(est.global_discount_value) || 0);
     setHomeVisitCharges(String(Number(est.home_visit_charges) || 0));
@@ -221,6 +293,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
         visit_date: visitDate,
         visit_time: visitTime,
         address: address.toUpperCase(),
+        phlebotomist_id: phlebotomistId || null,
       }).eq("id", visit.id);
       if (visitError) throw visitError;
 
@@ -296,24 +369,81 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <Label className={attempted && !dob ? "text-destructive" : ""}>DOB *</Label>
-              <Input type="date" value={dob} onChange={(e) => setDob(e.target.value)} />
+              <Label className={attempted && !dob ? "text-destructive" : ""}>DOB * (dd-mm-yyyy)</Label>
+              <Input
+                type="text"
+                inputMode="numeric"
+                value={dobDisplay}
+                onChange={(e) => handleDobDisplayChange(e.target.value)}
+                placeholder="dd-mm-yyyy"
+                maxLength={10}
+              />
             </div>
             <div>
               <Label>Age (Years)</Label>
-              <Input readOnly value={dob ? String(Math.floor((Date.now() - new Date(dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000))) : ""} className="bg-muted" />
+              <Input readOnly value={calculatedAge} className="bg-muted" />
             </div>
           </div>
 
           {/* Visit Details */}
-          <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-2">
             <div>
               <Label className={attempted && !visitDate ? "text-destructive" : ""}>Visit Date *</Label>
-              <Input type="date" value={visitDate} onChange={(e) => setVisitDate(e.target.value)} />
+              <div className="flex flex-wrap gap-1.5 mt-1 mb-2">
+                {[0, 1, 2].map(offset => {
+                  const d = addDays(new Date(), offset);
+                  const dateStr = format(d, "yyyy-MM-dd");
+                  const dayName = format(d, "EEEE");
+                  const dateLabel = format(d, "dd MMM");
+                  const label = offset === 0 ? `Today (${dayName}, ${dateLabel})` : offset === 1 ? `Tomorrow (${dayName}, ${dateLabel})` : `Day After (${dayName}, ${dateLabel})`;
+                  return (
+                    <Button key={offset} type="button" size="sm" variant={visitDate === dateStr ? "default" : "outline"} className="h-7 text-xs" onClick={() => setVisitDate(dateStr)}>
+                      {label}
+                    </Button>
+                  );
+                })}
+              </div>
+              <Input
+                type="date"
+                value={visitDate}
+                onChange={(e) => setVisitDate(e.target.value)}
+                onBlur={handleVisitDateBlur}
+                min={format(new Date(), "yyyy-MM-dd")}
+              />
             </div>
+
+            {/* Assign Phlebotomist - before time so slots show */}
+            <div>
+              <Label>Assign Phlebotomist</Label>
+              <Select value={phlebotomistId} onValueChange={setPhlebotomistId}>
+                <SelectTrigger><SelectValue placeholder="Select phlebotomist..." /></SelectTrigger>
+                <SelectContent>
+                  {phlebotomists.map((p: any) => {
+                    const reason = getUnavailableReason(p, visitDate);
+                    return (
+                      <SelectItem key={p.id} value={p.id} disabled={!!reason}>
+                        {p.name}{reason ? ` (${reason})` : ""}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div>
               <Label className={attempted && !visitTime ? "text-destructive" : ""}>Visit Time *</Label>
-              <Input type="time" value={visitTime} onChange={(e) => setVisitTime(e.target.value)} />
+              <Input
+                type="time"
+                value={visitTime}
+                onChange={(e) => setVisitTime(e.target.value)}
+                onBlur={handleVisitTimeBlur}
+              />
+              <TimeSlotPicker
+                date={visitDate}
+                phlebotomistId={phlebotomistId}
+                selectedTime={visitTime}
+                onSelectTime={setVisitTime}
+              />
             </div>
           </div>
           <div>
