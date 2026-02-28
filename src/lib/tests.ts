@@ -7,6 +7,8 @@ export interface TestItem {
   fasting_required: boolean;
   discount_applicable: boolean;
   description: string | null;
+  incentive_allowed: boolean;
+  incentive_amount: number;
   created_at?: string;
   updated_at?: string;
 }
@@ -17,6 +19,8 @@ interface SaveTestPayload {
   fasting_required: boolean;
   discount_applicable: boolean;
   description: string;
+  incentive_allowed: boolean;
+  incentive_amount: number;
 }
 
 // Simple retry wrapper for transient network errors

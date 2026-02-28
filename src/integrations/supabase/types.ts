@@ -338,6 +338,8 @@ export type Database = {
           discount_applicable: boolean
           fasting_required: boolean
           id: string
+          incentive_allowed: boolean
+          incentive_amount: number
           price: number
           test_name: string
           updated_at: string
@@ -348,6 +350,8 @@ export type Database = {
           discount_applicable?: boolean
           fasting_required?: boolean
           id?: string
+          incentive_allowed?: boolean
+          incentive_amount?: number
           price?: number
           test_name: string
           updated_at?: string
@@ -358,6 +362,8 @@ export type Database = {
           discount_applicable?: boolean
           fasting_required?: boolean
           id?: string
+          incentive_allowed?: boolean
+          incentive_amount?: number
           price?: number
           test_name?: string
           updated_at?: string
