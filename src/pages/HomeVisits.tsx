@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { usePhlebotomistAvailability } from "@/hooks/usePhlebotomistAvailability";
 import { supabase } from "@/integrations/supabase/client";
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ const statusColors: Record<string, string> = {
 
 const HomeVisits = () => {
   useRealtimeSync("home_visits", ["home_visits"]);
+  const { getUnavailableReason } = usePhlebotomistAvailability();
   const qc = useQueryClient();
   const [cancelDialog, setCancelDialog] = useState<any>(null);
   const [cancelReason, setCancelReason] = useState("");
@@ -627,7 +629,14 @@ const HomeVisits = () => {
                       >
                         <SelectTrigger className="w-36 h-8 text-xs"><SelectValue placeholder="Assign..." /></SelectTrigger>
                         <SelectContent>
-                          {phlebotomists.map((p: any) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                          {phlebotomists.map((p: any) => {
+                            const reason = getUnavailableReason(p, v.visit_date);
+                            return (
+                              <SelectItem key={p.id} value={p.id} disabled={!!reason}>
+                                {p.name}{reason ? ` (${reason})` : ""}
+                              </SelectItem>
+                            );
+                          })}
                         </SelectContent>
                       </Select>
                     )}

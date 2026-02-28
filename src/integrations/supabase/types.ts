@@ -257,6 +257,38 @@ export type Database = {
         }
         Relationships: []
       }
+      phlebotomist_leaves: {
+        Row: {
+          created_at: string
+          id: string
+          leave_date: string
+          phlebotomist_id: string
+          reason: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          leave_date: string
+          phlebotomist_id: string
+          reason?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          leave_date?: string
+          phlebotomist_id?: string
+          reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "phlebotomist_leaves_phlebotomist_id_fkey"
+            columns: ["phlebotomist_id"]
+            isOneToOne: false
+            referencedRelation: "phlebotomists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       phlebotomists: {
         Row: {
           alternate_mobile: string | null
@@ -268,6 +300,7 @@ export type Database = {
           notes: string | null
           status: string
           updated_at: string
+          weekly_off_days: number[] | null
         }
         Insert: {
           alternate_mobile?: string | null
@@ -279,6 +312,7 @@ export type Database = {
           notes?: string | null
           status?: string
           updated_at?: string
+          weekly_off_days?: number[] | null
         }
         Update: {
           alternate_mobile?: string | null
@@ -290,6 +324,7 @@ export type Database = {
           notes?: string | null
           status?: string
           updated_at?: string
+          weekly_off_days?: number[] | null
         }
         Relationships: []
       }
