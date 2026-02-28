@@ -640,7 +640,7 @@ const HomeVisits = () => {
                       {v.delay_reason && <span className="text-muted-foreground">— {v.delay_reason}</span>}
                     </div>
                   )}
-                  {!isVisitDelayed(v) && v.delay_reason && (
+                  {!isVisitDelayed(v) && v.delay_reason && v.status === "Completed" && (
                     <div className="flex items-center gap-1 text-xs text-muted-foreground">
                       <Clock className="h-3 w-3" />
                       <span>Delay Reason: {v.delay_reason}</span>
