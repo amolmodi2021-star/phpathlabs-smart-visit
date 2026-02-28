@@ -123,8 +123,8 @@ const CreateEstimate = () => {
       }
 
       try {
-        const { data: est, error } = await supabase.from("estimates").insert({
-          patient_name: patientName || null,
+      const { data: est, error } = await supabase.from("estimates").insert({
+          patient_name: patientName ? patientName.toUpperCase() : null,
           whatsapp_number: cleanNumber,
           total_amount: calculations.totalAmount,
           discount_amount: calculations.totalDiscount,

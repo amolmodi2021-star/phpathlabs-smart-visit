@@ -181,10 +181,10 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
       // Update estimate
       const { error: estError } = await supabase.from("estimates").update({
         title: title || null,
-        patient_name: patientName || null,
+        patient_name: patientName ? patientName.toUpperCase() : null,
         gender: gender || null,
         email: email || null,
-        doctor_name: doctorName || "SELF",
+        doctor_name: doctorName ? doctorName.toUpperCase() : "SELF",
         umr_number: formattedUmr,
         dob: dob || null,
         whatsapp_number: cleanNumber,
@@ -220,7 +220,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
       const { error: visitError } = await supabase.from("home_visits").update({
         visit_date: visitDate,
         visit_time: visitTime,
-        address: address,
+        address: address.toUpperCase(),
       }).eq("id", visit.id);
       if (visitError) throw visitError;
 

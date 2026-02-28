@@ -165,7 +165,7 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
 
       // Create estimate
       const { data: est, error: estError } = await supabase.from("estimates").insert({
-        patient_name: patientName || null,
+        patient_name: patientName ? patientName.toUpperCase() : null,
         whatsapp_number: cleanNumber,
         total_amount: calculations.totalAmount,
         discount_amount: calculations.totalDiscount,
@@ -197,7 +197,7 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
         estimate_id: est.id,
         visit_date: visitDate,
         visit_time: visitTime,
-        address: address,
+        address: address.toUpperCase(),
         phlebotomist_id: phlebotomistId || null,
       });
       if (visitError) throw visitError;
