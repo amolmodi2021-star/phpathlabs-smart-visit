@@ -766,12 +766,12 @@ const HomeVisits = () => {
         onCompletionSave={async () => {
           const visitId = completionEditVisit?.id;
           setCompletionEditVisit(null);
-          // Wait for refetch to complete, then check again
+          // Wait for refetch to complete, then proceed directly to payment
           await qc.refetchQueries({ queryKey: ["home_visits"] });
           setTimeout(() => {
             const updated = qc.getQueryData<any[]>(["home_visits"])?.find((v: any) => v.id === visitId);
             if (updated) {
-              checkMissingAndProceed(updated);
+              setPaymentVisit(updated);
             }
           }, 200);
         }}
