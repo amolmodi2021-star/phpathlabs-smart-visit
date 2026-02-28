@@ -31,7 +31,7 @@ const EstimateDashboard = () => {
   const { getUnavailableReason } = usePhlebotomistAvailability();
   const [selected, setSelected] = useState<string[]>([]);
   const [bookingEstimate, setBookingEstimate] = useState<any>(null);
-  const [visitForm, setVisitForm] = useState({ visit_date: "", visit_time: "", address: "", phlebotomist_id: "", home_visit_charges: "" });
+  const [visitForm, setVisitForm] = useState({ patient_name: "", visit_date: "", visit_time: "", address: "", phlebotomist_id: "", home_visit_charges: "" });
   const [exportDialog, setExportDialog] = useState(false);
   const [editEstimate, setEditEstimate] = useState<any>(null);
   const [search, setSearch] = useState("");
@@ -107,7 +107,7 @@ const EstimateDashboard = () => {
       qc.invalidateQueries({ queryKey: ["estimates"] });
       qc.invalidateQueries({ queryKey: ["home_visits"] });
       setBookingEstimate(null);
-      setVisitForm({ visit_date: "", visit_time: "", address: "", phlebotomist_id: "", home_visit_charges: "" });
+      setVisitForm({ patient_name: "", visit_date: "", visit_time: "", address: "", phlebotomist_id: "", home_visit_charges: "" });
       toast.success("Home visit booked!");
     },
     onError: (e: Error) => toast.error(e.message),
@@ -183,7 +183,7 @@ const EstimateDashboard = () => {
                        <Button size="sm" variant="ghost" onClick={() => setEditEstimate(est)}>
                          <Pencil className="h-3.5 w-3.5" />
                        </Button>
-                       <Button size="sm" variant="outline" onClick={() => { setBookingEstimate(est); setVisitForm(p => ({ ...p, home_visit_charges: Number(est.home_visit_charges) > 0 ? String(est.home_visit_charges) : "" })); }}>
+                       <Button size="sm" variant="outline" onClick={() => { setBookingEstimate(est); setVisitForm(p => ({ ...p, patient_name: est.patient_name || "", home_visit_charges: Number(est.home_visit_charges) > 0 ? String(est.home_visit_charges) : "" })); }}>
                          <MapPin className="h-3.5 w-3.5 mr-1" />Book Visit
                        </Button>
                      </div>
@@ -211,6 +211,10 @@ const EstimateDashboard = () => {
         <DialogContent>
           <DialogHeader><DialogTitle>Book Home Visit</DialogTitle></DialogHeader>
           <form onSubmit={(e) => { e.preventDefault(); bookVisitMutation.mutate(); }} className="space-y-4">
+            <div>
+              <Label>Patient Name</Label>
+              <Input value={visitForm.patient_name} onChange={(e) => setVisitForm(p => ({ ...p, patient_name: e.target.value }))} placeholder="Patient name (optional)" />
+            </div>
             <div>
               <Label>Visit Date *</Label>
               <div className="flex flex-wrap gap-1.5 mt-1 mb-2">
