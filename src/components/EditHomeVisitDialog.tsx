@@ -33,9 +33,12 @@ interface EditHomeVisitDialogProps {
   visit: any;
   open: boolean;
   onClose: () => void;
+  /** When true, date/time/phleb are disabled and save triggers onCompletionSave */
+  completionMode?: boolean;
+  onCompletionSave?: () => void;
 }
 
-const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps) => {
+const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletionSave }: EditHomeVisitDialogProps) => {
   const qc = useQueryClient();
   const searchRef = useRef<HTMLInputElement>(null);
   const { isAvailable, getUnavailableReason } = usePhlebotomistAvailability();
@@ -303,6 +306,10 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
       qc.invalidateQueries({ queryKey: ["estimates"] });
       toast.success("Home visit updated successfully!");
       onClose();
+      if (completionMode && onCompletionSave) {
+        // Small delay to let queries refetch
+        setTimeout(() => onCompletionSave(), 300);
+      }
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -312,7 +319,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>Edit Home Visit Record</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{completionMode ? "Complete Missing Details" : "Edit Home Visit Record"}</DialogTitle></DialogHeader>
         <div className="space-y-4">
           {/* Patient Info */}
           <div className="grid grid-cols-[120px_1fr] gap-2">
@@ -387,64 +394,85 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
 
           {/* Visit Details */}
           <div className="space-y-2">
-            <div>
-              <Label className={attempted && !visitDate ? "text-destructive" : ""}>Visit Date *</Label>
-              <div className="flex flex-wrap gap-1.5 mt-1 mb-2">
-                {[0, 1, 2].map(offset => {
-                  const d = addDays(new Date(), offset);
-                  const dateStr = format(d, "yyyy-MM-dd");
-                  const dayName = format(d, "EEEE");
-                  const dateLabel = format(d, "dd MMM");
-                  const label = offset === 0 ? `Today (${dayName}, ${dateLabel})` : offset === 1 ? `Tomorrow (${dayName}, ${dateLabel})` : `Day After (${dayName}, ${dateLabel})`;
-                  return (
-                    <Button key={offset} type="button" size="sm" variant={visitDate === dateStr ? "default" : "outline"} className="h-7 text-xs" onClick={() => setVisitDate(dateStr)}>
-                      {label}
-                    </Button>
-                  );
-                })}
-              </div>
-              <Input
-                type="date"
-                value={visitDate}
-                onChange={(e) => setVisitDate(e.target.value)}
-                onBlur={handleVisitDateBlur}
-                min={format(new Date(), "yyyy-MM-dd")}
-              />
-            </div>
+            {completionMode ? (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label>Visit Date</Label>
+                    <Input type="date" value={visitDate} disabled className="bg-muted" />
+                  </div>
+                  <div>
+                    <Label>Visit Time</Label>
+                    <Input type="time" value={visitTime} disabled className="bg-muted" />
+                  </div>
+                </div>
+                <div>
+                  <Label>Phlebotomist</Label>
+                  <Input value={phlebotomists.find((p: any) => p.id === phlebotomistId)?.name || "Not assigned"} disabled className="bg-muted" />
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <Label className={attempted && !visitDate ? "text-destructive" : ""}>Visit Date *</Label>
+                  <div className="flex flex-wrap gap-1.5 mt-1 mb-2">
+                    {[0, 1, 2].map(offset => {
+                      const d = addDays(new Date(), offset);
+                      const dateStr = format(d, "yyyy-MM-dd");
+                      const dayName = format(d, "EEEE");
+                      const dateLabel = format(d, "dd MMM");
+                      const label = offset === 0 ? `Today (${dayName}, ${dateLabel})` : offset === 1 ? `Tomorrow (${dayName}, ${dateLabel})` : `Day After (${dayName}, ${dateLabel})`;
+                      return (
+                        <Button key={offset} type="button" size="sm" variant={visitDate === dateStr ? "default" : "outline"} className="h-7 text-xs" onClick={() => setVisitDate(dateStr)}>
+                          {label}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                  <Input
+                    type="date"
+                    value={visitDate}
+                    onChange={(e) => setVisitDate(e.target.value)}
+                    onBlur={handleVisitDateBlur}
+                    min={format(new Date(), "yyyy-MM-dd")}
+                  />
+                </div>
 
-            {/* Assign Phlebotomist - before time so slots show */}
-            <div>
-              <Label>Assign Phlebotomist</Label>
-              <Select value={phlebotomistId} onValueChange={setPhlebotomistId}>
-                <SelectTrigger><SelectValue placeholder="Select phlebotomist..." /></SelectTrigger>
-                <SelectContent>
-                  {phlebotomists.map((p: any) => {
-                    const reason = getUnavailableReason(p, visitDate);
-                    return (
-                      <SelectItem key={p.id} value={p.id} disabled={!!reason}>
-                        {p.name}{reason ? ` (${reason})` : ""}
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
-            </div>
+                {/* Assign Phlebotomist - before time so slots show */}
+                <div>
+                  <Label>Assign Phlebotomist</Label>
+                  <Select value={phlebotomistId} onValueChange={setPhlebotomistId}>
+                    <SelectTrigger><SelectValue placeholder="Select phlebotomist..." /></SelectTrigger>
+                    <SelectContent>
+                      {phlebotomists.map((p: any) => {
+                        const reason = getUnavailableReason(p, visitDate);
+                        return (
+                          <SelectItem key={p.id} value={p.id} disabled={!!reason}>
+                            {p.name}{reason ? ` (${reason})` : ""}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-            <div>
-              <Label className={attempted && !visitTime ? "text-destructive" : ""}>Visit Time *</Label>
-              <Input
-                type="time"
-                value={visitTime}
-                onChange={(e) => setVisitTime(e.target.value)}
-                onBlur={handleVisitTimeBlur}
-              />
-              <TimeSlotPicker
-                date={visitDate}
-                phlebotomistId={phlebotomistId}
-                selectedTime={visitTime}
-                onSelectTime={setVisitTime}
-              />
-            </div>
+                <div>
+                  <Label className={attempted && !visitTime ? "text-destructive" : ""}>Visit Time *</Label>
+                  <Input
+                    type="time"
+                    value={visitTime}
+                    onChange={(e) => setVisitTime(e.target.value)}
+                    onBlur={handleVisitTimeBlur}
+                  />
+                  <TimeSlotPicker
+                    date={visitDate}
+                    phlebotomistId={phlebotomistId}
+                    selectedTime={visitTime}
+                    onSelectTime={setVisitTime}
+                  />
+                </div>
+              </>
+            )}
           </div>
           <div>
             <Label className={attempted && !address.trim() ? "text-destructive" : ""}>Address *</Label>
@@ -540,7 +568,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose }: EditHomeVisitDialogProps)
           )}
 
           <Button className="w-full" onClick={() => { setAttempted(true); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
-            Save Changes
+            {completionMode ? "Save & Proceed to Payment" : "Save Changes"}
           </Button>
         </div>
 

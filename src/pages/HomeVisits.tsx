@@ -67,8 +67,7 @@ const HomeVisits = () => {
   const [statusUnlockedIds, setStatusUnlockedIds] = useState<Set<string>>(new Set());
   const [statusPasswordDialog, setStatusPasswordDialog] = useState(false);
   const [pendingStatusVisitId, setPendingStatusVisitId] = useState<string | null>(null);
-  const [missingDetailsDialog, setMissingDetailsDialog] = useState<string[] | null>(null);
-
+  const [completionEditVisit, setCompletionEditVisit] = useState<any>(null);
 
   const { data: visits = [], isLoading } = useQuery({
     queryKey: ["home_visits"],
@@ -130,7 +129,8 @@ const HomeVisits = () => {
     if (!est?.gender) missing.push("Gender");
     if (!est?.dob) missing.push("DOB / Age");
     if (missing.length > 0) {
-      setMissingDetailsDialog(missing);
+      // Open edit dialog in completion mode so user can fill missing fields
+      setCompletionEditVisit(visit);
       return;
     }
     setPaymentVisit(visit);
@@ -763,22 +763,25 @@ const HomeVisits = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Missing details dialog */}
-      <Dialog open={!!missingDetailsDialog} onOpenChange={(o) => { if (!o) setMissingDetailsDialog(null); }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Missing Patient Details</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-              <p className="font-semibold">⚠️ The following details are missing:</p>
-              <p className="mt-1">{missingDetailsDialog?.join(", ")}</p>
-              <p className="mt-2 text-xs">Please edit the record and fill in the missing details before marking as completed.</p>
-            </div>
-            <Button variant="outline" className="w-full" onClick={() => setMissingDetailsDialog(null)}>
-              Go Back
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Completion-mode edit dialog (when mandatory fields missing) */}
+      <EditHomeVisitDialog
+        visit={completionEditVisit}
+        open={!!completionEditVisit}
+        onClose={() => setCompletionEditVisit(null)}
+        completionMode
+        onCompletionSave={async () => {
+          const visitId = completionEditVisit?.id;
+          setCompletionEditVisit(null);
+          // Wait for refetch to complete, then check again
+          await qc.refetchQueries({ queryKey: ["home_visits"] });
+          setTimeout(() => {
+            const updated = qc.getQueryData<any[]>(["home_visits"])?.find((v: any) => v.id === visitId);
+            if (updated) {
+              checkMissingAndProceed(updated);
+            }
+          }, 200);
+        }}
+      />
 
       {/* Delay reason dialog */}
       <Dialog open={!!delayReasonDialog} onOpenChange={(o) => { if (!o) setDelayReasonDialog(null); }}>
