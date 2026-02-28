@@ -35,7 +35,7 @@ const PhlebotomistManagement = () => {
 
   const saveMutation = useMutation({
     mutationFn: async (v: typeof form) => {
-      const payload = { ...v, name: v.name.toUpperCase(), area_zone: v.area_zone ? v.area_zone.toUpperCase() : "", notes: v.notes ? v.notes.toUpperCase() : "" };
+      const payload = { ...v, area_zone: v.area_zone ? v.area_zone.toUpperCase() : "", notes: v.notes ? v.notes.toUpperCase() : "" };
       if (editing) { const { error } = await supabase.from("phlebotomists").update(payload).eq("id", editing.id); if (error) throw error; }
       else { const { error } = await supabase.from("phlebotomists").insert(payload); if (error) throw error; }
     },
