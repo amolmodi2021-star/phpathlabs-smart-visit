@@ -14,6 +14,7 @@ const templateFields = [
   { key: "estimate_header", label: "Estimate Header" },
   { key: "visit_confirmation_header", label: "Visit Confirmation Header" },
   { key: "fasting_instructions", label: "Fasting Instructions" },
+  { key: "no_fasting_message", label: "No Fasting Message" },
   { key: "home_visit_disclaimer", label: "Home Visit Disclaimer" },
   { key: "footer_text", label: "Footer Text" },
 ];

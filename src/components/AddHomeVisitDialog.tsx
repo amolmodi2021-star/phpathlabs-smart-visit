@@ -216,6 +216,7 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
           header: templates.estimate_header,
           visitHeader: templates.visit_confirmation_header,
           fastingInstructions: templates.fasting_instructions,
+          noFastingMessage: templates.no_fasting_message,
           homeVisitDisclaimer: templates.home_visit_disclaimer,
           footer: templates.footer_text,
           visitDate: format(new Date(visitDate), "dd-MM-yyyy"),

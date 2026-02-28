@@ -5,6 +5,7 @@ export interface Templates {
   estimate_header: string;
   visit_confirmation_header: string;
   fasting_instructions: string;
+  no_fasting_message: string;
   home_visit_disclaimer: string;
   footer_text: string;
 }
@@ -13,6 +14,7 @@ const defaults: Templates = {
   estimate_header: "PH PathLabs - Estimate",
   visit_confirmation_header: "PH PathLabs - Visit Confirmation",
   fasting_instructions: "8 to 10 hours of fasting is required.",
+  no_fasting_message: "Fasting is not required for any of the above mentioned tests.",
   home_visit_disclaimer: "Home visit charges are not included and will be charged extra depending on your area of visit.",
   footer_text: "LabLine : 6356 55 66 99\nPH PathLabs - Vesu",
 };
