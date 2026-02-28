@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { Download, Phone, MapPin, ChevronDown, ChevronUp, Pencil, Trash2, Plus, AlertTriangle, Clock } from "lucide-react";
+import { Download, Phone, MapPin, ChevronDown, ChevronUp, Pencil, Trash2, Plus, AlertTriangle, Clock, FileImage } from "lucide-react";
 import { exportToExcel } from "@/lib/excel";
 import { useState, useCallback, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +21,7 @@ import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import EditHomeVisitDialog from "@/components/EditHomeVisitDialog";
 import AddHomeVisitDialog from "@/components/AddHomeVisitDialog";
 import PaymentDetailsDialog from "@/components/PaymentDetailsDialog";
+import ReceiptViewDialog from "@/components/ReceiptViewDialog";
 import { format, isToday, isTomorrow, parseISO, addDays } from "date-fns";
 import { useAbnormalHistory } from "@/hooks/useAbnormalHistory";
 
@@ -68,6 +69,7 @@ const HomeVisits = () => {
   const [statusPasswordDialog, setStatusPasswordDialog] = useState(false);
   const [pendingStatusVisitId, setPendingStatusVisitId] = useState<string | null>(null);
   const [completionEditVisit, setCompletionEditVisit] = useState<any>(null);
+  const [receiptViewVisit, setReceiptViewVisit] = useState<any>(null);
 
   const { data: visits = [], isLoading } = useQuery({
     queryKey: ["home_visits"],
@@ -555,6 +557,11 @@ const HomeVisits = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
+                      {v.status === "Completed" && (
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-primary" onClick={() => setReceiptViewVisit(v)}>
+                          <FileImage className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditDialog(v)}>
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
@@ -889,6 +896,12 @@ const HomeVisits = () => {
         onOpenChange={(o) => { setStatusPasswordDialog(o); if (!o) setPendingStatusVisitId(null); }}
         onSuccess={() => { if (pendingStatusVisitId) setStatusUnlockedIds(prev => new Set(prev).add(pendingStatusVisitId)); setPendingStatusVisitId(null); }}
         description="Enter password to change the status of a completed visit."
+      />
+      {/* Receipt view dialog for completed visits */}
+      <ReceiptViewDialog
+        open={!!receiptViewVisit}
+        onClose={() => setReceiptViewVisit(null)}
+        visitData={receiptViewVisit}
       />
     </div>
   );
