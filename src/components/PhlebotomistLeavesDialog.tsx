@@ -119,18 +119,23 @@ const PhlebotomistLeavesDialog = ({ open, onClose, phlebotomist }: Props) => {
               Select days when this phlebotomist has a recurring weekly off.
             </p>
             <div className="flex flex-wrap gap-2">
-              {DAYS_OF_WEEK.map((day) => (
-                <label
-                  key={day.value}
-                  className="flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Checkbox
-                    checked={weeklyOffDays.includes(day.value)}
-                    onCheckedChange={() => toggleWeeklyOff.mutate(day.value)}
-                  />
-                  <span className="text-sm">{day.label}</span>
-                </label>
-              ))}
+              {DAYS_OF_WEEK.map((day) => {
+                const isSelected = weeklyOffDays.includes(day.value);
+                return (
+                  <button
+                    key={day.value}
+                    type="button"
+                    onClick={() => toggleWeeklyOff.mutate(day.value)}
+                    className={`px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+                      isSelected
+                        ? "bg-destructive text-destructive-foreground border-destructive"
+                        : "bg-muted text-muted-foreground border-border hover:bg-accent"
+                    }`}
+                  >
+                    {day.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
