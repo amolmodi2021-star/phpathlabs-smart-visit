@@ -126,17 +126,8 @@ const HomeVisits = () => {
   };
 
   const checkMissingAndProceed = (visit: any) => {
-    const est = visit.estimates;
-    const missing: string[] = [];
-    if (!est?.title) missing.push("Title");
-    if (!est?.gender) missing.push("Gender");
-    if (!est?.dob) missing.push("DOB / Age");
-    if (missing.length > 0) {
-      // Open edit dialog in completion mode so user can fill missing fields
-      setCompletionEditVisit(visit);
-      return;
-    }
-    setPaymentVisit(visit);
+    // Always open edit dialog in completion mode so user can review/update details and tests
+    setCompletionEditVisit(visit);
   };
 
   const handleStatusChange = (visit: any, newStatus: string) => {
