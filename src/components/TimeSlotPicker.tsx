@@ -68,7 +68,17 @@ const TimeSlotPicker = ({ date, phlebotomistId, selectedTime, onSelectTime, excl
     return <p className="text-xs text-muted-foreground">Select date & phlebotomist to see available slots</p>;
   }
 
+  const isSlotInPast = (slotValue: string) => {
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    if (date > today) return false;
+    if (date < today) return true;
+    const [h, m] = slotValue.split(":").map(Number);
+    return h < now.getHours() || (h === now.getHours() && m <= now.getMinutes());
+  };
+
   const handleSlotClick = (slot: { value: string; label: string }) => {
+    if (isSlotInPast(slot.value)) return;
     const occupied = occupiedSlots[slot.value];
     if (occupied) {
       setOccupiedPopup(occupied);
@@ -84,13 +94,17 @@ const TimeSlotPicker = ({ date, phlebotomistId, selectedTime, onSelectTime, excl
         {TIME_SLOTS.map((slot) => {
           const isOccupied = !!occupiedSlots[slot.value];
           const isSelected = selectedTime === slot.value;
+          const isPast = isSlotInPast(slot.value);
           return (
             <button
               key={slot.value}
               type="button"
               onClick={() => handleSlotClick(slot)}
+              disabled={isPast}
               className={`px-1 py-1.5 rounded text-xs font-medium border transition-colors ${
-                isOccupied
+                isPast
+                  ? "bg-muted text-muted-foreground/40 border-border cursor-not-allowed line-through"
+                  : isOccupied
                   ? "bg-destructive text-destructive-foreground border-destructive cursor-pointer"
                   : isSelected
                   ? "bg-primary text-primary-foreground border-primary"
