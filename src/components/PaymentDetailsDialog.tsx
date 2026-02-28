@@ -552,6 +552,7 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
               {/* Header */}
               <div className="text-center border-b-2 border-gray-800 pb-2">
                 <h2 className="text-base font-bold tracking-wide">PH PathLabs</h2>
+                <p className="text-[10px] text-gray-500">LabLine : 6356 55 66 99</p>
                 <p className="text-[10px] text-gray-500">Home Visit Receipt</p>
                 {receiptNumber && <p className="text-[10px] font-semibold text-gray-700">Receipt No: {receiptNumber}</p>}
                 <p className="text-[10px] text-gray-500">{format(new Date(), "dd-MM-yyyy | hh:mm a")}</p>
@@ -562,6 +563,8 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
                 <div className="flex justify-between"><span className="text-gray-600">Patient:</span><span className="font-semibold">{[est?.title, est?.patient_name].filter(Boolean).join(" ") || "—"}</span></div>
                 <div className="flex justify-between"><span className="text-gray-600">Mobile:</span><span className="font-semibold">{est?.whatsapp_number || "—"}</span></div>
                 {est?.gender && <div className="flex justify-between"><span className="text-gray-600">Gender:</span><span className="font-semibold">{est.gender}</span></div>}
+                {est?.dob && <div className="flex justify-between"><span className="text-gray-600">DOB:</span><span className="font-semibold">{new Date(est.dob).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</span></div>}
+                {est?.dob && <div className="flex justify-between"><span className="text-gray-600">Age:</span><span className="font-semibold">{Math.floor((Date.now() - new Date(est.dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000))} Years</span></div>}
                 {est?.doctor_name && <div className="flex justify-between"><span className="text-gray-600">Doctor:</span><span className="font-semibold">{est.doctor_name}</span></div>}
                 {est?.umr_number && <div className="flex justify-between"><span className="text-gray-600">UMR No:</span><span className="font-semibold">{est.umr_number}</span></div>}
               </div>
