@@ -35,8 +35,9 @@ const PhlebotomistManagement = () => {
 
   const saveMutation = useMutation({
     mutationFn: async (v: typeof form) => {
-      if (editing) { const { error } = await supabase.from("phlebotomists").update(v).eq("id", editing.id); if (error) throw error; }
-      else { const { error } = await supabase.from("phlebotomists").insert(v); if (error) throw error; }
+      const payload = { ...v, name: v.name.toUpperCase(), area_zone: v.area_zone ? v.area_zone.toUpperCase() : "", notes: v.notes ? v.notes.toUpperCase() : "" };
+      if (editing) { const { error } = await supabase.from("phlebotomists").update(payload).eq("id", editing.id); if (error) throw error; }
+      else { const { error } = await supabase.from("phlebotomists").insert(payload); if (error) throw error; }
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["phlebotomists"] }); setDialogOpen(false); resetForm(); toast.success("Saved"); },
     onError: (e: Error) => toast.error(e.message),
