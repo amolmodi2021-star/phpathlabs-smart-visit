@@ -47,7 +47,7 @@ const PhleboDashboard = () => {
       if (estimateIds.length === 0) return [];
       const { data } = await supabase
         .from("estimates")
-        .select("id, final_amount")
+        .select("id, home_visit_charges")
         .in("id", estimateIds);
       return data || [];
     },
@@ -84,7 +84,7 @@ const PhleboDashboard = () => {
   // Build lookup maps
   const estimateMap = useMemo(() => {
     const m: Record<string, number> = {};
-    estimates.forEach((e) => (m[e.id] = Number(e.final_amount) || 0));
+    estimates.forEach((e) => (m[e.id] = Number(e.home_visit_charges) || 0));
     return m;
   }, [estimates]);
 
@@ -161,7 +161,7 @@ const PhleboDashboard = () => {
           <div className="space-y-3">
             <h2 className="text-lg font-semibold flex items-center gap-2">
               <IndianRupee className="h-5 w-5 text-primary" />
-              Completed Visit Amounts
+              Home Visit Charges (Completed)
             </h2>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {activePhleboIds.map((id) => (
