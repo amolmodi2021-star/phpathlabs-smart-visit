@@ -39,7 +39,7 @@ const TestManagement = () => {
 
   const saveMutation = useMutation({
     mutationFn: async (values: typeof form) => {
-      const payload = { ...values, test_name: values.test_name.toUpperCase(), description: values.description ? values.description.toUpperCase() : "", price: parseFloat(values.price) || 0, incentive_amount: parseFloat(values.incentive_amount) || 0 };
+      const payload = { ...values, price: parseFloat(values.price) || 0, incentive_amount: parseFloat(values.incentive_amount) || 0 };
       await saveTest(payload, editing?.id);
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["tests"] }); setDialogOpen(false); resetForm(); toast.success("Test saved"); },
@@ -56,7 +56,7 @@ const TestManagement = () => {
     mutationFn: async (file: File) => {
       const rows = await parseExcelFile(file);
       const tests = rows.map((r: any) => ({
-        test_name: (r["Test Name"] || "").toUpperCase(),
+        test_name: r["Test Name"] || "",
         price: parseFloat(r["Price"]) || 0,
         fasting_required: String(r["Fasting Required"]).toLowerCase() === "yes",
         discount_applicable: String(r["Discount Applicable"]).toLowerCase() !== "no",
