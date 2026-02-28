@@ -117,6 +117,9 @@ const HomeVisits = () => {
   const isVisitDelayed = (visit: any): boolean => {
     if (visit.status !== "Pending") return false;
     const now = new Date();
+    const today = format(now, "yyyy-MM-dd");
+    // Only consider delayed if the visit is scheduled for today (not rescheduled to a future date)
+    if (visit.visit_date !== today) return false;
     const visitDateTime = new Date(`${visit.visit_date}T${visit.visit_time || "00:00"}`);
     const diffMs = now.getTime() - visitDateTime.getTime();
     return diffMs > 25 * 60 * 1000; // 25 minutes
