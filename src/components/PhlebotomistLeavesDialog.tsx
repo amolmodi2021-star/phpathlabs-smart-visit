@@ -230,9 +230,32 @@ const PhlebotomistLeavesDialog = ({ open, onClose, phlebotomist }: Props) => {
   const isLeaveDate = (date: Date) =>
     leaveDates.some((d) => format(d, "yyyy-MM-dd") === format(date, "yyyy-MM-dd"));
 
+  // Fetch existing visits for other phlebotomists on conflict dates to check time slot clashes
+  const conflictDates = [...new Set(conflictVisits.map((v) => v.visit_date))];
+  const { data: existingVisitsOnDates = [] } = useQuery({
+    queryKey: ["existing_visits_conflict", conflictDates.join(",")],
+    queryFn: async () => {
+      if (!conflictDates.length) return [];
+      const { data } = await supabase
+        .from("home_visits")
+        .select("id, phlebotomist_id, visit_date, visit_time")
+        .in("visit_date", conflictDates)
+        .neq("status", "Cancelled");
+      return data || [];
+    },
+    enabled: conflictDates.length > 0 && conflictOpen,
+  });
+
   // Available phlebotomists for reassignment (active, not current one)
   const getAvailablePhlebos = (visitDate: string) => {
     return allPhlebotomists.filter((p: any) => p.id !== phlebotomist?.id && p.status === "Active");
+  };
+
+  // Check if a phlebotomist already has a visit at the same time on the same date
+  const hasTimeSlotConflict = (phlebId: string, visitDate: string, visitTime: string): boolean => {
+    return existingVisitsOnDates.some(
+      (ev: any) => ev.phlebotomist_id === phlebId && ev.visit_date === visitDate && ev.visit_time === visitTime
+    );
   };
 
   return (
@@ -378,9 +401,11 @@ const PhlebotomistLeavesDialog = ({ open, onClose, phlebotomist }: Props) => {
                       <SelectContent>
                         {availablePhlebos.map((p: any) => {
                           const unavailReason = getUnavailableReason(p, v.visit_date);
+                          const timeConflict = hasTimeSlotConflict(p.id, v.visit_date, v.visit_time);
+                          const disableReason = unavailReason || (timeConflict ? "Time slot occupied" : null);
                           return (
-                            <SelectItem key={p.id} value={p.id} disabled={!!unavailReason}>
-                              {p.name}{unavailReason ? ` (${unavailReason})` : ""}
+                            <SelectItem key={p.id} value={p.id} disabled={!!disableReason}>
+                              {p.name}{disableReason ? ` (${disableReason})` : ""}
                             </SelectItem>
                           );
                         })}
