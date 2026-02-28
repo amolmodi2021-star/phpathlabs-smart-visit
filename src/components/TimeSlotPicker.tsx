@@ -78,7 +78,6 @@ const TimeSlotPicker = ({ date, phlebotomistId, selectedTime, onSelectTime, excl
   };
 
   const handleSlotClick = (slot: { value: string; label: string }) => {
-    if (isSlotInPast(slot.value)) return;
     const occupied = occupiedSlots[slot.value];
     if (occupied) {
       setOccupiedPopup(occupied);
@@ -95,17 +94,18 @@ const TimeSlotPicker = ({ date, phlebotomistId, selectedTime, onSelectTime, excl
           const isOccupied = !!occupiedSlots[slot.value];
           const isSelected = selectedTime === slot.value;
           const isPast = isSlotInPast(slot.value);
+          const isDisabled = isPast && !isOccupied;
           return (
             <button
               key={slot.value}
               type="button"
               onClick={() => handleSlotClick(slot)}
-              disabled={isPast}
+              disabled={isDisabled}
               className={`px-1 py-1.5 rounded text-xs font-medium border transition-colors ${
-                isPast
-                  ? "bg-muted text-muted-foreground/40 border-border cursor-not-allowed line-through"
-                  : isOccupied
+                isOccupied
                   ? "bg-destructive text-destructive-foreground border-destructive cursor-pointer"
+                  : isPast
+                  ? "bg-muted text-muted-foreground/40 border-border cursor-not-allowed line-through"
                   : isSelected
                   ? "bg-primary text-primary-foreground border-primary"
                   : "bg-muted text-muted-foreground border-border hover:bg-accent"
