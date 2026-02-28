@@ -67,6 +67,7 @@ const HomeVisits = () => {
   const [statusUnlockedIds, setStatusUnlockedIds] = useState<Set<string>>(new Set());
   const [statusPasswordDialog, setStatusPasswordDialog] = useState(false);
   const [pendingStatusVisitId, setPendingStatusVisitId] = useState<string | null>(null);
+  const [missingDetailsDialog, setMissingDetailsDialog] = useState<string[] | null>(null);
 
 
   const { data: visits = [], isLoading } = useQuery({
@@ -122,6 +123,19 @@ const HomeVisits = () => {
     return diffMs > 25 * 60 * 1000; // 25 minutes
   };
 
+  const checkMissingAndProceed = (visit: any) => {
+    const est = visit.estimates;
+    const missing: string[] = [];
+    if (!est?.title) missing.push("Title");
+    if (!est?.gender) missing.push("Gender");
+    if (!est?.dob) missing.push("DOB / Age");
+    if (missing.length > 0) {
+      setMissingDetailsDialog(missing);
+      return;
+    }
+    setPaymentVisit(visit);
+  };
+
   const handleStatusChange = (visit: any, newStatus: string) => {
     if (newStatus === "Cancelled") {
       setCancelDialog(visit);
@@ -132,7 +146,7 @@ const HomeVisits = () => {
         setDelayReasonType("custom");
         setDelayReasonText("");
       } else {
-        setPaymentVisit(visit);
+        checkMissingAndProceed(visit);
       }
     } else {
       updateStatus.mutate({ id: visit.id, status: newStatus });
@@ -148,7 +162,7 @@ const HomeVisits = () => {
       qc.invalidateQueries({ queryKey: ["home_visits"] });
       const visit = delayReasonDialog;
       setDelayReasonDialog(null);
-      setPaymentVisit(visit);
+      checkMissingAndProceed(visit);
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -744,6 +758,23 @@ const HomeVisits = () => {
             <div><Label>Reason *</Label><Textarea value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} rows={3} required /></div>
             <Button className="w-full" disabled={!cancelReason.trim()} onClick={() => updateStatus.mutate({ id: cancelDialog?.id, status: "Cancelled", reason: cancelReason })}>
               Confirm Cancellation
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Missing details dialog */}
+      <Dialog open={!!missingDetailsDialog} onOpenChange={(o) => { if (!o) setMissingDetailsDialog(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Missing Patient Details</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+              <p className="font-semibold">⚠️ The following details are missing:</p>
+              <p className="mt-1">{missingDetailsDialog?.join(", ")}</p>
+              <p className="mt-2 text-xs">Please edit the record and fill in the missing details before marking as completed.</p>
+            </div>
+            <Button variant="outline" className="w-full" onClick={() => setMissingDetailsDialog(null)}>
+              Go Back
             </Button>
           </div>
         </DialogContent>
