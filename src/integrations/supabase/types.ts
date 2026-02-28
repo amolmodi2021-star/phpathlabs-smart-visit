@@ -58,6 +58,8 @@ export type Database = {
           individual_discount_type: string | null
           individual_discount_value: number | null
           price: number
+          report_date: string | null
+          report_time: string | null
           test_id: string
           test_name: string
         }
@@ -71,6 +73,8 @@ export type Database = {
           individual_discount_type?: string | null
           individual_discount_value?: number | null
           price: number
+          report_date?: string | null
+          report_time?: string | null
           test_id: string
           test_name: string
         }
@@ -84,6 +88,8 @@ export type Database = {
           individual_discount_type?: string | null
           individual_discount_value?: number | null
           price?: number
+          report_date?: string | null
+          report_time?: string | null
           test_id?: string
           test_name?: string
         }

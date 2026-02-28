@@ -204,13 +204,28 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
   const receiptRef = useRef<HTMLDivElement>(null);
 
   const handleSaveAndShare = useCallback(async () => {
-    // First save
+    // First save payment
     onSave({
       paid_amount: paidAmount,
       due_amount: dueAmount,
       payment_mode: modeStr,
       payment_remarks: remarks,
     });
+
+    // Save report delivery dates/times to estimate_tests
+    try {
+      for (let i = 0; i < tests.length; i++) {
+        const t = tests[i] as any;
+        if (t.id && (reportDates[i] || reportTimes[i])) {
+          await supabase.from("estimate_tests").update({
+            report_date: reportDates[i] || null,
+            report_time: reportTimes[i] || null,
+          }).eq("id", t.id);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to save report dates", e);
+    }
 
     // Generate JPEG from receipt
     if (receiptRef.current) {
