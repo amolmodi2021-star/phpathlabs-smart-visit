@@ -32,8 +32,16 @@ const PhlebotomistLeavesDialog = ({ open, onClose, phlebotomist }: Props) => {
   const qc = useQueryClient();
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
   const [reason, setReason] = useState("");
+  const [localWeeklyOff, setLocalWeeklyOff] = useState<number[]>([]);
+  const [initialized, setInitialized] = useState<string | null>(null);
 
-  const weeklyOffDays: number[] = phlebotomist?.weekly_off_days || [];
+  // Sync local state when dialog opens for a different phlebotomist
+  if (phlebotomist?.id && phlebotomist.id !== initialized) {
+    setLocalWeeklyOff(phlebotomist.weekly_off_days || []);
+    setInitialized(phlebotomist.id);
+  }
+
+  const weeklyOffDays = localWeeklyOff;
 
   const { data: leaves = [] } = useQuery({
     queryKey: ["phlebotomist_leaves", phlebotomist?.id],
@@ -82,21 +90,25 @@ const PhlebotomistLeavesDialog = ({ open, onClose, phlebotomist }: Props) => {
 
   const toggleWeeklyOff = useMutation({
     mutationFn: async (day: number) => {
-      const current = phlebotomist.weekly_off_days || [];
-      const updated = current.includes(day)
-        ? current.filter((d: number) => d !== day)
-        : [...current, day].sort();
+      // Single day only: toggle off if same, otherwise set to just this day
+      const updated = localWeeklyOff.includes(day) ? [] : [day];
+      setLocalWeeklyOff(updated); // Immediate UI update
       const { error } = await supabase
         .from("phlebotomists")
         .update({ weekly_off_days: updated })
         .eq("id", phlebotomist.id);
       if (error) throw error;
+      return updated;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["phlebotomists"] });
       toast.success("Weekly off updated");
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => {
+      // Revert on error
+      setLocalWeeklyOff(phlebotomist.weekly_off_days || []);
+      toast.error(e.message);
+    },
   });
 
   const leaveDates = leaves.map((l: any) => parseISO(l.leave_date));
@@ -114,9 +126,9 @@ const PhlebotomistLeavesDialog = ({ open, onClose, phlebotomist }: Props) => {
         <div className="space-y-5">
           {/* Weekly Off Days */}
           <div>
-            <Label className="text-sm font-semibold">Weekly Off Days</Label>
+            <Label className="text-sm font-semibold">Weekly Off Day</Label>
             <p className="text-xs text-muted-foreground mb-2">
-              Select days when this phlebotomist has a recurring weekly off.
+              Select the day when this phlebotomist has a recurring weekly off. Only one day allowed.
             </p>
             <div className="flex flex-wrap gap-2">
               {DAYS_OF_WEEK.map((day) => {
