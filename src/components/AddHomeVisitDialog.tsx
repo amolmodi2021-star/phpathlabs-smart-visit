@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { X, Search, Send } from "lucide-react";
 import { getTests } from "@/lib/tests";
+import TimeSlotPicker from "@/components/TimeSlotPicker";
 import { useMessageTemplates } from "@/hooks/useMessageTemplates";
 import { usePhlebotomistAvailability } from "@/hooks/usePhlebotomistAvailability";
 import { buildVisitMessage, shareOnWhatsApp } from "@/lib/whatsapp";
@@ -286,6 +287,12 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
                 value={visitTime}
                 onChange={(e) => setVisitTime(e.target.value)}
                 onBlur={handleVisitTimeBlur}
+              />
+              <TimeSlotPicker
+                date={visitDate}
+                phlebotomistId={phlebotomistId}
+                selectedTime={visitTime}
+                onSelectTime={setVisitTime}
               />
             </div>
           </div>
