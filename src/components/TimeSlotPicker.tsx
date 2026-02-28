@@ -79,7 +79,8 @@ const TimeSlotPicker = ({ date, phlebotomistId, selectedTime, onSelectTime, excl
 
   return (
     <>
-      <div className="grid grid-cols-4 gap-1.5 max-h-48 overflow-y-auto">
+      <p className="text-xs font-medium text-muted-foreground mt-2 mb-1">Available Time Slots</p>
+      <div className="grid grid-cols-4 gap-1.5 max-h-48 overflow-y-auto border rounded-md p-2">
         {TIME_SLOTS.map((slot) => {
           const isOccupied = !!occupiedSlots[slot.value];
           const isSelected = selectedTime === slot.value;
