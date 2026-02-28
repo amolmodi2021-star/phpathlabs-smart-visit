@@ -1,11 +1,16 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
-import { IndianRupee, TrendingUp } from "lucide-react";
+import { IndianRupee, TrendingUp, Download } from "lucide-react";
+import ExportPasswordDialog from "@/components/ExportPasswordDialog";
+import PhleboExportDialog from "@/components/PhleboExportDialog";
 
 const PhleboDashboard = () => {
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
   const now = new Date();
   const currentMonthStart = format(startOfMonth(now), "yyyy-MM-dd");
   const currentMonthEnd = format(endOfMonth(now), "yyyy-MM-dd");
@@ -149,7 +154,15 @@ const PhleboDashboard = () => {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <h1 className="text-xl font-bold">Phlebo Dashboard</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-bold">Phlebo Dashboard</h1>
+        <Button variant="outline" size="sm" onClick={() => setShowPasswordDialog(true)}>
+          <Download className="h-4 w-4 mr-1" /> Export Report
+        </Button>
+      </div>
+
+      <ExportPasswordDialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog} onSuccess={() => setShowExportDialog(true)} />
+      <PhleboExportDialog open={showExportDialog} onOpenChange={setShowExportDialog} />
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Loading...</p>
