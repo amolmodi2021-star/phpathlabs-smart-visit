@@ -8,6 +8,7 @@ export interface EstimateMessageData {
   finalAmount: number;
   header: string;
   fastingInstructions: string;
+  noFastingMessage: string;
   homeVisitDisclaimer: string;
   footer: string;
 }
@@ -24,6 +25,8 @@ export function buildEstimateMessage(data: EstimateMessageData): string {
   msg += `\nFinal Amount: ₹${data.finalAmount}`;
   if (fastingTests.length > 0) {
     msg += `\n\nFasting required for: ${fastingTests.join(", ")}\n${data.fastingInstructions}`;
+  } else if (data.tests.length > 0) {
+    msg += `\n\n${data.noFastingMessage}`;
   }
   if (data.homeVisitCharges === 0) {
     msg += `\n\n${data.homeVisitDisclaimer}`;
@@ -50,6 +53,8 @@ export function buildVisitMessage(data: VisitMessageData): string {
   msg += `\nFinal Amount: ₹${data.finalAmount}`;
   if (fastingTests.length > 0) {
     msg += `\n\nFasting required for: ${fastingTests.join(", ")}\n${data.fastingInstructions}`;
+  } else if (data.tests.length > 0) {
+    msg += `\n\n${data.noFastingMessage}`;
   }
   msg += `\n\nThank you for choosing us.\n${data.footer}`;
   return msg;

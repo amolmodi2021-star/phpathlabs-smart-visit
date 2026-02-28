@@ -115,6 +115,7 @@ const CreateEstimate = () => {
           finalAmount: calculations.finalAmount,
           header: templates.estimate_header,
           fastingInstructions: templates.fasting_instructions,
+          noFastingMessage: templates.no_fasting_message,
           homeVisitDisclaimer: templates.home_visit_disclaimer,
           footer: templates.footer_text,
         });
