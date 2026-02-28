@@ -9,12 +9,14 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Search, Download, Upload, Trash2, Pencil, Loader2 } from "lucide-react";
+import { Plus, Search, Download, Upload, Trash2, Pencil, Loader2, Lock, Unlock } from "lucide-react";
 import { toast } from "sonner";
 import { exportToExcel, parseExcelFile, downloadTemplate } from "@/lib/excel";
 import { getTests, saveTest, deleteTest, bulkInsertTests } from "@/lib/tests";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
+
+const INCENTIVE_PASSWORD = "9819111107";
 
 const TestManagement = () => {
   useRealtimeSync("tests", ["tests"]);
@@ -24,7 +26,9 @@ const TestManagement = () => {
   const [editing, setEditing] = useState<any>(null);
   const [exportDialog, setExportDialog] = useState(false);
   const [deleteDialog, setDeleteDialog] = useState<string | null>(null);
-  const [form, setForm] = useState({ test_name: "", price: "", fasting_required: false, discount_applicable: true, description: "" });
+  const [incentiveLocked, setIncentiveLocked] = useState(true);
+  const [incentivePassword, setIncentivePassword] = useState("");
+  const [form, setForm] = useState({ test_name: "", price: "", fasting_required: false, discount_applicable: true, description: "", incentive_allowed: false, incentive_amount: "" });
 
   const { data: tests = [], isLoading, isError, error: queryError, refetch } = useQuery({
     queryKey: ["tests"],
@@ -35,7 +39,7 @@ const TestManagement = () => {
 
   const saveMutation = useMutation({
     mutationFn: async (values: typeof form) => {
-      const payload = { ...values, price: parseFloat(values.price) || 0 };
+      const payload = { ...values, price: parseFloat(values.price) || 0, incentive_amount: parseFloat(values.incentive_amount) || 0 };
       await saveTest(payload, editing?.id);
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["tests"] }); setDialogOpen(false); resetForm(); toast.success("Test saved"); },
@@ -57,6 +61,8 @@ const TestManagement = () => {
         fasting_required: String(r["Fasting Required"]).toLowerCase() === "yes",
         discount_applicable: String(r["Discount Applicable"]).toLowerCase() !== "no",
         description: r["Description"] || "",
+        incentive_allowed: String(r["Incentive Allowed"]).toLowerCase() === "yes",
+        incentive_amount: parseFloat(r["Incentive Amount"]) || 0,
       })).filter(t => t.test_name);
       if (tests.length === 0) throw new Error("No valid tests found");
       await bulkInsertTests(tests);
@@ -65,11 +71,13 @@ const TestManagement = () => {
     onError: (e: Error) => toast.error("Upload failed: " + e.message),
   });
 
-  const resetForm = () => { setForm({ test_name: "", price: "", fasting_required: false, discount_applicable: true, description: "" }); setEditing(null); };
+  const resetForm = () => { setForm({ test_name: "", price: "", fasting_required: false, discount_applicable: true, description: "", incentive_allowed: false, incentive_amount: "" }); setEditing(null); setIncentiveLocked(true); setIncentivePassword(""); };
 
   const openEdit = (t: any) => {
     setEditing(t);
-    setForm({ test_name: t.test_name, price: String(t.price), fasting_required: t.fasting_required, discount_applicable: t.discount_applicable, description: t.description || "" });
+    setForm({ test_name: t.test_name, price: String(t.price), fasting_required: t.fasting_required, discount_applicable: t.discount_applicable, description: t.description || "", incentive_allowed: t.incentive_allowed || false, incentive_amount: t.incentive_amount ? String(t.incentive_amount) : "" });
+    setIncentiveLocked(true);
+    setIncentivePassword("");
     setDialogOpen(true);
   };
 
@@ -101,6 +109,51 @@ const TestManagement = () => {
                 <div className="flex items-center gap-3"><Switch checked={form.fasting_required} onCheckedChange={(v) => setForm(p => ({ ...p, fasting_required: v }))} /><Label>Fasting Required</Label></div>
                 <div className="flex items-center gap-3"><Switch checked={form.discount_applicable} onCheckedChange={(v) => setForm(p => ({ ...p, discount_applicable: v }))} /><Label>Discount Applicable</Label></div>
                 <div><Label>Description</Label><Textarea value={form.description} onChange={(e) => setForm(p => ({ ...p, description: e.target.value }))} /></div>
+                
+                {/* Incentive fields - password protected */}
+                <div className="border rounded-md p-3 space-y-3 bg-muted/30">
+                  <div className="flex items-center justify-between">
+                    <Label className="font-semibold text-sm">Incentive Settings</Label>
+                    {incentiveLocked ? (
+                      <div className="flex items-center gap-2">
+                        <Lock className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-xs text-muted-foreground">Locked</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <Unlock className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                        <span className="text-xs text-emerald-600 dark:text-emerald-400">Unlocked</span>
+                      </div>
+                    )}
+                  </div>
+                  {incentiveLocked ? (
+                    <div className="flex gap-2">
+                      <Input
+                        type="password"
+                        placeholder="Enter password to unlock"
+                        value={incentivePassword}
+                        onChange={(e) => setIncentivePassword(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            if (incentivePassword === INCENTIVE_PASSWORD) { setIncentiveLocked(false); setIncentivePassword(""); } else { toast.error("Incorrect password"); setIncentivePassword(""); }
+                          }
+                        }}
+                      />
+                      <Button type="button" size="sm" variant="outline" onClick={() => {
+                        if (incentivePassword === INCENTIVE_PASSWORD) { setIncentiveLocked(false); setIncentivePassword(""); } else { toast.error("Incorrect password"); setIncentivePassword(""); }
+                      }}>Unlock</Button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-3"><Switch checked={form.incentive_allowed} onCheckedChange={(v) => setForm(p => ({ ...p, incentive_allowed: v, incentive_amount: v ? p.incentive_amount : "" }))} /><Label>Incentive Allowed</Label></div>
+                      {form.incentive_allowed && (
+                        <div><Label>Incentive Amount (₹)</Label><Input type="number" value={form.incentive_amount} onChange={(e) => setForm(p => ({ ...p, incentive_amount: e.target.value }))} placeholder="Enter incentive amount" /></div>
+                      )}
+                    </>
+                  )}
+                </div>
+
                 <Button type="submit" className="w-full" disabled={saveMutation.isPending}>
                   {saveMutation.isPending ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" />Saving...</> : "Save"}
                 </Button>
@@ -130,6 +183,7 @@ const TestManagement = () => {
                     <span>₹{t.price}</span>
                     {t.fasting_required && <span className="text-warning">Fasting</span>}
                     {!t.discount_applicable && <span className="text-destructive">No Discount</span>}
+                    {t.incentive_allowed && <span className="text-primary">Incentive: ₹{t.incentive_amount}</span>}
                   </div>
                 </div>
                 <div className="flex gap-1">
@@ -142,7 +196,7 @@ const TestManagement = () => {
           {filtered.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">No tests found.</p>}
         </div>
       )}
-      <ExportPasswordDialog open={exportDialog} onOpenChange={setExportDialog} onSuccess={() => exportToExcel(tests.map((t: any) => ({ "Test Name": t.test_name, Price: t.price, "Fasting Required": t.fasting_required ? "Yes" : "No", "Discount Applicable": t.discount_applicable ? "Yes" : "No", Description: t.description })), "tests_export")} />
+      <ExportPasswordDialog open={exportDialog} onOpenChange={setExportDialog} onSuccess={() => exportToExcel(tests.map((t: any) => ({ "Test Name": t.test_name, Price: t.price, "Fasting Required": t.fasting_required ? "Yes" : "No", "Discount Applicable": t.discount_applicable ? "Yes" : "No", Description: t.description, "Incentive Allowed": t.incentive_allowed ? "Yes" : "No", "Incentive Amount": t.incentive_amount || 0 })), "tests_export")} />
       <DeletePasswordDialog
         open={!!deleteDialog}
         onOpenChange={(o) => !o && setDeleteDialog(null)}
