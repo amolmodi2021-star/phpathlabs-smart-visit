@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { X, Search, Send } from "lucide-react";
 import { getTests } from "@/lib/tests";
 import { useMessageTemplates } from "@/hooks/useMessageTemplates";
+import { usePhlebotomistAvailability } from "@/hooks/usePhlebotomistAvailability";
 import { buildVisitMessage, shareOnWhatsApp } from "@/lib/whatsapp";
 import { format, addDays } from "date-fns";
 
@@ -32,6 +33,7 @@ interface AddHomeVisitDialogProps {
 const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
   const qc = useQueryClient();
   const { data: templates } = useMessageTemplates();
+  const { isAvailable, getUnavailableReason } = usePhlebotomistAvailability();
   const searchRef = useRef<HTMLInputElement>(null);
 
   const [patientName, setPatientName] = useState("");
@@ -298,9 +300,14 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
             <Select value={phlebotomistId} onValueChange={setPhlebotomistId}>
               <SelectTrigger><SelectValue placeholder="Select phlebotomist..." /></SelectTrigger>
               <SelectContent>
-                {phlebotomists.map((p: any) => (
-                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                ))}
+                {phlebotomists.map((p: any) => {
+                  const reason = getUnavailableReason(p, visitDate);
+                  return (
+                    <SelectItem key={p.id} value={p.id} disabled={!!reason}>
+                      {p.name}{reason ? ` (${reason})` : ""}
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
           </div>

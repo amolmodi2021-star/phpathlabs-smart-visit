@@ -15,6 +15,7 @@ import { format, addDays } from "date-fns";
 import { Download, Trash2, MapPin, Pencil, AlertTriangle } from "lucide-react";
 import { exportToExcel } from "@/lib/excel";
 import { useMessageTemplates } from "@/hooks/useMessageTemplates";
+import { usePhlebotomistAvailability } from "@/hooks/usePhlebotomistAvailability";
 import { buildVisitMessage, shareOnWhatsApp } from "@/lib/whatsapp";
 import { useAbnormalHistory } from "@/hooks/useAbnormalHistory";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
@@ -26,6 +27,7 @@ const EstimateDashboard = () => {
   useRealtimeSync("estimate_tests", ["estimates"]);
   const qc = useQueryClient();
   const { data: templates } = useMessageTemplates();
+  const { getUnavailableReason } = usePhlebotomistAvailability();
   const [selected, setSelected] = useState<string[]>([]);
   const [bookingEstimate, setBookingEstimate] = useState<any>(null);
   const [visitForm, setVisitForm] = useState({ visit_date: "", visit_time: "", address: "", phlebotomist_id: "", home_visit_charges: "" });
@@ -250,7 +252,14 @@ const EstimateDashboard = () => {
               <Select value={visitForm.phlebotomist_id} onValueChange={(v) => setVisitForm(p => ({ ...p, phlebotomist_id: v }))}>
                 <SelectTrigger><SelectValue placeholder="Select..." /></SelectTrigger>
                 <SelectContent>
-                  {phlebotomists.map((p: any) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                  {phlebotomists.map((p: any) => {
+                    const reason = getUnavailableReason(p, visitForm.visit_date);
+                    return (
+                      <SelectItem key={p.id} value={p.id} disabled={!!reason}>
+                        {p.name}{reason ? ` (${reason})` : ""}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>
