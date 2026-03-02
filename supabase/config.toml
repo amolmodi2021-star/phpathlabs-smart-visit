@@ -2,3 +2,6 @@ project_id = "rpbkilhzulaugzrlatts"
 
 [functions.tests-crud]
 verify_jwt = false
+
+[functions.parse-prescription]
+verify_jwt = false
