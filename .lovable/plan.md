@@ -1,65 +1,75 @@
 
 
-## Live Sync / Auto-Refresh for All Tabs
+# Plan: AI-Powered Prescription Reader for Create Estimate
 
-### What This Does
-When data changes on one device (e.g., a new home visit is added, a test is updated, an estimate is created), all other devices viewing the app will automatically refresh and show the updated data -- no manual refresh needed.
+## Overview
+Add an optional "Scan Prescription" button to the Create Estimate page. Users can upload one or more images/PDFs of a doctor's prescription. An AI model reads the prescription, extracts patient name, phone number, and test names, then auto-matches tests from your test list. Doubtful/unrecognized tests are highlighted for manual review. After confirmation, the user proceeds with discount and home visit charges as usual.
 
-### Implementation Steps
-
-**Step 1: Database Migration -- Enable Realtime**
-
-Add all 7 core tables to the realtime publication so the database broadcasts changes:
-- `home_visits`
-- `estimates`
-- `estimate_tests`
-- `tests`
-- `phlebotomists`
-- `message_templates`
-- `abnormal_history`
-
-**Step 2: Create a Reusable Realtime Hook**
-
-Create a new hook `src/hooks/useRealtimeSync.ts` that:
-- Subscribes to Postgres changes on a given table
-- On any INSERT, UPDATE, or DELETE event, automatically invalidates the matching React Query cache keys
-- Cleans up the subscription when the component unmounts
-
-**Step 3: Wire Up Each Page**
-
-Add the realtime hook to each page/component so queries auto-refresh:
-
-| Page | Table(s) Listened | Query Keys Invalidated |
-|------|-------------------|----------------------|
-| HomeVisits | `home_visits` | `home_visits` |
-| CreateEstimate | `tests` | `tests` |
-| EstimateDashboard | `estimates`, `estimate_tests` | `estimates` |
-| TestManagement | `tests` | `tests` |
-| PhlebotomistManagement | `phlebotomists` | `phlebotomists` |
-| MessageTemplates | `message_templates` | `message_templates` |
-| AbnormalHistory | `abnormal_history` | `abnormal_history`, `abnormal_history_counts` |
-
-### Technical Details
-
-The reusable hook will look like:
+## User Flow
 
 ```text
-useRealtimeSync(tableName, queryKeysToInvalidate[])
+Create Estimate Page
+  |
+  +-- [Scan Prescription] button (optional, alongside manual flow)
+  |     |
+  |     +-- File picker opens (accept images + PDFs, multiple files)
+  |     |
+  |     +-- Files uploaded to a storage bucket
+  |     |
+  |     +-- Edge function called with file URLs + full test list
+  |     |
+  |     +-- AI extracts: patient name, phone, test names
+  |     |
+  |     +-- Results shown in a review dialog:
+  |     |     - Patient name & phone auto-filled (editable)
+  |     |     - Matched tests (green) -- auto-selected
+  |     |     - Doubtful tests (amber) -- AI's best guess, highlighted
+  |     |     - Unrecognized tests (red) -- shown as text for manual action
+  |     |
+  |     +-- User confirms -> tests added to estimate, name/phone filled
+  |
+  +-- Continue with discount, home visit charges, create & share
 ```
 
-It subscribes to `postgres_changes` on the specified table and calls `queryClient.invalidateQueries()` for each key whenever a change is detected. This triggers a fresh fetch from the database automatically.
+## Technical Details
+
+### 1. Storage Bucket for Prescriptions
+Create a public storage bucket `prescriptions` to temporarily hold uploaded files so the AI edge function can access them via URL.
+
+### 2. Edge Function: `parse-prescription`
+- Receives: array of file URLs + the complete test list (names and IDs)
+- Calls Lovable AI (google/gemini-2.5-flash -- good at image+text, cost-effective) with the images and a structured prompt
+- Uses tool-calling to extract structured output:
+  - `patient_name` (string, nullable)
+  - `whatsapp_number` (string, nullable)
+  - `matched_tests` (array of `{test_id, test_name, confidence: "high"|"low"}`)
+  - `unrecognized_tests` (array of strings -- test names AI couldn't match)
+- Returns the structured result to the frontend
+
+### 3. Frontend Changes (CreateEstimate.tsx)
+- Add a "Scan Prescription" button with a camera/upload icon at the top of the form
+- On file selection: upload files to the `prescriptions` bucket, call the edge function
+- Show a review dialog with:
+  - Extracted patient name and phone (pre-filled, editable)
+  - List of matched tests with confidence indicators (high = green check, low = amber warning)
+  - Unrecognized test names shown in red as plain text
+  - "Confirm" button to apply selections
+- On confirm: auto-fill patient name, WhatsApp number, and add matched tests to the selected tests list
+- Loading state while AI processes
+
+### 4. New Component: `PrescriptionScanDialog.tsx`
+A dialog that shows AI results for review before applying them to the estimate form.
+
+### 5. Config Updates
+- Add `[functions.parse-prescription]` with `verify_jwt = false` to `supabase/config.toml`
+- Storage bucket migration for `prescriptions`
 
 ### Files to Create/Modify
-
-1. **New migration** -- SQL to add tables to `supabase_realtime` publication
-2. **New file**: `src/hooks/useRealtimeSync.ts` -- reusable realtime subscription hook
-3. **Modified**: `src/pages/HomeVisits.tsx` -- add `useRealtimeSync("home_visits", ...)`
-4. **Modified**: `src/pages/CreateEstimate.tsx` -- add `useRealtimeSync("tests", ...)`
-5. **Modified**: `src/pages/EstimateDashboard.tsx` -- add `useRealtimeSync("estimates", ...)` and `useRealtimeSync("estimate_tests", ...)`
-6. **Modified**: `src/pages/TestManagement.tsx` -- add `useRealtimeSync("tests", ...)`
-7. **Modified**: `src/pages/PhlebotomistManagement.tsx` -- add `useRealtimeSync("phlebotomists", ...)`
-8. **Modified**: `src/pages/MessageTemplates.tsx` -- add `useRealtimeSync("message_templates", ...)`
-9. **Modified**: `src/pages/AbnormalHistory.tsx` -- add `useRealtimeSync("abnormal_history", ...)`
-
-This is included in your Lovable Cloud usage and should be well within the free tier for a small team.
+| File | Action |
+|------|--------|
+| `supabase/migrations/...` | Create `prescriptions` storage bucket |
+| `supabase/functions/parse-prescription/index.ts` | New edge function for AI parsing |
+| `supabase/config.toml` | Add function config |
+| `src/components/PrescriptionScanDialog.tsx` | New review dialog component |
+| `src/pages/CreateEstimate.tsx` | Add scan button, upload logic, dialog integration |
 
