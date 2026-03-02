@@ -10,9 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { useMessageTemplates } from "@/hooks/useMessageTemplates";
 import { buildEstimateMessage, shareOnWhatsApp } from "@/lib/whatsapp";
-import { Send, X, Search, Camera, Loader2 } from "lucide-react";
+import { Send, X, Search } from "lucide-react";
 import { getTests } from "@/lib/tests";
-import PrescriptionScanDialog from "@/components/PrescriptionScanDialog";
 
 interface SelectedTest {
   test_id: string;
@@ -36,12 +35,6 @@ const CreateEstimate = () => {
   const [homeVisitCharges, setHomeVisitCharges] = useState(0);
   const [testSearch, setTestSearch] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Prescription scan state
-  const [scanDialogOpen, setScanDialogOpen] = useState(false);
-  const [scanLoading, setScanLoading] = useState(false);
-  const [scanResult, setScanResult] = useState<any>(null);
 
   const { data: tests = [] } = useQuery({
     queryKey: ["tests"],
@@ -74,67 +67,6 @@ const CreateEstimate = () => {
 
   const updateTestDiscount = (testId: string, field: string, value: any) => {
     setSelectedTests(prev => prev.map(t => t.test_id === testId ? { ...t, [field]: value } : t));
-  };
-
-  // Prescription scan handler
-  const handleScanPrescription = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    e.target.value = ""; // reset input
-
-    setScanLoading(true);
-    setScanResult(null);
-    setScanDialogOpen(true);
-
-    try {
-      // Upload files to storage
-      const fileUrls: string[] = [];
-      for (const file of Array.from(files)) {
-        const ext = file.name.split(".").pop();
-        const path = `scan_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-        const { error: upErr } = await supabase.storage.from("prescriptions").upload(path, file);
-        if (upErr) throw upErr;
-        const { data: urlData } = supabase.storage.from("prescriptions").getPublicUrl(path);
-        fileUrls.push(urlData.publicUrl);
-      }
-
-      // Call edge function
-      const { data, error } = await supabase.functions.invoke("parse-prescription", {
-        body: {
-          fileUrls,
-          tests: tests.map((t: any) => ({ id: t.id, test_name: t.test_name })),
-        },
-      });
-
-      if (error) throw error;
-      setScanResult(data);
-    } catch (err: any) {
-      console.error("Scan error:", err);
-      toast.error(err.message || "Failed to scan prescription");
-      setScanDialogOpen(false);
-    } finally {
-      setScanLoading(false);
-    }
-  };
-
-  const handleScanConfirm = (data: { patientName: string; whatsappNumber: string; selectedTestIds: string[] }) => {
-    if (data.patientName) setPatientName(data.patientName);
-    if (data.whatsappNumber) setWhatsappNumber(data.whatsappNumber);
-
-    // Add selected tests (skip duplicates)
-    for (const testId of data.selectedTestIds) {
-      if (!selectedTests.find(s => s.test_id === testId)) {
-        const t = tests.find((x: any) => x.id === testId);
-        if (t) {
-          setSelectedTests(prev => [...prev, {
-            test_id: t.id, test_name: t.test_name, price: Number(t.price),
-            fasting_required: t.fasting_required, discount_applicable: t.discount_applicable,
-            individual_discount_type: null, individual_discount_value: 0,
-          }]);
-        }
-      }
-    }
-    toast.success("Prescription data added!");
   };
 
   const calculations = useMemo(() => {
@@ -173,6 +105,7 @@ const CreateEstimate = () => {
       if (!cleanNumber || cleanNumber.length < 10) throw new Error("Valid WhatsApp number required");
       if (selectedTests.length === 0) throw new Error("Select at least one test");
 
+      // Build and share WhatsApp message FIRST
       if (templates) {
         const msg = buildEstimateMessage({
           tests: calculations.testDetails.map(t => ({ name: t.test_name, price: t.price, fasting: t.fasting_required })),
@@ -190,7 +123,7 @@ const CreateEstimate = () => {
       }
 
       try {
-        const { data: est, error } = await supabase.from("estimates").insert({
+      const { data: est, error } = await supabase.from("estimates").insert({
           patient_name: patientName ? patientName.toUpperCase() : null,
           whatsapp_number: cleanNumber,
           total_amount: calculations.totalAmount,
@@ -239,27 +172,6 @@ const CreateEstimate = () => {
 
       <Card className="glass-card">
         <CardContent className="p-4 space-y-4">
-          {/* Scan Prescription */}
-          <div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*,.pdf"
-              multiple
-              className="hidden"
-              onChange={handleScanPrescription}
-            />
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={scanLoading}
-            >
-              {scanLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Camera className="h-4 w-4 mr-2" />}
-              Scan Prescription (Optional)
-            </Button>
-          </div>
-
           <div><Label>Patient Name (Optional)</Label><Input value={patientName} onChange={(e) => setPatientName(e.target.value)} /></div>
           <div>
             <Label>WhatsApp Number *</Label>
@@ -362,14 +274,6 @@ const CreateEstimate = () => {
           </Button>
         </CardContent>
       </Card>
-
-      <PrescriptionScanDialog
-        open={scanDialogOpen}
-        onOpenChange={setScanDialogOpen}
-        result={scanResult}
-        isLoading={scanLoading}
-        onConfirm={handleScanConfirm}
-      />
     </div>
   );
 };
