@@ -337,6 +337,7 @@ const HomeVisits = () => {
         "Visit Date": v.visit_date,
         "Visit Time": formatTime12hr(v.visit_time),
         "Patient": v.estimates?.patient_name || "",
+        "DOB": v.estimates?.dob ? v.estimates.dob : "",
         "Mobile": v.estimates?.whatsapp_number || "",
         "Address": v.address,
         "Phlebotomist": v.phlebotomists?.name || "",
