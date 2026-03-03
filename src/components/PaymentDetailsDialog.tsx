@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { format, addDays } from "date-fns";
 import html2canvas from "html2canvas";
 import { shareOnWhatsApp } from "@/lib/whatsapp";
+import { formatDateDDMMYYYY, formatDateShort } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 
 interface VisitData {
@@ -278,11 +279,11 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
     if (receiptNumber) msg += `*Receipt No:* ${receiptNumber}\n`;
     msg += `\n*Patient:* ${[est?.title, est?.patient_name].filter(Boolean).join(" ") || "—"}\n`;
     msg += `*Mobile:* ${est?.whatsapp_number || "—"}\n`;
-    msg += `*Visit:* ${visitData?.visit_date ? new Date(visitData.visit_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"} | ${visitData?.visit_time ? formatTime12hr(visitData.visit_time) : "—"}\n`;
+    msg += `*Visit:* ${formatDateDDMMYYYY(visitData?.visit_date) || "—"} | ${visitData?.visit_time ? formatTime12hr(visitData.visit_time) : "—"}\n`;
     msg += `*Address:* ${visitData?.address || "—"}\n\n`;
     msg += `*Tests & Report Delivery:*\n`;
     tests.forEach((t, i) => {
-      const rd = reportDates[i] ? new Date(reportDates[i]).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : "";
+      const rd = formatDateShort(reportDates[i]);
       const rt = reportTimes[i] ? formatTime12hr(reportTimes[i]) : "";
       msg += `• ${t.test_name} — ₹${t.discounted_price}${rd ? ` (Report by: ${rd} at ${rt})` : ""}\n`;
     });
@@ -371,7 +372,7 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
                 <span className="text-muted-foreground">Gender:</span>
                 <span className="font-medium">{est?.gender || "—"}</span>
                 <span className="text-muted-foreground">DOB:</span>
-                <span className="font-medium">{est?.dob ? new Date(est.dob).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}</span>
+                <span className="font-medium">{formatDateDDMMYYYY(est?.dob) || "—"}</span>
                 <span className="text-muted-foreground">Age:</span>
                 <span className="font-medium">{est?.dob ? `${Math.floor((Date.now() - new Date(est.dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000))} years` : "—"}</span>
                 <span className="text-muted-foreground">Mobile:</span>
@@ -400,7 +401,7 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
               <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Visit Details</h4>
               <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
                 <span className="text-muted-foreground">Date:</span>
-                <span className="font-medium">{visitData?.visit_date ? new Date(visitData.visit_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}</span>
+                <span className="font-medium">{formatDateDDMMYYYY(visitData?.visit_date) || "—"}</span>
                 <span className="text-muted-foreground">Time:</span>
                 <span className="font-medium">{visitData?.visit_time ? formatTime12hr(visitData.visit_time) : "—"}</span>
                 <span className="text-muted-foreground">Address:</span>
@@ -469,7 +470,7 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
                       </div>
                       {reportDates[i] && reportTimes[i] && (
                         <p className="text-[10px] font-medium text-primary">
-                          📋 {new Date(reportDates[i]).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })} at {formatTime12hr(reportTimes[i])}
+                          📋 {formatDateShort(reportDates[i])} at {formatTime12hr(reportTimes[i])}
                         </p>
                       )}
                     </div>
@@ -578,7 +579,7 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
                 <div className="flex justify-between"><span className="text-gray-600">Patient:</span><span className="font-semibold">{[est?.title, est?.patient_name].filter(Boolean).join(" ") || "—"}</span></div>
                 <div className="flex justify-between"><span className="text-gray-600">Mobile:</span><span className="font-semibold">{est?.whatsapp_number || "—"}</span></div>
                 {est?.gender && <div className="flex justify-between"><span className="text-gray-600">Gender:</span><span className="font-semibold">{est.gender}</span></div>}
-                {est?.dob && <div className="flex justify-between"><span className="text-gray-600">DOB:</span><span className="font-semibold">{new Date(est.dob).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</span></div>}
+                {est?.dob && <div className="flex justify-between"><span className="text-gray-600">DOB:</span><span className="font-semibold">{formatDateDDMMYYYY(est.dob)}</span></div>}
                 {est?.dob && <div className="flex justify-between"><span className="text-gray-600">Age:</span><span className="font-semibold">{Math.floor((Date.now() - new Date(est.dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000))} Years</span></div>}
                 {est?.doctor_name && <div className="flex justify-between"><span className="text-gray-600">Doctor:</span><span className="font-semibold">{est.doctor_name}</span></div>}
                 {est?.umr_number && <div className="flex justify-between"><span className="text-gray-600">UMR No:</span><span className="font-semibold">{est.umr_number}</span></div>}
@@ -586,7 +587,7 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
 
               {/* Visit Info */}
               <div className="border-t border-gray-200 pt-1 space-y-0.5 text-xs">
-                <div className="flex justify-between"><span className="text-gray-600">Visit Date:</span><span className="font-semibold">{visitData?.visit_date ? new Date(visitData.visit_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}</span></div>
+                <div className="flex justify-between"><span className="text-gray-600">Visit Date:</span><span className="font-semibold">{formatDateDDMMYYYY(visitData?.visit_date) || "—"}</span></div>
                 <div className="flex justify-between"><span className="text-gray-600">Visit Time:</span><span className="font-semibold">{visitData?.visit_time ? formatTime12hr(visitData.visit_time) : "—"}</span></div>
                 <div className="flex justify-between"><span className="text-gray-600">Address:</span><span className="font-semibold text-right max-w-[60%]">{visitData?.address || "—"}</span></div>
               </div>
@@ -604,7 +605,7 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
                   </thead>
                   <tbody>
                     {tests.map((t, i) => {
-                      const rd = reportDates[i] ? new Date(reportDates[i]).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : "";
+                      const rd = formatDateShort(reportDates[i]);
                       const rt = reportTimes[i] ? formatTime12hr(reportTimes[i]) : "";
                       return (
                         <tr key={i} className="border-b border-gray-100">
