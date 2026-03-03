@@ -225,6 +225,7 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
           visitDate: format(new Date(visitDate), "dd-MM-yyyy"),
           visitTime: formatTime(),
           address: address,
+          patientName: patientName ? patientName.toUpperCase() : undefined,
         });
         shareOnWhatsApp(cleanNumber, msg);
       }
