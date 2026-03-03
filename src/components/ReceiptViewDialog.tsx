@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import html2canvas from "html2canvas";
 import { shareOnWhatsApp } from "@/lib/whatsapp";
+import { formatDateDDMMYYYY, formatDateShort } from "@/lib/utils";
 import { Download, Share2 } from "lucide-react";
 
 interface ReceiptViewDialogProps {
@@ -79,11 +80,11 @@ const ReceiptViewDialog = ({ open, onClose, visitData }: ReceiptViewDialogProps)
     let msg = `📋 *PH PathLabs — Home Visit Receipt*\n`;
     msg += `\n*Patient:* ${[est?.title, est?.patient_name].filter(Boolean).join(" ") || "—"}\n`;
     msg += `*Mobile:* ${est?.whatsapp_number || "—"}\n`;
-    msg += `*Visit:* ${visitData?.visit_date ? new Date(visitData.visit_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"} | ${visitData?.visit_time ? formatTime12hr(visitData.visit_time) : "—"}\n`;
+    msg += `*Visit:* ${formatDateDDMMYYYY(visitData?.visit_date) || "—"} | ${visitData?.visit_time ? formatTime12hr(visitData.visit_time) : "—"}\n`;
     msg += `*Address:* ${visitData?.address || "—"}\n\n`;
     msg += `*Tests & Report Delivery:*\n`;
     tests.forEach((t: any) => {
-      const rd = t.report_date ? new Date(t.report_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : "";
+      const rd = formatDateShort(t.report_date);
       const rt = t.report_time ? formatTime12hr(t.report_time) : "";
       msg += `• ${t.test_name} — ₹${t.discounted_price}${rd ? ` (Report by: ${rd} at ${rt})` : ""}\n`;
     });
@@ -118,7 +119,7 @@ const ReceiptViewDialog = ({ open, onClose, visitData }: ReceiptViewDialogProps)
               <div className="flex justify-between"><span className="text-gray-600">Patient:</span><span className="font-semibold">{[est?.title, est?.patient_name].filter(Boolean).join(" ") || "—"}</span></div>
               <div className="flex justify-between"><span className="text-gray-600">Mobile:</span><span className="font-semibold">{est?.whatsapp_number || "—"}</span></div>
               {est?.gender && <div className="flex justify-between"><span className="text-gray-600">Gender:</span><span className="font-semibold">{est.gender}</span></div>}
-              {est?.dob && <div className="flex justify-between"><span className="text-gray-600">DOB:</span><span className="font-semibold">{new Date(est.dob).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</span></div>}
+              {est?.dob && <div className="flex justify-between"><span className="text-gray-600">DOB:</span><span className="font-semibold">{formatDateDDMMYYYY(est.dob)}</span></div>}
               {est?.dob && <div className="flex justify-between"><span className="text-gray-600">Age:</span><span className="font-semibold">{Math.floor((Date.now() - new Date(est.dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000))} Years</span></div>}
               {est?.doctor_name && <div className="flex justify-between"><span className="text-gray-600">Doctor:</span><span className="font-semibold">{est.doctor_name}</span></div>}
               {est?.umr_number && <div className="flex justify-between"><span className="text-gray-600">UMR No:</span><span className="font-semibold">{est.umr_number}</span></div>}
@@ -126,7 +127,7 @@ const ReceiptViewDialog = ({ open, onClose, visitData }: ReceiptViewDialogProps)
 
             {/* Visit Info */}
             <div className="border-t border-gray-200 pt-1 space-y-0.5 text-xs">
-              <div className="flex justify-between"><span className="text-gray-600">Visit Date:</span><span className="font-semibold">{visitData?.visit_date ? new Date(visitData.visit_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}</span></div>
+              <div className="flex justify-between"><span className="text-gray-600">Visit Date:</span><span className="font-semibold">{formatDateDDMMYYYY(visitData?.visit_date) || "—"}</span></div>
               <div className="flex justify-between"><span className="text-gray-600">Visit Time:</span><span className="font-semibold">{visitData?.visit_time ? formatTime12hr(visitData.visit_time) : "—"}</span></div>
               <div className="flex justify-between"><span className="text-gray-600">Address:</span><span className="font-semibold text-right max-w-[60%]">{visitData?.address || "—"}</span></div>
             </div>
@@ -144,7 +145,7 @@ const ReceiptViewDialog = ({ open, onClose, visitData }: ReceiptViewDialogProps)
                 </thead>
                 <tbody>
                   {tests.map((t: any, i: number) => {
-                    const rd = t.report_date ? new Date(t.report_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }) : "";
+                    const rd = formatDateShort(t.report_date);
                     const rt = t.report_time ? formatTime12hr(t.report_time) : "";
                     return (
                       <tr key={i} className="border-b border-gray-100">

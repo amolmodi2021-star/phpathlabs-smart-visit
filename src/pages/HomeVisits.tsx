@@ -13,6 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { Download, Phone, MapPin, ChevronDown, ChevronUp, Pencil, Trash2, Plus, AlertTriangle, Clock, FileImage } from "lucide-react";
 import { exportToExcel } from "@/lib/excel";
+import { formatDateDDMMYYYY } from "@/lib/utils";
 import { useState, useCallback, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -334,10 +335,10 @@ const HomeVisits = () => {
       const modeAmounts = parsePaymentModeAmounts(v.payment_mode);
       const delayed = isVisitDelayed(v) || (v.status === "Completed" && !!v.delay_reason);
       return {
-        "Visit Date": v.visit_date,
+        "Visit Date": formatDateDDMMYYYY(v.visit_date),
         "Visit Time": formatTime12hr(v.visit_time),
         "Patient": v.estimates?.patient_name || "",
-        "DOB": v.estimates?.dob ? v.estimates.dob : "",
+        "DOB": formatDateDDMMYYYY(v.estimates?.dob),
         "Mobile": v.estimates?.whatsapp_number || "",
         "Address": v.address,
         "Phlebotomist": v.phlebotomists?.name || "",
@@ -526,8 +527,8 @@ const HomeVisits = () => {
             const showDivider = idx === 0 || currentDate !== prevDate || currentStatus !== prevStatus;
 
             const dateLabel = isToday(parseISO(currentDate))
-              ? `Today — ${format(parseISO(currentDate), "dd MMM yyyy")}`
-              : format(parseISO(currentDate), "dd MMM yyyy");
+              ? `Today — ${formatDateDDMMYYYY(currentDate)}`
+              : formatDateDDMMYYYY(currentDate);
 
             return (
               <div key={v.id}>
@@ -572,7 +573,7 @@ const HomeVisits = () => {
 
                   {/* Date, time, phlebotomist info */}
                   <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-                    <span>{v.visit_date} | {formatTime12hr(v.visit_time)}</span>
+                    <span>{formatDateDDMMYYYY(v.visit_date)} | {formatTime12hr(v.visit_time)}</span>
                     {v.phlebotomists && <span>• {v.phlebotomists.name}</span>}
                   </div>
 
