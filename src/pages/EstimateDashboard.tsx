@@ -99,6 +99,7 @@ const EstimateDashboard = () => {
           visitDate: format(new Date(visitForm.visit_date), "dd-MM-yyyy"),
           visitTime: (() => { const [h, m] = visitForm.visit_time.split(":"); const hour = parseInt(h, 10); return `${hour % 12 || 12}:${m} ${hour >= 12 ? "PM" : "AM"}`; })(),
           address: visitForm.address,
+          patientName: est.patient_name ? est.patient_name.toUpperCase() : undefined,
         });
         shareOnWhatsApp(est.whatsapp_number, msg);
       }

@@ -340,6 +340,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
             visitTime: formatTime(visitTime),
             visitHeader: templates.visit_confirmation_header,
             address: address.toUpperCase(),
+            patientName: patientName ? patientName.toUpperCase() : undefined,
           });
           shareOnWhatsApp(cleanNumber, msg);
         }

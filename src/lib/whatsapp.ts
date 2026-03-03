@@ -40,12 +40,17 @@ export interface VisitMessageData extends EstimateMessageData {
   visitTime: string;
   address: string;
   visitHeader: string;
+  patientName?: string;
 }
 
 export function buildVisitMessage(data: VisitMessageData): string {
   const fastingTests = data.tests.filter((t) => t.fasting).map((t) => t.name);
 
-  let msg = `${data.visitHeader}\n\nVisit Date & Time:\n${data.visitDate} | ${data.visitTime}\n\nAddress:\n${data.address}\n\nTest Details:\n`;
+  let msg = `${data.visitHeader}\n`;
+  if (data.patientName) {
+    msg += `\nPatient Name:\n${data.patientName}\n`;
+  }
+  msg += `\nVisit Date & Time:\n${data.visitDate} | ${data.visitTime}\n\nAddress:\n${data.address}\n\nTest Details:\n`;
   data.tests.forEach((t) => { msg += `• ${t.name} – ₹${t.price}\n`; });
   msg += `\nAmount: ₹${data.totalAmount}`;
   if (data.discountAmount > 0) msg += `\nDiscount Amount: (₹${data.discountAmount})`;
