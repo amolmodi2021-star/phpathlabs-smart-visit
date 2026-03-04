@@ -336,7 +336,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
             noFastingMessage: templates.no_fasting_message,
             homeVisitDisclaimer: templates.home_visit_disclaimer,
             footer: templates.footer_text,
-            visitDate: visitDate,
+            visitDate: format(new Date(visitDate), "dd-MM-yyyy"),
             visitTime: formatTime(visitTime),
             visitHeader: templates.visit_confirmation_header,
             address: address.toUpperCase(),
