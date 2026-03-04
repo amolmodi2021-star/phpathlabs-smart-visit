@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { Download, Phone, MapPin, ChevronDown, ChevronUp, Pencil, Trash2, Plus, AlertTriangle, Clock, FileImage } from "lucide-react";
+import { Download, Phone, MapPin, ChevronDown, ChevronUp, Pencil, Trash2, Plus, AlertTriangle, Clock, FileImage, Eye } from "lucide-react";
 import { exportToExcel } from "@/lib/excel";
 import { formatDateDDMMYYYY } from "@/lib/utils";
 import { useState, useCallback, useMemo } from "react";
