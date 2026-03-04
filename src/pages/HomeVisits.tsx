@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { Download, Phone, MapPin, ChevronDown, ChevronUp, Pencil, Trash2, Plus, AlertTriangle, Clock, FileImage } from "lucide-react";
+import { Download, Phone, MapPin, ChevronDown, ChevronUp, Pencil, Trash2, Plus, AlertTriangle, Clock, FileImage, Eye } from "lucide-react";
 import { exportToExcel } from "@/lib/excel";
 import { formatDateDDMMYYYY } from "@/lib/utils";
 import { useState, useCallback, useMemo } from "react";
@@ -23,8 +23,11 @@ import EditHomeVisitDialog from "@/components/EditHomeVisitDialog";
 import AddHomeVisitDialog from "@/components/AddHomeVisitDialog";
 import PaymentDetailsDialog from "@/components/PaymentDetailsDialog";
 import ReceiptViewDialog from "@/components/ReceiptViewDialog";
+import MessagePreviewDialog from "@/components/MessagePreviewDialog";
 import { format, isToday, isTomorrow, parseISO, addDays } from "date-fns";
 import { useAbnormalHistory } from "@/hooks/useAbnormalHistory";
+import { useMessageTemplates } from "@/hooks/useMessageTemplates";
+import { buildVisitMessage } from "@/lib/whatsapp";
 
 const statusColors: Record<string, string> = {
   Pending: "bg-warning text-warning-foreground",
@@ -71,6 +74,8 @@ const HomeVisits = () => {
   const [pendingStatusVisitId, setPendingStatusVisitId] = useState<string | null>(null);
   const [completionEditVisit, setCompletionEditVisit] = useState<any>(null);
   const [receiptViewVisit, setReceiptViewVisit] = useState<any>(null);
+  const [previewMessage, setPreviewMessage] = useState<string | null>(null);
+  const { data: templates } = useMessageTemplates();
 
   const { data: visits = [], isLoading } = useQuery({
     queryKey: ["home_visits"],
@@ -564,6 +569,31 @@ const HomeVisits = () => {
                           <FileImage className="h-3.5 w-3.5" />
                         </Button>
                       )}
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => {
+                        if (templates) {
+                          const tests = (est?.estimate_tests || []).map((t: any) => ({ name: t.test_name, price: Number(t.price), fasting: t.fasting_required }));
+                          const msg = buildVisitMessage({
+                            tests,
+                            totalAmount: Number(est?.total_amount || 0),
+                            discountAmount: Number(est?.discount_amount || 0),
+                            homeVisitCharges: Number(est?.home_visit_charges || 0),
+                            finalAmount: Number(est?.final_amount || 0),
+                            header: templates.estimate_header,
+                            fastingInstructions: templates.fasting_instructions,
+                            noFastingMessage: templates.no_fasting_message,
+                            homeVisitDisclaimer: templates.home_visit_disclaimer,
+                            footer: templates.footer_text,
+                            visitDate: formatDateDDMMYYYY(v.visit_date),
+                            visitTime: formatTime12hr(v.visit_time),
+                            visitHeader: templates.visit_confirmation_header,
+                            address: v.address,
+                            patientName: est?.patient_name ? est.patient_name.toUpperCase() : undefined,
+                          });
+                          setPreviewMessage(msg);
+                        }
+                      }}>
+                        <Eye className="h-3.5 w-3.5" />
+                      </Button>
                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditDialog(v)}>
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
@@ -905,6 +935,7 @@ const HomeVisits = () => {
         onClose={() => setReceiptViewVisit(null)}
         visitData={receiptViewVisit}
       />
+      <MessagePreviewDialog open={!!previewMessage} onOpenChange={(o) => !o && setPreviewMessage(null)} title="Home Visit Confirmation Message" message={previewMessage || ""} />
     </div>
   );
 };
