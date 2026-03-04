@@ -183,12 +183,32 @@ const EstimateDashboard = () => {
                    </div>
                    <div className="flex flex-col items-end gap-1">
                      <div className="flex gap-1">
+                       <Button size="sm" variant="ghost" onClick={() => {
+                         if (templates) {
+                           const tests = (est.estimate_tests || []).map((t: any) => ({ name: t.test_name, price: Number(t.price), fasting: t.fasting_required }));
+                           const msg = buildEstimateMessage({
+                             tests,
+                             totalAmount: Number(est.total_amount),
+                             discountAmount: Number(est.discount_amount),
+                             homeVisitCharges: Number(est.home_visit_charges),
+                             finalAmount: Number(est.final_amount),
+                             header: templates.estimate_header,
+                             fastingInstructions: templates.fasting_instructions,
+                             noFastingMessage: templates.no_fasting_message,
+                             homeVisitDisclaimer: templates.home_visit_disclaimer,
+                             footer: templates.footer_text,
+                           });
+                           setPreviewMessage(msg);
+                         }
+                       }}>
+                         <Eye className="h-3.5 w-3.5" />
+                       </Button>
                        <Button size="sm" variant="ghost" onClick={() => setEditEstimate(est)}>
-                         <Pencil className="h-3.5 w-3.5" />
-                       </Button>
-                       <Button size="sm" variant="outline" onClick={() => { setBookingEstimate(est); setVisitForm(p => ({ ...p, patient_name: est.patient_name || "", home_visit_charges: Number(est.home_visit_charges) > 0 ? String(est.home_visit_charges) : "" })); }}>
-                         <MapPin className="h-3.5 w-3.5 mr-1" />Book Visit
-                       </Button>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => { setBookingEstimate(est); setVisitForm(p => ({ ...p, patient_name: est.patient_name || "", home_visit_charges: Number(est.home_visit_charges) > 0 ? String(est.home_visit_charges) : "" })); }}>
+                          <MapPin className="h-3.5 w-3.5 mr-1" />Book Visit
+                        </Button>
                      </div>
                      {(() => {
                        const abnormal = getForMobile(est.whatsapp_number);
