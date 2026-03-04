@@ -16,7 +16,8 @@ import { Download, Trash2, MapPin, Pencil, AlertTriangle, Eye } from "lucide-rea
 import { exportToExcel } from "@/lib/excel";
 import { useMessageTemplates } from "@/hooks/useMessageTemplates";
 import { usePhlebotomistAvailability } from "@/hooks/usePhlebotomistAvailability";
-import { buildVisitMessage, shareOnWhatsApp } from "@/lib/whatsapp";
+import { buildEstimateMessage, buildVisitMessage, shareOnWhatsApp } from "@/lib/whatsapp";
+import MessagePreviewDialog from "@/components/MessagePreviewDialog";
 import { useAbnormalHistory } from "@/hooks/useAbnormalHistory";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
