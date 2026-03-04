@@ -935,6 +935,7 @@ const HomeVisits = () => {
         onClose={() => setReceiptViewVisit(null)}
         visitData={receiptViewVisit}
       />
+      <MessagePreviewDialog open={!!previewMessage} onOpenChange={(o) => !o && setPreviewMessage(null)} title="Home Visit Confirmation Message" message={previewMessage || ""} />
     </div>
   );
 };
