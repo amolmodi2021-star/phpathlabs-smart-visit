@@ -37,6 +37,7 @@ const EstimateDashboard = () => {
   const [editEstimate, setEditEstimate] = useState<any>(null);
   const [search, setSearch] = useState("");
   const [deleteDialog, setDeleteDialog] = useState<{ ids: string[]; description: string } | null>(null);
+  const [previewMessage, setPreviewMessage] = useState<string | null>(null);
 
   const { data: estimates = [], isLoading } = useQuery({
     queryKey: ["estimates", "dashboard"],
