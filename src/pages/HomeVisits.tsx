@@ -74,6 +74,8 @@ const HomeVisits = () => {
   const [pendingStatusVisitId, setPendingStatusVisitId] = useState<string | null>(null);
   const [completionEditVisit, setCompletionEditVisit] = useState<any>(null);
   const [receiptViewVisit, setReceiptViewVisit] = useState<any>(null);
+  const [previewMessage, setPreviewMessage] = useState<string | null>(null);
+  const { data: templates } = useMessageTemplates();
 
   const { data: visits = [], isLoading } = useQuery({
     queryKey: ["home_visits"],
