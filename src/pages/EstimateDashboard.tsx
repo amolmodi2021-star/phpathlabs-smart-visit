@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { format, addDays } from "date-fns";
-import { Download, Trash2, MapPin, Pencil, AlertTriangle } from "lucide-react";
+import { Download, Trash2, MapPin, Pencil, AlertTriangle, Eye } from "lucide-react";
 import { exportToExcel } from "@/lib/excel";
 import { useMessageTemplates } from "@/hooks/useMessageTemplates";
 import { usePhlebotomistAvailability } from "@/hooks/usePhlebotomistAvailability";
