@@ -23,8 +23,12 @@ import EditHomeVisitDialog from "@/components/EditHomeVisitDialog";
 import AddHomeVisitDialog from "@/components/AddHomeVisitDialog";
 import PaymentDetailsDialog from "@/components/PaymentDetailsDialog";
 import ReceiptViewDialog from "@/components/ReceiptViewDialog";
+import MessagePreviewDialog from "@/components/MessagePreviewDialog";
 import { format, isToday, isTomorrow, parseISO, addDays } from "date-fns";
 import { useAbnormalHistory } from "@/hooks/useAbnormalHistory";
+import { useMessageTemplates } from "@/hooks/useMessageTemplates";
+import { buildVisitMessage } from "@/lib/whatsapp";
+import { formatDateDDMMYYYY } from "@/lib/utils";
 
 const statusColors: Record<string, string> = {
   Pending: "bg-warning text-warning-foreground",
