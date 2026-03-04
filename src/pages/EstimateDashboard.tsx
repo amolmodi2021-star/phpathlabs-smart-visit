@@ -313,6 +313,7 @@ const EstimateDashboard = () => {
         onSuccess={() => { if (deleteDialog) deleteMutation.mutate(deleteDialog.ids); }}
         description={deleteDialog?.description}
       />
+      <MessagePreviewDialog open={!!previewMessage} onOpenChange={(o) => !o && setPreviewMessage(null)} title="Estimate Message" message={previewMessage || ""} />
     </div>
   );
 };
