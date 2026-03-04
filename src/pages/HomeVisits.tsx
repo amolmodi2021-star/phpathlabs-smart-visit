@@ -569,6 +569,31 @@ const HomeVisits = () => {
                           <FileImage className="h-3.5 w-3.5" />
                         </Button>
                       )}
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => {
+                        if (templates) {
+                          const tests = (est?.estimate_tests || []).map((t: any) => ({ name: t.test_name, price: Number(t.price), fasting: t.fasting_required }));
+                          const msg = buildVisitMessage({
+                            tests,
+                            totalAmount: Number(est?.total_amount || 0),
+                            discountAmount: Number(est?.discount_amount || 0),
+                            homeVisitCharges: Number(est?.home_visit_charges || 0),
+                            finalAmount: Number(est?.final_amount || 0),
+                            header: templates.estimate_header,
+                            fastingInstructions: templates.fasting_instructions,
+                            noFastingMessage: templates.no_fasting_message,
+                            homeVisitDisclaimer: templates.home_visit_disclaimer,
+                            footer: templates.footer_text,
+                            visitDate: formatDateDDMMYYYY(v.visit_date),
+                            visitTime: formatTime12hr(v.visit_time),
+                            visitHeader: templates.visit_confirmation_header,
+                            address: v.address,
+                            patientName: est?.patient_name ? est.patient_name.toUpperCase() : undefined,
+                          });
+                          setPreviewMessage(msg);
+                        }
+                      }}>
+                        <Eye className="h-3.5 w-3.5" />
+                      </Button>
                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditDialog(v)}>
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
