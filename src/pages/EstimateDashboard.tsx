@@ -231,7 +231,7 @@ const EstimateDashboard = () => {
 
       {/* Book Home Visit Dialog */}
       <Dialog open={!!bookingEstimate} onOpenChange={(o) => !o && setBookingEstimate(null)}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Book Home Visit</DialogTitle></DialogHeader>
           <form onSubmit={(e) => { e.preventDefault(); bookVisitMutation.mutate(); }} className="space-y-4">
             <div>
