@@ -99,6 +99,7 @@ const ReceiptViewDialog = ({ open, onClose, visitData }: ReceiptViewDialogProps)
 
   const buildReceiptText = () => {
     let msg = `📋 *PH PathLabs — Home Visit Receipt*\n`;
+    if (receiptNumber) msg += `*Receipt No:* ${receiptNumber}\n`;
     msg += `\n*Patient:* ${[est?.title, est?.patient_name].filter(Boolean).join(" ") || "—"}\n`;
     msg += `*Mobile:* ${est?.whatsapp_number || "—"}\n`;
     msg += `*Visit:* ${formatDateDDMMYYYY(visitData?.visit_date) || "—"} | ${visitData?.visit_time ? formatTime12hr(visitData.visit_time) : "—"}\n`;
