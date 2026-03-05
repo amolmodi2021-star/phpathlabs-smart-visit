@@ -129,6 +129,7 @@ const ReceiptViewDialog = ({ open, onClose, visitData }: ReceiptViewDialogProps)
               <h2 className="text-base font-bold tracking-wide">PH PathLabs</h2>
               <p className="text-[10px] text-gray-500">LabLine : 6356 55 66 99</p>
               <p className="text-[10px] text-gray-500">Home Visit Receipt</p>
+              {receiptNumber && <p className="text-[10px] font-semibold text-gray-700">Receipt No: {receiptNumber}</p>}
               <p className="text-[10px] text-gray-500">
                 {visitData?.updated_at
                   ? format(new Date(visitData.updated_at), "dd-MM-yyyy | hh:mm a")
