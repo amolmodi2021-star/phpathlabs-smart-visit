@@ -48,9 +48,9 @@ export function buildVisitMessage(data: VisitMessageData): string {
 
   let msg = `${data.visitHeader}\n`;
   if (data.patientName) {
-    msg += `\nPatient Name:\n${data.patientName}\n`;
+    msg += `\nPatient Name:\n${data.patientName.toUpperCase()}\n`;
   }
-  msg += `\nVisit Date & Time:\n${data.visitDate} | ${data.visitTime}\n\nAddress:\n${data.address}\n\nTest Details:\n`;
+  msg += `\nVisit Date & Time:\n${data.visitDate} | ${data.visitTime}\n\nAddress:\n${data.address.toUpperCase()}\n\nTest Details:\n`;
   data.tests.forEach((t) => { msg += `• ${t.name} – ₹${t.price}\n`; });
   msg += `\nAmount: ₹${data.totalAmount}`;
   if (data.discountAmount > 0) msg += `\nDiscount Amount: (₹${data.discountAmount})`;
