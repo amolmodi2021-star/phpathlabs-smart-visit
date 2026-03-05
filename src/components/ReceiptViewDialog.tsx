@@ -1,4 +1,5 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -25,12 +26,32 @@ const formatTime12hr = (time: string) => {
 
 const ReceiptViewDialog = ({ open, onClose, visitData }: ReceiptViewDialogProps) => {
   const receiptRef = useRef<HTMLDivElement>(null);
+  const [receiptNumber, setReceiptNumber] = useState("");
   const est = visitData?.estimates;
   const tests = est?.estimate_tests || [];
 
   const paidAmount = visitData?.paid_amount || 0;
   const dueAmount = visitData?.due_amount || 0;
   const modeStr = visitData?.payment_mode || "";
+
+  // Generate receipt number when dialog opens
+  useEffect(() => {
+    if (open && visitData) {
+      const generateReceiptNumber = async () => {
+        const completedDate = visitData.updated_at ? new Date(visitData.updated_at) : new Date();
+        const datePrefix = format(completedDate, "ddMMyy");
+        const todayStart = format(completedDate, "yyyy-MM-dd");
+        const { count } = await supabase
+          .from("home_visits")
+          .select("*", { count: "exact", head: true })
+          .eq("status", "Completed")
+          .gte("updated_at", `${todayStart}T00:00:00`);
+        const seq = ((count || 0)).toString().padStart(4, "0");
+        setReceiptNumber(`HVR${datePrefix}${seq}`);
+      };
+      generateReceiptNumber();
+    }
+  }, [open, visitData]);
 
   const generateCanvas = useCallback(async () => {
     if (!receiptRef.current) return null;
@@ -78,6 +99,7 @@ const ReceiptViewDialog = ({ open, onClose, visitData }: ReceiptViewDialogProps)
 
   const buildReceiptText = () => {
     let msg = `📋 *PH PathLabs — Home Visit Receipt*\n`;
+    if (receiptNumber) msg += `*Receipt No:* ${receiptNumber}\n`;
     msg += `\n*Patient:* ${[est?.title, est?.patient_name].filter(Boolean).join(" ") || "—"}\n`;
     msg += `*Mobile:* ${est?.whatsapp_number || "—"}\n`;
     msg += `*Visit:* ${formatDateDDMMYYYY(visitData?.visit_date) || "—"} | ${visitData?.visit_time ? formatTime12hr(visitData.visit_time) : "—"}\n`;
@@ -107,6 +129,7 @@ const ReceiptViewDialog = ({ open, onClose, visitData }: ReceiptViewDialogProps)
               <h2 className="text-base font-bold tracking-wide">PH PathLabs</h2>
               <p className="text-[10px] text-gray-500">LabLine : 6356 55 66 99</p>
               <p className="text-[10px] text-gray-500">Home Visit Receipt</p>
+              {receiptNumber && <p className="text-[10px] font-semibold text-gray-700">Receipt No: {receiptNumber}</p>}
               <p className="text-[10px] text-gray-500">
                 {visitData?.updated_at
                   ? format(new Date(visitData.updated_at), "dd-MM-yyyy | hh:mm a")
