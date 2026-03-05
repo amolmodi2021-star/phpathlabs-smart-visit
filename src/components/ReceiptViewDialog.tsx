@@ -41,15 +41,17 @@ const ReceiptViewDialog = ({ open, onClose, visitData }: ReceiptViewDialogProps)
         const completedDate = visitData.updated_at ? new Date(visitData.updated_at) : new Date();
         const datePrefix = format(completedDate, "ddMMyy");
         const dayStart = format(completedDate, "yyyy-MM-dd");
-        const completedIso = completedDate.toISOString();
-        // Count completed visits from start of that day up to and including this visit
-        const { count } = await supabase
+        // Fetch all completed visits for that day, ordered by updated_at
+        const { data: dayVisits } = await supabase
           .from("home_visits")
-          .select("*", { count: "exact", head: true })
+          .select("id, updated_at")
           .eq("status", "Completed")
           .gte("updated_at", `${dayStart}T00:00:00`)
-          .lte("updated_at", completedIso);
-        const seq = (count || 1).toString().padStart(4, "0");
+          .lt("updated_at", `${dayStart}T23:59:59.999999`)
+          .order("updated_at", { ascending: true });
+        // Find position of current visit by ID
+        const position = (dayVisits || []).findIndex((v: any) => v.id === visitData.id) + 1;
+        const seq = (position || 1).toString().padStart(4, "0");
         setReceiptNumber(`HVR${datePrefix}${seq}`);
       };
       generateReceiptNumber();
