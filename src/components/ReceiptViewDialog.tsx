@@ -26,12 +26,32 @@ const formatTime12hr = (time: string) => {
 
 const ReceiptViewDialog = ({ open, onClose, visitData }: ReceiptViewDialogProps) => {
   const receiptRef = useRef<HTMLDivElement>(null);
+  const [receiptNumber, setReceiptNumber] = useState("");
   const est = visitData?.estimates;
   const tests = est?.estimate_tests || [];
 
   const paidAmount = visitData?.paid_amount || 0;
   const dueAmount = visitData?.due_amount || 0;
   const modeStr = visitData?.payment_mode || "";
+
+  // Generate receipt number when dialog opens
+  useEffect(() => {
+    if (open && visitData) {
+      const generateReceiptNumber = async () => {
+        const completedDate = visitData.updated_at ? new Date(visitData.updated_at) : new Date();
+        const datePrefix = format(completedDate, "ddMMyy");
+        const todayStart = format(completedDate, "yyyy-MM-dd");
+        const { count } = await supabase
+          .from("home_visits")
+          .select("*", { count: "exact", head: true })
+          .eq("status", "Completed")
+          .gte("updated_at", `${todayStart}T00:00:00`);
+        const seq = ((count || 0)).toString().padStart(4, "0");
+        setReceiptNumber(`HVR${datePrefix}${seq}`);
+      };
+      generateReceiptNumber();
+    }
+  }, [open, visitData]);
 
   const generateCanvas = useCallback(async () => {
     if (!receiptRef.current) return null;
