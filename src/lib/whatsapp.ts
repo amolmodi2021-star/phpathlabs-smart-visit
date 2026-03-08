@@ -11,13 +11,18 @@ export interface EstimateMessageData {
   noFastingMessage: string;
   homeVisitDisclaimer: string;
   footer: string;
+  patientName?: string;
 }
 
 export function buildEstimateMessage(data: EstimateMessageData): string {
   const dateStr = format(new Date(), "EEE - dd-MM-yyyy");
   const fastingTests = data.tests.filter((t) => t.fasting).map((t) => t.name);
 
-  let msg = `${data.header}\n${dateStr}\n\nTest Details:\n`;
+  let msg = `${data.header}\n${dateStr}\n`;
+  if (data.patientName) {
+    msg += `\nPatient Name:\n${data.patientName.toUpperCase()}\n`;
+  }
+  msg += `\nTest Details:\n`;
   data.tests.forEach((t) => { msg += `• ${t.name} – ₹${t.price}\n`; });
   msg += `\nAmount: ₹${data.totalAmount}`;
   if (data.discountAmount > 0) msg += `\nDiscount Amount: (₹${data.discountAmount})`;
