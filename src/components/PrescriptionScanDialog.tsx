@@ -56,21 +56,18 @@ const PrescriptionScanDialog = ({ open, onOpenChange, availableTests, onConfirm 
     setStep("processing");
 
     try {
-      // Upload to prescriptions bucket
-      const fileName = `${Date.now()}_${file.name}`;
-      const { error: uploadError } = await supabase.storage
-        .from("prescriptions")
-        .upload(fileName, file);
-      if (uploadError) throw uploadError;
+      // Convert file to base64 data URL - no storage upload
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
 
-      const { data: urlData } = supabase.storage
-        .from("prescriptions")
-        .getPublicUrl(fileName);
-
-      // Call edge function
+      // Call edge function with base64 image
       const { data, error } = await supabase.functions.invoke("parse-prescription", {
         body: {
-          imageUrl: urlData.publicUrl,
+          imageUrl: base64,
           availableTests: availableTests.map(t => ({ id: t.id, test_name: t.test_name })),
         },
       });
@@ -92,8 +89,7 @@ const PrescriptionScanDialog = ({ open, onOpenChange, availableTests, onConfirm 
       setSelectedMatches(selections);
       setStep("review");
 
-      // Cleanup uploaded file
-      await supabase.storage.from("prescriptions").remove([fileName]);
+      // Cleanup not needed - no files stored
     } catch (e: any) {
       console.error("Scan error:", e);
       toast.error(e.message || "Failed to scan prescription");
