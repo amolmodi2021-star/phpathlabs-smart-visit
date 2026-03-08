@@ -188,8 +188,19 @@ const CreateEstimate = () => {
 
   return (
     <div className="space-y-4 animate-fade-in max-w-2xl">
-      <h1 className="text-xl font-bold">Create Estimate</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-bold">Create Estimate</h1>
+        <Button variant="outline" onClick={() => setScanOpen(true)}>
+          <ScanLine className="h-4 w-4 mr-2" />Scan Prescription
+        </Button>
+      </div>
 
+      <PrescriptionScanDialog
+        open={scanOpen}
+        onOpenChange={setScanOpen}
+        availableTests={tests}
+        onConfirm={handleScanConfirm}
+      />
       <Card className="glass-card">
         <CardContent className="p-4 space-y-4">
           <div><Label>Patient Name (Optional)</Label><Input value={patientName} onChange={(e) => setPatientName(e.target.value)} /></div>
