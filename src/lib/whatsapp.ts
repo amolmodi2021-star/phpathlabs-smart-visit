@@ -11,6 +11,7 @@ export interface EstimateMessageData {
   noFastingMessage: string;
   homeVisitDisclaimer: string;
   footer: string;
+  patientName?: string;
 }
 
 export function buildEstimateMessage(data: EstimateMessageData): string {
