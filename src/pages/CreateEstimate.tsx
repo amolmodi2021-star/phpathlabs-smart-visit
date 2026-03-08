@@ -10,8 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { useMessageTemplates } from "@/hooks/useMessageTemplates";
 import { buildEstimateMessage, shareOnWhatsApp } from "@/lib/whatsapp";
-import { Send, X, Search } from "lucide-react";
+import { Send, X, Search, ScanLine } from "lucide-react";
 import { getTests } from "@/lib/tests";
+import PrescriptionScanDialog from "@/components/PrescriptionScanDialog";
 
 interface SelectedTest {
   test_id: string;
