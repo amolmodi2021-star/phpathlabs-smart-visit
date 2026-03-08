@@ -195,6 +195,7 @@ const EstimateDashboard = () => {
                             noFastingMessage: templates.no_fasting_message,
                             homeVisitDisclaimer: templates.home_visit_disclaimer,
                             footer: templates.footer_text,
+                            patientName: est.patient_name || undefined,
                           });
                           setPreviewMessage(msg);
                         }

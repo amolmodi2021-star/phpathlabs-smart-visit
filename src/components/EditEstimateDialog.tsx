@@ -173,6 +173,7 @@ const EditEstimateDialog = ({ estimate, open, onClose }: EditEstimateDialogProps
           noFastingMessage: templates.no_fasting_message,
           homeVisitDisclaimer: templates.home_visit_disclaimer,
           footer: templates.footer_text,
+          patientName: patientName || undefined,
         });
         shareOnWhatsApp(cleanNumber, msg);
       }
