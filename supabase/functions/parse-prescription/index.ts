@@ -13,20 +13,60 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
-    const testListStr = availableTests.map((t: any) => `- "${t.test_name}" (ID: ${t.id})`).join("\n");
+    const testListStr = availableTests.map((t: any) => `${t.id}|${t.test_name}`).join("\n");
 
-    const systemPrompt = `You are a medical prescription reader. Extract test/investigation names from prescription images. Match them to the available test list provided. Return results as a JSON tool call.
+    const systemPrompt = `You are an expert medical prescription reader specializing in Indian diagnostic lab test matching. Your job: read handwritten/printed prescriptions and map each recommended test to the closest match from our lab's test catalog.
 
-Available tests in our system:
+AVAILABLE TESTS (format: ID|Name):
 ${testListStr}
 
-Instructions:
-1. Read the prescription image carefully
-2. Identify all medical tests/investigations recommended
-3. For each test found, try to match it to the closest test from our available list
-4. Consider common abbreviations and alternate names (e.g., "CBC" = "Complete Blood Count", "LFT" = "Liver Function Test", "KFT" = "Kidney Function Test", "TFT" = "Thyroid Function Test", "HbA1c" = "Glycosylated Hemoglobin")
-5. If a test from prescription doesn't match any available test, mark it as unmatched
-6. Also try to extract patient name if visible on the prescription`;
+CRITICAL MATCHING RULES - Doctors use heavy abbreviations. You MUST know these:
+- "CBC" / "CBP" / "TC DC" / "Hb" → Complete Blood Count / Complete Blood Picture / Hemogram
+- "LFT" / "Liver" → Liver Function Test
+- "KFT" / "RFT" / "Renal" → Kidney Function Test / Renal Function Test
+- "TFT" / "Thyroid" → Thyroid Function Test / Thyroid Profile
+- "Creat" / "S.Creat" / "Sr Creatinine" → Creatinine / Serum Creatinine
+- "Urine R/M" / "Urine R/E" / "U/R" / "Urine Routine" → Urine Routine / Urine Analysis
+- "HbA1c" / "A1c" / "Glyco Hb" → Glycosylated Hemoglobin / HbA1c
+- "FBS" / "Fasting Sugar" → Fasting Blood Sugar / Fasting Glucose
+- "PPBS" / "PP Sugar" / "PP" → Post Prandial Blood Sugar
+- "RBS" / "Random Sugar" / "Grbs" → Random Blood Sugar
+- "ESR" → Erythrocyte Sedimentation Rate
+- "CRP" → C-Reactive Protein
+- "Lipid" / "Lipid Profile" → Lipid Profile
+- "TSH" → TSH / Thyroid Stimulating Hormone
+- "T3 T4" → T3 T4 / Thyroid Profile
+- "Uric Acid" / "S.Uric Acid" → Serum Uric Acid
+- "Ca" / "Calcium" → Serum Calcium
+- "Vit D" / "25 OH" / "Vitamin D" → Vitamin D / 25-Hydroxy Vitamin D
+- "Vit B12" / "B12" → Vitamin B12
+- "Iron" / "S.Iron" / "Iron Studies" → Serum Iron / Iron Profile
+- "PT INR" / "PT" / "Coag" → PT INR / Prothrombin Time
+- "Widal" → Widal Test
+- "Dengue" / "NS1" → Dengue NS1 / Dengue Test
+- "Malaria" / "MP" / "Peripheral Smear" → Malaria / Peripheral Smear
+- "Electrolytes" / "Na K Cl" → Serum Electrolytes
+- "PSA" → PSA / Prostate Specific Antigen
+- "ANA" → ANA / Anti Nuclear Antibody
+- "RA Factor" / "RF" → RA Factor / Rheumatoid Factor
+- "ASO" → ASO Titre / Anti Streptolysin O
+- "Stool R/M" / "Stool R/E" → Stool Routine
+- "Blood Group" / "BG" / "Grouping" → Blood Grouping
+- "Bilirubin" / "S.Bili" → Serum Bilirubin
+- "Urea" / "BUN" → Blood Urea / BUN
+- "SGOT" / "AST" → SGOT / AST
+- "SGPT" / "ALT" → SGPT / ALT
+- "ALP" → Alkaline Phosphatase
+- "GGT" → Gamma GT / GGT
+- "Amylase" / "Lipase" → Serum Amylase / Serum Lipase
+
+MATCHING STRATEGY:
+1. Read the prescription carefully - doctors have poor handwriting, look for context clues
+2. For each test written, find the BEST match from our catalog using fuzzy/partial matching
+3. Even 2-3 letter abbreviations should be matched confidently if they clearly map to a test
+4. If a written test partially matches a test name (e.g., "Creat" matches "Creatinine"), mark as HIGH confidence
+5. Only mark as unmatched if there is truly no reasonable match in our catalog
+6. Extract patient name if visible`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
