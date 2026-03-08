@@ -89,8 +89,7 @@ const PrescriptionScanDialog = ({ open, onOpenChange, availableTests, onConfirm 
       setSelectedMatches(selections);
       setStep("review");
 
-      // Cleanup uploaded file
-      await supabase.storage.from("prescriptions").remove([fileName]);
+      // Cleanup not needed - no files stored
     } catch (e: any) {
       console.error("Scan error:", e);
       toast.error(e.message || "Failed to scan prescription");
