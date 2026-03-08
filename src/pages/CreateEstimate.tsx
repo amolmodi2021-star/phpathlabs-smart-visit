@@ -73,6 +73,7 @@ const CreateEstimate = () => {
   };
 
 
+  const formatWhatsApp = (raw: string): string => {
     const digits = raw.replace(/\D/g, "");
     return digits.slice(-10);
   };
