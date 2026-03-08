@@ -55,7 +55,24 @@ const CreateEstimate = () => {
     setTimeout(() => searchRef.current?.focus(), 50);
   };
 
-  const formatWhatsApp = (raw: string): string => {
+  const handleScanConfirm = (testIds: string[], scannedName: string) => {
+    const newTests: SelectedTest[] = [];
+    for (const id of testIds) {
+      if (selectedTests.find(s => s.test_id === id)) continue;
+      const t = tests.find((x: any) => x.id === id);
+      if (!t) continue;
+      newTests.push({
+        test_id: t.id, test_name: t.test_name, price: Number(t.price),
+        fasting_required: t.fasting_required, discount_applicable: t.discount_applicable,
+        individual_discount_type: null, individual_discount_value: 0,
+      });
+    }
+    if (newTests.length > 0) setSelectedTests(prev => [...prev, ...newTests]);
+    if (scannedName && !patientName) setPatientName(scannedName.toUpperCase());
+    toast.success(`${newTests.length} test(s) added from prescription`);
+  };
+
+
     const digits = raw.replace(/\D/g, "");
     return digits.slice(-10);
   };
