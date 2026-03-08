@@ -10,8 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { useMessageTemplates } from "@/hooks/useMessageTemplates";
 import { buildEstimateMessage, shareOnWhatsApp } from "@/lib/whatsapp";
-import { Send, X, Search } from "lucide-react";
+import { Send, X, Search, ScanLine } from "lucide-react";
 import { getTests } from "@/lib/tests";
+import PrescriptionScanDialog from "@/components/PrescriptionScanDialog";
 
 interface SelectedTest {
   test_id: string;
@@ -34,6 +35,7 @@ const CreateEstimate = () => {
   const [globalDiscountValue, setGlobalDiscountValue] = useState(0);
   const [homeVisitCharges, setHomeVisitCharges] = useState(0);
   const [testSearch, setTestSearch] = useState("");
+  const [scanOpen, setScanOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
   const { data: tests = [] } = useQuery({
@@ -52,6 +54,24 @@ const CreateEstimate = () => {
     setTestSearch("");
     setTimeout(() => searchRef.current?.focus(), 50);
   };
+
+  const handleScanConfirm = (testIds: string[], scannedName: string) => {
+    const newTests: SelectedTest[] = [];
+    for (const id of testIds) {
+      if (selectedTests.find(s => s.test_id === id)) continue;
+      const t = tests.find((x: any) => x.id === id);
+      if (!t) continue;
+      newTests.push({
+        test_id: t.id, test_name: t.test_name, price: Number(t.price),
+        fasting_required: t.fasting_required, discount_applicable: t.discount_applicable,
+        individual_discount_type: null, individual_discount_value: 0,
+      });
+    }
+    if (newTests.length > 0) setSelectedTests(prev => [...prev, ...newTests]);
+    if (scannedName && !patientName) setPatientName(scannedName.toUpperCase());
+    toast.success(`${newTests.length} test(s) added from prescription`);
+  };
+
 
   const formatWhatsApp = (raw: string): string => {
     const digits = raw.replace(/\D/g, "");
@@ -169,8 +189,19 @@ const CreateEstimate = () => {
 
   return (
     <div className="space-y-4 animate-fade-in max-w-2xl">
-      <h1 className="text-xl font-bold">Create Estimate</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-bold">Create Estimate</h1>
+        <Button variant="outline" onClick={() => setScanOpen(true)}>
+          <ScanLine className="h-4 w-4 mr-2" />Scan Prescription
+        </Button>
+      </div>
 
+      <PrescriptionScanDialog
+        open={scanOpen}
+        onOpenChange={setScanOpen}
+        availableTests={tests}
+        onConfirm={handleScanConfirm}
+      />
       <Card className="glass-card">
         <CardContent className="p-4 space-y-4">
           <div><Label>Patient Name (Optional)</Label><Input value={patientName} onChange={(e) => setPatientName(e.target.value)} /></div>
