@@ -87,7 +87,7 @@ const ReportParameters = () => {
 
   const openNew = () => {
     setEditId(null);
-    setForm({ parameter_name: "", test_name: "", profile_id: "", department_id: "", unit: "", normal_range_low: "", normal_range_high: "", normal_range_text: "", analyzer: "", method: "", store_for_analytics: false, display_order: 0 });
+    setForm({ parameter_name: "", test_name: "", profile_id: "", department_id: "", unit: "", analyzer: "", method: "", store_for_analytics: false, display_order: 0 });
     setDialogOpen(true);
   };
 
