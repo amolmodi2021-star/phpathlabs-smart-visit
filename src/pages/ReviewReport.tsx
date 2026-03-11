@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Save, FileCheck, AlertTriangle, Trash2, Plus, Check } from "lucide-react";
+import { Loader2, Save, FileCheck, AlertTriangle, Trash2, Plus, Check, ShieldCheck } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import AddParameterToMasterDialog from "@/components/AddParameterToMasterDialog";
 import { computeAbnormalFlag, normalizeTestResultFlags } from "@/lib/reportFlags";
@@ -60,6 +60,10 @@ const ReviewReport = () => {
   const [masterParams, setMasterParams] = useState<Map<string, { department_name?: string; profile_name?: string }>>(new Map());
   const [addParamDialogOpen, setAddParamDialogOpen] = useState(false);
   const [addParamIndex, setAddParamIndex] = useState<number | null>(null);
+  const [reverifying, setReverifying] = useState(false);
+  const [reverified, setReverified] = useState(false);
+  const [reverifyResults, setReverifyResults] = useState<any>(null);
+  const [showReverifyDialog, setShowReverifyDialog] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -158,6 +162,7 @@ const ReviewReport = () => {
   };
 
   const updateTestResult = (index: number, field: keyof TestResult, value: string) => {
+    setReverified(false); // Reset re-verification when results change
     setTestResults((prev) => {
       const updated = prev.map((r, i) => (i === index ? { ...r, [field]: value } : r));
       if (field === "result_value" || field === "normal_range_low" || field === "normal_range_high" || field === "normal_range_text") {
@@ -166,6 +171,55 @@ const ReviewReport = () => {
       }
       return updated;
     });
+  };
+
+  const handleReverifyAbnormals = async () => {
+    const abnormals = testResults.filter((r) => r.flag === "H" || r.flag === "L");
+    if (abnormals.length === 0) {
+      setReverified(true);
+      toast({ title: "No abnormal results to verify" });
+      return;
+    }
+    setReverifying(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("reverify-abnormals", {
+        body: {
+          abnormalResults: abnormals.map((r) => ({
+            parameter_name: r.parameter_name,
+            result_value: r.result_value,
+            unit: r.unit,
+            normal_range_low: r.normal_range_low,
+            normal_range_high: r.normal_range_high,
+            normal_range_text: r.normal_range_text,
+            flag: r.flag,
+          })),
+          patientAge: age,
+          patientGender: gender,
+        },
+      });
+      if (error) throw error;
+      setReverifyResults(data);
+      setShowReverifyDialog(true);
+
+      // Apply any flag corrections from AI
+      if (data?.verifications) {
+        setTestResults((prev) => {
+          const updated = [...prev];
+          data.verifications.forEach((v: any) => {
+            const idx = updated.findIndex((r) => r.parameter_name.toLowerCase() === v.parameter_name.toLowerCase());
+            if (idx !== -1 && !v.flag_correct) {
+              updated[idx] = { ...updated[idx], flag: v.verified_flag };
+            }
+          });
+          return updated;
+        });
+      }
+      setReverified(true);
+      toast({ title: "AI re-verification complete" });
+    } catch (err: any) {
+      toast({ title: "Re-verification failed", description: err.message, variant: "destructive" });
+    }
+    setReverifying(false);
   };
 
   const removeTestResult = (index: number) => {
@@ -279,7 +333,15 @@ const ReviewReport = () => {
         <h1 className="text-2xl font-bold">Review Extracted Data</h1>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => navigate("/reports")}>Cancel</Button>
-          <Button onClick={handleSaveAndGenerate} disabled={saving}>
+          <Button
+            variant="secondary"
+            onClick={handleReverifyAbnormals}
+            disabled={reverifying || reverified}
+          >
+            {reverifying ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ShieldCheck className="h-4 w-4 mr-2" />}
+            {reverified ? "Re-verified ✓" : "Re-verify Abnormals (AI)"}
+          </Button>
+          <Button onClick={handleSaveAndGenerate} disabled={saving || !reverified}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileCheck className="h-4 w-4 mr-2" />}
             Verify & Generate Report
           </Button>
@@ -479,6 +541,60 @@ const ReviewReport = () => {
           }}
         />
       )}
+
+      {/* Re-verify Results Dialog */}
+      <Dialog open={showReverifyDialog} onOpenChange={setShowReverifyDialog}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-primary" />
+              AI Re-verification Results
+            </DialogTitle>
+          </DialogHeader>
+          {reverifyResults && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">{reverifyResults.summary}</p>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Parameter</TableHead>
+                    <TableHead>Value</TableHead>
+                    <TableHead>Flag</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Comment</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {reverifyResults.verifications?.map((v: any, i: number) => (
+                    <TableRow key={i} className={!v.flag_correct ? "bg-amber-50" : ""}>
+                      <TableCell className="font-medium text-sm">{v.parameter_name}</TableCell>
+                      <TableCell className="text-sm">{v.result_value}</TableCell>
+                      <TableCell>
+                        {v.flag_correct ? (
+                          <Badge variant="secondary" className="text-xs">{v.original_flag} ✓</Badge>
+                        ) : (
+                          <Badge variant="destructive" className="text-xs">{v.original_flag} → {v.verified_flag}</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {v.plausible ? (
+                          <Badge className="bg-green-100 text-green-800 text-xs">Plausible</Badge>
+                        ) : (
+                          <Badge variant="destructive" className="text-xs">Check</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground max-w-[200px]">{v.comment}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setShowReverifyDialog(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
