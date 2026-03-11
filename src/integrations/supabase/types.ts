@@ -638,6 +638,33 @@ export type Database = {
         }
         Relationships: []
       }
+      report_layout_settings: {
+        Row: {
+          bottom_margin_cm: number
+          created_at: string | null
+          id: string
+          letterhead_pdf_path: string | null
+          top_margin_cm: number
+          updated_at: string | null
+        }
+        Insert: {
+          bottom_margin_cm?: number
+          created_at?: string | null
+          id?: string
+          letterhead_pdf_path?: string | null
+          top_margin_cm?: number
+          updated_at?: string | null
+        }
+        Update: {
+          bottom_margin_cm?: number
+          created_at?: string | null
+          id?: string
+          letterhead_pdf_path?: string | null
+          top_margin_cm?: number
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       report_profiles: {
         Row: {
           analyzer: string | null

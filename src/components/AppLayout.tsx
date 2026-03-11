@@ -29,6 +29,7 @@ const reportNavItems = [
   { to: "/report-admin/profiles", label: "Profiles", icon: Layers },
   { to: "/report-admin/parameters", label: "Parameters", icon: Microscope },
   { to: "/report-admin/signatures", label: "Signatures", icon: PenTool },
+  { to: "/report-admin/layout", label: "Report Layout", icon: Layers },
 ];
 
 const NavSection = ({ items, onClick }: { items: typeof navItems; onClick?: () => void }) => (

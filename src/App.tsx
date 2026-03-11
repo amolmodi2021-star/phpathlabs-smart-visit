@@ -22,6 +22,7 @@ import ReportDepartments from "./pages/ReportDepartments";
 import ReportProfiles from "./pages/ReportProfiles";
 import ReportParameters from "./pages/ReportParameters";
 import SignatureManagement from "./pages/SignatureManagement";
+import ReportLayoutSettings from "./pages/ReportLayoutSettings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -55,6 +56,7 @@ const App = () => (
           <Route path="/report-admin/profiles" element={<ProtectedRoute><ReportProfiles /></ProtectedRoute>} />
           <Route path="/report-admin/parameters" element={<ProtectedRoute><ReportParameters /></ProtectedRoute>} />
           <Route path="/report-admin/signatures" element={<ProtectedRoute><SignatureManagement /></ProtectedRoute>} />
+          <Route path="/report-admin/layout" element={<ProtectedRoute><ReportLayoutSettings /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

@@ -3,6 +3,8 @@ import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Loader2, Printer, ArrowLeft } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import ReportTrendCharts from "@/components/report/ReportTrendCharts";
 import ReportHeader from "@/components/report/ReportHeader";
 import ReportAbnormalSummary from "@/components/report/ReportAbnormalSummary";
@@ -31,6 +33,12 @@ interface TrendData {
   unit?: string;
 }
 
+interface LayoutSettings {
+  top_margin_cm: number;
+  bottom_margin_cm: number;
+  letterhead_pdf_path: string | null;
+}
+
 const ViewReport = () => {
   const { reportId } = useParams();
   const navigate = useNavigate();
@@ -39,8 +47,30 @@ const ViewReport = () => {
   const [extracted, setExtracted] = useState<any>(null);
   const [pathologistMap, setPathologistMap] = useState<Record<string, any>>({});
   const [trends, setTrends] = useState<TrendData[]>([]);
+  const [showHeader, setShowHeader] = useState(true);
+  const [layoutSettings, setLayoutSettings] = useState<LayoutSettings>({
+    top_margin_cm: 2.5,
+    bottom_margin_cm: 1.5,
+    letterhead_pdf_path: null,
+  });
+  const [letterheadUrl, setLetterheadUrl] = useState<string | null>(null);
 
-  useEffect(() => { loadReport(); }, [reportId]);
+  useEffect(() => { loadReport(); loadLayoutSettings(); }, [reportId]);
+
+  const loadLayoutSettings = async () => {
+    const { data } = await supabase.from("report_layout_settings").select("*").limit(1).single();
+    if (data) {
+      setLayoutSettings({
+        top_margin_cm: Number(data.top_margin_cm) || 2.5,
+        bottom_margin_cm: Number(data.bottom_margin_cm) || 1.5,
+        letterhead_pdf_path: data.letterhead_pdf_path || null,
+      });
+      if (data.letterhead_pdf_path) {
+        const { data: urlData } = supabase.storage.from("letterheads").getPublicUrl(data.letterhead_pdf_path);
+        setLetterheadUrl(urlData.publicUrl);
+      }
+    }
+  };
 
   const loadReport = async () => {
     setLoading(true);
@@ -48,7 +78,6 @@ const ViewReport = () => {
     if (!ext) { setLoading(false); return; }
     setExtracted(ext);
 
-    // Load all pathologist signatures
     const { data: allSigs } = await supabase.from("pathologist_signatures").select("*");
     const sigMap: Record<string, any> = {};
     (allSigs || []).forEach((sig: any) => {
@@ -56,7 +85,6 @@ const ViewReport = () => {
     });
     setPathologistMap(sigMap);
 
-    // Load trends
     if (ext.umr_id) {
       const results = (ext.test_results as unknown as TestResult[]) || [];
       const paramNames = results.map((r) => r.parameter_name);
@@ -93,13 +121,10 @@ const ViewReport = () => {
   if (!extracted) return <div className="p-8 text-center">Report not found.</div>;
 
   const results = (extracted.test_results as unknown as TestResult[]) || [];
-  const abnormalResults = results.filter((r) => r.flag === "H" || r.flag === "L");
 
-  // Determine unique approvers
   const approverNames = [...new Set(results.map(r => r.approved_by).filter(Boolean))] as string[];
   const hasMultipleApprovers = approverNames.length > 1;
 
-  // Group results by approver
   const resultsByApprover: Record<string, TestResult[]> = {};
   if (hasMultipleApprovers) {
     results.forEach(r => {
@@ -111,7 +136,6 @@ const ViewReport = () => {
     resultsByApprover["_all"] = results;
   }
 
-  // Helper to find pathologist signature
   const findPathologistSig = (name: string) => {
     const lower = name.toLowerCase();
     for (const key of Object.keys(pathologistMap)) {
@@ -122,7 +146,6 @@ const ViewReport = () => {
     return null;
   };
 
-  // Group results by department then profile
   const groupResults = (resultSet: TestResult[]) => {
     const grouped: Record<string, Record<string, TestResult[]>> = {};
     resultSet.forEach((r) => {
@@ -137,15 +160,23 @@ const ViewReport = () => {
 
   const shouldShowProfile = (params: TestResult[]) => params.length >= 2;
 
+  const topMarginMm = layoutSettings.top_margin_cm * 10;
+  const bottomMarginMm = layoutSettings.bottom_margin_cm * 10;
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 print:hidden">
+      <div className="flex items-center gap-4 print:hidden flex-wrap">
         <Button variant="outline" size="sm" onClick={() => navigate("/reports")}><ArrowLeft className="h-4 w-4 mr-1" />Back</Button>
-        <Button size="sm" onClick={handlePrint}><Printer className="h-4 w-4 mr-1" />Print / Save PDF</Button>
+        <Button size="sm" onClick={handlePrint}><Printer className="h-4 w-4 mr-1" />Print</Button>
+        <div className="flex items-center gap-2">
+          <Switch id="show-header" checked={showHeader} onCheckedChange={setShowHeader} />
+          <Label htmlFor="show-header" className="text-sm cursor-pointer">
+            {showHeader ? "With Header" : "Without Header"}
+          </Label>
+        </div>
       </div>
 
-      <div ref={printRef} className="bg-white text-black print:text-black mx-auto max-w-[210mm] print:max-w-none" style={{ fontFamily: "'Segoe UI', Arial, sans-serif" }}>
-        {/* Render each approver section as a separate "page" */}
+      <div ref={printRef} className="bg-white text-black print:text-black mx-auto max-w-[210mm] print:max-w-none report-print-area" style={{ fontFamily: "'Segoe UI', Arial, sans-serif" }}>
         {Object.entries(resultsByApprover).map(([approverKey, approverResults], pageIdx) => {
           const grouped = groupResults(approverResults);
           const approverName = approverKey === "_all" ? (extracted.pathologist_name || "") : approverKey;
@@ -154,13 +185,13 @@ const ViewReport = () => {
             ? supabase.storage.from("signatures").getPublicUrl(pathologist.signature_image_path).data.publicUrl
             : null;
 
-          // Only show abnormal summary on first page
           const pageAbnormals = approverResults.filter(r => r.flag === "H" || r.flag === "L");
 
           return (
-            <div key={approverKey} className={pageIdx > 0 ? "print:break-before-page" : ""}>
-              {/* Report Header */}
-              <ReportHeader extracted={extracted} />
+            <div key={approverKey} className={`report-page ${pageIdx > 0 ? "print:break-before-page" : ""}`}
+              style={{ paddingTop: `${topMarginMm}mm`, paddingBottom: `${bottomMarginMm}mm` }}>
+              
+              {showHeader && <ReportHeader extracted={extracted} />}
 
               {hasMultipleApprovers && (
                 <div className="px-6 mb-2">
@@ -171,15 +202,12 @@ const ViewReport = () => {
               )}
 
               <div className="px-6 space-y-6">
-                {/* Abnormal Summary for this section */}
                 {pageAbnormals.length > 0 && (
                   <ReportAbnormalSummary abnormalResults={pageAbnormals} />
                 )}
 
-                {/* Main Results */}
                 <ReportResultsSection grouped={grouped} shouldShowProfile={shouldShowProfile} />
 
-                {/* Signature for this section's approver */}
                 <ReportSignatureBlock
                   signatureUrl={signatureUrl}
                   pathologistName={pathologist?.pathologist_name || approverName}
@@ -187,18 +215,12 @@ const ViewReport = () => {
                   designation={pathologist?.designation}
                 />
               </div>
-
-              {/* Footer */}
-              <div className="mt-6 border-t pt-2 px-6 pb-4 text-center text-xs text-gray-400">
-                <p>This is a computer generated report. | Generated by PH Path Labs Report System</p>
-              </div>
             </div>
           );
         })}
 
-        {/* Historical Trends - after all sections */}
         {trends.length > 0 && (
-          <div className="px-6 print:break-before-page">
+          <div className="px-6 print:break-before-page" style={{ paddingTop: `${topMarginMm}mm`, paddingBottom: `${bottomMarginMm}mm` }}>
             <ReportTrendCharts trends={trends} />
           </div>
         )}
@@ -211,7 +233,33 @@ const ViewReport = () => {
           .print\\:hidden { display: none !important; }
           .print\\:break-inside-avoid { break-inside: avoid; }
           .print\\:break-before-page { break-before: page; }
-          @page { margin: 10mm; size: A4; }
+          .report-print-area { width: 210mm !important; max-width: 210mm !important; }
+          .report-page {
+            min-height: 297mm;
+            width: 210mm;
+            box-sizing: border-box;
+            position: relative;
+          }
+          @page {
+            size: A4;
+            margin: 0;
+          }
+          ${letterheadUrl ? `
+          .report-page {
+            background-image: url("${letterheadUrl}");
+            background-size: 210mm 297mm;
+            background-repeat: no-repeat;
+            background-position: center;
+          }
+          ` : ''}
+        }
+        /* Screen preview */
+        .report-page {
+          min-height: 297mm;
+          width: 210mm;
+          box-sizing: border-box;
+          position: relative;
+          margin: 0 auto;
         }
       `}</style>
     </div>
