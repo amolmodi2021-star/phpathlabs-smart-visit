@@ -6,12 +6,8 @@ interface ReportHeaderProps {
 
 const ReportHeader = ({ extracted }: ReportHeaderProps) => {
   return (
-    <div className="border-b-2 border-blue-600 pb-4 mb-4 px-6 pt-6">
-      <div className="text-center">
-        <h1 className="text-2xl font-bold text-blue-800">PH PATH LABS</h1>
-        <p className="text-xs text-gray-500 mt-1">Advanced Diagnostic Centre</p>
-      </div>
-      <div className="grid grid-cols-2 gap-4 mt-4 text-sm">
+    <div className="border-b border-gray-300 pb-3 mb-4 px-6">
+      <div className="grid grid-cols-2 gap-4 text-sm">
         <div className="space-y-1">
           <p><span className="font-semibold">Patient Name:</span> {extracted.patient_name}</p>
           <p><span className="font-semibold">Age / Gender:</span> {extracted.age} / {extracted.gender}</p>
