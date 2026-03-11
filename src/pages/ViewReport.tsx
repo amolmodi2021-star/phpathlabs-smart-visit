@@ -187,7 +187,7 @@ const ViewReport = () => {
   const bottomMarginMm = layoutSettings.bottom_margin_cm * 10;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 print:space-y-0">
       <div className="flex items-center gap-4 print:hidden flex-wrap">
         <Button variant="outline" size="sm" onClick={() => navigate("/reports")}><ArrowLeft className="h-4 w-4 mr-1" />Back</Button>
         <Button size="sm" onClick={handlePrint}><Printer className="h-4 w-4 mr-1" />Print</Button>
@@ -294,10 +294,8 @@ const ViewReport = () => {
           body * { visibility: hidden; }
           .report-print-area, .report-print-area * { visibility: visible; }
           .report-print-area { 
-            position: absolute; 
-            left: 0; 
-            top: 0; 
-            margin: 0 !important;
+            position: relative;
+            margin: 0 auto !important;
             width: 210mm !important; 
             max-width: 210mm !important; 
           }
@@ -316,6 +314,10 @@ const ViewReport = () => {
           }
           .report-page:last-child {
             page-break-after: auto;
+          }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
           }
           @page {
             size: A4;
