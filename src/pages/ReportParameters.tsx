@@ -167,11 +167,6 @@ const ReportParameters = () => {
             </div>
             <div><Label>Unit</Label><Input value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} /></div>
             <div className="grid grid-cols-2 gap-4">
-              <div><Label>Normal Range Low</Label><Input type="number" value={form.normal_range_low} onChange={(e) => setForm({ ...form, normal_range_low: e.target.value })} /></div>
-              <div><Label>Normal Range High</Label><Input type="number" value={form.normal_range_high} onChange={(e) => setForm({ ...form, normal_range_high: e.target.value })} /></div>
-            </div>
-            <div><Label>Range Text (for display, e.g. "Negative")</Label><Input value={form.normal_range_text} onChange={(e) => setForm({ ...form, normal_range_text: e.target.value })} /></div>
-            <div className="grid grid-cols-2 gap-4">
               <div><Label>Analyzer</Label><Input value={form.analyzer} onChange={(e) => setForm({ ...form, analyzer: e.target.value })} /></div>
               <div><Label>Method</Label><Input value={form.method} onChange={(e) => setForm({ ...form, method: e.target.value })} /></div>
             </div>

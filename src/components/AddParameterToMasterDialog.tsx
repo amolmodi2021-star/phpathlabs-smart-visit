@@ -115,20 +115,6 @@ export default function AddParameterToMasterDialog({
               <Input value={paramUnit} onChange={(e) => setParamUnit(e.target.value)} />
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <Label>Range Low</Label>
-              <Input value={rangeLow} onChange={(e) => setRangeLow(e.target.value)} type="number" />
-            </div>
-            <div>
-              <Label>Range High</Label>
-              <Input value={rangeHigh} onChange={(e) => setRangeHigh(e.target.value)} type="number" />
-            </div>
-            <div>
-              <Label>Range Text</Label>
-              <Input value={rangeText} onChange={(e) => setRangeText(e.target.value)} placeholder="e.g. 4.0-11.0" />
-            </div>
-          </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Department</Label>
