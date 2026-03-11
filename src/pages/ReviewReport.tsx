@@ -293,10 +293,10 @@ const ReviewReport = () => {
           <Button
             variant="secondary"
             onClick={handleReverifyAbnormals}
-            disabled={reverifying || reverified}
+            disabled={reverified}
           >
-            {reverifying ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ShieldCheck className="h-4 w-4 mr-2" />}
-            {reverified ? "Re-verified ✓" : "Re-verify Abnormals (AI)"}
+            <ShieldCheck className="h-4 w-4 mr-2" />
+            {reverified ? "Re-verified ✓" : "Re-verify Abnormals"}
           </Button>
           <Button onClick={handleSaveAndGenerate} disabled={saving || !reverified}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileCheck className="h-4 w-4 mr-2" />}
