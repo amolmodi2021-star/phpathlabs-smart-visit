@@ -52,8 +52,9 @@ const ReportParameters = () => {
       ...form,
       profile_id: form.profile_id || null,
       department_id: form.department_id || null,
-      normal_range_low: form.normal_range_low ? Number(form.normal_range_low) : null,
-      normal_range_high: form.normal_range_high ? Number(form.normal_range_high) : null,
+      normal_range_low: null,
+      normal_range_high: null,
+      normal_range_text: null,
     };
     if (editId) {
       await supabase.from("report_test_parameters").update(payload).eq("id", editId);
