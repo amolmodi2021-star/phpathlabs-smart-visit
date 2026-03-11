@@ -60,6 +60,10 @@ const ReviewReport = () => {
   const [masterParams, setMasterParams] = useState<Map<string, { department_name?: string; profile_name?: string }>>(new Map());
   const [addParamDialogOpen, setAddParamDialogOpen] = useState(false);
   const [addParamIndex, setAddParamIndex] = useState<number | null>(null);
+  const [reverifying, setReverifying] = useState(false);
+  const [reverified, setReverified] = useState(false);
+  const [reverifyResults, setReverifyResults] = useState<any>(null);
+  const [showReverifyDialog, setShowReverifyDialog] = useState(false);
 
   useEffect(() => {
     loadData();
