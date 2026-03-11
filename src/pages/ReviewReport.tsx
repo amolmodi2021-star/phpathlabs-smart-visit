@@ -27,6 +27,7 @@ interface TestResult {
   normal_range_text?: string;
   flag?: string;
   matched_parameter_id?: string;
+  approved_by?: string;
 }
 
 const ReviewReport = () => {
@@ -82,7 +83,7 @@ const ReviewReport = () => {
     (params || []).forEach((p: any) => {
       masterMap.set(p.parameter_name.toLowerCase(), {
         department_name: p.department_id ? deptMap.get(p.department_id) || "" : "",
-        profile_name: "", // Will be set by group matching below
+        profile_name: "",
       });
     });
     setMasterParams(masterMap);
@@ -127,7 +128,7 @@ const ReviewReport = () => {
       const extractedParamNames = new Set(rawResults.map((r) => r.parameter_name.toLowerCase()));
 
       // Determine which profiles are fully matched (ALL parameters present)
-      const matchedProfileParams = new Map<string, string>(); // paramName(lower) -> profileName
+      const matchedProfileParams = new Map<string, string>();
       profileGroups.forEach((group) => {
         const allPresent = group.paramNames.every((pn) => extractedParamNames.has(pn));
         if (allPresent) {
@@ -159,7 +160,6 @@ const ReviewReport = () => {
   const updateTestResult = (index: number, field: keyof TestResult, value: string) => {
     setTestResults((prev) => {
       const updated = prev.map((r, i) => (i === index ? { ...r, [field]: value } : r));
-      // Recalculate flag when result/range fields change
       if (field === "result_value" || field === "normal_range_low" || field === "normal_range_high" || field === "normal_range_text") {
         const row = updated[index];
         updated[index] = { ...row, flag: computeAbnormalFlag(row) };
@@ -175,6 +175,9 @@ const ReviewReport = () => {
   const calculateFlags = (results: TestResult[]): TestResult[] => {
     return normalizeTestResultFlags(results);
   };
+
+  // Get unique approving doctors from test results
+  const uniqueApprovers = [...new Set(testResults.map(r => r.approved_by).filter(Boolean))];
 
   const handleSaveAndGenerate = async () => {
     if (!umrId) {
@@ -290,6 +293,13 @@ const ReviewReport = () => {
         </div>
       )}
 
+      {/* Multiple Pathologists Info */}
+      {uniqueApprovers.length > 1 && (
+        <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <span className="font-medium text-blue-800">📋 Multiple approving doctors detected: {uniqueApprovers.join(", ")}</span>
+        </div>
+      )}
+
       {/* Patient Information */}
       <Card>
         <CardHeader><CardTitle className="text-lg">Patient Information</CardTitle></CardHeader>
@@ -313,19 +323,8 @@ const ReviewReport = () => {
             <div><Label>Collection Date</Label><Input value={collectionDate} onChange={(e) => setCollectionDate(e.target.value)} /></div>
             <div><Label>Report Date</Label><Input value={reportDate} onChange={(e) => setReportDate(e.target.value)} /></div>
             <div>
-              <Label>Pathologist</Label>
-              <Select value={selectedPathologist} onValueChange={(v) => {
-                setSelectedPathologist(v);
-                const sig = pathologists.find((p) => p.id === v);
-                if (sig) setPathologistName(sig.pathologist_name);
-              }}>
-                <SelectTrigger><SelectValue placeholder="Select pathologist" /></SelectTrigger>
-                <SelectContent>
-                  {pathologists.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>{p.pathologist_name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Pathologist(s)</Label>
+              <Input value={pathologistName} onChange={(e) => setPathologistName(e.target.value)} placeholder="All pathologist names" />
             </div>
             <div><Label>Reg.No</Label><Input value={regNo} onChange={(e) => setRegNo(e.target.value)} /></div>
             <div><Label>Reg.Date</Label><Input value={regDate} onChange={(e) => setRegDate(e.target.value)} /></div>
@@ -355,6 +354,7 @@ const ReviewReport = () => {
                   <TableHead className="w-[80px]">Unit</TableHead>
                   <TableHead className="w-[120px]">Range</TableHead>
                   <TableHead className="w-[60px]">Flag</TableHead>
+                  <TableHead className="w-[140px]">Approved By</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
                   <TableHead className="w-[50px]">Master</TableHead>
                 </TableRow>
@@ -384,6 +384,32 @@ const ReviewReport = () => {
                       {r.flag === "H" && <Badge variant="destructive" className="text-xs">H</Badge>}
                       {r.flag === "L" && <Badge variant="destructive" className="text-xs">L</Badge>}
                       {r.flag === "N" && <Badge variant="secondary" className="text-xs">N</Badge>}
+                    </TableCell>
+                    <TableCell>
+                      {pathologists.length > 0 ? (
+                        <Select
+                          value={r.approved_by || ""}
+                          onValueChange={(v) => updateTestResult(i, "approved_by" as keyof TestResult, v)}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue placeholder="Select doctor" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {pathologists.map((p) => (
+                              <SelectItem key={p.id} value={p.pathologist_name}>{p.pathologist_name}</SelectItem>
+                            ))}
+                            {/* Show AI-detected names not in master */}
+                            {uniqueApprovers
+                              .filter(name => !pathologists.some((p: any) => p.pathologist_name === name))
+                              .map(name => (
+                                <SelectItem key={name} value={name}>{name} (detected)</SelectItem>
+                              ))
+                            }
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Input value={r.approved_by || ""} onChange={(e) => updateTestResult(i, "approved_by" as keyof TestResult, e.target.value)} className="h-8 text-xs" placeholder="Doctor name" />
+                      )}
                     </TableCell>
                     <TableCell>
                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeTestResult(i)}>
@@ -448,7 +474,6 @@ const ReviewReport = () => {
           profileName={testResults[addParamIndex]?.profile_name}
           testName={testResults[addParamIndex]?.test_name}
           onAdded={(id) => {
-            // Reload master data to get department/profile names for the newly added param
             loadData();
             setAddParamIndex(null);
           }}
