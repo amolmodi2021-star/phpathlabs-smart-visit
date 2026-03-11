@@ -87,11 +87,9 @@ const ViewReport = () => {
       });
       if (data.letterhead_pdf_path) {
         const { data: urlData } = supabase.storage.from("letterheads").getPublicUrl(data.letterhead_pdf_path);
-        setLetterheadUrl(urlData.publicUrl);
         const backgroundImage = await convertPdfToBackgroundImage(urlData.publicUrl);
         setLetterheadImageUrl(backgroundImage);
       } else {
-        setLetterheadUrl(null);
         setLetterheadImageUrl(null);
       }
     }
