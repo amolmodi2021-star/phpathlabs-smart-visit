@@ -165,9 +165,16 @@ const UploadReport = () => {
         ref_doctor: mergedData.patient?.ref_doctor || "",
         collection_date: mergedData.patient?.collection_date || "",
         report_date: mergedData.patient?.report_date || "",
+        reg_no: mergedData.patient?.reg_no || "",
+        reg_date: mergedData.patient?.reg_date || "",
+        sample_collection_date: mergedData.patient?.sample_collection_date || "",
+        accession_date: mergedData.patient?.accession_date || "",
+        authentication_date: mergedData.patient?.authentication_date || "",
+        print_date: mergedData.patient?.print_date || "",
+        location: mergedData.patient?.location || "",
         test_results: mergedData.test_results || [],
         pathologist_name: mergedData.pathologist_name || "",
-      });
+      } as any);
       if (saveError) throw saveError;
 
       // Save raw JSON
