@@ -108,7 +108,8 @@ const ReviewReport = () => {
     }
     setSaving(true);
     try {
-      recalculateFlags();
+      const flaggedResults = calculateFlags(testResults);
+      setTestResults(flaggedResults);
 
       // Update extracted data
       await supabase.from("extracted_report_data").update({
@@ -120,7 +121,7 @@ const ReviewReport = () => {
         collection_date: collectionDate,
         report_date: reportDate,
         pathologist_name: pathologistName,
-        test_results: testResults as unknown as any,
+        test_results: flaggedResults as unknown as any,
         verified: true,
       }).eq("report_id", reportId);
 
