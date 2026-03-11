@@ -253,7 +253,9 @@ const ReviewReport = () => {
         status: "Completed",
         umr_id: umrId,
         patient_name: patientName,
-      }).eq("id", reportId);
+        reg_no: regNo,
+        reg_date: regDate,
+      } as any).eq("id", reportId);
 
       toast({ title: "Report verified and saved!" });
       navigate(`/reports/view/${reportId}`);
