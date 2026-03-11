@@ -126,7 +126,6 @@ const ReportParameters = () => {
                       <TableCell>{p.report_departments?.department_name || "-"}</TableCell>
                       <TableCell>{p.report_profiles?.profile_name || "-"}</TableCell>
                       <TableCell>{p.unit || "-"}</TableCell>
-                      <TableCell className="text-sm">{p.normal_range_text || `${p.normal_range_low ?? ""} - ${p.normal_range_high ?? ""}`}</TableCell>
                       <TableCell>{p.store_for_analytics ? <Badge className="bg-green-100 text-green-800">YES</Badge> : <Badge variant="secondary">NO</Badge>}</TableCell>
                       <TableCell>
                         <div className="flex gap-1">
