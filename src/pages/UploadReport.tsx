@@ -139,13 +139,28 @@ const UploadReport = () => {
       let allTestResults: any[] = [];
       let patientData: any = {};
       let pathologistName = "";
+      let allPathologistNames: string[] = [];
 
       for (let i = 0; i < batches.length; i++) {
         const data = await invokeExtractBatch(batches[i]);
         if (data.patient?.name) patientData = { ...patientData, ...data.patient };
         if (data.pathologist_name) pathologistName = data.pathologist_name;
+        if (data.pathologist_names) {
+          allPathologistNames = [...allPathologistNames, ...data.pathologist_names];
+        }
         if (data.test_results) allTestResults = [...allTestResults, ...data.test_results];
         setProgress(55 + Math.round(((i + 1) / batches.length) * 30));
+      }
+
+      // Deduplicate pathologist names
+      const uniquePathologists = [...new Set(allPathologistNames.filter(Boolean))];
+
+      // If no per-test approved_by was set but we have a single pathologist, assign it
+      if (uniquePathologists.length <= 1 && pathologistName) {
+        allTestResults = allTestResults.map(r => ({
+          ...r,
+          approved_by: r.approved_by || pathologistName,
+        }));
       }
 
       // Apply fallback logic for collection_date and report_date
@@ -159,7 +174,7 @@ const UploadReport = () => {
       const mergedData = {
         patient: patientData,
         test_results: normalizeTestResultFlags(allTestResults),
-        pathologist_name: pathologistName,
+        pathologist_name: uniquePathologists.join(", ") || pathologistName,
       };
       setProgress(85);
 
