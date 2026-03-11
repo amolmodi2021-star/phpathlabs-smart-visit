@@ -60,25 +60,43 @@ const ReviewReport = () => {
 
   const loadData = async () => {
     setLoading(true);
-    const [{ data: extracted }, { data: sigs }, { data: params }, { data: depts }, { data: profiles }] = await Promise.all([
+    const [{ data: extracted }, { data: sigs }, { data: params }, { data: depts }, { data: profiles }, { data: profileParams }] = await Promise.all([
       supabase.from("extracted_report_data").select("*").eq("report_id", reportId).single(),
       supabase.from("pathologist_signatures").select("*"),
       supabase.from("report_test_parameters").select("id, parameter_name, department_id, profile_id"),
       supabase.from("report_departments").select("id, department_name"),
       supabase.from("report_profiles").select("id, profile_name"),
+      supabase.from("profile_parameters").select("profile_id, parameter_id, report_test_parameters(parameter_name)"),
     ]);
 
     const deptMap = new Map((depts || []).map((d: any) => [d.id, d.department_name]));
-    const profileMap = new Map((profiles || []).map((p: any) => [p.id, p.profile_name]));
 
+    // Build master map for department lookup only
     const masterMap = new Map<string, { department_name?: string; profile_name?: string }>();
     (params || []).forEach((p: any) => {
       masterMap.set(p.parameter_name.toLowerCase(), {
         department_name: p.department_id ? deptMap.get(p.department_id) || "" : "",
-        profile_name: p.profile_id ? profileMap.get(p.profile_id) || "" : "",
+        profile_name: "", // Will be set by group matching below
       });
     });
     setMasterParams(masterMap);
+
+    // Build profile groups: profile_id -> { name, paramNames[] }
+    const profileNameMap = new Map((profiles || []).map((p: any) => [p.id, p.profile_name]));
+    const profileGroups = new Map<string, { name: string; paramNames: string[] }>();
+    (profileParams || []).forEach((pp: any) => {
+      const paramName = pp.report_test_parameters?.parameter_name?.toLowerCase();
+      if (!paramName) return;
+      const existing = profileGroups.get(pp.profile_id);
+      if (existing) {
+        existing.paramNames.push(paramName);
+      } else {
+        profileGroups.set(pp.profile_id, {
+          name: profileNameMap.get(pp.profile_id) || "",
+          paramNames: [paramName],
+        });
+      }
+    });
 
     if (extracted) {
       setExtractedData(extracted);
@@ -91,14 +109,27 @@ const ReviewReport = () => {
       setReportDate(extracted.report_date || "");
       setPathologistName(extracted.pathologist_name || "");
       const rawResults = (extracted.test_results as unknown as TestResult[]) || [];
-      // Auto-fill department and profile from master data
+
+      // Collect all extracted parameter names (lowercase) for group matching
+      const extractedParamNames = new Set(rawResults.map((r) => r.parameter_name.toLowerCase()));
+
+      // Determine which profiles are fully matched (ALL parameters present)
+      const matchedProfileParams = new Map<string, string>(); // paramName(lower) -> profileName
+      profileGroups.forEach((group) => {
+        const allPresent = group.paramNames.every((pn) => extractedParamNames.has(pn));
+        if (allPresent) {
+          group.paramNames.forEach((pn) => matchedProfileParams.set(pn, group.name));
+        }
+      });
+
+      // Enrich results: department from master, profile from group matching
       const enrichedResults = rawResults.map((r) => {
-        const master = masterMap.get(r.parameter_name.toLowerCase());
-        // ONLY use department/profile from master parameters table, ignore AI-extracted values
+        const key = r.parameter_name.toLowerCase();
+        const master = masterMap.get(key);
         return {
           ...r,
           department: master ? master.department_name : "",
-          profile_name: master ? master.profile_name : "",
+          profile_name: matchedProfileParams.get(key) || "",
         };
       });
       setTestResults(normalizeTestResultFlags(enrichedResults));
