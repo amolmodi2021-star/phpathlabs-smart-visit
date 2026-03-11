@@ -333,7 +333,15 @@ const ReviewReport = () => {
         <h1 className="text-2xl font-bold">Review Extracted Data</h1>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => navigate("/reports")}>Cancel</Button>
-          <Button onClick={handleSaveAndGenerate} disabled={saving}>
+          <Button
+            variant="secondary"
+            onClick={handleReverifyAbnormals}
+            disabled={reverifying || reverified}
+          >
+            {reverifying ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ShieldCheck className="h-4 w-4 mr-2" />}
+            {reverified ? "Re-verified ✓" : "Re-verify Abnormals (AI)"}
+          </Button>
+          <Button onClick={handleSaveAndGenerate} disabled={saving || !reverified}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileCheck className="h-4 w-4 mr-2" />}
             Verify & Generate Report
           </Button>
