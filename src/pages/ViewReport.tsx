@@ -255,7 +255,7 @@ const ViewReport = () => {
             : null;
 
           return (
-            <div key={approverKey} className="report-page print:break-before-page"
+            <div key={approverKey} className="report-page"
               style={{ paddingTop: `${topMarginMm}mm`, paddingBottom: `${bottomMarginMm}mm` }}>
               
               <ReportHeader extracted={extracted} />
