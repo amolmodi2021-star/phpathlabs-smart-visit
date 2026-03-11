@@ -194,7 +194,7 @@ const ViewReport = () => {
         <div className="flex items-center gap-2">
           <Switch id="show-header" checked={showHeader} onCheckedChange={setShowHeader} />
           <Label htmlFor="show-header" className="text-sm cursor-pointer">
-            {showHeader ? "With Header" : "Without Header"}
+            {showHeader ? "With Letterhead" : "Without Letterhead"}
           </Label>
         </div>
       </div>
