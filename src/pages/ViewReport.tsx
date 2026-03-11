@@ -194,7 +194,7 @@ const ViewReport = () => {
         <div className="flex items-center gap-2">
           <Switch id="show-header" checked={showHeader} onCheckedChange={setShowHeader} />
           <Label htmlFor="show-header" className="text-sm cursor-pointer">
-            {showHeader ? "With Header" : "Without Header"}
+            {showHeader ? "With Letterhead" : "Without Letterhead"}
           </Label>
         </div>
       </div>
@@ -217,7 +217,7 @@ const ViewReport = () => {
             <div className="report-page"
               style={{ paddingTop: `${topMarginMm}mm`, paddingBottom: `${bottomMarginMm}mm` }}>
               
-              {showHeader && <ReportHeader extracted={extracted} />}
+              <ReportHeader extracted={extracted} />
 
               <div className="px-6 space-y-6">
                 {allAbnormals.length > 0 && (
@@ -258,7 +258,7 @@ const ViewReport = () => {
             <div key={approverKey} className="report-page print:break-before-page"
               style={{ paddingTop: `${topMarginMm}mm`, paddingBottom: `${bottomMarginMm}mm` }}>
               
-              {showHeader && <ReportHeader extracted={extracted} />}
+              <ReportHeader extracted={extracted} />
 
               <div className="px-6 space-y-6">
                 <div className="mb-2">
