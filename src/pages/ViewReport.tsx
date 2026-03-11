@@ -281,6 +281,9 @@ const ViewReport = () => {
             <div className="px-6">
               <ReportTrendCharts trends={trends} />
             </div>
+            <div className="page-number-footer" style={{ position: 'absolute', bottom: `${bottomMarginMm + 2}mm`, left: 0, right: 0, textAlign: 'center', fontSize: '9px', color: '#666' }}>
+              Page {totalPages} of {totalPages}
+            </div>
           </div>
         )}
       </div>
