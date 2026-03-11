@@ -183,8 +183,8 @@ const ViewReport = () => {
 
   const shouldShowProfile = (params: TestResult[]) => params.length >= 2;
 
-  const topMarginMm = layoutSettings.top_margin_cm * 10;
-  const bottomMarginMm = layoutSettings.bottom_margin_cm * 10;
+  const topMarginMm = Math.min(Math.max(layoutSettings.top_margin_cm * 10, 0), 25);
+  const bottomMarginMm = Math.min(Math.max(layoutSettings.bottom_margin_cm * 10, 0), 20);
 
   return (
     <div className="space-y-4 print:space-y-0">
