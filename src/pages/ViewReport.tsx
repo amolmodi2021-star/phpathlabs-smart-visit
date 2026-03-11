@@ -5,11 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Printer, ArrowLeft } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import * as pdfjsLib from "pdfjs-dist";
 import ReportTrendCharts from "@/components/report/ReportTrendCharts";
 import ReportHeader from "@/components/report/ReportHeader";
 import ReportAbnormalSummary from "@/components/report/ReportAbnormalSummary";
 import ReportResultsSection from "@/components/report/ReportResultsSection";
 import ReportSignatureBlock from "@/components/report/ReportSignatureBlock";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs";
 
 interface TestResult {
   department?: string;
