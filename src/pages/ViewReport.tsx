@@ -183,8 +183,8 @@ const ViewReport = () => {
 
   const shouldShowProfile = (params: TestResult[]) => params.length >= 2;
 
-  const topMarginMm = layoutSettings.top_margin_cm * 10;
-  const bottomMarginMm = layoutSettings.bottom_margin_cm * 10;
+  const topMarginMm = Math.min(Math.max(layoutSettings.top_margin_cm * 10, 0), 25);
+  const bottomMarginMm = Math.min(Math.max(layoutSettings.bottom_margin_cm * 10, 0), 20);
 
   return (
     <div className="space-y-4 print:space-y-0">
@@ -294,32 +294,29 @@ const ViewReport = () => {
           html, body {
             margin: 0 !important;
             padding: 0 !important;
-            width: 210mm !important;
           }
           body * { visibility: hidden; }
           .report-print-area, .report-print-area * { visibility: visible; }
           .report-print-area { 
-            position: absolute;
-            left: 0;
-            top: 0;
+            position: relative;
             width: 210mm !important; 
             max-width: 210mm !important;
-            margin: 0 !important;
+            margin: 0 auto !important;
             padding: 0 !important;
           }
           .print\\:hidden { display: none !important; }
           .print\\:break-inside-avoid { break-inside: avoid; }
           .print\\:break-before-page { break-before: page; }
           .report-page {
-            height: 297mm;
-            max-height: 297mm;
+            height: 296mm;
+            max-height: 296mm;
             width: 210mm;
             box-sizing: border-box;
             position: relative;
             overflow: hidden;
             page-break-after: always;
             page-break-inside: avoid;
-            margin: 0 !important;
+            margin: 0 auto !important;
           }
           .report-page:last-child {
             page-break-after: auto;
@@ -331,7 +328,7 @@ const ViewReport = () => {
           ${showHeader && letterheadImageUrl ? `
           .report-page {
             background-image: url("${letterheadImageUrl}");
-            background-size: 210mm 297mm;
+            background-size: 210mm 296mm;
             background-repeat: no-repeat;
             background-position: top center;
             -webkit-print-color-adjust: exact;
