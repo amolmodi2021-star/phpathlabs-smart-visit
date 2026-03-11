@@ -224,13 +224,6 @@ const ViewReport = () => {
                   <ReportAbnormalSummary abnormalResults={allAbnormals} />
                 )}
 
-                {hasMultipleApprovers && (
-                  <div className="mb-2">
-                    <div className="bg-muted border border-border rounded px-3 py-1.5 text-sm font-semibold text-muted-foreground">
-                      Section approved by: {firstApproverName}
-                    </div>
-                  </div>
-                )}
 
                 <ReportResultsSection grouped={firstGrouped} shouldShowProfile={shouldShowProfile} />
 
