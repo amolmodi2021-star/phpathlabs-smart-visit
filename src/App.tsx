@@ -22,6 +22,7 @@ import ReportDepartments from "./pages/ReportDepartments";
 import ReportProfiles from "./pages/ReportProfiles";
 import ReportParameters from "./pages/ReportParameters";
 import SignatureManagement from "./pages/SignatureManagement";
+import ReportLayoutSettings from "./pages/ReportLayoutSettings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
