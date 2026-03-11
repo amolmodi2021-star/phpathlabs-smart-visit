@@ -291,13 +291,21 @@ const ViewReport = () => {
 
       <style>{`
         @media print {
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 210mm !important;
+          }
           body * { visibility: hidden; }
           .report-print-area, .report-print-area * { visibility: visible; }
           .report-print-area { 
-            position: relative;
-            margin: 0 auto !important;
+            position: absolute;
+            left: 0;
+            top: 0;
             width: 210mm !important; 
-            max-width: 210mm !important; 
+            max-width: 210mm !important;
+            margin: 0 !important;
+            padding: 0 !important;
           }
           .print\\:hidden { display: none !important; }
           .print\\:break-inside-avoid { break-inside: avoid; }
@@ -311,13 +319,10 @@ const ViewReport = () => {
             overflow: hidden;
             page-break-after: always;
             page-break-inside: avoid;
+            margin: 0 !important;
           }
           .report-page:last-child {
             page-break-after: auto;
-          }
-          html, body {
-            margin: 0 !important;
-            padding: 0 !important;
           }
           @page {
             size: A4;
