@@ -68,7 +68,7 @@ const ReviewReport = () => {
       setCollectionDate(extracted.collection_date || "");
       setReportDate(extracted.report_date || "");
       setPathologistName(extracted.pathologist_name || "");
-      setTestResults((extracted.test_results as TestResult[]) || []);
+      setTestResults((extracted.test_results as unknown as TestResult[]) || []);
       if (!extracted.umr_id) setShowUmrDialog(true);
     }
     setPathologists(sigs || []);
