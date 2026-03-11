@@ -48,9 +48,10 @@ const ReviewReport = () => {
   const [umrInput, setUmrInput] = useState("");
   const [pathologists, setPathologists] = useState<any[]>([]);
   const [selectedPathologist, setSelectedPathologist] = useState("");
-  const [masterParams, setMasterParams] = useState<Set<string>>(new Set());
+  const [masterParams, setMasterParams] = useState<Map<string, { department_name?: string; profile_name?: string }>>(new Map());
   const [addParamDialogOpen, setAddParamDialogOpen] = useState(false);
   const [addParamIndex, setAddParamIndex] = useState<number | null>(null);
+  const [missingDepartments, setMissingDepartments] = useState<number[]>([]);
 
   useEffect(() => {
     loadData();
