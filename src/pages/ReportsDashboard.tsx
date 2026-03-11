@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
-import { Upload, Eye, FileText, Search, RefreshCw, Loader2 } from "lucide-react";
+import { Upload, Eye, Search, RefreshCw, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 
 const statusColors: Record<string, string> = {
