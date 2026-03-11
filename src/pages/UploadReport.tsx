@@ -34,17 +34,20 @@ const UploadReport = () => {
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     const images: string[] = [];
-    const totalPages = Math.min(pdf.numPages, 20);
+    const totalPages = Math.min(pdf.numPages, 10);
+    const MAX_WIDTH = 1200;
 
     for (let i = 1; i <= totalPages; i++) {
       const page = await pdf.getPage(i);
-      const viewport = page.getViewport({ scale: 2.0 });
+      const baseViewport = page.getViewport({ scale: 1.0 });
+      const scale = baseViewport.width > MAX_WIDTH ? MAX_WIDTH / baseViewport.width : 1.0;
+      const viewport = page.getViewport({ scale });
       const canvas = document.createElement("canvas");
       canvas.width = viewport.width;
       canvas.height = viewport.height;
       const ctx = canvas.getContext("2d")!;
       await page.render({ canvasContext: ctx, viewport }).promise;
-      images.push(canvas.toDataURL("image/jpeg", 0.85));
+      images.push(canvas.toDataURL("image/jpeg", 0.6));
       setProgress(Math.round((i / totalPages) * 40));
     }
     return images;
@@ -90,40 +93,54 @@ const UploadReport = () => {
       }));
       setProgress(55);
 
-      // Call AI extraction
-      const { data, error } = await supabase.functions.invoke("extract-report", {
-        body: { pageImages, testParameters },
-      });
-      if (error) throw error;
+      // Call AI extraction in batches of 3 pages
+      const BATCH_SIZE = 3;
+      let allTestResults: any[] = [];
+      let patientData: any = {};
+      let pathologistName = "";
+
+      for (let b = 0; b < pageImages.length; b += BATCH_SIZE) {
+        const batch = pageImages.slice(b, b + BATCH_SIZE);
+        const { data, error } = await supabase.functions.invoke("extract-report", {
+          body: { pageImages: batch, testParameters },
+        });
+        if (error) throw error;
+        if (data.patient?.name) patientData = { ...patientData, ...data.patient };
+        if (data.pathologist_name) pathologistName = data.pathologist_name;
+        if (data.test_results) allTestResults = [...allTestResults, ...data.test_results];
+        setProgress(55 + Math.round(((b + BATCH_SIZE) / pageImages.length) * 30));
+      }
+
+      const mergedData = { patient: patientData, test_results: allTestResults, pathologist_name: pathologistName };
       setProgress(85);
 
       // Save extracted data
       const { error: saveError } = await supabase.from("extracted_report_data").insert({
         report_id: reportRow.id,
-        patient_name: data.patient?.name || "",
-        age: data.patient?.age || "",
-        gender: data.patient?.gender || "",
-        umr_id: data.patient?.umr_id || "",
-        ref_doctor: data.patient?.ref_doctor || "",
-        collection_date: data.patient?.collection_date || "",
-        report_date: data.patient?.report_date || "",
-        test_results: data.test_results || [],
-        pathologist_name: data.pathologist_name || "",
+        patient_name: mergedData.patient?.name || "",
+        age: mergedData.patient?.age || "",
+        gender: mergedData.patient?.gender || "",
+        umr_id: mergedData.patient?.umr_id || "",
+        ref_doctor: mergedData.patient?.ref_doctor || "",
+        collection_date: mergedData.patient?.collection_date || "",
+        report_date: mergedData.patient?.report_date || "",
+        test_results: mergedData.test_results || [],
+        pathologist_name: mergedData.pathologist_name || "",
       });
       if (saveError) throw saveError;
 
       // Save raw JSON
       await supabase.from("raw_report_data").insert({
         report_id: reportRow.id,
-        umr_id: data.patient?.umr_id || "",
-        raw_json: data,
+        umr_id: mergedData.patient?.umr_id || "",
+        raw_json: mergedData,
       });
 
       // Update report status
       await supabase.from("uploaded_reports").update({
         status: "Awaiting Review",
-        umr_id: data.patient?.umr_id || "",
-        patient_name: data.patient?.name || "",
+        umr_id: mergedData.patient?.umr_id || "",
+        patient_name: mergedData.patient?.name || "",
       }).eq("id", reportRow.id);
 
       setProgress(100);
