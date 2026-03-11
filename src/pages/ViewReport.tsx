@@ -281,8 +281,10 @@ const ViewReport = () => {
         })}
 
         {trends.length > 0 && (
-          <div className="px-6 print:break-before-page" style={{ paddingTop: `${topMarginMm}mm`, paddingBottom: `${bottomMarginMm}mm` }}>
-            <ReportTrendCharts trends={trends} />
+          <div className="report-page print:break-before-page" style={{ paddingTop: `${topMarginMm}mm`, paddingBottom: `${bottomMarginMm}mm` }}>
+            <div className="px-6">
+              <ReportTrendCharts trends={trends} />
+            </div>
           </div>
         )}
       </div>
