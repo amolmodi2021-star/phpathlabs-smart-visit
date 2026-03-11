@@ -115,21 +115,10 @@ const ReviewReport = () => {
   const updateTestResult = (index: number, field: keyof TestResult, value: string) => {
     setTestResults((prev) => {
       const updated = prev.map((r, i) => (i === index ? { ...r, [field]: value } : r));
-      // Recalculate flag when result or range fields change
-      if (field === "result_value" || field === "normal_range_low" || field === "normal_range_high") {
+      // Recalculate flag when result/range fields change
+      if (field === "result_value" || field === "normal_range_low" || field === "normal_range_high" || field === "normal_range_text") {
         const row = updated[index];
-        const val = parseFloat(row.result_value);
-        const low = parseFloat(row.normal_range_low || "");
-        const high = parseFloat(row.normal_range_high || "");
-        if (isNaN(val)) {
-          updated[index] = { ...row, flag: "N" };
-        } else if (!isNaN(high) && val > high) {
-          updated[index] = { ...row, flag: "H" };
-        } else if (!isNaN(low) && val < low) {
-          updated[index] = { ...row, flag: "L" };
-        } else {
-          updated[index] = { ...row, flag: "N" };
-        }
+        updated[index] = { ...row, flag: computeAbnormalFlag(row) };
       }
       return updated;
     });
