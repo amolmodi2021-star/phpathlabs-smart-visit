@@ -175,48 +175,69 @@ export type Database = {
       }
       extracted_report_data: {
         Row: {
+          accession_date: string | null
           age: string | null
+          authentication_date: string | null
           collection_date: string | null
           created_at: string | null
           gender: string | null
           id: string
+          location: string | null
           pathologist_name: string | null
           patient_name: string | null
+          print_date: string | null
           ref_doctor: string | null
+          reg_date: string | null
+          reg_no: string | null
           report_date: string | null
           report_id: string | null
+          sample_collection_date: string | null
           test_results: Json | null
           umr_id: string | null
           updated_at: string | null
           verified: boolean | null
         }
         Insert: {
+          accession_date?: string | null
           age?: string | null
+          authentication_date?: string | null
           collection_date?: string | null
           created_at?: string | null
           gender?: string | null
           id?: string
+          location?: string | null
           pathologist_name?: string | null
           patient_name?: string | null
+          print_date?: string | null
           ref_doctor?: string | null
+          reg_date?: string | null
+          reg_no?: string | null
           report_date?: string | null
           report_id?: string | null
+          sample_collection_date?: string | null
           test_results?: Json | null
           umr_id?: string | null
           updated_at?: string | null
           verified?: boolean | null
         }
         Update: {
+          accession_date?: string | null
           age?: string | null
+          authentication_date?: string | null
           collection_date?: string | null
           created_at?: string | null
           gender?: string | null
           id?: string
+          location?: string | null
           pathologist_name?: string | null
           patient_name?: string | null
+          print_date?: string | null
           ref_doctor?: string | null
+          reg_date?: string | null
+          reg_no?: string | null
           report_date?: string | null
           report_id?: string | null
+          sample_collection_date?: string | null
           test_results?: Json | null
           umr_id?: string | null
           updated_at?: string | null
@@ -868,6 +889,8 @@ export type Database = {
           file_path: string
           id: string
           patient_name: string | null
+          reg_date: string | null
+          reg_no: string | null
           status: string | null
           umr_id: string | null
           updated_at: string | null
@@ -879,6 +902,8 @@ export type Database = {
           file_path: string
           id?: string
           patient_name?: string | null
+          reg_date?: string | null
+          reg_no?: string | null
           status?: string | null
           umr_id?: string | null
           updated_at?: string | null
@@ -890,6 +915,8 @@ export type Database = {
           file_path?: string
           id?: string
           patient_name?: string | null
+          reg_date?: string | null
+          reg_no?: string | null
           status?: string | null
           umr_id?: string | null
           updated_at?: string | null

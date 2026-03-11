@@ -21,19 +21,25 @@ serve(async (req) => {
 
 EXTRACTION RULES:
 1. Extract patient demographics: name, age, gender, UMR ID (if present), referring doctor, collection date, report date
-2. Extract ALL test results with: test/parameter name, result value, unit, reference/normal range
-3. Detect pathologist name from signature area or footer
-4. Clean numeric values: remove flags like H, L, *, etc. Keep the raw numeric value
-5. Parse ranges: "12-15" → low=12, high=15. "<200" → low=0, high=200. ">40" → low=40, high=null
-6. Identify department for each test (Biochemistry, Haematology, Immunology, Microbiology, etc.)
-7. Identify if tests belong to a profile (e.g., Lipid Profile, Liver Function Test, Renal Function Test, CBC, Thyroid Profile)
-8. For each result, determine if it's abnormal: H (high - result above normal_range_high), L (low - result below normal_range_low), or N (normal - within range)
+2. Extract additional registration info: Reg.No (Registration Number), Reg.Date (Registration Date), Sample Collection Date/Time, Accession Date, Authentication Date, Print Date, Location
+3. Extract ALL test results with: test/parameter name, result value, unit, reference/normal range
+4. Detect pathologist name from signature area or footer
+5. Clean numeric values: remove flags like H, L, *, etc. Keep the raw numeric value
+6. Parse ranges: "12-15" → low=12, high=15. "<200" → low=0, high=200. ">40" → low=40, high=null
+7. Identify department for each test (Biochemistry, Haematology, Immunology, Microbiology, etc.)
+8. Identify if tests belong to a profile (e.g., Lipid Profile, Liver Function Test, Renal Function Test, CBC, Thyroid Profile)
+9. For each result, determine if it's abnormal: H (high - result above normal_range_high), L (low - result below normal_range_low), or N (normal - within range)
 
 CRITICAL - UMR ID RULES:
 - UMR ID is a UNIQUE MEDICAL RECORD number, typically starting with "UMR" followed by digits (e.g., UMR0001234)
 - Do NOT confuse "Reg.No", "Registration Number", "Invoice Number", "Bill Number", or "Lab Number" with UMR ID - these are different identifiers
 - ONLY extract umr_id if you find a field explicitly labeled "UMR" or "UMR ID" or "Unique Medical Record"
 - If no UMR ID is found, return umr_id as empty string ""
+
+CRITICAL - REG.NO RULES:
+- Reg.No is the Registration Number shown at the top of the report (e.g., "2603110018")
+- This is DIFFERENT from UMR ID. Always capture it separately.
+- Reg.Date is the registration date/time shown next to Reg.No
 
 CRITICAL - ABNORMAL FLAG RULES:
 - Compare each numeric result_value against normal_range_low and normal_range_high
@@ -88,6 +94,13 @@ MATCHING RULES:
                     age: { type: "string" },
                     gender: { type: "string" },
                     umr_id: { type: "string", description: "UMR (Unique Medical Record) ID only. Do NOT use Reg.No, Invoice No, Bill No, or Lab No. Return empty string if no UMR field found." },
+                    reg_no: { type: "string", description: "Registration Number (Reg.No) from the report header. This is different from UMR ID." },
+                    reg_date: { type: "string", description: "Registration Date (Reg.Date) from the report header, include time if shown." },
+                    sample_collection_date: { type: "string", description: "Sample Collection Date/Time as shown in the report." },
+                    accession_date: { type: "string", description: "Accession Date/Time as shown in the report." },
+                    authentication_date: { type: "string", description: "Authentication Date/Time as shown in the report." },
+                    print_date: { type: "string", description: "Print Date/Time as shown in the report." },
+                    location: { type: "string", description: "Location/Branch shown in the report." },
                     ref_doctor: { type: "string" },
                     collection_date: { type: "string" },
                     report_date: { type: "string" },

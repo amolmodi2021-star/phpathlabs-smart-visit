@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
-import { Upload, Eye, FileText, Search, RefreshCw, Loader2 } from "lucide-react";
+import { Upload, Eye, Search, RefreshCw, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 
 const statusColors: Record<string, string> = {
@@ -32,9 +32,9 @@ const ReportsDashboard = () => {
   useEffect(() => { loadReports(); }, []);
 
   const filtered = reports.filter((r) =>
-    (r.file_name || "").toLowerCase().includes(search.toLowerCase()) ||
     (r.patient_name || "").toLowerCase().includes(search.toLowerCase()) ||
-    (r.umr_id || "").toLowerCase().includes(search.toLowerCase())
+    (r.umr_id || "").toLowerCase().includes(search.toLowerCase()) ||
+    ((r as any).reg_no || "").toLowerCase().includes(search.toLowerCase())
   );
 
   const stats = {
@@ -78,7 +78,8 @@ const ReportsDashboard = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>File</TableHead>
+                  <TableHead>Reg.No</TableHead>
+                  <TableHead>Reg.Date</TableHead>
                   <TableHead>Patient</TableHead>
                   <TableHead>UMR</TableHead>
                   <TableHead>Status</TableHead>
@@ -89,9 +90,8 @@ const ReportsDashboard = () => {
               <TableBody>
                 {filtered.map((r) => (
                   <TableRow key={r.id}>
-                    <TableCell className="font-medium">
-                      <div className="flex items-center gap-2"><FileText className="h-4 w-4 text-muted-foreground" />{r.file_name || "Report"}</div>
-                    </TableCell>
+                    <TableCell className="font-medium">{(r as any).reg_no || "-"}</TableCell>
+                    <TableCell className="text-sm">{(r as any).reg_date || "-"}</TableCell>
                     <TableCell>{r.patient_name || "-"}</TableCell>
                     <TableCell>{r.umr_id || "-"}</TableCell>
                     <TableCell><Badge className={statusColors[r.status] || ""}>{r.status}</Badge></TableCell>
@@ -109,7 +109,7 @@ const ReportsDashboard = () => {
                   </TableRow>
                 ))}
                 {filtered.length === 0 && (
-                  <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No reports found</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No reports found</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>

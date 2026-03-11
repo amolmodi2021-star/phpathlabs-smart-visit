@@ -44,6 +44,13 @@ const ReviewReport = () => {
   const [collectionDate, setCollectionDate] = useState("");
   const [reportDate, setReportDate] = useState("");
   const [pathologistName, setPathologistName] = useState("");
+  const [regNo, setRegNo] = useState("");
+  const [regDate, setRegDate] = useState("");
+  const [sampleCollectionDate, setSampleCollectionDate] = useState("");
+  const [accessionDate, setAccessionDate] = useState("");
+  const [authenticationDate, setAuthenticationDate] = useState("");
+  const [printDate, setPrintDate] = useState("");
+  const [locationField, setLocationField] = useState("");
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [showUmrDialog, setShowUmrDialog] = useState(false);
   const [umrInput, setUmrInput] = useState("");
@@ -52,7 +59,6 @@ const ReviewReport = () => {
   const [masterParams, setMasterParams] = useState<Map<string, { department_name?: string; profile_name?: string }>>(new Map());
   const [addParamDialogOpen, setAddParamDialogOpen] = useState(false);
   const [addParamIndex, setAddParamIndex] = useState<number | null>(null);
-  
 
   useEffect(() => {
     loadData();
@@ -108,6 +114,13 @@ const ReviewReport = () => {
       setCollectionDate(extracted.collection_date || "");
       setReportDate(extracted.report_date || "");
       setPathologistName(extracted.pathologist_name || "");
+      setRegNo((extracted as any).reg_no || "");
+      setRegDate((extracted as any).reg_date || "");
+      setSampleCollectionDate((extracted as any).sample_collection_date || "");
+      setAccessionDate((extracted as any).accession_date || "");
+      setAuthenticationDate((extracted as any).authentication_date || "");
+      setPrintDate((extracted as any).print_date || "");
+      setLocationField((extracted as any).location || "");
       const rawResults = (extracted.test_results as unknown as TestResult[]) || [];
 
       // Collect all extracted parameter names (lowercase) for group matching
@@ -188,9 +201,16 @@ const ReviewReport = () => {
         collection_date: collectionDate,
         report_date: reportDate,
         pathologist_name: pathologistName,
+        reg_no: regNo,
+        reg_date: regDate,
+        sample_collection_date: sampleCollectionDate,
+        accession_date: accessionDate,
+        authentication_date: authenticationDate,
+        print_date: printDate,
+        location: locationField,
         test_results: flaggedResults as unknown as any,
         verified: true,
-      }).eq("report_id", reportId);
+      } as any).eq("report_id", reportId);
 
       // Upsert patient master
       const { data: existingPatient } = await supabase.from("patient_master").select("id").eq("umr_id", umrId).maybeSingle();
@@ -233,7 +253,9 @@ const ReviewReport = () => {
         status: "Completed",
         umr_id: umrId,
         patient_name: patientName,
-      }).eq("id", reportId);
+        reg_no: regNo,
+        reg_date: regDate,
+      } as any).eq("id", reportId);
 
       toast({ title: "Report verified and saved!" });
       navigate(`/reports/view/${reportId}`);
@@ -305,6 +327,13 @@ const ReviewReport = () => {
                 </SelectContent>
               </Select>
             </div>
+            <div><Label>Reg.No</Label><Input value={regNo} onChange={(e) => setRegNo(e.target.value)} /></div>
+            <div><Label>Reg.Date</Label><Input value={regDate} onChange={(e) => setRegDate(e.target.value)} /></div>
+            <div><Label>Sample Coll. Date</Label><Input value={sampleCollectionDate} onChange={(e) => setSampleCollectionDate(e.target.value)} /></div>
+            <div><Label>Accession Date</Label><Input value={accessionDate} onChange={(e) => setAccessionDate(e.target.value)} /></div>
+            <div><Label>Authentication Date</Label><Input value={authenticationDate} onChange={(e) => setAuthenticationDate(e.target.value)} /></div>
+            <div><Label>Print Date</Label><Input value={printDate} onChange={(e) => setPrintDate(e.target.value)} /></div>
+            <div><Label>Location</Label><Input value={locationField} onChange={(e) => setLocationField(e.target.value)} /></div>
           </div>
         </CardContent>
       </Card>
