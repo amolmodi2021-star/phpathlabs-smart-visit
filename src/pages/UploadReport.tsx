@@ -94,25 +94,64 @@ const UploadReport = () => {
       }));
       setProgress(55);
 
-      // Call AI extraction in batches of 3 pages
-      const BATCH_SIZE = 3;
+      // Call AI extraction in payload-safe batches with retry
+      const MAX_BATCH_CHARS = 1_800_000;
+      const MAX_PAGES_PER_BATCH = 2;
+      const batches: string[][] = [];
+      let currentBatch: string[] = [];
+      let currentBatchChars = 0;
+
+      for (const img of pageImages) {
+        const imgChars = img.length;
+        const shouldFlush =
+          currentBatch.length > 0 &&
+          (currentBatchChars + imgChars > MAX_BATCH_CHARS ||
+            currentBatch.length >= MAX_PAGES_PER_BATCH);
+
+        if (shouldFlush) {
+          batches.push(currentBatch);
+          currentBatch = [];
+          currentBatchChars = 0;
+        }
+
+        currentBatch.push(img);
+        currentBatchChars += imgChars;
+      }
+
+      if (currentBatch.length > 0) batches.push(currentBatch);
+      if (batches.length === 0) throw new Error("No readable pages found in PDF");
+
+      const invokeExtractBatch = async (batchImages: string[]) => {
+        let lastError: any;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const { data, error } = await supabase.functions.invoke("extract-report", {
+            body: { pageImages: batchImages, testParameters },
+          });
+
+          if (!error) return data;
+          lastError = error;
+          await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+        }
+        throw lastError;
+      };
+
       let allTestResults: any[] = [];
       let patientData: any = {};
       let pathologistName = "";
 
-      for (let b = 0; b < pageImages.length; b += BATCH_SIZE) {
-        const batch = pageImages.slice(b, b + BATCH_SIZE);
-        const { data, error } = await supabase.functions.invoke("extract-report", {
-          body: { pageImages: batch, testParameters },
-        });
-        if (error) throw error;
+      for (let i = 0; i < batches.length; i++) {
+        const data = await invokeExtractBatch(batches[i]);
         if (data.patient?.name) patientData = { ...patientData, ...data.patient };
         if (data.pathologist_name) pathologistName = data.pathologist_name;
         if (data.test_results) allTestResults = [...allTestResults, ...data.test_results];
-        setProgress(55 + Math.round(((b + BATCH_SIZE) / pageImages.length) * 30));
+        setProgress(55 + Math.round(((i + 1) / batches.length) * 30));
       }
 
-      const mergedData = { patient: patientData, test_results: allTestResults, pathologist_name: pathologistName };
+      const mergedData = {
+        patient: patientData,
+        test_results: allTestResults,
+        pathologist_name: pathologistName,
+      };
       setProgress(85);
 
       // Save extracted data
