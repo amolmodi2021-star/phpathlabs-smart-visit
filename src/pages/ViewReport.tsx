@@ -200,7 +200,53 @@ const ViewReport = () => {
       </div>
 
       <div ref={printRef} className="bg-white text-black print:text-black mx-auto max-w-[210mm] print:max-w-none report-print-area" style={{ fontFamily: "'Segoe UI', Arial, sans-serif" }}>
-        {Object.entries(resultsByApprover).map(([approverKey, approverResults], pageIdx) => {
+        {/* First page: header + consolidated abnormal summary */}
+        {(() => {
+          const allAbnormals = results.filter(r => r.flag === "H" || r.flag === "L");
+          const firstApproverEntry = Object.entries(resultsByApprover)[0];
+          const firstApproverKey = firstApproverEntry?.[0];
+          const firstApproverResults = firstApproverEntry?.[1] || [];
+          const firstGrouped = groupResults(firstApproverResults);
+          const firstApproverName = firstApproverKey === "_all" ? (extracted.pathologist_name || "") : firstApproverKey;
+          const firstPathologist = findPathologistSig(firstApproverName);
+          const firstSignatureUrl = firstPathologist?.signature_image_path
+            ? supabase.storage.from("signatures").getPublicUrl(firstPathologist.signature_image_path).data.publicUrl
+            : null;
+
+          return (
+            <div className="report-page"
+              style={{ paddingTop: `${topMarginMm}mm`, paddingBottom: `${bottomMarginMm}mm` }}>
+              
+              {showHeader && <ReportHeader extracted={extracted} />}
+
+              <div className="px-6 space-y-6">
+                {allAbnormals.length > 0 && (
+                  <ReportAbnormalSummary abnormalResults={allAbnormals} />
+                )}
+
+                {hasMultipleApprovers && (
+                  <div className="mb-2">
+                    <div className="bg-muted border border-border rounded px-3 py-1.5 text-sm font-semibold text-muted-foreground">
+                      Section approved by: {firstApproverName}
+                    </div>
+                  </div>
+                )}
+
+                <ReportResultsSection grouped={firstGrouped} shouldShowProfile={shouldShowProfile} />
+
+                <ReportSignatureBlock
+                  signatureUrl={firstSignatureUrl}
+                  pathologistName={firstPathologist?.pathologist_name || firstApproverName}
+                  qualification={firstPathologist?.qualification}
+                  designation={firstPathologist?.designation}
+                />
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Remaining approver pages (2nd onward) */}
+        {Object.entries(resultsByApprover).slice(1).map(([approverKey, approverResults]) => {
           const grouped = groupResults(approverResults);
           const approverName = approverKey === "_all" ? (extracted.pathologist_name || "") : approverKey;
           const pathologist = findPathologistSig(approverName);
@@ -208,26 +254,18 @@ const ViewReport = () => {
             ? supabase.storage.from("signatures").getPublicUrl(pathologist.signature_image_path).data.publicUrl
             : null;
 
-          const pageAbnormals = approverResults.filter(r => r.flag === "H" || r.flag === "L");
-
           return (
-            <div key={approverKey} className={`report-page ${pageIdx > 0 ? "print:break-before-page" : ""}`}
+            <div key={approverKey} className="report-page print:break-before-page"
               style={{ paddingTop: `${topMarginMm}mm`, paddingBottom: `${bottomMarginMm}mm` }}>
               
               {showHeader && <ReportHeader extracted={extracted} />}
 
-              {hasMultipleApprovers && (
-                <div className="px-6 mb-2">
-                  <div className="bg-gray-100 border border-gray-300 rounded px-3 py-1.5 text-sm font-semibold text-gray-700">
+              <div className="px-6 space-y-6">
+                <div className="mb-2">
+                  <div className="bg-muted border border-border rounded px-3 py-1.5 text-sm font-semibold text-muted-foreground">
                     Section approved by: {approverName}
                   </div>
                 </div>
-              )}
-
-              <div className="px-6 space-y-6">
-                {pageAbnormals.length > 0 && (
-                  <ReportAbnormalSummary abnormalResults={pageAbnormals} />
-                )}
 
                 <ReportResultsSection grouped={grouped} shouldShowProfile={shouldShowProfile} />
 
