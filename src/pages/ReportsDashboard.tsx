@@ -90,9 +90,8 @@ const ReportsDashboard = () => {
               <TableBody>
                 {filtered.map((r) => (
                   <TableRow key={r.id}>
-                    <TableCell className="font-medium">
-                      <div className="flex items-center gap-2"><FileText className="h-4 w-4 text-muted-foreground" />{r.file_name || "Report"}</div>
-                    </TableCell>
+                    <TableCell className="font-medium">{(r as any).reg_no || "-"}</TableCell>
+                    <TableCell className="text-sm">{(r as any).reg_date || "-"}</TableCell>
                     <TableCell>{r.patient_name || "-"}</TableCell>
                     <TableCell>{r.umr_id || "-"}</TableCell>
                     <TableCell><Badge className={statusColors[r.status] || ""}>{r.status}</Badge></TableCell>
