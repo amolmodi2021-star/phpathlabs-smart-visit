@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.extract-report]
 verify_jwt = false
+
+[functions.reverify-abnormals]
+verify_jwt = false
