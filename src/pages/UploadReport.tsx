@@ -93,11 +93,25 @@ const UploadReport = () => {
       }));
       setProgress(55);
 
-      // Call AI extraction
-      const { data, error } = await supabase.functions.invoke("extract-report", {
-        body: { pageImages, testParameters },
-      });
-      if (error) throw error;
+      // Call AI extraction in batches of 3 pages
+      const BATCH_SIZE = 3;
+      let allTestResults: any[] = [];
+      let patientData: any = {};
+      let pathologistName = "";
+
+      for (let b = 0; b < pageImages.length; b += BATCH_SIZE) {
+        const batch = pageImages.slice(b, b + BATCH_SIZE);
+        const { data, error } = await supabase.functions.invoke("extract-report", {
+          body: { pageImages: batch, testParameters },
+        });
+        if (error) throw error;
+        if (data.patient?.name) patientData = { ...patientData, ...data.patient };
+        if (data.pathologist_name) pathologistName = data.pathologist_name;
+        if (data.test_results) allTestResults = [...allTestResults, ...data.test_results];
+        setProgress(55 + Math.round(((b + BATCH_SIZE) / pageImages.length) * 30));
+      }
+
+      const mergedData = { patient: patientData, test_results: allTestResults, pathologist_name: pathologistName };
       setProgress(85);
 
       // Save extracted data
