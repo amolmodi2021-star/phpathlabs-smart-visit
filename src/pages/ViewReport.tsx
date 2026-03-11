@@ -258,7 +258,7 @@ const ViewReport = () => {
             <div key={approverKey} className="report-page print:break-before-page"
               style={{ paddingTop: `${topMarginMm}mm`, paddingBottom: `${bottomMarginMm}mm` }}>
               
-              {showHeader && <ReportHeader extracted={extracted} />}
+              <ReportHeader extracted={extracted} />
 
               <div className="px-6 space-y-6">
                 <div className="mb-2">
