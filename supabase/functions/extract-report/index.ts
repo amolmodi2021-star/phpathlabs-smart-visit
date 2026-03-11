@@ -87,7 +87,7 @@ MATCHING RULES:
                     name: { type: "string" },
                     age: { type: "string" },
                     gender: { type: "string" },
-                    umr_id: { type: "string", description: "UMR/MRN/Patient ID number" },
+                    umr_id: { type: "string", description: "UMR (Unique Medical Record) ID only. Do NOT use Reg.No, Invoice No, Bill No, or Lab No. Return empty string if no UMR field found." },
                     ref_doctor: { type: "string" },
                     collection_date: { type: "string" },
                     report_date: { type: "string" },
