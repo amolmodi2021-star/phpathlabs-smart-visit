@@ -45,8 +45,8 @@ const ReportHeader = ({ extracted }: ReportHeaderProps) => {
         <div className="grid gap-y-0.5" style={{ gridTemplateColumns: '150px 1fr' }}>
           <span className="font-semibold">Ref. Doctor</span><span>: {extracted.ref_doctor || "SELF"}</span>
           <span className="font-semibold">Reg. Date</span><span>: {formatDateTimeTo12Hr(extracted.reg_date)}</span>
-          <span className="font-semibold">Sample Coll. Date</span><span>: {extracted.sample_collection_date || extracted.collection_date || "-"}</span>
-          <span className="font-semibold">Authentication Date</span><span>: {extracted.authentication_date || "-"}</span>
+          <span className="font-semibold">Sample Coll. Date</span><span>: {cleanDateTime(extracted.sample_collection_date || extracted.collection_date)}</span>
+          <span className="font-semibold">Authentication Date</span><span>: {cleanDateTime(extracted.authentication_date)}</span>
         </div>
       </div>
     </div>
