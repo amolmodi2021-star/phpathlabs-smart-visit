@@ -189,7 +189,9 @@ const UploadReport = () => {
         status: "Awaiting Review",
         umr_id: mergedData.patient?.umr_id || "",
         patient_name: mergedData.patient?.name || "",
-      }).eq("id", reportRow.id);
+        reg_no: mergedData.patient?.reg_no || "",
+        reg_date: mergedData.patient?.reg_date || "",
+      } as any).eq("id", reportRow.id);
 
       setProgress(100);
       setStatus("done");
