@@ -290,11 +290,17 @@ const ViewReport = () => {
       <style>{`
         @media print {
           body * { visibility: hidden; }
-          #root { visibility: visible; }
+          .report-print-area, .report-print-area * { visibility: visible; }
+          .report-print-area { 
+            position: absolute; 
+            left: 0; 
+            top: 0; 
+            width: 210mm !important; 
+            max-width: 210mm !important; 
+          }
           .print\\:hidden { display: none !important; }
           .print\\:break-inside-avoid { break-inside: avoid; }
           .print\\:break-before-page { break-before: page; }
-          .report-print-area { width: 210mm !important; max-width: 210mm !important; }
           .report-page {
             min-height: 297mm;
             width: 210mm;
@@ -311,6 +317,8 @@ const ViewReport = () => {
             background-size: 210mm 297mm;
             background-repeat: no-repeat;
             background-position: center;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
           }
           ` : ''}
         }
