@@ -41,6 +41,19 @@ CRITICAL - REG.NO RULES:
 - This is DIFFERENT from UMR ID. Always capture it separately.
 - Reg.Date is the registration date/time shown next to Reg.No
 
+CRITICAL - REF. DOCTOR RULES:
+- Look for fields labeled "Ref. Doctor", "Referring Doctor", "Ref. By", "Referred By", "Doctor", "Consultant", "Clinician"
+- This is the name of the doctor who referred/ordered the tests
+- If the report shows "SELF" or "Self Referral", return "SELF"
+- Do NOT leave this empty if a doctor name is visible anywhere on the report
+
+CRITICAL - COLLECTION DATE & REPORT DATE RULES:
+- collection_date: Look for "Collection Date", "Sample Collection Date", "Collected On", "Date of Collection". Extract the DATE portion.
+- report_date: Look for "Report Date", "Reported On", "Date of Report", "Reporting Date", "Authentication Date". Extract the DATE portion.
+- If "Sample Collection Date" is found, copy it to BOTH sample_collection_date AND collection_date fields
+- If "Authentication Date" or "Report Date" is found, copy it to BOTH the specific field AND report_date
+- NEVER leave collection_date and report_date empty if sample_collection_date or authentication_date have values
+
 CRITICAL - ABNORMAL FLAG RULES:
 - Compare each numeric result_value against normal_range_low and normal_range_high
 - If result_value > normal_range_high → flag = "H"
