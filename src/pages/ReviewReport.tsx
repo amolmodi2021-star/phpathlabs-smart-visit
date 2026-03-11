@@ -201,9 +201,16 @@ const ReviewReport = () => {
         collection_date: collectionDate,
         report_date: reportDate,
         pathologist_name: pathologistName,
+        reg_no: regNo,
+        reg_date: regDate,
+        sample_collection_date: sampleCollectionDate,
+        accession_date: accessionDate,
+        authentication_date: authenticationDate,
+        print_date: printDate,
+        location: locationField,
         test_results: flaggedResults as unknown as any,
         verified: true,
-      }).eq("report_id", reportId);
+      } as any).eq("report_id", reportId);
 
       // Upsert patient master
       const { data: existingPatient } = await supabase.from("patient_master").select("id").eq("umr_id", umrId).maybeSingle();
