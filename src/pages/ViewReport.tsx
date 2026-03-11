@@ -297,6 +297,7 @@ const ViewReport = () => {
             position: absolute; 
             left: 0; 
             top: 0; 
+            margin: 0 !important;
             width: 210mm !important; 
             max-width: 210mm !important; 
           }
