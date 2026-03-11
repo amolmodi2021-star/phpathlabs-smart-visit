@@ -137,7 +137,7 @@ const ReviewReport = () => {
       const { data: analyticsParams } = await supabase.from("report_test_parameters").select("id, parameter_name").eq("store_for_analytics", true);
       const analyticsSet = new Set((analyticsParams || []).map((p: any) => p.parameter_name.toLowerCase()));
 
-      const historyEntries = testResults
+      const historyEntries = flaggedResults
         .filter((r) => {
           const numVal = parseFloat(r.result_value);
           return !isNaN(numVal) && (analyticsSet.size === 0 || analyticsSet.has(r.parameter_name.toLowerCase()));
