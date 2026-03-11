@@ -348,6 +348,27 @@ const ReviewReport = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Add Parameter to Master Dialog */}
+      {addParamIndex !== null && (
+        <AddParameterToMasterDialog
+          open={addParamDialogOpen}
+          onOpenChange={(v) => { setAddParamDialogOpen(v); if (!v) setAddParamIndex(null); }}
+          parameterName={testResults[addParamIndex]?.parameter_name || ""}
+          unit={testResults[addParamIndex]?.unit}
+          normalRangeLow={testResults[addParamIndex]?.normal_range_low}
+          normalRangeHigh={testResults[addParamIndex]?.normal_range_high}
+          normalRangeText={testResults[addParamIndex]?.normal_range_text}
+          department={testResults[addParamIndex]?.department}
+          profileName={testResults[addParamIndex]?.profile_name}
+          testName={testResults[addParamIndex]?.test_name}
+          onAdded={(id) => {
+            setTestResults((prev) => prev.map((r, i) => i === addParamIndex ? { ...r, matched_parameter_id: id } : r));
+            setMasterParams((prev) => new Set([...prev, testResults[addParamIndex].parameter_name.toLowerCase()]));
+            setAddParamIndex(null);
+          }}
+        />
+      )}
     </div>
   );
 };
