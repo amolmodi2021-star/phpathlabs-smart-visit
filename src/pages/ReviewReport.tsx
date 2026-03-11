@@ -302,6 +302,31 @@ const ReviewReport = () => {
                         <Trash2 className="h-3 w-3" />
                       </Button>
                     </TableCell>
+                    <TableCell>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            {masterParams.has(r.parameter_name.toLowerCase()) || r.matched_parameter_id ? (
+                              <Check className="h-4 w-4 text-green-600" />
+                            ) : (
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-7 w-7 border-amber-400 text-amber-600 hover:bg-amber-50"
+                                onClick={() => { setAddParamIndex(i); setAddParamDialogOpen(true); }}
+                              >
+                                <Plus className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {masterParams.has(r.parameter_name.toLowerCase()) || r.matched_parameter_id
+                              ? "Exists in master data"
+                              : "Not in master data — click to add"}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
