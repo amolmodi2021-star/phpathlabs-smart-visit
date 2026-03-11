@@ -78,9 +78,6 @@ export default function AddParameterToMasterDialog({
       const { data, error } = await supabase.from("report_test_parameters").insert({
         parameter_name: paramName.trim(),
         unit: paramUnit || null,
-        normal_range_low: rangeLow ? parseFloat(rangeLow) : null,
-        normal_range_high: rangeHigh ? parseFloat(rangeHigh) : null,
-        normal_range_text: rangeText || null,
         test_name: paramTestName || null,
         department_id: selectedDeptId || null,
         profile_id: selectedProfileId || null,
