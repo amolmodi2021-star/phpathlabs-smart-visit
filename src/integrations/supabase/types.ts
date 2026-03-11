@@ -522,6 +522,45 @@ export type Database = {
         }
         Relationships: []
       }
+      profile_parameters: {
+        Row: {
+          created_at: string
+          display_order: number
+          id: string
+          parameter_id: string
+          profile_id: string
+        }
+        Insert: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          parameter_id: string
+          profile_id: string
+        }
+        Update: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          parameter_id?: string
+          profile_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profile_parameters_parameter_id_fkey"
+            columns: ["parameter_id"]
+            isOneToOne: false
+            referencedRelation: "report_test_parameters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profile_parameters_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "report_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       raw_report_data: {
         Row: {
           id: string
