@@ -101,7 +101,7 @@ const ReviewReport = () => {
           profile_name: master ? master.profile_name : "",
         };
       });
-      setTestResults(calculateFlags(enrichedResults));
+      setTestResults(normalizeTestResultFlags(enrichedResults));
       if (!extracted.umr_id) setShowUmrDialog(true);
     }
     setPathologists(sigs || []);
