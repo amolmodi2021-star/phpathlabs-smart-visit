@@ -34,17 +34,20 @@ const UploadReport = () => {
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     const images: string[] = [];
-    const totalPages = Math.min(pdf.numPages, 20);
+    const totalPages = Math.min(pdf.numPages, 10);
+    const MAX_WIDTH = 1200;
 
     for (let i = 1; i <= totalPages; i++) {
       const page = await pdf.getPage(i);
-      const viewport = page.getViewport({ scale: 2.0 });
+      const baseViewport = page.getViewport({ scale: 1.0 });
+      const scale = baseViewport.width > MAX_WIDTH ? MAX_WIDTH / baseViewport.width : 1.0;
+      const viewport = page.getViewport({ scale });
       const canvas = document.createElement("canvas");
       canvas.width = viewport.width;
       canvas.height = viewport.height;
       const ctx = canvas.getContext("2d")!;
       await page.render({ canvasContext: ctx, viewport }).promise;
-      images.push(canvas.toDataURL("image/jpeg", 0.85));
+      images.push(canvas.toDataURL("image/jpeg", 0.6));
       setProgress(Math.round((i / totalPages) * 40));
     }
     return images;
