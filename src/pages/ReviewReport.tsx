@@ -48,9 +48,10 @@ const ReviewReport = () => {
   const [umrInput, setUmrInput] = useState("");
   const [pathologists, setPathologists] = useState<any[]>([]);
   const [selectedPathologist, setSelectedPathologist] = useState("");
-  const [masterParams, setMasterParams] = useState<Set<string>>(new Set());
+  const [masterParams, setMasterParams] = useState<Map<string, { department_name?: string; profile_name?: string }>>(new Map());
   const [addParamDialogOpen, setAddParamDialogOpen] = useState(false);
   const [addParamIndex, setAddParamIndex] = useState<number | null>(null);
+  const [missingDepartments, setMissingDepartments] = useState<number[]>([]);
 
   useEffect(() => {
     loadData();
@@ -58,13 +59,25 @@ const ReviewReport = () => {
 
   const loadData = async () => {
     setLoading(true);
-    const [{ data: extracted }, { data: sigs }, { data: params }] = await Promise.all([
+    const [{ data: extracted }, { data: sigs }, { data: params }, { data: depts }, { data: profiles }] = await Promise.all([
       supabase.from("extracted_report_data").select("*").eq("report_id", reportId).single(),
       supabase.from("pathologist_signatures").select("*"),
-      supabase.from("report_test_parameters").select("parameter_name"),
+      supabase.from("report_test_parameters").select("id, parameter_name, department_id, profile_id"),
+      supabase.from("report_departments").select("id, department_name"),
+      supabase.from("report_profiles").select("id, profile_name"),
     ]);
 
-    setMasterParams(new Set((params || []).map((p: any) => p.parameter_name.toLowerCase())));
+    const deptMap = new Map((depts || []).map((d: any) => [d.id, d.department_name]));
+    const profileMap = new Map((profiles || []).map((p: any) => [p.id, p.profile_name]));
+
+    const masterMap = new Map<string, { department_name?: string; profile_name?: string }>();
+    (params || []).forEach((p: any) => {
+      masterMap.set(p.parameter_name.toLowerCase(), {
+        department_name: p.department_id ? deptMap.get(p.department_id) || "" : "",
+        profile_name: p.profile_id ? profileMap.get(p.profile_id) || "" : "",
+      });
+    });
+    setMasterParams(masterMap);
 
     if (extracted) {
       setExtractedData(extracted);
@@ -77,11 +90,19 @@ const ReviewReport = () => {
       setReportDate(extracted.report_date || "");
       setPathologistName(extracted.pathologist_name || "");
       const rawResults = (extracted.test_results as unknown as TestResult[]) || [];
-      setTestResults(calculateFlags(rawResults));
+      // Auto-fill department and profile from master data
+      const enrichedResults = rawResults.map((r) => {
+        const master = masterMap.get(r.parameter_name.toLowerCase());
+        return {
+          ...r,
+          department: master?.department_name || "",
+          profile_name: master?.profile_name || "",
+        };
+      });
+      setTestResults(calculateFlags(enrichedResults));
       if (!extracted.umr_id) setShowUmrDialog(true);
     }
     setPathologists(sigs || []);
-    // Auto-match pathologist
     if (extracted?.pathologist_name && sigs?.length) {
       const match = sigs.find((s: any) => s.pathologist_name.toLowerCase().includes(extracted.pathologist_name?.toLowerCase() || ""));
       if (match) setSelectedPathologist(match.id);
@@ -131,6 +152,11 @@ const ReviewReport = () => {
   const handleSaveAndGenerate = async () => {
     if (!umrId) {
       setShowUmrDialog(true);
+      return;
+    }
+    const emptyDeptRows = testResults.filter((r, i) => !r.department?.trim());
+    if (emptyDeptRows.length > 0) {
+      toast({ title: "Department missing", description: `${emptyDeptRows.length} parameter(s) have no department. Add them to master data first.`, variant: "destructive" });
       return;
     }
     setSaving(true);
@@ -294,10 +320,10 @@ const ReviewReport = () => {
                 {testResults.map((r, i) => (
                   <TableRow key={i} className={r.flag === "H" || r.flag === "L" ? "bg-destructive/5" : ""}>
                     <TableCell>
-                      <Input value={r.department || ""} onChange={(e) => updateTestResult(i, "department", e.target.value)} className="h-8 text-xs" />
+                      <Input value={r.department || ""} readOnly className="h-8 text-xs bg-muted/50" />
                     </TableCell>
                     <TableCell>
-                      <Input value={r.profile_name || ""} onChange={(e) => updateTestResult(i, "profile_name", e.target.value)} className="h-8 text-xs" />
+                      <Input value={r.profile_name || ""} readOnly className="h-8 text-xs bg-muted/50" />
                     </TableCell>
                     <TableCell>
                       <Input value={r.parameter_name} onChange={(e) => updateTestResult(i, "parameter_name", e.target.value)} className="h-8 text-xs font-medium" />
@@ -379,8 +405,8 @@ const ReviewReport = () => {
           profileName={testResults[addParamIndex]?.profile_name}
           testName={testResults[addParamIndex]?.test_name}
           onAdded={(id) => {
-            setTestResults((prev) => prev.map((r, i) => i === addParamIndex ? { ...r, matched_parameter_id: id } : r));
-            setMasterParams((prev) => new Set([...prev, testResults[addParamIndex].parameter_name.toLowerCase()]));
+            // Reload master data to get department/profile names for the newly added param
+            loadData();
             setAddParamIndex(null);
           }}
         />
