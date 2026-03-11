@@ -268,6 +268,7 @@ const ReviewReport = () => {
                   <TableHead className="w-[120px]">Range</TableHead>
                   <TableHead className="w-[60px]">Flag</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
+                  <TableHead className="w-[50px]">Master</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
