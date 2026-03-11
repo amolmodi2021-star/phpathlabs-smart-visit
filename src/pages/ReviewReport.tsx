@@ -129,15 +129,7 @@ const ReviewReport = () => {
   };
 
   const calculateFlags = (results: TestResult[]): TestResult[] => {
-    return results.map((r) => {
-      const val = parseFloat(r.result_value);
-      const low = parseFloat(r.normal_range_low || "");
-      const high = parseFloat(r.normal_range_high || "");
-      if (isNaN(val)) return { ...r, flag: "N" };
-      if (!isNaN(high) && val > high) return { ...r, flag: "H" };
-      if (!isNaN(low) && val < low) return { ...r, flag: "L" };
-      return { ...r, flag: "N" };
-    });
+    return normalizeTestResultFlags(results);
   };
 
   const handleSaveAndGenerate = async () => {

@@ -150,7 +150,7 @@ const UploadReport = () => {
 
       const mergedData = {
         patient: patientData,
-        test_results: allTestResults,
+        test_results: normalizeTestResultFlags(allTestResults),
         pathologist_name: pathologistName,
       };
       setProgress(85);
