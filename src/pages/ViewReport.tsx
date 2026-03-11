@@ -302,10 +302,17 @@ const ViewReport = () => {
           .print\\:break-inside-avoid { break-inside: avoid; }
           .print\\:break-before-page { break-before: page; }
           .report-page {
-            min-height: 297mm;
+            height: 297mm;
+            max-height: 297mm;
             width: 210mm;
             box-sizing: border-box;
             position: relative;
+            overflow: hidden;
+            page-break-after: always;
+            page-break-inside: avoid;
+          }
+          .report-page:last-child {
+            page-break-after: auto;
           }
           @page {
             size: A4;
