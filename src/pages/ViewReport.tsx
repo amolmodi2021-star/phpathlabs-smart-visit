@@ -298,10 +298,13 @@ const ViewReport = () => {
           body * { visibility: hidden; }
           .report-print-area, .report-print-area * { visibility: visible; }
           .report-print-area { 
-            position: relative;
+            position: absolute;
+            left: 50%;
+            top: 0;
+            transform: translateX(-50%);
             width: 210mm !important; 
             max-width: 210mm !important;
-            margin: 0 auto !important;
+            margin: 0 !important;
             padding: 0 !important;
           }
           .print\\:hidden { display: none !important; }
