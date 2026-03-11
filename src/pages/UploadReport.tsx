@@ -148,6 +148,14 @@ const UploadReport = () => {
         setProgress(55 + Math.round(((i + 1) / batches.length) * 30));
       }
 
+      // Apply fallback logic for collection_date and report_date
+      if (!patientData.collection_date && patientData.sample_collection_date) {
+        patientData.collection_date = patientData.sample_collection_date;
+      }
+      if (!patientData.report_date && patientData.authentication_date) {
+        patientData.report_date = patientData.authentication_date;
+      }
+
       const mergedData = {
         patient: patientData,
         test_results: normalizeTestResultFlags(allTestResults),
