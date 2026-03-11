@@ -58,10 +58,13 @@ const ReviewReport = () => {
 
   const loadData = async () => {
     setLoading(true);
-    const [{ data: extracted }, { data: sigs }] = await Promise.all([
+    const [{ data: extracted }, { data: sigs }, { data: params }] = await Promise.all([
       supabase.from("extracted_report_data").select("*").eq("report_id", reportId).single(),
       supabase.from("pathologist_signatures").select("*"),
+      supabase.from("report_test_parameters").select("parameter_name"),
     ]);
+
+    setMasterParams(new Set((params || []).map((p: any) => p.parameter_name.toLowerCase())));
 
     if (extracted) {
       setExtractedData(extracted);
