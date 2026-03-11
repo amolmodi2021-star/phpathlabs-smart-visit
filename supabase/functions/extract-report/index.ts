@@ -20,14 +20,27 @@ serve(async (req) => {
     const systemPrompt = `You are an expert pathology report data extractor. Extract ALL data from the uploaded pathology report pages.
 
 EXTRACTION RULES:
-1. Extract patient demographics: name, age, gender, UMR/MRN/Patient ID, referring doctor, collection date, report date
+1. Extract patient demographics: name, age, gender, UMR ID (if present), referring doctor, collection date, report date
 2. Extract ALL test results with: test/parameter name, result value, unit, reference/normal range
 3. Detect pathologist name from signature area or footer
 4. Clean numeric values: remove flags like H, L, *, etc. Keep the raw numeric value
 5. Parse ranges: "12-15" → low=12, high=15. "<200" → low=0, high=200. ">40" → low=40, high=null
 6. Identify department for each test (Biochemistry, Haematology, Immunology, Microbiology, etc.)
 7. Identify if tests belong to a profile (e.g., Lipid Profile, Liver Function Test, Renal Function Test, CBC, Thyroid Profile)
-8. For each result, determine if it's abnormal: H (high), L (low), or N (normal)
+8. For each result, determine if it's abnormal: H (high - result above normal_range_high), L (low - result below normal_range_low), or N (normal - within range)
+
+CRITICAL - UMR ID RULES:
+- UMR ID is a UNIQUE MEDICAL RECORD number, typically starting with "UMR" followed by digits (e.g., UMR0001234)
+- Do NOT confuse "Reg.No", "Registration Number", "Invoice Number", "Bill Number", or "Lab Number" with UMR ID - these are different identifiers
+- ONLY extract umr_id if you find a field explicitly labeled "UMR" or "UMR ID" or "Unique Medical Record"
+- If no UMR ID is found, return umr_id as empty string ""
+
+CRITICAL - ABNORMAL FLAG RULES:
+- Compare each numeric result_value against normal_range_low and normal_range_high
+- If result_value > normal_range_high → flag = "H"
+- If result_value < normal_range_low → flag = "L"  
+- Otherwise → flag = "N"
+- Always set a flag for every test result
 
 KNOWN TEST PARAMETERS IN OUR SYSTEM (try to match extracted tests to these):
 ${paramList || 'No parameters configured yet'}
@@ -74,7 +87,7 @@ MATCHING RULES:
                     name: { type: "string" },
                     age: { type: "string" },
                     gender: { type: "string" },
-                    umr_id: { type: "string", description: "UMR/MRN/Patient ID number" },
+                    umr_id: { type: "string", description: "UMR (Unique Medical Record) ID only. Do NOT use Reg.No, Invoice No, Bill No, or Lab No. Return empty string if no UMR field found." },
                     ref_doctor: { type: "string" },
                     collection_date: { type: "string" },
                     report_date: { type: "string" },

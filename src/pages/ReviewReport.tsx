@@ -68,7 +68,8 @@ const ReviewReport = () => {
       setCollectionDate(extracted.collection_date || "");
       setReportDate(extracted.report_date || "");
       setPathologistName(extracted.pathologist_name || "");
-      setTestResults((extracted.test_results as unknown as TestResult[]) || []);
+      const rawResults = (extracted.test_results as unknown as TestResult[]) || [];
+      setTestResults(calculateFlags(rawResults));
       if (!extracted.umr_id) setShowUmrDialog(true);
     }
     setPathologists(sigs || []);
@@ -88,18 +89,16 @@ const ReviewReport = () => {
     setTestResults((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const recalculateFlags = () => {
-    setTestResults((prev) =>
-      prev.map((r) => {
-        const val = parseFloat(r.result_value);
-        const low = parseFloat(r.normal_range_low || "");
-        const high = parseFloat(r.normal_range_high || "");
-        if (isNaN(val)) return { ...r, flag: "N" };
-        if (!isNaN(high) && val > high) return { ...r, flag: "H" };
-        if (!isNaN(low) && val < low) return { ...r, flag: "L" };
-        return { ...r, flag: "N" };
-      })
-    );
+  const calculateFlags = (results: TestResult[]): TestResult[] => {
+    return results.map((r) => {
+      const val = parseFloat(r.result_value);
+      const low = parseFloat(r.normal_range_low || "");
+      const high = parseFloat(r.normal_range_high || "");
+      if (isNaN(val)) return { ...r, flag: "N" };
+      if (!isNaN(high) && val > high) return { ...r, flag: "H" };
+      if (!isNaN(low) && val < low) return { ...r, flag: "L" };
+      return { ...r, flag: "N" };
+    });
   };
 
   const handleSaveAndGenerate = async () => {
@@ -109,7 +108,8 @@ const ReviewReport = () => {
     }
     setSaving(true);
     try {
-      recalculateFlags();
+      const flaggedResults = calculateFlags(testResults);
+      setTestResults(flaggedResults);
 
       // Update extracted data
       await supabase.from("extracted_report_data").update({
@@ -121,7 +121,7 @@ const ReviewReport = () => {
         collection_date: collectionDate,
         report_date: reportDate,
         pathologist_name: pathologistName,
-        test_results: testResults as unknown as any,
+        test_results: flaggedResults as unknown as any,
         verified: true,
       }).eq("report_id", reportId);
 
@@ -137,7 +137,7 @@ const ReviewReport = () => {
       const { data: analyticsParams } = await supabase.from("report_test_parameters").select("id, parameter_name").eq("store_for_analytics", true);
       const analyticsSet = new Set((analyticsParams || []).map((p: any) => p.parameter_name.toLowerCase()));
 
-      const historyEntries = testResults
+      const historyEntries = flaggedResults
         .filter((r) => {
           const numVal = parseFloat(r.result_value);
           return !isNaN(numVal) && (analyticsSet.size === 0 || analyticsSet.has(r.parameter_name.toLowerCase()));
