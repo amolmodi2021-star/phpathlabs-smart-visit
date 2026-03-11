@@ -2,12 +2,24 @@ interface ReportHeaderProps {
   extracted: any;
 }
 
+const cleanDateTime = (dateStr: string | null | undefined): string => {
+  if (!dateStr) return "-";
+  // Fix "AMPM" → determine correct AM/PM based on hour, or fix "3:47 AMPM" patterns
+  return dateStr.replace(/(\d{1,2}):(\d{2})\s*AMPM/gi, (_, h, m) => {
+    const hours = parseInt(h, 10);
+    const period = hours >= 12 ? "PM" : "AM";
+    const displayHours = hours % 12 || 12;
+    return `${displayHours}:${m} ${period}`;
+  });
+};
+
 const formatDateTimeTo12Hr = (dateStr: string | null | undefined): string => {
   if (!dateStr) return "-";
+  const cleaned = cleanDateTime(dateStr);
   // Replace 24hr time (HH:MM or HH:MM:SS) with 12hr format
   const timeRegex = /(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(?:hrs?)?/i;
-  const match = dateStr.match(timeRegex);
-  if (!match) return dateStr;
+  const match = cleaned.match(timeRegex);
+  if (!match) return cleaned;
   
   let hours = parseInt(match[1], 10);
   const minutes = match[2];
@@ -15,7 +27,7 @@ const formatDateTimeTo12Hr = (dateStr: string | null | undefined): string => {
   hours = hours % 12 || 12;
   const formattedTime = `${hours}:${minutes} ${period}`;
   
-  return dateStr.replace(timeRegex, formattedTime);
+  return cleaned.replace(timeRegex, formattedTime);
 };
 
 const ReportHeader = ({ extracted }: ReportHeaderProps) => {
