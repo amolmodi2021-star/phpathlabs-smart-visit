@@ -320,10 +320,10 @@ const ReviewReport = () => {
                 {testResults.map((r, i) => (
                   <TableRow key={i} className={r.flag === "H" || r.flag === "L" ? "bg-destructive/5" : ""}>
                     <TableCell>
-                      <Input value={r.department || ""} onChange={(e) => updateTestResult(i, "department", e.target.value)} className="h-8 text-xs" />
+                      <Input value={r.department || ""} readOnly className="h-8 text-xs bg-muted/50" />
                     </TableCell>
                     <TableCell>
-                      <Input value={r.profile_name || ""} onChange={(e) => updateTestResult(i, "profile_name", e.target.value)} className="h-8 text-xs" />
+                      <Input value={r.profile_name || ""} readOnly className="h-8 text-xs bg-muted/50" />
                     </TableCell>
                     <TableCell>
                       <Input value={r.parameter_name} onChange={(e) => updateTestResult(i, "parameter_name", e.target.value)} className="h-8 text-xs font-medium" />
