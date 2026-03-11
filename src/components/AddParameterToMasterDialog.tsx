@@ -38,9 +38,6 @@ export default function AddParameterToMasterDialog({
     if (open) {
       setParamName(parameterName);
       setParamUnit(unit || "");
-      setRangeLow(normalRangeLow || "");
-      setRangeHigh(normalRangeHigh || "");
-      setRangeText(normalRangeText || "");
       setParamTestName(testName || "");
       setSelectedDeptId("");
       setSelectedProfileId("");
