@@ -57,8 +57,26 @@ const ViewReport = () => {
     letterhead_pdf_path: null,
   });
   const [letterheadUrl, setLetterheadUrl] = useState<string | null>(null);
+  const [letterheadImageUrl, setLetterheadImageUrl] = useState<string | null>(null);
 
   useEffect(() => { loadReport(); loadLayoutSettings(); }, [reportId]);
+
+  const convertPdfToBackgroundImage = async (pdfUrl: string) => {
+    try {
+      const pdf = await pdfjsLib.getDocument(pdfUrl).promise;
+      const page = await pdf.getPage(1);
+      const viewport = page.getViewport({ scale: 2 });
+      const canvas = document.createElement("canvas");
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return null;
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      return canvas.toDataURL("image/png");
+    } catch {
+      return null;
+    }
+  };
 
   const loadLayoutSettings = async () => {
     const { data } = await supabase.from("report_layout_settings").select("*").limit(1).single();
@@ -71,6 +89,11 @@ const ViewReport = () => {
       if (data.letterhead_pdf_path) {
         const { data: urlData } = supabase.storage.from("letterheads").getPublicUrl(data.letterhead_pdf_path);
         setLetterheadUrl(urlData.publicUrl);
+        const backgroundImage = await convertPdfToBackgroundImage(urlData.publicUrl);
+        setLetterheadImageUrl(backgroundImage);
+      } else {
+        setLetterheadUrl(null);
+        setLetterheadImageUrl(null);
       }
     }
   };
