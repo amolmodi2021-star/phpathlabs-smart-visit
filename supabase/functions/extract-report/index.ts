@@ -99,9 +99,9 @@ MATCHING RULES:
                   items: {
                     type: "object",
                     properties: {
-                      department: { type: "string" },
-                      profile_name: { type: "string", description: "Profile this test belongs to, if any" },
-                      test_name: { type: "string" },
+                      department: { type: "string", description: "Lab department like Biochemistry, Haematology, etc." },
+                      profile_name: { type: "string", description: "Test profile/panel grouping ONLY if explicitly shown in the report as a section header (e.g. 'Lipid Profile', 'Liver Function Test', 'CBC'). Do NOT put individual test names here. Leave empty if the test is not under a named profile section." },
+                      test_name: { type: "string", description: "The test or sub-test name. For standalone tests, this equals parameter_name." },
                       parameter_name: { type: "string" },
                       result_value: { type: "string" },
                       unit: { type: "string" },
