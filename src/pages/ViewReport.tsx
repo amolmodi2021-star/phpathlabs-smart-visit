@@ -217,7 +217,7 @@ const ViewReport = () => {
             <div className="report-page"
               style={{ paddingTop: `${topMarginMm}mm`, paddingBottom: `${bottomMarginMm}mm` }}>
               
-              {showHeader && <ReportHeader extracted={extracted} />}
+              <ReportHeader extracted={extracted} />
 
               <div className="px-6 space-y-6">
                 {allAbnormals.length > 0 && (
