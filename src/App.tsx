@@ -56,6 +56,7 @@ const App = () => (
           <Route path="/report-admin/profiles" element={<ProtectedRoute><ReportProfiles /></ProtectedRoute>} />
           <Route path="/report-admin/parameters" element={<ProtectedRoute><ReportParameters /></ProtectedRoute>} />
           <Route path="/report-admin/signatures" element={<ProtectedRoute><SignatureManagement /></ProtectedRoute>} />
+          <Route path="/report-admin/layout" element={<ProtectedRoute><ReportLayoutSettings /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
