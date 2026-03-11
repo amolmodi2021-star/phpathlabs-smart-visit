@@ -14,9 +14,6 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   parameterName: string;
   unit?: string;
-  normalRangeLow?: string;
-  normalRangeHigh?: string;
-  normalRangeText?: string;
   department?: string;
   profileName?: string;
   testName?: string;
