@@ -114,7 +114,6 @@ const ReportParameters = () => {
                     <TableHead>Department</TableHead>
                     <TableHead>Profile</TableHead>
                     <TableHead>Unit</TableHead>
-                    <TableHead>Range</TableHead>
                     <TableHead>Analytics</TableHead>
                     <TableHead className="w-[80px]">Actions</TableHead>
                   </TableRow>
