@@ -186,6 +186,9 @@ const ViewReport = () => {
   const topMarginMm = layoutSettings.top_margin_cm * 10;
   const bottomMarginMm = layoutSettings.bottom_margin_cm * 10;
 
+  const approverEntries = Object.entries(resultsByApprover);
+  const totalPages = approverEntries.length + (trends.length > 0 ? 1 : 0);
+
   return (
     <div className="space-y-4 print:space-y-0">
       <div className="flex items-center gap-4 print:hidden flex-wrap">
