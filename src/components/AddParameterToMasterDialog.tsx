@@ -21,7 +21,7 @@ interface Props {
 }
 
 export default function AddParameterToMasterDialog({
-  open, onOpenChange, parameterName, unit, normalRangeLow, normalRangeHigh, normalRangeText, department, profileName, testName, onAdded
+  open, onOpenChange, parameterName, unit, department, profileName, testName, onAdded
 }: Props) {
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
