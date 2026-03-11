@@ -10,7 +10,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Save, FileCheck, AlertTriangle, Trash2 } from "lucide-react";
+import { Loader2, Save, FileCheck, AlertTriangle, Trash2, Plus, Check } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import AddParameterToMasterDialog from "@/components/AddParameterToMasterDialog";
 
 interface TestResult {
   department?: string;
@@ -46,6 +48,9 @@ const ReviewReport = () => {
   const [umrInput, setUmrInput] = useState("");
   const [pathologists, setPathologists] = useState<any[]>([]);
   const [selectedPathologist, setSelectedPathologist] = useState("");
+  const [masterParams, setMasterParams] = useState<Set<string>>(new Set());
+  const [addParamDialogOpen, setAddParamDialogOpen] = useState(false);
+  const [addParamIndex, setAddParamIndex] = useState<number | null>(null);
 
   useEffect(() => {
     loadData();
@@ -53,10 +58,13 @@ const ReviewReport = () => {
 
   const loadData = async () => {
     setLoading(true);
-    const [{ data: extracted }, { data: sigs }] = await Promise.all([
+    const [{ data: extracted }, { data: sigs }, { data: params }] = await Promise.all([
       supabase.from("extracted_report_data").select("*").eq("report_id", reportId).single(),
       supabase.from("pathologist_signatures").select("*"),
+      supabase.from("report_test_parameters").select("parameter_name"),
     ]);
+
+    setMasterParams(new Set((params || []).map((p: any) => p.parameter_name.toLowerCase())));
 
     if (extracted) {
       setExtractedData(extracted);
@@ -260,6 +268,7 @@ const ReviewReport = () => {
                   <TableHead className="w-[120px]">Range</TableHead>
                   <TableHead className="w-[60px]">Flag</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
+                  <TableHead className="w-[50px]">Master</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -293,6 +302,31 @@ const ReviewReport = () => {
                         <Trash2 className="h-3 w-3" />
                       </Button>
                     </TableCell>
+                    <TableCell>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            {masterParams.has(r.parameter_name.toLowerCase()) || r.matched_parameter_id ? (
+                              <Check className="h-4 w-4 text-green-600" />
+                            ) : (
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-7 w-7 border-amber-400 text-amber-600 hover:bg-amber-50"
+                                onClick={() => { setAddParamIndex(i); setAddParamDialogOpen(true); }}
+                              >
+                                <Plus className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {masterParams.has(r.parameter_name.toLowerCase()) || r.matched_parameter_id
+                              ? "Exists in master data"
+                              : "Not in master data — click to add"}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -314,6 +348,27 @@ const ReviewReport = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Add Parameter to Master Dialog */}
+      {addParamIndex !== null && (
+        <AddParameterToMasterDialog
+          open={addParamDialogOpen}
+          onOpenChange={(v) => { setAddParamDialogOpen(v); if (!v) setAddParamIndex(null); }}
+          parameterName={testResults[addParamIndex]?.parameter_name || ""}
+          unit={testResults[addParamIndex]?.unit}
+          normalRangeLow={testResults[addParamIndex]?.normal_range_low}
+          normalRangeHigh={testResults[addParamIndex]?.normal_range_high}
+          normalRangeText={testResults[addParamIndex]?.normal_range_text}
+          department={testResults[addParamIndex]?.department}
+          profileName={testResults[addParamIndex]?.profile_name}
+          testName={testResults[addParamIndex]?.test_name}
+          onAdded={(id) => {
+            setTestResults((prev) => prev.map((r, i) => i === addParamIndex ? { ...r, matched_parameter_id: id } : r));
+            setMasterParams((prev) => new Set([...prev, testResults[addParamIndex].parameter_name.toLowerCase()]));
+            setAddParamIndex(null);
+          }}
+        />
+      )}
     </div>
   );
 };
