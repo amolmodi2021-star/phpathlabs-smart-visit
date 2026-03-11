@@ -7,7 +7,7 @@ const ReportHeader = ({ extracted }: ReportHeaderProps) => {
     <div className="border-b border-gray-300 pb-3 mb-4 px-6 text-black">
       <div className="grid grid-cols-2 gap-x-8 gap-y-0.5 text-sm">
         {/* Left Column */}
-        <div className="grid gap-y-0.5" style={{ gridTemplateColumns: '120px 1fr' }}>
+        <div className="grid gap-y-0.5" style={{ gridTemplateColumns: '90px 1fr' }}>
           <span className="font-semibold">Patient Name</span><span>: {extracted.patient_name}</span>
           <span className="font-semibold">Age / Gender</span><span>: {extracted.age} / {extracted.gender}</span>
           <span className="font-semibold">UMR No</span><span>: {extracted.umr_id}</span>
