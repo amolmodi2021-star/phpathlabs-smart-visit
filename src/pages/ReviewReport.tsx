@@ -93,10 +93,11 @@ const ReviewReport = () => {
       // Auto-fill department and profile from master data
       const enrichedResults = rawResults.map((r) => {
         const master = masterMap.get(r.parameter_name.toLowerCase());
+        // ONLY use department/profile from master parameters table, ignore AI-extracted values
         return {
           ...r,
-          department: master?.department_name || "",
-          profile_name: master?.profile_name || "",
+          department: master ? master.department_name : "",
+          profile_name: master ? master.profile_name : "",
         };
       });
       setTestResults(calculateFlags(enrichedResults));
