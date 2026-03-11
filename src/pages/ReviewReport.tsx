@@ -154,6 +154,11 @@ const ReviewReport = () => {
       setShowUmrDialog(true);
       return;
     }
+    const emptyDeptRows = testResults.filter((r, i) => !r.department?.trim());
+    if (emptyDeptRows.length > 0) {
+      toast({ title: "Department missing", description: `${emptyDeptRows.length} parameter(s) have no department. Add them to master data first.`, variant: "destructive" });
+      return;
+    }
     setSaving(true);
     try {
       const flaggedResults = calculateFlags(testResults);
