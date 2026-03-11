@@ -281,8 +281,10 @@ const ViewReport = () => {
         })}
 
         {trends.length > 0 && (
-          <div className="px-6 print:break-before-page" style={{ paddingTop: `${topMarginMm}mm`, paddingBottom: `${bottomMarginMm}mm` }}>
-            <ReportTrendCharts trends={trends} />
+          <div className="report-page print:break-before-page" style={{ paddingTop: `${topMarginMm}mm`, paddingBottom: `${bottomMarginMm}mm` }}>
+            <div className="px-6">
+              <ReportTrendCharts trends={trends} />
+            </div>
           </div>
         )}
       </div>
@@ -295,6 +297,7 @@ const ViewReport = () => {
             position: absolute; 
             left: 0; 
             top: 0; 
+            margin: 0 !important;
             width: 210mm !important; 
             max-width: 210mm !important; 
           }
@@ -323,7 +326,7 @@ const ViewReport = () => {
             background-image: url("${letterheadImageUrl}");
             background-size: 210mm 297mm;
             background-repeat: no-repeat;
-            background-position: center;
+            background-position: top center;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
           }
@@ -340,7 +343,7 @@ const ViewReport = () => {
           background-image: url("${letterheadImageUrl}");
           background-size: 210mm 297mm;
           background-repeat: no-repeat;
-          background-position: center;
+          background-position: top center;
           ` : ''}
         }
       `}</style>
