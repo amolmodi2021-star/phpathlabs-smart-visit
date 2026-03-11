@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.parse-prescription]
 verify_jwt = false
+
+[functions.extract-report]
+verify_jwt = false

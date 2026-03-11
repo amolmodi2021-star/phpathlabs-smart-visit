@@ -86,7 +86,7 @@ const ViewReport = () => {
   if (loading) return <div className="flex items-center justify-center p-12"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   if (!extracted) return <div className="p-8 text-center">Report not found.</div>;
 
-  const results = (extracted.test_results as TestResult[]) || [];
+  const results = (extracted.test_results as unknown as TestResult[]) || [];
   const abnormalResults = results.filter((r) => r.flag === "H" || r.flag === "L");
 
   // Group by department then profile

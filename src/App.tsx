@@ -14,6 +14,14 @@ import TestManagement from "./pages/TestManagement";
 import MessageTemplates from "./pages/MessageTemplates";
 import AbnormalHistory from "./pages/AbnormalHistory";
 import PhleboDashboard from "./pages/PhleboDashboard";
+import ReportsDashboard from "./pages/ReportsDashboard";
+import UploadReport from "./pages/UploadReport";
+import ReviewReport from "./pages/ReviewReport";
+import ViewReport from "./pages/ViewReport";
+import ReportDepartments from "./pages/ReportDepartments";
+import ReportProfiles from "./pages/ReportProfiles";
+import ReportParameters from "./pages/ReportParameters";
+import SignatureManagement from "./pages/SignatureManagement";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -39,6 +47,14 @@ const App = () => (
           <Route path="/templates" element={<ProtectedRoute><MessageTemplates /></ProtectedRoute>} />
           <Route path="/abnormal-history" element={<ProtectedRoute><AbnormalHistory /></ProtectedRoute>} />
           <Route path="/phlebo-dashboard" element={<ProtectedRoute><PhleboDashboard /></ProtectedRoute>} />
+          <Route path="/reports" element={<ProtectedRoute><ReportsDashboard /></ProtectedRoute>} />
+          <Route path="/reports/upload" element={<ProtectedRoute><UploadReport /></ProtectedRoute>} />
+          <Route path="/reports/review/:reportId" element={<ProtectedRoute><ReviewReport /></ProtectedRoute>} />
+          <Route path="/reports/view/:reportId" element={<ProtectedRoute><ViewReport /></ProtectedRoute>} />
+          <Route path="/report-admin/departments" element={<ProtectedRoute><ReportDepartments /></ProtectedRoute>} />
+          <Route path="/report-admin/profiles" element={<ProtectedRoute><ReportProfiles /></ProtectedRoute>} />
+          <Route path="/report-admin/parameters" element={<ProtectedRoute><ReportParameters /></ProtectedRoute>} />
+          <Route path="/report-admin/signatures" element={<ProtectedRoute><SignatureManagement /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

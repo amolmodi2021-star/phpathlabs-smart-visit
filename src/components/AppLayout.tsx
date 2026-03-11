@@ -4,10 +4,12 @@ import { logout } from "@/lib/auth";
 import {
   FileText, LayoutDashboard, Home, Users, TestTubes, MessageSquare,
   Menu, X, LogOut, FlaskConical, AlertTriangle, BarChart3,
+  FileUp, ClipboardList, Building2, Layers, Microscope, PenTool,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useHomeVisitNotifications } from "@/hooks/useHomeVisitNotifications";
+import { Separator } from "@/components/ui/separator";
 
 const navItems = [
   { to: "/", label: "Create Estimate", icon: FileText },
@@ -19,6 +21,37 @@ const navItems = [
   { to: "/abnormal-history", label: "Abnormal History", icon: AlertTriangle },
   { to: "/phlebo-dashboard", label: "Phlebo Dashboard", icon: BarChart3 },
 ];
+
+const reportNavItems = [
+  { to: "/reports", label: "Reports Dashboard", icon: ClipboardList },
+  { to: "/reports/upload", label: "Upload Report", icon: FileUp },
+  { to: "/report-admin/departments", label: "Departments", icon: Building2 },
+  { to: "/report-admin/profiles", label: "Profiles", icon: Layers },
+  { to: "/report-admin/parameters", label: "Parameters", icon: Microscope },
+  { to: "/report-admin/signatures", label: "Signatures", icon: PenTool },
+];
+
+const NavSection = ({ items, onClick }: { items: typeof navItems; onClick?: () => void }) => (
+  <>
+    {items.map((item) => (
+      <NavLink
+        key={item.to}
+        to={item.to}
+        end={item.to === "/" || item.to === "/reports"}
+        onClick={onClick}
+        className={({ isActive }) =>
+          cn(
+            "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+            isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          )
+        }
+      >
+        <item.icon className="h-4 w-4" />
+        {item.label}
+      </NavLink>
+    ))}
+  </>
+);
 
 const AppLayout = ({ children }: { children: React.ReactNode }) => {
   const [open, setOpen] = useState(false);
@@ -32,7 +65,6 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Top bar */}
       <header className="sticky top-0 z-50 flex h-14 items-center gap-3 border-b bg-card px-4">
         <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setOpen(!open)}>
           {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -51,55 +83,27 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
       </header>
 
       <div className="flex">
-        {/* Sidebar - desktop */}
         <aside className="hidden md:flex w-56 flex-col border-r bg-card min-h-[calc(100vh-3.5rem)] sticky top-14">
-          <nav className="flex-1 p-3 space-y-1">
-            {navItems.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === "/"}
-                className={({ isActive }) =>
-                  cn(
-                    "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                    isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                  )
-                }
-              >
-                <item.icon className="h-4 w-4" />
-                {item.label}
-              </NavLink>
-            ))}
+          <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+            <NavSection items={navItems} />
+            <Separator className="my-3" />
+            <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Report System</p>
+            <NavSection items={reportNavItems} />
           </nav>
         </aside>
 
-        {/* Mobile nav */}
         {open && (
           <div className="fixed inset-0 z-40 md:hidden">
             <div className="absolute inset-0 bg-foreground/20" onClick={() => setOpen(false)} />
-            <aside className="absolute left-0 top-14 bottom-0 w-64 bg-card border-r p-3 space-y-1 animate-fade-in">
-              {navItems.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.to === "/"}
-                  onClick={() => setOpen(false)}
-                  className={({ isActive }) =>
-                    cn(
-                      "flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-                      isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent"
-                    )
-                  }
-                >
-                  <item.icon className="h-4 w-4" />
-                  {item.label}
-                </NavLink>
-              ))}
+            <aside className="absolute left-0 top-14 bottom-0 w-64 bg-card border-r p-3 space-y-1 animate-fade-in overflow-y-auto">
+              <NavSection items={navItems} onClick={() => setOpen(false)} />
+              <Separator className="my-3" />
+              <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Report System</p>
+              <NavSection items={reportNavItems} onClick={() => setOpen(false)} />
             </aside>
           </div>
         )}
 
-        {/* Main content */}
         <main className="flex-1 p-4 md:p-6 max-w-full overflow-x-hidden">
           {children}
         </main>

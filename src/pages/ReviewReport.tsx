@@ -121,7 +121,7 @@ const ReviewReport = () => {
         collection_date: collectionDate,
         report_date: reportDate,
         pathologist_name: pathologistName,
-        test_results: testResults,
+        test_results: testResults as unknown as any,
         verified: true,
       }).eq("report_id", reportId);
 
