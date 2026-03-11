@@ -162,6 +162,7 @@ const ReviewReport = () => {
   };
 
   const updateTestResult = (index: number, field: keyof TestResult, value: string) => {
+    setReverified(false); // Reset re-verification when results change
     setTestResults((prev) => {
       const updated = prev.map((r, i) => (i === index ? { ...r, [field]: value } : r));
       if (field === "result_value" || field === "normal_range_low" || field === "normal_range_high" || field === "normal_range_text") {
@@ -170,6 +171,55 @@ const ReviewReport = () => {
       }
       return updated;
     });
+  };
+
+  const handleReverifyAbnormals = async () => {
+    const abnormals = testResults.filter((r) => r.flag === "H" || r.flag === "L");
+    if (abnormals.length === 0) {
+      setReverified(true);
+      toast({ title: "No abnormal results to verify" });
+      return;
+    }
+    setReverifying(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("reverify-abnormals", {
+        body: {
+          abnormalResults: abnormals.map((r) => ({
+            parameter_name: r.parameter_name,
+            result_value: r.result_value,
+            unit: r.unit,
+            normal_range_low: r.normal_range_low,
+            normal_range_high: r.normal_range_high,
+            normal_range_text: r.normal_range_text,
+            flag: r.flag,
+          })),
+          patientAge: age,
+          patientGender: gender,
+        },
+      });
+      if (error) throw error;
+      setReverifyResults(data);
+      setShowReverifyDialog(true);
+
+      // Apply any flag corrections from AI
+      if (data?.verifications) {
+        setTestResults((prev) => {
+          const updated = [...prev];
+          data.verifications.forEach((v: any) => {
+            const idx = updated.findIndex((r) => r.parameter_name.toLowerCase() === v.parameter_name.toLowerCase());
+            if (idx !== -1 && !v.flag_correct) {
+              updated[idx] = { ...updated[idx], flag: v.verified_flag };
+            }
+          });
+          return updated;
+        });
+      }
+      setReverified(true);
+      toast({ title: "AI re-verification complete" });
+    } catch (err: any) {
+      toast({ title: "Re-verification failed", description: err.message, variant: "destructive" });
+    }
+    setReverifying(false);
   };
 
   const removeTestResult = (index: number) => {
