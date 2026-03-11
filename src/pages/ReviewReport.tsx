@@ -114,6 +114,13 @@ const ReviewReport = () => {
       setCollectionDate(extracted.collection_date || "");
       setReportDate(extracted.report_date || "");
       setPathologistName(extracted.pathologist_name || "");
+      setRegNo((extracted as any).reg_no || "");
+      setRegDate((extracted as any).reg_date || "");
+      setSampleCollectionDate((extracted as any).sample_collection_date || "");
+      setAccessionDate((extracted as any).accession_date || "");
+      setAuthenticationDate((extracted as any).authentication_date || "");
+      setPrintDate((extracted as any).print_date || "");
+      setLocationField((extracted as any).location || "");
       const rawResults = (extracted.test_results as unknown as TestResult[]) || [];
 
       // Collect all extracted parameter names (lowercase) for group matching
