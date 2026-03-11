@@ -173,6 +173,113 @@ export type Database = {
         }
         Relationships: []
       }
+      extracted_report_data: {
+        Row: {
+          age: string | null
+          collection_date: string | null
+          created_at: string | null
+          gender: string | null
+          id: string
+          pathologist_name: string | null
+          patient_name: string | null
+          ref_doctor: string | null
+          report_date: string | null
+          report_id: string | null
+          test_results: Json | null
+          umr_id: string | null
+          updated_at: string | null
+          verified: boolean | null
+        }
+        Insert: {
+          age?: string | null
+          collection_date?: string | null
+          created_at?: string | null
+          gender?: string | null
+          id?: string
+          pathologist_name?: string | null
+          patient_name?: string | null
+          ref_doctor?: string | null
+          report_date?: string | null
+          report_id?: string | null
+          test_results?: Json | null
+          umr_id?: string | null
+          updated_at?: string | null
+          verified?: boolean | null
+        }
+        Update: {
+          age?: string | null
+          collection_date?: string | null
+          created_at?: string | null
+          gender?: string | null
+          id?: string
+          pathologist_name?: string | null
+          patient_name?: string | null
+          ref_doctor?: string | null
+          report_date?: string | null
+          report_id?: string | null
+          test_results?: Json | null
+          umr_id?: string | null
+          updated_at?: string | null
+          verified?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "extracted_report_data_report_id_fkey"
+            columns: ["report_id"]
+            isOneToOne: false
+            referencedRelation: "uploaded_reports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      generated_reports: {
+        Row: {
+          created_at: string | null
+          generated_at: string | null
+          id: string
+          pathologist_id: string | null
+          patient_name: string | null
+          report_html: string | null
+          report_id: string | null
+          umr_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          generated_at?: string | null
+          id?: string
+          pathologist_id?: string | null
+          patient_name?: string | null
+          report_html?: string | null
+          report_id?: string | null
+          umr_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          generated_at?: string | null
+          id?: string
+          pathologist_id?: string | null
+          patient_name?: string | null
+          report_html?: string | null
+          report_id?: string | null
+          umr_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "generated_reports_pathologist_id_fkey"
+            columns: ["pathologist_id"]
+            isOneToOne: false
+            referencedRelation: "pathologist_signatures"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "generated_reports_report_id_fkey"
+            columns: ["report_id"]
+            isOneToOne: false
+            referencedRelation: "uploaded_reports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       home_visits: {
         Row: {
           address: string
@@ -266,6 +373,84 @@ export type Database = {
         }
         Relationships: []
       }
+      pathologist_signatures: {
+        Row: {
+          created_at: string | null
+          designation: string | null
+          id: string
+          pathologist_name: string
+          qualification: string | null
+          signature_image_path: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          designation?: string | null
+          id?: string
+          pathologist_name: string
+          qualification?: string | null
+          signature_image_path?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          designation?: string | null
+          id?: string
+          pathologist_name?: string
+          qualification?: string | null
+          signature_image_path?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      patient_master: {
+        Row: {
+          age: string | null
+          created_at: string | null
+          date_of_birth: string | null
+          email: string | null
+          first_visit_date: string | null
+          gender: string | null
+          id: string
+          last_visit_date: string | null
+          mobile_number: string | null
+          patient_name: string
+          ref_doctor: string | null
+          umr_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          age?: string | null
+          created_at?: string | null
+          date_of_birth?: string | null
+          email?: string | null
+          first_visit_date?: string | null
+          gender?: string | null
+          id?: string
+          last_visit_date?: string | null
+          mobile_number?: string | null
+          patient_name: string
+          ref_doctor?: string | null
+          umr_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          age?: string | null
+          created_at?: string | null
+          date_of_birth?: string | null
+          email?: string | null
+          first_visit_date?: string | null
+          gender?: string | null
+          id?: string
+          last_visit_date?: string | null
+          mobile_number?: string | null
+          patient_name?: string
+          ref_doctor?: string | null
+          umr_id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       phlebotomist_leaves: {
         Row: {
           created_at: string
@@ -337,6 +522,267 @@ export type Database = {
         }
         Relationships: []
       }
+      raw_report_data: {
+        Row: {
+          id: string
+          raw_json: Json | null
+          report_id: string | null
+          umr_id: string | null
+          upload_date: string | null
+        }
+        Insert: {
+          id?: string
+          raw_json?: Json | null
+          report_id?: string | null
+          umr_id?: string | null
+          upload_date?: string | null
+        }
+        Update: {
+          id?: string
+          raw_json?: Json | null
+          report_id?: string | null
+          umr_id?: string | null
+          upload_date?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "raw_report_data_report_id_fkey"
+            columns: ["report_id"]
+            isOneToOne: false
+            referencedRelation: "uploaded_reports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      report_departments: {
+        Row: {
+          created_at: string | null
+          department_name: string
+          display_order: number | null
+          id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          department_name: string
+          display_order?: number | null
+          id?: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          department_name?: string
+          display_order?: number | null
+          id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      report_profiles: {
+        Row: {
+          analyzer: string | null
+          created_at: string | null
+          department_id: string | null
+          display_order: number | null
+          id: string
+          method: string | null
+          profile_name: string
+          remarks: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          analyzer?: string | null
+          created_at?: string | null
+          department_id?: string | null
+          display_order?: number | null
+          id?: string
+          method?: string | null
+          profile_name: string
+          remarks?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          analyzer?: string | null
+          created_at?: string | null
+          department_id?: string | null
+          display_order?: number | null
+          id?: string
+          method?: string | null
+          profile_name?: string
+          remarks?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "report_profiles_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "report_departments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      report_templates: {
+        Row: {
+          created_at: string | null
+          id: string
+          template_config: Json | null
+          template_name: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          template_config?: Json | null
+          template_name: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          template_config?: Json | null
+          template_name?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      report_test_parameters: {
+        Row: {
+          analyzer: string | null
+          created_at: string | null
+          department_id: string | null
+          display_order: number | null
+          id: string
+          method: string | null
+          normal_range_high: number | null
+          normal_range_low: number | null
+          normal_range_text: string | null
+          parameter_name: string
+          profile_id: string | null
+          store_for_analytics: boolean | null
+          test_name: string | null
+          unit: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          analyzer?: string | null
+          created_at?: string | null
+          department_id?: string | null
+          display_order?: number | null
+          id?: string
+          method?: string | null
+          normal_range_high?: number | null
+          normal_range_low?: number | null
+          normal_range_text?: string | null
+          parameter_name: string
+          profile_id?: string | null
+          store_for_analytics?: boolean | null
+          test_name?: string | null
+          unit?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          analyzer?: string | null
+          created_at?: string | null
+          department_id?: string | null
+          display_order?: number | null
+          id?: string
+          method?: string | null
+          normal_range_high?: number | null
+          normal_range_low?: number | null
+          normal_range_text?: string | null
+          parameter_name?: string
+          profile_id?: string | null
+          store_for_analytics?: boolean | null
+          test_name?: string | null
+          unit?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "report_test_parameters_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "report_departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "report_test_parameters_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "report_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      test_result_history: {
+        Row: {
+          analyzer: string | null
+          created_at: string | null
+          department: string | null
+          flag: string | null
+          id: string
+          method: string | null
+          normal_range_high: number | null
+          normal_range_low: number | null
+          parameter_name: string
+          profile_name: string | null
+          report_id: string | null
+          result_text: string | null
+          result_value: number | null
+          test_date: string | null
+          test_name: string | null
+          umr_id: string
+          unit: string | null
+        }
+        Insert: {
+          analyzer?: string | null
+          created_at?: string | null
+          department?: string | null
+          flag?: string | null
+          id?: string
+          method?: string | null
+          normal_range_high?: number | null
+          normal_range_low?: number | null
+          parameter_name: string
+          profile_name?: string | null
+          report_id?: string | null
+          result_text?: string | null
+          result_value?: number | null
+          test_date?: string | null
+          test_name?: string | null
+          umr_id: string
+          unit?: string | null
+        }
+        Update: {
+          analyzer?: string | null
+          created_at?: string | null
+          department?: string | null
+          flag?: string | null
+          id?: string
+          method?: string | null
+          normal_range_high?: number | null
+          normal_range_low?: number | null
+          parameter_name?: string
+          profile_name?: string | null
+          report_id?: string | null
+          result_text?: string | null
+          result_value?: number | null
+          test_date?: string | null
+          test_name?: string | null
+          umr_id?: string
+          unit?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "test_result_history_report_id_fkey"
+            columns: ["report_id"]
+            isOneToOne: false
+            referencedRelation: "uploaded_reports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tests: {
         Row: {
           created_at: string
@@ -373,6 +819,42 @@ export type Database = {
           price?: number
           test_name?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      uploaded_reports: {
+        Row: {
+          created_at: string | null
+          file_name: string | null
+          file_path: string
+          id: string
+          patient_name: string | null
+          status: string | null
+          umr_id: string | null
+          updated_at: string | null
+          upload_time: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          file_name?: string | null
+          file_path: string
+          id?: string
+          patient_name?: string | null
+          status?: string | null
+          umr_id?: string | null
+          updated_at?: string | null
+          upload_time?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          file_name?: string | null
+          file_path?: string
+          id?: string
+          patient_name?: string | null
+          status?: string | null
+          umr_id?: string | null
+          updated_at?: string | null
+          upload_time?: string | null
         }
         Relationships: []
       }
