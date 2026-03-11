@@ -44,6 +44,13 @@ const ReviewReport = () => {
   const [collectionDate, setCollectionDate] = useState("");
   const [reportDate, setReportDate] = useState("");
   const [pathologistName, setPathologistName] = useState("");
+  const [regNo, setRegNo] = useState("");
+  const [regDate, setRegDate] = useState("");
+  const [sampleCollectionDate, setSampleCollectionDate] = useState("");
+  const [accessionDate, setAccessionDate] = useState("");
+  const [authenticationDate, setAuthenticationDate] = useState("");
+  const [printDate, setPrintDate] = useState("");
+  const [locationField, setLocationField] = useState("");
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [showUmrDialog, setShowUmrDialog] = useState(false);
   const [umrInput, setUmrInput] = useState("");
@@ -52,7 +59,6 @@ const ReviewReport = () => {
   const [masterParams, setMasterParams] = useState<Map<string, { department_name?: string; profile_name?: string }>>(new Map());
   const [addParamDialogOpen, setAddParamDialogOpen] = useState(false);
   const [addParamIndex, setAddParamIndex] = useState<number | null>(null);
-  
 
   useEffect(() => {
     loadData();
