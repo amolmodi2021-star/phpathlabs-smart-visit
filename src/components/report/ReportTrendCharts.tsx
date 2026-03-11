@@ -16,7 +16,7 @@ const ReportTrendCharts = ({ trends }: ReportTrendChartsProps) => {
   if (trends.length === 0) return null;
 
   return (
-    <div className="print:break-before-page">
+    <div>
       <h2 className="text-base font-bold text-blue-800 mb-3 border-b-2 border-blue-200 pb-1">Historical Trends</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 print:grid-cols-2 gap-4">
         {trends.slice(0, 6).map((trend) => (

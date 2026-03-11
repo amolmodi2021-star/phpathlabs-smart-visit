@@ -315,6 +315,10 @@ const ViewReport = () => {
           .report-page:last-child {
             page-break-after: auto;
           }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+          }
           @page {
             size: A4;
             margin: 0;
