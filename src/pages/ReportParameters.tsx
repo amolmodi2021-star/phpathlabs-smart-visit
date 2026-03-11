@@ -22,8 +22,7 @@ const ReportParameters = () => {
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState({
     parameter_name: "", test_name: "", profile_id: "", department_id: "",
-    unit: "", normal_range_low: "", normal_range_high: "", normal_range_text: "",
-    analyzer: "", method: "", store_for_analytics: false, display_order: 0,
+    unit: "", analyzer: "", method: "", store_for_analytics: false, display_order: 0,
   });
   const { toast } = useToast();
 
