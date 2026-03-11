@@ -244,13 +244,14 @@ const ViewReport = () => {
         })()}
 
         {/* Remaining approver pages (2nd onward) */}
-        {Object.entries(resultsByApprover).slice(1).map(([approverKey, approverResults]) => {
+        {approverEntries.slice(1).map(([approverKey, approverResults], idx) => {
           const grouped = groupResults(approverResults);
           const approverName = approverKey === "_all" ? (extracted.pathologist_name || "") : approverKey;
           const pathologist = findPathologistSig(approverName);
           const signatureUrl = pathologist?.signature_image_path
             ? supabase.storage.from("signatures").getPublicUrl(pathologist.signature_image_path).data.publicUrl
             : null;
+          const pageNum = idx + 2;
 
           return (
             <div key={approverKey} className="report-page"
@@ -259,7 +260,6 @@ const ViewReport = () => {
               <ReportHeader extracted={extracted} />
 
               <div className="px-6 space-y-6">
-
                 <ReportResultsSection grouped={grouped} shouldShowProfile={shouldShowProfile} />
 
                 <ReportSignatureBlock
@@ -268,6 +268,9 @@ const ViewReport = () => {
                   qualification={pathologist?.qualification}
                   designation={pathologist?.designation}
                 />
+              </div>
+              <div className="page-number-footer" style={{ position: 'absolute', bottom: `${bottomMarginMm + 2}mm`, left: 0, right: 0, textAlign: 'center', fontSize: '9px', color: '#666' }}>
+                Page {pageNum} of {totalPages}
               </div>
             </div>
           );
