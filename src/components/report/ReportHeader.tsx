@@ -2,6 +2,22 @@ interface ReportHeaderProps {
   extracted: any;
 }
 
+const formatDateTimeTo12Hr = (dateStr: string | null | undefined): string => {
+  if (!dateStr) return "-";
+  // Replace 24hr time (HH:MM or HH:MM:SS) with 12hr format
+  const timeRegex = /(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(?:hrs?)?/i;
+  const match = dateStr.match(timeRegex);
+  if (!match) return dateStr;
+  
+  let hours = parseInt(match[1], 10);
+  const minutes = match[2];
+  const period = hours >= 12 ? "PM" : "AM";
+  hours = hours % 12 || 12;
+  const formattedTime = `${hours}:${minutes} ${period}`;
+  
+  return dateStr.replace(timeRegex, formattedTime);
+};
+
 const ReportHeader = ({ extracted }: ReportHeaderProps) => {
   return (
     <div className="border-b border-gray-300 pb-3 mb-4 px-6 text-black">
@@ -16,9 +32,9 @@ const ReportHeader = ({ extracted }: ReportHeaderProps) => {
         {/* Right Column */}
         <div className="grid gap-y-0.5" style={{ gridTemplateColumns: '150px 1fr' }}>
           <span className="font-semibold">Ref. Doctor</span><span>: {extracted.ref_doctor || "SELF"}</span>
-          <span className="font-semibold">Reg. Date</span><span>: {extracted.reg_date || "-"}</span>
-          <span className="font-semibold">Sample Coll. Date</span><span>: {extracted.sample_collection_date || extracted.collection_date || "-"}</span>
-          <span className="font-semibold">Authentication Date</span><span>: {extracted.authentication_date || "-"}</span>
+          <span className="font-semibold">Reg. Date</span><span>: {formatDateTimeTo12Hr(extracted.reg_date)}</span>
+          <span className="font-semibold">Sample Coll. Date</span><span>: {formatDateTimeTo12Hr(extracted.sample_collection_date || extracted.collection_date)}</span>
+          <span className="font-semibold">Authentication Date</span><span>: {formatDateTimeTo12Hr(extracted.authentication_date)}</span>
         </div>
       </div>
     </div>
