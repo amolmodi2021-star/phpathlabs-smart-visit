@@ -318,6 +318,13 @@ const ReviewReport = () => {
                 </SelectContent>
               </Select>
             </div>
+            <div><Label>Reg.No</Label><Input value={regNo} onChange={(e) => setRegNo(e.target.value)} /></div>
+            <div><Label>Reg.Date</Label><Input value={regDate} onChange={(e) => setRegDate(e.target.value)} /></div>
+            <div><Label>Sample Coll. Date</Label><Input value={sampleCollectionDate} onChange={(e) => setSampleCollectionDate(e.target.value)} /></div>
+            <div><Label>Accession Date</Label><Input value={accessionDate} onChange={(e) => setAccessionDate(e.target.value)} /></div>
+            <div><Label>Authentication Date</Label><Input value={authenticationDate} onChange={(e) => setAuthenticationDate(e.target.value)} /></div>
+            <div><Label>Print Date</Label><Input value={printDate} onChange={(e) => setPrintDate(e.target.value)} /></div>
+            <div><Label>Location</Label><Input value={locationField} onChange={(e) => setLocationField(e.target.value)} /></div>
           </div>
         </CardContent>
       </Card>
