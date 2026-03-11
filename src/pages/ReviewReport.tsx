@@ -356,9 +356,6 @@ const ReviewReport = () => {
           onOpenChange={(v) => { setAddParamDialogOpen(v); if (!v) setAddParamIndex(null); }}
           parameterName={testResults[addParamIndex]?.parameter_name || ""}
           unit={testResults[addParamIndex]?.unit}
-          normalRangeLow={testResults[addParamIndex]?.normal_range_low}
-          normalRangeHigh={testResults[addParamIndex]?.normal_range_high}
-          normalRangeText={testResults[addParamIndex]?.normal_range_text}
           department={testResults[addParamIndex]?.department}
           profileName={testResults[addParamIndex]?.profile_name}
           testName={testResults[addParamIndex]?.test_name}
