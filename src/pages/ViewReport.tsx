@@ -56,7 +56,6 @@ const ViewReport = () => {
     bottom_margin_cm: 1.5,
     letterhead_pdf_path: null,
   });
-  const [letterheadUrl, setLetterheadUrl] = useState<string | null>(null);
   const [letterheadImageUrl, setLetterheadImageUrl] = useState<string | null>(null);
 
   useEffect(() => { loadReport(); loadLayoutSettings(); }, [reportId]);
