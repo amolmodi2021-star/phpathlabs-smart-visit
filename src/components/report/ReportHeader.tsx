@@ -1,12 +1,10 @@
-import { supabase } from "@/integrations/supabase/client";
-
 interface ReportHeaderProps {
   extracted: any;
 }
 
 const ReportHeader = ({ extracted }: ReportHeaderProps) => {
   return (
-    <div className="border-b border-gray-300 pb-3 mb-4 px-6">
+    <div className="border-b border-border pb-3 mb-4 px-6">
       <div className="grid grid-cols-2 gap-4 text-sm">
         <div className="space-y-1">
           <p><span className="font-semibold">Patient Name:</span> {extracted.patient_name}</p>

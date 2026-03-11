@@ -5,11 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Printer, ArrowLeft } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import * as pdfjsLib from "pdfjs-dist";
 import ReportTrendCharts from "@/components/report/ReportTrendCharts";
 import ReportHeader from "@/components/report/ReportHeader";
 import ReportAbnormalSummary from "@/components/report/ReportAbnormalSummary";
 import ReportResultsSection from "@/components/report/ReportResultsSection";
 import ReportSignatureBlock from "@/components/report/ReportSignatureBlock";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs";
 
 interface TestResult {
   department?: string;
@@ -53,9 +56,26 @@ const ViewReport = () => {
     bottom_margin_cm: 1.5,
     letterhead_pdf_path: null,
   });
-  const [letterheadUrl, setLetterheadUrl] = useState<string | null>(null);
+  const [letterheadImageUrl, setLetterheadImageUrl] = useState<string | null>(null);
 
   useEffect(() => { loadReport(); loadLayoutSettings(); }, [reportId]);
+
+  const convertPdfToBackgroundImage = async (pdfUrl: string) => {
+    try {
+      const pdf = await pdfjsLib.getDocument(pdfUrl).promise;
+      const page = await pdf.getPage(1);
+      const viewport = page.getViewport({ scale: 2 });
+      const canvas = document.createElement("canvas");
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return null;
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      return canvas.toDataURL("image/png");
+    } catch {
+      return null;
+    }
+  };
 
   const loadLayoutSettings = async () => {
     const { data } = await supabase.from("report_layout_settings").select("*").limit(1).single();
@@ -67,7 +87,10 @@ const ViewReport = () => {
       });
       if (data.letterhead_pdf_path) {
         const { data: urlData } = supabase.storage.from("letterheads").getPublicUrl(data.letterhead_pdf_path);
-        setLetterheadUrl(urlData.publicUrl);
+        const backgroundImage = await convertPdfToBackgroundImage(urlData.publicUrl);
+        setLetterheadImageUrl(backgroundImage);
+      } else {
+        setLetterheadImageUrl(null);
       }
     }
   };
@@ -244,9 +267,9 @@ const ViewReport = () => {
             size: A4;
             margin: 0;
           }
-          ${showHeader && letterheadUrl ? `
+          ${showHeader && letterheadImageUrl ? `
           .report-page {
-            background-image: url("${letterheadUrl}");
+            background-image: url("${letterheadImageUrl}");
             background-size: 210mm 297mm;
             background-repeat: no-repeat;
             background-position: center;
@@ -260,8 +283,8 @@ const ViewReport = () => {
           box-sizing: border-box;
           position: relative;
           margin: 0 auto;
-          ${showHeader && letterheadUrl ? `
-          background-image: url("${letterheadUrl}");
+          ${showHeader && letterheadImageUrl ? `
+          background-image: url("${letterheadImageUrl}");
           background-size: 210mm 297mm;
           background-repeat: no-repeat;
           background-position: center;
