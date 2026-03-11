@@ -52,7 +52,7 @@ const ViewReport = () => {
 
     // Load trends for analytics parameters
     if (ext.umr_id) {
-      const results = (ext.test_results as TestResult[]) || [];
+      const results = (ext.test_results as unknown as TestResult[]) || [];
       const paramNames = results.map((r) => r.parameter_name);
       const { data: history } = await supabase.from("test_result_history")
         .select("*").eq("umr_id", ext.umr_id).in("parameter_name", paramNames)
