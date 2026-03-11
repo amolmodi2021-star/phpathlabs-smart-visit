@@ -186,6 +186,9 @@ const ViewReport = () => {
   const topMarginMm = layoutSettings.top_margin_cm * 10;
   const bottomMarginMm = layoutSettings.bottom_margin_cm * 10;
 
+  const approverEntries = Object.entries(resultsByApprover);
+  const totalPages = approverEntries.length + (trends.length > 0 ? 1 : 0);
+
   return (
     <div className="space-y-4 print:space-y-0">
       <div className="flex items-center gap-4 print:hidden flex-wrap">
@@ -224,7 +227,6 @@ const ViewReport = () => {
                   <ReportAbnormalSummary abnormalResults={allAbnormals} />
                 )}
 
-
                 <ReportResultsSection grouped={firstGrouped} shouldShowProfile={shouldShowProfile} />
 
                 <ReportSignatureBlock
@@ -234,18 +236,22 @@ const ViewReport = () => {
                   designation={firstPathologist?.designation}
                 />
               </div>
+              <div className="page-number-footer" style={{ position: 'absolute', bottom: `${bottomMarginMm + 2}mm`, left: 0, right: 0, textAlign: 'center', fontSize: '9px', color: '#666' }}>
+                Page 1 of {totalPages}
+              </div>
             </div>
           );
         })()}
 
         {/* Remaining approver pages (2nd onward) */}
-        {Object.entries(resultsByApprover).slice(1).map(([approverKey, approverResults]) => {
+        {approverEntries.slice(1).map(([approverKey, approverResults], idx) => {
           const grouped = groupResults(approverResults);
           const approverName = approverKey === "_all" ? (extracted.pathologist_name || "") : approverKey;
           const pathologist = findPathologistSig(approverName);
           const signatureUrl = pathologist?.signature_image_path
             ? supabase.storage.from("signatures").getPublicUrl(pathologist.signature_image_path).data.publicUrl
             : null;
+          const pageNum = idx + 2;
 
           return (
             <div key={approverKey} className="report-page"
@@ -254,7 +260,6 @@ const ViewReport = () => {
               <ReportHeader extracted={extracted} />
 
               <div className="px-6 space-y-6">
-
                 <ReportResultsSection grouped={grouped} shouldShowProfile={shouldShowProfile} />
 
                 <ReportSignatureBlock
@@ -264,6 +269,9 @@ const ViewReport = () => {
                   designation={pathologist?.designation}
                 />
               </div>
+              <div className="page-number-footer" style={{ position: 'absolute', bottom: `${bottomMarginMm + 2}mm`, left: 0, right: 0, textAlign: 'center', fontSize: '9px', color: '#666' }}>
+                Page {pageNum} of {totalPages}
+              </div>
             </div>
           );
         })}
@@ -272,6 +280,9 @@ const ViewReport = () => {
           <div className="report-page" style={{ paddingTop: `${topMarginMm}mm`, paddingBottom: `${bottomMarginMm}mm` }}>
             <div className="px-6">
               <ReportTrendCharts trends={trends} />
+            </div>
+            <div className="page-number-footer" style={{ position: 'absolute', bottom: `${bottomMarginMm + 2}mm`, left: 0, right: 0, textAlign: 'center', fontSize: '9px', color: '#666' }}>
+              Page {totalPages} of {totalPages}
             </div>
           </div>
         )}
