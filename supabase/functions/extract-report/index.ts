@@ -23,12 +23,20 @@ EXTRACTION RULES:
 1. Extract patient demographics: name, age, gender, UMR ID (if present), referring doctor, collection date, report date
 2. Extract additional registration info: Reg.No (Registration Number), Reg.Date (Registration Date), Sample Collection Date/Time, Accession Date, Authentication Date, Print Date, Location
 3. Extract ALL test results with: test/parameter name, result value, unit, reference/normal range
-4. Detect pathologist name from signature area or footer
+4. Detect ALL pathologist/doctor names from signature areas or footers - there may be MULTIPLE doctors who approved different sections of the report
 5. Clean numeric values: remove flags like H, L, *, etc. Keep the raw numeric value
 6. Parse ranges: "12-15" → low=12, high=15. "<200" → low=0, high=200. ">40" → low=40, high=null
 7. Identify department for each test (Biochemistry, Haematology, Immunology, Microbiology, etc.)
 8. Identify if tests belong to a profile (e.g., Lipid Profile, Liver Function Test, Renal Function Test, CBC, Thyroid Profile)
 9. For each result, determine if it's abnormal: H (high - result above normal_range_high), L (low - result below normal_range_low), or N (normal - within range)
+
+CRITICAL - MULTIPLE PATHOLOGISTS/DOCTORS:
+- A single report PDF may have MULTIPLE doctors/pathologists who have approved DIFFERENT test sections
+- Each doctor's name typically appears near a signature at the bottom of a section or page
+- For EACH test result, identify which doctor/pathologist approved it based on proximity to signatures
+- Set the "approved_by" field for each test result with the name of the approving doctor
+- If only one doctor is found, assign that doctor to all test results
+- Look for names near signatures, stamps, or "Verified by", "Approved by", "Authorized by", "Pathologist" labels
 
 CRITICAL - UMR ID RULES:
 - UMR ID is a UNIQUE MEDICAL RECORD number, typically starting with "UMR" followed by digits (e.g., UMR0001234)
@@ -87,7 +95,7 @@ MATCHING RULES:
           {
             role: "user",
             content: [
-              { type: "text", text: "Extract all patient information and test results from this pathology report. Return structured data." },
+              { type: "text", text: "Extract all patient information and test results from this pathology report. Pay special attention to identifying ALL approving doctors/pathologists and which tests each one approved. Return structured data." },
               ...imageContents,
             ],
           },
@@ -96,7 +104,7 @@ MATCHING RULES:
           type: "function",
           function: {
             name: "extract_report_data",
-            description: "Extract structured pathology report data",
+            description: "Extract structured pathology report data with per-test pathologist attribution",
             parameters: {
               type: "object",
               properties: {
@@ -136,11 +144,17 @@ MATCHING RULES:
                       normal_range_text: { type: "string", description: "Full range text as shown in report" },
                       flag: { type: "string", enum: ["H", "L", "N"] },
                       matched_parameter_id: { type: "string", description: "ID of matched parameter from our system" },
+                      approved_by: { type: "string", description: "Name of the doctor/pathologist who approved/verified this specific test result. Look for signatures near the test section. If multiple doctors exist in the report, assign the correct one based on proximity." },
                     },
                     required: ["parameter_name", "result_value"],
                   },
                 },
-                pathologist_name: { type: "string" },
+                pathologist_names: {
+                  type: "array",
+                  items: { type: "string" },
+                  description: "List of ALL pathologist/doctor names found in the report who have approved/signed any section. Include all unique names."
+                },
+                pathologist_name: { type: "string", description: "Primary pathologist name (for backward compatibility)" },
               },
               required: ["patient", "test_results"],
             },
