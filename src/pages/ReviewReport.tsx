@@ -498,60 +498,6 @@ const ReviewReport = () => {
           }}
         />
       )}
-
-      {/* Re-verify Results Dialog */}
-      <Dialog open={showReverifyDialog} onOpenChange={setShowReverifyDialog}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ShieldCheck className="h-5 w-5 text-primary" />
-              AI Re-verification Results
-            </DialogTitle>
-          </DialogHeader>
-          {reverifyResults && (
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">{reverifyResults.summary}</p>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Parameter</TableHead>
-                    <TableHead>Value</TableHead>
-                    <TableHead>Flag</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Comment</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {reverifyResults.verifications?.map((v: any, i: number) => (
-                    <TableRow key={i} className={!v.flag_correct ? "bg-amber-50" : ""}>
-                      <TableCell className="font-medium text-sm">{v.parameter_name}</TableCell>
-                      <TableCell className="text-sm">{v.result_value}</TableCell>
-                      <TableCell>
-                        {v.flag_correct ? (
-                          <Badge variant="secondary" className="text-xs">{v.original_flag} ✓</Badge>
-                        ) : (
-                          <Badge variant="destructive" className="text-xs">{v.original_flag} → {v.verified_flag}</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {v.plausible ? (
-                          <Badge className="bg-green-100 text-green-800 text-xs">Plausible</Badge>
-                        ) : (
-                          <Badge variant="destructive" className="text-xs">Check</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground max-w-[200px]">{v.comment}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-          <DialogFooter>
-            <Button onClick={() => setShowReverifyDialog(false)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };
