@@ -405,8 +405,8 @@ const ReviewReport = () => {
           profileName={testResults[addParamIndex]?.profile_name}
           testName={testResults[addParamIndex]?.test_name}
           onAdded={(id) => {
-            setTestResults((prev) => prev.map((r, i) => i === addParamIndex ? { ...r, matched_parameter_id: id } : r));
-            setMasterParams((prev) => new Set([...prev, testResults[addParamIndex].parameter_name.toLowerCase()]));
+            // Reload master data to get department/profile names for the newly added param
+            loadData();
             setAddParamIndex(null);
           }}
         />
