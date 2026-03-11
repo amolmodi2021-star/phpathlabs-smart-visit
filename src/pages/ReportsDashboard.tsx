@@ -32,9 +32,9 @@ const ReportsDashboard = () => {
   useEffect(() => { loadReports(); }, []);
 
   const filtered = reports.filter((r) =>
-    (r.file_name || "").toLowerCase().includes(search.toLowerCase()) ||
     (r.patient_name || "").toLowerCase().includes(search.toLowerCase()) ||
-    (r.umr_id || "").toLowerCase().includes(search.toLowerCase())
+    (r.umr_id || "").toLowerCase().includes(search.toLowerCase()) ||
+    ((r as any).reg_no || "").toLowerCase().includes(search.toLowerCase())
   );
 
   const stats = {
