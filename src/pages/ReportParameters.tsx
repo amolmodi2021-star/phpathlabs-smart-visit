@@ -72,9 +72,7 @@ const ReportParameters = () => {
     setForm({
       parameter_name: p.parameter_name, test_name: p.test_name || "",
       profile_id: p.profile_id || "", department_id: p.department_id || "",
-      unit: p.unit || "", normal_range_low: p.normal_range_low?.toString() || "",
-      normal_range_high: p.normal_range_high?.toString() || "",
-      normal_range_text: p.normal_range_text || "",
+      unit: p.unit || "",
       analyzer: p.analyzer || "", method: p.method || "",
       store_for_analytics: p.store_for_analytics || false, display_order: p.display_order || 0,
     });
