@@ -244,7 +244,7 @@ const ViewReport = () => {
             size: A4;
             margin: 0;
           }
-          ${letterheadUrl ? `
+          ${showHeader && letterheadUrl ? `
           .report-page {
             background-image: url("${letterheadUrl}");
             background-size: 210mm 297mm;
@@ -260,6 +260,12 @@ const ViewReport = () => {
           box-sizing: border-box;
           position: relative;
           margin: 0 auto;
+          ${showHeader && letterheadUrl ? `
+          background-image: url("${letterheadUrl}");
+          background-size: 210mm 297mm;
+          background-repeat: no-repeat;
+          background-position: center;
+          ` : ''}
         }
       `}</style>
     </div>
