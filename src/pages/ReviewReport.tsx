@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, Save, FileCheck, AlertTriangle, Trash2, Plus, Check } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import AddParameterToMasterDialog from "@/components/AddParameterToMasterDialog";
+import { computeAbnormalFlag, normalizeTestResultFlags } from "@/lib/reportFlags";
 
 interface TestResult {
   department?: string;
