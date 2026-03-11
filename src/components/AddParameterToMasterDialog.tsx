@@ -14,9 +14,6 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   parameterName: string;
   unit?: string;
-  normalRangeLow?: string;
-  normalRangeHigh?: string;
-  normalRangeText?: string;
   department?: string;
   profileName?: string;
   testName?: string;
@@ -24,7 +21,7 @@ interface Props {
 }
 
 export default function AddParameterToMasterDialog({
-  open, onOpenChange, parameterName, unit, normalRangeLow, normalRangeHigh, normalRangeText, department, profileName, testName, onAdded
+  open, onOpenChange, parameterName, unit, department, profileName, testName, onAdded
 }: Props) {
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
@@ -34,9 +31,6 @@ export default function AddParameterToMasterDialog({
   const [selectedProfileId, setSelectedProfileId] = useState("");
   const [paramName, setParamName] = useState(parameterName);
   const [paramUnit, setParamUnit] = useState(unit || "");
-  const [rangeLow, setRangeLow] = useState(normalRangeLow || "");
-  const [rangeHigh, setRangeHigh] = useState(normalRangeHigh || "");
-  const [rangeText, setRangeText] = useState(normalRangeText || "");
   const [paramTestName, setParamTestName] = useState(testName || "");
   const [storeAnalytics, setStoreAnalytics] = useState(false);
 
@@ -44,9 +38,6 @@ export default function AddParameterToMasterDialog({
     if (open) {
       setParamName(parameterName);
       setParamUnit(unit || "");
-      setRangeLow(normalRangeLow || "");
-      setRangeHigh(normalRangeHigh || "");
-      setRangeText(normalRangeText || "");
       setParamTestName(testName || "");
       setSelectedDeptId("");
       setSelectedProfileId("");
@@ -87,9 +78,6 @@ export default function AddParameterToMasterDialog({
       const { data, error } = await supabase.from("report_test_parameters").insert({
         parameter_name: paramName.trim(),
         unit: paramUnit || null,
-        normal_range_low: rangeLow ? parseFloat(rangeLow) : null,
-        normal_range_high: rangeHigh ? parseFloat(rangeHigh) : null,
-        normal_range_text: rangeText || null,
         test_name: paramTestName || null,
         department_id: selectedDeptId || null,
         profile_id: selectedProfileId || null,
@@ -125,20 +113,6 @@ export default function AddParameterToMasterDialog({
             <div>
               <Label>Unit</Label>
               <Input value={paramUnit} onChange={(e) => setParamUnit(e.target.value)} />
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <Label>Range Low</Label>
-              <Input value={rangeLow} onChange={(e) => setRangeLow(e.target.value)} type="number" />
-            </div>
-            <div>
-              <Label>Range High</Label>
-              <Input value={rangeHigh} onChange={(e) => setRangeHigh(e.target.value)} type="number" />
-            </div>
-            <div>
-              <Label>Range Text</Label>
-              <Input value={rangeText} onChange={(e) => setRangeText(e.target.value)} placeholder="e.g. 4.0-11.0" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">

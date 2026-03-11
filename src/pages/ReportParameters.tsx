@@ -22,8 +22,7 @@ const ReportParameters = () => {
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState({
     parameter_name: "", test_name: "", profile_id: "", department_id: "",
-    unit: "", normal_range_low: "", normal_range_high: "", normal_range_text: "",
-    analyzer: "", method: "", store_for_analytics: false, display_order: 0,
+    unit: "", analyzer: "", method: "", store_for_analytics: false, display_order: 0,
   });
   const { toast } = useToast();
 
@@ -53,8 +52,9 @@ const ReportParameters = () => {
       ...form,
       profile_id: form.profile_id || null,
       department_id: form.department_id || null,
-      normal_range_low: form.normal_range_low ? Number(form.normal_range_low) : null,
-      normal_range_high: form.normal_range_high ? Number(form.normal_range_high) : null,
+      normal_range_low: null,
+      normal_range_high: null,
+      normal_range_text: null,
     };
     if (editId) {
       await supabase.from("report_test_parameters").update(payload).eq("id", editId);
@@ -72,9 +72,7 @@ const ReportParameters = () => {
     setForm({
       parameter_name: p.parameter_name, test_name: p.test_name || "",
       profile_id: p.profile_id || "", department_id: p.department_id || "",
-      unit: p.unit || "", normal_range_low: p.normal_range_low?.toString() || "",
-      normal_range_high: p.normal_range_high?.toString() || "",
-      normal_range_text: p.normal_range_text || "",
+      unit: p.unit || "",
       analyzer: p.analyzer || "", method: p.method || "",
       store_for_analytics: p.store_for_analytics || false, display_order: p.display_order || 0,
     });
@@ -89,7 +87,7 @@ const ReportParameters = () => {
 
   const openNew = () => {
     setEditId(null);
-    setForm({ parameter_name: "", test_name: "", profile_id: "", department_id: "", unit: "", normal_range_low: "", normal_range_high: "", normal_range_text: "", analyzer: "", method: "", store_for_analytics: false, display_order: 0 });
+    setForm({ parameter_name: "", test_name: "", profile_id: "", department_id: "", unit: "", analyzer: "", method: "", store_for_analytics: false, display_order: 0 });
     setDialogOpen(true);
   };
 
@@ -116,7 +114,6 @@ const ReportParameters = () => {
                     <TableHead>Department</TableHead>
                     <TableHead>Profile</TableHead>
                     <TableHead>Unit</TableHead>
-                    <TableHead>Range</TableHead>
                     <TableHead>Analytics</TableHead>
                     <TableHead className="w-[80px]">Actions</TableHead>
                   </TableRow>
@@ -129,7 +126,6 @@ const ReportParameters = () => {
                       <TableCell>{p.report_departments?.department_name || "-"}</TableCell>
                       <TableCell>{p.report_profiles?.profile_name || "-"}</TableCell>
                       <TableCell>{p.unit || "-"}</TableCell>
-                      <TableCell className="text-sm">{p.normal_range_text || `${p.normal_range_low ?? ""} - ${p.normal_range_high ?? ""}`}</TableCell>
                       <TableCell>{p.store_for_analytics ? <Badge className="bg-green-100 text-green-800">YES</Badge> : <Badge variant="secondary">NO</Badge>}</TableCell>
                       <TableCell>
                         <div className="flex gap-1">
@@ -139,7 +135,7 @@ const ReportParameters = () => {
                       </TableCell>
                     </TableRow>
                   ))}
-                  {filtered.length === 0 && <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No parameters found</TableCell></TableRow>}
+                  {filtered.length === 0 && <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No parameters found</TableCell></TableRow>}
                 </TableBody>
               </Table>
             </div>
@@ -170,11 +166,6 @@ const ReportParameters = () => {
               </div>
             </div>
             <div><Label>Unit</Label><Input value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} /></div>
-            <div className="grid grid-cols-2 gap-4">
-              <div><Label>Normal Range Low</Label><Input type="number" value={form.normal_range_low} onChange={(e) => setForm({ ...form, normal_range_low: e.target.value })} /></div>
-              <div><Label>Normal Range High</Label><Input type="number" value={form.normal_range_high} onChange={(e) => setForm({ ...form, normal_range_high: e.target.value })} /></div>
-            </div>
-            <div><Label>Range Text (for display, e.g. "Negative")</Label><Input value={form.normal_range_text} onChange={(e) => setForm({ ...form, normal_range_text: e.target.value })} /></div>
             <div className="grid grid-cols-2 gap-4">
               <div><Label>Analyzer</Label><Input value={form.analyzer} onChange={(e) => setForm({ ...form, analyzer: e.target.value })} /></div>
               <div><Label>Method</Label><Input value={form.method} onChange={(e) => setForm({ ...form, method: e.target.value })} /></div>
