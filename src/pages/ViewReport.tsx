@@ -343,7 +343,7 @@ const ViewReport = () => {
           background-image: url("${letterheadImageUrl}");
           background-size: 210mm 297mm;
           background-repeat: no-repeat;
-          background-position: center;
+          background-position: top center;
           ` : ''}
         }
       `}</style>
