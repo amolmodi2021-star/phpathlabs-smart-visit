@@ -117,30 +117,30 @@ const UploadReport = () => {
       // Save extracted data
       const { error: saveError } = await supabase.from("extracted_report_data").insert({
         report_id: reportRow.id,
-        patient_name: data.patient?.name || "",
-        age: data.patient?.age || "",
-        gender: data.patient?.gender || "",
-        umr_id: data.patient?.umr_id || "",
-        ref_doctor: data.patient?.ref_doctor || "",
-        collection_date: data.patient?.collection_date || "",
-        report_date: data.patient?.report_date || "",
-        test_results: data.test_results || [],
-        pathologist_name: data.pathologist_name || "",
+        patient_name: mergedData.patient?.name || "",
+        age: mergedData.patient?.age || "",
+        gender: mergedData.patient?.gender || "",
+        umr_id: mergedData.patient?.umr_id || "",
+        ref_doctor: mergedData.patient?.ref_doctor || "",
+        collection_date: mergedData.patient?.collection_date || "",
+        report_date: mergedData.patient?.report_date || "",
+        test_results: mergedData.test_results || [],
+        pathologist_name: mergedData.pathologist_name || "",
       });
       if (saveError) throw saveError;
 
       // Save raw JSON
       await supabase.from("raw_report_data").insert({
         report_id: reportRow.id,
-        umr_id: data.patient?.umr_id || "",
-        raw_json: data,
+        umr_id: mergedData.patient?.umr_id || "",
+        raw_json: mergedData,
       });
 
       // Update report status
       await supabase.from("uploaded_reports").update({
         status: "Awaiting Review",
-        umr_id: data.patient?.umr_id || "",
-        patient_name: data.patient?.name || "",
+        umr_id: mergedData.patient?.umr_id || "",
+        patient_name: mergedData.patient?.name || "",
       }).eq("id", reportRow.id);
 
       setProgress(100);
