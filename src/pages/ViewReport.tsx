@@ -227,7 +227,6 @@ const ViewReport = () => {
                   <ReportAbnormalSummary abnormalResults={allAbnormals} />
                 )}
 
-
                 <ReportResultsSection grouped={firstGrouped} shouldShowProfile={shouldShowProfile} />
 
                 <ReportSignatureBlock
@@ -236,6 +235,9 @@ const ViewReport = () => {
                   qualification={firstPathologist?.qualification}
                   designation={firstPathologist?.designation}
                 />
+              </div>
+              <div className="page-number-footer" style={{ position: 'absolute', bottom: `${bottomMarginMm + 2}mm`, left: 0, right: 0, textAlign: 'center', fontSize: '9px', color: '#666' }}>
+                Page 1 of {totalPages}
               </div>
             </div>
           );
