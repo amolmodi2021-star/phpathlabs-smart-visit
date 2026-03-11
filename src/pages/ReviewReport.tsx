@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, Save, FileCheck, AlertTriangle, Trash2, Plus, Check } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import AddParameterToMasterDialog from "@/components/AddParameterToMasterDialog";
+import { computeAbnormalFlag, normalizeTestResultFlags } from "@/lib/reportFlags";
 
 interface TestResult {
   department?: string;
@@ -51,7 +52,7 @@ const ReviewReport = () => {
   const [masterParams, setMasterParams] = useState<Map<string, { department_name?: string; profile_name?: string }>>(new Map());
   const [addParamDialogOpen, setAddParamDialogOpen] = useState(false);
   const [addParamIndex, setAddParamIndex] = useState<number | null>(null);
-  const [missingDepartments, setMissingDepartments] = useState<number[]>([]);
+  
 
   useEffect(() => {
     loadData();
@@ -100,7 +101,7 @@ const ReviewReport = () => {
           profile_name: master ? master.profile_name : "",
         };
       });
-      setTestResults(calculateFlags(enrichedResults));
+      setTestResults(normalizeTestResultFlags(enrichedResults));
       if (!extracted.umr_id) setShowUmrDialog(true);
     }
     setPathologists(sigs || []);
@@ -114,21 +115,10 @@ const ReviewReport = () => {
   const updateTestResult = (index: number, field: keyof TestResult, value: string) => {
     setTestResults((prev) => {
       const updated = prev.map((r, i) => (i === index ? { ...r, [field]: value } : r));
-      // Recalculate flag when result or range fields change
-      if (field === "result_value" || field === "normal_range_low" || field === "normal_range_high") {
+      // Recalculate flag when result/range fields change
+      if (field === "result_value" || field === "normal_range_low" || field === "normal_range_high" || field === "normal_range_text") {
         const row = updated[index];
-        const val = parseFloat(row.result_value);
-        const low = parseFloat(row.normal_range_low || "");
-        const high = parseFloat(row.normal_range_high || "");
-        if (isNaN(val)) {
-          updated[index] = { ...row, flag: "N" };
-        } else if (!isNaN(high) && val > high) {
-          updated[index] = { ...row, flag: "H" };
-        } else if (!isNaN(low) && val < low) {
-          updated[index] = { ...row, flag: "L" };
-        } else {
-          updated[index] = { ...row, flag: "N" };
-        }
+        updated[index] = { ...row, flag: computeAbnormalFlag(row) };
       }
       return updated;
     });
@@ -139,15 +129,7 @@ const ReviewReport = () => {
   };
 
   const calculateFlags = (results: TestResult[]): TestResult[] => {
-    return results.map((r) => {
-      const val = parseFloat(r.result_value);
-      const low = parseFloat(r.normal_range_low || "");
-      const high = parseFloat(r.normal_range_high || "");
-      if (isNaN(val)) return { ...r, flag: "N" };
-      if (!isNaN(high) && val > high) return { ...r, flag: "H" };
-      if (!isNaN(low) && val < low) return { ...r, flag: "L" };
-      return { ...r, flag: "N" };
-    });
+    return normalizeTestResultFlags(results);
   };
 
   const handleSaveAndGenerate = async () => {
