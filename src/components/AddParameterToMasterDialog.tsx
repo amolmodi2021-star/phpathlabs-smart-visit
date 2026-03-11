@@ -31,9 +31,6 @@ export default function AddParameterToMasterDialog({
   const [selectedProfileId, setSelectedProfileId] = useState("");
   const [paramName, setParamName] = useState(parameterName);
   const [paramUnit, setParamUnit] = useState(unit || "");
-  const [rangeLow, setRangeLow] = useState(normalRangeLow || "");
-  const [rangeHigh, setRangeHigh] = useState(normalRangeHigh || "");
-  const [rangeText, setRangeText] = useState(normalRangeText || "");
   const [paramTestName, setParamTestName] = useState(testName || "");
   const [storeAnalytics, setStoreAnalytics] = useState(false);
 
