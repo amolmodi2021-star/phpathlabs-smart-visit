@@ -64,6 +64,7 @@ const ReviewReport = () => {
   const [addParamDialogOpen, setAddParamDialogOpen] = useState(false);
   const [addParamIndex, setAddParamIndex] = useState<number | null>(null);
   const [reverified, setReverified] = useState(false);
+  const [reverifying, setReverifying] = useState(false);
 
   useEffect(() => {
     loadData();
