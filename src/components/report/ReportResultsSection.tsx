@@ -62,29 +62,29 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact }: ReportRes
                       <div className="bg-blue-50 px-3 py-1 font-semibold text-sm text-blue-800 border-b">{profName}</div>
                     </>
                   )}
-                  {testGroups.map((group, gIdx) => (
-                    <div key={gIdx}>
-                      {hasMultipleTestNames && group.testName && (
-                        <div className={`px-3 font-semibold text-gray-700 bg-gray-50 border-b ${useCompact ? 'py-0.5 text-[10px]' : 'py-0.5 text-xs'}`}>
-                          {group.testName}
-                        </div>
-                      )}
-                      <table className={`w-full ${useCompact ? 'text-xs' : 'text-sm'}`}>
-                        {gIdx === 0 && (
-                          <thead>
-                            <tr className={`text-gray-500 border-b ${useCompact ? 'text-[10px]' : 'text-xs'}`}>
-                              <th className="text-left py-0.5 px-3 w-[38%]">Parameter</th>
-                              <th className="text-center py-0.5 w-[20%]">Result</th>
-                              <th className="text-center py-0.5 w-[12%]">Unit</th>
-                              <th className="text-center py-0.5 w-[30%]">Reference Range</th>
+                  <table className={`w-full ${useCompact ? 'text-xs' : 'text-sm'}`}>
+                    <thead>
+                      <tr className={`text-gray-500 border-b ${useCompact ? 'text-[10px]' : 'text-xs'}`}>
+                        <th className="text-left py-0.5 px-3 w-[38%]">Parameter</th>
+                        <th className="text-center py-0.5 w-[20%]">Result</th>
+                        <th className="text-center py-0.5 w-[12%]">Unit</th>
+                        <th className="text-center py-0.5 w-[30%]">Reference Range</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {testGroups.map((group, gIdx) => (
+                        <>
+                          {hasMultipleTestNames && group.testName && (
+                            <tr key={`header-${gIdx}`}>
+                              <td colSpan={4} className={`px-3 font-semibold text-gray-700 bg-gray-50 border-b ${useCompact ? 'py-0.5 text-[10px]' : 'py-0.5 text-xs'}`}>
+                                {group.testName}
+                              </td>
                             </tr>
-                          </thead>
-                        )}
-                        <tbody>
+                          )}
                           {group.params.map((r, i) => {
                             const isAbnormal = r.flag === "H" || r.flag === "L";
                             return (
-                              <tr key={i} className={`border-b border-gray-100 ${isAbnormal ? "bg-red-50" : ""}`} style={useCompact ? { lineHeight: '1.2' } : undefined}>
+                              <tr key={`${gIdx}-${i}`} className={`border-b border-gray-100 ${isAbnormal ? "bg-red-50" : ""}`} style={useCompact ? { lineHeight: '1.2' } : undefined}>
                                 <td className={`px-3 ${useCompact ? 'py-[2px]' : 'py-1'}`}>{r.parameter_name}</td>
                                 <td className={`text-center font-semibold ${useCompact ? 'py-[2px]' : 'py-1'} ${isAbnormal ? "text-red-600 font-bold" : ""}`}>
                                   {isAbnormal && <span className="bg-red-600 text-white px-1 py-0 rounded text-[8px] font-bold mr-1">{r.flag}</span>}
@@ -95,10 +95,10 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact }: ReportRes
                               </tr>
                             );
                           })}
-                        </tbody>
-                      </table>
-                    </div>
-                  ))}
+                        </>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               );
             })}
