@@ -252,7 +252,9 @@ const ViewReport = () => {
       Object.entries(profiles).forEach(([profName, params]) => {
         const showProf = profName !== "_individual" && shouldShowProfile(params);
         const testNameHeaders = countTestNameHeaders(params);
-        const heightMm = DEPT_HEADER_HEIGHT_MM + (showProf ? PROFILE_HEADER_HEIGHT_MM : 0) + TABLE_HEADER_HEIGHT_MM + params.length * ROW_HEIGHT_MM + testNameHeaders * TEST_NAME_HEADER_MM + PROFILE_GAP_MM;
+        const compact = isCompactProfile(profName) || isCompactProfile(dept);
+        const rowH = compact ? ROW_HEIGHT_COMPACT_MM : ROW_HEIGHT_MM;
+        const heightMm = DEPT_HEADER_HEIGHT_MM + (showProf ? PROFILE_HEADER_HEIGHT_MM : 0) + TABLE_HEADER_HEIGHT_MM + params.length * rowH + testNameHeaders * TEST_NAME_HEADER_MM + PROFILE_GAP_MM;
         sections.push({
           type: "department-profile",
           dept,
