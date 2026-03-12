@@ -14,6 +14,9 @@ import { Loader2, Save, FileCheck, AlertTriangle, Trash2, Plus, Check, ShieldChe
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import AddParameterToMasterDialog from "@/components/AddParameterToMasterDialog";
 import { computeAbnormalFlag, normalizeTestResultFlags } from "@/lib/reportFlags";
+import * as pdfjsLib from "pdfjs-dist";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs`;
 
 interface TestResult {
   department?: string;
