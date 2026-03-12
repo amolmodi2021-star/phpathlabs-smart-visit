@@ -154,22 +154,55 @@ const ViewReport = () => {
     const { data: ext } = await supabase.from("extracted_report_data").select("*").eq("report_id", reportId).single();
     if (!ext) { setLoading(false); return; }
 
-    // Enrich results with test_name from master parameters
+    // Enrich results with test_name from master parameters (with profile context)
     const results = (ext.test_results as unknown as TestResult[]) || [];
     const paramNames = results.map((r) => r.parameter_name);
     const { data: masterParams } = await supabase
       .from("report_test_parameters")
-      .select("parameter_name, test_name")
+      .select("parameter_name, test_name, report_profiles(profile_name)")
       .in("parameter_name", paramNames);
 
-    if (masterParams && masterParams.length > 0) {
-      const testNameMap: Record<string, string> = {};
-      masterParams.forEach((mp: any) => {
-        if (mp.test_name) testNameMap[mp.parameter_name] = mp.test_name;
+    // Also fetch with case-insensitive fallback for mismatched casing (e.g. pH vs PH)
+    const unmatchedNames = paramNames.filter(pn => 
+      !masterParams?.some(mp => mp.parameter_name === pn)
+    );
+    let allMasterParams = masterParams || [];
+    if (unmatchedNames.length > 0) {
+      const { data: fallbackParams } = await supabase
+        .from("report_test_parameters")
+        .select("parameter_name, test_name, report_profiles(profile_name)");
+      if (fallbackParams) {
+        const lowerMap = new Map<string, typeof fallbackParams[0]>();
+        fallbackParams.forEach(fp => {
+          lowerMap.set(fp.parameter_name.toLowerCase(), fp);
+        });
+        unmatchedNames.forEach(name => {
+          const match = lowerMap.get(name.toLowerCase());
+          if (match) allMasterParams.push({ ...match, parameter_name: name });
+        });
+      }
+    }
+
+    if (allMasterParams.length > 0) {
+      // Build profile-specific map: "ProfileName::ParamName" -> testName
+      const profileSpecificMap: Record<string, string> = {};
+      const genericMap: Record<string, string> = {};
+      allMasterParams.forEach((mp: any) => {
+        if (mp.test_name) {
+          genericMap[mp.parameter_name] = mp.test_name;
+          const profName = mp.report_profiles?.profile_name;
+          if (profName) {
+            profileSpecificMap[`${profName}::${mp.parameter_name}`] = mp.test_name;
+          }
+        }
       });
       results.forEach((r) => {
-        if (testNameMap[r.parameter_name]) {
-          r.test_name = testNameMap[r.parameter_name];
+        // Prefer profile-specific match to avoid cross-profile contamination
+        const profileKey = r.profile_name ? `${r.profile_name}::${r.parameter_name}` : null;
+        if (profileKey && profileSpecificMap[profileKey]) {
+          r.test_name = profileSpecificMap[profileKey];
+        } else if (genericMap[r.parameter_name]) {
+          r.test_name = genericMap[r.parameter_name];
         }
       });
       ext.test_results = results as any;
