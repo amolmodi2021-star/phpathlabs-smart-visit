@@ -31,6 +31,9 @@ interface TestResult {
   flag?: string;
   matched_parameter_id?: string;
   approved_by?: string;
+  source_page?: number;
+  confidence_score?: number;
+  extraction_basis?: string;
 }
 
 const ReviewReport = () => {
