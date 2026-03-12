@@ -716,7 +716,7 @@ const ReviewReport = () => {
           profileName={testResults[addParamIndex]?.profile_name}
           testName={testResults[addParamIndex]?.test_name}
           onAdded={(id) => {
-            loadData();
+            refreshMasterData();
             setAddParamIndex(null);
           }}
         />
