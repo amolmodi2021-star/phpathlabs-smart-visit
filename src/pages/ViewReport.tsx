@@ -262,7 +262,12 @@ const ViewReport = () => {
       if (!grouped[dept][prof]) grouped[dept][prof] = [];
       grouped[dept][prof].push(r);
     });
-    return grouped;
+    // Sort by department display_order
+    const sorted: Record<string, Record<string, TestResult[]>> = {};
+    Object.keys(grouped)
+      .sort((a, b) => (deptOrderMap[a] ?? 999) - (deptOrderMap[b] ?? 999))
+      .forEach(dept => { sorted[dept] = grouped[dept]; });
+    return sorted;
   };
 
   const shouldShowProfile = (params: TestResult[]) => params.length >= 2;
