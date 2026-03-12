@@ -31,6 +31,9 @@ interface TestResult {
   flag?: string;
   matched_parameter_id?: string;
   approved_by?: string;
+  source_page?: number;
+  confidence_score?: number;
+  extraction_basis?: string;
 }
 
 const ReviewReport = () => {
@@ -174,12 +177,53 @@ const ReviewReport = () => {
     });
   };
 
-  const convertPdfToImages = async (filePath: string): Promise<string[]> => {
+  const normalizeResultKey = (value: unknown) =>
+    String(value ?? "")
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const getResultKey = (row: Partial<TestResult>, index = 0) => {
+    const parameter = normalizeResultKey(row.parameter_name);
+    const testName = normalizeResultKey(row.test_name || row.parameter_name);
+    const sourcePage = Number(row.source_page) || 0;
+    return `${parameter || `row-${index}`}|${testName}|${sourcePage}`;
+  };
+
+  const extractPageTextLayer = async (page: any): Promise<string> => {
+    const textContent = await page.getTextContent();
+    const items = (textContent?.items || [])
+      .map((item: any) => ({
+        text: typeof item?.str === "string" ? item.str.trim() : "",
+        x: Number(item?.transform?.[4] ?? 0),
+        y: Number(item?.transform?.[5] ?? 0),
+      }))
+      .filter((item: any) => item.text);
+
+    if (!items.length) return "";
+
+    const rows = new Map<number, { x: number; text: string }[]>();
+
+    items.forEach((item: any) => {
+      const yBucket = Math.round(item.y / 2) * 2;
+      const current = rows.get(yBucket) || [];
+      current.push({ x: item.x, text: item.text });
+      rows.set(yBucket, current);
+    });
+
+    const rowText = Array.from(rows.entries())
+      .sort((a, b) => b[0] - a[0])
+      .map(([, rowItems]) => rowItems.sort((a, b) => a.x - b.x).map((item) => item.text).join(" | "));
+
+    return rowText.join("\n").slice(0, 22000);
+  };
+
+  const convertPdfToPages = async (filePath: string): Promise<Array<{ pageNumber: number; image: string; textLayer: string }>> => {
     const { data: fileData } = supabase.storage.from("report-uploads").getPublicUrl(filePath);
     const response = await fetch(fileData.publicUrl);
     const arrayBuffer = await response.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    const images: string[] = [];
+    const pages: Array<{ pageNumber: number; image: string; textLayer: string }> = [];
     const totalPages = pdf.numPages;
     const MAX_WIDTH = 1000;
     const MAX_HEIGHT = 1400;
@@ -194,15 +238,47 @@ const ReviewReport = () => {
       canvas.height = viewport.height;
       const ctx = canvas.getContext("2d")!;
       await page.render({ canvasContext: ctx, viewport }).promise;
-      images.push(canvas.toDataURL("image/jpeg", 0.45));
+
+      const textLayer = await extractPageTextLayer(page);
+      pages.push({
+        pageNumber: i,
+        image: canvas.toDataURL("image/jpeg", 0.45),
+        textLayer,
+      });
     }
-    return images;
+
+    return pages;
+  };
+
+  const buildPageBatches = (pages: Array<{ pageNumber: number; image: string; textLayer: string }>) => {
+    const MAX_BATCH_CHARS = 1_800_000;
+    const MAX_PAGES_PER_BATCH = 2;
+    const batches: Array<Array<{ pageNumber: number; image: string; textLayer: string }>> = [];
+    let currentBatch: Array<{ pageNumber: number; image: string; textLayer: string }> = [];
+    let currentChars = 0;
+
+    for (const page of pages) {
+      const payloadSize = page.image.length + page.textLayer.length;
+      if (
+        currentBatch.length > 0 &&
+        (currentChars + payloadSize > MAX_BATCH_CHARS || currentBatch.length >= MAX_PAGES_PER_BATCH)
+      ) {
+        batches.push(currentBatch);
+        currentBatch = [];
+        currentChars = 0;
+      }
+
+      currentBatch.push(page);
+      currentChars += payloadSize;
+    }
+
+    if (currentBatch.length > 0) batches.push(currentBatch);
+    return batches;
   };
 
   const handleReverifyAbnormals = async () => {
     setReverifying(true);
     try {
-      // Get the uploaded report's file path
       const { data: report } = await supabase
         .from("uploaded_reports")
         .select("file_path")
@@ -215,33 +291,41 @@ const ReviewReport = () => {
         return;
       }
 
-      // Re-render PDF to images
-      const pageImages = await convertPdfToImages(report.file_path);
-
-      // Send images + current results to AI for re-verification in batches
-      const MAX_BATCH_CHARS = 1_800_000;
-      const MAX_PAGES_PER_BATCH = 2;
-      const batches: string[][] = [];
-      let currentBatch: string[] = [];
-      let currentBatchChars = 0;
-
-      for (const img of pageImages) {
-        if (currentBatch.length > 0 && (currentBatchChars + img.length > MAX_BATCH_CHARS || currentBatch.length >= MAX_PAGES_PER_BATCH)) {
-          batches.push(currentBatch);
-          currentBatch = [];
-          currentBatchChars = 0;
-        }
-        currentBatch.push(img);
-        currentBatchChars += img.length;
-      }
-      if (currentBatch.length > 0) batches.push(currentBatch);
-
-      // Call reverify for each batch and merge results
+      const pages = await convertPdfToPages(report.file_path);
+      const batches = buildPageBatches(pages);
+      const sentKeys = new Set<string>();
       let allVerified: any[] = [];
-      for (const batch of batches) {
-        const { data, error } = await supabase.functions.invoke("reverify-abnormals", {
-          body: { pageImages: batch, testResults },
+
+      for (let i = 0; i < batches.length; i++) {
+        const batch = batches[i];
+        const pageNumbers = batch.map((p) => p.pageNumber);
+
+        const scopedRows = testResults.filter((row) => {
+          const key = getResultKey(row);
+          if (sentKeys.has(key)) return false;
+
+          const sourcePage = Number(row.source_page);
+          if (Number.isFinite(sourcePage) && sourcePage > 0) {
+            return pageNumbers.includes(sourcePage);
+          }
+
+          return i === 0;
         });
+
+        if (!scopedRows.length) continue;
+
+        scopedRows.forEach((row) => sentKeys.add(getResultKey(row)));
+
+        const { data, error } = await supabase.functions.invoke("reverify-abnormals", {
+          body: {
+            pageImages: batch.map((p) => p.image),
+            pageTexts: batch.map((p) => p.textLayer),
+            pageNumbers,
+            testResults: scopedRows,
+            strictMode: true,
+          },
+        });
+
         if (error) throw error;
         if (data?.verified_results) {
           allVerified = [...allVerified, ...data.verified_results];
@@ -249,36 +333,36 @@ const ReviewReport = () => {
       }
 
       if (allVerified.length > 0) {
-        // Match verified results back to current test results by parameter_name
         const verifiedMap = new Map<string, any>();
-        allVerified.forEach((v: any) => {
-          const key = v.parameter_name?.toLowerCase();
-          if (key) verifiedMap.set(key, v);
+        allVerified.forEach((row: any) => {
+          verifiedMap.set(getResultKey(row), row);
         });
 
-        const corrected = testResults.map((r) => {
-          const v = verifiedMap.get(r.parameter_name.toLowerCase());
-          if (!v) return r;
+        const corrected = testResults.map((row) => {
+          const verified = verifiedMap.get(getResultKey(row));
+          if (!verified) return row;
+
           return {
-            ...r,
-            result_value: v.result_value ?? r.result_value,
-            unit: v.unit ?? r.unit,
-            normal_range_text: v.normal_range_text ?? r.normal_range_text,
-            normal_range_low: v.normal_range_low ?? r.normal_range_low,
-            normal_range_high: v.normal_range_high ?? r.normal_range_high,
+            ...row,
+            parameter_name: verified.parameter_name ?? row.parameter_name,
+            result_value: verified.result_value ?? row.result_value,
+            unit: verified.unit ?? row.unit,
+            normal_range_text: verified.normal_range_text ?? row.normal_range_text,
+            normal_range_low: verified.normal_range_low ?? row.normal_range_low,
+            normal_range_high: verified.normal_range_high ?? row.normal_range_high,
+            source_page: verified.source_page ?? row.source_page,
+            confidence_score: verified.confidence_score ?? row.confidence_score,
           };
         });
 
-        // Re-compute flags after correction
         const recalculated = normalizeTestResultFlags(corrected);
         setTestResults(recalculated);
         const abnormalCount = recalculated.filter((r) => r.flag === "H" || r.flag === "L").length;
-        toast({ title: "Re-verification complete", description: `${allVerified.length} parameters verified from PDF. ${abnormalCount} abnormal result(s) confirmed.` });
+        toast({ title: "Re-verification complete", description: `${allVerified.length} parameters rechecked from matching pages. ${abnormalCount} abnormal result(s) confirmed.` });
       } else {
-        // Fallback: just recalculate flags locally
         const recalculated = normalizeTestResultFlags(testResults);
         setTestResults(recalculated);
-        toast({ title: "Re-verification complete", description: "Flags recalculated." });
+        toast({ title: "Re-verification complete", description: "No corrections were needed." });
       }
 
       setReverified(true);

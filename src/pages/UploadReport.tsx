@@ -11,6 +11,94 @@ import { normalizeTestResultFlags } from "@/lib/reportFlags";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs`;
 
+const MAX_BATCH_CHARS = 1_800_000;
+const MAX_PAGES_PER_BATCH = 2;
+const LOW_CONFIDENCE_THRESHOLD = 88;
+
+interface PdfPagePayload {
+  pageNumber: number;
+  image: string;
+  textLayer: string;
+}
+
+const normalizeKeyText = (value: unknown) =>
+  String(value ?? "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+
+const getResultKey = (row: any, index = 0) => {
+  const parameter = normalizeKeyText(row?.parameter_name);
+  const testName = normalizeKeyText(row?.test_name || row?.parameter_name);
+  const sourcePage = Number(row?.source_page) || 0;
+  return `${parameter || `row-${index}`}|${testName}|${sourcePage}`;
+};
+
+const dedupeByConfidence = (rows: any[]) => {
+  const deduped = new Map<string, any>();
+
+  rows.forEach((row, index) => {
+    const key = getResultKey(row, index);
+    const nextScore = Number(row?.confidence_score ?? 0);
+    const current = deduped.get(key);
+    const currentScore = Number(current?.confidence_score ?? -1);
+
+    if (!current || nextScore >= currentScore) {
+      deduped.set(key, row);
+    }
+  });
+
+  return Array.from(deduped.values());
+};
+
+const hasMeaningfulRange = (row: any) => {
+  const rangeText = String(row?.normal_range_text ?? "").trim();
+  const low = String(row?.normal_range_low ?? "").trim();
+  const high = String(row?.normal_range_high ?? "").trim();
+  return Boolean(rangeText || low || high);
+};
+
+const isLowConfidenceResult = (row: any) => {
+  const score = Number(row?.confidence_score ?? 0);
+  const resultText = String(row?.result_value ?? "").trim();
+  const normalizedResult = resultText.replace(/[<>=,%\s]/g, "");
+  const isNumeric = normalizedResult.length > 0 && !Number.isNaN(Number(normalizedResult));
+  const isAllowedText = /^(positive|negative|reactive|non reactive|non-reactive|detected|not detected|present|absent|trace|nil)$/i.test(resultText);
+
+  return (
+    score < LOW_CONFIDENCE_THRESHOLD ||
+    !String(row?.parameter_name ?? "").trim() ||
+    !resultText ||
+    (!isNumeric && !isAllowedText) ||
+    !hasMeaningfulRange(row)
+  );
+};
+
+const buildPageBatches = (pages: PdfPagePayload[]) => {
+  const batches: PdfPagePayload[][] = [];
+  let currentBatch: PdfPagePayload[] = [];
+  let currentBatchChars = 0;
+
+  for (const page of pages) {
+    const payloadSize = page.image.length + page.textLayer.length;
+    const shouldFlush =
+      currentBatch.length > 0 &&
+      (currentBatchChars + payloadSize > MAX_BATCH_CHARS || currentBatch.length >= MAX_PAGES_PER_BATCH);
+
+    if (shouldFlush) {
+      batches.push(currentBatch);
+      currentBatch = [];
+      currentBatchChars = 0;
+    }
+
+    currentBatch.push(page);
+    currentBatchChars += payloadSize;
+  }
+
+  if (currentBatch.length > 0) batches.push(currentBatch);
+  return batches;
+};
+
 const UploadReport = () => {
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<"idle" | "uploading" | "extracting" | "done" | "error">("idle");
@@ -31,10 +119,38 @@ const UploadReport = () => {
     if (f) setFile(f);
   };
 
-  const convertPdfToImages = async (file: File): Promise<string[]> => {
-    const arrayBuffer = await file.arrayBuffer();
+  const extractPageTextLayer = async (page: any): Promise<string> => {
+    const textContent = await page.getTextContent();
+    const items = (textContent?.items || [])
+      .map((item: any) => ({
+        text: typeof item?.str === "string" ? item.str.trim() : "",
+        x: Number(item?.transform?.[4] ?? 0),
+        y: Number(item?.transform?.[5] ?? 0),
+      }))
+      .filter((item: any) => item.text);
+
+    if (!items.length) return "";
+
+    const rows = new Map<number, { x: number; text: string }[]>();
+
+    items.forEach((item: any) => {
+      const yBucket = Math.round(item.y / 2) * 2;
+      const existing = rows.get(yBucket) || [];
+      existing.push({ x: item.x, text: item.text });
+      rows.set(yBucket, existing);
+    });
+
+    const mergedRows = Array.from(rows.entries())
+      .sort((a, b) => b[0] - a[0])
+      .map(([, rowItems]) => rowItems.sort((a, b) => a.x - b.x).map((r) => r.text).join(" | "));
+
+    return mergedRows.join("\n").slice(0, 22000);
+  };
+
+  const convertPdfToPages = async (selectedFile: File): Promise<PdfPagePayload[]> => {
+    const arrayBuffer = await selectedFile.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    const images: string[] = [];
+    const pages: PdfPagePayload[] = [];
     const totalPages = pdf.numPages;
     const MAX_WIDTH = 1000;
     const MAX_HEIGHT = 1400;
@@ -49,10 +165,104 @@ const UploadReport = () => {
       canvas.height = viewport.height;
       const ctx = canvas.getContext("2d")!;
       await page.render({ canvasContext: ctx, viewport }).promise;
-      images.push(canvas.toDataURL("image/jpeg", 0.45));
-      setProgress(Math.round((i / totalPages) * 40));
+
+      const textLayer = await extractPageTextLayer(page);
+
+      pages.push({
+        pageNumber: i,
+        image: canvas.toDataURL("image/jpeg", 0.45),
+        textLayer,
+      });
+
+      setProgress(Math.round((i / totalPages) * 35));
     }
-    return images;
+
+    return pages;
+  };
+
+  const mergeVerifiedIntoResults = (rows: any[], verifiedRows: any[], forceApply = false) => {
+    const verifiedMap = new Map<string, any>();
+
+    verifiedRows.forEach((row: any) => {
+      verifiedMap.set(getResultKey(row), row);
+    });
+
+    return rows.map((row: any) => {
+      const verified = verifiedMap.get(getResultKey(row));
+      if (!verified) return row;
+
+      const currentScore = Number(row?.confidence_score ?? 0);
+      const verifiedScore = Number(verified?.confidence_score ?? 0);
+      const shouldApply = forceApply || !String(row?.result_value ?? "").trim() || verifiedScore >= currentScore;
+
+      if (!shouldApply) return row;
+
+      return {
+        ...row,
+        parameter_name: verified.parameter_name ?? row.parameter_name,
+        result_value: verified.result_value ?? row.result_value,
+        unit: verified.unit ?? row.unit,
+        normal_range_text: verified.normal_range_text ?? row.normal_range_text,
+        normal_range_low: verified.normal_range_low ?? row.normal_range_low,
+        normal_range_high: verified.normal_range_high ?? row.normal_range_high,
+        source_page: verified.source_page ?? row.source_page,
+        confidence_score: verified.confidence_score ?? row.confidence_score,
+      };
+    });
+  };
+
+  const runReverificationPass = async (
+    pages: PdfPagePayload[],
+    candidateRows: any[],
+    strictMode: boolean,
+    progressStart: number,
+    progressEnd: number
+  ) => {
+    if (!candidateRows.length) return [];
+
+    const batches = buildPageBatches(pages);
+    const sentKeys = new Set<string>();
+    let allVerified: any[] = [];
+
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i];
+      const pageNumbers = batch.map((p) => p.pageNumber);
+
+      const scopedRows = candidateRows.filter((row: any) => {
+        const key = getResultKey(row);
+        if (sentKeys.has(key)) return false;
+
+        const sourcePage = Number(row?.source_page);
+        if (Number.isFinite(sourcePage) && sourcePage > 0) {
+          return pageNumbers.includes(sourcePage);
+        }
+
+        return i === 0;
+      });
+
+      if (!scopedRows.length) continue;
+
+      scopedRows.forEach((row) => sentKeys.add(getResultKey(row)));
+
+      const { data, error } = await supabase.functions.invoke("reverify-abnormals", {
+        body: {
+          pageImages: batch.map((p) => p.image),
+          pageTexts: batch.map((p) => p.textLayer),
+          pageNumbers,
+          testResults: scopedRows,
+          strictMode,
+        },
+      });
+
+      if (!error && data?.verified_results) {
+        allVerified = [...allVerified, ...data.verified_results];
+      }
+
+      const progressRange = progressEnd - progressStart;
+      setProgress(progressStart + Math.round(((i + 1) / batches.length) * progressRange));
+    }
+
+    return dedupeByConfidence(allVerified);
   };
 
   const handleUpload = async () => {
@@ -62,13 +272,11 @@ const UploadReport = () => {
     setErrorMsg("");
 
     try {
-      // Upload file to storage
       const filePath = `reports/${Date.now()}_${file.name}`;
       const { error: uploadError } = await supabase.storage.from("report-uploads").upload(filePath, file);
       if (uploadError) throw uploadError;
       setProgress(10);
 
-      // Create DB entry
       const { data: reportRow, error: dbError } = await supabase
         .from("uploaded_reports")
         .insert({ file_path: filePath, file_name: file.name, status: "Processing" })
@@ -77,13 +285,16 @@ const UploadReport = () => {
       if (dbError) throw dbError;
       setProgress(15);
 
-      // Convert PDF to images
       setStatus("extracting");
-      const pageImages = await convertPdfToImages(file);
-      setProgress(50);
+      const pages = await convertPdfToPages(file);
+      const pageImages = pages.map((p) => p.image);
+      if (!pageImages.length) throw new Error("No readable pages found in PDF");
+      setProgress(45);
 
-      // Fetch test parameters for matching
-      const { data: params } = await supabase.from("report_test_parameters").select("id, parameter_name, unit, normal_range_low, normal_range_high, report_departments(department_name), report_profiles(profile_name)");
+      const { data: params } = await supabase
+        .from("report_test_parameters")
+        .select("id, parameter_name, unit, normal_range_low, normal_range_high, report_departments(department_name), report_profiles(profile_name)");
+
       const testParameters = (params || []).map((p: any) => ({
         id: p.id,
         parameter_name: p.parameter_name,
@@ -93,46 +304,28 @@ const UploadReport = () => {
         department: p.report_departments?.department_name || "",
         profile: p.report_profiles?.profile_name || "",
       }));
-      setProgress(55);
+      setProgress(50);
 
-      // Call AI extraction in payload-safe batches with retry
-      const MAX_BATCH_CHARS = 1_800_000;
-      const MAX_PAGES_PER_BATCH = 2;
-      const batches: string[][] = [];
-      let currentBatch: string[] = [];
-      let currentBatchChars = 0;
+      const extractionBatches = buildPageBatches(pages);
 
-      for (const img of pageImages) {
-        const imgChars = img.length;
-        const shouldFlush =
-          currentBatch.length > 0 &&
-          (currentBatchChars + imgChars > MAX_BATCH_CHARS ||
-            currentBatch.length >= MAX_PAGES_PER_BATCH);
-
-        if (shouldFlush) {
-          batches.push(currentBatch);
-          currentBatch = [];
-          currentBatchChars = 0;
-        }
-
-        currentBatch.push(img);
-        currentBatchChars += imgChars;
-      }
-
-      if (currentBatch.length > 0) batches.push(currentBatch);
-      if (batches.length === 0) throw new Error("No readable pages found in PDF");
-
-      const invokeExtractBatch = async (batchImages: string[]) => {
+      const invokeExtractBatch = async (batchPages: PdfPagePayload[]) => {
         let lastError: any;
+
         for (let attempt = 0; attempt < 3; attempt++) {
           const { data, error } = await supabase.functions.invoke("extract-report", {
-            body: { pageImages: batchImages, testParameters },
+            body: {
+              pageImages: batchPages.map((p) => p.image),
+              pageTexts: batchPages.map((p) => p.textLayer),
+              pageNumbers: batchPages.map((p) => p.pageNumber),
+              testParameters,
+            },
           });
 
           if (!error) return data;
           lastError = error;
           await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
         }
+
         throw lastError;
       };
 
@@ -141,29 +334,27 @@ const UploadReport = () => {
       let pathologistName = "";
       let allPathologistNames: string[] = [];
 
-      for (let i = 0; i < batches.length; i++) {
-        const data = await invokeExtractBatch(batches[i]);
-        if (data.patient?.name) patientData = { ...patientData, ...data.patient };
-        if (data.pathologist_name) pathologistName = data.pathologist_name;
-        if (data.pathologist_names) {
-          allPathologistNames = [...allPathologistNames, ...data.pathologist_names];
-        }
-        if (data.test_results) allTestResults = [...allTestResults, ...data.test_results];
-        setProgress(55 + Math.round(((i + 1) / batches.length) * 30));
+      for (let i = 0; i < extractionBatches.length; i++) {
+        const data = await invokeExtractBatch(extractionBatches[i]);
+
+        if (data?.patient?.name) patientData = { ...patientData, ...data.patient };
+        if (data?.pathologist_name) pathologistName = data.pathologist_name;
+        if (Array.isArray(data?.pathologist_names)) allPathologistNames = [...allPathologistNames, ...data.pathologist_names];
+        if (Array.isArray(data?.test_results)) allTestResults = [...allTestResults, ...data.test_results];
+
+        setProgress(50 + Math.round(((i + 1) / extractionBatches.length) * 30));
       }
 
-      // Deduplicate pathologist names
-      const uniquePathologists = [...new Set(allPathologistNames.filter(Boolean))];
+      allTestResults = dedupeByConfidence(allTestResults);
 
-      // If no per-test approved_by was set but we have a single pathologist, assign it
+      const uniquePathologists = [...new Set(allPathologistNames.filter(Boolean))];
       if (uniquePathologists.length <= 1 && pathologistName) {
-        allTestResults = allTestResults.map(r => ({
-          ...r,
-          approved_by: r.approved_by || pathologistName,
+        allTestResults = allTestResults.map((result: any) => ({
+          ...result,
+          approved_by: result.approved_by || pathologistName,
         }));
       }
 
-      // Apply fallback logic for collection_date and report_date
       if (!patientData.collection_date && patientData.sample_collection_date) {
         patientData.collection_date = patientData.sample_collection_date;
       }
@@ -172,60 +363,25 @@ const UploadReport = () => {
       }
 
       let finalTestResults = normalizeTestResultFlags(allTestResults);
-      setProgress(85);
+      setProgress(84);
 
-      // === AUTOMATIC OCR RE-VERIFICATION PASS ===
-      // Re-read the PDF with a second AI call to cross-check all extracted values
       try {
-        setStatus("extracting"); // keep showing extracting status
-        const reverifyBatches: string[][] = [];
-        let rvBatch: string[] = [];
-        let rvBatchChars = 0;
-        for (const img of pageImages) {
-          if (rvBatch.length > 0 && (rvBatchChars + img.length > MAX_BATCH_CHARS || rvBatch.length >= MAX_PAGES_PER_BATCH)) {
-            reverifyBatches.push(rvBatch);
-            rvBatch = [];
-            rvBatchChars = 0;
-          }
-          rvBatch.push(img);
-          rvBatchChars += img.length;
-        }
-        if (rvBatch.length > 0) reverifyBatches.push(rvBatch);
+        const initialLowConfidence = finalTestResults.filter(isLowConfidenceResult);
 
-        let allVerified: any[] = [];
-        for (let i = 0; i < reverifyBatches.length; i++) {
-          const { data: rvData, error: rvError } = await supabase.functions.invoke("reverify-abnormals", {
-            body: { pageImages: reverifyBatches[i], testResults: finalTestResults },
-          });
-          if (!rvError && rvData?.verified_results) {
-            allVerified = [...allVerified, ...rvData.verified_results];
-          }
-          setProgress(85 + Math.round(((i + 1) / reverifyBatches.length) * 10));
-        }
-
-        if (allVerified.length > 0) {
-          const verifiedMap = new Map<string, any>();
-          allVerified.forEach((v: any) => {
-            const key = v.parameter_name?.toLowerCase();
-            if (key) verifiedMap.set(key, v);
-          });
-
-          finalTestResults = finalTestResults.map((r: any) => {
-            const v = verifiedMap.get(r.parameter_name?.toLowerCase());
-            if (!v) return r;
-            return {
-              ...r,
-              result_value: v.result_value ?? r.result_value,
-              unit: v.unit ?? r.unit,
-              normal_range_text: v.normal_range_text ?? r.normal_range_text,
-              normal_range_low: v.normal_range_low ?? r.normal_range_low,
-              normal_range_high: v.normal_range_high ?? r.normal_range_high,
-            };
-          });
+        if (initialLowConfidence.length > 0) {
+          const verifiedPass = await runReverificationPass(pages, initialLowConfidence, false, 85, 92);
+          finalTestResults = mergeVerifiedIntoResults(finalTestResults, verifiedPass);
           finalTestResults = normalizeTestResultFlags(finalTestResults);
+
+          const remainingLowConfidence = finalTestResults.filter(isLowConfidenceResult);
+          if (remainingLowConfidence.length > 2) {
+            const strictVerifiedPass = await runReverificationPass(pages, remainingLowConfidence, true, 92, 96);
+            finalTestResults = mergeVerifiedIntoResults(finalTestResults, strictVerifiedPass, true);
+            finalTestResults = normalizeTestResultFlags(finalTestResults);
+          }
         }
-      } catch (rvErr) {
-        console.warn("Auto re-verification failed, proceeding with initial extraction:", rvErr);
+      } catch (reverifyError) {
+        console.warn("Auto re-verification failed, proceeding with best extracted data:", reverifyError);
       }
 
       const mergedData = {
@@ -233,9 +389,9 @@ const UploadReport = () => {
         test_results: finalTestResults,
         pathologist_name: uniquePathologists.join(", ") || pathologistName,
       };
-      setProgress(95);
 
-      // Save extracted data
+      setProgress(97);
+
       const { error: saveError } = await supabase.from("extracted_report_data").insert({
         report_id: reportRow.id,
         patient_name: mergedData.patient?.name || "",
@@ -257,21 +413,22 @@ const UploadReport = () => {
       } as any);
       if (saveError) throw saveError;
 
-      // Save raw JSON
       await supabase.from("raw_report_data").insert({
         report_id: reportRow.id,
         umr_id: mergedData.patient?.umr_id || "",
         raw_json: mergedData,
       });
 
-      // Update report status
-      await supabase.from("uploaded_reports").update({
-        status: "Awaiting Review",
-        umr_id: mergedData.patient?.umr_id || "",
-        patient_name: mergedData.patient?.name || "",
-        reg_no: mergedData.patient?.reg_no || "",
-        reg_date: mergedData.patient?.reg_date || "",
-      } as any).eq("id", reportRow.id);
+      await supabase
+        .from("uploaded_reports")
+        .update({
+          status: "Awaiting Review",
+          umr_id: mergedData.patient?.umr_id || "",
+          patient_name: mergedData.patient?.name || "",
+          reg_no: mergedData.patient?.reg_no || "",
+          reg_date: mergedData.patient?.reg_date || "",
+        } as any)
+        .eq("id", reportRow.id);
 
       setProgress(100);
       setStatus("done");
@@ -327,7 +484,7 @@ const UploadReport = () => {
               <div className="flex items-center gap-3 justify-center">
                 <Loader2 className="h-6 w-6 animate-spin text-primary" />
                 <span className="font-medium">
-                  {status === "uploading" ? "Uploading report..." : "AI is extracting data..."}
+                  {status === "uploading" ? "Uploading report..." : "AI is extracting and validating data..."}
                 </span>
               </div>
               <Progress value={progress} className="h-3" />
