@@ -50,18 +50,20 @@ interface PageSection {
   results?: TestResult[];
   abnormals?: TestResult[];
   estimatedHeightMm: number;
+  isAbnormalOnly?: boolean;
 }
 
-const HEADER_HEIGHT_MM = 32; // patient details header
-const SIGNATURE_HEIGHT_MM = 28; // signature block
+const HEADER_HEIGHT_MM = 32;
+const SIGNATURE_HEIGHT_MM = 18; // reduced signature block
 const PAGE_NUM_HEIGHT_MM = 8;
 const DEPT_HEADER_HEIGHT_MM = 8;
 const PROFILE_HEADER_HEIGHT_MM = 6;
 const TABLE_HEADER_HEIGHT_MM = 6;
-const ROW_HEIGHT_MM = 5.5;
-const PROFILE_GAP_MM = 3;
-const ABNORMAL_SUMMARY_BASE_MM = 16;
-const ABNORMAL_ROW_MM = 5;
+const ROW_HEIGHT_MM = 5;
+const PROFILE_GAP_MM = 2;
+const ABNORMAL_SUMMARY_BASE_MM = 14;
+const ABNORMAL_ROW_MM = 4.5;
+const TEST_NAME_HEADER_MM = 4;
 
 const ViewReport = () => {
   const { reportId } = useParams();
@@ -209,6 +211,12 @@ const ViewReport = () => {
   const PAGE_HEIGHT_MM = 297;
   const usableHeight = PAGE_HEIGHT_MM - topMarginMm - bottomMarginMm - HEADER_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM;
 
+  // Count unique test_names in params for height estimation
+  const countTestNameHeaders = (params: TestResult[]): number => {
+    const testNames = new Set(params.map(r => r.test_name).filter(Boolean));
+    return testNames.size > 1 ? testNames.size : (testNames.size === 1 ? 1 : 0);
+  };
+
   // Build sections for each approver group
   const buildSections = (approverResults: TestResult[], includeAbnormalSummary: boolean): PageSection[] => {
     const sections: PageSection[] = [];
@@ -216,11 +224,19 @@ const ViewReport = () => {
     if (includeAbnormalSummary) {
       const allAbnormals = results.filter(r => r.flag === "H" || r.flag === "L");
       if (allAbnormals.length > 0) {
-        sections.push({
-          type: "abnormal-summary",
-          abnormals: allAbnormals,
-          estimatedHeightMm: ABNORMAL_SUMMARY_BASE_MM + allAbnormals.length * ABNORMAL_ROW_MM,
-        });
+        // Split abnormal summary into chunks that fit on pages (no signature needed)
+        const abnormalUsableHeight = PAGE_HEIGHT_MM - topMarginMm - bottomMarginMm - HEADER_HEIGHT_MM - PAGE_NUM_HEIGHT_MM;
+        const maxRowsPerPage = Math.floor((abnormalUsableHeight - ABNORMAL_SUMMARY_BASE_MM) / ABNORMAL_ROW_MM);
+        
+        for (let i = 0; i < allAbnormals.length; i += maxRowsPerPage) {
+          const chunk = allAbnormals.slice(i, i + maxRowsPerPage);
+          sections.push({
+            type: "abnormal-summary",
+            abnormals: chunk,
+            estimatedHeightMm: ABNORMAL_SUMMARY_BASE_MM + chunk.length * ABNORMAL_ROW_MM,
+            isAbnormalOnly: true,
+          });
+        }
       }
     }
 
@@ -228,7 +244,8 @@ const ViewReport = () => {
     Object.entries(grouped).forEach(([dept, profiles]) => {
       Object.entries(profiles).forEach(([profName, params]) => {
         const showProf = profName !== "_individual" && shouldShowProfile(params);
-        const heightMm = DEPT_HEADER_HEIGHT_MM + (showProf ? PROFILE_HEADER_HEIGHT_MM : 0) + TABLE_HEADER_HEIGHT_MM + params.length * ROW_HEIGHT_MM + PROFILE_GAP_MM;
+        const testNameHeaders = countTestNameHeaders(params);
+        const heightMm = DEPT_HEADER_HEIGHT_MM + (showProf ? PROFILE_HEADER_HEIGHT_MM : 0) + TABLE_HEADER_HEIGHT_MM + params.length * ROW_HEIGHT_MM + testNameHeaders * TEST_NAME_HEADER_MM + PROFILE_GAP_MM;
         sections.push({
           type: "department-profile",
           dept,
@@ -249,7 +266,12 @@ const ViewReport = () => {
     let currentHeight = 0;
 
     sections.forEach((section) => {
-      if (currentHeight + section.estimatedHeightMm > usableHeight && currentPage.length > 0) {
+      // Abnormal-only pages don't need signature space
+      const pageUsable = section.isAbnormalOnly 
+        ? (PAGE_HEIGHT_MM - topMarginMm - bottomMarginMm - HEADER_HEIGHT_MM - PAGE_NUM_HEIGHT_MM)
+        : usableHeight;
+
+      if (currentHeight + section.estimatedHeightMm > pageUsable && currentPage.length > 0) {
         pages.push(currentPage);
         currentPage = [];
         currentHeight = 0;
@@ -322,8 +344,9 @@ const ViewReport = () => {
 
       <div ref={printRef} className="bg-white text-black print:text-black mx-auto max-w-[210mm] print:max-w-none report-print-area" style={{ fontFamily: "'Segoe UI', Arial, sans-serif" }}>
         {allPages.map((page, pageIdx) => {
+          const isAbnormalOnlyPage = page.sections.every(s => s.isAbnormalOnly);
           const pathologist = findPathologistSig(page.approverName);
-          const signatureUrl = pathologist?.signature_image_path
+          const sigUrl = pathologist?.signature_image_path
             ? supabase.storage.from("signatures").getPublicUrl(pathologist.signature_image_path).data.publicUrl
             : null;
 
@@ -333,18 +356,20 @@ const ViewReport = () => {
               
               <ReportHeader extracted={extracted} />
 
-              <div className="px-6 space-y-2">
+              <div className="px-6 space-y-1">
                 {renderPageSections(page.sections)}
               </div>
 
-              <div style={{ position: 'absolute', bottom: `${bottomMarginMm + PAGE_NUM_HEIGHT_MM + 2}mm`, left: '24px', right: '24px' }}>
-                <ReportSignatureBlock
-                  signatureUrl={signatureUrl}
-                  pathologistName={pathologist?.pathologist_name || page.approverName}
-                  qualification={pathologist?.qualification}
-                  designation={pathologist?.designation}
-                />
-              </div>
+              {!isAbnormalOnlyPage && (
+                <div style={{ position: 'absolute', bottom: `${bottomMarginMm + PAGE_NUM_HEIGHT_MM + 1}mm`, left: '24px', right: '24px' }}>
+                  <ReportSignatureBlock
+                    signatureUrl={sigUrl}
+                    pathologistName={pathologist?.pathologist_name || page.approverName}
+                    qualification={pathologist?.qualification}
+                    designation={pathologist?.designation}
+                  />
+                </div>
+              )}
 
               <div className="page-number-footer" style={{ position: 'absolute', bottom: `${bottomMarginMm + 2}mm`, left: 0, right: 0, textAlign: 'center', fontSize: '9px', color: '#666' }}>
                 Page {pageIdx + 1} of {totalPages}
