@@ -22,23 +22,44 @@ serve(async (req) => {
       `${i + 1}. ${r.parameter_name} | Result: ${r.result_value} | Unit: ${r.unit || ''} | Range: ${r.normal_range_text || `${r.normal_range_low || ''}-${r.normal_range_high || ''}`}`
     ).join("\n");
 
-    const systemPrompt = `You are a medical report verification engine. You will receive:
+    const systemPrompt = `You are a medical report OCR verification engine. Your job is to RE-READ the original PDF images and CORRECT any extraction errors.
+
+INPUT:
 1. Images of a pathology lab report PDF
-2. A list of previously extracted test results with their values and normal ranges
+2. A list of previously extracted test results
 
-YOUR TASK: Re-read the actual PDF images carefully and verify EVERY single test result value and normal range.
+YOUR TASK: For EVERY parameter in the list, locate it in the PDF image, read the EXACT printed value character-by-character, and return the correct data.
 
-CRITICAL RULES:
-- For EACH parameter in the list, find it in the PDF image and read the EXACT result value printed there.
-- USE LAYOUT-AWARE READING: Elements at the same Y-coordinate belong to the same row. Sort by X-coordinate for column order.
-- NUMERIC COLLISION PREVENTION: Many rows have multiple numbers (result + reference range numbers). The result_value is the number immediately after the test name, BEFORE the reference range column. Reference ranges contain two numbers separated by "-" or "to".
-- For normal ranges, extract the COMPLETE text as shown in the PDF. Do NOT truncate or abbreviate. If the range says "Adult No Risk >60mg/dL Moderate Risk 40-60mg/dL High Risk <40 mg/dL", return the ENTIRE string.
-- Pay special attention to decimal values - read each digit carefully (e.g., 9.6 vs 9.9, 7.05 vs 7.08).
-- Pay special attention to large numbers - read all digits (e.g., 474000 vs 477000).
-- If a value in the extracted list differs from what you see in the PDF, return the CORRECT value from the PDF.
-- If you cannot confidently find a parameter in the PDF, keep the originally extracted value unchanged.
-- Return ALL parameters, not just corrected ones.
-- The order of returned results should match the input order.
+CRITICAL OCR RULES FOR ACCURACY:
+
+DIGIT-BY-DIGIT READING:
+- Read each digit individually. Do NOT guess or approximate.
+- Pay extreme attention to similar-looking digits: 0 vs 6, 3 vs 8, 5 vs 6, 1 vs 7, 9 vs 0.
+- For decimals: carefully distinguish 9.6 vs 9.9, 7.05 vs 7.08, 4.10 vs 4.73, 2.95 vs 2.35.
+- For large numbers: read ALL digits carefully. 474000 is NOT 477000. Count each digit.
+
+LAYOUT-AWARE ROW MATCHING:
+- Use spatial layout to match values to the correct parameter row.
+- Elements at the same Y-coordinate belong to the same row.
+- The result_value is the number immediately after the test name, BEFORE the reference range column.
+- Do NOT confuse numbers from adjacent rows (e.g., Lymphocytes 39 vs Monocytes 05).
+
+REFERENCE RANGE - COMPLETE TEXT EXTRACTION:
+- Extract the COMPLETE reference range text exactly as printed in the PDF.
+- Do NOT truncate, abbreviate, or summarize.
+- Example: If PDF shows "Adult No Risk >60mg/dL Moderate Risk 40-60mg/dL High Risk <40 mg/dL", return THAT ENTIRE STRING.
+- Multi-line ranges: concatenate all lines with spaces.
+- Risk-stratified ranges, age-based ranges, gender-based ranges: capture ALL of it.
+
+PARAMETER NAME VERIFICATION:
+- Verify each parameter name matches what is printed in the PDF.
+- Correct any misspellings or OCR artifacts in the parameter name.
+
+UNIT VERIFICATION:
+- Read the unit exactly as printed (e.g., mg/dL, g/dL, thou/cumm, million/cumm, fL, pg, %, IU/L).
+
+RETURN ALL PARAMETERS - not just corrected ones. Maintain the input order.
+If you cannot confidently find a parameter in the PDF, keep the originally extracted values.
 
 PREVIOUSLY EXTRACTED RESULTS TO VERIFY:
 ${resultsList}`;
@@ -61,7 +82,7 @@ ${resultsList}`;
           {
             role: "user",
             content: [
-              { type: "text", text: "Re-read the PDF images and verify every test result value and normal range. Return the corrected data for ALL parameters." },
+              { type: "text", text: "Re-read every value from the PDF images character-by-character. Verify and correct ALL test result values, units, and complete normal ranges. Return structured data for ALL parameters." },
               ...imageContents,
             ],
           },
@@ -70,7 +91,7 @@ ${resultsList}`;
           type: "function",
           function: {
             name: "return_verified_results",
-            description: "Return all verified test results after re-reading the PDF",
+            description: "Return all verified test results after re-reading the PDF character by character",
             parameters: {
               type: "object",
               properties: {
@@ -79,10 +100,10 @@ ${resultsList}`;
                   items: {
                     type: "object",
                     properties: {
-                      parameter_name: { type: "string", description: "Exact parameter name" },
-                      result_value: { type: "string", description: "The EXACT result value as printed in the PDF" },
-                      unit: { type: "string", description: "Unit as shown in PDF" },
-                      normal_range_text: { type: "string", description: "The COMPLETE normal range text as shown in PDF, do NOT truncate or abbreviate" },
+                      parameter_name: { type: "string", description: "Exact parameter name as printed in the PDF" },
+                      result_value: { type: "string", description: "The EXACT result value read digit-by-digit from the PDF" },
+                      unit: { type: "string", description: "Unit exactly as printed in PDF" },
+                      normal_range_text: { type: "string", description: "The COMPLETE and UNTRUNCATED normal range text as shown in PDF. Include ALL risk categories, age/gender variants, and multi-line text. NEVER abbreviate." },
                       normal_range_low: { type: "string", description: "Lower bound of normal range if parseable" },
                       normal_range_high: { type: "string", description: "Upper bound of normal range if parseable" },
                     },
