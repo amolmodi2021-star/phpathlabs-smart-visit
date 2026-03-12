@@ -66,7 +66,7 @@ const ABNORMAL_SUMMARY_BASE_MM = 14;
 const ABNORMAL_ROW_MM = 4.5;
 const TEST_NAME_HEADER_MM = 4;
 
-const COMPACT_PROFILES = ["cbc", "complete blood count"];
+const COMPACT_PROFILES = ["cbc", "complete blood count", "urine routine"];
 const isCompactProfile = (name: string): boolean => {
   const lower = name.toLowerCase();
   return COMPACT_PROFILES.some(cp => lower.includes(cp));

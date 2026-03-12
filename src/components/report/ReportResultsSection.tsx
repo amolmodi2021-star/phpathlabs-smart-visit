@@ -35,7 +35,7 @@ const groupByTestName = (params: TestResult[]): { testName: string | null; param
   return groups;
 };
 
-const COMPACT_PROFILES = ["cbc", "complete blood count"];
+const COMPACT_PROFILES = ["cbc", "complete blood count", "urine routine"];
 const TEST_GROUPED_PROFILES = ["cbc", "complete blood count", "urine routine"];
 
 const isCompactProfile = (profName: string): boolean => {
