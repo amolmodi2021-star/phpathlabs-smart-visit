@@ -55,7 +55,7 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact }: ReportRes
 
               return (
                 <div key={profName} data-pdf-section="profile" className="print:break-inside-avoid">
-                  {profIdx > 0 && <div style={{ height: useCompact ? '1mm' : '2mm' }} />}
+                  {profIdx > 0 && <div style={{ height: useCompact ? '1.5mm' : '2mm' }} />}
                   {profName !== "_individual" && shouldShowProfile(params) && (
                     <>
                       <div style={{ height: '1mm' }} />
@@ -65,14 +65,14 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact }: ReportRes
                   {testGroups.map((group, gIdx) => (
                     <div key={gIdx}>
                       {hasMultipleTestNames && group.testName && (
-                        <div className={`px-3 font-semibold text-gray-700 bg-gray-50 border-b ${useCompact ? 'py-0 text-[9px]' : 'py-0.5 text-xs'}`}>
+                        <div className={`px-3 font-semibold text-gray-700 bg-gray-50 border-b ${useCompact ? 'py-0.5 text-[10px]' : 'py-0.5 text-xs'}`}>
                           {group.testName}
                         </div>
                       )}
-                      <table className={`w-full ${useCompact ? 'text-[10px]' : 'text-sm'}`}>
+                      <table className={`w-full ${useCompact ? 'text-xs' : 'text-sm'}`}>
                         {gIdx === 0 && (
                           <thead>
-                            <tr className={`text-gray-500 border-b ${useCompact ? 'text-[9px]' : 'text-xs'}`}>
+                            <tr className={`text-gray-500 border-b ${useCompact ? 'text-[10px]' : 'text-xs'}`}>
                               <th className="text-left py-0.5 px-3 w-[38%]">Parameter</th>
                               <th className="text-center py-0.5 w-[20%]">Result</th>
                               <th className="text-center py-0.5 w-[12%]">Unit</th>
@@ -84,14 +84,14 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact }: ReportRes
                           {group.params.map((r, i) => {
                             const isAbnormal = r.flag === "H" || r.flag === "L";
                             return (
-                              <tr key={i} className={`border-b border-gray-100 ${isAbnormal ? "bg-red-50" : ""}`} style={useCompact ? { lineHeight: '1.1' } : undefined}>
-                                <td className={`px-3 ${useCompact ? 'py-[1px]' : 'py-1'}`}>{r.parameter_name}</td>
-                                <td className={`text-center font-semibold ${useCompact ? 'py-[1px]' : 'py-1'} ${isAbnormal ? "text-red-600 font-bold" : ""}`}>
+                              <tr key={i} className={`border-b border-gray-100 ${isAbnormal ? "bg-red-50" : ""}`} style={useCompact ? { lineHeight: '1.2' } : undefined}>
+                                <td className={`px-3 ${useCompact ? 'py-[2px]' : 'py-1'}`}>{r.parameter_name}</td>
+                                <td className={`text-center font-semibold ${useCompact ? 'py-[2px]' : 'py-1'} ${isAbnormal ? "text-red-600 font-bold" : ""}`}>
                                   {isAbnormal && <span className="bg-red-600 text-white px-1 py-0 rounded text-[8px] font-bold mr-1">{r.flag}</span>}
                                   {r.result_value}
                                 </td>
-                                <td className={`text-center text-gray-600 ${useCompact ? 'py-[1px]' : 'py-1'}`}>{r.unit}</td>
-                                <td className={`text-center text-gray-600 ${useCompact ? 'py-[1px]' : 'py-1'}`}>{r.normal_range_text || `${r.normal_range_low || ""} - ${r.normal_range_high || ""}`}</td>
+                                <td className={`text-center text-gray-600 ${useCompact ? 'py-[2px]' : 'py-1'}`}>{r.unit}</td>
+                                <td className={`text-center text-gray-600 ${useCompact ? 'py-[2px]' : 'py-1'}`}>{r.normal_range_text || `${r.normal_range_low || ""} - ${r.normal_range_high || ""}`}</td>
                               </tr>
                             );
                           })}
