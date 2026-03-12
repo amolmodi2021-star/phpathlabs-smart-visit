@@ -183,12 +183,12 @@ const UploadReport = () => {
   const mergeVerifiedIntoResults = (rows: any[], verifiedRows: any[], forceApply = false) => {
     const verifiedMap = new Map<string, any>();
 
-    verifiedRows.forEach((row: any, index: number) => {
-      verifiedMap.set(getResultKey(row, index), row);
+    verifiedRows.forEach((row: any) => {
+      verifiedMap.set(getResultKey(row), row);
     });
 
-    return rows.map((row: any, index: number) => {
-      const verified = verifiedMap.get(getResultKey(row, index));
+    return rows.map((row: any) => {
+      const verified = verifiedMap.get(getResultKey(row));
       if (!verified) return row;
 
       const currentScore = Number(row?.confidence_score ?? 0);

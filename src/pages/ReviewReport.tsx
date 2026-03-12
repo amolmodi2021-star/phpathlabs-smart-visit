@@ -300,8 +300,8 @@ const ReviewReport = () => {
         const batch = batches[i];
         const pageNumbers = batch.map((p) => p.pageNumber);
 
-        const scopedRows = testResults.filter((row, index) => {
-          const key = getResultKey(row, index);
+        const scopedRows = testResults.filter((row) => {
+          const key = getResultKey(row);
           if (sentKeys.has(key)) return false;
 
           const sourcePage = Number(row.source_page);
@@ -314,7 +314,7 @@ const ReviewReport = () => {
 
         if (!scopedRows.length) continue;
 
-        scopedRows.forEach((row, index) => sentKeys.add(getResultKey(row, index)));
+        scopedRows.forEach((row) => sentKeys.add(getResultKey(row)));
 
         const { data, error } = await supabase.functions.invoke("reverify-abnormals", {
           body: {
