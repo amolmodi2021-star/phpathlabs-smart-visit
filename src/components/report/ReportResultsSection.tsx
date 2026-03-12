@@ -88,8 +88,12 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                               <tr key={`${gIdx}-${i}`} className={`border-b border-gray-100 ${isAbnormal ? "bg-red-50" : ""}`} style={useCompact ? { lineHeight: '1.2' } : undefined}>
                                 <td className={`px-3 ${useCompact ? 'py-[2px]' : 'py-1'}`}>{r.parameter_name}</td>
                                 <td className={`text-center font-semibold ${useCompact ? 'py-[2px]' : 'py-1'} ${isAbnormal ? "text-red-600 font-bold" : ""}`}>
-                                  {isAbnormal && <span className="bg-red-600 text-white px-1 py-0 rounded text-[8px] font-bold mr-1">{r.flag}</span>}
-                                  {r.result_value}
+                                  <span className="inline-flex items-center justify-center gap-1">
+                                    <span className="inline-block w-[18px] text-right">
+                                      {isAbnormal && <span className="bg-red-600 text-white px-1 py-0 rounded text-[9px] font-bold">{r.flag}</span>}
+                                    </span>
+                                    <span>{r.result_value}</span>
+                                  </span>
                                 </td>
                                 <td className={`text-center text-gray-600 ${useCompact ? 'py-[2px]' : 'py-1'}`}>{r.unit}</td>
                                 <td className={`text-center text-gray-600 ${useCompact ? 'py-[2px]' : 'py-1'}`}>{r.normal_range_text || `${r.normal_range_low || ""} - ${r.normal_range_high || ""}`}</td>
