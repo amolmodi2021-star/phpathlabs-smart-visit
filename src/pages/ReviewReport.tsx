@@ -64,6 +64,7 @@ const ReviewReport = () => {
   const [pathologists, setPathologists] = useState<any[]>([]);
   const [selectedPathologist, setSelectedPathologist] = useState("");
   const [masterParams, setMasterParams] = useState<Map<string, { department_name?: string; profile_name?: string }>>(new Map());
+  const [masterParamIds, setMasterParamIds] = useState<Set<string>>(new Set());
   const [addParamDialogOpen, setAddParamDialogOpen] = useState(false);
   const [addParamIndex, setAddParamIndex] = useState<number | null>(null);
   const [reverified, setReverified] = useState(false);
@@ -82,6 +83,16 @@ const ReviewReport = () => {
     return () => window.removeEventListener("focus", handleFocus);
   }, [loading, testResults]);
 
+  const normalizeParameterForMatch = (value: unknown) =>
+    String(value ?? "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim()
+      .split(" ")
+      .filter(Boolean)
+      .map((token) => (token.endsWith("s") && token.length > 3 ? token.slice(0, -1) : token))
+      .join(" ");
+
   const buildMasterMaps = async () => {
     const [{ data: params }, { data: depts }, { data: profiles }, { data: profileParams }] = await Promise.all([
       supabase.from("report_test_parameters").select("id, parameter_name, department_id, profile_id"),
@@ -93,17 +104,26 @@ const ReviewReport = () => {
     const deptMap = new Map((depts || []).map((d: any) => [d.id, d.department_name]));
 
     const masterMap = new Map<string, { department_name?: string; profile_name?: string }>();
+    const paramIdToNameKey = new Map<string, string>();
+    const masterIds = new Set<string>();
+
     (params || []).forEach((p: any) => {
-      masterMap.set(p.parameter_name.toLowerCase(), {
-        department_name: p.department_id ? deptMap.get(p.department_id) || "" : "",
-        profile_name: "",
-      });
+      const key = normalizeParameterForMatch(p.parameter_name);
+      if (!key) return;
+      paramIdToNameKey.set(p.id, key);
+      masterIds.add(p.id);
+      if (!masterMap.has(key)) {
+        masterMap.set(key, {
+          department_name: p.department_id ? deptMap.get(p.department_id) || "" : "",
+          profile_name: "",
+        });
+      }
     });
 
     const profileNameMap = new Map((profiles || []).map((p: any) => [p.id, p.profile_name]));
     const profileGroups = new Map<string, { name: string; paramNames: string[] }>();
     (profileParams || []).forEach((pp: any) => {
-      const paramName = pp.report_test_parameters?.parameter_name?.toLowerCase();
+      const paramName = paramIdToNameKey.get(pp.parameter_id) || normalizeParameterForMatch(pp.report_test_parameters?.parameter_name);
       if (!paramName) return;
       const existing = profileGroups.get(pp.profile_id);
       if (existing) {
@@ -116,11 +136,25 @@ const ReviewReport = () => {
       }
     });
 
-    return { masterMap, profileGroups };
+    return { masterMap, profileGroups, paramIdToNameKey, masterIds };
   };
 
-  const enrichResults = (results: TestResult[], masterMap: Map<string, { department_name?: string; profile_name?: string }>, profileGroups: Map<string, { name: string; paramNames: string[] }>) => {
-    const extractedParamNames = new Set(results.map((r) => r.parameter_name.toLowerCase()));
+  const enrichResults = (
+    results: TestResult[],
+    masterMap: Map<string, { department_name?: string; profile_name?: string }>,
+    profileGroups: Map<string, { name: string; paramNames: string[] }>,
+    paramIdToNameKey: Map<string, string>,
+  ) => {
+    const extractedParamNames = new Set<string>();
+
+    results.forEach((r) => {
+      const key = normalizeParameterForMatch(r.parameter_name);
+      if (key) extractedParamNames.add(key);
+      if (r.matched_parameter_id) {
+        const matchedKey = paramIdToNameKey.get(r.matched_parameter_id);
+        if (matchedKey) extractedParamNames.add(matchedKey);
+      }
+    });
 
     const matchedProfileParams = new Map<string, string>();
     profileGroups.forEach((group) => {
@@ -131,21 +165,30 @@ const ReviewReport = () => {
     });
 
     return results.map((r) => {
-      const key = r.parameter_name.toLowerCase();
-      const master = masterMap.get(key);
+      const key = normalizeParameterForMatch(r.parameter_name);
+      const matchedKeyFromId = r.matched_parameter_id ? paramIdToNameKey.get(r.matched_parameter_id) : "";
+      const master = masterMap.get(key) || (matchedKeyFromId ? masterMap.get(matchedKeyFromId) : undefined);
+      const matchedProfile = matchedProfileParams.get(key) || (matchedKeyFromId ? matchedProfileParams.get(matchedKeyFromId) : "") || "";
+
       return {
         ...r,
         department: master ? master.department_name : "",
-        profile_name: matchedProfileParams.get(key) || "",
+        profile_name: matchedProfile,
       };
     });
   };
 
+  const hasMasterMatch = (row: TestResult) => {
+    const key = normalizeParameterForMatch(row.parameter_name);
+    return (key && masterParams.has(key)) || (!!row.matched_parameter_id && masterParamIds.has(row.matched_parameter_id));
+  };
+
   // Refresh only master data and re-enrich current results (preserves user edits)
   const refreshMasterData = async () => {
-    const { masterMap, profileGroups } = await buildMasterMaps();
+    const { masterMap, profileGroups, paramIdToNameKey, masterIds } = await buildMasterMaps();
     setMasterParams(masterMap);
-    setTestResults((prev) => normalizeTestResultFlags(enrichResults(prev, masterMap, profileGroups)));
+    setMasterParamIds(masterIds);
+    setTestResults((prev) => normalizeTestResultFlags(enrichResults(prev, masterMap, profileGroups, paramIdToNameKey)));
   };
 
   const loadData = async () => {
