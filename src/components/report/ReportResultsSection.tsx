@@ -66,10 +66,11 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                   <table className={`w-full ${useCompact ? 'text-xs' : 'text-sm'}`}>
                     <thead>
                       <tr className={`text-gray-500 border-b ${useCompact ? 'text-[10px]' : 'text-xs'}`}>
-                        <th className="text-left py-0.5 px-3 w-[38%]">Parameter</th>
-                        <th className="text-center py-0.5 w-[20%]">Result</th>
+                        <th className="text-left py-0.5 px-3 w-[36%]">Parameter</th>
+                        <th className="py-0.5 w-[20px]"></th>
+                        <th className="text-center py-0.5 w-[18%]">Result</th>
                         <th className="text-center py-0.5 w-[12%]">Unit</th>
-                        <th className="text-center py-0.5 w-[30%]">Reference Range</th>
+                        <th className="text-center py-0.5 w-[28%]">Reference Range</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -77,7 +78,7 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                         <>
                           {hasMultipleTestNames && group.testName && (
                             <tr key={`header-${gIdx}`}>
-                              <td colSpan={4} className={`px-3 font-semibold text-gray-700 bg-gray-50 border-b ${useCompact ? 'py-0.5 text-[10px]' : 'py-0.5 text-xs'}`}>
+                              <td colSpan={5} className={`px-3 font-semibold text-gray-700 bg-gray-50 border-b ${useCompact ? 'py-0.5 text-[10px]' : 'py-0.5 text-xs'}`}>
                                 {group.testName}
                               </td>
                             </tr>
@@ -87,13 +88,11 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                             return (
                               <tr key={`${gIdx}-${i}`} className={`border-b border-gray-100 ${isAbnormal ? "bg-red-50" : ""}`} style={useCompact ? { lineHeight: '1.2' } : undefined}>
                                 <td className={`px-3 ${useCompact ? 'py-[2px]' : 'py-1'}`}>{r.parameter_name}</td>
+                                <td className={`text-center ${useCompact ? 'py-[2px]' : 'py-1'}`} style={{ width: '20px', minWidth: '20px', maxWidth: '20px' }}>
+                                  {isAbnormal && <span className="bg-red-600 text-white px-1 py-0 rounded text-[9px] font-bold">{r.flag}</span>}
+                                </td>
                                 <td className={`text-center font-semibold ${useCompact ? 'py-[2px]' : 'py-1'} ${isAbnormal ? "text-red-600 font-bold" : ""}`}>
-                                  <span className="inline-flex items-center justify-center gap-1">
-                                    <span className="inline-block w-[18px] text-right">
-                                      {isAbnormal && <span className="bg-red-600 text-white px-1 py-0 rounded text-[9px] font-bold">{r.flag}</span>}
-                                    </span>
-                                    <span>{r.result_value}</span>
-                                  </span>
+                                  {r.result_value}
                                 </td>
                                 <td className={`text-center text-gray-600 ${useCompact ? 'py-[2px]' : 'py-1'}`}>{r.unit}</td>
                                 <td className={`text-center text-gray-600 ${useCompact ? 'py-[2px]' : 'py-1'}`}>{r.normal_range_text || `${r.normal_range_low || ""} - ${r.normal_range_high || ""}`}</td>
