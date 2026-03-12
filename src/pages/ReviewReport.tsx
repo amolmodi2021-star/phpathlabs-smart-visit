@@ -63,7 +63,7 @@ const ReviewReport = () => {
   const [umrInput, setUmrInput] = useState("");
   const [pathologists, setPathologists] = useState<any[]>([]);
   const [selectedPathologist, setSelectedPathologist] = useState("");
-  const [masterParams, setMasterParams] = useState<Map<string, { department_name?: string; profile_name?: string }>>(new Map());
+  const [masterParams, setMasterParams] = useState<Map<string, Array<{ department_name?: string; profile_name?: string }>>>(new Map());
   const [masterParamIds, setMasterParamIds] = useState<Set<string>>(new Set());
   const [addParamDialogOpen, setAddParamDialogOpen] = useState(false);
   const [addParamIndex, setAddParamIndex] = useState<number | null>(null);
