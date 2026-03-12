@@ -152,6 +152,28 @@ const ViewReport = () => {
     setLoading(true);
     const { data: ext } = await supabase.from("extracted_report_data").select("*").eq("report_id", reportId).single();
     if (!ext) { setLoading(false); return; }
+
+    // Enrich results with test_name from master parameters
+    const results = (ext.test_results as unknown as TestResult[]) || [];
+    const paramNames = results.map((r) => r.parameter_name);
+    const { data: masterParams } = await supabase
+      .from("report_test_parameters")
+      .select("parameter_name, test_name")
+      .in("parameter_name", paramNames);
+
+    if (masterParams && masterParams.length > 0) {
+      const testNameMap: Record<string, string> = {};
+      masterParams.forEach((mp: any) => {
+        if (mp.test_name) testNameMap[mp.parameter_name] = mp.test_name;
+      });
+      results.forEach((r) => {
+        if (!r.test_name && testNameMap[r.parameter_name]) {
+          r.test_name = testNameMap[r.parameter_name];
+        }
+      });
+      ext.test_results = results as any;
+    }
+
     setExtracted(ext);
 
     const { data: allSigs } = await supabase.from("pathologist_signatures").select("*");
