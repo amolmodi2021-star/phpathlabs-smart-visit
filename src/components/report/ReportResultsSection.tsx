@@ -19,13 +19,17 @@ const ReportResultsSection = ({ grouped, shouldShowProfile }: ReportResultsSecti
   return (
     <>
       {Object.entries(grouped).map(([dept, profiles]) => (
-        <div key={dept} className="print:break-inside-avoid">
-          <div className="bg-blue-600 text-white px-3 py-1.5 rounded-t font-semibold text-sm">{dept}</div>
+        <div key={dept} data-pdf-section="department">
+          <div className="bg-blue-600 text-white px-3 py-1.5 rounded-t font-semibold text-sm text-center">{dept}</div>
           <div className="border border-t-0 rounded-b">
-            {Object.entries(profiles).map(([profName, params]) => (
-              <div key={profName} className="print:break-inside-avoid">
+            {Object.entries(profiles).map(([profName, params], profIdx) => (
+              <div key={profName} data-pdf-section="profile" className="print:break-inside-avoid">
+                {profIdx > 0 && <div className="h-2" />}
                 {profName !== "_individual" && shouldShowProfile(params) && (
-                  <div className="bg-blue-50 px-3 py-1 font-semibold text-sm text-blue-800 border-b">{profName}</div>
+                  <>
+                    <div className="h-1" />
+                    <div className="bg-blue-50 px-3 py-1 font-semibold text-sm text-blue-800 border-b">{profName}</div>
+                  </>
                 )}
                 <table className="w-full text-sm">
                   <thead>
