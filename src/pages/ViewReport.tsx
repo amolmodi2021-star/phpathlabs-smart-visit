@@ -42,6 +42,27 @@ interface LayoutSettings {
   letterhead_pdf_path: string | null;
 }
 
+// A "page section" is a unit we try not to split across pages
+interface PageSection {
+  type: "abnormal-summary" | "department-profile";
+  dept?: string;
+  profName?: string;
+  results?: TestResult[];
+  abnormals?: TestResult[];
+  estimatedHeightMm: number;
+}
+
+const HEADER_HEIGHT_MM = 32; // patient details header
+const SIGNATURE_HEIGHT_MM = 28; // signature block
+const PAGE_NUM_HEIGHT_MM = 8;
+const DEPT_HEADER_HEIGHT_MM = 8;
+const PROFILE_HEADER_HEIGHT_MM = 6;
+const TABLE_HEADER_HEIGHT_MM = 6;
+const ROW_HEIGHT_MM = 5.5;
+const PROFILE_GAP_MM = 3;
+const ABNORMAL_SUMMARY_BASE_MM = 16;
+const ABNORMAL_ROW_MM = 5;
+
 const ViewReport = () => {
   const { reportId } = useParams();
   const navigate = useNavigate();
@@ -185,9 +206,106 @@ const ViewReport = () => {
 
   const topMarginMm = layoutSettings.top_margin_cm * 10;
   const bottomMarginMm = layoutSettings.bottom_margin_cm * 10;
+  const PAGE_HEIGHT_MM = 297;
+  const usableHeight = PAGE_HEIGHT_MM - topMarginMm - bottomMarginMm - HEADER_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM;
 
+  // Build sections for each approver group
+  const buildSections = (approverResults: TestResult[], includeAbnormalSummary: boolean): PageSection[] => {
+    const sections: PageSection[] = [];
+
+    if (includeAbnormalSummary) {
+      const allAbnormals = results.filter(r => r.flag === "H" || r.flag === "L");
+      if (allAbnormals.length > 0) {
+        sections.push({
+          type: "abnormal-summary",
+          abnormals: allAbnormals,
+          estimatedHeightMm: ABNORMAL_SUMMARY_BASE_MM + allAbnormals.length * ABNORMAL_ROW_MM,
+        });
+      }
+    }
+
+    const grouped = groupResults(approverResults);
+    Object.entries(grouped).forEach(([dept, profiles]) => {
+      Object.entries(profiles).forEach(([profName, params]) => {
+        const showProf = profName !== "_individual" && shouldShowProfile(params);
+        const heightMm = DEPT_HEADER_HEIGHT_MM + (showProf ? PROFILE_HEADER_HEIGHT_MM : 0) + TABLE_HEADER_HEIGHT_MM + params.length * ROW_HEIGHT_MM + PROFILE_GAP_MM;
+        sections.push({
+          type: "department-profile",
+          dept,
+          profName,
+          results: params,
+          estimatedHeightMm: heightMm,
+        });
+      });
+    });
+
+    return sections;
+  };
+
+  // Paginate sections into pages
+  const paginateSections = (sections: PageSection[]): PageSection[][] => {
+    const pages: PageSection[][] = [];
+    let currentPage: PageSection[] = [];
+    let currentHeight = 0;
+
+    sections.forEach((section) => {
+      if (currentHeight + section.estimatedHeightMm > usableHeight && currentPage.length > 0) {
+        pages.push(currentPage);
+        currentPage = [];
+        currentHeight = 0;
+      }
+      currentPage.push(section);
+      currentHeight += section.estimatedHeightMm;
+    });
+
+    if (currentPage.length > 0) {
+      pages.push(currentPage);
+    }
+
+    return pages;
+  };
+
+  // Build all pages across all approvers
+  interface ReportPage {
+    sections: PageSection[];
+    approverKey: string;
+    approverName: string;
+  }
+
+  const allPages: ReportPage[] = [];
   const approverEntries = Object.entries(resultsByApprover);
-  const totalPages = approverEntries.length + (trends.length > 0 ? 1 : 0);
+
+  approverEntries.forEach(([approverKey, approverResults], approverIdx) => {
+    const sections = buildSections(approverResults, approverIdx === 0);
+    const pages = paginateSections(sections);
+    const approverName = approverKey === "_all" ? (extracted.pathologist_name || "") : approverKey;
+    pages.forEach((pageSections) => {
+      allPages.push({ sections: pageSections, approverKey, approverName });
+    });
+  });
+
+  // Add trends page
+  const hasTrends = trends.length > 0;
+  const totalPages = allPages.length + (hasTrends ? 1 : 0);
+
+  const renderPageSections = (sections: PageSection[]) => {
+    return sections.map((section, idx) => {
+      if (section.type === "abnormal-summary" && section.abnormals) {
+        return <ReportAbnormalSummary key={`abnormal-${idx}`} abnormalResults={section.abnormals} />;
+      }
+      if (section.type === "department-profile" && section.results && section.dept) {
+        const grouped: Record<string, Record<string, TestResult[]>> = {
+          [section.dept]: { [section.profName || "_individual"]: section.results },
+        };
+        return (
+          <div key={`${section.dept}-${section.profName}-${idx}`} style={{ marginBottom: `${PROFILE_GAP_MM}mm` }}>
+            <ReportResultsSection grouped={grouped} shouldShowProfile={shouldShowProfile} />
+          </div>
+        );
+      }
+      return null;
+    });
+  };
 
   return (
     <div className="space-y-4 print:space-y-0">
@@ -203,81 +321,41 @@ const ViewReport = () => {
       </div>
 
       <div ref={printRef} className="bg-white text-black print:text-black mx-auto max-w-[210mm] print:max-w-none report-print-area" style={{ fontFamily: "'Segoe UI', Arial, sans-serif" }}>
-        {/* First page: header + consolidated abnormal summary */}
-        {(() => {
-          const allAbnormals = results.filter(r => r.flag === "H" || r.flag === "L");
-          const firstApproverEntry = Object.entries(resultsByApprover)[0];
-          const firstApproverKey = firstApproverEntry?.[0];
-          const firstApproverResults = firstApproverEntry?.[1] || [];
-          const firstGrouped = groupResults(firstApproverResults);
-          const firstApproverName = firstApproverKey === "_all" ? (extracted.pathologist_name || "") : firstApproverKey;
-          const firstPathologist = findPathologistSig(firstApproverName);
-          const firstSignatureUrl = firstPathologist?.signature_image_path
-            ? supabase.storage.from("signatures").getPublicUrl(firstPathologist.signature_image_path).data.publicUrl
-            : null;
-
-          return (
-            <div className="report-page"
-              style={{ paddingTop: `${topMarginMm}mm`, paddingBottom: `${bottomMarginMm}mm` }}>
-              
-              <ReportHeader extracted={extracted} />
-
-              <div className="px-6 space-y-6">
-                {allAbnormals.length > 0 && (
-                  <ReportAbnormalSummary abnormalResults={allAbnormals} />
-                )}
-
-                <ReportResultsSection grouped={firstGrouped} shouldShowProfile={shouldShowProfile} />
-
-                <ReportSignatureBlock
-                  signatureUrl={firstSignatureUrl}
-                  pathologistName={firstPathologist?.pathologist_name || firstApproverName}
-                  qualification={firstPathologist?.qualification}
-                  designation={firstPathologist?.designation}
-                />
-              </div>
-              <div className="page-number-footer" style={{ position: 'absolute', bottom: `${bottomMarginMm + 2}mm`, left: 0, right: 0, textAlign: 'center', fontSize: '9px', color: '#666' }}>
-                Page 1 of {totalPages}
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* Remaining approver pages (2nd onward) */}
-        {approverEntries.slice(1).map(([approverKey, approverResults], idx) => {
-          const grouped = groupResults(approverResults);
-          const approverName = approverKey === "_all" ? (extracted.pathologist_name || "") : approverKey;
-          const pathologist = findPathologistSig(approverName);
+        {allPages.map((page, pageIdx) => {
+          const pathologist = findPathologistSig(page.approverName);
           const signatureUrl = pathologist?.signature_image_path
             ? supabase.storage.from("signatures").getPublicUrl(pathologist.signature_image_path).data.publicUrl
             : null;
-          const pageNum = idx + 2;
 
           return (
-            <div key={approverKey} className="report-page"
+            <div key={pageIdx} className="report-page"
               style={{ paddingTop: `${topMarginMm}mm`, paddingBottom: `${bottomMarginMm}mm` }}>
               
               <ReportHeader extracted={extracted} />
 
-              <div className="px-6 space-y-6">
-                <ReportResultsSection grouped={grouped} shouldShowProfile={shouldShowProfile} />
+              <div className="px-6 space-y-2">
+                {renderPageSections(page.sections)}
+              </div>
 
+              <div style={{ position: 'absolute', bottom: `${bottomMarginMm + PAGE_NUM_HEIGHT_MM + 2}mm`, left: '24px', right: '24px' }}>
                 <ReportSignatureBlock
                   signatureUrl={signatureUrl}
-                  pathologistName={pathologist?.pathologist_name || approverName}
+                  pathologistName={pathologist?.pathologist_name || page.approverName}
                   qualification={pathologist?.qualification}
                   designation={pathologist?.designation}
                 />
               </div>
+
               <div className="page-number-footer" style={{ position: 'absolute', bottom: `${bottomMarginMm + 2}mm`, left: 0, right: 0, textAlign: 'center', fontSize: '9px', color: '#666' }}>
-                Page {pageNum} of {totalPages}
+                Page {pageIdx + 1} of {totalPages}
               </div>
             </div>
           );
         })}
 
-        {trends.length > 0 && (
+        {hasTrends && (
           <div className="report-page" style={{ paddingTop: `${topMarginMm}mm`, paddingBottom: `${bottomMarginMm}mm` }}>
+            <ReportHeader extracted={extracted} />
             <div className="px-6">
               <ReportTrendCharts trends={trends} />
             </div>
@@ -308,7 +386,6 @@ const ViewReport = () => {
           }
           .print\\:hidden { display: none !important; }
           .print\\:break-inside-avoid { break-inside: avoid; }
-          .print\\:break-before-page { break-before: page; }
           .report-page {
             height: 296mm;
             max-height: 296mm;
@@ -341,10 +418,13 @@ const ViewReport = () => {
         /* Screen preview */
         .report-page {
           min-height: 297mm;
+          height: 297mm;
           width: 210mm;
           box-sizing: border-box;
           position: relative;
-          margin: 0 auto;
+          margin: 0 auto 16px auto;
+          border: 1px solid #e5e7eb;
+          overflow: hidden;
           ${showHeader && letterheadImageUrl ? `
           background-image: url("${letterheadImageUrl}");
           background-size: 210mm 297mm;
