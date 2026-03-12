@@ -266,7 +266,12 @@ const ViewReport = () => {
     let currentHeight = 0;
 
     sections.forEach((section) => {
-      if (currentHeight + section.estimatedHeightMm > usableHeight && currentPage.length > 0) {
+      // Abnormal-only pages don't need signature space
+      const pageUsable = section.isAbnormalOnly 
+        ? (PAGE_HEIGHT_MM - topMarginMm - bottomMarginMm - HEADER_HEIGHT_MM - PAGE_NUM_HEIGHT_MM)
+        : usableHeight;
+
+      if (currentHeight + section.estimatedHeightMm > pageUsable && currentPage.length > 0) {
         pages.push(currentPage);
         currentPage = [];
         currentHeight = 0;
