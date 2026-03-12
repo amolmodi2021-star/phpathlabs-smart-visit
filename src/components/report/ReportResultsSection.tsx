@@ -36,10 +36,16 @@ const groupByTestName = (params: TestResult[]): { testName: string | null; param
 };
 
 const COMPACT_PROFILES = ["cbc", "complete blood count"];
+const TEST_GROUPED_PROFILES = ["cbc", "complete blood count", "urine routine"];
 
 const isCompactProfile = (profName: string): boolean => {
   const lower = profName.toLowerCase();
   return COMPACT_PROFILES.some(cp => lower.includes(cp));
+};
+
+const isTestGroupedProfile = (profName: string): boolean => {
+  const lower = profName.toLowerCase();
+  return TEST_GROUPED_PROFILES.some(cp => lower.includes(cp));
 };
 
 const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHeader }: ReportResultsSectionProps) => {
@@ -52,7 +58,7 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
             {Object.entries(profiles).map(([profName, params], profIdx) => {
               const useCompact = compact || isCompactProfile(profName);
               const testGroups = groupByTestName(params);
-              const hasMultipleTestNames = useCompact && (testGroups.filter(g => g.testName).length > 1 || (testGroups.length === 1 && testGroups[0].testName && testGroups[0].testName !== profName));
+              const hasMultipleTestNames = isTestGroupedProfile(profName) && (testGroups.filter(g => g.testName).length > 1 || (testGroups.length === 1 && testGroups[0].testName && testGroups[0].testName !== profName));
 
               return (
                 <div key={profName} data-pdf-section="profile" className="print:break-inside-avoid">
