@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Loader2, Printer, ArrowLeft } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import * as pdfjsLib from "pdfjs-dist";
 import ReportTrendCharts from "@/components/report/ReportTrendCharts";
 import ReportHeader from "@/components/report/ReportHeader";

@@ -7,12 +7,12 @@ interface ReportSignatureBlockProps {
 
 const ReportSignatureBlock = ({ signatureUrl, pathologistName, qualification, designation }: ReportSignatureBlockProps) => {
   return (
-    <div className="pt-2 border-t flex justify-end print:break-inside-avoid">
+    <div className="pt-1 border-t flex justify-end print:break-inside-avoid">
       <div className="text-center">
-        {signatureUrl && <img src={signatureUrl} alt="Signature" className="h-10 mx-auto mb-0.5" />}
-        <p className="font-semibold text-xs">{pathologistName}</p>
-        {qualification && <p className="text-[10px] text-gray-500 leading-tight">{qualification}</p>}
-        {designation && <p className="text-[10px] text-gray-500 leading-tight">{designation}</p>}
+        {signatureUrl && <img src={signatureUrl} alt="Signature" className="h-8 mx-auto mb-0" />}
+        <p className="font-semibold text-[10px] leading-tight">{pathologistName}</p>
+        {qualification && <p className="text-[9px] text-gray-500 leading-tight">{qualification}</p>}
+        {designation && <p className="text-[9px] text-gray-500 leading-tight">{designation}</p>}
       </div>
     </div>
   );
