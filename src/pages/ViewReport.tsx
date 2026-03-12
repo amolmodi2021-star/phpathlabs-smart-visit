@@ -274,11 +274,27 @@ const ViewReport = () => {
     let currentPage: PageSection[] = [];
     let currentHeight = 0;
 
+    const isDedicatedProfile = (section: PageSection): boolean => {
+      if (section.type !== "department-profile") return false;
+      const name = (section.profName || section.dept || "").toLowerCase();
+      return COMPACT_PROFILES.some(cp => name.includes(cp));
+    };
+
     sections.forEach((section) => {
-      // Abnormal-only pages don't need signature space
       const pageUsable = section.isAbnormalOnly 
         ? (PAGE_HEIGHT_MM - topMarginMm - bottomMarginMm - HEADER_HEIGHT_MM - PAGE_NUM_HEIGHT_MM)
         : usableHeight;
+
+      // CBC / Urine profiles always get their own dedicated page
+      if (isDedicatedProfile(section)) {
+        if (currentPage.length > 0) {
+          pages.push(currentPage);
+          currentPage = [];
+          currentHeight = 0;
+        }
+        pages.push([section]);
+        return;
+      }
 
       if (currentHeight + section.estimatedHeightMm > pageUsable && currentPage.length > 0) {
         pages.push(currentPage);
