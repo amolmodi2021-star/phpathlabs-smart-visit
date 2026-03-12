@@ -5,156 +5,151 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const CHUNK_SIZE = 5; // Process 5 parameters at a time for focused row-by-row reading
+const CHUNK_SIZE_DEFAULT = 4;
+const CHUNK_SIZE_STRICT = 2;
+
+const buildRowKey = (row: any, index = 0) => {
+  const parameter = String(row?.parameter_name ?? "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+  const testName = String(row?.test_name ?? row?.parameter_name ?? "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+  const sourcePage = Number(row?.source_page) || 0;
+  return `${parameter || `row-${index}`}|${testName}|${sourcePage}`;
+};
+
+const clampConfidence = (value: unknown) => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return 0;
+  return Math.max(0, Math.min(100, Math.round(num)));
+};
+
+const buildPageTextContext = (pageTexts: string[] = [], pageNumbers: number[] = []) => {
+  if (!Array.isArray(pageTexts) || pageTexts.length === 0) return "";
+
+  return pageTexts
+    .map((text, idx) => {
+      const pageNo = Number(pageNumbers?.[idx] ?? idx + 1);
+      const cleaned = String(text ?? "").trim().slice(0, 22000);
+      if (!cleaned) return "";
+      return `PAGE ${pageNo} TEXT LAYER:\n${cleaned}`;
+    })
+    .filter(Boolean)
+    .join("\n\n");
+};
 
 async function verifyChunk(
   pageImages: string[],
+  pageTexts: string[],
+  pageNumbers: number[],
   chunk: any[],
-  LOVABLE_API_KEY: string
+  LOVABLE_API_KEY: string,
+  strictMode: boolean,
 ): Promise<any[]> {
+  const pageTextContext = buildPageTextContext(pageTexts, pageNumbers);
+
   const resultsList = chunk
-    .map(
-      (r: any, i: number) =>
-        `${i + 1}. "${r.parameter_name}" | Extracted Result: "${r.result_value}" | Unit: "${r.unit || ""}" | Extracted Range: "${r.normal_range_text || `${r.normal_range_low || ""}-${r.normal_range_high || ""}`}"`
-    )
+    .map((row: any, i: number) => {
+      const pageHint = Number(row?.source_page) || "unknown";
+      const range = row?.normal_range_text || `${row?.normal_range_low || ""}-${row?.normal_range_high || ""}`;
+      return `${i + 1}. [page_hint=${pageHint}] "${row?.parameter_name}" | result="${row?.result_value}" | unit="${row?.unit || ""}" | range="${range}"`;
+    })
     .join("\n");
 
-  const systemPrompt = `You are a medical report OCR verification engine performing ROW-BY-ROW re-reading.
+  const systemPrompt = `You are a pathology report re-verification engine.
 
-You will receive:
-1. Images of a pathology lab report PDF
-2. A SHORT list of ${chunk.length} previously extracted test results to verify
+MISSION:
+Re-verify each parameter row-by-row with maximum precision.
 
-YOUR TASK: For EACH of the ${chunk.length} parameters below, perform these steps IN ORDER:
+STRICT RULES:
+1) Use provided TEXT LAYER as primary source when available; use image to confirm visually.
+2) Stay on the SAME row (same Y-line) for parameter, result, unit, and reference range.
+3) Read numeric results character-by-character to avoid 0/6/9, 3/8, 5/6 confusion.
+4) Never copy numbers from adjacent rows or from reference range into result_value.
+5) Preserve complete range text exactly as printed; do not truncate risk categories.
+6) Return source_page for every row and confidence_score (0-100).
+7) If uncertain, keep original values and lower confidence.
 
-STEP 1 - LOCATE THE ROW:
-- Scan the PDF image to find the EXACT row containing this parameter name.
-- Use spatial/positional awareness: the parameter name, result value, unit, and reference range must all be at the SAME vertical position (same Y-coordinate / same row).
-- If the parameter appears in a table, identify which column contains what.
+MODE:
+${strictMode ? "STRICT MODE ON: prioritize precision over speed." : "STANDARD MODE: high precision with balanced speed."}
 
-STEP 2 - READ THE RESULT VALUE CHARACTER BY CHARACTER:
-- Once you've located the correct row, read the result value ONE DIGIT AT A TIME.
-- Pay extreme attention to visually similar characters:
-  * 0 vs 6 vs 9 (the curves differ)
-  * 3 vs 8 (count the enclosed areas)
-  * 5 vs 6 (check the top)
-  * 1 vs 7 (check for serif/crossbar)
-  * . vs , (decimal point position)
-- For multi-digit numbers: read left to right, confirm EACH digit individually.
-  Example: For "474000" - read "4", then "7", then "4", then "0", then "0", then "0".
-- The result value is the number in the RESULT COLUMN, NOT in the reference range column.
-- NEVER confuse a number from an adjacent row with this row's value.
+ROWS TO VERIFY (${chunk.length}):
+${resultsList}`;
 
-STEP 3 - READ THE UNIT:
-- Read the unit text from the SAME row, typically right of the result value.
-- Common units: mg/dL, g/dL, IU/L, U/L, %, mmol/L, thou/cumm, million/cumm, fL, pg, g%, sec
-
-STEP 4 - READ THE COMPLETE REFERENCE RANGE:
-- Read the ENTIRE reference range text from the SAME row.
-- Multi-line ranges: if the range spans multiple lines, concatenate ALL lines.
-- Risk-stratified ranges (e.g., HDL Cholesterol): capture EVERY category.
-  Example: "Adult No Risk >60mg/dL Moderate Risk 40-60mg/dL High Risk <40 mg/dL" - return ALL of this.
-- Age/gender-based ranges: capture ALL variants shown.
-- NEVER truncate or abbreviate. Return the COMPLETE text as printed.
-- Parse numeric bounds where possible (low/high).
-
-STEP 5 - VERIFY PARAMETER NAME:
-- Confirm the parameter name matches what is printed. Correct any OCR artifacts.
-
-PARAMETERS TO VERIFY (${chunk.length} total):
-${resultsList}
-
-IMPORTANT: Return ALL ${chunk.length} parameters. If you cannot confidently locate a parameter, return the originally extracted values unchanged.`;
-
-  const imageContents = pageImages.map((img: string) => ({
-    type: "image_url",
-    image_url: { url: img },
-  }));
-
-  const response = await fetch(
-    "https://ai.gateway.lovable.dev/v1/chat/completions",
+  const userContent: any[] = [
     {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: `Focus on these ${chunk.length} parameters ONLY. For each one: locate its exact row in the PDF, read the result value digit-by-digit, read the complete reference range text, and return corrected data.`,
-              },
-              ...imageContents,
-            ],
-          },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "return_verified_results",
-              description:
-                "Return verified test results after row-by-row re-reading from PDF",
-              parameters: {
-                type: "object",
-                properties: {
-                  verified_results: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        parameter_name: {
-                          type: "string",
-                          description:
-                            "Exact parameter name as printed in the PDF",
-                        },
-                        result_value: {
-                          type: "string",
-                          description:
-                            "The EXACT result value read digit-by-digit from the PDF row",
-                        },
-                        unit: {
-                          type: "string",
-                          description: "Unit exactly as printed in PDF",
-                        },
-                        normal_range_text: {
-                          type: "string",
-                          description:
-                            "The COMPLETE and UNTRUNCATED normal range text as shown in PDF. Include ALL risk categories, age/gender variants, and multi-line text. NEVER abbreviate.",
-                        },
-                        normal_range_low: {
-                          type: "string",
-                          description:
-                            "Lower bound of normal range if parseable",
-                        },
-                        normal_range_high: {
-                          type: "string",
-                          description:
-                            "Upper bound of normal range if parseable",
-                        },
-                      },
-                      required: ["parameter_name", "result_value"],
+      type: "text",
+      text: `Verify these ${chunk.length} rows only. Use page_hint when available. Return corrected data with confidence_score.`,
+    },
+  ];
+
+  if (pageTextContext) {
+    userContent.push({
+      type: "text",
+      text: `TEXT LAYER CONTEXT:\n${pageTextContext}`,
+    });
+  }
+
+  userContent.push(
+    ...pageImages.map((img) => ({
+      type: "image_url",
+      image_url: { url: img },
+    })),
+  );
+
+  const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${LOVABLE_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: strictMode ? "google/gemini-2.5-pro" : "google/gemini-3-flash-preview",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userContent },
+      ],
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "return_verified_results",
+            description: "Return row-verified pathology results",
+            parameters: {
+              type: "object",
+              properties: {
+                verified_results: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      parameter_name: { type: "string" },
+                      result_value: { type: "string" },
+                      unit: { type: "string" },
+                      normal_range_text: { type: "string" },
+                      normal_range_low: { type: "string" },
+                      normal_range_high: { type: "string" },
+                      source_page: { type: "number" },
+                      confidence_score: { type: "number" },
                     },
+                    required: ["parameter_name", "result_value"],
                   },
                 },
-                required: ["verified_results"],
               },
+              required: ["verified_results"],
             },
           },
-        ],
-        tool_choice: {
-          type: "function",
-          function: { name: "return_verified_results" },
         },
-      }),
-    }
-  );
+      ],
+      tool_choice: {
+        type: "function",
+        function: { name: "return_verified_results" },
+      },
+    }),
+  });
 
   if (!response.ok) {
     const errText = await response.text();
@@ -169,60 +164,100 @@ IMPORTANT: Return ALL ${chunk.length} parameters. If you cannot confidently loca
   const toolCall = aiResult.choices?.[0]?.message?.tool_calls?.[0];
   if (!toolCall) return [];
 
-  const parsed = JSON.parse(toolCall.function.arguments);
-  return parsed.verified_results || [];
+  const parsed = JSON.parse(toolCall.function.arguments || "{}");
+  const fallbackPage = Number(pageNumbers?.[0] ?? 1) || 1;
+
+  return (parsed.verified_results || []).map((row: any) => ({
+    ...row,
+    source_page: Number(row?.source_page) || fallbackPage,
+    confidence_score: clampConfidence(row?.confidence_score),
+  }));
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS")
-    return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { pageImages, testResults } = await req.json();
+    const { pageImages, pageTexts, pageNumbers, testResults, strictMode } = await req.json();
+
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
-    if (!pageImages?.length || !testResults?.length) {
+    if (!Array.isArray(pageImages) || pageImages.length === 0 || !Array.isArray(testResults) || testResults.length === 0) {
       throw new Error("Both pageImages and testResults are required");
     }
 
-    // Process parameters in small chunks for focused row-by-row OCR
-    const allVerified: any[] = [];
-    for (let i = 0; i < testResults.length; i += CHUNK_SIZE) {
-      const chunk = testResults.slice(i, i + CHUNK_SIZE);
-      console.log(
-        `Verifying chunk ${Math.floor(i / CHUNK_SIZE) + 1}/${Math.ceil(testResults.length / CHUNK_SIZE)}: ${chunk.map((c: any) => c.parameter_name).join(", ")}`
-      );
+    const normalizedPageTexts = Array.isArray(pageTexts) ? pageTexts : [];
+    const normalizedPageNumbers = Array.isArray(pageNumbers)
+      ? pageNumbers.map((n: any, idx: number) => Number(n) || idx + 1)
+      : pageImages.map((_: any, idx: number) => idx + 1);
+
+    const chunkSize = strictMode ? CHUNK_SIZE_STRICT : CHUNK_SIZE_DEFAULT;
+    const verifiedMap = new Map<string, any>();
+
+    for (let i = 0; i < testResults.length; i += chunkSize) {
+      const chunk = testResults.slice(i, i + chunkSize);
+      const chunkLabel = `${Math.floor(i / chunkSize) + 1}/${Math.ceil(testResults.length / chunkSize)}`;
+      console.log(`Re-verifying chunk ${chunkLabel} with ${chunk.length} rows`);
 
       try {
-        const results = await verifyChunk(pageImages, chunk, LOVABLE_API_KEY);
-        allVerified.push(...results);
+        const verifiedRows = await verifyChunk(
+          pageImages,
+          normalizedPageTexts,
+          normalizedPageNumbers,
+          chunk,
+          LOVABLE_API_KEY,
+          Boolean(strictMode),
+        );
+
+        verifiedRows.forEach((row: any, idx: number) => {
+          verifiedMap.set(buildRowKey(row, idx), row);
+        });
       } catch (e: any) {
         if (e.status === 429) {
-          // Rate limited - wait and retry once
-          console.log("Rate limited, waiting 3s before retry...");
-          await new Promise((r) => setTimeout(r, 3000));
+          console.log("Rate limited, retrying in 3s...");
+          await new Promise((resolve) => setTimeout(resolve, 3000));
           try {
-            const results = await verifyChunk(pageImages, chunk, LOVABLE_API_KEY);
-            allVerified.push(...results);
-          } catch {
-            console.error(`Chunk failed after retry, skipping: ${chunk.map((c: any) => c.parameter_name).join(", ")}`);
+            const retryRows = await verifyChunk(
+              pageImages,
+              normalizedPageTexts,
+              normalizedPageNumbers,
+              chunk,
+              LOVABLE_API_KEY,
+              Boolean(strictMode),
+            );
+            retryRows.forEach((row: any, idx: number) => {
+              verifiedMap.set(buildRowKey(row, idx), row);
+            });
+          } catch (retryError) {
+            console.error(`Chunk failed after retry: ${chunkLabel}`, retryError);
           }
         } else if (e.status === 402) {
           return new Response(
-            JSON.stringify({ error: "AI credits exhausted. Please add credits.", verified_results: allVerified }),
-            { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            JSON.stringify({
+              error: "AI credits exhausted. Please add credits.",
+              verified_results: Array.from(verifiedMap.values()),
+            }),
+            { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } },
           );
         } else {
-          console.error(`Chunk failed: ${e.message || e}`);
+          console.error(`Chunk failed: ${chunkLabel}`, e);
         }
       }
     }
 
-    return new Response(
-      JSON.stringify({ verified_results: allVerified }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    const untouchedRows = testResults
+      .filter((row: any, idx: number) => !verifiedMap.has(buildRowKey(row, idx)))
+      .map((row: any) => ({
+        ...row,
+        confidence_score: clampConfidence(row?.confidence_score),
+      }));
+
+    const verifiedResults = [...Array.from(verifiedMap.values()), ...untouchedRows];
+
+    return new Response(JSON.stringify({ verified_results: verifiedResults }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   } catch (e) {
     console.error("reverify-abnormals error:", e);
     return new Response(
@@ -232,7 +267,7 @@ serve(async (req) => {
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      },
     );
   }
 });
