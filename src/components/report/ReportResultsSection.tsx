@@ -47,7 +47,7 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
     <>
       {Object.entries(grouped).map(([dept, profiles]) => (
         <div key={dept} data-pdf-section="department">
-          {!hideDeptHeader && <div className="bg-blue-600 text-white px-3 py-1.5 rounded-t font-semibold text-sm text-center">{dept}</div>}
+          {!hideDeptHeader && <div className="text-white px-3 py-1.5 rounded-t font-semibold text-sm text-center" style={{ backgroundColor: '#2E3192' }}>{dept}</div>}
           <div className={`border ${hideDeptHeader ? 'rounded' : 'border-t-0 rounded-b'}`}>
             {Object.entries(profiles).map(([profName, params], profIdx) => {
               const useCompact = compact || isCompactProfile(profName);
@@ -60,7 +60,7 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                   {profName !== "_individual" && shouldShowProfile(params) && (
                     <>
                       <div style={{ height: '1mm' }} />
-                      <div className="bg-blue-50 px-3 py-1 font-semibold text-sm text-blue-800 border-b">{profName}</div>
+                      <div className="bg-blue-50 px-3 py-1 font-semibold text-sm border-b" style={{ color: '#2E3192' }}>{profName}</div>
                     </>
                   )}
                   <table className={`w-full ${useCompact ? 'text-xs' : 'text-sm'}`} style={{ tableLayout: 'fixed' }}>
