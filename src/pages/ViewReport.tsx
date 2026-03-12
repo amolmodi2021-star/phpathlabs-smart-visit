@@ -297,24 +297,19 @@ const ViewReport = () => {
     let currentPage: PageSection[] = [];
     let currentHeight = 0;
 
-    const isDedicatedProfile = (section: PageSection): boolean => {
-      if (section.type !== "department-profile") return false;
-      const name = (section.profName || section.dept || "").toLowerCase();
-      return COMPACT_PROFILES.some(cp => name.includes(cp));
-    };
-
     sections.forEach((section) => {
-      const pageUsable = section.isAbnormalOnly 
+      const pageUsable = section.isAbnormalOnly
         ? (PAGE_HEIGHT_MM - topMarginMm - bottomMarginMm - HEADER_HEIGHT_MM - PAGE_NUM_HEIGHT_MM)
         : usableHeight;
 
       // CBC / Urine profiles always get their own dedicated page
-      if (isDedicatedProfile(section)) {
+      if (isDedicatedReportProfile(section)) {
         if (currentPage.length > 0) {
           pages.push(currentPage);
           currentPage = [];
           currentHeight = 0;
         }
+
         pages.push([section]);
         return;
       }
@@ -324,6 +319,7 @@ const ViewReport = () => {
         currentPage = [];
         currentHeight = 0;
       }
+
       currentPage.push(section);
       currentHeight += section.estimatedHeightMm;
     });
