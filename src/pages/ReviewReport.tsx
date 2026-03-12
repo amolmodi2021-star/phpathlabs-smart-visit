@@ -638,7 +638,7 @@ const ReviewReport = () => {
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            {masterParams.has(r.parameter_name.toLowerCase()) || r.matched_parameter_id ? (
+                            {masterParams.has(r.parameter_name.toLowerCase()) || (r.matched_parameter_id && masterParams.has(r.matched_parameter_id.toLowerCase())) ? (
                               <Check className="h-4 w-4 text-green-600" />
                             ) : (
                               <Button
