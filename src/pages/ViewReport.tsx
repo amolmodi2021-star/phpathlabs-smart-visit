@@ -54,16 +54,23 @@ interface PageSection {
 }
 
 const HEADER_HEIGHT_MM = 32;
-const SIGNATURE_HEIGHT_MM = 18; // reduced signature block
+const SIGNATURE_HEIGHT_MM = 14;
 const PAGE_NUM_HEIGHT_MM = 8;
 const DEPT_HEADER_HEIGHT_MM = 8;
 const PROFILE_HEADER_HEIGHT_MM = 6;
-const TABLE_HEADER_HEIGHT_MM = 6;
+const TABLE_HEADER_HEIGHT_MM = 5;
 const ROW_HEIGHT_MM = 5;
+const ROW_HEIGHT_COMPACT_MM = 3.2;
 const PROFILE_GAP_MM = 2;
 const ABNORMAL_SUMMARY_BASE_MM = 14;
 const ABNORMAL_ROW_MM = 4.5;
 const TEST_NAME_HEADER_MM = 4;
+
+const COMPACT_PROFILES = ["cbc", "complete blood count", "urine routine analysis", "urine routine", "urine analysis"];
+const isCompactProfile = (name: string): boolean => {
+  const lower = name.toLowerCase();
+  return COMPACT_PROFILES.some(cp => lower.includes(cp));
+};
 
 const ViewReport = () => {
   const { reportId } = useParams();
@@ -245,7 +252,9 @@ const ViewReport = () => {
       Object.entries(profiles).forEach(([profName, params]) => {
         const showProf = profName !== "_individual" && shouldShowProfile(params);
         const testNameHeaders = countTestNameHeaders(params);
-        const heightMm = DEPT_HEADER_HEIGHT_MM + (showProf ? PROFILE_HEADER_HEIGHT_MM : 0) + TABLE_HEADER_HEIGHT_MM + params.length * ROW_HEIGHT_MM + testNameHeaders * TEST_NAME_HEADER_MM + PROFILE_GAP_MM;
+        const compact = isCompactProfile(profName) || isCompactProfile(dept);
+        const rowH = compact ? ROW_HEIGHT_COMPACT_MM : ROW_HEIGHT_MM;
+        const heightMm = DEPT_HEADER_HEIGHT_MM + (showProf ? PROFILE_HEADER_HEIGHT_MM : 0) + TABLE_HEADER_HEIGHT_MM + params.length * rowH + testNameHeaders * TEST_NAME_HEADER_MM + PROFILE_GAP_MM;
         sections.push({
           type: "department-profile",
           dept,
