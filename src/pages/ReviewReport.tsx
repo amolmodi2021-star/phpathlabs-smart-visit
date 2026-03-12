@@ -73,11 +73,17 @@ const ReviewReport = () => {
     loadData();
   }, [reportId]);
 
-  const loadData = async () => {
-    setLoading(true);
-    const [{ data: extracted }, { data: sigs }, { data: params }, { data: depts }, { data: profiles }, { data: profileParams }] = await Promise.all([
-      supabase.from("extracted_report_data").select("*").eq("report_id", reportId).single(),
-      supabase.from("pathologist_signatures").select("*"),
+  // Refresh master data and re-enrich current test results on page focus
+  useEffect(() => {
+    const handleFocus = () => {
+      if (!loading) refreshMasterData();
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [loading, testResults]);
+
+  const buildMasterMaps = async () => {
+    const [{ data: params }, { data: depts }, { data: profiles }, { data: profileParams }] = await Promise.all([
       supabase.from("report_test_parameters").select("id, parameter_name, department_id, profile_id"),
       supabase.from("report_departments").select("id, department_name"),
       supabase.from("report_profiles").select("id, profile_name"),
@@ -86,7 +92,6 @@ const ReviewReport = () => {
 
     const deptMap = new Map((depts || []).map((d: any) => [d.id, d.department_name]));
 
-    // Build master map for department lookup only
     const masterMap = new Map<string, { department_name?: string; profile_name?: string }>();
     (params || []).forEach((p: any) => {
       masterMap.set(p.parameter_name.toLowerCase(), {
@@ -94,9 +99,7 @@ const ReviewReport = () => {
         profile_name: "",
       });
     });
-    setMasterParams(masterMap);
 
-    // Build profile groups: profile_id -> { name, paramNames[] }
     const profileNameMap = new Map((profiles || []).map((p: any) => [p.id, p.profile_name]));
     const profileGroups = new Map<string, { name: string; paramNames: string[] }>();
     (profileParams || []).forEach((pp: any) => {
@@ -112,6 +115,48 @@ const ReviewReport = () => {
         });
       }
     });
+
+    return { masterMap, profileGroups };
+  };
+
+  const enrichResults = (results: TestResult[], masterMap: Map<string, { department_name?: string; profile_name?: string }>, profileGroups: Map<string, { name: string; paramNames: string[] }>) => {
+    const extractedParamNames = new Set(results.map((r) => r.parameter_name.toLowerCase()));
+
+    const matchedProfileParams = new Map<string, string>();
+    profileGroups.forEach((group) => {
+      const allPresent = group.paramNames.every((pn) => extractedParamNames.has(pn));
+      if (allPresent) {
+        group.paramNames.forEach((pn) => matchedProfileParams.set(pn, group.name));
+      }
+    });
+
+    return results.map((r) => {
+      const key = r.parameter_name.toLowerCase();
+      const master = masterMap.get(key);
+      return {
+        ...r,
+        department: master ? master.department_name : "",
+        profile_name: matchedProfileParams.get(key) || "",
+      };
+    });
+  };
+
+  // Refresh only master data and re-enrich current results (preserves user edits)
+  const refreshMasterData = async () => {
+    const { masterMap, profileGroups } = await buildMasterMaps();
+    setMasterParams(masterMap);
+    setTestResults((prev) => normalizeTestResultFlags(enrichResults(prev, masterMap, profileGroups)));
+  };
+
+  const loadData = async () => {
+    setLoading(true);
+    const [{ data: extracted }, { data: sigs }] = await Promise.all([
+      supabase.from("extracted_report_data").select("*").eq("report_id", reportId).single(),
+      supabase.from("pathologist_signatures").select("*"),
+    ]);
+
+    const { masterMap, profileGroups } = await buildMasterMaps();
+    setMasterParams(masterMap);
 
     if (extracted) {
       setExtractedData(extracted);
@@ -132,28 +177,7 @@ const ReviewReport = () => {
       setLocationField((extracted as any).location || "");
       const rawResults = (extracted.test_results as unknown as TestResult[]) || [];
 
-      // Collect all extracted parameter names (lowercase) for group matching
-      const extractedParamNames = new Set(rawResults.map((r) => r.parameter_name.toLowerCase()));
-
-      // Determine which profiles are fully matched (ALL parameters present)
-      const matchedProfileParams = new Map<string, string>();
-      profileGroups.forEach((group) => {
-        const allPresent = group.paramNames.every((pn) => extractedParamNames.has(pn));
-        if (allPresent) {
-          group.paramNames.forEach((pn) => matchedProfileParams.set(pn, group.name));
-        }
-      });
-
-      // Enrich results: department from master, profile from group matching
-      const enrichedResults = rawResults.map((r) => {
-        const key = r.parameter_name.toLowerCase();
-        const master = masterMap.get(key);
-        return {
-          ...r,
-          department: master ? master.department_name : "",
-          profile_name: matchedProfileParams.get(key) || "",
-        };
-      });
+      const enrichedResults = enrichResults(rawResults, masterMap, profileGroups);
       setTestResults(normalizeTestResultFlags(enrichedResults));
       if (!extracted.umr_id) setShowUmrDialog(true);
     }
@@ -692,7 +716,7 @@ const ReviewReport = () => {
           profileName={testResults[addParamIndex]?.profile_name}
           testName={testResults[addParamIndex]?.test_name}
           onAdded={(id) => {
-            loadData();
+            refreshMasterData();
             setAddParamIndex(null);
           }}
         />
