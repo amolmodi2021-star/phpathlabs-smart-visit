@@ -92,6 +92,14 @@ PATHOLOGIST / APPROVED BY RULE (CRITICAL):
 - Do NOT assign the same doctor to all tests unless genuinely only one doctor signed the entire report.
 - Return the full doctor name including title (e.g., "Dr. JOHN SMITH").
 
+REFERENCE RANGE RULE (CRITICAL):
+- Many parameters have advisory-style reference ranges with multiple categories (e.g., Vitamin D: Deficiency/Insufficiency/Sufficiency/Toxicity, or HDL Cholesterol: No Risk/Moderate Risk/High Risk).
+- You MUST extract the COMPLETE reference range text including ALL categories, not just one line.
+- Example: For HDL Cholesterol, extract "No Risk: >60 mg/dL, Moderate Risk: 40-60 mg/dL, High Risk: <40 mg/dL" — NOT just "Moderate Risk 40-60 mg/dL".
+- Example: For Vitamin D, extract "Deficiency: <10 ng/mL, Insufficiency: 10-30 ng/mL, Sufficiency: 30-100 ng/mL, Toxicity: >100 ng/mL".
+- Put the full multi-line reference text in normal_range_text.
+- For normal_range_low and normal_range_high, use the "normal/sufficient/no-risk" category bounds (e.g., HDL: low=60, high=null for ">60"; Vitamin D: low=30, high=100 for "30-100").
+
 ABNORMAL FLAG RULE:
 - Compare numeric result with normal_range_low/high:
   > high => H, < low => L, else N.
