@@ -50,18 +50,20 @@ interface PageSection {
   results?: TestResult[];
   abnormals?: TestResult[];
   estimatedHeightMm: number;
+  isAbnormalOnly?: boolean;
 }
 
-const HEADER_HEIGHT_MM = 32; // patient details header
-const SIGNATURE_HEIGHT_MM = 28; // signature block
+const HEADER_HEIGHT_MM = 32;
+const SIGNATURE_HEIGHT_MM = 18; // reduced signature block
 const PAGE_NUM_HEIGHT_MM = 8;
 const DEPT_HEADER_HEIGHT_MM = 8;
 const PROFILE_HEADER_HEIGHT_MM = 6;
 const TABLE_HEADER_HEIGHT_MM = 6;
-const ROW_HEIGHT_MM = 5.5;
-const PROFILE_GAP_MM = 3;
-const ABNORMAL_SUMMARY_BASE_MM = 16;
-const ABNORMAL_ROW_MM = 5;
+const ROW_HEIGHT_MM = 5;
+const PROFILE_GAP_MM = 2;
+const ABNORMAL_SUMMARY_BASE_MM = 14;
+const ABNORMAL_ROW_MM = 4.5;
+const TEST_NAME_HEADER_MM = 4;
 
 const ViewReport = () => {
   const { reportId } = useParams();
