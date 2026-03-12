@@ -82,9 +82,15 @@ DATE RULE:
 - If sample_collection_date exists, copy it to collection_date when collection_date is empty.
 - If authentication_date/report date exists, ensure report_date is filled.
 
-PATHOLOGIST RULE:
-- Capture all pathologist/doctor names found near signatures/approval labels.
-- Fill approved_by per test if inferable by section/page proximity.
+PATHOLOGIST / APPROVED BY RULE (CRITICAL):
+- Pathology reports often have MULTIPLE doctors approving different sections/tests.
+- Each page or section may have a DIFFERENT doctor's name near the signature/approval area.
+- Look at EACH PAGE carefully for doctor names near "Section approved by", "Pathologist", "Dr.", signature blocks.
+- For EACH test result, set approved_by to the doctor whose name appears on the SAME PAGE as that test result.
+- If a page has one doctor's name at the bottom, ALL tests on that page are approved by that doctor.
+- If different sections on the same page have different doctors, attribute tests to the nearest doctor.
+- Do NOT assign the same doctor to all tests unless genuinely only one doctor signed the entire report.
+- Return the full doctor name including title (e.g., "Dr. JOHN SMITH").
 
 ABNORMAL FLAG RULE:
 - Compare numeric result with normal_range_low/high:
