@@ -326,10 +326,15 @@ const ReviewReport = () => {
           },
         });
 
-        if (error) throw error;
+        // Accept partial results even on 402 (credits exhausted)
         if (data?.verified_results) {
           allVerified = [...allVerified, ...data.verified_results];
         }
+        if (data?.error?.includes("credits exhausted")) {
+          toast.warning("AI credits exhausted. Partial re-verification applied.");
+          break;
+        }
+        if (error && !data?.verified_results) throw error;
       }
 
       if (allVerified.length > 0) {

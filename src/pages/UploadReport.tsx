@@ -254,8 +254,13 @@ const UploadReport = () => {
         },
       });
 
-      if (!error && data?.verified_results) {
+      // Accept partial results even on 402 (credits exhausted)
+      if (data?.verified_results) {
         allVerified = [...allVerified, ...data.verified_results];
+      }
+      if (data?.error?.includes("credits exhausted")) {
+        toast.warning("AI credits exhausted. Partial re-verification applied.");
+        break;
       }
 
       const progressRange = progressEnd - progressStart;
