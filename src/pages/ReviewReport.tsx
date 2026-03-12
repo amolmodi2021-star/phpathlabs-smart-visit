@@ -177,12 +177,53 @@ const ReviewReport = () => {
     });
   };
 
-  const convertPdfToImages = async (filePath: string): Promise<string[]> => {
+  const normalizeResultKey = (value: unknown) =>
+    String(value ?? "")
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const getResultKey = (row: Partial<TestResult>, index = 0) => {
+    const parameter = normalizeResultKey(row.parameter_name);
+    const testName = normalizeResultKey(row.test_name || row.parameter_name);
+    const sourcePage = Number(row.source_page) || 0;
+    return `${parameter || `row-${index}`}|${testName}|${sourcePage}`;
+  };
+
+  const extractPageTextLayer = async (page: any): Promise<string> => {
+    const textContent = await page.getTextContent();
+    const items = (textContent?.items || [])
+      .map((item: any) => ({
+        text: typeof item?.str === "string" ? item.str.trim() : "",
+        x: Number(item?.transform?.[4] ?? 0),
+        y: Number(item?.transform?.[5] ?? 0),
+      }))
+      .filter((item: any) => item.text);
+
+    if (!items.length) return "";
+
+    const rows = new Map<number, { x: number; text: string }[]>();
+
+    items.forEach((item: any) => {
+      const yBucket = Math.round(item.y / 2) * 2;
+      const current = rows.get(yBucket) || [];
+      current.push({ x: item.x, text: item.text });
+      rows.set(yBucket, current);
+    });
+
+    const rowText = Array.from(rows.entries())
+      .sort((a, b) => b[0] - a[0])
+      .map(([, rowItems]) => rowItems.sort((a, b) => a.x - b.x).map((item) => item.text).join(" | "));
+
+    return rowText.join("\n").slice(0, 22000);
+  };
+
+  const convertPdfToPages = async (filePath: string): Promise<Array<{ pageNumber: number; image: string; textLayer: string }>> => {
     const { data: fileData } = supabase.storage.from("report-uploads").getPublicUrl(filePath);
     const response = await fetch(fileData.publicUrl);
     const arrayBuffer = await response.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    const images: string[] = [];
+    const pages: Array<{ pageNumber: number; image: string; textLayer: string }> = [];
     const totalPages = pdf.numPages;
     const MAX_WIDTH = 1000;
     const MAX_HEIGHT = 1400;
@@ -197,9 +238,42 @@ const ReviewReport = () => {
       canvas.height = viewport.height;
       const ctx = canvas.getContext("2d")!;
       await page.render({ canvasContext: ctx, viewport }).promise;
-      images.push(canvas.toDataURL("image/jpeg", 0.45));
+
+      const textLayer = await extractPageTextLayer(page);
+      pages.push({
+        pageNumber: i,
+        image: canvas.toDataURL("image/jpeg", 0.45),
+        textLayer,
+      });
     }
-    return images;
+
+    return pages;
+  };
+
+  const buildPageBatches = (pages: Array<{ pageNumber: number; image: string; textLayer: string }>) => {
+    const MAX_BATCH_CHARS = 1_800_000;
+    const MAX_PAGES_PER_BATCH = 2;
+    const batches: Array<Array<{ pageNumber: number; image: string; textLayer: string }>> = [];
+    let currentBatch: Array<{ pageNumber: number; image: string; textLayer: string }> = [];
+    let currentChars = 0;
+
+    for (const page of pages) {
+      const payloadSize = page.image.length + page.textLayer.length;
+      if (
+        currentBatch.length > 0 &&
+        (currentChars + payloadSize > MAX_BATCH_CHARS || currentBatch.length >= MAX_PAGES_PER_BATCH)
+      ) {
+        batches.push(currentBatch);
+        currentBatch = [];
+        currentChars = 0;
+      }
+
+      currentBatch.push(page);
+      currentChars += payloadSize;
+    }
+
+    if (currentBatch.length > 0) batches.push(currentBatch);
+    return batches;
   };
 
   const handleReverifyAbnormals = async () => {
