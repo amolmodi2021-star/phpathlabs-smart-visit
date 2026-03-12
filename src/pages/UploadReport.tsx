@@ -353,7 +353,8 @@ const UploadReport = () => {
       allTestResults = dedupeByConfidence(allTestResults);
 
       const uniquePathologists = [...new Set(allPathologistNames.filter(Boolean))];
-      if (uniquePathologists.length <= 1 && pathologistName) {
+      // Only fallback-fill approved_by for results that don't already have one
+      if (pathologistName) {
         allTestResults = allTestResults.map((result: any) => ({
           ...result,
           approved_by: result.approved_by || pathologistName,
