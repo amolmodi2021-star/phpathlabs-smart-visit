@@ -331,7 +331,7 @@ const ReviewReport = () => {
           allVerified = [...allVerified, ...data.verified_results];
         }
         if (data?.error?.includes("credits exhausted")) {
-          toast.warning("AI credits exhausted. Partial re-verification applied.");
+          toast({ title: "AI credits exhausted", description: "Partial re-verification applied.", variant: "destructive" });
           break;
         }
         if (error && !data?.verified_results) throw error;
