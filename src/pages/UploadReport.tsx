@@ -228,8 +228,8 @@ const UploadReport = () => {
       const batch = batches[i];
       const pageNumbers = batch.map((p) => p.pageNumber);
 
-      const scopedRows = candidateRows.filter((row: any, idx: number) => {
-        const key = getResultKey(row, idx);
+      const scopedRows = candidateRows.filter((row: any) => {
+        const key = getResultKey(row);
         if (sentKeys.has(key)) return false;
 
         const sourcePage = Number(row?.source_page);
@@ -242,7 +242,7 @@ const UploadReport = () => {
 
       if (!scopedRows.length) continue;
 
-      scopedRows.forEach((row, idx) => sentKeys.add(getResultKey(row, idx)));
+      scopedRows.forEach((row) => sentKeys.add(getResultKey(row)));
 
       const { data, error } = await supabase.functions.invoke("reverify-abnormals", {
         body: {

@@ -334,12 +334,12 @@ const ReviewReport = () => {
 
       if (allVerified.length > 0) {
         const verifiedMap = new Map<string, any>();
-        allVerified.forEach((row: any, index: number) => {
-          verifiedMap.set(getResultKey(row, index), row);
+        allVerified.forEach((row: any) => {
+          verifiedMap.set(getResultKey(row), row);
         });
 
-        const corrected = testResults.map((row, index) => {
-          const verified = verifiedMap.get(getResultKey(row, index));
+        const corrected = testResults.map((row) => {
+          const verified = verifiedMap.get(getResultKey(row));
           if (!verified) return row;
 
           return {
