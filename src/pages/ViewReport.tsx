@@ -102,6 +102,7 @@ const ViewReport = () => {
   const [loading, setLoading] = useState(true);
   const [extracted, setExtracted] = useState<any>(null);
   const [pathologistMap, setPathologistMap] = useState<Record<string, any>>({});
+  const [deptOrderMap, setDeptOrderMap] = useState<Record<string, number>>({});
   const [trends, setTrends] = useState<TrendData[]>([]);
   const [showHeader, setShowHeader] = useState(true);
   const [layoutSettings, setLayoutSettings] = useState<LayoutSettings>({
@@ -172,6 +173,14 @@ const ViewReport = () => {
         }
       });
       ext.test_results = results as any;
+    }
+
+    // Fetch department display order
+    const { data: depts } = await supabase.from("report_departments").select("department_name, display_order").order("display_order", { ascending: true });
+    if (depts) {
+      const orderMap: Record<string, number> = {};
+      depts.forEach((d: any) => { orderMap[d.department_name] = d.display_order ?? 999; });
+      setDeptOrderMap(orderMap);
     }
 
     setExtracted(ext);
@@ -253,7 +262,12 @@ const ViewReport = () => {
       if (!grouped[dept][prof]) grouped[dept][prof] = [];
       grouped[dept][prof].push(r);
     });
-    return grouped;
+    // Sort by department display_order
+    const sorted: Record<string, Record<string, TestResult[]>> = {};
+    Object.keys(grouped)
+      .sort((a, b) => (deptOrderMap[a] ?? 999) - (deptOrderMap[b] ?? 999))
+      .forEach(dept => { sorted[dept] = grouped[dept]; });
+    return sorted;
   };
 
   const shouldShowProfile = (params: TestResult[]) => params.length >= 2;
