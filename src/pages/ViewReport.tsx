@@ -184,25 +184,26 @@ const ViewReport = () => {
     }
 
     if (allMasterParams.length > 0) {
-      // Build profile-specific map: "ProfileName::ParamName" -> testName
+      // Build profile-specific map using lowercase keys for case-insensitive matching
       const profileSpecificMap: Record<string, string> = {};
       const genericMap: Record<string, string> = {};
       allMasterParams.forEach((mp: any) => {
         if (mp.test_name) {
-          genericMap[mp.parameter_name] = mp.test_name;
+          genericMap[mp.parameter_name.toLowerCase()] = mp.test_name;
           const profName = mp.report_profiles?.profile_name;
           if (profName) {
-            profileSpecificMap[`${profName}::${mp.parameter_name}`] = mp.test_name;
+            profileSpecificMap[`${profName.toLowerCase()}::${mp.parameter_name.toLowerCase()}`] = mp.test_name;
           }
         }
       });
       results.forEach((r) => {
         // Prefer profile-specific match to avoid cross-profile contamination
-        const profileKey = r.profile_name ? `${r.profile_name}::${r.parameter_name}` : null;
+        const paramLower = r.parameter_name.toLowerCase();
+        const profileKey = r.profile_name ? `${r.profile_name.toLowerCase()}::${paramLower}` : null;
         if (profileKey && profileSpecificMap[profileKey]) {
           r.test_name = profileSpecificMap[profileKey];
-        } else if (genericMap[r.parameter_name]) {
-          r.test_name = genericMap[r.parameter_name];
+        } else if (genericMap[paramLower]) {
+          r.test_name = genericMap[paramLower];
         }
       });
       ext.test_results = results as any;
