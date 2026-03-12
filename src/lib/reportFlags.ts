@@ -45,10 +45,12 @@ const parseBoundsFromText = (rangeText?: string | null): { low: number | null; h
     }
   }
 
-  // Handle mixed advisory texts like HbA1c (<=5.6, 5.7-6.4, >=6.5):
-  // keep the upper normal cut-off to avoid missing high abnormalities.
+  // Handle advisory ranges like Vitamin D (Deficiency: <10, Sufficiency: 30-100, Toxicity: >100):
+  // When < gives high and > gives low, they appear swapped. Swap them to get correct normal bounds.
   if (low !== null && high !== null && low > high) {
-    low = null;
+    const temp = low;
+    low = high;
+    high = temp;
   }
 
   return { low, high };
