@@ -344,8 +344,9 @@ const ViewReport = () => {
 
       <div ref={printRef} className="bg-white text-black print:text-black mx-auto max-w-[210mm] print:max-w-none report-print-area" style={{ fontFamily: "'Segoe UI', Arial, sans-serif" }}>
         {allPages.map((page, pageIdx) => {
+          const isAbnormalOnlyPage = page.sections.every(s => s.isAbnormalOnly);
           const pathologist = findPathologistSig(page.approverName);
-          const signatureUrl = pathologist?.signature_image_path
+          const sigUrl = pathologist?.signature_image_path
             ? supabase.storage.from("signatures").getPublicUrl(pathologist.signature_image_path).data.publicUrl
             : null;
 
@@ -355,18 +356,20 @@ const ViewReport = () => {
               
               <ReportHeader extracted={extracted} />
 
-              <div className="px-6 space-y-2">
+              <div className="px-6 space-y-1">
                 {renderPageSections(page.sections)}
               </div>
 
-              <div style={{ position: 'absolute', bottom: `${bottomMarginMm + PAGE_NUM_HEIGHT_MM + 2}mm`, left: '24px', right: '24px' }}>
-                <ReportSignatureBlock
-                  signatureUrl={signatureUrl}
-                  pathologistName={pathologist?.pathologist_name || page.approverName}
-                  qualification={pathologist?.qualification}
-                  designation={pathologist?.designation}
-                />
-              </div>
+              {!isAbnormalOnlyPage && (
+                <div style={{ position: 'absolute', bottom: `${bottomMarginMm + PAGE_NUM_HEIGHT_MM + 1}mm`, left: '24px', right: '24px' }}>
+                  <ReportSignatureBlock
+                    signatureUrl={sigUrl}
+                    pathologistName={pathologist?.pathologist_name || page.approverName}
+                    qualification={pathologist?.qualification}
+                    designation={pathologist?.designation}
+                  />
+                </div>
+              )}
 
               <div className="page-number-footer" style={{ position: 'absolute', bottom: `${bottomMarginMm + 2}mm`, left: 0, right: 0, textAlign: 'center', fontSize: '9px', color: '#666' }}>
                 Page {pageIdx + 1} of {totalPages}
