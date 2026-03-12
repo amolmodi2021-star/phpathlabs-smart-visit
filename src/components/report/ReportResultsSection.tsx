@@ -58,7 +58,8 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
             {Object.entries(profiles).map(([profName, params], profIdx) => {
               const useCompact = compact || isCompactProfile(profName);
               const testGroups = groupByTestName(params);
-              const hasMultipleTestNames = isTestGroupedProfile(profName) && (testGroups.filter(g => g.testName).length > 1 || (testGroups.length === 1 && testGroups[0].testName && testGroups[0].testName !== profName));
+              const isGroupedProfile = isTestGroupedProfile(profName);
+              const hasMultipleTestNames = isGroupedProfile && testGroups.filter(g => g.testName).length >= 1;
 
               return (
                 <div key={profName} data-pdf-section="profile" className="print:break-inside-avoid">

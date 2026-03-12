@@ -168,7 +168,7 @@ const ViewReport = () => {
         if (mp.test_name) testNameMap[mp.parameter_name] = mp.test_name;
       });
       results.forEach((r) => {
-        if (!r.test_name && testNameMap[r.parameter_name]) {
+        if (testNameMap[r.parameter_name]) {
           r.test_name = testNameMap[r.parameter_name];
         }
       });
