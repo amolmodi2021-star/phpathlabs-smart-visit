@@ -15,6 +15,7 @@ interface ReportResultsSectionProps {
   grouped: Record<string, Record<string, TestResult[]>>;
   shouldShowProfile: (params: TestResult[]) => boolean;
   compact?: boolean;
+  hideDeptHeader?: boolean;
 }
 
 const groupByTestName = (params: TestResult[]): { testName: string | null; params: TestResult[] }[] => {
