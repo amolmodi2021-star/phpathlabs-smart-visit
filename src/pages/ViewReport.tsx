@@ -72,6 +72,29 @@ const isCompactProfile = (name: string): boolean => {
   return COMPACT_PROFILES.some(cp => lower.includes(cp));
 };
 
+const isDedicatedReportProfile = (section: PageSection): boolean => {
+  if (section.type !== "department-profile") return false;
+
+  const profileText = [
+    section.profName,
+    section.dept,
+    ...(section.results?.map((r) => `${r.profile_name || ""} ${r.test_name || ""}`) || []),
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  const isCbc = profileText.includes("cbc") || profileText.includes("complete blood count");
+  const isUrine = profileText.includes("urine") && (
+    profileText.includes("routine") ||
+    profileText.includes("analysis") ||
+    profileText.includes("microscopic") ||
+    profileText.includes("microscopy") ||
+    profileText.includes("urinalysis")
+  );
+
+  return isCbc || isUrine;
+};
+
 const ViewReport = () => {
   const { reportId } = useParams();
   const navigate = useNavigate();
@@ -274,24 +297,19 @@ const ViewReport = () => {
     let currentPage: PageSection[] = [];
     let currentHeight = 0;
 
-    const isDedicatedProfile = (section: PageSection): boolean => {
-      if (section.type !== "department-profile") return false;
-      const name = (section.profName || section.dept || "").toLowerCase();
-      return COMPACT_PROFILES.some(cp => name.includes(cp));
-    };
-
     sections.forEach((section) => {
-      const pageUsable = section.isAbnormalOnly 
+      const pageUsable = section.isAbnormalOnly
         ? (PAGE_HEIGHT_MM - topMarginMm - bottomMarginMm - HEADER_HEIGHT_MM - PAGE_NUM_HEIGHT_MM)
         : usableHeight;
 
       // CBC / Urine profiles always get their own dedicated page
-      if (isDedicatedProfile(section)) {
+      if (isDedicatedReportProfile(section)) {
         if (currentPage.length > 0) {
           pages.push(currentPage);
           currentPage = [];
           currentHeight = 0;
         }
+
         pages.push([section]);
         return;
       }
@@ -301,6 +319,7 @@ const ViewReport = () => {
         currentPage = [];
         currentHeight = 0;
       }
+
       currentPage.push(section);
       currentHeight += section.estimatedHeightMm;
     });
@@ -370,6 +389,9 @@ const ViewReport = () => {
       <div ref={printRef} className="bg-white text-black print:text-black mx-auto max-w-[210mm] print:max-w-none report-print-area" style={{ fontFamily: "'Segoe UI', Arial, sans-serif" }}>
         {allPages.map((page, pageIdx) => {
           const isAbnormalOnlyPage = page.sections.every(s => s.isAbnormalOnly);
+          const contentBottomReserveMm = isAbnormalOnlyPage
+            ? (PAGE_NUM_HEIGHT_MM + 2)
+            : (SIGNATURE_HEIGHT_MM + PAGE_NUM_HEIGHT_MM + 4);
           const pathologist = findPathologistSig(page.approverName);
           const sigUrl = pathologist?.signature_image_path
             ? supabase.storage.from("signatures").getPublicUrl(pathologist.signature_image_path).data.publicUrl
@@ -381,7 +403,7 @@ const ViewReport = () => {
               
               <ReportHeader extracted={extracted} />
 
-              <div className="px-6 space-y-1">
+              <div className="px-6 space-y-1" style={{ paddingBottom: `${contentBottomReserveMm}mm` }}>
                 {renderPageSections(page.sections)}
               </div>
 
