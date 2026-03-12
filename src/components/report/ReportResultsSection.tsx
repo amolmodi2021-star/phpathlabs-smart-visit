@@ -36,10 +36,16 @@ const groupByTestName = (params: TestResult[]): { testName: string | null; param
 };
 
 const COMPACT_PROFILES = ["cbc", "complete blood count"];
+const TEST_GROUPED_PROFILES = ["cbc", "complete blood count", "urine routine"];
 
 const isCompactProfile = (profName: string): boolean => {
   const lower = profName.toLowerCase();
   return COMPACT_PROFILES.some(cp => lower.includes(cp));
+};
+
+const isTestGroupedProfile = (profName: string): boolean => {
+  const lower = profName.toLowerCase();
+  return TEST_GROUPED_PROFILES.some(cp => lower.includes(cp));
 };
 
 const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHeader }: ReportResultsSectionProps) => {
