@@ -17,18 +17,46 @@ serve(async (req) => {
       .map((p: any) => `${p.parameter_name}|${p.unit || ''}|${p.normal_range_low ?? ''}|${p.normal_range_high ?? ''}|${p.department || ''}|${p.profile || ''}`)
       .join("\n");
 
-    const systemPrompt = `You are an expert pathology report data extractor. Extract ALL data from the uploaded pathology report pages.
+    const systemPrompt = `You are an advanced medical report data extraction engine designed for pathology laboratory reports.
 
-EXTRACTION RULES:
-1. Extract patient demographics: name, age, gender, UMR ID (if present), referring doctor, collection date, report date
-2. Extract additional registration info: Reg.No (Registration Number), Reg.Date (Registration Date), Sample Collection Date/Time, Accession Date, Authentication Date, Print Date, Location
-3. Extract ALL test results with: test/parameter name, result value, unit, reference/normal range
-4. Detect ALL pathologist/doctor names from signature areas or footers - there may be MULTIPLE doctors who approved different sections of the report
-5. Clean numeric values: remove flags like H, L, *, etc. Keep the raw numeric value
-6. Parse ranges: "12-15" → low=12, high=15. "<200" → low=0, high=200. ">40" → low=40, high=null
-7. Identify department for each test (Biochemistry, Haematology, Immunology, Microbiology, etc.)
-8. Identify if tests belong to a profile (e.g., Lipid Profile, Liver Function Test, Renal Function Test, CBC, Thyroid Profile)
-9. For each result, determine if it's abnormal: H (high - result above normal_range_high), L (low - result below normal_range_low), or N (normal - within range)
+CRITICAL EXTRACTION STRATEGY - LAYOUT-AWARE PARSING:
+1. Do NOT read the PDF sequentially. Detect table structures using layout analysis and preserve row and column alignment.
+2. USE X/Y COORDINATES: Every text element has spatial position. Elements with similar Y coordinates belong to the same row. Sort row elements by X coordinate for column order.
+3. PREVENT COLUMN SHIFT ERRORS: For every row ensure Test Name → Result → Unit → Reference Range all belong to the same Y-coordinate row group.
+
+NUMERIC COLLISION PREVENTION (VERY IMPORTANT):
+- Many rows contain multiple numbers. Example: "HbA1c  5.8 %  4.0 – 6.0" has numbers 5.8, 4.0, 6.0
+- Rule: The result_value must be the numeric value closest to the right of the test name and BEFORE the reference range column.
+- Ignore numbers that belong to reference ranges (two numbers separated by "-" or "to").
+- Reference range examples: 4.0-6.0, 70-110, 0.4 to 4.5
+
+RESULT VALUE PATTERNS:
+- Integers, decimals, numbers with symbols (< >), percentages
+- Text values: Positive, Negative, Reactive, Non Reactive, Detected, Not Detected
+- Valid patterns: digits with optional decimal, percentage, comparison operators
+
+UNIT DETECTION:
+- Units appear immediately to the right of the result value
+- Common units: mg/dL, g/dL, IU/L, U/L, %, mmol/L, µIU/mL, ng/mL, pg/mL, cells/cumm, million/cumm, thou/cumm, fL, pg, g%, sec
+- Extract the unit separately from the result value
+
+REFERENCE RANGE EXTRACTION:
+- Ranges contain two numbers separated by "-" or "to". Examples: 4.0 - 6.0, 70 - 110, 0.4 to 4.5
+- Parse: "12-15" → low=12, high=15. "<200" → low=0, high=200. ">40" → low=40, high=null
+
+IGNORE NON-RESULT ROWS:
+- Do NOT extract rows containing: Method, Specimen, Notes, Comments, Footnotes, Interpretation text
+
+ROW VERIFICATION STEP:
+- Before finalizing each row, verify that test_name, result_value, unit, reference_range all originate from the same row (same Y coordinate group).
+- If mismatch occurs, re-evaluate that row.
+
+DO NOT GUESS DATA:
+- If a value cannot be confidently determined, return null for that field.
+
+PATIENT DEMOGRAPHICS:
+1. Extract: name, age, gender, UMR ID (if present), referring doctor, collection date, report date
+2. Extract additional registration info: Reg.No, Reg.Date, Sample Collection Date/Time, Accession Date, Authentication Date, Print Date, Location
 
 CRITICAL - MULTIPLE PATHOLOGISTS/DOCTORS:
 - A single report PDF may have MULTIPLE doctors/pathologists who have approved DIFFERENT test sections
@@ -40,7 +68,7 @@ CRITICAL - MULTIPLE PATHOLOGISTS/DOCTORS:
 
 CRITICAL - UMR ID RULES:
 - UMR ID is a UNIQUE MEDICAL RECORD number, typically starting with "UMR" followed by digits (e.g., UMR0001234)
-- Do NOT confuse "Reg.No", "Registration Number", "Invoice Number", "Bill Number", or "Lab Number" with UMR ID - these are different identifiers
+- Do NOT confuse "Reg.No", "Registration Number", "Invoice Number", "Bill Number", or "Lab Number" with UMR ID
 - ONLY extract umr_id if you find a field explicitly labeled "UMR" or "UMR ID" or "Unique Medical Record"
 - If no UMR ID is found, return umr_id as empty string ""
 
@@ -51,13 +79,12 @@ CRITICAL - REG.NO RULES:
 
 CRITICAL - REF. DOCTOR RULES:
 - Look for fields labeled "Ref. Doctor", "Referring Doctor", "Ref. By", "Referred By", "Doctor", "Consultant", "Clinician"
-- This is the name of the doctor who referred/ordered the tests
 - If the report shows "SELF" or "Self Referral", return "SELF"
 - Do NOT leave this empty if a doctor name is visible anywhere on the report
 
 CRITICAL - COLLECTION DATE & REPORT DATE RULES:
-- collection_date: Look for "Collection Date", "Sample Collection Date", "Collected On", "Date of Collection". Extract the DATE portion.
-- report_date: Look for "Report Date", "Reported On", "Date of Report", "Reporting Date", "Authentication Date". Extract the DATE portion.
+- collection_date: Look for "Collection Date", "Sample Collection Date", "Collected On", "Date of Collection"
+- report_date: Look for "Report Date", "Reported On", "Date of Report", "Reporting Date", "Authentication Date"
 - If "Sample Collection Date" is found, copy it to BOTH sample_collection_date AND collection_date fields
 - If "Authentication Date" or "Report Date" is found, copy it to BOTH the specific field AND report_date
 - NEVER leave collection_date and report_date empty if sample_collection_date or authentication_date have values
@@ -65,9 +92,14 @@ CRITICAL - COLLECTION DATE & REPORT DATE RULES:
 CRITICAL - ABNORMAL FLAG RULES:
 - Compare each numeric result_value against normal_range_low and normal_range_high
 - If result_value > normal_range_high → flag = "H"
-- If result_value < normal_range_low → flag = "L"  
+- If result_value < normal_range_low → flag = "L"
 - Otherwise → flag = "N"
 - Always set a flag for every test result
+
+DEPARTMENT & PROFILE IDENTIFICATION:
+- Identify department for each test (Biochemistry, Haematology, Immunology, Microbiology, etc.)
+- Identify if tests belong to a profile ONLY if explicitly shown as a section header (e.g., Lipid Profile, Liver Function Test, CBC, Thyroid Profile)
+- Do NOT put individual test names in profile_name. Leave empty if the test is not under a named profile section.
 
 KNOWN TEST PARAMETERS IN OUR SYSTEM (try to match extracted tests to these):
 ${paramList || 'No parameters configured yet'}
