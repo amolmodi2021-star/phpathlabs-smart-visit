@@ -171,12 +171,69 @@ const UploadReport = () => {
         patientData.report_date = patientData.authentication_date;
       }
 
+      let finalTestResults = normalizeTestResultFlags(allTestResults);
+      setProgress(85);
+
+      // === AUTOMATIC OCR RE-VERIFICATION PASS ===
+      // Re-read the PDF with a second AI call to cross-check all extracted values
+      try {
+        setStatus("extracting"); // keep showing extracting status
+        const reverifyBatches: string[][] = [];
+        let rvBatch: string[] = [];
+        let rvBatchChars = 0;
+        for (const img of pageImages) {
+          if (rvBatch.length > 0 && (rvBatchChars + img.length > MAX_BATCH_CHARS || rvBatch.length >= MAX_PAGES_PER_BATCH)) {
+            reverifyBatches.push(rvBatch);
+            rvBatch = [];
+            rvBatchChars = 0;
+          }
+          rvBatch.push(img);
+          rvBatchChars += img.length;
+        }
+        if (rvBatch.length > 0) reverifyBatches.push(rvBatch);
+
+        let allVerified: any[] = [];
+        for (let i = 0; i < reverifyBatches.length; i++) {
+          const { data: rvData, error: rvError } = await supabase.functions.invoke("reverify-abnormals", {
+            body: { pageImages: reverifyBatches[i], testResults: finalTestResults },
+          });
+          if (!rvError && rvData?.verified_results) {
+            allVerified = [...allVerified, ...rvData.verified_results];
+          }
+          setProgress(85 + Math.round(((i + 1) / reverifyBatches.length) * 10));
+        }
+
+        if (allVerified.length > 0) {
+          const verifiedMap = new Map<string, any>();
+          allVerified.forEach((v: any) => {
+            const key = v.parameter_name?.toLowerCase();
+            if (key) verifiedMap.set(key, v);
+          });
+
+          finalTestResults = finalTestResults.map((r: any) => {
+            const v = verifiedMap.get(r.parameter_name?.toLowerCase());
+            if (!v) return r;
+            return {
+              ...r,
+              result_value: v.result_value ?? r.result_value,
+              unit: v.unit ?? r.unit,
+              normal_range_text: v.normal_range_text ?? r.normal_range_text,
+              normal_range_low: v.normal_range_low ?? r.normal_range_low,
+              normal_range_high: v.normal_range_high ?? r.normal_range_high,
+            };
+          });
+          finalTestResults = normalizeTestResultFlags(finalTestResults);
+        }
+      } catch (rvErr) {
+        console.warn("Auto re-verification failed, proceeding with initial extraction:", rvErr);
+      }
+
       const mergedData = {
         patient: patientData,
-        test_results: normalizeTestResultFlags(allTestResults),
+        test_results: finalTestResults,
         pathologist_name: uniquePathologists.join(", ") || pathologistName,
       };
-      setProgress(85);
+      setProgress(95);
 
       // Save extracted data
       const { error: saveError } = await supabase.from("extracted_report_data").insert({
