@@ -72,6 +72,29 @@ const isCompactProfile = (name: string): boolean => {
   return COMPACT_PROFILES.some(cp => lower.includes(cp));
 };
 
+const isDedicatedReportProfile = (section: PageSection): boolean => {
+  if (section.type !== "department-profile") return false;
+
+  const profileText = [
+    section.profName,
+    section.dept,
+    ...(section.results?.map((r) => `${r.profile_name || ""} ${r.test_name || ""}`) || []),
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  const isCbc = profileText.includes("cbc") || profileText.includes("complete blood count");
+  const isUrine = profileText.includes("urine") && (
+    profileText.includes("routine") ||
+    profileText.includes("analysis") ||
+    profileText.includes("microscopic") ||
+    profileText.includes("microscopy") ||
+    profileText.includes("urinalysis")
+  );
+
+  return isCbc || isUrine;
+};
+
 const ViewReport = () => {
   const { reportId } = useParams();
   const navigate = useNavigate();
