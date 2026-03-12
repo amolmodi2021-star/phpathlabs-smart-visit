@@ -60,7 +60,7 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                   {profName !== "_individual" && shouldShowProfile(params) && (
                     <>
                       <div style={{ height: '1mm' }} />
-                      <div className="bg-blue-50 px-3 py-1 font-semibold text-sm text-blue-800 border-b">{profName}</div>
+                      <div className="bg-blue-50 px-3 py-1 font-semibold text-sm border-b" style={{ color: '#2E3192' }}>{profName}</div>
                     </>
                   )}
                   <table className={`w-full ${useCompact ? 'text-xs' : 'text-sm'}`} style={{ tableLayout: 'fixed' }}>
