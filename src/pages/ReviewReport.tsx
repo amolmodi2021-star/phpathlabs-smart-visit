@@ -180,7 +180,7 @@ const ReviewReport = () => {
     const arrayBuffer = await response.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     const images: string[] = [];
-    const totalPages = Math.min(pdf.numPages, 8);
+    const totalPages = pdf.numPages;
     const MAX_WIDTH = 1000;
     const MAX_HEIGHT = 1400;
 
