@@ -279,7 +279,6 @@ const ReviewReport = () => {
   const handleReverifyAbnormals = async () => {
     setReverifying(true);
     try {
-      // Get the uploaded report's file path
       const { data: report } = await supabase
         .from("uploaded_reports")
         .select("file_path")
@@ -292,33 +291,41 @@ const ReviewReport = () => {
         return;
       }
 
-      // Re-render PDF to images
-      const pageImages = await convertPdfToImages(report.file_path);
-
-      // Send images + current results to AI for re-verification in batches
-      const MAX_BATCH_CHARS = 1_800_000;
-      const MAX_PAGES_PER_BATCH = 2;
-      const batches: string[][] = [];
-      let currentBatch: string[] = [];
-      let currentBatchChars = 0;
-
-      for (const img of pageImages) {
-        if (currentBatch.length > 0 && (currentBatchChars + img.length > MAX_BATCH_CHARS || currentBatch.length >= MAX_PAGES_PER_BATCH)) {
-          batches.push(currentBatch);
-          currentBatch = [];
-          currentBatchChars = 0;
-        }
-        currentBatch.push(img);
-        currentBatchChars += img.length;
-      }
-      if (currentBatch.length > 0) batches.push(currentBatch);
-
-      // Call reverify for each batch and merge results
+      const pages = await convertPdfToPages(report.file_path);
+      const batches = buildPageBatches(pages);
+      const sentKeys = new Set<string>();
       let allVerified: any[] = [];
-      for (const batch of batches) {
-        const { data, error } = await supabase.functions.invoke("reverify-abnormals", {
-          body: { pageImages: batch, testResults },
+
+      for (let i = 0; i < batches.length; i++) {
+        const batch = batches[i];
+        const pageNumbers = batch.map((p) => p.pageNumber);
+
+        const scopedRows = testResults.filter((row, index) => {
+          const key = getResultKey(row, index);
+          if (sentKeys.has(key)) return false;
+
+          const sourcePage = Number(row.source_page);
+          if (Number.isFinite(sourcePage) && sourcePage > 0) {
+            return pageNumbers.includes(sourcePage);
+          }
+
+          return i === 0;
         });
+
+        if (!scopedRows.length) continue;
+
+        scopedRows.forEach((row, index) => sentKeys.add(getResultKey(row, index)));
+
+        const { data, error } = await supabase.functions.invoke("reverify-abnormals", {
+          body: {
+            pageImages: batch.map((p) => p.image),
+            pageTexts: batch.map((p) => p.textLayer),
+            pageNumbers,
+            testResults: scopedRows,
+            strictMode: true,
+          },
+        });
+
         if (error) throw error;
         if (data?.verified_results) {
           allVerified = [...allVerified, ...data.verified_results];
@@ -326,36 +333,36 @@ const ReviewReport = () => {
       }
 
       if (allVerified.length > 0) {
-        // Match verified results back to current test results by parameter_name
         const verifiedMap = new Map<string, any>();
-        allVerified.forEach((v: any) => {
-          const key = v.parameter_name?.toLowerCase();
-          if (key) verifiedMap.set(key, v);
+        allVerified.forEach((row: any, index: number) => {
+          verifiedMap.set(getResultKey(row, index), row);
         });
 
-        const corrected = testResults.map((r) => {
-          const v = verifiedMap.get(r.parameter_name.toLowerCase());
-          if (!v) return r;
+        const corrected = testResults.map((row, index) => {
+          const verified = verifiedMap.get(getResultKey(row, index));
+          if (!verified) return row;
+
           return {
-            ...r,
-            result_value: v.result_value ?? r.result_value,
-            unit: v.unit ?? r.unit,
-            normal_range_text: v.normal_range_text ?? r.normal_range_text,
-            normal_range_low: v.normal_range_low ?? r.normal_range_low,
-            normal_range_high: v.normal_range_high ?? r.normal_range_high,
+            ...row,
+            parameter_name: verified.parameter_name ?? row.parameter_name,
+            result_value: verified.result_value ?? row.result_value,
+            unit: verified.unit ?? row.unit,
+            normal_range_text: verified.normal_range_text ?? row.normal_range_text,
+            normal_range_low: verified.normal_range_low ?? row.normal_range_low,
+            normal_range_high: verified.normal_range_high ?? row.normal_range_high,
+            source_page: verified.source_page ?? row.source_page,
+            confidence_score: verified.confidence_score ?? row.confidence_score,
           };
         });
 
-        // Re-compute flags after correction
         const recalculated = normalizeTestResultFlags(corrected);
         setTestResults(recalculated);
         const abnormalCount = recalculated.filter((r) => r.flag === "H" || r.flag === "L").length;
-        toast({ title: "Re-verification complete", description: `${allVerified.length} parameters verified from PDF. ${abnormalCount} abnormal result(s) confirmed.` });
+        toast({ title: "Re-verification complete", description: `${allVerified.length} parameters rechecked from matching pages. ${abnormalCount} abnormal result(s) confirmed.` });
       } else {
-        // Fallback: just recalculate flags locally
         const recalculated = normalizeTestResultFlags(testResults);
         setTestResults(recalculated);
-        toast({ title: "Re-verification complete", description: "Flags recalculated." });
+        toast({ title: "Re-verification complete", description: "No corrections were needed." });
       }
 
       setReverified(true);
