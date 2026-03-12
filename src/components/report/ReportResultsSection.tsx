@@ -42,13 +42,13 @@ const isCompactProfile = (profName: string): boolean => {
   return COMPACT_PROFILES.some(cp => lower.includes(cp));
 };
 
-const ReportResultsSection = ({ grouped, shouldShowProfile, compact }: ReportResultsSectionProps) => {
+const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHeader }: ReportResultsSectionProps) => {
   return (
     <>
       {Object.entries(grouped).map(([dept, profiles]) => (
         <div key={dept} data-pdf-section="department">
-          <div className="bg-blue-600 text-white px-3 py-1.5 rounded-t font-semibold text-sm text-center">{dept}</div>
-          <div className="border border-t-0 rounded-b">
+          {!hideDeptHeader && <div className="bg-blue-600 text-white px-3 py-1.5 rounded-t font-semibold text-sm text-center">{dept}</div>}
+          <div className={`border ${hideDeptHeader ? 'rounded' : 'border-t-0 rounded-b'}`}>
             {Object.entries(profiles).map(([profName, params], profIdx) => {
               const useCompact = compact || isCompactProfile(profName);
               const testGroups = groupByTestName(params);
