@@ -14,6 +14,9 @@ import { Loader2, Save, FileCheck, AlertTriangle, Trash2, Plus, Check, ShieldChe
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import AddParameterToMasterDialog from "@/components/AddParameterToMasterDialog";
 import { computeAbnormalFlag, normalizeTestResultFlags } from "@/lib/reportFlags";
+import * as pdfjsLib from "pdfjs-dist";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs`;
 
 interface TestResult {
   department?: string;
@@ -61,6 +64,7 @@ const ReviewReport = () => {
   const [addParamDialogOpen, setAddParamDialogOpen] = useState(false);
   const [addParamIndex, setAddParamIndex] = useState<number | null>(null);
   const [reverified, setReverified] = useState(false);
+  const [reverifying, setReverifying] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -170,13 +174,119 @@ const ReviewReport = () => {
     });
   };
 
-  const handleReverifyAbnormals = () => {
-    // Re-run local flag computation on all results to catch any discrepancies
-    const recalculated = normalizeTestResultFlags(testResults);
-    setTestResults(recalculated);
-    setReverified(true);
-    const newAbnormalCount = recalculated.filter((r) => r.flag === "H" || r.flag === "L").length;
-    toast({ title: `Re-verification complete`, description: `${newAbnormalCount} abnormal result(s) confirmed.` });
+  const convertPdfToImages = async (filePath: string): Promise<string[]> => {
+    const { data: fileData } = supabase.storage.from("report-uploads").getPublicUrl(filePath);
+    const response = await fetch(fileData.publicUrl);
+    const arrayBuffer = await response.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const images: string[] = [];
+    const totalPages = Math.min(pdf.numPages, 8);
+    const MAX_WIDTH = 1000;
+    const MAX_HEIGHT = 1400;
+
+    for (let i = 1; i <= totalPages; i++) {
+      const page = await pdf.getPage(i);
+      const baseViewport = page.getViewport({ scale: 1.0 });
+      const scale = Math.min(1.0, MAX_WIDTH / baseViewport.width, MAX_HEIGHT / baseViewport.height);
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement("canvas");
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext("2d")!;
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      images.push(canvas.toDataURL("image/jpeg", 0.45));
+    }
+    return images;
+  };
+
+  const handleReverifyAbnormals = async () => {
+    setReverifying(true);
+    try {
+      // Get the uploaded report's file path
+      const { data: report } = await supabase
+        .from("uploaded_reports")
+        .select("file_path")
+        .eq("id", reportId)
+        .single();
+
+      if (!report?.file_path) {
+        toast({ title: "Error", description: "Could not find the uploaded PDF file.", variant: "destructive" });
+        setReverifying(false);
+        return;
+      }
+
+      // Re-render PDF to images
+      const pageImages = await convertPdfToImages(report.file_path);
+
+      // Send images + current results to AI for re-verification in batches
+      const MAX_BATCH_CHARS = 1_800_000;
+      const MAX_PAGES_PER_BATCH = 2;
+      const batches: string[][] = [];
+      let currentBatch: string[] = [];
+      let currentBatchChars = 0;
+
+      for (const img of pageImages) {
+        if (currentBatch.length > 0 && (currentBatchChars + img.length > MAX_BATCH_CHARS || currentBatch.length >= MAX_PAGES_PER_BATCH)) {
+          batches.push(currentBatch);
+          currentBatch = [];
+          currentBatchChars = 0;
+        }
+        currentBatch.push(img);
+        currentBatchChars += img.length;
+      }
+      if (currentBatch.length > 0) batches.push(currentBatch);
+
+      // Call reverify for each batch and merge results
+      let allVerified: any[] = [];
+      for (const batch of batches) {
+        const { data, error } = await supabase.functions.invoke("reverify-abnormals", {
+          body: { pageImages: batch, testResults },
+        });
+        if (error) throw error;
+        if (data?.verified_results) {
+          allVerified = [...allVerified, ...data.verified_results];
+        }
+      }
+
+      if (allVerified.length > 0) {
+        // Match verified results back to current test results by parameter_name
+        const verifiedMap = new Map<string, any>();
+        allVerified.forEach((v: any) => {
+          const key = v.parameter_name?.toLowerCase();
+          if (key) verifiedMap.set(key, v);
+        });
+
+        const corrected = testResults.map((r) => {
+          const v = verifiedMap.get(r.parameter_name.toLowerCase());
+          if (!v) return r;
+          return {
+            ...r,
+            result_value: v.result_value ?? r.result_value,
+            unit: v.unit ?? r.unit,
+            normal_range_text: v.normal_range_text ?? r.normal_range_text,
+            normal_range_low: v.normal_range_low ?? r.normal_range_low,
+            normal_range_high: v.normal_range_high ?? r.normal_range_high,
+          };
+        });
+
+        // Re-compute flags after correction
+        const recalculated = normalizeTestResultFlags(corrected);
+        setTestResults(recalculated);
+        const abnormalCount = recalculated.filter((r) => r.flag === "H" || r.flag === "L").length;
+        toast({ title: "Re-verification complete", description: `${allVerified.length} parameters verified from PDF. ${abnormalCount} abnormal result(s) confirmed.` });
+      } else {
+        // Fallback: just recalculate flags locally
+        const recalculated = normalizeTestResultFlags(testResults);
+        setTestResults(recalculated);
+        toast({ title: "Re-verification complete", description: "Flags recalculated." });
+      }
+
+      setReverified(true);
+    } catch (err: any) {
+      console.error("Re-verify error:", err);
+      toast({ title: "Re-verification failed", description: err.message || "Please try again.", variant: "destructive" });
+    }
+    setReverifying(false);
   };
 
   const removeTestResult = (index: number) => {
@@ -293,10 +403,10 @@ const ReviewReport = () => {
           <Button
             variant="secondary"
             onClick={handleReverifyAbnormals}
-            disabled={reverified}
+            disabled={reverified || reverifying}
           >
-            <ShieldCheck className="h-4 w-4 mr-2" />
-            {reverified ? "Re-verified ✓" : "Re-verify Abnormals"}
+            {reverifying ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <ShieldCheck className="h-4 w-4 mr-2" />}
+            {reverifying ? "Re-verifying from PDF..." : reverified ? "Re-verified ✓" : "Re-verify Results (AI)"}
           </Button>
           <Button onClick={handleSaveAndGenerate} disabled={saving || !reverified}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileCheck className="h-4 w-4 mr-2" />}
