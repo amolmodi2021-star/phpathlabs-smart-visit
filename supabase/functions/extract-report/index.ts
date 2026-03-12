@@ -60,6 +60,16 @@ RELIABILITY MODE (STRICT):
 5) If uncertain, keep confidence low (<80). Do not hallucinate.
 6) If a field is missing, return empty string/null instead of guessing.
 
+CRITICAL - EXTRACT ALL PARAMETERS INCLUDING QUALITATIVE/TEXT RESULTS:
+- You MUST extract EVERY parameter row from ALL sections including:
+  * PHYSICAL EXAMINATION (Quantity, Colour, Appearance, pH, Specific Gravity)
+  * CHEMICAL EXAMINATION (Proteins, Glucose, Ketone Bodies, Bilirubin, Blood, Nitrite, Urobilinogen)
+  * MICROSCOPIC EXAMINATION (Pus cells, Red Blood Cells, Epithelial cells, Casts, Crystals, Yeast Cells, Bacteria, Mucus Threads, Trichomonas Vaginalis, Spermatozoa, Deposit)
+- Text/qualitative results like "Absent", "Nil", "Negative", "Clear", "Pale yellow", "1-2/hpf" are VALID result_value entries. Do NOT skip them.
+- For qualitative results, set flag to "N" (normal).
+- Urine reports often have key-value table formats (Parameter | Result | Reference). Extract ALL rows.
+- Do NOT skip any row just because it has a non-numeric result.
+
 PATIENT DEMOGRAPHICS:
 - Extract: name, age, gender, UMR ID (strictly UMR-labeled only), ref doctor, collection/report dates
 - Also extract: Reg.No, Reg.Date, Sample Collection Date/Time, Accession Date, Authentication Date, Print Date, Location
@@ -79,6 +89,7 @@ PATHOLOGIST RULE:
 ABNORMAL FLAG RULE:
 - Compare numeric result with normal_range_low/high:
   > high => H, < low => L, else N.
+- For qualitative results (Absent, Nil, Negative, etc.), set flag to "N".
 
 KNOWN PARAMETERS:
 ${paramList || "No parameters configured yet"}
