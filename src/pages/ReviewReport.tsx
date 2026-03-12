@@ -198,8 +198,9 @@ const ReviewReport = () => {
       supabase.from("pathologist_signatures").select("*"),
     ]);
 
-    const { masterMap, profileGroups } = await buildMasterMaps();
+    const { masterMap, profileGroups, paramIdToNameKey, masterIds } = await buildMasterMaps();
     setMasterParams(masterMap);
+    setMasterParamIds(masterIds);
 
     if (extracted) {
       setExtractedData(extracted);
@@ -220,7 +221,7 @@ const ReviewReport = () => {
       setLocationField((extracted as any).location || "");
       const rawResults = (extracted.test_results as unknown as TestResult[]) || [];
 
-      const enrichedResults = enrichResults(rawResults, masterMap, profileGroups);
+      const enrichedResults = enrichResults(rawResults, masterMap, profileGroups, paramIdToNameKey);
       setTestResults(normalizeTestResultFlags(enrichedResults));
       if (!extracted.umr_id) setShowUmrDialog(true);
     }
