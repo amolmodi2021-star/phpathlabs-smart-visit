@@ -377,17 +377,20 @@ const ViewReport = () => {
   const totalPages = allPages.length + (hasTrends ? 1 : 0);
 
   const renderPageSections = (sections: PageSection[]) => {
+    const seenDepts = new Set<string>();
     return sections.map((section, idx) => {
       if (section.type === "abnormal-summary" && section.abnormals) {
         return <ReportAbnormalSummary key={`abnormal-${idx}`} abnormalResults={section.abnormals} />;
       }
       if (section.type === "department-profile" && section.results && section.dept) {
+        const showDeptHeader = !seenDepts.has(section.dept);
+        seenDepts.add(section.dept);
         const grouped: Record<string, Record<string, TestResult[]>> = {
           [section.dept]: { [section.profName || "_individual"]: section.results },
         };
         return (
           <div key={`${section.dept}-${section.profName}-${idx}`} style={{ marginBottom: `${PROFILE_GAP_MM}mm` }}>
-            <ReportResultsSection grouped={grouped} shouldShowProfile={shouldShowProfile} />
+            <ReportResultsSection grouped={grouped} shouldShowProfile={shouldShowProfile} hideDeptHeader={!showDeptHeader} />
           </div>
         );
       }
