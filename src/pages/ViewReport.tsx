@@ -372,6 +372,17 @@ const ViewReport = () => {
         ? (PAGE_HEIGHT_MM - topMarginMm - bottomMarginMm - HEADER_HEIGHT_MM - PAGE_NUM_HEIGHT_MM)
         : usableHeight;
 
+      // Abnormal summary pages are dedicated — nothing else shares the page
+      if (section.isAbnormalOnly) {
+        if (currentPage.length > 0) {
+          pages.push(currentPage);
+          currentPage = [];
+          currentHeight = 0;
+        }
+        pages.push([section]);
+        return;
+      }
+
       // CBC / Urine profiles always get their own dedicated page
       if (isDedicatedReportProfile(section)) {
         if (currentPage.length > 0) {
