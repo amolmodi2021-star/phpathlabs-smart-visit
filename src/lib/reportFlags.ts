@@ -66,8 +66,15 @@ export const computeAbnormalFlag = (row: FlagEvaluationInput): AbnormalFlag => {
   const explicitHigh = extractNumber(row.normal_range_high);
   const textBounds = parseBoundsFromText(row.normal_range_text);
 
-  const low = explicitLow ?? textBounds.low;
-  const high = explicitHigh ?? textBounds.high;
+  let low = explicitLow ?? textBounds.low;
+  let high = explicitHigh ?? textBounds.high;
+
+  // Defensive: if low > high (e.g., extraction error like 2000 vs 1000), swap them
+  if (low !== null && high !== null && low > high) {
+    const temp = low;
+    low = high;
+    high = temp;
+  }
 
   if (high !== null && value > high) return "H";
   if (low !== null && value < low) return "L";
