@@ -49,9 +49,9 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact }: ReportRes
           <div className="bg-blue-600 text-white px-3 py-1.5 rounded-t font-semibold text-sm text-center">{dept}</div>
           <div className="border border-t-0 rounded-b">
             {Object.entries(profiles).map(([profName, params], profIdx) => {
-              const testGroups = groupByTestName(params);
-              const hasMultipleTestNames = testGroups.filter(g => g.testName).length > 1 || (testGroups.length === 1 && testGroups[0].testName && testGroups[0].testName !== profName);
               const useCompact = compact || isCompactProfile(profName);
+              const testGroups = groupByTestName(params);
+              const hasMultipleTestNames = useCompact && (testGroups.filter(g => g.testName).length > 1 || (testGroups.length === 1 && testGroups[0].testName && testGroups[0].testName !== profName));
 
               return (
                 <div key={profName} data-pdf-section="profile" className="print:break-inside-avoid">
