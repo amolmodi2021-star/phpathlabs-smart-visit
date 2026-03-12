@@ -211,6 +211,12 @@ const ViewReport = () => {
   const PAGE_HEIGHT_MM = 297;
   const usableHeight = PAGE_HEIGHT_MM - topMarginMm - bottomMarginMm - HEADER_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM;
 
+  // Count unique test_names in params for height estimation
+  const countTestNameHeaders = (params: TestResult[]): number => {
+    const testNames = new Set(params.map(r => r.test_name).filter(Boolean));
+    return testNames.size > 1 ? testNames.size : (testNames.size === 1 ? 1 : 0);
+  };
+
   // Build sections for each approver group
   const buildSections = (approverResults: TestResult[], includeAbnormalSummary: boolean): PageSection[] => {
     const sections: PageSection[] = [];
@@ -218,11 +224,19 @@ const ViewReport = () => {
     if (includeAbnormalSummary) {
       const allAbnormals = results.filter(r => r.flag === "H" || r.flag === "L");
       if (allAbnormals.length > 0) {
-        sections.push({
-          type: "abnormal-summary",
-          abnormals: allAbnormals,
-          estimatedHeightMm: ABNORMAL_SUMMARY_BASE_MM + allAbnormals.length * ABNORMAL_ROW_MM,
-        });
+        // Split abnormal summary into chunks that fit on pages (no signature needed)
+        const abnormalUsableHeight = PAGE_HEIGHT_MM - topMarginMm - bottomMarginMm - HEADER_HEIGHT_MM - PAGE_NUM_HEIGHT_MM;
+        const maxRowsPerPage = Math.floor((abnormalUsableHeight - ABNORMAL_SUMMARY_BASE_MM) / ABNORMAL_ROW_MM);
+        
+        for (let i = 0; i < allAbnormals.length; i += maxRowsPerPage) {
+          const chunk = allAbnormals.slice(i, i + maxRowsPerPage);
+          sections.push({
+            type: "abnormal-summary",
+            abnormals: chunk,
+            estimatedHeightMm: ABNORMAL_SUMMARY_BASE_MM + chunk.length * ABNORMAL_ROW_MM,
+            isAbnormalOnly: true,
+          });
+        }
       }
     }
 
@@ -230,7 +244,8 @@ const ViewReport = () => {
     Object.entries(grouped).forEach(([dept, profiles]) => {
       Object.entries(profiles).forEach(([profName, params]) => {
         const showProf = profName !== "_individual" && shouldShowProfile(params);
-        const heightMm = DEPT_HEADER_HEIGHT_MM + (showProf ? PROFILE_HEADER_HEIGHT_MM : 0) + TABLE_HEADER_HEIGHT_MM + params.length * ROW_HEIGHT_MM + PROFILE_GAP_MM;
+        const testNameHeaders = countTestNameHeaders(params);
+        const heightMm = DEPT_HEADER_HEIGHT_MM + (showProf ? PROFILE_HEADER_HEIGHT_MM : 0) + TABLE_HEADER_HEIGHT_MM + params.length * ROW_HEIGHT_MM + testNameHeaders * TEST_NAME_HEADER_MM + PROFILE_GAP_MM;
         sections.push({
           type: "department-profile",
           dept,
