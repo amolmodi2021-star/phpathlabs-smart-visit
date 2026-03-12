@@ -175,6 +175,14 @@ const ViewReport = () => {
       ext.test_results = results as any;
     }
 
+    // Fetch department display order
+    const { data: depts } = await supabase.from("report_departments").select("department_name, display_order").order("display_order", { ascending: true });
+    if (depts) {
+      const orderMap: Record<string, number> = {};
+      depts.forEach((d: any) => { orderMap[d.department_name] = d.display_order ?? 999; });
+      setDeptOrderMap(orderMap);
+    }
+
     setExtracted(ext);
 
     const { data: allSigs } = await supabase.from("pathologist_signatures").select("*");
