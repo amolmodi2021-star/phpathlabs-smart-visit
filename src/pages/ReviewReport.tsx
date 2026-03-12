@@ -652,7 +652,7 @@ const ReviewReport = () => {
                             )}
                           </TooltipTrigger>
                           <TooltipContent>
-                            {masterParams.has(r.parameter_name.toLowerCase()) || r.matched_parameter_id
+                            {masterParams.has(r.parameter_name.toLowerCase()) || (r.matched_parameter_id && masterParams.has(r.matched_parameter_id.toLowerCase()))
                               ? "Exists in master data"
                               : "Not in master data — click to add"}
                           </TooltipContent>
