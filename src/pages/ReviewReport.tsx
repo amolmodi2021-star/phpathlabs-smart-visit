@@ -97,13 +97,15 @@ const ReviewReport = () => {
     const [{ data: params }, { data: depts }, { data: profiles }, { data: profileParams }] = await Promise.all([
       supabase.from("report_test_parameters").select("id, parameter_name, department_id, profile_id"),
       supabase.from("report_departments").select("id, department_name"),
-      supabase.from("report_profiles").select("id, profile_name"),
+      supabase.from("report_profiles").select("id, profile_name, department_id"),
       supabase.from("profile_parameters").select("profile_id, parameter_id, report_test_parameters(parameter_name)"),
     ]);
 
     const deptMap = new Map((depts || []).map((d: any) => [d.id, d.department_name]));
+    const profileNameMap = new Map((profiles || []).map((p: any) => [p.id, p.profile_name]));
 
-    const masterMap = new Map<string, { department_name?: string; profile_name?: string }>();
+    // masterMap: normalized name → array of possible master entries (handles duplicate param names)
+    const masterMap = new Map<string, Array<{ department_name?: string; profile_name?: string }>>();
     const paramIdToNameKey = new Map<string, string>();
     const masterIds = new Set<string>();
 
@@ -112,16 +114,13 @@ const ReviewReport = () => {
       if (!key) return;
       paramIdToNameKey.set(p.id, key);
       masterIds.add(p.id);
-      if (!masterMap.has(key)) {
-        masterMap.set(key, {
-          department_name: p.department_id ? deptMap.get(p.department_id) || "" : "",
-          profile_name: "",
-        });
-      }
+      const deptName = p.department_id ? deptMap.get(p.department_id) || "" : "";
+      const existing = masterMap.get(key) || [];
+      existing.push({ department_name: deptName, profile_name: "" });
+      masterMap.set(key, existing);
     });
 
-    const profileNameMap = new Map((profiles || []).map((p: any) => [p.id, p.profile_name]));
-    const profileGroups = new Map<string, { name: string; paramNames: string[] }>();
+    const profileGroups = new Map<string, { name: string; deptName: string; paramNames: string[] }>();
     (profileParams || []).forEach((pp: any) => {
       const paramName = paramIdToNameKey.get(pp.parameter_id) || normalizeParameterForMatch(pp.report_test_parameters?.parameter_name);
       if (!paramName) return;
@@ -129,8 +128,11 @@ const ReviewReport = () => {
       if (existing) {
         existing.paramNames.push(paramName);
       } else {
+        const profRec = (profiles || []).find((pr: any) => pr.id === pp.profile_id);
+        const profDeptName = profRec?.department_id ? deptMap.get(profRec.department_id) || "" : "";
         profileGroups.set(pp.profile_id, {
           name: profileNameMap.get(pp.profile_id) || "",
+          deptName: profDeptName,
           paramNames: [paramName],
         });
       }
@@ -141,8 +143,8 @@ const ReviewReport = () => {
 
   const enrichResults = (
     results: TestResult[],
-    masterMap: Map<string, { department_name?: string; profile_name?: string }>,
-    profileGroups: Map<string, { name: string; paramNames: string[] }>,
+    masterMap: Map<string, Array<{ department_name?: string; profile_name?: string }>>,
+    profileGroups: Map<string, { name: string; deptName: string; paramNames: string[] }>,
     paramIdToNameKey: Map<string, string>,
   ) => {
     const extractedParamNames = new Set<string>();
@@ -156,24 +158,56 @@ const ReviewReport = () => {
       }
     });
 
-    const matchedProfileParams = new Map<string, string>();
+    // matchedProfileParams: normalized param name → array of { profileName, deptName }
+    const matchedProfileParams = new Map<string, Array<{ profileName: string; deptName: string }>>();
     profileGroups.forEach((group) => {
       const allPresent = group.paramNames.every((pn) => extractedParamNames.has(pn));
       if (allPresent) {
-        group.paramNames.forEach((pn) => matchedProfileParams.set(pn, group.name));
+        group.paramNames.forEach((pn) => {
+          const arr = matchedProfileParams.get(pn) || [];
+          arr.push({ profileName: group.name, deptName: group.deptName });
+          matchedProfileParams.set(pn, arr);
+        });
       }
     });
 
     return results.map((r) => {
       const key = normalizeParameterForMatch(r.parameter_name);
       const matchedKeyFromId = r.matched_parameter_id ? paramIdToNameKey.get(r.matched_parameter_id) : "";
-      const master = masterMap.get(key) || (matchedKeyFromId ? masterMap.get(matchedKeyFromId) : undefined);
-      const matchedProfile = matchedProfileParams.get(key) || (matchedKeyFromId ? matchedProfileParams.get(matchedKeyFromId) : "") || "";
+      const masterEntries = masterMap.get(key) || (matchedKeyFromId ? masterMap.get(matchedKeyFromId) : undefined) || [];
+      const profileEntries = matchedProfileParams.get(key) || (matchedKeyFromId ? matchedProfileParams.get(matchedKeyFromId) : undefined) || [];
+
+      // Use AI-extracted profile_name/department to disambiguate duplicates
+      const aiProfile = normalizeParameterForMatch(r.profile_name);
+      const aiDept = normalizeParameterForMatch(r.department);
+
+      let bestProfile = "";
+      let bestDept = "";
+
+      if (profileEntries.length === 1) {
+        bestProfile = profileEntries[0].profileName;
+        bestDept = profileEntries[0].deptName;
+      } else if (profileEntries.length > 1) {
+        const byProfile = aiProfile ? profileEntries.find((pe) => normalizeParameterForMatch(pe.profileName) === aiProfile) : undefined;
+        const byDept = aiDept ? profileEntries.find((pe) => normalizeParameterForMatch(pe.deptName) === aiDept) : undefined;
+        const best = byProfile || byDept || profileEntries[0];
+        bestProfile = best.profileName;
+        bestDept = best.deptName;
+      }
+
+      if (!bestDept && masterEntries.length > 0) {
+        if (masterEntries.length === 1) {
+          bestDept = masterEntries[0].department_name || "";
+        } else {
+          const byDept = aiDept ? masterEntries.find((me) => normalizeParameterForMatch(me.department_name) === aiDept) : undefined;
+          bestDept = (byDept || masterEntries[0]).department_name || "";
+        }
+      }
 
       return {
         ...r,
-        department: master ? master.department_name : "",
-        profile_name: matchedProfile,
+        department: bestDept,
+        profile_name: bestProfile,
       };
     });
   };
