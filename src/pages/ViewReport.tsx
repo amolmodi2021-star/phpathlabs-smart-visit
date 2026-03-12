@@ -389,6 +389,9 @@ const ViewReport = () => {
       <div ref={printRef} className="bg-white text-black print:text-black mx-auto max-w-[210mm] print:max-w-none report-print-area" style={{ fontFamily: "'Segoe UI', Arial, sans-serif" }}>
         {allPages.map((page, pageIdx) => {
           const isAbnormalOnlyPage = page.sections.every(s => s.isAbnormalOnly);
+          const contentBottomReserveMm = isAbnormalOnlyPage
+            ? (PAGE_NUM_HEIGHT_MM + 2)
+            : (SIGNATURE_HEIGHT_MM + PAGE_NUM_HEIGHT_MM + 4);
           const pathologist = findPathologistSig(page.approverName);
           const sigUrl = pathologist?.signature_image_path
             ? supabase.storage.from("signatures").getPublicUrl(pathologist.signature_image_path).data.publicUrl
@@ -400,7 +403,7 @@ const ViewReport = () => {
               
               <ReportHeader extracted={extracted} />
 
-              <div className="px-6 space-y-1">
+              <div className="px-6 space-y-1" style={{ paddingBottom: `${contentBottomReserveMm}mm` }}>
                 {renderPageSections(page.sections)}
               </div>
 
