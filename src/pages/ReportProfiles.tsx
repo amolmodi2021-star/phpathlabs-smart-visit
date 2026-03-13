@@ -10,7 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Loader2, ArrowUp, ArrowDown } from "lucide-react";
+import { Plus, Pencil, Trash2, Loader2 } from "lucide-react";
 import RichTextEditor from "@/components/RichTextEditor";
 
 interface SelectedParam {
@@ -82,10 +82,10 @@ const ReportProfiles = () => {
     if (profileId) {
       await supabase.from("profile_parameters").delete().eq("profile_id", profileId);
       if (selectedParams.length > 0) {
-        const rows = selectedParams.map((sp, idx) => ({
+        const rows = selectedParams.map((sp) => ({
           profile_id: profileId!,
           parameter_id: sp.parameter_id,
-          display_order: idx,
+          display_order: sp.display_order,
         }));
         await supabase.from("profile_parameters").insert(rows);
       }
@@ -144,17 +144,17 @@ const ReportProfiles = () => {
     setSelectedParams((prev) => {
       const exists = prev.find((sp) => sp.parameter_id === param.id);
       if (exists) return prev.filter((sp) => sp.parameter_id !== param.id);
-      return [...prev, { parameter_id: param.id, parameter_name: param.parameter_name, display_order: prev.length }];
+      const maxOrder = prev.length > 0 ? Math.max(...prev.map(sp => sp.display_order)) : 0;
+      return [...prev, { parameter_id: param.id, parameter_name: param.parameter_name, display_order: maxOrder + 1 }];
     });
   };
 
-  const moveParam = (index: number, direction: "up" | "down") => {
+  const updateParamOrder = (parameterId: string, newOrder: number) => {
     setSelectedParams((prev) => {
-      const arr = [...prev];
-      const swapIdx = direction === "up" ? index - 1 : index + 1;
-      if (swapIdx < 0 || swapIdx >= arr.length) return prev;
-      [arr[index], arr[swapIdx]] = [arr[swapIdx], arr[index]];
-      return arr;
+      const updated = prev.map((sp) =>
+        sp.parameter_id === parameterId ? { ...sp, display_order: newOrder } : sp
+      );
+      return [...updated].sort((a, b) => a.display_order - b.display_order);
     });
   };
 
@@ -249,13 +249,16 @@ const ReportProfiles = () => {
               <Label className="text-base font-semibold">Parameters in this Profile</Label>
               {selectedParams.length > 0 && (
                 <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Selected ({selectedParams.length}): use arrows to reorder</p>
-                  {selectedParams.map((sp, idx) => (
+                  <p className="text-xs text-muted-foreground">Selected ({selectedParams.length}): enter order number to rearrange</p>
+                  {selectedParams.map((sp) => (
                     <div key={sp.parameter_id} className="flex items-center gap-2 p-2 bg-accent/50 rounded text-sm">
-                      <span className="text-xs text-muted-foreground w-6">{idx + 1}.</span>
+                      <Input
+                        type="number"
+                        value={sp.display_order}
+                        onChange={(e) => updateParamOrder(sp.parameter_id, Number(e.target.value))}
+                        className="h-7 w-16 text-center text-xs"
+                      />
                       <span className="flex-1 font-medium">{sp.parameter_name}</span>
-                      <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === 0} onClick={() => moveParam(idx, "up")}><ArrowUp className="h-3 w-3" /></Button>
-                      <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === selectedParams.length - 1} onClick={() => moveParam(idx, "down")}><ArrowDown className="h-3 w-3" /></Button>
                       <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => toggleParam({ id: sp.parameter_id, parameter_name: sp.parameter_name })}><Trash2 className="h-3 w-3" /></Button>
                     </div>
                   ))}
