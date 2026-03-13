@@ -124,10 +124,20 @@ const normalizeDedupeKey = (value: unknown) =>
     .replace(/\s+/g, " ")
     .trim();
 
+const getCanonicalResultScope = (row: Partial<TestResult>) => {
+  const testName = normalizeDedupeKey(row.test_name);
+  const profileName = normalizeDedupeKey(row.profile_name);
+
+  if (testName && profileName && (profileName.includes(testName) || testName.includes(profileName))) {
+    return profileName;
+  }
+
+  return testName || profileName || normalizeDedupeKey(row.parameter_name);
+};
+
 const getResultDedupeKey = (row: Partial<TestResult>) => {
   const parameter = normalizeDedupeKey(row.parameter_name);
-  const testName = normalizeDedupeKey(row.test_name || row.parameter_name);
-  return `${parameter}::${testName}`;
+  return `${parameter}::${getCanonicalResultScope(row)}`;
 };
 
 const normalizeComparableValue = (value: unknown) => {
