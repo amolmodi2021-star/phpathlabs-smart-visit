@@ -51,6 +51,7 @@ const ReportsDashboard = () => {
     pending: reports.filter((r) => r.status === "Pending" || r.status === "Processing").length,
     review: reports.filter((r) => r.status === "Awaiting Review").length,
     completed: reports.filter((r) => r.status === "Completed").length,
+    dispatched: reports.filter((r) => r.status === "Dispatched").length,
   };
 
   const allFilteredSelected = filtered.length > 0 && filtered.every((r) => selectedIds.has(r.id));
