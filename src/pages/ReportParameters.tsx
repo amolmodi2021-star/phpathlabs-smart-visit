@@ -173,10 +173,23 @@ const ReportParameters = () => {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-bold">Test Parameter Management</h1>
-        <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />Add Parameter</Button>
+        <div className="flex gap-2 flex-wrap">
+          <Button variant="outline" onClick={() => setExportPwdOpen(true)}>
+            <Download className="h-4 w-4 mr-2" />Export
+          </Button>
+          <Button variant="outline" asChild>
+            <label className="cursor-pointer">
+              <Upload className="h-4 w-4 mr-2" />Import
+              <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImport} />
+            </label>
+          </Button>
+          <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />Add Parameter</Button>
+        </div>
       </div>
+
+      <ExportPasswordDialog open={exportPwdOpen} onOpenChange={setExportPwdOpen} onSuccess={handleExport} />
 
       <Card>
         <CardContent className="pt-6">
