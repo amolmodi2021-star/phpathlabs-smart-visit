@@ -737,6 +737,39 @@ const ViewReport = () => {
           ` : ''}
         }
       `}</style>
+
+      <Dialog open={mobileDialogOpen} onOpenChange={setMobileDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Share Report on WhatsApp</DialogTitle>
+            <DialogDescription>Enter the patient's mobile number to share this report.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="mobile-input">Mobile Number</Label>
+            <Input
+              id="mobile-input"
+              placeholder="Enter 10-digit mobile number"
+              value={mobileNumber}
+              onChange={(e) => {
+                const val = e.target.value.replace(/\D/g, "").slice(0, 10);
+                setMobileNumber(val);
+              }}
+              maxLength={10}
+              inputMode="numeric"
+              onWheel={(e) => (e.target as HTMLInputElement).blur()}
+            />
+            {mobileNumber.length > 0 && mobileNumber.length < 10 && (
+              <p className="text-sm text-destructive">Please enter a valid 10-digit number</p>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setMobileDialogOpen(false)}>Skip</Button>
+            <Button onClick={handleMobileSubmit} disabled={mobileNumber.replace(/\D/g, "").length !== 10}>
+              Share on WhatsApp
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
