@@ -102,7 +102,48 @@ const ReportParameters = () => {
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this parameter?")) return;
     await supabase.from("report_test_parameters").delete().eq("id", id);
+    setSelectedIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
     load();
+  };
+
+  const handleDeleteSelected = async () => {
+    const ids = Array.from(selectedIds);
+    if (!ids.length) return;
+    for (let i = 0; i < ids.length; i += 50) {
+      const batch = ids.slice(i, i + 50);
+      await supabase.from("report_test_parameters").delete().in("id", batch);
+    }
+    setSelectedIds(new Set());
+    load();
+    toast({ title: `${ids.length} parameters deleted` });
+  };
+
+  const handleDeleteAll = async () => {
+    const ids = params.map((p) => p.id);
+    if (!ids.length) return;
+    for (let i = 0; i < ids.length; i += 50) {
+      const batch = ids.slice(i, i + 50);
+      await supabase.from("report_test_parameters").delete().in("id", batch);
+    }
+    setSelectedIds(new Set());
+    load();
+    toast({ title: "All parameters deleted" });
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map((p) => p.id)));
+    }
   };
 
   const handleExport = () => {
