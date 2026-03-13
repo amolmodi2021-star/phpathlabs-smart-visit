@@ -23,6 +23,9 @@ const ReportParameters = () => {
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [exportPwdOpen, setExportPwdOpen] = useState(false);
+  const [deletePwdOpen, setDeletePwdOpen] = useState(false);
+  const [deleteAllPwdOpen, setDeleteAllPwdOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState({
     parameter_name: "", test_name: "", profile_id: "", department_id: "",
