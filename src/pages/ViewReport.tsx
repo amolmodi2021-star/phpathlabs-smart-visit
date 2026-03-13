@@ -263,6 +263,41 @@ const ViewReport = () => {
 
   const handlePrint = () => window.print();
 
+  const handleDownloadPdf = async () => {
+    if (!printRef.current || !extracted) return;
+    setDownloading(true);
+    try {
+      const pages = printRef.current.querySelectorAll('.report-page');
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pdfWidth = 210;
+      const pdfHeight = 297;
+
+      for (let i = 0; i < pages.length; i++) {
+        const page = pages[i] as HTMLElement;
+        const canvas = await html2canvas(page, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#ffffff',
+          width: page.scrollWidth,
+          height: page.scrollHeight,
+        });
+        const imgData = canvas.toDataURL('image/png');
+        if (i > 0) pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      }
+
+      const patientName = (extracted.patient_name || 'Report').replace(/[^a-zA-Z0-9\s]/g, '').trim();
+      const regDate = extracted.reg_date || extracted.report_date || new Date().toISOString().split('T')[0];
+      const fileName = `${patientName}_${regDate}.pdf`;
+      pdf.save(fileName);
+    } catch (err) {
+      console.error('PDF download failed:', err);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   if (loading) return <div className="flex items-center justify-center p-12"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   if (!extracted) return <div className="p-8 text-center">Report not found.</div>;
 
