@@ -3,7 +3,7 @@ import { ArrowUp, ArrowDown } from "lucide-react";
 
 interface TrendData {
   parameter_name: string;
-  data: { date: string; value: number }[];
+  data: { date: string; value: number; low?: number; high?: number }[];
   low?: number;
   high?: number;
   unit?: string;
