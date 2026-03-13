@@ -684,7 +684,9 @@ const ReviewReport = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {testResults.map((r, i) => (
+                {testResults.map((r, i) => {
+                  if (paramSearch && !(`${r.parameter_name} ${r.department || ""} ${r.profile_name || ""}`).toLowerCase().includes(paramSearch.toLowerCase())) return null;
+                  return (
                   <TableRow key={i} className={r.flag === "H" || r.flag === "L" ? "bg-destructive/5" : ""}>
                     <TableCell>
                       <Input value={r.department || ""} readOnly className="h-8 text-xs bg-muted/50" />
