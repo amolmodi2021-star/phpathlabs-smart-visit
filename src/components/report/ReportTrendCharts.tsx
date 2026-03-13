@@ -58,7 +58,8 @@ const ReportTrendCharts = ({ trends }: ReportTrendChartsProps) => {
                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                    <XAxis dataKey="date" tick={{ fontSize: 10 }} padding={{ left: 30, right: 10 }} />
                    <YAxis
-                     tick={{ fontSize: 10 }}
+                     tick={{ fontSize: 9 }}
+                     width={30}
                      domain={[Math.floor((minVal - padding) * 100) / 100, Math.ceil((maxVal + padding) * 100) / 100]}
                      tickFormatter={(val: number) => Number(val.toFixed(2)).toString()}
                      padding={{ top: 10, bottom: 10 }}
