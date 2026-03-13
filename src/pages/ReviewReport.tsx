@@ -270,6 +270,14 @@ const ReviewReport = () => {
       setTestResults(normalized);
       // Always refresh original AI results snapshot on load/reload
       originalAiResultsRef.current = normalized.map(r => ({ ...r }));
+
+      // Persist cleanup so reopened Review/Edit stays deduplicated
+      if (rawResults.length !== normalized.length) {
+        await supabase
+          .from("extracted_report_data")
+          .update({ test_results: normalized as unknown as any })
+          .eq("report_id", reportId);
+      }
       if (!extracted.umr_id) setShowUmrDialog(true);
     }
     setPathologists(sigs || []);

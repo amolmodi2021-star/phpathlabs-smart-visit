@@ -425,14 +425,12 @@ const UploadReport = () => {
           if (existingExtracted && existingExtracted.length > 0) {
             const existingResults = (existingExtracted[0].test_results as any[]) || [];
 
-            // Merge key: parameter + contextual test scope (test_name > profile_name > parameter_name)
+            // Merge key: parameter + test_name (fallback to parameter)
             const normalizeMergeKey = (value: unknown) => String(value ?? "").toLowerCase().replace(/\s+/g, " ").trim();
             const getMergeKey = (r: any) => {
               const parameter = normalizeMergeKey(r.parameter_name);
-              const testName = normalizeMergeKey(r.test_name);
-              const profileName = normalizeMergeKey(r.profile_name);
-              const scope = testName || profileName || parameter;
-              return `${parameter}::${scope}`;
+              const testName = normalizeMergeKey(r.test_name || r.parameter_name);
+              return `${parameter}::${testName}`;
             };
             const existingMap = new Map<string, any>();
             existingResults.forEach((r: any) => {
