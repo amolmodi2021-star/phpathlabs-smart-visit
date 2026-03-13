@@ -164,6 +164,13 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                                   </>
                                 )}
                               </tr>
+                              {r.remark && (
+                                <tr key={`${gIdx}-${i}-remark`} className="border-b border-gray-100">
+                                  <td colSpan={5} className="px-3 py-0.5">
+                                    <span className="text-[10px] italic text-gray-600">* {r.remark}</span>
+                                  </td>
+                                </tr>
+                              )}
                             );
                           })}
                         </>
