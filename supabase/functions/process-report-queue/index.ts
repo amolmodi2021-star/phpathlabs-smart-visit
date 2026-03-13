@@ -428,7 +428,12 @@ MATCHING:
             }
           });
 
-          finalTestResultsToSave = Array.from(mergedMap.values());
+          // Content fingerprint dedup after merge
+          const mergedByContent = new Map<string, any>();
+          mergedMap.forEach((row) => {
+            mergedByContent.set(getContentFingerprint(row), row);
+          });
+          finalTestResultsToSave = Array.from(mergedByContent.values());
         }
 
         targetReportId = existingReportId;
