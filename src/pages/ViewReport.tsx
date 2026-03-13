@@ -118,6 +118,45 @@ const isDedicatedReportProfile = (section: PageSection): boolean => {
   return isCbc || isUrine;
 };
 
+const normalizeDedupeKey = (value: unknown) =>
+  String(value ?? "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+
+const getResultDedupeKey = (row: Partial<TestResult>) => {
+  const parameter = normalizeDedupeKey(row.parameter_name);
+  const testName = normalizeDedupeKey(row.test_name || row.parameter_name);
+  return `${parameter}::${testName}`;
+};
+
+const getResultContentFingerprint = (row: Partial<TestResult>) => {
+  const parameter = normalizeDedupeKey(row.parameter_name);
+  const profile = normalizeDedupeKey(row.profile_name);
+  const department = normalizeDedupeKey(row.department);
+  const result = normalizeDedupeKey(row.result_value);
+  const unit = normalizeDedupeKey(row.unit);
+  const rangeText = normalizeDedupeKey(row.normal_range_text);
+  const low = normalizeDedupeKey(row.normal_range_low);
+  const high = normalizeDedupeKey(row.normal_range_high);
+  const flag = normalizeDedupeKey(row.flag);
+  return `${parameter}::${profile}::${department}::${result}::${unit}::${rangeText}::${low}::${high}::${flag}`;
+};
+
+const dedupeResultsLatest = (rows: TestResult[]) => {
+  const byParameterAndTest = new Map<string, TestResult>();
+  rows.forEach((row) => {
+    byParameterAndTest.set(getResultDedupeKey(row), row);
+  });
+
+  const byContent = new Map<string, TestResult>();
+  byParameterAndTest.forEach((row) => {
+    byContent.set(getResultContentFingerprint(row), row);
+  });
+
+  return Array.from(byContent.values());
+};
+
 const ViewReport = () => {
   const { reportId } = useParams();
   const navigate = useNavigate();
