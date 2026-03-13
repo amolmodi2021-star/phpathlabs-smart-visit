@@ -181,6 +181,7 @@ const ViewReport = () => {
   const [pathologistMap, setPathologistMap] = useState<Record<string, any>>({});
   const [deptOrderMap, setDeptOrderMap] = useState<Record<string, number>>({});
   const [profileMetaMap, setProfileMetaMap] = useState<Record<string, ProfileMeta>>({});
+  const [profileOrderMap, setProfileOrderMap] = useState<Record<string, number>>({});
   const [trends, setTrends] = useState<TrendData[]>([]);
   const [showHeader, setShowHeader] = useState(true);
   const [layoutSettings, setLayoutSettings] = useState<LayoutSettings>({
@@ -336,10 +337,11 @@ const ViewReport = () => {
     if (profileNames.length > 0) {
       const { data: masterProfiles } = await supabase
         .from("report_profiles")
-        .select("profile_name, sample_type, analyzer, method, is_outsourced, outsourced_caption, interpretation")
+        .select("profile_name, display_order, sample_type, analyzer, method, is_outsourced, outsourced_caption, interpretation")
         .in("profile_name", profileNames);
       if (masterProfiles) {
         const metaMap: Record<string, ProfileMeta> = {};
+        const profOrdMap: Record<string, number> = {};
         masterProfiles.forEach((mp: any) => {
           metaMap[mp.profile_name] = {
             sample_type: mp.sample_type,
@@ -349,8 +351,10 @@ const ViewReport = () => {
             outsourced_caption: mp.outsourced_caption,
             interpretation: mp.interpretation,
           };
+          profOrdMap[mp.profile_name] = mp.display_order ?? 999;
         });
         setProfileMetaMap(metaMap);
+        setProfileOrderMap(profOrdMap);
       }
     }
 
@@ -565,11 +569,18 @@ const ViewReport = () => {
       if (!grouped[dept][prof]) grouped[dept][prof] = [];
       grouped[dept][prof].push(r);
     });
-    // Sort by department display_order
+    // Sort by department display_order, then profiles by profile display_order
     const sorted: Record<string, Record<string, TestResult[]>> = {};
     Object.keys(grouped)
       .sort((a, b) => (deptOrderMap[a] ?? 999) - (deptOrderMap[b] ?? 999))
-      .forEach(dept => { sorted[dept] = grouped[dept]; });
+      .forEach(dept => {
+        const profiles = grouped[dept];
+        const sortedProfiles: Record<string, TestResult[]> = {};
+        Object.keys(profiles)
+          .sort((a, b) => (profileOrderMap[a] ?? 999) - (profileOrderMap[b] ?? 999))
+          .forEach(prof => { sortedProfiles[prof] = profiles[prof]; });
+        sorted[dept] = sortedProfiles;
+      });
     return sorted;
   };
 
