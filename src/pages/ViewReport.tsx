@@ -103,6 +103,7 @@ const ViewReport = () => {
   const printRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
+  const [isPdfExporting, setIsPdfExporting] = useState(false);
   const [extracted, setExtracted] = useState<any>(null);
   const [pathologistMap, setPathologistMap] = useState<Record<string, any>>({});
   const [deptOrderMap, setDeptOrderMap] = useState<Record<string, number>>({});
@@ -266,52 +267,40 @@ const ViewReport = () => {
   const handleDownloadPdf = async () => {
     if (!printRef.current || !extracted) return;
     setDownloading(true);
+    setIsPdfExporting(true);
+
     try {
-      const pages = printRef.current.querySelectorAll('.report-page');
-      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      await new Promise((resolve) => setTimeout(resolve, 60));
+
+      const pages = Array.from(printRef.current.querySelectorAll('.report-page')) as HTMLElement[];
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+        compress: true,
+      });
       const pdfWidth = 210;
       const pdfHeight = 297;
 
-      // Use a fixed pixel width for consistent A4 rendering (794px = 210mm at 96dpi)
-      const targetWidthPx = 794;
-
       for (let i = 0; i < pages.length; i++) {
-        const page = pages[i] as HTMLElement;
-
-        // Save original styles
-        const origWidth = page.style.width;
-        const origMinWidth = page.style.minWidth;
-        const origMaxWidth = page.style.maxWidth;
-        const origHeight = page.style.height;
-        const origMinHeight = page.style.minHeight;
-
-        // Force exact pixel dimensions for consistent capture
-        page.style.width = `${targetWidthPx}px`;
-        page.style.minWidth = `${targetWidthPx}px`;
-        page.style.maxWidth = `${targetWidthPx}px`;
-        page.style.height = `${Math.round(targetWidthPx * (pdfHeight / pdfWidth))}px`;
-        page.style.minHeight = `${Math.round(targetWidthPx * (pdfHeight / pdfWidth))}px`;
+        const page = pages[i];
+        const rect = page.getBoundingClientRect();
 
         const canvas = await html2canvas(page, {
-          scale: 1.5,
+          scale: 1.35,
           useCORS: true,
           allowTaint: true,
           backgroundColor: '#ffffff',
-          width: targetWidthPx,
-          height: Math.round(targetWidthPx * (pdfHeight / pdfWidth)),
+          width: Math.ceil(rect.width),
+          height: Math.ceil(rect.height),
+          windowWidth: Math.ceil(rect.width),
+          windowHeight: Math.ceil(rect.height),
+          logging: false,
         });
 
-        // Restore original styles
-        page.style.width = origWidth;
-        page.style.minWidth = origMinWidth;
-        page.style.maxWidth = origMaxWidth;
-        page.style.height = origHeight;
-        page.style.minHeight = origMinHeight;
-
-        // Use JPEG instead of PNG for much smaller file size
-        const imgData = canvas.toDataURL('image/jpeg', 0.75);
+        const imgData = canvas.toDataURL('image/jpeg', 0.82);
         if (i > 0) pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
       }
 
       const patientName = (extracted.patient_name || 'Report').replace(/[^a-zA-Z0-9\s]/g, '').trim();
@@ -321,6 +310,7 @@ const ViewReport = () => {
     } catch (err) {
       console.error('PDF download failed:', err);
     } finally {
+      setIsPdfExporting(false);
       setDownloading(false);
     }
   };
@@ -541,7 +531,7 @@ const ViewReport = () => {
         </div>
       </div>
 
-      <div ref={printRef} className="bg-white text-black print:text-black mx-auto max-w-[210mm] print:max-w-none report-print-area" style={{ fontFamily: "'Segoe UI', Arial, sans-serif" }}>
+      <div ref={printRef} className={`bg-white text-black print:text-black mx-auto max-w-[210mm] print:max-w-none report-print-area ${isPdfExporting ? 'pdf-export-mode' : ''}`} style={{ fontFamily: "'Segoe UI', Arial, sans-serif" }}>
         {allPages.map((page, pageIdx) => {
           const isAbnormalOnlyPage = page.sections.every(s => s.isAbnormalOnly);
           const contentBottomReserveMm = isAbnormalOnlyPage
@@ -642,6 +632,36 @@ const ViewReport = () => {
           }
           ` : ''}
         }
+
+        .pdf-export-mode .report-page {
+          height: 296mm !important;
+          max-height: 296mm !important;
+          margin: 0 auto !important;
+          border: 0 !important;
+        }
+        .pdf-export-mode .recharts-tooltip-wrapper {
+          display: none !important;
+          visibility: hidden !important;
+        }
+        .pdf-export-mode .flag-badge {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 14px;
+          height: 14px;
+          padding: 0 3px !important;
+          line-height: 1 !important;
+          font-size: 10px !important;
+          font-weight: 700;
+        }
+        ${showHeader && letterheadImageUrl ? `
+        .pdf-export-mode .report-page {
+          background-image: url("${letterheadImageUrl}");
+          background-size: 210mm 296mm;
+          background-repeat: no-repeat;
+          background-position: top center;
+        }
+        ` : ''}
         /* Screen preview */
         .report-page {
           min-height: 297mm;
