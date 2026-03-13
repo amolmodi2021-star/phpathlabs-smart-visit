@@ -35,6 +35,7 @@ interface TestResult {
   confidence_score?: number;
   extraction_basis?: string;
   remark?: string;
+  _merge_status?: "new" | "updated" | "existing";
 }
 
 const ReviewReport = () => {
