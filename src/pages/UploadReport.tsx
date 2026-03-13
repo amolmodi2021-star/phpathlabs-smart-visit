@@ -427,7 +427,7 @@ const UploadReport = () => {
 
             // Merge: composite key = lowercase(parameter_name) + "::" + lowercase(profile_name)
             const getMergeKey = (r: any) =>
-              `${(r.parameter_name || "").toLowerCase().trim()}::${(r.profile_name || "").toLowerCase().trim()}`;
+              `${(r.parameter_name || "").toLowerCase().trim()}::${(r.test_name || "").toLowerCase().trim()}::${(r.profile_name || "").toLowerCase().trim()}`;
 
             const existingMap = new Map<string, any>();
             existingResults.forEach((r: any) => {
