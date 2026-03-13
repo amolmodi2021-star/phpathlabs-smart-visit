@@ -10,7 +10,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Loader2, Search, Download, Upload } from "lucide-react";
+import { Plus, Pencil, Trash2, Loader2, Search, Download, Upload, CheckSquare } from "lucide-react";
+import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import RichTextEditor from "@/components/RichTextEditor";
 import { exportToExcel, parseExcelFile } from "@/lib/excel";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
@@ -23,6 +24,9 @@ const ReportParameters = () => {
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [exportPwdOpen, setExportPwdOpen] = useState(false);
+  const [deletePwdOpen, setDeletePwdOpen] = useState(false);
+  const [deleteAllPwdOpen, setDeleteAllPwdOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState({
     parameter_name: "", test_name: "", profile_id: "", department_id: "",
@@ -99,7 +103,48 @@ const ReportParameters = () => {
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this parameter?")) return;
     await supabase.from("report_test_parameters").delete().eq("id", id);
+    setSelectedIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
     load();
+  };
+
+  const handleDeleteSelected = async () => {
+    const ids = Array.from(selectedIds);
+    if (!ids.length) return;
+    for (let i = 0; i < ids.length; i += 50) {
+      const batch = ids.slice(i, i + 50);
+      await supabase.from("report_test_parameters").delete().in("id", batch);
+    }
+    setSelectedIds(new Set());
+    load();
+    toast({ title: `${ids.length} parameters deleted` });
+  };
+
+  const handleDeleteAll = async () => {
+    const ids = params.map((p) => p.id);
+    if (!ids.length) return;
+    for (let i = 0; i < ids.length; i += 50) {
+      const batch = ids.slice(i, i + 50);
+      await supabase.from("report_test_parameters").delete().in("id", batch);
+    }
+    setSelectedIds(new Set());
+    load();
+    toast({ title: "All parameters deleted" });
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map((p) => p.id)));
+    }
   };
 
   const handleExport = () => {
@@ -176,6 +221,14 @@ const ReportParameters = () => {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-bold">Test Parameter Management</h1>
         <div className="flex gap-2 flex-wrap">
+          {selectedIds.size > 0 && (
+            <Button variant="destructive" onClick={() => setDeletePwdOpen(true)}>
+              <Trash2 className="h-4 w-4 mr-2" />Delete Selected ({selectedIds.size})
+            </Button>
+          )}
+          <Button variant="outline" className="text-destructive border-destructive" onClick={() => setDeleteAllPwdOpen(true)}>
+            <Trash2 className="h-4 w-4 mr-2" />Delete All
+          </Button>
           <Button variant="outline" onClick={() => setExportPwdOpen(true)}>
             <Download className="h-4 w-4 mr-2" />Export
           </Button>
@@ -202,6 +255,12 @@ const ReportParameters = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-[40px]">
+                      <Checkbox
+                        checked={filtered.length > 0 && selectedIds.size === filtered.length}
+                        onCheckedChange={toggleSelectAll}
+                      />
+                    </TableHead>
                     <TableHead>Parameter</TableHead>
                     <TableHead>Test</TableHead>
                     <TableHead>Department</TableHead>
@@ -215,7 +274,10 @@ const ReportParameters = () => {
                 </TableHeader>
                 <TableBody>
                   {filtered.map((p) => (
-                    <TableRow key={p.id}>
+                    <TableRow key={p.id} className={selectedIds.has(p.id) ? "bg-muted/50" : ""}>
+                      <TableCell>
+                        <Checkbox checked={selectedIds.has(p.id)} onCheckedChange={() => toggleSelect(p.id)} />
+                      </TableCell>
                       <TableCell className="font-medium">{p.parameter_name}</TableCell>
                       <TableCell>{p.test_name || "-"}</TableCell>
                       <TableCell>{p.report_departments?.department_name || "-"}</TableCell>
@@ -232,7 +294,7 @@ const ReportParameters = () => {
                       </TableCell>
                     </TableRow>
                   ))}
-                  {filtered.length === 0 && <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No parameters found</TableCell></TableRow>}
+                  {filtered.length === 0 && <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">No parameters found</TableCell></TableRow>}
                 </TableBody>
               </Table>
             </div>
@@ -292,6 +354,19 @@ const ReportParameters = () => {
           <DialogFooter><Button onClick={handleSave}>Save</Button></DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <DeletePasswordDialog
+        open={deletePwdOpen}
+        onOpenChange={setDeletePwdOpen}
+        onSuccess={handleDeleteSelected}
+        description={`Delete ${selectedIds.size} selected parameter(s)?`}
+      />
+      <DeletePasswordDialog
+        open={deleteAllPwdOpen}
+        onOpenChange={setDeleteAllPwdOpen}
+        onSuccess={handleDeleteAll}
+        description={`Delete ALL ${params.length} parameters? This cannot be undone.`}
+      />
     </div>
   );
 };
