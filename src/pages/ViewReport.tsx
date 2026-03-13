@@ -337,10 +337,11 @@ const ViewReport = () => {
     if (profileNames.length > 0) {
       const { data: masterProfiles } = await supabase
         .from("report_profiles")
-        .select("profile_name, sample_type, analyzer, method, is_outsourced, outsourced_caption, interpretation")
+        .select("profile_name, display_order, sample_type, analyzer, method, is_outsourced, outsourced_caption, interpretation")
         .in("profile_name", profileNames);
       if (masterProfiles) {
         const metaMap: Record<string, ProfileMeta> = {};
+        const profOrdMap: Record<string, number> = {};
         masterProfiles.forEach((mp: any) => {
           metaMap[mp.profile_name] = {
             sample_type: mp.sample_type,
@@ -350,8 +351,10 @@ const ViewReport = () => {
             outsourced_caption: mp.outsourced_caption,
             interpretation: mp.interpretation,
           };
+          profOrdMap[mp.profile_name] = mp.display_order ?? 999;
         });
         setProfileMetaMap(metaMap);
+        setProfileOrderMap(profOrdMap);
       }
     }
 
