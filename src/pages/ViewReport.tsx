@@ -569,11 +569,18 @@ const ViewReport = () => {
       if (!grouped[dept][prof]) grouped[dept][prof] = [];
       grouped[dept][prof].push(r);
     });
-    // Sort by department display_order
+    // Sort by department display_order, then profiles by profile display_order
     const sorted: Record<string, Record<string, TestResult[]>> = {};
     Object.keys(grouped)
       .sort((a, b) => (deptOrderMap[a] ?? 999) - (deptOrderMap[b] ?? 999))
-      .forEach(dept => { sorted[dept] = grouped[dept]; });
+      .forEach(dept => {
+        const profiles = grouped[dept];
+        const sortedProfiles: Record<string, TestResult[]> = {};
+        Object.keys(profiles)
+          .sort((a, b) => (profileOrderMap[a] ?? 999) - (profileOrderMap[b] ?? 999))
+          .forEach(prof => { sortedProfiles[prof] = profiles[prof]; });
+        sorted[dept] = sortedProfiles;
+      });
     return sorted;
   };
 
