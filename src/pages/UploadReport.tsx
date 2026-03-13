@@ -425,12 +425,21 @@ const UploadReport = () => {
           if (existingExtracted && existingExtracted.length > 0) {
             const existingResults = (existingExtracted[0].test_results as any[]) || [];
 
-            // Merge key: parameter + test_name (fallback to parameter)
+            // Merge key: parameter + canonical test scope (test_name/profile aware)
             const normalizeMergeKey = (value: unknown) => String(value ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+            const getCanonicalMergeScope = (r: any) => {
+              const testName = normalizeMergeKey(r.test_name);
+              const profileName = normalizeMergeKey(r.profile_name);
+
+              if (testName && profileName && (profileName.includes(testName) || testName.includes(profileName))) {
+                return profileName;
+              }
+
+              return testName || profileName || normalizeMergeKey(r.parameter_name);
+            };
             const getMergeKey = (r: any) => {
               const parameter = normalizeMergeKey(r.parameter_name);
-              const testName = normalizeMergeKey(r.test_name || r.parameter_name);
-              return `${parameter}::${testName}`;
+              return `${parameter}::${getCanonicalMergeScope(r)}`;
             };
             const existingMap = new Map<string, any>();
             existingResults.forEach((r: any) => {
