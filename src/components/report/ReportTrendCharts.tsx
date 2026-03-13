@@ -36,10 +36,15 @@ const ReportTrendCharts = ({ trends }: ReportTrendChartsProps) => {
       <h2 className="text-base font-bold text-blue-800 mb-3 border-b-2 border-blue-200 pb-1">Historical Trends</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 print:grid-cols-2 gap-4">
         {trends.slice(0, 6).map((trend) => {
-          // Sort by date ascending and limit to last 5 points (4 previous + 1 current)
-          const sortedData = [...trend.data]
+          // Sort by date ascending, deduplicate (same date+value), limit to last 5
+          const deduped = [...trend.data]
             .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-            .slice(-5);
+            .filter((item, idx, arr) => {
+              if (idx === 0) return true;
+              const prev = arr[idx - 1];
+              return !(item.date === prev.date && item.value === prev.value);
+            });
+          const sortedData = deduped.slice(-5);
 
           const values = sortedData.map(d => d.value);
           const allVals = [...values];
