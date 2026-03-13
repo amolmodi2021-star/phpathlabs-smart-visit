@@ -312,15 +312,40 @@ const ReviewReport = () => {
     return `${parameter}::${testName}`;
   };
 
+  const normalizeComparable = (value: unknown) => {
+    const normalized = normalizeResultKey(value);
+    return ["-", "--", "na", "n/a", "nil", "null"].includes(normalized) ? "" : normalized;
+  };
+
+  const getContentFingerprint = (row: Partial<TestResult>) => {
+    const parameter = normalizeComparable(row.parameter_name);
+    const profile = normalizeComparable(row.profile_name);
+    const department = normalizeComparable(row.department);
+    const result = normalizeComparable(row.result_value);
+    const unit = normalizeComparable(row.unit);
+    const rangeText = normalizeComparable(row.normal_range_text);
+    const low = normalizeComparable(row.normal_range_low);
+    const high = normalizeComparable(row.normal_range_high);
+    const flag = normalizeComparable(row.flag);
+
+    return `${parameter}::${profile}::${department}::${result}::${unit}::${rangeText}::${low}::${high}::${flag}`;
+  };
+
   const dedupeTestResults = (rows: TestResult[]) => {
-    const deduped = new Map<string, TestResult>();
+    const byParameterAndTest = new Map<string, TestResult>();
 
     // Latest row wins (older duplicate overwritten)
     rows.forEach((row) => {
-      deduped.set(getDedupeKey(row), row);
+      byParameterAndTest.set(getDedupeKey(row), row);
     });
 
-    return Array.from(deduped.values());
+    // Safety pass: collapse visually identical duplicates (often caused by missing test_name in one row)
+    const byContent = new Map<string, TestResult>();
+    byParameterAndTest.forEach((row) => {
+      byContent.set(getContentFingerprint(row), row);
+    });
+
+    return Array.from(byContent.values());
   };
 
   const getResultKey = (row: Partial<TestResult>, index = 0) => {

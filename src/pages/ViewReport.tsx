@@ -118,6 +118,50 @@ const isDedicatedReportProfile = (section: PageSection): boolean => {
   return isCbc || isUrine;
 };
 
+const normalizeDedupeKey = (value: unknown) =>
+  String(value ?? "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+
+const getResultDedupeKey = (row: Partial<TestResult>) => {
+  const parameter = normalizeDedupeKey(row.parameter_name);
+  const testName = normalizeDedupeKey(row.test_name || row.parameter_name);
+  return `${parameter}::${testName}`;
+};
+
+const normalizeComparableValue = (value: unknown) => {
+  const normalized = normalizeDedupeKey(value);
+  return ["-", "--", "na", "n/a", "nil", "null"].includes(normalized) ? "" : normalized;
+};
+
+const getResultContentFingerprint = (row: Partial<TestResult>) => {
+  const parameter = normalizeComparableValue(row.parameter_name);
+  const profile = normalizeComparableValue(row.profile_name);
+  const department = normalizeComparableValue(row.department);
+  const result = normalizeComparableValue(row.result_value);
+  const unit = normalizeComparableValue(row.unit);
+  const rangeText = normalizeComparableValue(row.normal_range_text);
+  const low = normalizeComparableValue(row.normal_range_low);
+  const high = normalizeComparableValue(row.normal_range_high);
+  const flag = normalizeComparableValue(row.flag);
+  return `${parameter}::${profile}::${department}::${result}::${unit}::${rangeText}::${low}::${high}::${flag}`;
+};
+
+const dedupeResultsLatest = (rows: TestResult[]) => {
+  const byParameterAndTest = new Map<string, TestResult>();
+  rows.forEach((row) => {
+    byParameterAndTest.set(getResultDedupeKey(row), row);
+  });
+
+  const byContent = new Map<string, TestResult>();
+  byParameterAndTest.forEach((row) => {
+    byContent.set(getResultContentFingerprint(row), row);
+  });
+
+  return Array.from(byContent.values());
+};
+
 const ViewReport = () => {
   const { reportId } = useParams();
   const navigate = useNavigate();
@@ -183,8 +227,18 @@ const ViewReport = () => {
     const { data: ext } = await supabase.from("extracted_report_data").select("*").eq("report_id", reportId).single();
     if (!ext) { setLoading(false); return; }
 
-    // Enrich results with test_name from master parameters (with profile context)
-    const results = (ext.test_results as unknown as TestResult[]) || [];
+    // Deduplicate first (parameter + test_name, latest wins), then enrich
+    const rawResults = (ext.test_results as unknown as TestResult[]) || [];
+    const results = dedupeResultsLatest(rawResults);
+
+    if (rawResults.length !== results.length) {
+      await supabase
+        .from("extracted_report_data")
+        .update({ test_results: results as unknown as any })
+        .eq("report_id", reportId);
+      ext.test_results = results as any;
+    }
+
     const paramNames = results.map((r) => r.parameter_name);
     const { data: masterParams } = await supabase
       .from("report_test_parameters")

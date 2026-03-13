@@ -463,17 +463,36 @@ const UploadReport = () => {
               }
             });
 
-            // Final dedup: keep latest entry per composite key (new > updated > existing)
-            const statusPriority: Record<string, number> = { new: 3, updated: 2, existing: 1 };
+            // Final dedup: latest wins for same parameter+test key, then remove identical duplicates
             const finalDedup = new Map<string, any>();
             for (const row of mergedMap.values()) {
-              const key = getMergeKey(row);
-              const existing = finalDedup.get(key);
-              if (!existing || (statusPriority[row._merge_status] || 0) >= (statusPriority[existing._merge_status] || 0)) {
-                finalDedup.set(key, row);
-              }
+              finalDedup.set(getMergeKey(row), row);
             }
-            finalTestResultsToSave = Array.from(finalDedup.values());
+
+            const normalizeComparable = (value: unknown) => {
+              const normalized = normalizeMergeKey(value);
+              return ["-", "--", "na", "n/a", "nil", "null"].includes(normalized) ? "" : normalized;
+            };
+
+            const getContentFingerprint = (r: any) => {
+              const parameter = normalizeComparable(r.parameter_name);
+              const profile = normalizeComparable(r.profile_name);
+              const department = normalizeComparable(r.department);
+              const result = normalizeComparable(r.result_value);
+              const unit = normalizeComparable(r.unit);
+              const rangeText = normalizeComparable(r.normal_range_text);
+              const low = normalizeComparable(r.normal_range_low);
+              const high = normalizeComparable(r.normal_range_high);
+              const flag = normalizeComparable(r.flag);
+              return `${parameter}::${profile}::${department}::${result}::${unit}::${rangeText}::${low}::${high}::${flag}`;
+            };
+
+            const contentDedup = new Map<string, any>();
+            for (const row of finalDedup.values()) {
+              contentDedup.set(getContentFingerprint(row), row);
+            }
+
+            finalTestResultsToSave = Array.from(contentDedup.values());
           }
 
           // Use existing report as target, delete the temp one we created
