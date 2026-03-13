@@ -103,7 +103,7 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                               <tr key={`${gIdx}-${i}`} className={`border-b border-gray-100 ${isAbnormal ? "bg-red-50" : ""}`} style={useCompact ? { lineHeight: '1.2' } : undefined}>
                                 <td className={`px-3 ${useCompact ? 'py-[2px]' : 'py-1'}`}>{r.parameter_name}</td>
                                 <td className={`text-right ${useCompact ? 'py-[2px]' : 'py-1'}`}>
-                                  {isAbnormal && <span className="flag-badge bg-red-600 text-white px-1 py-0 rounded text-[9px] font-bold">{r.flag}</span>}
+                                  {isAbnormal && <span className="flag-badge inline-flex items-center justify-center min-w-[14px] h-[14px] rounded bg-red-600 text-white text-[10px] leading-none font-bold">{r.flag}</span>}
                                 </td>
                                 <td className={`text-center font-semibold ${useCompact ? 'py-[2px]' : 'py-1'} ${isAbnormal ? "text-red-600 font-bold" : ""}`}>
                                   {r.result_value}

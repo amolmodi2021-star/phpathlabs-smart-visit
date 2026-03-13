@@ -56,7 +56,7 @@ const ReportTrendCharts = ({ trends }: ReportTrendChartsProps) => {
             : "—";
 
           return (
-            <div key={trend.parameter_name} className="border rounded-lg p-3 print:break-inside-avoid">
+            <div key={trend.parameter_name} className="trend-chart-box border rounded-lg p-3 print:break-inside-avoid">
               <h3 className="text-sm font-semibold mb-1">{trend.parameter_name} {trend.unit && <span className="text-xs text-gray-500">({trend.unit})</span>}</h3>
               <ResponsiveContainer width="100%" height={150}>
                 <LineChart data={sortedData} margin={{ left: -10, right: 10, top: 15, bottom: 5 }}>

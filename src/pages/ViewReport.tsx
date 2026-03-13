@@ -270,7 +270,7 @@ const ViewReport = () => {
     setIsPdfExporting(true);
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 60));
+      await new Promise((resolve) => setTimeout(resolve, 80));
 
       const pages = Array.from(printRef.current.querySelectorAll('.report-page')) as HTMLElement[];
       const pdf = new jsPDF({
@@ -284,23 +284,22 @@ const ViewReport = () => {
 
       for (let i = 0; i < pages.length; i++) {
         const page = pages[i];
-        const rect = page.getBoundingClientRect();
 
         const canvas = await html2canvas(page, {
-          scale: 1.35,
+          scale: 1.25,
           useCORS: true,
           allowTaint: true,
           backgroundColor: '#ffffff',
-          width: Math.ceil(rect.width),
-          height: Math.ceil(rect.height),
-          windowWidth: Math.ceil(rect.width),
-          windowHeight: Math.ceil(rect.height),
+          foreignObjectRendering: true,
           logging: false,
         });
 
-        const imgData = canvas.toDataURL('image/jpeg', 0.82);
+        const imgData = canvas.toDataURL('image/jpeg', 0.8);
+        const renderedHeight = (canvas.height * pdfWidth) / canvas.width;
+        const yOffset = Math.max(0, (pdfHeight - renderedHeight) / 2);
+
         if (i > 0) pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
+        pdf.addImage(imgData, 'JPEG', 0, yOffset, pdfWidth, Math.min(pdfHeight, renderedHeight), undefined, 'FAST');
       }
 
       const patientName = (extracted.patient_name || 'Report').replace(/[^a-zA-Z0-9\s]/g, '').trim();
