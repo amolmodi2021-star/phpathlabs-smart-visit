@@ -15,6 +15,7 @@ import ReportHeader from "@/components/report/ReportHeader";
 import ReportAbnormalSummary from "@/components/report/ReportAbnormalSummary";
 import ReportResultsSection from "@/components/report/ReportResultsSection";
 import ReportSignatureBlock from "@/components/report/ReportSignatureBlock";
+import AutoScaleContent from "@/components/report/AutoScaleContent";
 import { shareOnWhatsApp } from "@/lib/whatsapp";
 import { useToast } from "@/hooks/use-toast";
 
