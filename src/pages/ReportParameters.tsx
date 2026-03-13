@@ -255,7 +255,12 @@ const ReportParameters = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Parameter</TableHead>
+                    <TableHead className="w-[40px]">
+                      <Checkbox
+                        checked={filtered.length > 0 && selectedIds.size === filtered.length}
+                        onCheckedChange={toggleSelectAll}
+                      />
+                    </TableHead>
                     <TableHead>Test</TableHead>
                     <TableHead>Department</TableHead>
                     <TableHead>Profile</TableHead>
