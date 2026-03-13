@@ -529,8 +529,11 @@ const ReviewReport = () => {
 
     const corrections: Array<{ parameter_name: string; field_corrected: string; original_value: string; corrected_value: string }> = [];
 
+    const originalsByKey = new Map<string, TestResult>();
+    originals.forEach((row) => originalsByKey.set(getDedupeKey(row), row));
+
     for (const curr of finalResults) {
-      const orig = originals.find(o => o.parameter_name === curr.parameter_name);
+      const orig = originalsByKey.get(getDedupeKey(curr));
       if (!orig) continue;
 
       for (const field of TRACKED_FIELDS) {
