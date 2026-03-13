@@ -1,100 +1,65 @@
 
 
-## Plan: Sample Type, Outsourced, Interpretation Fields + Auto-Apply in Report
+## Live Sync / Auto-Refresh for All Tabs
 
-### Overview
+### What This Does
+When data changes on one device (e.g., a new home visit is added, a test is updated, an estimate is created), all other devices viewing the app will automatically refresh and show the updated data -- no manual refresh needed.
 
-Add `sample_type`, `is_outsourced`, `outsourced_caption`, and `interpretation` fields to both profiles and parameters. These are NOT added during extraction/review -- they are auto-applied at report generation time in `ViewReport.tsx` by looking up master data for matched profiles/parameters.
+### Implementation Steps
 
----
+**Step 1: Database Migration -- Enable Realtime**
 
-### Step 1: Database Migration
+Add all 7 core tables to the realtime publication so the database broadcasts changes:
+- `home_visits`
+- `estimates`
+- `estimate_tests`
+- `tests`
+- `phlebotomists`
+- `message_templates`
+- `abnormal_history`
 
-Add columns to **`report_profiles`**:
-- `sample_type TEXT`
-- `is_outsourced BOOLEAN DEFAULT false`
-- `outsourced_caption TEXT`
-- `interpretation TEXT` (stores rich HTML)
+**Step 2: Create a Reusable Realtime Hook**
 
-Add columns to **`report_test_parameters`**:
-- `sample_type TEXT`
-- `is_outsourced BOOLEAN DEFAULT false`
-- `outsourced_caption TEXT`
-- `interpretation TEXT` (stores rich HTML)
+Create a new hook `src/hooks/useRealtimeSync.ts` that:
+- Subscribes to Postgres changes on a given table
+- On any INSERT, UPDATE, or DELETE event, automatically invalidates the matching React Query cache keys
+- Cleans up the subscription when the component unmounts
 
----
+**Step 3: Wire Up Each Page**
 
-### Step 2: Update Profile Management (`ReportProfiles.tsx`)
+Add the realtime hook to each page/component so queries auto-refresh:
 
-Add to the edit/add dialog:
-- **Sample Type** -- text input
-- **Is Outsourced** -- checkbox
-- **Outsourced Caption** -- text input, visible when outsourced checked
-- **Interpretation** -- rich text editor
+| Page | Table(s) Listened | Query Keys Invalidated |
+|------|-------------------|----------------------|
+| HomeVisits | `home_visits` | `home_visits` |
+| CreateEstimate | `tests` | `tests` |
+| EstimateDashboard | `estimates`, `estimate_tests` | `estimates` |
+| TestManagement | `tests` | `tests` |
+| PhlebotomistManagement | `phlebotomists` | `phlebotomists` |
+| MessageTemplates | `message_templates` | `message_templates` |
+| AbnormalHistory | `abnormal_history` | `abnormal_history`, `abnormal_history_counts` |
 
-Add **Sample Type** column to the listing table. Show "Outsourced" text indicator in the table.
+### Technical Details
 
----
+The reusable hook will look like:
 
-### Step 3: Update Parameter Management (`ReportParameters.tsx`)
+```text
+useRealtimeSync(tableName, queryKeysToInvalidate[])
+```
 
-Same fields as profiles:
-- **Sample Type**, **Is Outsourced**, **Outsourced Caption**, **Interpretation**
-
-Add Sample Type column to listing table.
-
----
-
-### Step 4: Rich Text Editor Component
-
-Create `src/components/RichTextEditor.tsx` using `contentEditable` div with toolbar:
-- Bold, Italic, Underline
-- Bullet list, Numbered list
-- Image insert (upload to `report-uploads` bucket)
-
-Stores/returns HTML string. Lightweight, no new dependencies.
-
----
-
-### Step 5: Auto-Apply in ViewReport.tsx (Report Generation)
-
-In `loadReport()`, after matching parameters to master data, also fetch:
-- Profile master data (`sample_type`, `is_outsourced`, `outsourced_caption`, `interpretation`, `analyzer`, `method`) for all matched profile names
-- Parameter master data (same fields) for standalone parameters
-
-Enrich each `TestResult` with new optional fields: `sample_type`, `is_outsourced`, `outsourced_caption`, `interpretation`, `analyzer`, `method`.
-
----
-
-### Step 6: Report Rendering (`ReportResultsSection.tsx`)
-
-After each profile's results table, render (if data exists):
-
-1. **Metadata row** -- grouped line showing Sample Type, Analyzer, Method (from profile for grouped params, from parameter for standalone)
-2. **Outsourced caption line** -- if profile/parameter is outsourced, show the editable caption text as a simple italic line (no badges)
-3. **Interpretation block** -- render rich HTML:
-   - Profile-level interpretation for grouped parameters
-   - Parameter-level interpretation for standalone (non-profile) parameters
-
-Pass these new fields via extended `TestResult` interface and new optional props on `ReportResultsSection`.
-
----
-
-### Step 7: Pagination Height Adjustments
-
-Add height estimates in `ViewReport.tsx` for new sections:
-- Metadata row: ~4mm
-- Outsourced caption: ~4mm  
-- Interpretation: estimate based on content length (~6mm base + variable)
-
----
+It subscribes to `postgres_changes` on the specified table and calls `queryClient.invalidateQueries()` for each key whenever a change is detected. This triggers a fresh fetch from the database automatically.
 
 ### Files to Create/Modify
 
-1. **Migration** -- add columns to `report_profiles` and `report_test_parameters`
-2. **New**: `src/components/RichTextEditor.tsx`
-3. **Modified**: `src/pages/ReportProfiles.tsx` -- add new fields to form/table
-4. **Modified**: `src/pages/ReportParameters.tsx` -- add new fields to form/table
-5. **Modified**: `src/pages/ViewReport.tsx` -- fetch master data at render time, enrich results, pass metadata to rendering
-6. **Modified**: `src/components/report/ReportResultsSection.tsx` -- render metadata, outsourced caption, interpretation below each profile/parameter block
+1. **New migration** -- SQL to add tables to `supabase_realtime` publication
+2. **New file**: `src/hooks/useRealtimeSync.ts` -- reusable realtime subscription hook
+3. **Modified**: `src/pages/HomeVisits.tsx` -- add `useRealtimeSync("home_visits", ...)`
+4. **Modified**: `src/pages/CreateEstimate.tsx` -- add `useRealtimeSync("tests", ...)`
+5. **Modified**: `src/pages/EstimateDashboard.tsx` -- add `useRealtimeSync("estimates", ...)` and `useRealtimeSync("estimate_tests", ...)`
+6. **Modified**: `src/pages/TestManagement.tsx` -- add `useRealtimeSync("tests", ...)`
+7. **Modified**: `src/pages/PhlebotomistManagement.tsx` -- add `useRealtimeSync("phlebotomists", ...)`
+8. **Modified**: `src/pages/MessageTemplates.tsx` -- add `useRealtimeSync("message_templates", ...)`
+9. **Modified**: `src/pages/AbnormalHistory.tsx` -- add `useRealtimeSync("abnormal_history", ...)`
+
+This is included in your Lovable Cloud usage and should be well within the free tier for a small team.
 

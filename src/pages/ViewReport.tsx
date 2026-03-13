@@ -32,6 +32,21 @@ interface TestResult {
   normal_range_text?: string;
   flag?: string;
   approved_by?: string;
+  sample_type?: string;
+  analyzer?: string;
+  method?: string;
+  is_outsourced?: boolean;
+  outsourced_caption?: string;
+  interpretation?: string;
+}
+
+interface ProfileMeta {
+  sample_type?: string;
+  analyzer?: string;
+  method?: string;
+  is_outsourced?: boolean;
+  outsourced_caption?: string;
+  interpretation?: string;
 }
 
 interface TrendData {
@@ -114,6 +129,7 @@ const ViewReport = () => {
   const [extracted, setExtracted] = useState<any>(null);
   const [pathologistMap, setPathologistMap] = useState<Record<string, any>>({});
   const [deptOrderMap, setDeptOrderMap] = useState<Record<string, number>>({});
+  const [profileMetaMap, setProfileMetaMap] = useState<Record<string, ProfileMeta>>({});
   const [trends, setTrends] = useState<TrendData[]>([]);
   const [showHeader, setShowHeader] = useState(true);
   const [layoutSettings, setLayoutSettings] = useState<LayoutSettings>({
@@ -219,6 +235,60 @@ const ViewReport = () => {
       });
       ext.test_results = results as any;
     }
+
+    // Fetch profile master data for metadata (sample_type, outsourced, interpretation)
+    const profileNames = [...new Set(results.map(r => r.profile_name).filter(Boolean))] as string[];
+    if (profileNames.length > 0) {
+      const { data: masterProfiles } = await supabase
+        .from("report_profiles")
+        .select("profile_name, sample_type, analyzer, method, is_outsourced, outsourced_caption, interpretation")
+        .in("profile_name", profileNames);
+      if (masterProfiles) {
+        const metaMap: Record<string, ProfileMeta> = {};
+        masterProfiles.forEach((mp: any) => {
+          metaMap[mp.profile_name] = {
+            sample_type: mp.sample_type,
+            analyzer: mp.analyzer,
+            method: mp.method,
+            is_outsourced: mp.is_outsourced,
+            outsourced_caption: mp.outsourced_caption,
+            interpretation: mp.interpretation,
+          };
+        });
+        setProfileMetaMap(metaMap);
+      }
+    }
+
+    // Enrich standalone parameters (not in a profile) with their master data
+    const standaloneParams = results.filter(r => !r.profile_name || r.profile_name === "_individual");
+    if (standaloneParams.length > 0) {
+      const standaloneNames = standaloneParams.map(r => r.parameter_name);
+      const { data: masterStandalone } = await supabase
+        .from("report_test_parameters")
+        .select("parameter_name, sample_type, analyzer, method, is_outsourced, outsourced_caption, interpretation")
+        .in("parameter_name", standaloneNames)
+        .is("profile_id", null);
+      if (masterStandalone) {
+        const paramMetaMap: Record<string, any> = {};
+        masterStandalone.forEach((mp: any) => {
+          paramMetaMap[mp.parameter_name.toLowerCase()] = mp;
+        });
+        results.forEach(r => {
+          if (!r.profile_name || r.profile_name === "_individual") {
+            const meta = paramMetaMap[r.parameter_name.toLowerCase()];
+            if (meta) {
+              r.sample_type = meta.sample_type;
+              r.analyzer = meta.analyzer;
+              r.method = meta.method;
+              r.is_outsourced = meta.is_outsourced;
+              r.outsourced_caption = meta.outsourced_caption;
+              r.interpretation = meta.interpretation;
+            }
+          }
+        });
+      }
+    }
+    ext.test_results = results as any;
 
     // Fetch department display order
     const { data: depts } = await supabase.from("report_departments").select("department_name, display_order").order("display_order", { ascending: true });
@@ -451,7 +521,19 @@ const ViewReport = () => {
         const testNameHeaders = countTestNameHeaders(params);
         const compact = isCompactProfile(profName) || isCompactProfile(dept);
         const rowH = compact ? ROW_HEIGHT_COMPACT_MM : ROW_HEIGHT_MM;
-        const heightMm = DEPT_HEADER_HEIGHT_MM + (showProf ? PROFILE_HEADER_HEIGHT_MM : 0) + TABLE_HEADER_HEIGHT_MM + params.length * rowH + testNameHeaders * TEST_NAME_HEADER_MM + PROFILE_GAP_MM;
+        // Extra height for metadata, outsourced caption, interpretation
+        const isStandalone = profName === "_individual";
+        const meta = !isStandalone ? profileMetaMap[profName] : (params[0] ? { sample_type: params[0].sample_type, analyzer: params[0].analyzer, method: params[0].method, is_outsourced: params[0].is_outsourced, outsourced_caption: params[0].outsourced_caption, interpretation: params[0].interpretation } : null);
+        let extraMm = 0;
+        if (meta) {
+          if (meta.sample_type || meta.analyzer || meta.method) extraMm += 4;
+          if (meta.is_outsourced && meta.outsourced_caption) extraMm += 4;
+          if (meta.interpretation && meta.interpretation.replace(/<[^>]*>/g, '').trim().length > 0) {
+            const textLen = meta.interpretation.replace(/<[^>]*>/g, '').length;
+            extraMm += 6 + Math.ceil(textLen / 120) * 3;
+          }
+        }
+        const heightMm = DEPT_HEADER_HEIGHT_MM + (showProf ? PROFILE_HEADER_HEIGHT_MM : 0) + TABLE_HEADER_HEIGHT_MM + params.length * rowH + testNameHeaders * TEST_NAME_HEADER_MM + PROFILE_GAP_MM + extraMm;
         sections.push({
           type: "department-profile",
           dept,
@@ -553,7 +635,7 @@ const ViewReport = () => {
         };
         return (
           <div key={`${section.dept}-${section.profName}-${idx}`} style={{ marginBottom: `${PROFILE_GAP_MM}mm` }}>
-            <ReportResultsSection grouped={grouped} shouldShowProfile={shouldShowProfile} hideDeptHeader={!showDeptHeader} />
+            <ReportResultsSection grouped={grouped} shouldShowProfile={shouldShowProfile} hideDeptHeader={!showDeptHeader} profileMetaMap={profileMetaMap} />
           </div>
         );
       }

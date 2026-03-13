@@ -672,9 +672,13 @@ export type Database = {
           department_id: string | null
           display_order: number | null
           id: string
+          interpretation: string | null
+          is_outsourced: boolean | null
           method: string | null
+          outsourced_caption: string | null
           profile_name: string
           remarks: string | null
+          sample_type: string | null
           updated_at: string | null
         }
         Insert: {
@@ -683,9 +687,13 @@ export type Database = {
           department_id?: string | null
           display_order?: number | null
           id?: string
+          interpretation?: string | null
+          is_outsourced?: boolean | null
           method?: string | null
+          outsourced_caption?: string | null
           profile_name: string
           remarks?: string | null
+          sample_type?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -694,9 +702,13 @@ export type Database = {
           department_id?: string | null
           display_order?: number | null
           id?: string
+          interpretation?: string | null
+          is_outsourced?: boolean | null
           method?: string | null
+          outsourced_caption?: string | null
           profile_name?: string
           remarks?: string | null
+          sample_type?: string | null
           updated_at?: string | null
         }
         Relationships: [
@@ -740,12 +752,16 @@ export type Database = {
           department_id: string | null
           display_order: number | null
           id: string
+          interpretation: string | null
+          is_outsourced: boolean | null
           method: string | null
           normal_range_high: number | null
           normal_range_low: number | null
           normal_range_text: string | null
+          outsourced_caption: string | null
           parameter_name: string
           profile_id: string | null
+          sample_type: string | null
           store_for_analytics: boolean | null
           test_name: string | null
           unit: string | null
@@ -757,12 +773,16 @@ export type Database = {
           department_id?: string | null
           display_order?: number | null
           id?: string
+          interpretation?: string | null
+          is_outsourced?: boolean | null
           method?: string | null
           normal_range_high?: number | null
           normal_range_low?: number | null
           normal_range_text?: string | null
+          outsourced_caption?: string | null
           parameter_name: string
           profile_id?: string | null
+          sample_type?: string | null
           store_for_analytics?: boolean | null
           test_name?: string | null
           unit?: string | null
@@ -774,12 +794,16 @@ export type Database = {
           department_id?: string | null
           display_order?: number | null
           id?: string
+          interpretation?: string | null
+          is_outsourced?: boolean | null
           method?: string | null
           normal_range_high?: number | null
           normal_range_low?: number | null
           normal_range_text?: string | null
+          outsourced_caption?: string | null
           parameter_name?: string
           profile_id?: string | null
+          sample_type?: string | null
           store_for_analytics?: boolean | null
           test_name?: string | null
           unit?: string | null
