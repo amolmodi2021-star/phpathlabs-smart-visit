@@ -69,11 +69,19 @@ export const computeAbnormalFlag = (row: FlagEvaluationInput): AbnormalFlag => {
   let low = explicitLow ?? textBounds.low;
   let high = explicitHigh ?? textBounds.high;
 
-  // Defensive: if low > high (e.g., extraction error like 2000 vs 1000), swap them
+  // If explicit low/high are swapped (AI extraction error like low=2000, high=1000),
+  // prefer text-parsed bounds which are more reliable, then fall back to swap
   if (low !== null && high !== null && low > high) {
-    const temp = low;
-    low = high;
-    high = temp;
+    if (textBounds.low !== null && textBounds.high !== null && textBounds.low <= textBounds.high) {
+      // Text parsing got it right (e.g. "200-1000" → low=200, high=1000), use those
+      low = textBounds.low;
+      high = textBounds.high;
+    } else {
+      // Last resort: swap
+      const temp = low;
+      low = high;
+      high = temp;
+    }
   }
 
   if (high !== null && value > high) return "H";
