@@ -102,6 +102,7 @@ const ViewReport = () => {
   const navigate = useNavigate();
   const printRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState(false);
   const [extracted, setExtracted] = useState<any>(null);
   const [pathologistMap, setPathologistMap] = useState<Record<string, any>>({});
   const [deptOrderMap, setDeptOrderMap] = useState<Record<string, number>>({});
