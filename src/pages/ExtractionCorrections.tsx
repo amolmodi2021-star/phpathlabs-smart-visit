@@ -1,13 +1,23 @@
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Trash2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Trash2, Plus } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 
 const ExtractionCorrections = () => {
+  const [addOpen, setAddOpen] = useState(false);
+  const [newParam, setNewParam] = useState("");
+  const [newField, setNewField] = useState("parameter_name");
+  const [newOriginal, setNewOriginal] = useState("");
+  const [newCorrected, setNewCorrected] = useState("");
   const queryClient = useQueryClient();
 
   const { data: corrections = [], isLoading } = useQuery({
@@ -44,19 +54,86 @@ const ExtractionCorrections = () => {
     },
   });
 
+  const addMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from("extraction_corrections").insert({
+        parameter_name: newParam,
+        field_corrected: newField,
+        original_value: newOriginal || null,
+        corrected_value: newCorrected || null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["extraction-corrections"] });
+      toast({ title: "Correction added" });
+      setAddOpen(false);
+      setNewParam("");
+      setNewField("parameter_name");
+      setNewOriginal("");
+      setNewCorrected("");
+    },
+  });
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">AI Extraction Corrections</h1>
-        {corrections.length > 0 && (
-          <Button variant="destructive" size="sm" onClick={() => clearAllMutation.mutate()} disabled={clearAllMutation.isPending}>
-            Clear All
+        <div className="flex gap-2">
+          <Button size="sm" onClick={() => setAddOpen(true)}>
+            <Plus className="h-4 w-4 mr-1" /> Add Correction
           </Button>
-        )}
+          {corrections.length > 0 && (
+            <Button variant="destructive" size="sm" onClick={() => clearAllMutation.mutate()} disabled={clearAllMutation.isPending}>
+              Clear All
+            </Button>
+          )}
+        </div>
       </div>
       <p className="text-sm text-muted-foreground">
         These corrections are fed into the AI prompt to improve future extractions. Total: {corrections.length}
       </p>
+
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Manual Correction</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Parameter Name</Label>
+              <Input value={newParam} onChange={(e) => setNewParam(e.target.value)} placeholder="e.g. Abs Eosinophil" />
+            </div>
+            <div>
+              <Label>Field Corrected</Label>
+              <Select value={newField} onValueChange={setNewField}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="parameter_name">Parameter Name</SelectItem>
+                  <SelectItem value="result_value">Result Value</SelectItem>
+                  <SelectItem value="unit">Unit</SelectItem>
+                  <SelectItem value="normal_range_low">Normal Range Low</SelectItem>
+                  <SelectItem value="normal_range_high">Normal Range High</SelectItem>
+                  <SelectItem value="normal_range_text">Normal Range Text</SelectItem>
+                  <SelectItem value="flag">Flag</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Original Value (what AI extracted)</Label>
+              <Input value={newOriginal} onChange={(e) => setNewOriginal(e.target.value)} placeholder="e.g. Abs Eosinophils" />
+            </div>
+            <div>
+              <Label>Corrected Value</Label>
+              <Input value={newCorrected} onChange={(e) => setNewCorrected(e.target.value)} placeholder="e.g. Abs Eosinophil" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button onClick={() => addMutation.mutate()} disabled={!newParam || addMutation.isPending}>Add</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Card>
         <CardHeader>
