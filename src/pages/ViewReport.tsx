@@ -748,6 +748,11 @@ const ViewReport = () => {
           }
           .print\\:hidden { display: none !important; }
           .print\\:break-inside-avoid { break-inside: avoid; }
+          .trend-chart-detail-row {
+            overflow: hidden !important;
+          }
+          .report-print-area *::-webkit-scrollbar { display: none !important; }
+          .report-print-area * { scrollbar-width: none !important; }
           .report-page {
             height: 296mm;
             max-height: 296mm;
@@ -806,6 +811,7 @@ const ViewReport = () => {
         }
         .pdf-export-mode .trend-chart-detail-row {
           padding-bottom: 2px !important;
+          overflow: hidden !important;
         }
         .pdf-export-mode .trend-chart-detail-item span {
           line-height: 1.25 !important;

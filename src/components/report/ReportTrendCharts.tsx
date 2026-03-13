@@ -36,10 +36,15 @@ const ReportTrendCharts = ({ trends }: ReportTrendChartsProps) => {
       <h2 className="text-base font-bold text-blue-800 mb-3 border-b-2 border-blue-200 pb-1">Historical Trends</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 print:grid-cols-2 gap-4">
         {trends.slice(0, 6).map((trend) => {
-          // Sort by date ascending and limit to last 5 points (4 previous + 1 current)
-          const sortedData = [...trend.data]
+          // Sort by date ascending, deduplicate (same date+value), limit to last 5
+          const deduped = [...trend.data]
             .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-            .slice(-5);
+            .filter((item, idx, arr) => {
+              if (idx === 0) return true;
+              const prev = arr[idx - 1];
+              return !(item.date === prev.date && item.value === prev.value);
+            });
+          const sortedData = deduped.slice(-5);
 
           const values = sortedData.map(d => d.value);
           const allVals = [...values];
@@ -85,7 +90,7 @@ const ReportTrendCharts = ({ trends }: ReportTrendChartsProps) => {
               </ResponsiveContainer>
 
               {/* Details below graph */}
-              <div className="trend-chart-detail-row flex gap-4 mt-2 overflow-x-auto">
+              <div className="trend-chart-detail-row flex gap-2 mt-2 justify-between">
                 {sortedData.map((point, idx) => {
                   const prev = idx > 0 ? sortedData[idx - 1].value : null;
                   const pointLow = point.low ?? trend.low;
@@ -97,7 +102,7 @@ const ReportTrendCharts = ({ trends }: ReportTrendChartsProps) => {
                     : pointHigh != null ? `≤ ${pointHigh}`
                     : "—";
                   return (
-                    <div key={idx} className="trend-chart-detail-item flex flex-col items-center text-center min-w-[70px]">
+                    <div key={idx} className="trend-chart-detail-item flex flex-col items-center text-center min-w-0 flex-1">
                       <span className="text-[11px] leading-tight text-gray-500">{point.date}</span>
                       <span className={`text-xs leading-tight font-semibold flex items-center gap-0.5 ${normal ? "text-green-600" : "text-red-600"}`}>
                         {point.value}
