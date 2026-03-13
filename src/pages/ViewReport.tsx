@@ -86,8 +86,8 @@ const TABLE_HEADER_HEIGHT_MM = 5;
 const ROW_HEIGHT_MM = 5;
 const ROW_HEIGHT_COMPACT_MM = 3.8;
 const PROFILE_GAP_MM = 2;
-const ABNORMAL_SUMMARY_BASE_MM = 14;
-const ABNORMAL_ROW_MM = 4.5;
+const ABNORMAL_SUMMARY_BASE_MM = 18;
+const ABNORMAL_ROW_MM = 5.2;
 const TEST_NAME_HEADER_MM = 4;
 
 const COMPACT_PROFILES = ["cbc", "complete blood count", "urine routine"];
