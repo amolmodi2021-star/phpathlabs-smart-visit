@@ -342,10 +342,18 @@ MATCHING:
         }))
       : [];
 
-    // Deduplicate by parameter+scope
-    const normalizeKey = (v: unknown) => String(v ?? "").toLowerCase().replace(/\s+/g, " ").trim();
-    const getScope = (r: any) => normalizeKey(r.profile_name) || normalizeKey(r.test_name) || normalizeKey(r.parameter_name);
-    const getKey = (r: any) => `${normalizeKey(r.parameter_name)}::${getScope(r)}`;
+    // Deduplicate by parameter+scope (normalize punctuation/spacing variants)
+    const normalizeKey = (v: unknown) =>
+      String(v ?? "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    const getScope = (r: any) =>
+      normalizeKey(r.profile_name) || normalizeKey(r.test_name) || normalizeKey(r.parameter_name) || "unknown-scope";
+
+    const getKey = (r: any) => `${normalizeKey(r.parameter_name) || "unknown-parameter"}::${getScope(r)}`;
 
     const deduped = new Map<string, any>();
     testResults.forEach((row: any) => {
