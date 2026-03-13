@@ -91,7 +91,7 @@ const ABNORMAL_ROW_MM = 5.4;
 const ABNORMAL_EXTRA_LINE_MM = 4.2;
 const ABNORMAL_PARAM_CHARS_PER_LINE = 28;
 const ABNORMAL_RANGE_CHARS_PER_LINE = 14;
-const ABNORMAL_MAX_ROWS_HARD_CAP = 16;
+const ABNORMAL_MAX_ROWS_HARD_CAP = 12;
 const TEST_NAME_HEADER_MM = 4;
 
 const COMPACT_PROFILES = ["cbc", "complete blood count", "urine routine"];
