@@ -30,7 +30,7 @@ interface TestResult {
 
 interface TrendData {
   parameter_name: string;
-  data: { date: string; value: number }[];
+  data: { date: string; value: number; low?: number; high?: number }[];
   low?: number;
   high?: number;
   unit?: string;
@@ -248,6 +248,8 @@ const ViewReport = () => {
           grouped[h.parameter_name].data.push({
             date: new Date(h.test_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" }),
             value: h.result_value,
+            low: h.normal_range_low,
+            high: h.normal_range_high,
           });
         });
         setTrends(Object.values(grouped).filter((t) => t.data.length >= 2));

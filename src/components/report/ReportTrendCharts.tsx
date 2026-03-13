@@ -3,7 +3,7 @@ import { ArrowUp, ArrowDown } from "lucide-react";
 
 interface TrendData {
   parameter_name: string;
-  data: { date: string; value: number }[];
+  data: { date: string; value: number; low?: number; high?: number }[];
   low?: number;
   high?: number;
   unit?: string;
@@ -88,7 +88,14 @@ const ReportTrendCharts = ({ trends }: ReportTrendChartsProps) => {
               <div className="flex gap-4 mt-2 overflow-x-auto">
                 {sortedData.map((point, idx) => {
                   const prev = idx > 0 ? sortedData[idx - 1].value : null;
-                  const normal = isNormal(point.value, trend.low, trend.high);
+                  const pointLow = point.low ?? trend.low;
+                  const pointHigh = point.high ?? trend.high;
+                  const normal = isNormal(point.value, pointLow, pointHigh);
+                  const pointRange = pointLow != null && pointHigh != null
+                    ? `${pointLow} - ${pointHigh}`
+                    : pointLow != null ? `≥ ${pointLow}`
+                    : pointHigh != null ? `≤ ${pointHigh}`
+                    : "—";
                   return (
                     <div key={idx} className="flex flex-col items-center text-center min-w-[70px]">
                       <span className="text-[11px] text-gray-500">{point.date}</span>
@@ -102,11 +109,25 @@ const ReportTrendCharts = ({ trends }: ReportTrendChartsProps) => {
                               : null
                         )}
                       </span>
-                      <span className="text-[10px] text-gray-400">{refRange}</span>
+                      <span className="text-[10px] text-gray-400">{pointRange}</span>
                     </div>
                   );
                 })}
               </div>
+
+              {/* Remark if normal ranges differ across data points */}
+              {(() => {
+                const ranges = sortedData.map(p => `${p.low ?? trend.low}-${p.high ?? trend.high}`);
+                const allSame = ranges.every(r => r === ranges[0]);
+                if (!allSame) {
+                  return (
+                    <p className="text-[10px] text-red-500 font-medium mt-1 text-center italic">
+                      ⚠ Check normal range carefully.
+                    </p>
+                  );
+                }
+                return null;
+              })()}
             </div>
           );
         })}
