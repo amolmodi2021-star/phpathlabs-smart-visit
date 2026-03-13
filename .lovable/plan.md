@@ -1,67 +1,65 @@
 
 
-## Problem Analysis
+## Live Sync / Auto-Refresh for All Tabs
 
-The core issue is a **mismatch between the estimated height used for chunking abnormal rows and the actual rendered height**. The estimation constants (`ABNORMAL_ROW_MM`, `ABNORMAL_SUMMARY_BASE_MM`, etc.) are guesses that don't match reality, causing either:
-1. Too many rows crammed into one page (overflow, ignoring bottom margin)
-2. Too few rows (wasted space)
+### What This Does
+When data changes on one device (e.g., a new home visit is added, a test is updated, an estimate is created), all other devices viewing the app will automatically refresh and show the updated data -- no manual refresh needed.
 
-Additionally, the current approach of estimating row heights based on character counts is fragile. The real problem is that the **chunking algorithm needs to be more conservative and empirically calibrated**.
+### Implementation Steps
 
-## Root Cause
+**Step 1: Database Migration -- Enable Realtime**
 
-Looking at the code flow:
-1. `abnormalUsableHeight` = 297 - topMargin - bottomMargin - 32 (header) - 10 (page num reserve) - 4 (safety) = ~**219mm** (with 2.5cm top, 1.5cm bottom)
-2. `abnormalBodyMaxHeight` = 219 - 17 (base) - 2 (chunk safety) = ~**200mm**
-3. With `ABNORMAL_ROW_MM = 6.2`, that allows ~32 rows per page
+Add all 7 core tables to the realtime publication so the database broadcasts changes:
+- `home_visits`
+- `estimates`
+- `estimate_tests`
+- `tests`
+- `phlebotomists`
+- `message_templates`
+- `abnormal_history`
 
-But the actual rendered abnormal summary table rows are likely **smaller** than 6.2mm, meaning the estimation thinks fewer rows fit than actually do — OR the page container (`overflow: hidden` at 297mm) clips content that the estimation said would fit.
+**Step 2: Create a Reusable Realtime Hook**
 
-The real fix: **measure the actual rendered height rather than guessing**, or use much more accurate constants. Since we can't measure at estimation time, we need to calibrate the constants properly.
+Create a new hook `src/hooks/useRealtimeSync.ts` that:
+- Subscribes to Postgres changes on a given table
+- On any INSERT, UPDATE, or DELETE event, automatically invalidates the matching React Query cache keys
+- Cleans up the subscription when the component unmounts
 
-## Plan
+**Step 3: Wire Up Each Page**
 
-### 1. Fix the abnormal summary chunking to use realistic row heights
+Add the realtime hook to each page/component so queries auto-refresh:
 
-- Set `ABNORMAL_ROW_MM = 5.0` (actual table rows with `text-sm` and `py-0.5` are ~4-5mm)
-- Set `ABNORMAL_SUMMARY_BASE_MM = 14` (heading + table header + border/padding)  
-- Remove `ABNORMAL_CHUNK_SAFETY_MM` and `SAFETY_BUFFER_MM` from abnormal calculation — instead use a single `3mm` buffer
-- Reduce `ABNORMAL_EXTRA_LINE_MM` to `3.5` for wrapped text lines
+| Page | Table(s) Listened | Query Keys Invalidated |
+|------|-------------------|----------------------|
+| HomeVisits | `home_visits` | `home_visits` |
+| CreateEstimate | `tests` | `tests` |
+| EstimateDashboard | `estimates`, `estimate_tests` | `estimates` |
+| TestManagement | `tests` | `tests` |
+| PhlebotomistManagement | `phlebotomists` | `phlebotomists` |
+| MessageTemplates | `message_templates` | `message_templates` |
+| AbnormalHistory | `abnormal_history` | `abnormal_history`, `abnormal_history_counts` |
 
-### 2. Fix the `abnormalUsableHeight` calculation to exactly match the page container
+### Technical Details
 
-The page container is `297mm` with `paddingTop: topMarginMm` and `paddingBottom: bottomMarginMm`. The content area inside has `paddingBottom: contentBottomReserveMm` which for abnormal pages = `PAGE_NUM_HEIGHT_MM + 2 = 10mm`.
+The reusable hook will look like:
 
-So actual usable content height = `297 - topMarginMm - bottomMarginMm - HEADER_HEIGHT_MM - (PAGE_NUM_HEIGHT_MM + 2)`.
-
-The current code adds an extra `SAFETY_BUFFER_MM` on top of this, which wastes space. Remove it for abnormal pages.
-
-### 3. Ensure the section content div doesn't have extra spacing eating into the usable area
-
-The content div uses `space-y-1` (4px gaps) and `paddingBottom: contentBottomReserveMm`. Verify these are accounted for in the height budget.
-
-### 4. Summary of constant changes in `ViewReport.tsx`
-
-```
-ABNORMAL_SUMMARY_BASE_MM: 17 → 14
-ABNORMAL_ROW_MM: 6.2 → 5.0  
-ABNORMAL_EXTRA_LINE_MM: 5 → 3.5
-ABNORMAL_PARAM_CHARS_PER_LINE: 32 → 28
-ABNORMAL_RANGE_CHARS_PER_LINE: 20 → 18
-Remove ABNORMAL_CHUNK_SAFETY_MM constant
+```text
+useRealtimeSync(tableName, queryKeysToInvalidate[])
 ```
 
-### 5. Update `abnormalUsableHeight` formula
+It subscribes to `postgres_changes` on the specified table and calls `queryClient.invalidateQueries()` for each key whenever a change is detected. This triggers a fresh fetch from the database automatically.
 
-```typescript
-const abnormalContentReserve = PAGE_NUM_HEIGHT_MM + 2;
-const abnormalUsableHeight = PAGE_HEIGHT_MM - topMarginMm - bottomMarginMm - HEADER_HEIGHT_MM - abnormalContentReserve;
-const abnormalBodyMaxHeight = Math.max(20, abnormalUsableHeight - ABNORMAL_SUMMARY_BASE_MM);
-```
+### Files to Create/Modify
 
-No extra safety buffer — the `contentBottomReserveMm` in the render already handles the page number spacing.
+1. **New migration** -- SQL to add tables to `supabase_realtime` publication
+2. **New file**: `src/hooks/useRealtimeSync.ts` -- reusable realtime subscription hook
+3. **Modified**: `src/pages/HomeVisits.tsx` -- add `useRealtimeSync("home_visits", ...)`
+4. **Modified**: `src/pages/CreateEstimate.tsx` -- add `useRealtimeSync("tests", ...)`
+5. **Modified**: `src/pages/EstimateDashboard.tsx` -- add `useRealtimeSync("estimates", ...)` and `useRealtimeSync("estimate_tests", ...)`
+6. **Modified**: `src/pages/TestManagement.tsx` -- add `useRealtimeSync("tests", ...)`
+7. **Modified**: `src/pages/PhlebotomistManagement.tsx` -- add `useRealtimeSync("phlebotomists", ...)`
+8. **Modified**: `src/pages/MessageTemplates.tsx` -- add `useRealtimeSync("message_templates", ...)`
+9. **Modified**: `src/pages/AbnormalHistory.tsx` -- add `useRealtimeSync("abnormal_history", ...)`
 
-### 6. No changes needed to pagination logic
-
-The `paginateSections` function correctly isolates abnormal pages (`isAbnormalOnly`) and pushes remaining sections (any profile, not just CBC) to subsequent pages. The issue is purely that the estimated chunk sizes are wrong, causing all abnormals to fit in one chunk when they shouldn't.
+This is included in your Lovable Cloud usage and should be well within the free tier for a small team.
 
