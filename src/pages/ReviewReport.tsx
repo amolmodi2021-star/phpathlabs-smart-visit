@@ -657,7 +657,13 @@ const ReviewReport = () => {
       {/* Test Results */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Test Results ({testResults.length} parameters)</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg">Test Results ({testResults.length} parameters)</CardTitle>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="Search parameter..." value={paramSearch} onChange={(e) => setParamSearch(e.target.value)} className="pl-8 w-64" />
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
