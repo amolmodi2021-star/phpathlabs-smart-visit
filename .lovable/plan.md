@@ -1,65 +1,35 @@
 
 
-## Live Sync / Auto-Refresh for All Tabs
+## Problem
 
-### What This Does
-When data changes on one device (e.g., a new home visit is added, a test is updated, an estimate is created), all other devices viewing the app will automatically refresh and show the updated data -- no manual refresh needed.
+The merge key on line 429-430 uses `parameter_name::profile_name` as the composite key. However, `profile_name` is often empty or not yet assigned during extraction — it gets assigned later in the review/generation phase. This means:
 
-### Implementation Steps
+1. **Same-name parameters across different tests collide** — e.g., "Proteins" in LFT and "Proteins" in Urine Routine Analysis both produce key `proteins::` and one overwrites the other.
+2. **When re-uploading the same PDF**, since keys collide incorrectly, the Map ends up with wrong merges, resulting in duplicates appearing in the review screen.
 
-**Step 1: Database Migration -- Enable Realtime**
+The extracted data *does* have a `test_name` field (set by the AI during extraction) which distinguishes these parameters. The existing `dedupeByConfidence` function already uses `test_name` in its key — but the merge logic doesn't.
 
-Add all 7 core tables to the realtime publication so the database broadcasts changes:
-- `home_visits`
-- `estimates`
-- `estimate_tests`
-- `tests`
-- `phlebotomists`
-- `message_templates`
-- `abnormal_history`
+## Fix
 
-**Step 2: Create a Reusable Realtime Hook**
+### 1. `src/pages/UploadReport.tsx` — Update `getMergeKey` to include `test_name`
 
-Create a new hook `src/hooks/useRealtimeSync.ts` that:
-- Subscribes to Postgres changes on a given table
-- On any INSERT, UPDATE, or DELETE event, automatically invalidates the matching React Query cache keys
-- Cleans up the subscription when the component unmounts
-
-**Step 3: Wire Up Each Page**
-
-Add the realtime hook to each page/component so queries auto-refresh:
-
-| Page | Table(s) Listened | Query Keys Invalidated |
-|------|-------------------|----------------------|
-| HomeVisits | `home_visits` | `home_visits` |
-| CreateEstimate | `tests` | `tests` |
-| EstimateDashboard | `estimates`, `estimate_tests` | `estimates` |
-| TestManagement | `tests` | `tests` |
-| PhlebotomistManagement | `phlebotomists` | `phlebotomists` |
-| MessageTemplates | `message_templates` | `message_templates` |
-| AbnormalHistory | `abnormal_history` | `abnormal_history`, `abnormal_history_counts` |
-
-### Technical Details
-
-The reusable hook will look like:
-
-```text
-useRealtimeSync(tableName, queryKeysToInvalidate[])
+Change the merge composite key from:
+```
+parameter_name :: profile_name
+```
+to:
+```
+parameter_name :: test_name :: profile_name
 ```
 
-It subscribes to `postgres_changes` on the specified table and calls `queryClient.invalidateQueries()` for each key whenever a change is detected. This triggers a fresh fetch from the database automatically.
+This ensures "Proteins" under "LIVER FUNCTION TEST" and "Proteins" under "URINE ROUTINE ANALYSIS" get separate keys and don't collide, while true duplicates (same parameter + same test) are properly merged.
 
-### Files to Create/Modify
+### 2. Same file — Also apply deduplication to the *new extraction itself*
 
-1. **New migration** -- SQL to add tables to `supabase_realtime` publication
-2. **New file**: `src/hooks/useRealtimeSync.ts` -- reusable realtime subscription hook
-3. **Modified**: `src/pages/HomeVisits.tsx` -- add `useRealtimeSync("home_visits", ...)`
-4. **Modified**: `src/pages/CreateEstimate.tsx` -- add `useRealtimeSync("tests", ...)`
-5. **Modified**: `src/pages/EstimateDashboard.tsx` -- add `useRealtimeSync("estimates", ...)` and `useRealtimeSync("estimate_tests", ...)`
-6. **Modified**: `src/pages/TestManagement.tsx` -- add `useRealtimeSync("tests", ...)`
-7. **Modified**: `src/pages/PhlebotomistManagement.tsx` -- add `useRealtimeSync("phlebotomists", ...)`
-8. **Modified**: `src/pages/MessageTemplates.tsx` -- add `useRealtimeSync("message_templates", ...)`
-9. **Modified**: `src/pages/AbnormalHistory.tsx` -- add `useRealtimeSync("abnormal_history", ...)`
+Currently, when uploading the exact same PDF, the extraction produces the same parameters twice (once from old data, once from new). The `dedupeByConfidence` runs on extracted results but the merge logic adds *all* existing results first, then overlays new ones. If no existing report is found (or the keys don't match), duplicates slip through.
 
-This is included in your Lovable Cloud usage and should be well within the free tier for a small team.
+Add a final deduplication pass on `finalTestResultsToSave` using the same composite key before saving, keeping the entry with the latest `_merge_status` priority (new > updated > existing).
+
+### Files Modified
+- `src/pages/UploadReport.tsx` — fix `getMergeKey` function and add final dedup pass
 
