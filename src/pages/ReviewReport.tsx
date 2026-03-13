@@ -516,12 +516,12 @@ const ReviewReport = () => {
           };
         });
 
-        const recalculated = normalizeTestResultFlags(corrected);
+        const recalculated = dedupeTestResults(normalizeTestResultFlags(corrected));
         setTestResults(recalculated);
         const abnormalCount = recalculated.filter((r) => r.flag === "H" || r.flag === "L").length;
         toast({ title: "Re-verification complete", description: `${allVerified.length} parameters rechecked from matching pages. ${abnormalCount} abnormal result(s) confirmed.` });
       } else {
-        const recalculated = normalizeTestResultFlags(testResults);
+        const recalculated = dedupeTestResults(normalizeTestResultFlags(testResults));
         setTestResults(recalculated);
         toast({ title: "Re-verification complete", description: "No corrections were needed." });
       }
