@@ -630,22 +630,55 @@ const ViewReport = () => {
     if (includeAbnormalSummary) {
       const allAbnormals = results.filter(r => r.flag === "H" || r.flag === "L");
       if (allAbnormals.length > 0) {
-        // Split abnormal summary into chunks that fit on pages (no signature needed)
-        // Account for content padding bottom (PAGE_NUM_HEIGHT_MM + 2) used for abnormal-only pages
+        // Split abnormal summary into chunks using text-aware row height estimation
+        // so long range text moves correctly to continuation pages.
         const abnormalContentReserve = PAGE_NUM_HEIGHT_MM + 2;
         const abnormalUsableHeight = PAGE_HEIGHT_MM - topMarginMm - bottomMarginMm - HEADER_HEIGHT_MM - PAGE_NUM_HEIGHT_MM - abnormalContentReserve;
-        const maxRowsPerPage = Math.floor((abnormalUsableHeight - ABNORMAL_SUMMARY_BASE_MM) / ABNORMAL_ROW_MM);
-        
-        for (let i = 0; i < allAbnormals.length; i += maxRowsPerPage) {
-          const chunk = allAbnormals.slice(i, i + maxRowsPerPage);
+        const abnormalBodyMaxHeight = Math.max(20, abnormalUsableHeight - ABNORMAL_SUMMARY_BASE_MM);
+
+        const estimateAbnormalRowHeight = (row: TestResult) => {
+          const rangeText =
+            row.normal_range_text ||
+            `${row.normal_range_low || ""}${row.normal_range_low || row.normal_range_high ? "-" : ""}${row.normal_range_high || ""}`;
+
+          const paramLines = Math.max(1, Math.ceil((row.parameter_name?.trim().length || 1) / ABNORMAL_PARAM_CHARS_PER_LINE));
+          const rangeLines = Math.max(1, Math.ceil((rangeText.trim().length || 1) / ABNORMAL_RANGE_CHARS_PER_LINE));
+          const maxLines = Math.max(paramLines, rangeLines);
+
+          return ABNORMAL_ROW_MM + (maxLines - 1) * ABNORMAL_EXTRA_LINE_MM;
+        };
+
+        let currentChunk: TestResult[] = [];
+        let currentChunkHeight = 0;
+        const chunkedAbnormals: { rows: TestResult[]; height: number }[] = [];
+
+        allAbnormals.forEach((row) => {
+          const rowHeight = estimateAbnormalRowHeight(row);
+          const shouldStartNewChunk = currentChunk.length > 0 && (currentChunkHeight + rowHeight) > abnormalBodyMaxHeight;
+
+          if (shouldStartNewChunk) {
+            chunkedAbnormals.push({ rows: currentChunk, height: currentChunkHeight });
+            currentChunk = [row];
+            currentChunkHeight = rowHeight;
+          } else {
+            currentChunk.push(row);
+            currentChunkHeight += rowHeight;
+          }
+        });
+
+        if (currentChunk.length > 0) {
+          chunkedAbnormals.push({ rows: currentChunk, height: currentChunkHeight });
+        }
+
+        chunkedAbnormals.forEach((chunk, idx) => {
           sections.push({
             type: "abnormal-summary",
-            abnormals: chunk,
-            estimatedHeightMm: ABNORMAL_SUMMARY_BASE_MM + chunk.length * ABNORMAL_ROW_MM,
+            abnormals: chunk.rows,
+            estimatedHeightMm: ABNORMAL_SUMMARY_BASE_MM + chunk.height,
             isAbnormalOnly: true,
-            isContinuation: i > 0,
+            isContinuation: idx > 0,
           });
-        }
+        });
       }
     }
 
