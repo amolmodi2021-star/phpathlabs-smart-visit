@@ -7,12 +7,16 @@ import { toPng } from "html-to-image";
 import jsPDF from "jspdf";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import * as pdfjsLib from "pdfjs-dist";
 import ReportTrendCharts from "@/components/report/ReportTrendCharts";
 import ReportHeader from "@/components/report/ReportHeader";
 import ReportAbnormalSummary from "@/components/report/ReportAbnormalSummary";
 import ReportResultsSection from "@/components/report/ReportResultsSection";
 import ReportSignatureBlock from "@/components/report/ReportSignatureBlock";
+import { shareOnWhatsApp } from "@/lib/whatsapp";
+import { useToast } from "@/hooks/use-toast";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs";
 
