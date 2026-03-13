@@ -261,7 +261,7 @@ const ReportParameters = () => {
                         onCheckedChange={toggleSelectAll}
                       />
                     </TableHead>
-                    <TableHead>Test</TableHead>
+                    <TableHead>Parameter</TableHead>
                     <TableHead>Department</TableHead>
                     <TableHead>Profile</TableHead>
                     <TableHead>Sample Type</TableHead>
