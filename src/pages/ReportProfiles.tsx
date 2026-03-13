@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2, Loader2, ArrowUp, ArrowDown } from "lucide-react";
+import RichTextEditor from "@/components/RichTextEditor";
 
 interface SelectedParam {
   parameter_id: string;
@@ -26,7 +27,10 @@ const ReportProfiles = () => {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  const [form, setForm] = useState({ profile_name: "", department_id: "", analyzer: "", method: "", remarks: "", display_order: 0 });
+  const [form, setForm] = useState({
+    profile_name: "", department_id: "", analyzer: "", method: "", remarks: "", display_order: 0,
+    sample_type: "", is_outsourced: false, outsourced_caption: "", interpretation: "",
+  });
   const [selectedParams, setSelectedParams] = useState<SelectedParam[]>([]);
   const [paramSearch, setParamSearch] = useState("");
   const { toast } = useToast();
@@ -42,8 +46,6 @@ const ReportProfiles = () => {
     setProfiles(p || []);
     setDepartments(d || []);
     setAllParameters(params || []);
-
-    // Count parameters per profile
     const counts = new Map<string, number>();
     (pp || []).forEach((row: any) => {
       counts.set(row.profile_id, (counts.get(row.profile_id) || 0) + 1);
@@ -56,7 +58,18 @@ const ReportProfiles = () => {
 
   const handleSave = async () => {
     if (!form.profile_name.trim()) return;
-    const payload = { ...form, department_id: form.department_id || null };
+    const payload = {
+      profile_name: form.profile_name,
+      department_id: form.department_id || null,
+      analyzer: form.analyzer || null,
+      method: form.method || null,
+      remarks: form.remarks || null,
+      display_order: form.display_order,
+      sample_type: form.sample_type || null,
+      is_outsourced: form.is_outsourced,
+      outsourced_caption: form.outsourced_caption || null,
+      interpretation: form.interpretation || null,
+    };
     let profileId = editId;
 
     if (editId) {
@@ -66,11 +79,8 @@ const ReportProfiles = () => {
       profileId = data?.id || null;
     }
 
-    // Save profile parameters
     if (profileId) {
-      // Delete existing
       await supabase.from("profile_parameters").delete().eq("profile_id", profileId);
-      // Insert new
       if (selectedParams.length > 0) {
         const rows = selectedParams.map((sp, idx) => ({
           profile_id: profileId!,
@@ -89,9 +99,13 @@ const ReportProfiles = () => {
 
   const handleEdit = async (p: any) => {
     setEditId(p.id);
-    setForm({ profile_name: p.profile_name, department_id: p.department_id || "", analyzer: p.analyzer || "", method: p.method || "", remarks: p.remarks || "", display_order: p.display_order || 0 });
+    setForm({
+      profile_name: p.profile_name, department_id: p.department_id || "", analyzer: p.analyzer || "",
+      method: p.method || "", remarks: p.remarks || "", display_order: p.display_order || 0,
+      sample_type: p.sample_type || "", is_outsourced: p.is_outsourced || false,
+      outsourced_caption: p.outsourced_caption || "", interpretation: p.interpretation || "",
+    });
 
-    // Load existing profile parameters
     const { data: pp } = await supabase
       .from("profile_parameters")
       .select("parameter_id, display_order, report_test_parameters(parameter_name)")
@@ -117,7 +131,10 @@ const ReportProfiles = () => {
 
   const openNew = () => {
     setEditId(null);
-    setForm({ profile_name: "", department_id: "", analyzer: "", method: "", remarks: "", display_order: 0 });
+    setForm({
+      profile_name: "", department_id: "", analyzer: "", method: "", remarks: "", display_order: 0,
+      sample_type: "", is_outsourced: false, outsourced_caption: "", interpretation: "",
+    });
     setSelectedParams([]);
     setParamSearch("");
     setDialogOpen(true);
@@ -126,9 +143,7 @@ const ReportProfiles = () => {
   const toggleParam = (param: any) => {
     setSelectedParams((prev) => {
       const exists = prev.find((sp) => sp.parameter_id === param.id);
-      if (exists) {
-        return prev.filter((sp) => sp.parameter_id !== param.id);
-      }
+      if (exists) return prev.filter((sp) => sp.parameter_id !== param.id);
       return [...prev, { parameter_id: param.id, parameter_name: param.parameter_name, display_order: prev.length }];
     });
   };
@@ -163,8 +178,10 @@ const ReportProfiles = () => {
                   <TableHead>Profile Name</TableHead>
                   <TableHead>Department</TableHead>
                   <TableHead>Parameters</TableHead>
+                  <TableHead>Sample Type</TableHead>
                   <TableHead>Analyzer</TableHead>
                   <TableHead>Method</TableHead>
+                  <TableHead>Outsourced</TableHead>
                   <TableHead className="w-[100px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -173,11 +190,11 @@ const ReportProfiles = () => {
                   <TableRow key={p.id}>
                     <TableCell className="font-medium">{p.profile_name}</TableCell>
                     <TableCell>{p.report_departments?.department_name || "-"}</TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">{profileParamCounts.get(p.id) || 0}</Badge>
-                    </TableCell>
+                    <TableCell><Badge variant="secondary">{profileParamCounts.get(p.id) || 0}</Badge></TableCell>
+                    <TableCell>{p.sample_type || "-"}</TableCell>
                     <TableCell>{p.analyzer || "-"}</TableCell>
                     <TableCell>{p.method || "-"}</TableCell>
+                    <TableCell>{p.is_outsourced ? "Yes" : "-"}</TableCell>
                     <TableCell>
                       <div className="flex gap-1">
                         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(p)}><Pencil className="h-3 w-3" /></Button>
@@ -186,7 +203,7 @@ const ReportProfiles = () => {
                     </TableCell>
                   </TableRow>
                 ))}
-                {profiles.length === 0 && <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No profiles added yet</TableCell></TableRow>}
+                {profiles.length === 0 && <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No profiles added yet</TableCell></TableRow>}
               </TableBody>
             </Table>
           )}
@@ -205,6 +222,7 @@ const ReportProfiles = () => {
                 <SelectContent>{departments.map((d) => <SelectItem key={d.id} value={d.id}>{d.department_name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
+            <div><Label>Sample Type</Label><Input value={form.sample_type} onChange={(e) => setForm({ ...form, sample_type: e.target.value })} placeholder="e.g. Blood, Serum, Urine" /></div>
             <div className="grid grid-cols-2 gap-4">
               <div><Label>Analyzer</Label><Input value={form.analyzer} onChange={(e) => setForm({ ...form, analyzer: e.target.value })} /></div>
               <div><Label>Method</Label><Input value={form.method} onChange={(e) => setForm({ ...form, method: e.target.value })} /></div>
@@ -212,11 +230,22 @@ const ReportProfiles = () => {
             <div><Label>Remarks</Label><Input value={form.remarks} onChange={(e) => setForm({ ...form, remarks: e.target.value })} /></div>
             <div><Label>Display Order</Label><Input type="number" value={form.display_order} onChange={(e) => setForm({ ...form, display_order: Number(e.target.value) })} /></div>
 
+            <div className="flex items-center gap-2">
+              <Checkbox checked={form.is_outsourced} onCheckedChange={(c) => setForm({ ...form, is_outsourced: !!c })} />
+              <Label>Mark as Outsourced</Label>
+            </div>
+            {form.is_outsourced && (
+              <div><Label>Outsourced Caption</Label><Input value={form.outsourced_caption} onChange={(e) => setForm({ ...form, outsourced_caption: e.target.value })} placeholder="e.g. This test was outsourced to XYZ Lab" /></div>
+            )}
+
+            <div>
+              <Label>Interpretation</Label>
+              <RichTextEditor value={form.interpretation} onChange={(html) => setForm({ ...form, interpretation: html })} />
+            </div>
+
             {/* Parameter Selection */}
             <div className="border rounded-lg p-4 space-y-3">
               <Label className="text-base font-semibold">Parameters in this Profile</Label>
-
-              {/* Selected parameters with ordering */}
               {selectedParams.length > 0 && (
                 <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">Selected ({selectedParams.length}): use arrows to reorder</p>
@@ -224,31 +253,19 @@ const ReportProfiles = () => {
                     <div key={sp.parameter_id} className="flex items-center gap-2 p-2 bg-accent/50 rounded text-sm">
                       <span className="text-xs text-muted-foreground w-6">{idx + 1}.</span>
                       <span className="flex-1 font-medium">{sp.parameter_name}</span>
-                      <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === 0} onClick={() => moveParam(idx, "up")}>
-                        <ArrowUp className="h-3 w-3" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === selectedParams.length - 1} onClick={() => moveParam(idx, "down")}>
-                        <ArrowDown className="h-3 w-3" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => toggleParam({ id: sp.parameter_id, parameter_name: sp.parameter_name })}>
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                      <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === 0} onClick={() => moveParam(idx, "up")}><ArrowUp className="h-3 w-3" /></Button>
+                      <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === selectedParams.length - 1} onClick={() => moveParam(idx, "down")}><ArrowDown className="h-3 w-3" /></Button>
+                      <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => toggleParam({ id: sp.parameter_id, parameter_name: sp.parameter_name })}><Trash2 className="h-3 w-3" /></Button>
                     </div>
                   ))}
                 </div>
               )}
-
-              {/* Search and add parameters */}
               <Input placeholder="Search parameters..." value={paramSearch} onChange={(e) => setParamSearch(e.target.value)} className="h-8" />
               <div className="max-h-48 overflow-y-auto border rounded space-y-0">
                 {filteredParams.map((param) => {
                   const isSelected = selectedParams.some((sp) => sp.parameter_id === param.id);
                   return (
-                    <div
-                      key={param.id}
-                      className="flex items-center gap-2 px-3 py-1.5 hover:bg-accent cursor-pointer text-sm"
-                      onClick={() => toggleParam(param)}
-                    >
+                    <div key={param.id} className="flex items-center gap-2 px-3 py-1.5 hover:bg-accent cursor-pointer text-sm" onClick={() => toggleParam(param)}>
                       <Checkbox checked={isSelected} />
                       <span>{param.parameter_name}</span>
                       {param.test_name && <span className="text-xs text-muted-foreground ml-auto">{param.test_name}</span>}

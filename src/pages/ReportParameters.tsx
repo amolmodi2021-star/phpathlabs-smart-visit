@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2, Loader2, Search } from "lucide-react";
+import RichTextEditor from "@/components/RichTextEditor";
 
 const ReportParameters = () => {
   const [params, setParams] = useState<any[]>([]);
@@ -23,6 +24,7 @@ const ReportParameters = () => {
   const [form, setForm] = useState({
     parameter_name: "", test_name: "", profile_id: "", department_id: "",
     unit: "", analyzer: "", method: "", store_for_analytics: false, display_order: 0,
+    sample_type: "", is_outsourced: false, outsourced_caption: "", interpretation: "",
   });
   const { toast } = useToast();
 
@@ -49,9 +51,19 @@ const ReportParameters = () => {
   const handleSave = async () => {
     if (!form.parameter_name.trim()) return;
     const payload = {
-      ...form,
+      parameter_name: form.parameter_name,
+      test_name: form.test_name || null,
       profile_id: form.profile_id || null,
       department_id: form.department_id || null,
+      unit: form.unit || null,
+      analyzer: form.analyzer || null,
+      method: form.method || null,
+      store_for_analytics: form.store_for_analytics,
+      display_order: form.display_order,
+      sample_type: form.sample_type || null,
+      is_outsourced: form.is_outsourced,
+      outsourced_caption: form.outsourced_caption || null,
+      interpretation: form.interpretation || null,
       normal_range_low: null,
       normal_range_high: null,
       normal_range_text: null,
@@ -75,6 +87,8 @@ const ReportParameters = () => {
       unit: p.unit || "",
       analyzer: p.analyzer || "", method: p.method || "",
       store_for_analytics: p.store_for_analytics || false, display_order: p.display_order || 0,
+      sample_type: p.sample_type || "", is_outsourced: p.is_outsourced || false,
+      outsourced_caption: p.outsourced_caption || "", interpretation: p.interpretation || "",
     });
     setDialogOpen(true);
   };
@@ -87,7 +101,11 @@ const ReportParameters = () => {
 
   const openNew = () => {
     setEditId(null);
-    setForm({ parameter_name: "", test_name: "", profile_id: "", department_id: "", unit: "", analyzer: "", method: "", store_for_analytics: false, display_order: 0 });
+    setForm({
+      parameter_name: "", test_name: "", profile_id: "", department_id: "", unit: "",
+      analyzer: "", method: "", store_for_analytics: false, display_order: 0,
+      sample_type: "", is_outsourced: false, outsourced_caption: "", interpretation: "",
+    });
     setDialogOpen(true);
   };
 
@@ -113,7 +131,9 @@ const ReportParameters = () => {
                     <TableHead>Test</TableHead>
                     <TableHead>Department</TableHead>
                     <TableHead>Profile</TableHead>
+                    <TableHead>Sample Type</TableHead>
                     <TableHead>Unit</TableHead>
+                    <TableHead>Outsourced</TableHead>
                     <TableHead>Analytics</TableHead>
                     <TableHead className="w-[80px]">Actions</TableHead>
                   </TableRow>
@@ -125,7 +145,9 @@ const ReportParameters = () => {
                       <TableCell>{p.test_name || "-"}</TableCell>
                       <TableCell>{p.report_departments?.department_name || "-"}</TableCell>
                       <TableCell>{p.report_profiles?.profile_name || "-"}</TableCell>
+                      <TableCell>{p.sample_type || "-"}</TableCell>
                       <TableCell>{p.unit || "-"}</TableCell>
+                      <TableCell>{p.is_outsourced ? "Yes" : "-"}</TableCell>
                       <TableCell>{p.store_for_analytics ? <Badge className="bg-green-100 text-green-800">YES</Badge> : <Badge variant="secondary">NO</Badge>}</TableCell>
                       <TableCell>
                         <div className="flex gap-1">
@@ -135,7 +157,7 @@ const ReportParameters = () => {
                       </TableCell>
                     </TableRow>
                   ))}
-                  {filtered.length === 0 && <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No parameters found</TableCell></TableRow>}
+                  {filtered.length === 0 && <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No parameters found</TableCell></TableRow>}
                 </TableBody>
               </Table>
             </div>
@@ -144,9 +166,9 @@ const ReportParameters = () => {
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editId ? "Edit" : "Add"} Test Parameter</DialogTitle></DialogHeader>
-          <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+          <div className="space-y-4">
             <div><Label>Parameter Name *</Label><Input value={form.parameter_name} onChange={(e) => setForm({ ...form, parameter_name: e.target.value })} /></div>
             <div><Label>Test Name</Label><Input value={form.test_name} onChange={(e) => setForm({ ...form, test_name: e.target.value })} /></div>
             <div className="grid grid-cols-2 gap-4">
@@ -165,7 +187,10 @@ const ReportParameters = () => {
                 </Select>
               </div>
             </div>
-            <div><Label>Unit</Label><Input value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} /></div>
+            <div className="grid grid-cols-2 gap-4">
+              <div><Label>Unit</Label><Input value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} /></div>
+              <div><Label>Sample Type</Label><Input value={form.sample_type} onChange={(e) => setForm({ ...form, sample_type: e.target.value })} placeholder="e.g. Blood, Serum" /></div>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div><Label>Analyzer</Label><Input value={form.analyzer} onChange={(e) => setForm({ ...form, analyzer: e.target.value })} /></div>
               <div><Label>Method</Label><Input value={form.method} onChange={(e) => setForm({ ...form, method: e.target.value })} /></div>
@@ -174,6 +199,19 @@ const ReportParameters = () => {
             <div className="flex items-center gap-2">
               <Checkbox checked={form.store_for_analytics} onCheckedChange={(c) => setForm({ ...form, store_for_analytics: !!c })} />
               <Label>Store for Analytics (include in historical trends)</Label>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Checkbox checked={form.is_outsourced} onCheckedChange={(c) => setForm({ ...form, is_outsourced: !!c })} />
+              <Label>Mark as Outsourced</Label>
+            </div>
+            {form.is_outsourced && (
+              <div><Label>Outsourced Caption</Label><Input value={form.outsourced_caption} onChange={(e) => setForm({ ...form, outsourced_caption: e.target.value })} placeholder="e.g. This test was outsourced to XYZ Lab" /></div>
+            )}
+
+            <div>
+              <Label>Interpretation</Label>
+              <RichTextEditor value={form.interpretation} onChange={(html) => setForm({ ...form, interpretation: html })} />
             </div>
           </div>
           <DialogFooter><Button onClick={handleSave}>Save</Button></DialogFooter>
