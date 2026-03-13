@@ -633,10 +633,12 @@ const ViewReport = () => {
         }
 
         .pdf-export-mode .report-page {
-          height: 296mm !important;
-          max-height: 296mm !important;
+          height: 297mm !important;
+          max-height: 297mm !important;
+          width: 210mm !important;
           margin: 0 auto !important;
           border: 0 !important;
+          overflow: hidden !important;
         }
         .pdf-export-mode .recharts-tooltip-wrapper {
           display: none !important;
@@ -648,15 +650,24 @@ const ViewReport = () => {
           justify-content: center;
           min-width: 14px;
           height: 14px;
-          padding: 0 3px !important;
           line-height: 1 !important;
           font-size: 10px !important;
           font-weight: 700;
+          font-family: 'Segoe UI', Arial, sans-serif;
+        }
+        .pdf-export-mode .trend-chart-box {
+          padding-bottom: 8px !important;
+        }
+        .pdf-export-mode .trend-chart-detail-row {
+          padding-bottom: 2px !important;
+        }
+        .pdf-export-mode .trend-chart-detail-item span {
+          line-height: 1.25 !important;
         }
         ${showHeader && letterheadImageUrl ? `
         .pdf-export-mode .report-page {
           background-image: url("${letterheadImageUrl}");
-          background-size: 210mm 296mm;
+          background-size: 210mm 297mm;
           background-repeat: no-repeat;
           background-position: top center;
         }
