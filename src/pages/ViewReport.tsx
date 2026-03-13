@@ -414,9 +414,9 @@ const ViewReport = () => {
         a.click();
         URL.revokeObjectURL(url);
 
-        // Save mobile number to database
+        // Save mobile number and set status to Dispatched
         if (reportId) {
-          await supabase.from("uploaded_reports").update({ mobile_number: cleaned } as any).eq("id", reportId);
+          await supabase.from("uploaded_reports").update({ mobile_number: cleaned, status: "Dispatched" } as any).eq("id", reportId);
         }
 
         // Share on WhatsApp

@@ -165,7 +165,7 @@ const ReportsDashboard = () => {
                         {r.status === "Awaiting Review" && (
                           <Button size="sm" variant="outline" onClick={() => navigate(`/reports/review/${r.id}`)}>Review</Button>
                         )}
-                        {r.status === "Completed" && (
+                        {(r.status === "Completed" || r.status === "Dispatched") && (
                           <>
                             <Button size="sm" variant="outline" onClick={() => navigate(`/reports/view/${r.id}`)}><Eye className="h-3 w-3 mr-1" />View</Button>
                             <Button size="sm" variant="outline" onClick={() => navigate(`/reports/review/${r.id}`)}><Pencil className="h-3 w-3 mr-1" />Edit</Button>
