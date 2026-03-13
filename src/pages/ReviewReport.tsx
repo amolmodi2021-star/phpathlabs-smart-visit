@@ -270,6 +270,14 @@ const ReviewReport = () => {
       setTestResults(normalized);
       // Always refresh original AI results snapshot on load/reload
       originalAiResultsRef.current = normalized.map(r => ({ ...r }));
+
+      // Persist cleanup so reopened Review/Edit stays deduplicated
+      if (rawResults.length !== normalized.length) {
+        await supabase
+          .from("extracted_report_data")
+          .update({ test_results: normalized as unknown as any })
+          .eq("report_id", reportId);
+      }
       if (!extracted.umr_id) setShowUmrDialog(true);
     }
     setPathologists(sigs || []);
@@ -298,42 +306,18 @@ const ReviewReport = () => {
       .replace(/\s+/g, " ")
       .trim();
 
-  const getResultScopeKey = (row: Partial<TestResult>) => {
-    const parameter = normalizeResultKey(row.parameter_name);
-    const testName = normalizeResultKey(row.test_name);
-    const profileName = normalizeResultKey(row.profile_name);
-    if (testName && testName !== parameter) return testName;
-    return profileName || testName || parameter;
-  };
-
   const getDedupeKey = (row: Partial<TestResult>) => {
     const parameter = normalizeResultKey(row.parameter_name);
-    const scope = getResultScopeKey(row);
-    return `${parameter}::${scope}`;
-  };
-
-  const getDedupePriority = (row: Partial<TestResult>) => {
-    const mergePriority = row._merge_status === "new" ? 30 : row._merge_status === "updated" ? 20 : row._merge_status === "existing" ? 10 : 0;
-    const richness =
-      (normalizeResultKey(row.profile_name) ? 4 : 0) +
-      (normalizeResultKey(row.department) ? 3 : 0) +
-      (normalizeResultKey(row.test_name) ? 2 : 0) +
-      (normalizeResultKey(row.result_value) ? 2 : 0) +
-      ((normalizeResultKey(row.normal_range_text) || normalizeResultKey(row.normal_range_low) || normalizeResultKey(row.normal_range_high)) ? 1 : 0) +
-      (row.matched_parameter_id ? 1 : 0);
-    const confidence = Number(row.confidence_score ?? 0) / 1000;
-    return mergePriority + richness + confidence;
+    const testName = normalizeResultKey(row.test_name || row.parameter_name);
+    return `${parameter}::${testName}`;
   };
 
   const dedupeTestResults = (rows: TestResult[]) => {
     const deduped = new Map<string, TestResult>();
 
+    // Latest row wins (older duplicate overwritten)
     rows.forEach((row) => {
-      const key = getDedupeKey(row);
-      const existing = deduped.get(key);
-      if (!existing || getDedupePriority(row) >= getDedupePriority(existing)) {
-        deduped.set(key, row);
-      }
+      deduped.set(getDedupeKey(row), row);
     });
 
     return Array.from(deduped.values());
@@ -553,8 +537,11 @@ const ReviewReport = () => {
 
     const corrections: Array<{ parameter_name: string; field_corrected: string; original_value: string; corrected_value: string }> = [];
 
+    const originalsByKey = new Map<string, TestResult>();
+    originals.forEach((row) => originalsByKey.set(getDedupeKey(row), row));
+
     for (const curr of finalResults) {
-      const orig = originals.find(o => o.parameter_name === curr.parameter_name);
+      const orig = originalsByKey.get(getDedupeKey(curr));
       if (!orig) continue;
 
       for (const field of TRACKED_FIELDS) {
