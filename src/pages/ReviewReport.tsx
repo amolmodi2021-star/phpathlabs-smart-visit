@@ -568,11 +568,14 @@ const ReviewReport = () => {
 
     const corrections: Array<{ parameter_name: string; field_corrected: string; original_value: string; corrected_value: string }> = [];
 
+    // Build lookup by key, but also keep index-based fallback for parameter_name changes
     const originalsByKey = new Map<string, TestResult>();
     originals.forEach((row) => originalsByKey.set(getDedupeKey(row), row));
 
-    for (const curr of finalResults) {
-      const orig = originalsByKey.get(getDedupeKey(curr));
+    for (let i = 0; i < finalResults.length; i++) {
+      const curr = finalResults[i];
+      // Try key-based match first; fall back to same-index match (handles parameter_name renames)
+      const orig = originalsByKey.get(getDedupeKey(curr)) || (i < originals.length ? originals[i] : null);
       if (!orig) continue;
 
       for (const field of TRACKED_FIELDS) {
