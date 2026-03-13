@@ -312,16 +312,21 @@ const ReviewReport = () => {
     return `${parameter}::${testName}`;
   };
 
+  const normalizeComparable = (value: unknown) => {
+    const normalized = normalizeResultKey(value);
+    return ["-", "--", "na", "n/a", "nil", "null"].includes(normalized) ? "" : normalized;
+  };
+
   const getContentFingerprint = (row: Partial<TestResult>) => {
-    const parameter = normalizeResultKey(row.parameter_name);
-    const profile = normalizeResultKey(row.profile_name);
-    const department = normalizeResultKey(row.department);
-    const result = normalizeResultKey(row.result_value);
-    const unit = normalizeResultKey(row.unit);
-    const rangeText = normalizeResultKey(row.normal_range_text);
-    const low = normalizeResultKey(row.normal_range_low);
-    const high = normalizeResultKey(row.normal_range_high);
-    const flag = normalizeResultKey(row.flag);
+    const parameter = normalizeComparable(row.parameter_name);
+    const profile = normalizeComparable(row.profile_name);
+    const department = normalizeComparable(row.department);
+    const result = normalizeComparable(row.result_value);
+    const unit = normalizeComparable(row.unit);
+    const rangeText = normalizeComparable(row.normal_range_text);
+    const low = normalizeComparable(row.normal_range_low);
+    const high = normalizeComparable(row.normal_range_high);
+    const flag = normalizeComparable(row.flag);
 
     return `${parameter}::${profile}::${department}::${result}::${unit}::${rangeText}::${low}::${high}::${flag}`;
   };

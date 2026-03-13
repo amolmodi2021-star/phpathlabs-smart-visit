@@ -469,16 +469,21 @@ const UploadReport = () => {
               finalDedup.set(getMergeKey(row), row);
             }
 
+            const normalizeComparable = (value: unknown) => {
+              const normalized = normalizeMergeKey(value);
+              return ["-", "--", "na", "n/a", "nil", "null"].includes(normalized) ? "" : normalized;
+            };
+
             const getContentFingerprint = (r: any) => {
-              const parameter = normalizeMergeKey(r.parameter_name);
-              const profile = normalizeMergeKey(r.profile_name);
-              const department = normalizeMergeKey(r.department);
-              const result = normalizeMergeKey(r.result_value);
-              const unit = normalizeMergeKey(r.unit);
-              const rangeText = normalizeMergeKey(r.normal_range_text);
-              const low = normalizeMergeKey(r.normal_range_low);
-              const high = normalizeMergeKey(r.normal_range_high);
-              const flag = normalizeMergeKey(r.flag);
+              const parameter = normalizeComparable(r.parameter_name);
+              const profile = normalizeComparable(r.profile_name);
+              const department = normalizeComparable(r.department);
+              const result = normalizeComparable(r.result_value);
+              const unit = normalizeComparable(r.unit);
+              const rangeText = normalizeComparable(r.normal_range_text);
+              const low = normalizeComparable(r.normal_range_low);
+              const high = normalizeComparable(r.normal_range_high);
+              const flag = normalizeComparable(r.flag);
               return `${parameter}::${profile}::${department}::${result}::${unit}::${rangeText}::${low}::${high}::${flag}`;
             };
 
