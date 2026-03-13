@@ -789,7 +789,8 @@ const ReviewReport = () => {
                       </TooltipProvider>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
