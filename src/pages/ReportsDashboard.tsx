@@ -7,7 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
-import { Upload, Eye, Search, RefreshCw, Loader2, Trash2 } from "lucide-react";
+import { Upload, Eye, Search, RefreshCw, Loader2, Trash2, Pencil } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
@@ -163,7 +163,10 @@ const ReportsDashboard = () => {
                           <Button size="sm" variant="outline" onClick={() => navigate(`/reports/review/${r.id}`)}>Review</Button>
                         )}
                         {r.status === "Completed" && (
-                          <Button size="sm" variant="outline" onClick={() => navigate(`/reports/view/${r.id}`)}><Eye className="h-3 w-3 mr-1" />View</Button>
+                          <>
+                            <Button size="sm" variant="outline" onClick={() => navigate(`/reports/view/${r.id}`)}><Eye className="h-3 w-3 mr-1" />View</Button>
+                            <Button size="sm" variant="outline" onClick={() => navigate(`/reports/review/${r.id}`)}><Pencil className="h-3 w-3 mr-1" />Edit</Button>
+                          </>
                         )}
                       </div>
                     </TableCell>
