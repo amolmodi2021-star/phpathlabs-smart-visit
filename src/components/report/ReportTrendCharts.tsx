@@ -73,8 +73,8 @@ const ReportTrendCharts = ({ trends }: ReportTrendChartsProps) => {
                   >
                     <LabelList dataKey="value" position="top" fontSize={9} fill="#374151" offset={8} />
                   </Line>
-                  {trend.high != null && <ReferenceLine y={trend.high} stroke="#ef4444" strokeDasharray="5 5" label={{ value: "High", fontSize: 9, fill: "#ef4444" }} />}
-                  {trend.low != null && <ReferenceLine y={trend.low} stroke="#f59e0b" strokeDasharray="5 5" label={{ value: "Low", fontSize: 9, fill: "#f59e0b" }} />}
+                   {trend.high != null && <ReferenceLine y={trend.high} stroke="#ef4444" strokeDasharray="5 5" label={{ value: "High", fontSize: 9, fill: "#ef4444", position: "right" }} />}
+                   {trend.low != null && <ReferenceLine y={trend.low} stroke="#f59e0b" strokeDasharray="5 5" label={{ value: "Low", fontSize: 9, fill: "#f59e0b", position: "right" }} />}
                 </LineChart>
               </ResponsiveContainer>
 
