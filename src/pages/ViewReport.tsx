@@ -806,6 +806,7 @@ const ViewReport = () => {
         }
         .pdf-export-mode .trend-chart-detail-row {
           padding-bottom: 2px !important;
+          overflow: hidden !important;
         }
         .pdf-export-mode .trend-chart-detail-item span {
           line-height: 1.25 !important;

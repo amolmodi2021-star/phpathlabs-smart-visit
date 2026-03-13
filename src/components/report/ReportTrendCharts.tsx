@@ -90,7 +90,7 @@ const ReportTrendCharts = ({ trends }: ReportTrendChartsProps) => {
               </ResponsiveContainer>
 
               {/* Details below graph */}
-              <div className="trend-chart-detail-row flex gap-4 mt-2 overflow-x-auto">
+              <div className="trend-chart-detail-row flex gap-2 mt-2 justify-between">
                 {sortedData.map((point, idx) => {
                   const prev = idx > 0 ? sortedData[idx - 1].value : null;
                   const pointLow = point.low ?? trend.low;
