@@ -634,8 +634,8 @@ const ViewReport = () => {
         // so long range text moves correctly to continuation pages.
         const abnormalContentReserve = PAGE_NUM_HEIGHT_MM + 2;
         // Match actual render area so summary fills down to configured bottom margin.
-        const abnormalUsableHeight = PAGE_HEIGHT_MM - topMarginMm - bottomMarginMm - HEADER_HEIGHT_MM - abnormalContentReserve - SAFETY_BUFFER_MM;
-        const abnormalBodyMaxHeight = Math.max(20, abnormalUsableHeight - ABNORMAL_SUMMARY_BASE_MM - ABNORMAL_CHUNK_SAFETY_MM);
+        const abnormalUsableHeight = PAGE_HEIGHT_MM - topMarginMm - bottomMarginMm - HEADER_HEIGHT_MM - abnormalContentReserve;
+        const abnormalBodyMaxHeight = Math.max(20, abnormalUsableHeight - ABNORMAL_SUMMARY_BASE_MM);
 
         const estimateAbnormalRowHeight = (row: TestResult) => {
           const rangeText =
