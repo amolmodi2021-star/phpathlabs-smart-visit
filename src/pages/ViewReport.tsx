@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Loader2, Printer, ArrowLeft, Download } from "lucide-react";
+import { Loader2, Printer, ArrowLeft, Download, Pencil } from "lucide-react";
 import { toPng } from "html-to-image";
 import jsPDF from "jspdf";
 import { Switch } from "@/components/ui/switch";
