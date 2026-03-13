@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Loader2, Printer, ArrowLeft, Download } from "lucide-react";
-import html2canvas from "html2canvas";
+import { toPng } from "html-to-image";
 import jsPDF from "jspdf";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -269,100 +269,14 @@ const ViewReport = () => {
     setDownloading(true);
     setIsPdfExporting(true);
 
-    const isCanvasBlank = (canvas: HTMLCanvasElement) => {
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      if (!ctx) return true;
-
-      const { data, width, height } = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const totalPixels = width * height;
-      const sampleStep = Math.max(1, Math.floor(totalPixels / 12000));
-
-      for (let i = 0; i < totalPixels; i += sampleStep) {
-        const idx = i * 4;
-        const r = data[idx];
-        const g = data[idx + 1];
-        const b = data[idx + 2];
-        const a = data[idx + 3];
-
-        if (a > 0 && (r < 245 || g < 245 || b < 245)) {
-          return false;
-        }
-      }
-
-      return true;
-    };
-
     const waitForPaint = async () => {
       await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-    };
-
-    const capturePageCanvas = async (page: HTMLElement, scale: number) => {
-      const rect = page.getBoundingClientRect();
-      const width = Math.max(1, Math.ceil(rect.width));
-      const height = Math.max(1, Math.ceil(rect.height));
-
-      const sandbox = document.createElement('div');
-      sandbox.style.position = 'fixed';
-      sandbox.style.left = '-10000px';
-      sandbox.style.top = '0';
-      sandbox.style.width = `${width}px`;
-      sandbox.style.height = `${height}px`;
-      sandbox.style.background = '#ffffff';
-      sandbox.style.overflow = 'hidden';
-      sandbox.style.pointerEvents = 'none';
-      sandbox.style.zIndex = '-1';
-
-      const clone = page.cloneNode(true) as HTMLElement;
-      clone.style.width = `${width}px`;
-      clone.style.height = `${height}px`;
-      clone.style.minHeight = `${height}px`;
-      clone.style.maxHeight = `${height}px`;
-      clone.style.margin = '0';
-      clone.style.border = '0';
-      clone.style.transform = 'none';
-      clone.style.boxSizing = 'border-box';
-
-      clone.querySelectorAll('.recharts-tooltip-wrapper').forEach((el) => {
-        (el as HTMLElement).style.display = 'none';
-      });
-
-      clone.querySelectorAll('.flag-badge').forEach((el) => {
-        const badge = el as HTMLElement;
-        badge.style.display = 'inline-flex';
-        badge.style.alignItems = 'center';
-        badge.style.justifyContent = 'center';
-        badge.style.lineHeight = '1';
-        badge.style.fontWeight = '700';
-      });
-
-      sandbox.appendChild(clone);
-      document.body.appendChild(sandbox);
-
-      try {
-        await waitForPaint();
-        return await html2canvas(clone, {
-          scale,
-          useCORS: true,
-          allowTaint: true,
-          backgroundColor: '#ffffff',
-          logging: false,
-          width,
-          height,
-          windowWidth: width,
-          windowHeight: height,
-          scrollX: 0,
-          scrollY: 0,
-          foreignObjectRendering: false,
-        });
-      } finally {
-        document.body.removeChild(sandbox);
-      }
     };
 
     try {
       const fonts = (document as Document & { fonts?: FontFaceSet }).fonts;
       if (fonts?.ready) await fonts.ready;
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await waitForPaint();
 
       const pages = Array.from(printRef.current.querySelectorAll('.report-page')) as HTMLElement[];
       if (pages.length === 0) return;
@@ -377,14 +291,21 @@ const ViewReport = () => {
       for (let i = 0; i < pages.length; i++) {
         const page = pages[i];
 
-        let canvas = await capturePageCanvas(page, 1.2);
-        if (isCanvasBlank(canvas)) {
-          canvas = await capturePageCanvas(page, 1.45);
-        }
+        const dataUrl = await toPng(page, {
+          cacheBust: true,
+          pixelRatio: 2,
+          backgroundColor: '#ffffff',
+          style: {
+            transform: 'none',
+          },
+          filter: (node) => {
+            if (!(node instanceof HTMLElement)) return true;
+            return !node.classList.contains('recharts-tooltip-wrapper');
+          },
+        });
 
-        const imgData = canvas.toDataURL('image/jpeg', 0.78);
         if (i > 0) pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+        pdf.addImage(dataUrl, 'PNG', 0, 0, 210, 297, undefined, 'MEDIUM');
       }
 
       const patientName = (extracted.patient_name || 'Report').replace(/[^a-zA-Z0-9\s]/g, '').trim();
