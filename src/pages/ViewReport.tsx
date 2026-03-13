@@ -638,6 +638,7 @@ const ViewReport = () => {
             abnormals: chunk,
             estimatedHeightMm: ABNORMAL_SUMMARY_BASE_MM + chunk.length * ABNORMAL_ROW_MM,
             isAbnormalOnly: true,
+            isContinuation: i > 0,
           });
         }
       }
