@@ -70,6 +70,9 @@ const ReviewReport = () => {
   const [addParamIndex, setAddParamIndex] = useState<number | null>(null);
   const [reverified, setReverified] = useState(false);
   const [reverifying, setReverifying] = useState(false);
+  const [remarkDialogOpen, setRemarkDialogOpen] = useState(false);
+  const [remarkIndex, setRemarkIndex] = useState<number | null>(null);
+  const [remarkText, setRemarkText] = useState("");
 
   useEffect(() => {
     loadData();
