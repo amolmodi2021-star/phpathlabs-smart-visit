@@ -13,6 +13,11 @@ import { toast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 
 const ExtractionCorrections = () => {
+  const [addOpen, setAddOpen] = useState(false);
+  const [newParam, setNewParam] = useState("");
+  const [newField, setNewField] = useState("parameter_name");
+  const [newOriginal, setNewOriginal] = useState("");
+  const [newCorrected, setNewCorrected] = useState("");
   const queryClient = useQueryClient();
 
   const { data: corrections = [], isLoading } = useQuery({
