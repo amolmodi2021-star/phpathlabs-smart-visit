@@ -292,61 +292,99 @@ const ViewReport = () => {
       return true;
     };
 
+    const waitForPaint = async () => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    };
+
+    const capturePageCanvas = async (page: HTMLElement, scale: number) => {
+      const rect = page.getBoundingClientRect();
+      const width = Math.max(1, Math.ceil(rect.width));
+      const height = Math.max(1, Math.ceil(rect.height));
+
+      const sandbox = document.createElement('div');
+      sandbox.style.position = 'fixed';
+      sandbox.style.left = '-10000px';
+      sandbox.style.top = '0';
+      sandbox.style.width = `${width}px`;
+      sandbox.style.height = `${height}px`;
+      sandbox.style.background = '#ffffff';
+      sandbox.style.overflow = 'hidden';
+      sandbox.style.pointerEvents = 'none';
+      sandbox.style.zIndex = '-1';
+
+      const clone = page.cloneNode(true) as HTMLElement;
+      clone.style.width = `${width}px`;
+      clone.style.height = `${height}px`;
+      clone.style.minHeight = `${height}px`;
+      clone.style.maxHeight = `${height}px`;
+      clone.style.margin = '0';
+      clone.style.border = '0';
+      clone.style.transform = 'none';
+      clone.style.boxSizing = 'border-box';
+
+      clone.querySelectorAll('.recharts-tooltip-wrapper').forEach((el) => {
+        (el as HTMLElement).style.display = 'none';
+      });
+
+      clone.querySelectorAll('.flag-badge').forEach((el) => {
+        const badge = el as HTMLElement;
+        badge.style.display = 'inline-flex';
+        badge.style.alignItems = 'center';
+        badge.style.justifyContent = 'center';
+        badge.style.lineHeight = '1';
+        badge.style.fontWeight = '700';
+      });
+
+      sandbox.appendChild(clone);
+      document.body.appendChild(sandbox);
+
+      try {
+        await waitForPaint();
+        return await html2canvas(clone, {
+          scale,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#ffffff',
+          logging: false,
+          width,
+          height,
+          windowWidth: width,
+          windowHeight: height,
+          scrollX: 0,
+          scrollY: 0,
+          foreignObjectRendering: false,
+        });
+      } finally {
+        document.body.removeChild(sandbox);
+      }
+    };
+
     try {
-      await new Promise((resolve) => setTimeout(resolve, 120));
+      const fonts = (document as Document & { fonts?: FontFaceSet }).fonts;
+      if (fonts?.ready) await fonts.ready;
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       const pages = Array.from(printRef.current.querySelectorAll('.report-page')) as HTMLElement[];
+      if (pages.length === 0) return;
+
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
         format: 'a4',
         compress: true,
       });
-      const pdfWidth = 210;
-      const pdfHeight = 297;
 
       for (let i = 0; i < pages.length; i++) {
         const page = pages[i];
-        const rect = page.getBoundingClientRect();
 
-        const captureOptions = {
-          useCORS: true,
-          allowTaint: true,
-          backgroundColor: '#ffffff',
-          logging: false,
-          width: Math.ceil(rect.width),
-          height: Math.ceil(rect.height),
-          windowWidth: Math.ceil(rect.width),
-          windowHeight: Math.ceil(rect.height),
-          scrollX: 0,
-          scrollY: -window.scrollY,
-          onclone: (doc: Document) => {
-            doc.querySelectorAll('.recharts-tooltip-wrapper').forEach((el) => {
-              (el as HTMLElement).style.display = 'none';
-            });
-          },
-        };
-
-        let canvas = await html2canvas(page, {
-          ...captureOptions,
-          scale: 1.25,
-          foreignObjectRendering: false,
-        });
-
+        let canvas = await capturePageCanvas(page, 1.2);
         if (isCanvasBlank(canvas)) {
-          canvas = await html2canvas(page, {
-            ...captureOptions,
-            scale: 1.6,
-            foreignObjectRendering: false,
-          });
+          canvas = await capturePageCanvas(page, 1.45);
         }
 
-        const imgData = canvas.toDataURL('image/jpeg', 0.8);
-        const renderedHeight = (canvas.height * pdfWidth) / canvas.width;
-        const yOffset = Math.max(0, (pdfHeight - renderedHeight) / 2);
-
+        const imgData = canvas.toDataURL('image/jpeg', 0.78);
         if (i > 0) pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', 0, yOffset, pdfWidth, Math.min(pdfHeight, renderedHeight), undefined, 'FAST');
+        pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
       }
 
       const patientName = (extracted.patient_name || 'Report').replace(/[^a-zA-Z0-9\s]/g, '').trim();
