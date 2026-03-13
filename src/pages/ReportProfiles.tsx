@@ -175,26 +175,33 @@ const ReportProfiles = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Profile Name</TableHead>
+                  <TableHead className="w-[60px]">Order</TableHead>
+                  <TableHead className="min-w-[200px]">Profile Name</TableHead>
                   <TableHead>Department</TableHead>
                   <TableHead>Parameters</TableHead>
                   <TableHead>Sample Type</TableHead>
                   <TableHead>Analyzer</TableHead>
                   <TableHead>Method</TableHead>
-                  <TableHead>Outsourced</TableHead>
                   <TableHead className="w-[100px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {profiles.map((p) => (
+                {[...profiles]
+                  .sort((a, b) => {
+                    const deptA = (a.report_departments?.department_name || "").toLowerCase();
+                    const deptB = (b.report_departments?.department_name || "").toLowerCase();
+                    if (deptA !== deptB) return deptA.localeCompare(deptB);
+                    return (a.display_order || 0) - (b.display_order || 0);
+                  })
+                  .map((p) => (
                   <TableRow key={p.id}>
+                    <TableCell className="text-muted-foreground">{p.display_order ?? 0}</TableCell>
                     <TableCell className="font-medium">{p.profile_name}</TableCell>
                     <TableCell>{p.report_departments?.department_name || "-"}</TableCell>
                     <TableCell><Badge variant="secondary">{profileParamCounts.get(p.id) || 0}</Badge></TableCell>
                     <TableCell>{p.sample_type || "-"}</TableCell>
                     <TableCell>{p.analyzer || "-"}</TableCell>
                     <TableCell>{p.method || "-"}</TableCell>
-                    <TableCell>{p.is_outsourced ? "Yes" : "-"}</TableCell>
                     <TableCell>
                       <div className="flex gap-1">
                         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(p)}><Pencil className="h-3 w-3" /></Button>
