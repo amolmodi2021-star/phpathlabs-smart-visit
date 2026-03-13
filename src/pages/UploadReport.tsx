@@ -15,7 +15,7 @@ const UploadReport = () => {
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
   const [recentReports, setRecentReports] = useState<any[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const navigate = useNavigate();
+  
   const { toast } = useToast();
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const triggerRef = useRef(false);
