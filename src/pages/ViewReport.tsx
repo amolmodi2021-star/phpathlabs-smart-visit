@@ -272,60 +272,93 @@ const ViewReport = () => {
 
   const handlePrint = () => window.print();
 
-  const handleDownloadPdf = async () => {
-    if (!printRef.current || !extracted) return;
-    setDownloading(true);
-    setIsPdfExporting(true);
+  const generatePdfBlob = async (): Promise<{ blob: Blob; fileName: string } | null> => {
+    if (!printRef.current || !extracted) return null;
 
     const waitForPaint = async () => {
       await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
     };
 
-    try {
-      const fonts = (document as Document & { fonts?: FontFaceSet }).fonts;
-      if (fonts?.ready) await fonts.ready;
-      await waitForPaint();
+    const fonts = (document as Document & { fonts?: FontFaceSet }).fonts;
+    if (fonts?.ready) await fonts.ready;
+    await waitForPaint();
 
-      const pages = Array.from(printRef.current.querySelectorAll('.report-page')) as HTMLElement[];
-      if (pages.length === 0) return;
+    const pages = Array.from(printRef.current.querySelectorAll('.report-page')) as HTMLElement[];
+    if (pages.length === 0) return null;
 
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4',
-        compress: true,
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+
+    for (let i = 0; i < pages.length; i++) {
+      const page = pages[i];
+      const dataUrl = await toPng(page, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: '#ffffff',
+        style: { transform: 'none' },
+        filter: (node) => {
+          if (!(node instanceof HTMLElement)) return true;
+          return !node.classList.contains('recharts-tooltip-wrapper');
+        },
       });
+      if (i > 0) pdf.addPage();
+      pdf.addImage(dataUrl, 'PNG', 0, 0, 210, 297, undefined, 'MEDIUM');
+    }
 
-      for (let i = 0; i < pages.length; i++) {
-        const page = pages[i];
+    const patientName = (extracted.patient_name || 'Report').replace(/[^a-zA-Z0-9\s]/g, '').trim();
+    const regDate = extracted.reg_date || extracted.report_date || new Date().toISOString().split('T')[0];
+    const fileName = `${patientName}_${regDate}.pdf`;
 
-        const dataUrl = await toPng(page, {
-          cacheBust: true,
-          pixelRatio: 2,
-          backgroundColor: '#ffffff',
-          style: {
-            transform: 'none',
-          },
-          filter: (node) => {
-            if (!(node instanceof HTMLElement)) return true;
-            return !node.classList.contains('recharts-tooltip-wrapper');
-          },
-        });
+    return { blob: pdf.output('blob'), fileName };
+  };
 
-        if (i > 0) pdf.addPage();
-        pdf.addImage(dataUrl, 'PNG', 0, 0, 210, 297, undefined, 'MEDIUM');
+  const handleDownloadPdf = async () => {
+    if (!printRef.current || !extracted) return;
+    setDownloading(true);
+    setIsPdfExporting(true);
+
+    try {
+      const result = await generatePdfBlob();
+      if (result) {
+        // Save the PDF
+        const url = URL.createObjectURL(result.blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = result.fileName;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        // Now ask for mobile number to share on WhatsApp
+        setPdfBlobUrl(null);
+        setMobileNumber("");
+        setMobileDialogOpen(true);
       }
-
-      const patientName = (extracted.patient_name || 'Report').replace(/[^a-zA-Z0-9\s]/g, '').trim();
-      const regDate = extracted.reg_date || extracted.report_date || new Date().toISOString().split('T')[0];
-      const fileName = `${patientName}_${regDate}.pdf`;
-      pdf.save(fileName);
     } catch (err) {
       console.error('PDF download failed:', err);
     } finally {
       setIsPdfExporting(false);
       setDownloading(false);
     }
+  };
+
+  const handleMobileSubmit = async () => {
+    const cleaned = mobileNumber.replace(/\D/g, "").slice(-10);
+    if (cleaned.length !== 10) {
+      toast({ title: "Please enter a valid 10-digit mobile number", variant: "destructive" });
+      return;
+    }
+
+    // Save mobile number to database (upsert latest)
+    if (reportId) {
+      await supabase.from("uploaded_reports").update({ mobile_number: cleaned } as any).eq("id", reportId);
+    }
+
+    // Share on WhatsApp with a simple message + report link
+    const patientName = extracted?.patient_name || "Patient";
+    const message = `Dear ${patientName},\n\nYour lab report is ready. Please find the report shared with this message.\n\nThank you.`;
+    shareOnWhatsApp(cleaned, message);
+
+    setMobileDialogOpen(false);
+    toast({ title: "Report shared on WhatsApp" });
   };
 
   if (loading) return <div className="flex items-center justify-center p-12"><Loader2 className="h-8 w-8 animate-spin" /></div>;
