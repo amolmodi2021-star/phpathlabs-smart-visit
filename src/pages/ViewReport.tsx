@@ -104,10 +104,14 @@ const isDedicatedReportProfile = (section: PageSection): boolean => {
 const ViewReport = () => {
   const { reportId } = useParams();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const printRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [isPdfExporting, setIsPdfExporting] = useState(false);
+  const [mobileDialogOpen, setMobileDialogOpen] = useState(false);
+  const [mobileNumber, setMobileNumber] = useState("");
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
   const [extracted, setExtracted] = useState<any>(null);
   const [pathologistMap, setPathologistMap] = useState<Record<string, any>>({});
   const [deptOrderMap, setDeptOrderMap] = useState<Record<string, number>>({});
