@@ -54,7 +54,7 @@ const ReportTrendCharts = ({ trends }: ReportTrendChartsProps) => {
             <div key={trend.parameter_name} className="border rounded-lg p-3 print:break-inside-avoid">
               <h3 className="text-sm font-semibold mb-1">{trend.parameter_name} {trend.unit && <span className="text-xs text-gray-500">({trend.unit})</span>}</h3>
               <ResponsiveContainer width="100%" height={150}>
-                <LineChart data={trend.data} margin={{ left: 5, right: 10, top: 15, bottom: 5 }}>
+                <LineChart data={trend.data} margin={{ left: -15, right: 10, top: 15, bottom: 5 }}>
                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                    <XAxis dataKey="date" tick={{ fontSize: 10 }} padding={{ left: 30, right: 10 }} />
                    <YAxis
