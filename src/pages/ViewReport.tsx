@@ -236,6 +236,60 @@ const ViewReport = () => {
       ext.test_results = results as any;
     }
 
+    // Fetch profile master data for metadata (sample_type, outsourced, interpretation)
+    const profileNames = [...new Set(results.map(r => r.profile_name).filter(Boolean))] as string[];
+    if (profileNames.length > 0) {
+      const { data: masterProfiles } = await supabase
+        .from("report_profiles")
+        .select("profile_name, sample_type, analyzer, method, is_outsourced, outsourced_caption, interpretation")
+        .in("profile_name", profileNames);
+      if (masterProfiles) {
+        const metaMap: Record<string, ProfileMeta> = {};
+        masterProfiles.forEach((mp: any) => {
+          metaMap[mp.profile_name] = {
+            sample_type: mp.sample_type,
+            analyzer: mp.analyzer,
+            method: mp.method,
+            is_outsourced: mp.is_outsourced,
+            outsourced_caption: mp.outsourced_caption,
+            interpretation: mp.interpretation,
+          };
+        });
+        setProfileMetaMap(metaMap);
+      }
+    }
+
+    // Enrich standalone parameters (not in a profile) with their master data
+    const standaloneParams = results.filter(r => !r.profile_name || r.profile_name === "_individual");
+    if (standaloneParams.length > 0) {
+      const standaloneNames = standaloneParams.map(r => r.parameter_name);
+      const { data: masterStandalone } = await supabase
+        .from("report_test_parameters")
+        .select("parameter_name, sample_type, analyzer, method, is_outsourced, outsourced_caption, interpretation")
+        .in("parameter_name", standaloneNames)
+        .is("profile_id", null);
+      if (masterStandalone) {
+        const paramMetaMap: Record<string, any> = {};
+        masterStandalone.forEach((mp: any) => {
+          paramMetaMap[mp.parameter_name.toLowerCase()] = mp;
+        });
+        results.forEach(r => {
+          if (!r.profile_name || r.profile_name === "_individual") {
+            const meta = paramMetaMap[r.parameter_name.toLowerCase()];
+            if (meta) {
+              r.sample_type = meta.sample_type;
+              r.analyzer = meta.analyzer;
+              r.method = meta.method;
+              r.is_outsourced = meta.is_outsourced;
+              r.outsourced_caption = meta.outsourced_caption;
+              r.interpretation = meta.interpretation;
+            }
+          }
+        });
+      }
+    }
+    ext.test_results = results as any;
+
     // Fetch department display order
     const { data: depts } = await supabase.from("report_departments").select("department_name, display_order").order("display_order", { ascending: true });
     if (depts) {
