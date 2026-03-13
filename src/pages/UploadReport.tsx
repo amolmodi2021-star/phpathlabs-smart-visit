@@ -63,9 +63,22 @@ const UploadReport = () => {
     triggerRef.current = true;
 
     try {
-      // Keep triggering until no more pending reports
       let hasMore = true;
       while (hasMore) {
+        // Check if any report is currently Processing — wait for it to finish
+        const { data: processingCheck } = await supabase
+          .from("uploaded_reports")
+          .select("id")
+          .eq("status", "Processing")
+          .limit(1);
+
+        if (processingCheck && processingCheck.length > 0) {
+          // Something is already being processed, wait and check again
+          await loadRecentReports();
+          await new Promise(r => setTimeout(r, 5000));
+          continue;
+        }
+
         const { data, error } = await supabase.functions.invoke("process-report-queue");
         if (error) {
           console.error("Queue processor error:", error);
@@ -74,8 +87,8 @@ const UploadReport = () => {
         hasMore = data?.processed && (data?.remainingPending || 0) > 0;
         await loadRecentReports();
 
-        // Small delay between processing
-        if (hasMore) await new Promise(r => setTimeout(r, 1000));
+        // Wait before processing next report
+        if (hasMore) await new Promise(r => setTimeout(r, 3000));
       }
     } catch (e) {
       console.error("Failed to trigger queue:", e);
