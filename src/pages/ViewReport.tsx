@@ -86,11 +86,12 @@ const TABLE_HEADER_HEIGHT_MM = 5;
 const ROW_HEIGHT_MM = 5;
 const ROW_HEIGHT_COMPACT_MM = 3.8;
 const PROFILE_GAP_MM = 2;
-const ABNORMAL_SUMMARY_BASE_MM = 16;
-const ABNORMAL_ROW_MM = 4.8;
-const ABNORMAL_EXTRA_LINE_MM = 3;
-const ABNORMAL_PARAM_CHARS_PER_LINE = 36;
-const ABNORMAL_RANGE_CHARS_PER_LINE = 30;
+const ABNORMAL_SUMMARY_BASE_MM = 17;
+const ABNORMAL_ROW_MM = 6.2;
+const ABNORMAL_EXTRA_LINE_MM = 5;
+const ABNORMAL_PARAM_CHARS_PER_LINE = 32;
+const ABNORMAL_RANGE_CHARS_PER_LINE = 20;
+const ABNORMAL_CHUNK_SAFETY_MM = 2;
 const TEST_NAME_HEADER_MM = 4;
 
 const COMPACT_PROFILES = ["cbc", "complete blood count", "urine routine"];
@@ -635,7 +636,7 @@ const ViewReport = () => {
         const abnormalContentReserve = PAGE_NUM_HEIGHT_MM + 2;
         // Match actual render area so summary fills down to configured bottom margin.
         const abnormalUsableHeight = PAGE_HEIGHT_MM - topMarginMm - bottomMarginMm - HEADER_HEIGHT_MM - abnormalContentReserve - SAFETY_BUFFER_MM;
-        const abnormalBodyMaxHeight = Math.max(20, abnormalUsableHeight - ABNORMAL_SUMMARY_BASE_MM);
+        const abnormalBodyMaxHeight = Math.max(20, abnormalUsableHeight - ABNORMAL_SUMMARY_BASE_MM - ABNORMAL_CHUNK_SAFETY_MM);
 
         const estimateAbnormalRowHeight = (row: TestResult) => {
           const rangeText =
