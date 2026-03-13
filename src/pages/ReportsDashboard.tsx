@@ -138,6 +138,7 @@ const ReportsDashboard = () => {
                   <TableHead>Reg.Date</TableHead>
                   <TableHead>Patient</TableHead>
                   <TableHead>UMR</TableHead>
+                  <TableHead>Mobile</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Uploaded</TableHead>
                   <TableHead>Actions</TableHead>
@@ -153,6 +154,7 @@ const ReportsDashboard = () => {
                     <TableCell className="text-sm">{(r as any).reg_date || "-"}</TableCell>
                     <TableCell>{r.patient_name || "-"}</TableCell>
                     <TableCell>{r.umr_id || "-"}</TableCell>
+                    <TableCell>{(r as any).mobile_number || "-"}</TableCell>
                     <TableCell><Badge className={statusColors[r.status] || ""}>{r.status}</Badge></TableCell>
                     <TableCell className="text-sm text-muted-foreground">{format(new Date(r.created_at), "dd MMM yyyy HH:mm")}</TableCell>
                     <TableCell>
@@ -168,7 +170,7 @@ const ReportsDashboard = () => {
                   </TableRow>
                 ))}
                 {filtered.length === 0 && (
-                  <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No reports found</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No reports found</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>
