@@ -23,6 +23,7 @@ import ReportProfiles from "./pages/ReportProfiles";
 import ReportParameters from "./pages/ReportParameters";
 import SignatureManagement from "./pages/SignatureManagement";
 import ReportLayoutSettings from "./pages/ReportLayoutSettings";
+import ExtractionCorrections from "./pages/ExtractionCorrections";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
