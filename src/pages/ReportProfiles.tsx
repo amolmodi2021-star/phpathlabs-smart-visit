@@ -144,17 +144,17 @@ const ReportProfiles = () => {
     setSelectedParams((prev) => {
       const exists = prev.find((sp) => sp.parameter_id === param.id);
       if (exists) return prev.filter((sp) => sp.parameter_id !== param.id);
-      return [...prev, { parameter_id: param.id, parameter_name: param.parameter_name, display_order: prev.length }];
+      const maxOrder = prev.length > 0 ? Math.max(...prev.map(sp => sp.display_order)) : 0;
+      return [...prev, { parameter_id: param.id, parameter_name: param.parameter_name, display_order: maxOrder + 1 }];
     });
   };
 
-  const moveParam = (index: number, direction: "up" | "down") => {
+  const updateParamOrder = (parameterId: string, newOrder: number) => {
     setSelectedParams((prev) => {
-      const arr = [...prev];
-      const swapIdx = direction === "up" ? index - 1 : index + 1;
-      if (swapIdx < 0 || swapIdx >= arr.length) return prev;
-      [arr[index], arr[swapIdx]] = [arr[swapIdx], arr[index]];
-      return arr;
+      const updated = prev.map((sp) =>
+        sp.parameter_id === parameterId ? { ...sp, display_order: newOrder } : sp
+      );
+      return [...updated].sort((a, b) => a.display_order - b.display_order);
     });
   };
 
