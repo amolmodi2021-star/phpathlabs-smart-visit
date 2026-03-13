@@ -263,7 +263,12 @@ const ReviewReport = () => {
       const rawResults = (extracted.test_results as unknown as TestResult[]) || [];
 
       const enrichedResults = enrichResults(rawResults, masterMap, profileGroups, paramIdToNameKey);
-      setTestResults(normalizeTestResultFlags(enrichedResults));
+      const normalized = normalizeTestResultFlags(enrichedResults);
+      setTestResults(normalized);
+      // Store original AI results for corrections feedback loop
+      if (!originalAiResultsRef.current) {
+        originalAiResultsRef.current = normalized.map(r => ({ ...r }));
+      }
       if (!extracted.umr_id) setShowUmrDialog(true);
     }
     setPathologists(sigs || []);
