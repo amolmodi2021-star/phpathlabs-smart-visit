@@ -27,6 +27,17 @@ const normalizeKeyText = (value: unknown) =>
     .replace(/\s+/g, " ")
     .trim();
 
+const getCanonicalResultScope = (row: any) => {
+  const profileName = normalizeKeyText(row?.profile_name);
+  const testName = normalizeKeyText(row?.test_name);
+  return profileName || testName || normalizeKeyText(row?.parameter_name);
+};
+
+const getLatestWinsKey = (row: any, index = 0) => {
+  const parameter = normalizeKeyText(row?.parameter_name) || `row-${index}`;
+  return `${parameter}::${getCanonicalResultScope(row)}`;
+};
+
 const getResultKey = (row: any, index = 0) => {
   const parameter = normalizeKeyText(row?.parameter_name);
   const testName = normalizeKeyText(row?.test_name || row?.parameter_name);
@@ -38,7 +49,7 @@ const dedupeByConfidence = (rows: any[]) => {
   const deduped = new Map<string, any>();
 
   rows.forEach((row, index) => {
-    const key = getResultKey(row, index);
+    const key = getLatestWinsKey(row, index);
     const nextScore = Number(row?.confidence_score ?? 0);
     const current = deduped.get(key);
     const currentScore = Number(current?.confidence_score ?? -1);
@@ -427,16 +438,11 @@ const UploadReport = () => {
 
             // Merge key: parameter + canonical test scope (test_name/profile aware)
             const normalizeMergeKey = (value: unknown) => String(value ?? "").toLowerCase().replace(/\s+/g, " ").trim();
-            const getCanonicalMergeScope = (r: any) => {
-              const testName = normalizeMergeKey(r.test_name);
-              const profileName = normalizeMergeKey(r.profile_name);
-
-              if (testName && profileName && (profileName.includes(testName) || testName.includes(profileName))) {
-                return profileName;
-              }
-
-              return testName || profileName || normalizeMergeKey(r.parameter_name);
-            };
+const getCanonicalMergeScope = (r: any) => {
+  const profileName = normalizeMergeKey(r.profile_name);
+  const testName = normalizeMergeKey(r.test_name);
+  return profileName || testName || normalizeMergeKey(r.parameter_name);
+};
             const getMergeKey = (r: any) => {
               const parameter = normalizeMergeKey(r.parameter_name);
               return `${parameter}::${getCanonicalMergeScope(r)}`;
