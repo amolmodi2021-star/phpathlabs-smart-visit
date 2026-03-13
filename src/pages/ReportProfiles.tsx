@@ -10,14 +10,31 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Loader2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Loader2, GripVertical } from "lucide-react";
 import RichTextEditor from "@/components/RichTextEditor";
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from "@dnd-kit/core";
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 interface SelectedParam {
   parameter_id: string;
   parameter_name: string;
   display_order: number;
 }
+
+const SortableParamItem = ({ sp, onRemove }: { sp: SelectedParam; onRemove: () => void }) => {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: sp.parameter_id });
+  const style = { transform: CSS.Transform.toString(transform), transition };
+  return (
+    <div ref={setNodeRef} style={style} className="flex items-center gap-2 p-2 bg-accent/50 rounded text-sm">
+      <button type="button" className="cursor-grab touch-none text-muted-foreground" {...attributes} {...listeners}>
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <span className="flex-1 font-medium">{sp.parameter_name}</span>
+      <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={onRemove}><Trash2 className="h-3 w-3" /></Button>
+    </div>
+  );
+};
 
 const ReportProfiles = () => {
   const [profiles, setProfiles] = useState<any[]>([]);
@@ -149,6 +166,23 @@ const ReportProfiles = () => {
     });
   };
 
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setSelectedParams((prev) => {
+        const oldIndex = prev.findIndex((sp) => sp.parameter_id === active.id);
+        const newIndex = prev.findIndex((sp) => sp.parameter_id === over.id);
+        const reordered = arrayMove(prev, oldIndex, newIndex);
+        return reordered.map((sp, i) => ({ ...sp, display_order: i + 1 }));
+      });
+    }
+  };
+
   const updateParamOrder = (parameterId: string, newOrder: number) => {
     setSelectedParams((prev) => {
       const updated = prev.map((sp) =>
@@ -249,19 +283,14 @@ const ReportProfiles = () => {
               <Label className="text-base font-semibold">Parameters in this Profile</Label>
               {selectedParams.length > 0 && (
                 <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Selected ({selectedParams.length}): enter order number to rearrange</p>
-                  {selectedParams.map((sp) => (
-                    <div key={sp.parameter_id} className="flex items-center gap-2 p-2 bg-accent/50 rounded text-sm">
-                      <Input
-                        type="number"
-                        value={sp.display_order}
-                        onChange={(e) => updateParamOrder(sp.parameter_id, Number(e.target.value))}
-                        className="h-7 w-16 text-center text-xs"
-                      />
-                      <span className="flex-1 font-medium">{sp.parameter_name}</span>
-                      <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => toggleParam({ id: sp.parameter_id, parameter_name: sp.parameter_name })}><Trash2 className="h-3 w-3" /></Button>
-                    </div>
-                  ))}
+                  <p className="text-xs text-muted-foreground">Selected ({selectedParams.length}): drag to reorder</p>
+                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                    <SortableContext items={selectedParams.map(sp => sp.parameter_id)} strategy={verticalListSortingStrategy}>
+                      {selectedParams.map((sp) => (
+                        <SortableParamItem key={sp.parameter_id} sp={sp} onRemove={() => toggleParam({ id: sp.parameter_id, parameter_name: sp.parameter_name })} />
+                      ))}
+                    </SortableContext>
+                  </DndContext>
                 </div>
               )}
               <Input placeholder="Search parameters..." value={paramSearch} onChange={(e) => setParamSearch(e.target.value)} className="h-8" />
