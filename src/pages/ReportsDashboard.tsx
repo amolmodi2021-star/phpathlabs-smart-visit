@@ -138,6 +138,7 @@ const ReportsDashboard = () => {
                   <TableHead>Reg.Date</TableHead>
                   <TableHead>Patient</TableHead>
                   <TableHead>UMR</TableHead>
+                  <TableHead>Mobile</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Uploaded</TableHead>
                   <TableHead>Actions</TableHead>
