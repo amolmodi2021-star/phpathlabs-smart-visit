@@ -17,6 +17,7 @@ const statusColors: Record<string, string> = {
   Processing: "bg-blue-100 text-blue-800",
   "Awaiting Review": "bg-orange-100 text-orange-800",
   Completed: "bg-green-100 text-green-800",
+  Dispatched: "bg-purple-100 text-purple-800",
 };
 
 const ReportsDashboard = () => {
@@ -50,6 +51,7 @@ const ReportsDashboard = () => {
     pending: reports.filter((r) => r.status === "Pending" || r.status === "Processing").length,
     review: reports.filter((r) => r.status === "Awaiting Review").length,
     completed: reports.filter((r) => r.status === "Completed").length,
+    dispatched: reports.filter((r) => r.status === "Dispatched").length,
   };
 
   const allFilteredSelected = filtered.length > 0 && filtered.every((r) => selectedIds.has(r.id));
@@ -98,11 +100,12 @@ const ReportsDashboard = () => {
         <Button onClick={() => navigate("/reports/upload")}><Upload className="h-4 w-4 mr-2" />Upload Report</Button>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card><CardContent className="pt-4"><p className="text-2xl font-bold">{stats.total}</p><p className="text-sm text-muted-foreground">Total Reports</p></CardContent></Card>
         <Card><CardContent className="pt-4"><p className="text-2xl font-bold text-yellow-600">{stats.pending}</p><p className="text-sm text-muted-foreground">Processing</p></CardContent></Card>
         <Card><CardContent className="pt-4"><p className="text-2xl font-bold text-orange-600">{stats.review}</p><p className="text-sm text-muted-foreground">Awaiting Review</p></CardContent></Card>
         <Card><CardContent className="pt-4"><p className="text-2xl font-bold text-green-600">{stats.completed}</p><p className="text-sm text-muted-foreground">Completed</p></CardContent></Card>
+        <Card><CardContent className="pt-4"><p className="text-2xl font-bold text-purple-600">{stats.dispatched}</p><p className="text-sm text-muted-foreground">Dispatched</p></CardContent></Card>
       </div>
 
       <Card>
@@ -162,7 +165,7 @@ const ReportsDashboard = () => {
                         {r.status === "Awaiting Review" && (
                           <Button size="sm" variant="outline" onClick={() => navigate(`/reports/review/${r.id}`)}>Review</Button>
                         )}
-                        {r.status === "Completed" && (
+                        {(r.status === "Completed" || r.status === "Dispatched") && (
                           <>
                             <Button size="sm" variant="outline" onClick={() => navigate(`/reports/view/${r.id}`)}><Eye className="h-3 w-3 mr-1" />View</Button>
                             <Button size="sm" variant="outline" onClick={() => navigate(`/reports/review/${r.id}`)}><Pencil className="h-3 w-3 mr-1" />Edit</Button>

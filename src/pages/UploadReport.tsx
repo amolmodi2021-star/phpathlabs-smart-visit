@@ -398,8 +398,67 @@ const UploadReport = () => {
 
       setProgress(97);
 
+      // --- Duplicate report merging by reg_no ---
+      const extractedRegNo = mergedData.patient?.reg_no || "";
+      let targetReportId = reportRow.id;
+      let finalTestResultsToSave = mergedData.test_results;
+
+      if (extractedRegNo) {
+        // Check if an existing uploaded_report with the same reg_no exists (not the one we just created)
+        const { data: existingReports } = await supabase
+          .from("uploaded_reports")
+          .select("id")
+          .eq("reg_no", extractedRegNo)
+          .neq("id", reportRow.id)
+          .limit(1);
+
+        if (existingReports && existingReports.length > 0) {
+          const existingReportId = existingReports[0].id;
+
+          // Load existing extracted data
+          const { data: existingExtracted } = await supabase
+            .from("extracted_report_data")
+            .select("test_results")
+            .eq("report_id", existingReportId)
+            .limit(1);
+
+          if (existingExtracted && existingExtracted.length > 0) {
+            const existingResults = (existingExtracted[0].test_results as any[]) || [];
+
+            // Merge: composite key = lowercase(parameter_name) + "::" + lowercase(profile_name)
+            const mergedMap = new Map<string, any>();
+            existingResults.forEach((r: any) => {
+              const key = `${(r.parameter_name || "").toLowerCase()}::${(r.profile_name || "").toLowerCase()}`;
+              mergedMap.set(key, r);
+            });
+            // New results overwrite existing ones for the same key
+            mergedData.test_results.forEach((r: any) => {
+              const key = `${(r.parameter_name || "").toLowerCase()}::${(r.profile_name || "").toLowerCase()}`;
+              mergedMap.set(key, r);
+            });
+            finalTestResultsToSave = Array.from(mergedMap.values());
+          }
+
+          // Use existing report as target, delete the temp one we created
+          targetReportId = existingReportId;
+
+          // Delete old generated_reports, raw_report_data for the existing report (will be re-created)
+          await supabase.from("generated_reports").delete().eq("report_id", existingReportId);
+          await supabase.from("raw_report_data").delete().eq("report_id", existingReportId);
+          await supabase.from("test_result_history").delete().eq("report_id", existingReportId);
+
+          // Delete the extracted_report_data for existing report (will upsert below)
+          await supabase.from("extracted_report_data").delete().eq("report_id", existingReportId);
+
+          // Delete the temp uploaded_reports row we created at the start
+          await supabase.from("uploaded_reports").delete().eq("id", reportRow.id);
+
+          toast({ title: "Duplicate reg.no found — merging data into existing report" });
+        }
+      }
+
       const { error: saveError } = await supabase.from("extracted_report_data").insert({
-        report_id: reportRow.id,
+        report_id: targetReportId,
         patient_name: mergedData.patient?.name || "",
         age: mergedData.patient?.age || "",
         gender: mergedData.patient?.gender || "",
@@ -414,13 +473,13 @@ const UploadReport = () => {
         authentication_date: mergedData.patient?.authentication_date || "",
         print_date: mergedData.patient?.print_date || "",
         location: mergedData.patient?.location || "",
-        test_results: mergedData.test_results || [],
+        test_results: finalTestResultsToSave || [],
         pathologist_name: mergedData.pathologist_name || "",
       } as any);
       if (saveError) throw saveError;
 
       await supabase.from("raw_report_data").insert({
-        report_id: reportRow.id,
+        report_id: targetReportId,
         umr_id: mergedData.patient?.umr_id || "",
         raw_json: mergedData,
       });
@@ -433,14 +492,16 @@ const UploadReport = () => {
           patient_name: mergedData.patient?.name || "",
           reg_no: mergedData.patient?.reg_no || "",
           reg_date: mergedData.patient?.reg_date || "",
+          file_path: filePath,
+          file_name: file.name,
         } as any)
-        .eq("id", reportRow.id);
+        .eq("id", targetReportId);
 
       setProgress(100);
       setStatus("done");
       toast({ title: "Report extracted successfully!" });
 
-      setTimeout(() => navigate(`/reports/review/${reportRow.id}`), 1500);
+      setTimeout(() => navigate(`/reports/review/${targetReportId}`), 1500);
     } catch (err: any) {
       console.error("Upload error:", err);
       setErrorMsg(err.message || "Failed to process report");
