@@ -620,7 +620,7 @@ const ViewReport = () => {
         {hasTrends && (
           <div className="report-page" style={{ paddingTop: `${topMarginMm}mm`, paddingBottom: `${bottomMarginMm}mm` }}>
             <ReportHeader extracted={extracted} />
-            <div className="px-6">
+            <div style={{ paddingLeft: '12mm', paddingRight: '6mm' }}>
               <ReportTrendCharts trends={trends} />
             </div>
             <div className="page-number-footer" style={{ position: 'absolute', bottom: `${bottomMarginMm + 2}mm`, left: 0, right: 0, textAlign: 'center', fontSize: '9px', color: '#666' }}>
