@@ -311,33 +311,9 @@ const ViewReport = () => {
     return { blob: pdf.output('blob'), fileName };
   };
 
-  const handleDownloadPdf = async () => {
-    if (!printRef.current || !extracted) return;
-    setDownloading(true);
-    setIsPdfExporting(true);
-
-    try {
-      const result = await generatePdfBlob();
-      if (result) {
-        // Save the PDF
-        const url = URL.createObjectURL(result.blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = result.fileName;
-        a.click();
-        URL.revokeObjectURL(url);
-
-        // Now ask for mobile number to share on WhatsApp
-        setPdfBlobUrl(null);
-        setMobileNumber("");
-        setMobileDialogOpen(true);
-      }
-    } catch (err) {
-      console.error('PDF download failed:', err);
-    } finally {
-      setIsPdfExporting(false);
-      setDownloading(false);
-    }
+  const handleDownloadClick = () => {
+    setMobileNumber("");
+    setMobileDialogOpen(true);
   };
 
   const handleMobileSubmit = async () => {
@@ -347,18 +323,39 @@ const ViewReport = () => {
       return;
     }
 
-    // Save mobile number to database (upsert latest)
-    if (reportId) {
-      await supabase.from("uploaded_reports").update({ mobile_number: cleaned } as any).eq("id", reportId);
-    }
-
-    // Share on WhatsApp with a simple message + report link
-    const patientName = extracted?.patient_name || "Patient";
-    const message = `Dear ${patientName},\n\nYour lab report is ready. Please find the report shared with this message.\n\nThank you.`;
-    shareOnWhatsApp(cleaned, message);
-
     setMobileDialogOpen(false);
-    toast({ title: "Report shared on WhatsApp" });
+    setDownloading(true);
+    setIsPdfExporting(true);
+
+    try {
+      const result = await generatePdfBlob();
+      if (result) {
+        // Download PDF
+        const url = URL.createObjectURL(result.blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = result.fileName;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        // Save mobile number to database
+        if (reportId) {
+          await supabase.from("uploaded_reports").update({ mobile_number: cleaned } as any).eq("id", reportId);
+        }
+
+        // Share on WhatsApp
+        const patientName = extracted?.patient_name || "Patient";
+        const message = `Dear ${patientName},\n\nYour lab report is ready. Please find the report shared with this message.\n\nThank you.`;
+        shareOnWhatsApp(cleaned, message);
+
+        toast({ title: "Report shared on WhatsApp" });
+      }
+    } catch (err) {
+      console.error('PDF download failed:', err);
+    } finally {
+      setIsPdfExporting(false);
+      setDownloading(false);
+    }
   };
 
   if (loading) return <div className="flex items-center justify-center p-12"><Loader2 className="h-8 w-8 animate-spin" /></div>;
