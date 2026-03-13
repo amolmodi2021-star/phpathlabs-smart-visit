@@ -1,4 +1,4 @@
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Bold, Italic, Underline, List, ListOrdered, ImagePlus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -10,16 +10,30 @@ interface RichTextEditorProps {
 
 const RichTextEditor = ({ value, onChange }: RichTextEditorProps) => {
   const editorRef = useRef<HTMLDivElement>(null);
+  const isInternalChange = useRef(false);
+
+  // Only set innerHTML when value changes externally (not from typing)
+  useEffect(() => {
+    if (isInternalChange.current) {
+      isInternalChange.current = false;
+      return;
+    }
+    if (editorRef.current && editorRef.current.innerHTML !== value) {
+      editorRef.current.innerHTML = value;
+    }
+  }, [value]);
 
   const exec = useCallback((command: string, val?: string) => {
     document.execCommand(command, false, val);
     if (editorRef.current) {
+      isInternalChange.current = true;
       onChange(editorRef.current.innerHTML);
     }
   }, [onChange]);
 
   const handleInput = () => {
     if (editorRef.current) {
+      isInternalChange.current = true;
       onChange(editorRef.current.innerHTML);
     }
   };
@@ -66,7 +80,6 @@ const RichTextEditor = ({ value, onChange }: RichTextEditorProps) => {
         ref={editorRef}
         contentEditable
         className="min-h-[100px] max-h-[200px] overflow-y-auto p-3 text-sm focus:outline-none prose prose-sm max-w-none"
-        dangerouslySetInnerHTML={{ __html: value }}
         onInput={handleInput}
         onBlur={handleInput}
       />
