@@ -100,11 +100,12 @@ const ReportsDashboard = () => {
         <Button onClick={() => navigate("/reports/upload")}><Upload className="h-4 w-4 mr-2" />Upload Report</Button>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card><CardContent className="pt-4"><p className="text-2xl font-bold">{stats.total}</p><p className="text-sm text-muted-foreground">Total Reports</p></CardContent></Card>
         <Card><CardContent className="pt-4"><p className="text-2xl font-bold text-yellow-600">{stats.pending}</p><p className="text-sm text-muted-foreground">Processing</p></CardContent></Card>
         <Card><CardContent className="pt-4"><p className="text-2xl font-bold text-orange-600">{stats.review}</p><p className="text-sm text-muted-foreground">Awaiting Review</p></CardContent></Card>
         <Card><CardContent className="pt-4"><p className="text-2xl font-bold text-green-600">{stats.completed}</p><p className="text-sm text-muted-foreground">Completed</p></CardContent></Card>
+        <Card><CardContent className="pt-4"><p className="text-2xl font-bold text-purple-600">{stats.dispatched}</p><p className="text-sm text-muted-foreground">Dispatched</p></CardContent></Card>
       </div>
 
       <Card>
