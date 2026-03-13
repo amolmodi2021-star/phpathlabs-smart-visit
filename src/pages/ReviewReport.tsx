@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Save, FileCheck, AlertTriangle, Trash2, Plus, Check, ShieldCheck, MessageSquarePlus } from "lucide-react";
+import { Loader2, Save, FileCheck, AlertTriangle, Trash2, Plus, Check, ShieldCheck, MessageSquarePlus, Search } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import AddParameterToMasterDialog from "@/components/AddParameterToMasterDialog";
 import { computeAbnormalFlag, normalizeTestResultFlags } from "@/lib/reportFlags";
@@ -73,6 +73,7 @@ const ReviewReport = () => {
   const [remarkDialogOpen, setRemarkDialogOpen] = useState(false);
   const [remarkIndex, setRemarkIndex] = useState<number | null>(null);
   const [remarkText, setRemarkText] = useState("");
+  const [paramSearch, setParamSearch] = useState("");
 
   useEffect(() => {
     loadData();
@@ -656,7 +657,13 @@ const ReviewReport = () => {
       {/* Test Results */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Test Results ({testResults.length} parameters)</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg">Test Results ({testResults.length} parameters)</CardTitle>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="Search parameter..." value={paramSearch} onChange={(e) => setParamSearch(e.target.value)} className="pl-8 w-64" />
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
@@ -677,7 +684,9 @@ const ReviewReport = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {testResults.map((r, i) => (
+                {testResults.map((r, i) => {
+                  if (paramSearch && !(`${r.parameter_name} ${r.department || ""} ${r.profile_name || ""}`).toLowerCase().includes(paramSearch.toLowerCase())) return null;
+                  return (
                   <TableRow key={i} className={r.flag === "H" || r.flag === "L" ? "bg-destructive/5" : ""}>
                     <TableCell>
                       <Input value={r.department || ""} readOnly className="h-8 text-xs bg-muted/50" />
@@ -780,7 +789,8 @@ const ReviewReport = () => {
                       </TooltipProvider>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
