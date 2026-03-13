@@ -88,6 +88,9 @@ const ROW_HEIGHT_COMPACT_MM = 3.8;
 const PROFILE_GAP_MM = 2;
 const ABNORMAL_SUMMARY_BASE_MM = 18;
 const ABNORMAL_ROW_MM = 5.2;
+const ABNORMAL_EXTRA_LINE_MM = 3.6;
+const ABNORMAL_PARAM_CHARS_PER_LINE = 34;
+const ABNORMAL_RANGE_CHARS_PER_LINE = 24;
 const TEST_NAME_HEADER_MM = 4;
 
 const COMPACT_PROFILES = ["cbc", "complete blood count", "urine routine"];
