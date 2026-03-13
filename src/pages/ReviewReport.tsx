@@ -34,6 +34,7 @@ interface TestResult {
   source_page?: number;
   confidence_score?: number;
   extraction_basis?: string;
+  remark?: string;
 }
 
 const ReviewReport = () => {
