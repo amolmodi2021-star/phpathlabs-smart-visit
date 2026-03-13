@@ -74,6 +74,7 @@ interface PageSection {
   abnormals?: TestResult[];
   estimatedHeightMm: number;
   isAbnormalOnly?: boolean;
+  isContinuation?: boolean;
 }
 
 const HEADER_HEIGHT_MM = 32;
@@ -637,6 +638,7 @@ const ViewReport = () => {
             abnormals: chunk,
             estimatedHeightMm: ABNORMAL_SUMMARY_BASE_MM + chunk.length * ABNORMAL_ROW_MM,
             isAbnormalOnly: true,
+            isContinuation: i > 0,
           });
         }
       }
@@ -754,7 +756,7 @@ const ViewReport = () => {
     const seenDepts = new Set<string>();
     return sections.map((section, idx) => {
       if (section.type === "abnormal-summary" && section.abnormals) {
-        return <ReportAbnormalSummary key={`abnormal-${idx}`} abnormalResults={section.abnormals} />;
+        return <ReportAbnormalSummary key={`abnormal-${idx}`} abnormalResults={section.abnormals} isContinuation={section.isContinuation} />;
       }
       if (section.type === "department-profile" && section.results && section.dept) {
         const showDeptHeader = !seenDepts.has(section.dept);

@@ -10,14 +10,17 @@ interface TestResult {
 
 interface ReportAbnormalSummaryProps {
   abnormalResults: TestResult[];
+  isContinuation?: boolean;
 }
 
-const ReportAbnormalSummary = ({ abnormalResults }: ReportAbnormalSummaryProps) => {
+const ReportAbnormalSummary = ({ abnormalResults, isContinuation = false }: ReportAbnormalSummaryProps) => {
   if (abnormalResults.length === 0) return null;
 
   return (
     <div className="border border-red-200 rounded-lg p-4 bg-red-50">
-      <h2 className="text-base font-bold text-red-700 mb-2 border-b border-red-200 pb-1">⚠ Abnormal Results Summary</h2>
+      <h2 className="text-base font-bold text-red-700 mb-2 border-b border-red-200 pb-1">
+        ⚠ Abnormal Results Summary{isContinuation ? " (Continued)" : ""}
+      </h2>
       <table className="w-full text-sm" style={{ tableLayout: 'fixed' }}>
         <colgroup>
           <col style={{ width: '38%' }} />
