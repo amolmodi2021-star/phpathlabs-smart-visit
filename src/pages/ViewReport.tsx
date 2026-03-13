@@ -416,11 +416,31 @@ const ViewReport = () => {
     setPathologistMap(sigMap);
 
     if (ext.umr_id) {
-      const results = (ext.test_results as unknown as TestResult[]) || [];
-      const paramNames = results.map((r) => r.parameter_name);
-      const { data: history } = await supabase.from("test_result_history")
-        .select("*").eq("umr_id", ext.umr_id).in("parameter_name", paramNames)
-        .order("test_date", { ascending: true });
+      // Fetch all analytics-marked parameter names
+      const { data: analyticsParams } = await supabase
+        .from("report_test_parameters")
+        .select("parameter_name")
+        .eq("store_for_analytics", true);
+      const analyticsParamNames = analyticsParams?.map((p: any) => p.parameter_name) || [];
+      
+      // Also include current report params as fallback
+      const currentResults = (ext.test_results as unknown as TestResult[]) || [];
+      const currentParamNames = currentResults.map((r) => r.parameter_name);
+      const allParamNames = [...new Set([...analyticsParamNames, ...currentParamNames])];
+      
+      if (allParamNames.length === 0) { setLoading(false); return; }
+      
+      // Fetch history in batches to avoid query limits
+      let allHistory: any[] = [];
+      const batchSize = 50;
+      for (let i = 0; i < allParamNames.length; i += batchSize) {
+        const batch = allParamNames.slice(i, i + batchSize);
+        const { data: history } = await supabase.from("test_result_history")
+          .select("*").eq("umr_id", ext.umr_id).in("parameter_name", batch)
+          .order("test_date", { ascending: true });
+        if (history) allHistory = allHistory.concat(history);
+      }
+      const history = allHistory;
 
       if (history && history.length > 0) {
         const grouped: Record<string, TrendData> = {};
