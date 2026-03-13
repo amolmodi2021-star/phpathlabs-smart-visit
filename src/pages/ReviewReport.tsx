@@ -312,15 +312,35 @@ const ReviewReport = () => {
     return `${parameter}::${testName}`;
   };
 
+  const getContentFingerprint = (row: Partial<TestResult>) => {
+    const parameter = normalizeResultKey(row.parameter_name);
+    const profile = normalizeResultKey(row.profile_name);
+    const department = normalizeResultKey(row.department);
+    const result = normalizeResultKey(row.result_value);
+    const unit = normalizeResultKey(row.unit);
+    const rangeText = normalizeResultKey(row.normal_range_text);
+    const low = normalizeResultKey(row.normal_range_low);
+    const high = normalizeResultKey(row.normal_range_high);
+    const flag = normalizeResultKey(row.flag);
+
+    return `${parameter}::${profile}::${department}::${result}::${unit}::${rangeText}::${low}::${high}::${flag}`;
+  };
+
   const dedupeTestResults = (rows: TestResult[]) => {
-    const deduped = new Map<string, TestResult>();
+    const byParameterAndTest = new Map<string, TestResult>();
 
     // Latest row wins (older duplicate overwritten)
     rows.forEach((row) => {
-      deduped.set(getDedupeKey(row), row);
+      byParameterAndTest.set(getDedupeKey(row), row);
     });
 
-    return Array.from(deduped.values());
+    // Safety pass: collapse visually identical duplicates (often caused by missing test_name in one row)
+    const byContent = new Map<string, TestResult>();
+    byParameterAndTest.forEach((row) => {
+      byContent.set(getContentFingerprint(row), row);
+    });
+
+    return Array.from(byContent.values());
   };
 
   const getResultKey = (row: Partial<TestResult>, index = 0) => {

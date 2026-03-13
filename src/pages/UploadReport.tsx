@@ -463,17 +463,31 @@ const UploadReport = () => {
               }
             });
 
-            // Final dedup: keep latest entry per composite key (new > updated > existing)
-            const statusPriority: Record<string, number> = { new: 3, updated: 2, existing: 1 };
+            // Final dedup: latest wins for same parameter+test key, then remove identical duplicates
             const finalDedup = new Map<string, any>();
             for (const row of mergedMap.values()) {
-              const key = getMergeKey(row);
-              const existing = finalDedup.get(key);
-              if (!existing || (statusPriority[row._merge_status] || 0) >= (statusPriority[existing._merge_status] || 0)) {
-                finalDedup.set(key, row);
-              }
+              finalDedup.set(getMergeKey(row), row);
             }
-            finalTestResultsToSave = Array.from(finalDedup.values());
+
+            const getContentFingerprint = (r: any) => {
+              const parameter = normalizeMergeKey(r.parameter_name);
+              const profile = normalizeMergeKey(r.profile_name);
+              const department = normalizeMergeKey(r.department);
+              const result = normalizeMergeKey(r.result_value);
+              const unit = normalizeMergeKey(r.unit);
+              const rangeText = normalizeMergeKey(r.normal_range_text);
+              const low = normalizeMergeKey(r.normal_range_low);
+              const high = normalizeMergeKey(r.normal_range_high);
+              const flag = normalizeMergeKey(r.flag);
+              return `${parameter}::${profile}::${department}::${result}::${unit}::${rangeText}::${low}::${high}::${flag}`;
+            };
+
+            const contentDedup = new Map<string, any>();
+            for (const row of finalDedup.values()) {
+              contentDedup.set(getContentFingerprint(row), row);
+            }
+
+            finalTestResultsToSave = Array.from(contentDedup.values());
           }
 
           // Use existing report as target, delete the temp one we created

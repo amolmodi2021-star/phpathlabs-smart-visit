@@ -222,8 +222,18 @@ const ViewReport = () => {
     const { data: ext } = await supabase.from("extracted_report_data").select("*").eq("report_id", reportId).single();
     if (!ext) { setLoading(false); return; }
 
-    // Enrich results with test_name from master parameters (with profile context)
-    const results = (ext.test_results as unknown as TestResult[]) || [];
+    // Deduplicate first (parameter + test_name, latest wins), then enrich
+    const rawResults = (ext.test_results as unknown as TestResult[]) || [];
+    const results = dedupeResultsLatest(rawResults);
+
+    if (rawResults.length !== results.length) {
+      await supabase
+        .from("extracted_report_data")
+        .update({ test_results: results as unknown as any })
+        .eq("report_id", reportId);
+      ext.test_results = results as any;
+    }
+
     const paramNames = results.map((r) => r.parameter_name);
     const { data: masterParams } = await supabase
       .from("report_test_parameters")
