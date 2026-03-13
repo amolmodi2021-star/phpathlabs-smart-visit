@@ -648,6 +648,7 @@ const ViewReport = () => {
     <div className="space-y-4 print:space-y-0">
       <div className="flex items-center gap-4 print:hidden flex-wrap">
         <Button variant="outline" size="sm" onClick={() => navigate("/reports")}><ArrowLeft className="h-4 w-4 mr-1" />Back</Button>
+        <Button variant="outline" size="sm" onClick={() => navigate(`/reports/review/${reportId}`)}><Pencil className="h-4 w-4 mr-1" />Edit Data</Button>
         <Button size="sm" onClick={handlePrint}><Printer className="h-4 w-4 mr-1" />Print</Button>
         <Button size="sm" variant="outline" onClick={handleDownloadClick} disabled={downloading}>
           {downloading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}
