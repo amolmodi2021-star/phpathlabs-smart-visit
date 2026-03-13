@@ -270,7 +270,7 @@ const ViewReport = () => {
     setIsPdfExporting(true);
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 60));
+      await new Promise((resolve) => setTimeout(resolve, 80));
 
       const pages = Array.from(printRef.current.querySelectorAll('.report-page')) as HTMLElement[];
       const pdf = new jsPDF({
@@ -284,23 +284,22 @@ const ViewReport = () => {
 
       for (let i = 0; i < pages.length; i++) {
         const page = pages[i];
-        const rect = page.getBoundingClientRect();
 
         const canvas = await html2canvas(page, {
-          scale: 1.35,
+          scale: 1.25,
           useCORS: true,
           allowTaint: true,
           backgroundColor: '#ffffff',
-          width: Math.ceil(rect.width),
-          height: Math.ceil(rect.height),
-          windowWidth: Math.ceil(rect.width),
-          windowHeight: Math.ceil(rect.height),
+          foreignObjectRendering: true,
           logging: false,
         });
 
-        const imgData = canvas.toDataURL('image/jpeg', 0.82);
+        const imgData = canvas.toDataURL('image/jpeg', 0.8);
+        const renderedHeight = (canvas.height * pdfWidth) / canvas.width;
+        const yOffset = Math.max(0, (pdfHeight - renderedHeight) / 2);
+
         if (i > 0) pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
+        pdf.addImage(imgData, 'JPEG', 0, yOffset, pdfWidth, Math.min(pdfHeight, renderedHeight), undefined, 'FAST');
       }
 
       const patientName = (extracted.patient_name || 'Report').replace(/[^a-zA-Z0-9\s]/g, '').trim();
@@ -634,10 +633,12 @@ const ViewReport = () => {
         }
 
         .pdf-export-mode .report-page {
-          height: 296mm !important;
-          max-height: 296mm !important;
+          height: 297mm !important;
+          max-height: 297mm !important;
+          width: 210mm !important;
           margin: 0 auto !important;
           border: 0 !important;
+          overflow: hidden !important;
         }
         .pdf-export-mode .recharts-tooltip-wrapper {
           display: none !important;
@@ -649,15 +650,24 @@ const ViewReport = () => {
           justify-content: center;
           min-width: 14px;
           height: 14px;
-          padding: 0 3px !important;
           line-height: 1 !important;
           font-size: 10px !important;
           font-weight: 700;
+          font-family: 'Segoe UI', Arial, sans-serif;
+        }
+        .pdf-export-mode .trend-chart-box {
+          padding-bottom: 8px !important;
+        }
+        .pdf-export-mode .trend-chart-detail-row {
+          padding-bottom: 2px !important;
+        }
+        .pdf-export-mode .trend-chart-detail-item span {
+          line-height: 1.25 !important;
         }
         ${showHeader && letterheadImageUrl ? `
         .pdf-export-mode .report-page {
           background-image: url("${letterheadImageUrl}");
-          background-size: 210mm 296mm;
+          background-size: 210mm 297mm;
           background-repeat: no-repeat;
           background-position: top center;
         }

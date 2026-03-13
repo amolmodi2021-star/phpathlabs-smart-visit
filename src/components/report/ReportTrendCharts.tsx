@@ -56,7 +56,7 @@ const ReportTrendCharts = ({ trends }: ReportTrendChartsProps) => {
             : "—";
 
           return (
-            <div key={trend.parameter_name} className="border rounded-lg p-3 print:break-inside-avoid">
+            <div key={trend.parameter_name} className="trend-chart-box border rounded-lg p-3 print:break-inside-avoid">
               <h3 className="text-sm font-semibold mb-1">{trend.parameter_name} {trend.unit && <span className="text-xs text-gray-500">({trend.unit})</span>}</h3>
               <ResponsiveContainer width="100%" height={150}>
                 <LineChart data={sortedData} margin={{ left: -10, right: 10, top: 15, bottom: 5 }}>
@@ -85,7 +85,7 @@ const ReportTrendCharts = ({ trends }: ReportTrendChartsProps) => {
               </ResponsiveContainer>
 
               {/* Details below graph */}
-              <div className="flex gap-4 mt-2 overflow-x-auto">
+              <div className="trend-chart-detail-row flex gap-4 mt-2 overflow-x-auto">
                 {sortedData.map((point, idx) => {
                   const prev = idx > 0 ? sortedData[idx - 1].value : null;
                   const pointLow = point.low ?? trend.low;
@@ -97,9 +97,9 @@ const ReportTrendCharts = ({ trends }: ReportTrendChartsProps) => {
                     : pointHigh != null ? `≤ ${pointHigh}`
                     : "—";
                   return (
-                    <div key={idx} className="flex flex-col items-center text-center min-w-[70px]">
-                      <span className="text-[11px] text-gray-500">{point.date}</span>
-                      <span className={`text-xs font-semibold flex items-center gap-0.5 ${normal ? "text-green-600" : "text-red-600"}`}>
+                    <div key={idx} className="trend-chart-detail-item flex flex-col items-center text-center min-w-[70px]">
+                      <span className="text-[11px] leading-tight text-gray-500">{point.date}</span>
+                      <span className={`text-xs leading-tight font-semibold flex items-center gap-0.5 ${normal ? "text-green-600" : "text-red-600"}`}>
                         {point.value}
                         {prev != null && (
                           point.value > prev
@@ -109,7 +109,7 @@ const ReportTrendCharts = ({ trends }: ReportTrendChartsProps) => {
                               : null
                         )}
                       </span>
-                      <span className="text-[10px] text-gray-400">{pointRange}</span>
+                      <span className="text-[10px] leading-tight text-gray-400">{pointRange}</span>
                     </div>
                   );
                 })}
