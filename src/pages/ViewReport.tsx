@@ -628,7 +628,9 @@ const ViewReport = () => {
       const allAbnormals = results.filter(r => r.flag === "H" || r.flag === "L");
       if (allAbnormals.length > 0) {
         // Split abnormal summary into chunks that fit on pages (no signature needed)
-        const abnormalUsableHeight = PAGE_HEIGHT_MM - topMarginMm - bottomMarginMm - HEADER_HEIGHT_MM - PAGE_NUM_HEIGHT_MM;
+        // Account for content padding bottom (PAGE_NUM_HEIGHT_MM + 2) used for abnormal-only pages
+        const abnormalContentReserve = PAGE_NUM_HEIGHT_MM + 2;
+        const abnormalUsableHeight = PAGE_HEIGHT_MM - topMarginMm - bottomMarginMm - HEADER_HEIGHT_MM - PAGE_NUM_HEIGHT_MM - abnormalContentReserve;
         const maxRowsPerPage = Math.floor((abnormalUsableHeight - ABNORMAL_SUMMARY_BASE_MM) / ABNORMAL_ROW_MM);
         
         for (let i = 0; i < allAbnormals.length; i += maxRowsPerPage) {
