@@ -595,12 +595,12 @@ const ViewReport = () => {
               
               <ReportHeader extracted={extracted} />
 
-              <div className="space-y-1" style={{ paddingLeft: '12mm', paddingRight: '6mm', paddingBottom: `${contentBottomReserveMm}mm` }}>
+              <div className="space-y-1" style={{ paddingLeft: '12mm', paddingRight: '12mm', paddingBottom: `${contentBottomReserveMm}mm` }}>
                 {renderPageSections(page.sections)}
               </div>
 
               {!isAbnormalOnlyPage && (
-                <div style={{ position: 'absolute', bottom: `${bottomMarginMm + PAGE_NUM_HEIGHT_MM + 1}mm`, left: '12mm', right: '6mm' }}>
+                <div style={{ position: 'absolute', bottom: `${bottomMarginMm + PAGE_NUM_HEIGHT_MM + 1}mm`, left: '12mm', right: '12mm' }}>
                   <ReportSignatureBlock
                     signatureUrl={sigUrl}
                     pathologistName={pathologist?.pathologist_name || page.approverName}
