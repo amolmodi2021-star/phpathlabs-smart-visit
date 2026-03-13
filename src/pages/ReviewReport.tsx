@@ -801,6 +801,39 @@ const ReviewReport = () => {
         </DialogContent>
       </Dialog>
 
+      {/* Remark Dialog */}
+      <Dialog open={remarkDialogOpen} onOpenChange={setRemarkDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Remark</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label>Remark for: {remarkIndex !== null ? testResults[remarkIndex]?.parameter_name : ""}</Label>
+            <Input
+              value={remarkText}
+              onChange={(e) => setRemarkText(e.target.value)}
+              placeholder="Enter remark"
+            />
+          </div>
+          <DialogFooter className="gap-2">
+            {remarkIndex !== null && testResults[remarkIndex]?.remark && (
+              <Button variant="outline" className="text-destructive" onClick={() => {
+                updateTestResult(remarkIndex!, "remark" as keyof TestResult, "");
+                setRemarkDialogOpen(false);
+                setRemarkIndex(null);
+              }}>Remove</Button>
+            )}
+            <Button onClick={() => {
+              if (remarkIndex !== null && remarkText.trim()) {
+                updateTestResult(remarkIndex, "remark" as keyof TestResult, remarkText.trim());
+              }
+              setRemarkDialogOpen(false);
+              setRemarkIndex(null);
+            }}>Save Remark</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Add Parameter to Master Dialog */}
       {addParamIndex !== null && (
         <AddParameterToMasterDialog
