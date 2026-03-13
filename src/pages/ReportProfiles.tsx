@@ -82,10 +82,10 @@ const ReportProfiles = () => {
     if (profileId) {
       await supabase.from("profile_parameters").delete().eq("profile_id", profileId);
       if (selectedParams.length > 0) {
-        const rows = selectedParams.map((sp, idx) => ({
+        const rows = selectedParams.map((sp) => ({
           profile_id: profileId!,
           parameter_id: sp.parameter_id,
-          display_order: idx,
+          display_order: sp.display_order,
         }));
         await supabase.from("profile_parameters").insert(rows);
       }
