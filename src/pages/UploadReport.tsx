@@ -460,7 +460,17 @@ const UploadReport = () => {
               }
             });
 
-            finalTestResultsToSave = Array.from(mergedMap.values());
+            // Final dedup: keep latest entry per composite key (new > updated > existing)
+            const statusPriority: Record<string, number> = { new: 3, updated: 2, existing: 1 };
+            const finalDedup = new Map<string, any>();
+            for (const row of mergedMap.values()) {
+              const key = getMergeKey(row);
+              const existing = finalDedup.get(key);
+              if (!existing || (statusPriority[row._merge_status] || 0) >= (statusPriority[existing._merge_status] || 0)) {
+                finalDedup.set(key, row);
+              }
+            }
+            finalTestResultsToSave = Array.from(finalDedup.values());
           }
 
           // Use existing report as target, delete the temp one we created
