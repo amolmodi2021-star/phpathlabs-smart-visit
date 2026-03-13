@@ -10,8 +10,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Loader2, Search } from "lucide-react";
+import { Plus, Pencil, Trash2, Loader2, Search, Download, Upload } from "lucide-react";
 import RichTextEditor from "@/components/RichTextEditor";
+import { exportToExcel, parseExcelFile } from "@/lib/excel";
+import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 
 const ReportParameters = () => {
   const [params, setParams] = useState<any[]>([]);
