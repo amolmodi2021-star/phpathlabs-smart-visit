@@ -272,19 +272,46 @@ const ViewReport = () => {
       const pdfWidth = 210;
       const pdfHeight = 297;
 
+      // Use a fixed pixel width for consistent A4 rendering (794px = 210mm at 96dpi)
+      const targetWidthPx = 794;
+
       for (let i = 0; i < pages.length; i++) {
         const page = pages[i] as HTMLElement;
+
+        // Save original styles
+        const origWidth = page.style.width;
+        const origMinWidth = page.style.minWidth;
+        const origMaxWidth = page.style.maxWidth;
+        const origHeight = page.style.height;
+        const origMinHeight = page.style.minHeight;
+
+        // Force exact pixel dimensions for consistent capture
+        page.style.width = `${targetWidthPx}px`;
+        page.style.minWidth = `${targetWidthPx}px`;
+        page.style.maxWidth = `${targetWidthPx}px`;
+        page.style.height = `${Math.round(targetWidthPx * (pdfHeight / pdfWidth))}px`;
+        page.style.minHeight = `${Math.round(targetWidthPx * (pdfHeight / pdfWidth))}px`;
+
         const canvas = await html2canvas(page, {
-          scale: 2,
+          scale: 1.5,
           useCORS: true,
           allowTaint: true,
           backgroundColor: '#ffffff',
-          width: page.scrollWidth,
-          height: page.scrollHeight,
+          width: targetWidthPx,
+          height: Math.round(targetWidthPx * (pdfHeight / pdfWidth)),
         });
-        const imgData = canvas.toDataURL('image/png');
+
+        // Restore original styles
+        page.style.width = origWidth;
+        page.style.minWidth = origMinWidth;
+        page.style.maxWidth = origMaxWidth;
+        page.style.height = origHeight;
+        page.style.minHeight = origMinHeight;
+
+        // Use JPEG instead of PNG for much smaller file size
+        const imgData = canvas.toDataURL('image/jpeg', 0.75);
         if (i > 0) pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
       }
 
       const patientName = (extracted.patient_name || 'Report').replace(/[^a-zA-Z0-9\s]/g, '').trim();
