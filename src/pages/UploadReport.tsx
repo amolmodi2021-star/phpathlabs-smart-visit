@@ -1,21 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Upload, FileText, Loader2, CheckCircle, AlertCircle, RefreshCw, Eye, Pencil } from "lucide-react";
+import { Upload, FileText, Loader2, CheckCircle, RefreshCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { format } from "date-fns";
-
-const statusColors: Record<string, string> = {
-  Pending: "bg-yellow-100 text-yellow-800",
-  Processing: "bg-blue-100 text-blue-800",
-  "Awaiting Review": "bg-orange-100 text-orange-800",
-  Completed: "bg-green-100 text-green-800",
-  Dispatched: "bg-purple-100 text-purple-800",
-};
 
 interface UploadingFile {
   file: File;
@@ -27,7 +15,7 @@ const UploadReport = () => {
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
   const [recentReports, setRecentReports] = useState<any[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const navigate = useNavigate();
+  
   const { toast } = useToast();
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const triggerRef = useRef(false);
@@ -241,74 +229,6 @@ const UploadReport = () => {
         </Card>
       )}
 
-      {/* Recent Reports Queue */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Report Queue</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>File</TableHead>
-                <TableHead>Reg.No</TableHead>
-                <TableHead>Patient</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Uploaded</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {recentReports.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell className="font-medium text-sm max-w-[200px] truncate">
-                    {r.file_name || "-"}
-                  </TableCell>
-                  <TableCell className="text-sm">{(r as any).reg_no || "-"}</TableCell>
-                  <TableCell className="text-sm">{r.patient_name || "-"}</TableCell>
-                  <TableCell>
-                    <Badge className={statusColors[r.status] || ""}>
-                      {r.status === "Processing" && (
-                        <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                      )}
-                      {r.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {format(new Date(r.created_at), "dd MMM HH:mm")}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      {r.status === "Awaiting Review" && (
-                        <Button size="sm" variant="outline" onClick={() => navigate(`/reports/review/${r.id}`)}>
-                          <Pencil className="h-3 w-3 mr-1" />Review
-                        </Button>
-                      )}
-                      {(r.status === "Completed" || r.status === "Dispatched") && (
-                        <>
-                          <Button size="sm" variant="outline" onClick={() => navigate(`/reports/view/${r.id}`)}>
-                            <Eye className="h-3 w-3 mr-1" />View
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => navigate(`/reports/review/${r.id}`)}>
-                            <Pencil className="h-3 w-3 mr-1" />Edit
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {recentReports.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                    No reports uploaded yet
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
     </div>
   );
 };
