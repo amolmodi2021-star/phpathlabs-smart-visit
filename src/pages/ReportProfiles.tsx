@@ -166,6 +166,23 @@ const ReportProfiles = () => {
     });
   };
 
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setSelectedParams((prev) => {
+        const oldIndex = prev.findIndex((sp) => sp.parameter_id === active.id);
+        const newIndex = prev.findIndex((sp) => sp.parameter_id === over.id);
+        const reordered = arrayMove(prev, oldIndex, newIndex);
+        return reordered.map((sp, i) => ({ ...sp, display_order: i + 1 }));
+      });
+    }
+  };
+
   const updateParamOrder = (parameterId: string, newOrder: number) => {
     setSelectedParams((prev) => {
       const updated = prev.map((sp) =>
