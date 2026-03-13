@@ -78,3 +78,10 @@ input[type="number"] {
     @apply bg-card/80 backdrop-blur-sm border border-border/50 shadow-sm;
   }
 }
+
+@media print {
+  .recharts-tooltip-wrapper {
+    display: none !important;
+    visibility: hidden !important;
+  }
+}
