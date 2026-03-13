@@ -663,16 +663,17 @@ const ReviewReport = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[120px]">Department</TableHead>
-                  <TableHead className="w-[120px]">Profile</TableHead>
-                  <TableHead>Parameter</TableHead>
-                  <TableHead className="w-[100px]">Result</TableHead>
-                  <TableHead className="w-[80px]">Unit</TableHead>
-                  <TableHead className="w-[120px]">Range</TableHead>
-                  <TableHead className="w-[60px]">Flag</TableHead>
-                  <TableHead className="w-[140px]">Approved By</TableHead>
-                  <TableHead className="w-[50px]"></TableHead>
-                  <TableHead className="w-[50px]">Master</TableHead>
+                   <TableHead className="w-[120px]">Department</TableHead>
+                   <TableHead className="w-[120px]">Profile</TableHead>
+                   <TableHead>Parameter</TableHead>
+                   <TableHead className="w-[100px]">Result</TableHead>
+                   <TableHead className="w-[80px]">Unit</TableHead>
+                   <TableHead className="w-[120px]">Range</TableHead>
+                   <TableHead className="w-[60px]">Flag</TableHead>
+                   <TableHead className="w-[140px]">Approved By</TableHead>
+                   <TableHead className="w-[40px]">Remark</TableHead>
+                   <TableHead className="w-[50px]"></TableHead>
+                   <TableHead className="w-[50px]">Master</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
