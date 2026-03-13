@@ -15,6 +15,7 @@ import ReportHeader from "@/components/report/ReportHeader";
 import ReportAbnormalSummary from "@/components/report/ReportAbnormalSummary";
 import ReportResultsSection from "@/components/report/ReportResultsSection";
 import ReportSignatureBlock from "@/components/report/ReportSignatureBlock";
+import AutoScaleContent from "@/components/report/AutoScaleContent";
 import { shareOnWhatsApp } from "@/lib/whatsapp";
 import { useToast } from "@/hooks/use-toast";
 
@@ -484,7 +485,8 @@ const ViewReport = () => {
   const topMarginMm = layoutSettings.top_margin_cm * 10;
   const bottomMarginMm = layoutSettings.bottom_margin_cm * 10;
   const PAGE_HEIGHT_MM = 297;
-  const usableHeight = PAGE_HEIGHT_MM - topMarginMm - bottomMarginMm - HEADER_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM;
+  const SAFETY_BUFFER_MM = 4; // extra buffer to prevent overlap
+  const usableHeight = PAGE_HEIGHT_MM - topMarginMm - bottomMarginMm - HEADER_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM - SAFETY_BUFFER_MM;
 
   // Count unique test_names in params for height estimation
   const countTestNameHeaders = (params: TestResult[]): number => {
@@ -673,6 +675,12 @@ const ViewReport = () => {
             ? supabase.storage.from("signatures").getPublicUrl(pathologist.signature_image_path).data.publicUrl
             : null;
 
+          const isDedicatedPage = page.sections.length === 1 && isDedicatedReportProfile(page.sections[0]);
+          // For dedicated CBC/Urine pages, compute max content height for auto-scaling
+          const contentMaxHeightMm = isDedicatedPage
+            ? PAGE_HEIGHT_MM - topMarginMm - bottomMarginMm - HEADER_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM - 6
+            : 0;
+
           return (
             <div key={pageIdx} className="report-page"
               style={{ paddingTop: `${topMarginMm}mm`, paddingBottom: `${bottomMarginMm}mm` }}>
@@ -680,7 +688,13 @@ const ViewReport = () => {
               <ReportHeader extracted={extracted} />
 
               <div className="space-y-1" style={{ paddingLeft: '12mm', paddingRight: '12mm', paddingBottom: `${contentBottomReserveMm}mm` }}>
-                {renderPageSections(page.sections)}
+                {isDedicatedPage ? (
+                  <AutoScaleContent maxHeightMm={contentMaxHeightMm}>
+                    {renderPageSections(page.sections)}
+                  </AutoScaleContent>
+                ) : (
+                  renderPageSections(page.sections)
+                )}
               </div>
 
               {!isAbnormalOnlyPage && (
