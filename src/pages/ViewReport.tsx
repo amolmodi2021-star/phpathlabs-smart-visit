@@ -239,7 +239,7 @@ const ViewReport = () => {
     const paramNames = results.map((r) => r.parameter_name);
     const { data: masterParams } = await supabase
       .from("report_test_parameters")
-      .select("parameter_name, test_name, report_profiles(profile_name)")
+      .select("parameter_name, test_name, department_id, report_profiles(profile_name), report_departments:department_id(department_name)")
       .in("parameter_name", paramNames);
 
     // Also fetch with case-insensitive fallback for mismatched casing (e.g. pH vs PH)
@@ -250,7 +250,7 @@ const ViewReport = () => {
     if (unmatchedNames.length > 0) {
       const { data: fallbackParams } = await supabase
         .from("report_test_parameters")
-        .select("parameter_name, test_name, report_profiles(profile_name)");
+        .select("parameter_name, test_name, department_id, report_profiles(profile_name), report_departments:department_id(department_name)");
       if (fallbackParams) {
         const lowerMap = new Map<string, typeof fallbackParams[0]>();
         fallbackParams.forEach((fp) => {
@@ -267,30 +267,54 @@ const ViewReport = () => {
       // Build profile-specific map using lowercase keys for case-insensitive matching
       const profileSpecificMap: Record<string, string> = {};
       const genericMap: Record<string, string> = {};
+      // Build profile_name backfill map and department backfill map
+      const profileNameMap: Record<string, string> = {};
+      const deptNameMap: Record<string, string> = {};
       allMasterParams.forEach((mp: any) => {
+        const paramLower = mp.parameter_name.toLowerCase();
         if (mp.test_name) {
-          genericMap[mp.parameter_name.toLowerCase()] = mp.test_name;
+          genericMap[paramLower] = mp.test_name;
           const profName = mp.report_profiles?.profile_name;
           if (profName) {
-            profileSpecificMap[`${profName.toLowerCase()}::${mp.parameter_name.toLowerCase()}`] = mp.test_name;
+            profileSpecificMap[`${profName.toLowerCase()}::${paramLower}`] = mp.test_name;
           }
+        }
+        // Backfill profile_name from master
+        const profName = mp.report_profiles?.profile_name;
+        if (profName) {
+          profileNameMap[paramLower] = profName;
+        }
+        // Backfill department from master
+        const deptName = (mp as any).report_departments?.department_name;
+        if (deptName) {
+          deptNameMap[paramLower] = deptName;
         }
       });
 
       results = results.map((r) => {
-        // Prefer profile-specific match to avoid cross-profile contamination
         const paramLower = r.parameter_name.toLowerCase();
-        const profileKey = r.profile_name ? `${r.profile_name.toLowerCase()}::${paramLower}` : null;
+        let updated = { ...r };
+
+        // Backfill profile_name if missing
+        if (!updated.profile_name && profileNameMap[paramLower]) {
+          updated.profile_name = profileNameMap[paramLower];
+        }
+
+        // Backfill department if missing
+        if (!updated.department && deptNameMap[paramLower]) {
+          updated.department = deptNameMap[paramLower];
+        }
+
+        // Prefer profile-specific match to avoid cross-profile contamination
+        const profileKey = updated.profile_name ? `${updated.profile_name.toLowerCase()}::${paramLower}` : null;
 
         if (profileKey && profileSpecificMap[profileKey]) {
-          return { ...r, test_name: profileSpecificMap[profileKey] };
+          updated.test_name = profileSpecificMap[profileKey];
+        } else if (genericMap[paramLower]) {
+          updated.test_name = genericMap[paramLower];
         }
 
-        if (genericMap[paramLower]) {
-          return { ...r, test_name: genericMap[paramLower] };
-        }
-
-        return r;
+        return updated;
       });
     }
 
