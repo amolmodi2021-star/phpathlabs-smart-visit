@@ -198,6 +198,26 @@ const ReportParameters = () => {
 
       const { error } = await supabase.from("report_test_parameters").insert(inserts);
       if (error) throw error;
+
+      // Auto-rebuild profile_parameters junction table for newly imported params
+      const { data: newParams } = await supabase
+        .from("report_test_parameters")
+        .select("id, profile_id, display_order")
+        .not("profile_id", "is", null);
+      if (newParams && newParams.length > 0) {
+        // Clear existing and rebuild
+        await supabase.from("profile_parameters").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+        const junctionInserts = newParams.map((p: any) => ({
+          parameter_id: p.id,
+          profile_id: p.profile_id,
+          display_order: p.display_order || 0,
+        }));
+        // Insert in batches of 50
+        for (let i = 0; i < junctionInserts.length; i += 50) {
+          await supabase.from("profile_parameters").insert(junctionInserts.slice(i, i + 50));
+        }
+      }
+
       toast({ title: `${inserts.length} parameters imported` });
       load();
     } catch (err: any) {
