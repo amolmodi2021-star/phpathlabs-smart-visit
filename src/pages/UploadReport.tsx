@@ -1,20 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Upload, FileText, Loader2, CheckCircle, RefreshCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { format } from "date-fns";
-
-const statusColors: Record<string, string> = {
-  Pending: "bg-yellow-100 text-yellow-800",
-  Processing: "bg-blue-100 text-blue-800",
-  "Awaiting Review": "bg-orange-100 text-orange-800",
-  Completed: "bg-green-100 text-green-800",
-  Dispatched: "bg-purple-100 text-purple-800",
-};
 
 interface UploadingFile {
   file: File;
