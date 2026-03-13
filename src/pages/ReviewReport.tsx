@@ -659,7 +659,15 @@ const ReviewReport = () => {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle className="text-lg">Test Results ({testResults.length} parameters)</CardTitle>
+            <div className="flex items-center gap-3">
+              <CardTitle className="text-lg">Test Results ({testResults.length} parameters)</CardTitle>
+              {testResults.some(r => r._merge_status === "new" || r._merge_status === "updated") && (
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 border border-emerald-200">● New</span>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200">● Updated</span>
+                </div>
+              )}
+            </div>
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input placeholder="Search parameter..." value={paramSearch} onChange={(e) => setParamSearch(e.target.value)} className="pl-8 w-64" />
