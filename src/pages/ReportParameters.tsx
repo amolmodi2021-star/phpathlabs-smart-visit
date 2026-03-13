@@ -262,6 +262,7 @@ const ReportParameters = () => {
                       />
                     </TableHead>
                     <TableHead>Parameter</TableHead>
+                    <TableHead>Test</TableHead>
                     <TableHead>Department</TableHead>
                     <TableHead>Profile</TableHead>
                     <TableHead>Sample Type</TableHead>
@@ -273,7 +274,10 @@ const ReportParameters = () => {
                 </TableHeader>
                 <TableBody>
                   {filtered.map((p) => (
-                    <TableRow key={p.id}>
+                    <TableRow key={p.id} className={selectedIds.has(p.id) ? "bg-muted/50" : ""}>
+                      <TableCell>
+                        <Checkbox checked={selectedIds.has(p.id)} onCheckedChange={() => toggleSelect(p.id)} />
+                      </TableCell>
                       <TableCell className="font-medium">{p.parameter_name}</TableCell>
                       <TableCell>{p.test_name || "-"}</TableCell>
                       <TableCell>{p.report_departments?.department_name || "-"}</TableCell>
@@ -290,7 +294,7 @@ const ReportParameters = () => {
                       </TableCell>
                     </TableRow>
                   ))}
-                  {filtered.length === 0 && <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No parameters found</TableCell></TableRow>}
+                  {filtered.length === 0 && <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">No parameters found</TableCell></TableRow>}
                 </TableBody>
               </Table>
             </div>
