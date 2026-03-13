@@ -269,8 +269,31 @@ const ViewReport = () => {
     setDownloading(true);
     setIsPdfExporting(true);
 
+    const isCanvasBlank = (canvas: HTMLCanvasElement) => {
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) return true;
+
+      const { data, width, height } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const totalPixels = width * height;
+      const sampleStep = Math.max(1, Math.floor(totalPixels / 12000));
+
+      for (let i = 0; i < totalPixels; i += sampleStep) {
+        const idx = i * 4;
+        const r = data[idx];
+        const g = data[idx + 1];
+        const b = data[idx + 2];
+        const a = data[idx + 3];
+
+        if (a > 0 && (r < 245 || g < 245 || b < 245)) {
+          return false;
+        }
+      }
+
+      return true;
+    };
+
     try {
-      await new Promise((resolve) => setTimeout(resolve, 80));
+      await new Promise((resolve) => setTimeout(resolve, 120));
 
       const pages = Array.from(printRef.current.querySelectorAll('.report-page')) as HTMLElement[];
       const pdf = new jsPDF({
@@ -284,15 +307,39 @@ const ViewReport = () => {
 
       for (let i = 0; i < pages.length; i++) {
         const page = pages[i];
+        const rect = page.getBoundingClientRect();
 
-        const canvas = await html2canvas(page, {
-          scale: 1.25,
+        const captureOptions = {
           useCORS: true,
           allowTaint: true,
           backgroundColor: '#ffffff',
-          foreignObjectRendering: true,
           logging: false,
+          width: Math.ceil(rect.width),
+          height: Math.ceil(rect.height),
+          windowWidth: Math.ceil(rect.width),
+          windowHeight: Math.ceil(rect.height),
+          scrollX: 0,
+          scrollY: -window.scrollY,
+          onclone: (doc: Document) => {
+            doc.querySelectorAll('.recharts-tooltip-wrapper').forEach((el) => {
+              (el as HTMLElement).style.display = 'none';
+            });
+          },
+        };
+
+        let canvas = await html2canvas(page, {
+          ...captureOptions,
+          scale: 1.25,
+          foreignObjectRendering: false,
         });
+
+        if (isCanvasBlank(canvas)) {
+          canvas = await html2canvas(page, {
+            ...captureOptions,
+            scale: 1.6,
+            foreignObjectRendering: false,
+          });
+        }
 
         const imgData = canvas.toDataURL('image/jpeg', 0.8);
         const renderedHeight = (canvas.height * pdfWidth) / canvas.width;
