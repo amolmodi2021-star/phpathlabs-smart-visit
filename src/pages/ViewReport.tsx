@@ -38,6 +38,7 @@ interface TestResult {
   is_outsourced?: boolean;
   outsourced_caption?: string;
   interpretation?: string;
+  remark?: string;
 }
 
 interface ProfileMeta {

@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Save, FileCheck, AlertTriangle, Trash2, Plus, Check, ShieldCheck } from "lucide-react";
+import { Loader2, Save, FileCheck, AlertTriangle, Trash2, Plus, Check, ShieldCheck, MessageSquarePlus } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import AddParameterToMasterDialog from "@/components/AddParameterToMasterDialog";
 import { computeAbnormalFlag, normalizeTestResultFlags } from "@/lib/reportFlags";
@@ -34,6 +34,7 @@ interface TestResult {
   source_page?: number;
   confidence_score?: number;
   extraction_basis?: string;
+  remark?: string;
 }
 
 const ReviewReport = () => {
@@ -69,6 +70,9 @@ const ReviewReport = () => {
   const [addParamIndex, setAddParamIndex] = useState<number | null>(null);
   const [reverified, setReverified] = useState(false);
   const [reverifying, setReverifying] = useState(false);
+  const [remarkDialogOpen, setRemarkDialogOpen] = useState(false);
+  const [remarkIndex, setRemarkIndex] = useState<number | null>(null);
+  const [remarkText, setRemarkText] = useState("");
 
   useEffect(() => {
     loadData();
@@ -659,16 +663,17 @@ const ReviewReport = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[120px]">Department</TableHead>
-                  <TableHead className="w-[120px]">Profile</TableHead>
-                  <TableHead>Parameter</TableHead>
-                  <TableHead className="w-[100px]">Result</TableHead>
-                  <TableHead className="w-[80px]">Unit</TableHead>
-                  <TableHead className="w-[120px]">Range</TableHead>
-                  <TableHead className="w-[60px]">Flag</TableHead>
-                  <TableHead className="w-[140px]">Approved By</TableHead>
-                  <TableHead className="w-[50px]"></TableHead>
-                  <TableHead className="w-[50px]">Master</TableHead>
+                   <TableHead className="w-[120px]">Department</TableHead>
+                   <TableHead className="w-[120px]">Profile</TableHead>
+                   <TableHead>Parameter</TableHead>
+                   <TableHead className="w-[100px]">Result</TableHead>
+                   <TableHead className="w-[80px]">Unit</TableHead>
+                   <TableHead className="w-[120px]">Range</TableHead>
+                   <TableHead className="w-[60px]">Flag</TableHead>
+                   <TableHead className="w-[140px]">Approved By</TableHead>
+                   <TableHead className="w-[40px]">Remark</TableHead>
+                   <TableHead className="w-[50px]"></TableHead>
+                   <TableHead className="w-[50px]">Master</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -724,6 +729,27 @@ const ReviewReport = () => {
                       )}
                     </TableCell>
                     <TableCell>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant={r.remark ? "default" : "ghost"}
+                              size="icon"
+                              className={`h-7 w-7 ${r.remark ? "bg-amber-500 hover:bg-amber-600 text-white" : ""}`}
+                              onClick={() => {
+                                setRemarkIndex(i);
+                                setRemarkText(r.remark || "Kindly correlate clinically");
+                                setRemarkDialogOpen(true);
+                              }}
+                            >
+                              <MessageSquarePlus className="h-3 w-3" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>{r.remark || "Add remark"}</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </TableCell>
+                    <TableCell>
                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeTestResult(i)}>
                         <Trash2 className="h-3 w-3" />
                       </Button>
@@ -771,6 +797,39 @@ const ReviewReport = () => {
           <Input value={umrInput} onChange={(e) => setUmrInput(e.target.value.toUpperCase())} placeholder="e.g. UMR0001234" />
           <DialogFooter>
             <Button onClick={() => { setUmrId(umrInput); setShowUmrDialog(false); }} disabled={!umrInput}>Confirm</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Remark Dialog */}
+      <Dialog open={remarkDialogOpen} onOpenChange={setRemarkDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Remark</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label>Remark for: {remarkIndex !== null ? testResults[remarkIndex]?.parameter_name : ""}</Label>
+            <Input
+              value={remarkText}
+              onChange={(e) => setRemarkText(e.target.value)}
+              placeholder="Enter remark"
+            />
+          </div>
+          <DialogFooter className="gap-2">
+            {remarkIndex !== null && testResults[remarkIndex]?.remark && (
+              <Button variant="outline" className="text-destructive" onClick={() => {
+                updateTestResult(remarkIndex!, "remark" as keyof TestResult, "");
+                setRemarkDialogOpen(false);
+                setRemarkIndex(null);
+              }}>Remove</Button>
+            )}
+            <Button onClick={() => {
+              if (remarkIndex !== null && remarkText.trim()) {
+                updateTestResult(remarkIndex, "remark" as keyof TestResult, remarkText.trim());
+              }
+              setRemarkDialogOpen(false);
+              setRemarkIndex(null);
+            }}>Save Remark</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
