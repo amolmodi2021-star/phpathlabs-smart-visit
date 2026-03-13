@@ -503,6 +503,38 @@ const ReviewReport = () => {
   // Get unique approving doctors from test results
   const uniqueApprovers = [...new Set(testResults.map(r => r.approved_by).filter(Boolean))];
 
+  const TRACKED_FIELDS: (keyof TestResult)[] = ["result_value", "unit", "normal_range_low", "normal_range_high", "normal_range_text", "flag"];
+
+  const logCorrections = async (finalResults: TestResult[]) => {
+    const originals = originalAiResultsRef.current;
+    if (!originals || originals.length === 0) return;
+
+    const corrections: Array<{ parameter_name: string; field_corrected: string; original_value: string; corrected_value: string }> = [];
+
+    for (const curr of finalResults) {
+      const orig = originals.find(o => o.parameter_name === curr.parameter_name);
+      if (!orig) continue;
+
+      for (const field of TRACKED_FIELDS) {
+        const origVal = String(orig[field] ?? "");
+        const currVal = String(curr[field] ?? "");
+        if (origVal !== currVal && currVal !== "") {
+          corrections.push({
+            parameter_name: curr.parameter_name,
+            field_corrected: field,
+            original_value: origVal,
+            corrected_value: currVal,
+          });
+        }
+      }
+    }
+
+    if (corrections.length > 0) {
+      await supabase.from("extraction_corrections" as any).insert(corrections);
+      console.log(`Logged ${corrections.length} extraction corrections for feedback loop.`);
+    }
+  };
+
   const handleSaveAndGenerate = async () => {
     if (!umrId) {
       setShowUmrDialog(true);
