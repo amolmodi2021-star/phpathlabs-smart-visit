@@ -75,6 +75,7 @@ const ReviewReport = () => {
   const [remarkIndex, setRemarkIndex] = useState<number | null>(null);
   const [remarkText, setRemarkText] = useState("");
   const [paramSearch, setParamSearch] = useState("");
+  const originalAiResultsRef = useRef<TestResult[] | null>(null);
 
   useEffect(() => {
     loadData();
