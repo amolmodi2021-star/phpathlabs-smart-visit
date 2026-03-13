@@ -249,13 +249,16 @@ const ReportProfiles = () => {
               <Label className="text-base font-semibold">Parameters in this Profile</Label>
               {selectedParams.length > 0 && (
                 <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Selected ({selectedParams.length}): use arrows to reorder</p>
-                  {selectedParams.map((sp, idx) => (
+                  <p className="text-xs text-muted-foreground">Selected ({selectedParams.length}): enter order number to rearrange</p>
+                  {selectedParams.map((sp) => (
                     <div key={sp.parameter_id} className="flex items-center gap-2 p-2 bg-accent/50 rounded text-sm">
-                      <span className="text-xs text-muted-foreground w-6">{idx + 1}.</span>
+                      <Input
+                        type="number"
+                        value={sp.display_order}
+                        onChange={(e) => updateParamOrder(sp.parameter_id, Number(e.target.value))}
+                        className="h-7 w-16 text-center text-xs"
+                      />
                       <span className="flex-1 font-medium">{sp.parameter_name}</span>
-                      <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === 0} onClick={() => moveParam(idx, "up")}><ArrowUp className="h-3 w-3" /></Button>
-                      <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === selectedParams.length - 1} onClick={() => moveParam(idx, "down")}><ArrowDown className="h-3 w-3" /></Button>
                       <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => toggleParam({ id: sp.parameter_id, parameter_name: sp.parameter_name })}><Trash2 className="h-3 w-3" /></Button>
                     </div>
                   ))}
