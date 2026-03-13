@@ -267,52 +267,40 @@ const ViewReport = () => {
   const handleDownloadPdf = async () => {
     if (!printRef.current || !extracted) return;
     setDownloading(true);
+    setIsPdfExporting(true);
+
     try {
-      const pages = printRef.current.querySelectorAll('.report-page');
-      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      await new Promise((resolve) => setTimeout(resolve, 60));
+
+      const pages = Array.from(printRef.current.querySelectorAll('.report-page')) as HTMLElement[];
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+        compress: true,
+      });
       const pdfWidth = 210;
       const pdfHeight = 297;
 
-      // Use a fixed pixel width for consistent A4 rendering (794px = 210mm at 96dpi)
-      const targetWidthPx = 794;
-
       for (let i = 0; i < pages.length; i++) {
-        const page = pages[i] as HTMLElement;
-
-        // Save original styles
-        const origWidth = page.style.width;
-        const origMinWidth = page.style.minWidth;
-        const origMaxWidth = page.style.maxWidth;
-        const origHeight = page.style.height;
-        const origMinHeight = page.style.minHeight;
-
-        // Force exact pixel dimensions for consistent capture
-        page.style.width = `${targetWidthPx}px`;
-        page.style.minWidth = `${targetWidthPx}px`;
-        page.style.maxWidth = `${targetWidthPx}px`;
-        page.style.height = `${Math.round(targetWidthPx * (pdfHeight / pdfWidth))}px`;
-        page.style.minHeight = `${Math.round(targetWidthPx * (pdfHeight / pdfWidth))}px`;
+        const page = pages[i];
+        const rect = page.getBoundingClientRect();
 
         const canvas = await html2canvas(page, {
-          scale: 1.5,
+          scale: 1.35,
           useCORS: true,
           allowTaint: true,
           backgroundColor: '#ffffff',
-          width: targetWidthPx,
-          height: Math.round(targetWidthPx * (pdfHeight / pdfWidth)),
+          width: Math.ceil(rect.width),
+          height: Math.ceil(rect.height),
+          windowWidth: Math.ceil(rect.width),
+          windowHeight: Math.ceil(rect.height),
+          logging: false,
         });
 
-        // Restore original styles
-        page.style.width = origWidth;
-        page.style.minWidth = origMinWidth;
-        page.style.maxWidth = origMaxWidth;
-        page.style.height = origHeight;
-        page.style.minHeight = origMinHeight;
-
-        // Use JPEG instead of PNG for much smaller file size
-        const imgData = canvas.toDataURL('image/jpeg', 0.75);
+        const imgData = canvas.toDataURL('image/jpeg', 0.82);
         if (i > 0) pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
       }
 
       const patientName = (extracted.patient_name || 'Report').replace(/[^a-zA-Z0-9\s]/g, '').trim();
@@ -322,6 +310,7 @@ const ViewReport = () => {
     } catch (err) {
       console.error('PDF download failed:', err);
     } finally {
+      setIsPdfExporting(false);
       setDownloading(false);
     }
   };
