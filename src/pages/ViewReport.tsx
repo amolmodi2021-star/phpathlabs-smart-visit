@@ -316,9 +316,14 @@ const ViewReport = () => {
     setMobileDialogOpen(true);
   };
 
+  const formatWhatsApp = (raw: string): string => {
+    const digits = raw.replace(/\D/g, "");
+    return digits.slice(-10);
+  };
+
   const handleMobileSubmit = async () => {
-    const cleaned = mobileNumber.replace(/\D/g, "").slice(-10);
-    if (cleaned.length !== 10) {
+    const cleaned = formatWhatsApp(mobileNumber);
+    if (cleaned.length < 10) {
       toast({ title: "Please enter a valid 10-digit mobile number", variant: "destructive" });
       return;
     }
