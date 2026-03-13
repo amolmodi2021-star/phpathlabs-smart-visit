@@ -344,8 +344,15 @@ MATCHING:
 
     // Deduplicate by parameter+scope
     const normalizeKey = (v: unknown) => String(v ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+    const normalizeComparable = (v: unknown) => {
+      const n = normalizeKey(v);
+      return ["-", "--", "na", "n/a", "nil", "null"].includes(n) ? "" : n;
+    };
     const getScope = (r: any) => normalizeKey(r.profile_name) || normalizeKey(r.test_name) || normalizeKey(r.parameter_name);
     const getKey = (r: any) => `${normalizeKey(r.parameter_name)}::${getScope(r)}`;
+    const getContentFingerprint = (r: any) => {
+      return `${normalizeComparable(r.parameter_name)}::${normalizeComparable(r.profile_name)}::${normalizeComparable(r.department)}::${normalizeComparable(r.result_value)}::${normalizeComparable(r.unit)}::${normalizeComparable(r.normal_range_text)}::${normalizeComparable(r.normal_range_low)}::${normalizeComparable(r.normal_range_high)}::${normalizeComparable(r.flag)}`;
+    };
 
     const deduped = new Map<string, any>();
     testResults.forEach((row: any) => {
@@ -355,7 +362,12 @@ MATCHING:
         deduped.set(key, row);
       }
     });
-    const finalResults = Array.from(deduped.values());
+    // Content fingerprint pass: collapse visually identical entries
+    const byContent = new Map<string, any>();
+    deduped.forEach((row) => {
+      byContent.set(getContentFingerprint(row), row);
+    });
+    const finalResults = Array.from(byContent.values());
 
     const patient = { ...(extracted?.patient || {}) };
     if (!patient.collection_date && patient.sample_collection_date) {
