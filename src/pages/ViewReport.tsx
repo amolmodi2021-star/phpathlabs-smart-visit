@@ -531,7 +531,7 @@ const ViewReport = () => {
         </div>
       </div>
 
-      <div ref={printRef} className="bg-white text-black print:text-black mx-auto max-w-[210mm] print:max-w-none report-print-area" style={{ fontFamily: "'Segoe UI', Arial, sans-serif" }}>
+      <div ref={printRef} className={`bg-white text-black print:text-black mx-auto max-w-[210mm] print:max-w-none report-print-area ${isPdfExporting ? 'pdf-export-mode' : ''}`} style={{ fontFamily: "'Segoe UI', Arial, sans-serif" }}>
         {allPages.map((page, pageIdx) => {
           const isAbnormalOnlyPage = page.sections.every(s => s.isAbnormalOnly);
           const contentBottomReserveMm = isAbnormalOnlyPage
