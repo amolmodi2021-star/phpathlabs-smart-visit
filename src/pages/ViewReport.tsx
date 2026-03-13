@@ -258,7 +258,16 @@ const ViewReport = () => {
           lowerMap.set(fp.parameter_name.toLowerCase(), fp);
         });
         unmatchedNames.forEach((name) => {
-          const match = lowerMap.get(name.toLowerCase());
+          const lower = name.toLowerCase();
+          let match = lowerMap.get(lower);
+          // Fuzzy fallback: try adding/removing trailing 's' for singular/plural mismatch
+          if (!match) {
+            if (lower.endsWith('s')) {
+              match = lowerMap.get(lower.slice(0, -1));
+            } else {
+              match = lowerMap.get(lower + 's');
+            }
+          }
           if (match) allMasterParams.push({ ...match, parameter_name: name });
         });
       }
