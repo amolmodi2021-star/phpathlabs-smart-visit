@@ -181,6 +181,7 @@ const ViewReport = () => {
   const [pathologistMap, setPathologistMap] = useState<Record<string, any>>({});
   const [deptOrderMap, setDeptOrderMap] = useState<Record<string, number>>({});
   const [profileMetaMap, setProfileMetaMap] = useState<Record<string, ProfileMeta>>({});
+  const [profileOrderMap, setProfileOrderMap] = useState<Record<string, number>>({});
   const [trends, setTrends] = useState<TrendData[]>([]);
   const [showHeader, setShowHeader] = useState(true);
   const [layoutSettings, setLayoutSettings] = useState<LayoutSettings>({
