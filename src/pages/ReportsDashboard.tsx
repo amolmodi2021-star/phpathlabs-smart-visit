@@ -17,6 +17,7 @@ const statusColors: Record<string, string> = {
   Processing: "bg-blue-100 text-blue-800",
   "Awaiting Review": "bg-orange-100 text-orange-800",
   Completed: "bg-green-100 text-green-800",
+  Dispatched: "bg-purple-100 text-purple-800",
 };
 
 const ReportsDashboard = () => {
