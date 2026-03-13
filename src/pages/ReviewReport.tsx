@@ -306,16 +306,11 @@ const ReviewReport = () => {
       .replace(/\s+/g, " ")
       .trim();
 
-  const getCanonicalResultScope = (row: Partial<TestResult>) => {
-    const testName = normalizeResultKey(row.test_name);
-    const profileName = normalizeResultKey(row.profile_name);
-
-    if (testName && profileName && (profileName.includes(testName) || testName.includes(profileName))) {
-      return profileName;
-    }
-
-    return testName || profileName || normalizeResultKey(row.parameter_name);
-  };
+const getCanonicalResultScope = (row: Partial<TestResult>) => {
+  const profileName = normalizeResultKey(row.profile_name);
+  const testName = normalizeResultKey(row.test_name);
+  return profileName || testName || normalizeResultKey(row.parameter_name);
+};
 
   const getDedupeKey = (row: Partial<TestResult>) => {
     const parameter = normalizeResultKey(row.parameter_name);

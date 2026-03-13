@@ -125,14 +125,9 @@ const normalizeDedupeKey = (value: unknown) =>
     .trim();
 
 const getCanonicalResultScope = (row: Partial<TestResult>) => {
-  const testName = normalizeDedupeKey(row.test_name);
   const profileName = normalizeDedupeKey(row.profile_name);
-
-  if (testName && profileName && (profileName.includes(testName) || testName.includes(profileName))) {
-    return profileName;
-  }
-
-  return testName || profileName || normalizeDedupeKey(row.parameter_name);
+  const testName = normalizeDedupeKey(row.test_name);
+  return profileName || testName || normalizeDedupeKey(row.parameter_name);
 };
 
 const getResultDedupeKey = (row: Partial<TestResult>) => {
