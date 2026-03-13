@@ -729,6 +729,27 @@ const ReviewReport = () => {
                       )}
                     </TableCell>
                     <TableCell>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant={r.remark ? "default" : "ghost"}
+                              size="icon"
+                              className={`h-7 w-7 ${r.remark ? "bg-amber-500 hover:bg-amber-600 text-white" : ""}`}
+                              onClick={() => {
+                                setRemarkIndex(i);
+                                setRemarkText(r.remark || "Kindly correlate clinically");
+                                setRemarkDialogOpen(true);
+                              }}
+                            >
+                              <MessageSquarePlus className="h-3 w-3" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>{r.remark || "Add remark"}</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </TableCell>
+                    <TableCell>
                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeTestResult(i)}>
                         <Trash2 className="h-3 w-3" />
                       </Button>
