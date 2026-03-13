@@ -111,7 +111,6 @@ const ViewReport = () => {
   const [isPdfExporting, setIsPdfExporting] = useState(false);
   const [mobileDialogOpen, setMobileDialogOpen] = useState(false);
   const [mobileNumber, setMobileNumber] = useState("");
-  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
   const [extracted, setExtracted] = useState<any>(null);
   const [pathologistMap, setPathologistMap] = useState<Record<string, any>>({});
   const [deptOrderMap, setDeptOrderMap] = useState<Record<string, number>>({});
@@ -316,9 +315,14 @@ const ViewReport = () => {
     setMobileDialogOpen(true);
   };
 
+  const formatWhatsApp = (raw: string): string => {
+    const digits = raw.replace(/\D/g, "");
+    return digits.slice(-10);
+  };
+
   const handleMobileSubmit = async () => {
-    const cleaned = mobileNumber.replace(/\D/g, "").slice(-10);
-    if (cleaned.length !== 10) {
+    const cleaned = formatWhatsApp(mobileNumber);
+    if (cleaned.length < 10) {
       toast({ title: "Please enter a valid 10-digit mobile number", variant: "destructive" });
       return;
     }
@@ -745,28 +749,22 @@ const ViewReport = () => {
             <Label htmlFor="mobile-input">Mobile Number</Label>
             <Input
               id="mobile-input"
-              placeholder="Enter 10-digit mobile number"
+              placeholder="Paste number (any format)"
+              type="tel"
               value={mobileNumber}
-              onChange={(e) => {
-                const val = e.target.value.replace(/\D/g, "").slice(-10);
-                setMobileNumber(val);
-              }}
-              onPaste={(e) => {
-                e.preventDefault();
-                const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(-10);
-                setMobileNumber(pasted);
-              }}
-              maxLength={10}
+              onChange={(e) => setMobileNumber(e.target.value)}
               inputMode="numeric"
               onWheel={(e) => (e.target as HTMLInputElement).blur()}
             />
-            {mobileNumber.length > 0 && mobileNumber.length < 10 && (
-              <p className="text-sm text-destructive">Please enter a valid 10-digit number</p>
+            {mobileNumber && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Formatted: {formatWhatsApp(mobileNumber) || "Need 10+ digits"}
+              </p>
             )}
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setMobileDialogOpen(false)}>Skip</Button>
-            <Button onClick={handleMobileSubmit} disabled={mobileNumber.replace(/\D/g, "").length !== 10}>
+            <Button onClick={handleMobileSubmit} disabled={formatWhatsApp(mobileNumber).length !== 10}>
               Share on WhatsApp
             </Button>
           </DialogFooter>
