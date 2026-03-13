@@ -229,7 +229,10 @@ const ReviewReport = () => {
     const { masterMap, profileGroups, paramIdToNameKey, masterIds } = await buildMasterMaps();
     setMasterParams(masterMap);
     setMasterParamIds(masterIds);
-    setTestResults((prev) => normalizeTestResultFlags(enrichResults(prev, masterMap, profileGroups, paramIdToNameKey)));
+    setTestResults((prev) => {
+      const enriched = enrichResults(dedupeTestResults(prev), masterMap, profileGroups, paramIdToNameKey);
+      return dedupeTestResults(normalizeTestResultFlags(enriched));
+    });
   };
 
   const loadData = async () => {
@@ -262,16 +265,8 @@ const ReviewReport = () => {
       setLocationField((extracted as any).location || "");
       const rawResults = (extracted.test_results as unknown as TestResult[]) || [];
 
-      // Deduplicate by parameter_name + test_name + profile_name, keeping latest entry
-      const deduped = new Map<string, TestResult>();
-      for (const row of rawResults) {
-        const key = `${(row.parameter_name || "").toLowerCase().trim()}::${(row.test_name || "").toLowerCase().trim()}::${(row.profile_name || "").toLowerCase().trim()}`;
-        deduped.set(key, row); // last one wins
-      }
-      const dedupedResults = Array.from(deduped.values());
-
-      const enrichedResults = enrichResults(dedupedResults, masterMap, profileGroups, paramIdToNameKey);
-      const normalized = normalizeTestResultFlags(enrichedResults);
+      const enrichedResults = enrichResults(dedupeTestResults(rawResults), masterMap, profileGroups, paramIdToNameKey);
+      const normalized = dedupeTestResults(normalizeTestResultFlags(enrichedResults));
       setTestResults(normalized);
       // Always refresh original AI results snapshot on load/reload
       originalAiResultsRef.current = normalized.map(r => ({ ...r }));
