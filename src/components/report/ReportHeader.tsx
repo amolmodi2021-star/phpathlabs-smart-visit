@@ -32,7 +32,7 @@ const formatDateTimeTo12Hr = (dateStr: string | null | undefined): string => {
 
 const ReportHeader = ({ extracted }: ReportHeaderProps) => {
   return (
-    <div className="border-b border-gray-300 pb-3 mb-4 px-6 text-black">
+    <div className="border-b border-gray-300 pb-3 mb-4 text-black" style={{ paddingLeft: '12mm', paddingRight: '6mm' }}>
       <div className="grid grid-cols-2 gap-x-8 gap-y-0.5 text-sm">
         {/* Left Column */}
         <div className="grid gap-y-0.5" style={{ gridTemplateColumns: '90px 1fr' }}>
