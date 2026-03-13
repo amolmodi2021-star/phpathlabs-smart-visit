@@ -589,7 +589,7 @@ const ReviewReport = () => {
     }
     setSaving(true);
     try {
-      const flaggedResults = calculateFlags(testResults);
+      const flaggedResults = dedupeTestResults(calculateFlags(testResults));
       setTestResults(flaggedResults);
 
       // Update extracted data

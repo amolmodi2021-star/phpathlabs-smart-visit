@@ -425,10 +425,15 @@ const UploadReport = () => {
           if (existingExtracted && existingExtracted.length > 0) {
             const existingResults = (existingExtracted[0].test_results as any[]) || [];
 
-            // Merge: composite key = lowercase(parameter_name) + "::" + lowercase(profile_name)
-            const getMergeKey = (r: any) =>
-              `${(r.parameter_name || "").toLowerCase().trim()}::${(r.test_name || "").toLowerCase().trim()}::${(r.profile_name || "").toLowerCase().trim()}`;
-
+            // Merge key: parameter + contextual test scope (test_name > profile_name > parameter_name)
+            const normalizeMergeKey = (value: unknown) => String(value ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+            const getMergeKey = (r: any) => {
+              const parameter = normalizeMergeKey(r.parameter_name);
+              const testName = normalizeMergeKey(r.test_name);
+              const profileName = normalizeMergeKey(r.profile_name);
+              const scope = testName || profileName || parameter;
+              return `${parameter}::${scope}`;
+            };
             const existingMap = new Map<string, any>();
             existingResults.forEach((r: any) => {
               // Strip old merge status from previous merges
