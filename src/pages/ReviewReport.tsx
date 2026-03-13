@@ -73,6 +73,7 @@ const ReviewReport = () => {
   const [remarkDialogOpen, setRemarkDialogOpen] = useState(false);
   const [remarkIndex, setRemarkIndex] = useState<number | null>(null);
   const [remarkText, setRemarkText] = useState("");
+  const [paramSearch, setParamSearch] = useState("");
 
   useEffect(() => {
     loadData();
