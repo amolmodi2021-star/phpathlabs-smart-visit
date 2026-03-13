@@ -748,8 +748,13 @@ const ViewReport = () => {
               placeholder="Enter 10-digit mobile number"
               value={mobileNumber}
               onChange={(e) => {
-                const val = e.target.value.replace(/\D/g, "").slice(0, 10);
+                const val = e.target.value.replace(/\D/g, "").slice(-10);
                 setMobileNumber(val);
+              }}
+              onPaste={(e) => {
+                e.preventDefault();
+                const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(-10);
+                setMobileNumber(pasted);
               }}
               maxLength={10}
               inputMode="numeric"
