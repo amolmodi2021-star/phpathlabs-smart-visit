@@ -303,23 +303,24 @@ const ReviewReport = () => {
   const normalizeResultKey = (value: unknown) =>
     String(value ?? "")
       .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
       .replace(/\s+/g, " ")
       .trim();
 
-const getCanonicalResultScope = (row: Partial<TestResult>) => {
-  const profileName = normalizeResultKey(row.profile_name);
-  const testName = normalizeResultKey(row.test_name);
-  return profileName || testName || normalizeResultKey(row.parameter_name);
-};
+  const getCanonicalResultScope = (row: Partial<TestResult>) => {
+    const profileName = normalizeResultKey(row.profile_name);
+    const testName = normalizeResultKey(row.test_name);
+    return profileName || testName || normalizeResultKey(row.parameter_name) || "unknown-scope";
+  };
 
   const getDedupeKey = (row: Partial<TestResult>) => {
-    const parameter = normalizeResultKey(row.parameter_name);
+    const parameter = normalizeResultKey(row.parameter_name) || "unknown-parameter";
     return `${parameter}::${getCanonicalResultScope(row)}`;
   };
 
   const normalizeComparable = (value: unknown) => {
     const normalized = normalizeResultKey(value);
-    return ["-", "--", "na", "n/a", "nil", "null"].includes(normalized) ? "" : normalized;
+    return ["-", "--", "na", "n a", "nil", "null"].includes(normalized) ? "" : normalized;
   };
 
   const getContentFingerprint = (row: Partial<TestResult>) => {
