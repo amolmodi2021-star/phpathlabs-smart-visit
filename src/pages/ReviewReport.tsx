@@ -584,6 +584,9 @@ const ReviewReport = () => {
         reg_date: regDate,
       } as any).eq("id", reportId);
 
+      // Log corrections feedback loop
+      await logCorrections(flaggedResults);
+
       toast({ title: "Report verified and saved!" });
       navigate(`/reports/view/${reportId}`);
     } catch (err: any) {
