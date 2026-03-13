@@ -521,7 +521,19 @@ const ViewReport = () => {
         const testNameHeaders = countTestNameHeaders(params);
         const compact = isCompactProfile(profName) || isCompactProfile(dept);
         const rowH = compact ? ROW_HEIGHT_COMPACT_MM : ROW_HEIGHT_MM;
-        const heightMm = DEPT_HEADER_HEIGHT_MM + (showProf ? PROFILE_HEADER_HEIGHT_MM : 0) + TABLE_HEADER_HEIGHT_MM + params.length * rowH + testNameHeaders * TEST_NAME_HEADER_MM + PROFILE_GAP_MM;
+        // Extra height for metadata, outsourced caption, interpretation
+        const isStandalone = profName === "_individual";
+        const meta = !isStandalone ? profileMetaMap[profName] : (params[0] ? { sample_type: params[0].sample_type, analyzer: params[0].analyzer, method: params[0].method, is_outsourced: params[0].is_outsourced, outsourced_caption: params[0].outsourced_caption, interpretation: params[0].interpretation } : null);
+        let extraMm = 0;
+        if (meta) {
+          if (meta.sample_type || meta.analyzer || meta.method) extraMm += 4;
+          if (meta.is_outsourced && meta.outsourced_caption) extraMm += 4;
+          if (meta.interpretation && meta.interpretation.replace(/<[^>]*>/g, '').trim().length > 0) {
+            const textLen = meta.interpretation.replace(/<[^>]*>/g, '').length;
+            extraMm += 6 + Math.ceil(textLen / 120) * 3;
+          }
+        }
+        const heightMm = DEPT_HEADER_HEIGHT_MM + (showProf ? PROFILE_HEADER_HEIGHT_MM : 0) + TABLE_HEADER_HEIGHT_MM + params.length * rowH + testNameHeaders * TEST_NAME_HEADER_MM + PROFILE_GAP_MM + extraMm;
         sections.push({
           type: "department-profile",
           dept,
