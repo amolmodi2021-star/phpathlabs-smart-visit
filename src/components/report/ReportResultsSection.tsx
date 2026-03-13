@@ -9,6 +9,22 @@ interface TestResult {
   normal_range_high?: string;
   normal_range_text?: string;
   flag?: string;
+  // Master data fields (auto-applied at report render)
+  sample_type?: string;
+  analyzer?: string;
+  method?: string;
+  is_outsourced?: boolean;
+  outsourced_caption?: string;
+  interpretation?: string;
+}
+
+interface ProfileMeta {
+  sample_type?: string;
+  analyzer?: string;
+  method?: string;
+  is_outsourced?: boolean;
+  outsourced_caption?: string;
+  interpretation?: string;
 }
 
 interface ReportResultsSectionProps {
@@ -16,6 +32,7 @@ interface ReportResultsSectionProps {
   shouldShowProfile: (params: TestResult[]) => boolean;
   compact?: boolean;
   hideDeptHeader?: boolean;
+  profileMetaMap?: Record<string, ProfileMeta>;
 }
 
 const groupByTestName = (params: TestResult[]): { testName: string | null; params: TestResult[] }[] => {
@@ -55,7 +72,7 @@ const isMorphologySection = (testName: string | null | undefined): boolean => {
   return MORPHOLOGY_TESTS.some(m => lower.includes(m));
 };
 
-const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHeader }: ReportResultsSectionProps) => {
+const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHeader, profileMetaMap }: ReportResultsSectionProps) => {
   return (
     <>
       {Object.entries(grouped).map(([dept, profiles]) => (
@@ -67,6 +84,25 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
               const testGroups = groupByTestName(params);
               const isGroupedProfile = isTestGroupedProfile(profName);
               const hasMultipleTestNames = isGroupedProfile && testGroups.filter(g => g.testName).length >= 1;
+
+              // Get metadata: profile-level from profileMetaMap, or parameter-level for standalone
+              const isStandalone = profName === "_individual";
+              const profMeta = !isStandalone && profileMetaMap ? profileMetaMap[profName] : null;
+
+              // For standalone parameters, collect metadata from the first parameter
+              const standaloneMeta = isStandalone && params.length > 0 ? {
+                sample_type: params[0].sample_type,
+                analyzer: params[0].analyzer,
+                method: params[0].method,
+                is_outsourced: params[0].is_outsourced,
+                outsourced_caption: params[0].outsourced_caption,
+                interpretation: params[0].interpretation,
+              } : null;
+
+              const meta = profMeta || standaloneMeta;
+              const hasMetaRow = meta && (meta.sample_type || meta.analyzer || meta.method);
+              const hasOutsourced = meta?.is_outsourced && meta?.outsourced_caption;
+              const hasInterpretation = meta?.interpretation && meta.interpretation.replace(/<[^>]*>/g, '').trim().length > 0;
 
               return (
                 <div key={profName} data-pdf-section="profile" className="print:break-inside-avoid">
@@ -133,6 +169,33 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                       ))}
                     </tbody>
                   </table>
+
+                  {/* Metadata row: Sample Type, Analyzer, Method */}
+                  {hasMetaRow && (
+                    <div className="px-3 py-1 text-[10px] text-gray-500 border-t border-gray-100 flex gap-4 flex-wrap">
+                      {meta!.sample_type && <span><strong>Sample Type:</strong> {meta!.sample_type}</span>}
+                      {meta!.analyzer && <span><strong>Analyzer:</strong> {meta!.analyzer}</span>}
+                      {meta!.method && <span><strong>Method:</strong> {meta!.method}</span>}
+                    </div>
+                  )}
+
+                  {/* Outsourced caption line */}
+                  {hasOutsourced && (
+                    <div className="px-3 py-1 text-[10px] text-gray-500 italic border-t border-gray-100">
+                      {meta!.outsourced_caption}
+                    </div>
+                  )}
+
+                  {/* Interpretation block */}
+                  {hasInterpretation && (
+                    <div className="px-3 py-1.5 border-t border-gray-100">
+                      <div className="text-[10px] font-semibold text-gray-600 mb-0.5">Interpretation:</div>
+                      <div
+                        className="text-[10px] text-gray-700 prose prose-xs max-w-none [&_img]:max-h-[60mm] [&_img]:inline-block [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
+                        dangerouslySetInnerHTML={{ __html: meta!.interpretation! }}
+                      />
+                    </div>
+                  )}
                 </div>
               );
             })}
