@@ -221,6 +221,14 @@ const ReportParameters = () => {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-bold">Test Parameter Management</h1>
         <div className="flex gap-2 flex-wrap">
+          {selectedIds.size > 0 && (
+            <Button variant="destructive" onClick={() => setDeletePwdOpen(true)}>
+              <Trash2 className="h-4 w-4 mr-2" />Delete Selected ({selectedIds.size})
+            </Button>
+          )}
+          <Button variant="destructive" variant="outline" onClick={() => setDeleteAllPwdOpen(true)}>
+            <Trash2 className="h-4 w-4 mr-2" />Delete All
+          </Button>
           <Button variant="outline" onClick={() => setExportPwdOpen(true)}>
             <Download className="h-4 w-4 mr-2" />Export
           </Button>
