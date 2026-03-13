@@ -102,7 +102,7 @@ const ReportTrendCharts = ({ trends }: ReportTrendChartsProps) => {
                     : pointHigh != null ? `≤ ${pointHigh}`
                     : "—";
                   return (
-                    <div key={idx} className="trend-chart-detail-item flex flex-col items-center text-center min-w-[70px]">
+                    <div key={idx} className="trend-chart-detail-item flex flex-col items-center text-center min-w-0 flex-1">
                       <span className="text-[11px] leading-tight text-gray-500">{point.date}</span>
                       <span className={`text-xs leading-tight font-semibold flex items-center gap-0.5 ${normal ? "text-green-600" : "text-red-600"}`}>
                         {point.value}
