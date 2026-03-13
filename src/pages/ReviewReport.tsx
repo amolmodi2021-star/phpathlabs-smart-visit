@@ -229,7 +229,10 @@ const ReviewReport = () => {
     const { masterMap, profileGroups, paramIdToNameKey, masterIds } = await buildMasterMaps();
     setMasterParams(masterMap);
     setMasterParamIds(masterIds);
-    setTestResults((prev) => normalizeTestResultFlags(enrichResults(prev, masterMap, profileGroups, paramIdToNameKey)));
+    setTestResults((prev) => {
+      const enriched = enrichResults(dedupeTestResults(prev), masterMap, profileGroups, paramIdToNameKey);
+      return dedupeTestResults(normalizeTestResultFlags(enriched));
+    });
   };
 
   const loadData = async () => {
@@ -262,16 +265,8 @@ const ReviewReport = () => {
       setLocationField((extracted as any).location || "");
       const rawResults = (extracted.test_results as unknown as TestResult[]) || [];
 
-      // Deduplicate by parameter_name + test_name + profile_name, keeping latest entry
-      const deduped = new Map<string, TestResult>();
-      for (const row of rawResults) {
-        const key = `${(row.parameter_name || "").toLowerCase().trim()}::${(row.test_name || "").toLowerCase().trim()}::${(row.profile_name || "").toLowerCase().trim()}`;
-        deduped.set(key, row); // last one wins
-      }
-      const dedupedResults = Array.from(deduped.values());
-
-      const enrichedResults = enrichResults(dedupedResults, masterMap, profileGroups, paramIdToNameKey);
-      const normalized = normalizeTestResultFlags(enrichedResults);
+      const enrichedResults = enrichResults(dedupeTestResults(rawResults), masterMap, profileGroups, paramIdToNameKey);
+      const normalized = dedupeTestResults(normalizeTestResultFlags(enrichedResults));
       setTestResults(normalized);
       // Always refresh original AI results snapshot on load/reload
       originalAiResultsRef.current = normalized.map(r => ({ ...r }));
@@ -302,6 +297,47 @@ const ReviewReport = () => {
       .toLowerCase()
       .replace(/\s+/g, " ")
       .trim();
+
+  const getResultScopeKey = (row: Partial<TestResult>) => {
+    const parameter = normalizeResultKey(row.parameter_name);
+    const testName = normalizeResultKey(row.test_name);
+    const profileName = normalizeResultKey(row.profile_name);
+    if (testName && testName !== parameter) return testName;
+    return profileName || testName || parameter;
+  };
+
+  const getDedupeKey = (row: Partial<TestResult>) => {
+    const parameter = normalizeResultKey(row.parameter_name);
+    const scope = getResultScopeKey(row);
+    return `${parameter}::${scope}`;
+  };
+
+  const getDedupePriority = (row: Partial<TestResult>) => {
+    const mergePriority = row._merge_status === "new" ? 30 : row._merge_status === "updated" ? 20 : row._merge_status === "existing" ? 10 : 0;
+    const richness =
+      (normalizeResultKey(row.profile_name) ? 4 : 0) +
+      (normalizeResultKey(row.department) ? 3 : 0) +
+      (normalizeResultKey(row.test_name) ? 2 : 0) +
+      (normalizeResultKey(row.result_value) ? 2 : 0) +
+      ((normalizeResultKey(row.normal_range_text) || normalizeResultKey(row.normal_range_low) || normalizeResultKey(row.normal_range_high)) ? 1 : 0) +
+      (row.matched_parameter_id ? 1 : 0);
+    const confidence = Number(row.confidence_score ?? 0) / 1000;
+    return mergePriority + richness + confidence;
+  };
+
+  const dedupeTestResults = (rows: TestResult[]) => {
+    const deduped = new Map<string, TestResult>();
+
+    rows.forEach((row) => {
+      const key = getDedupeKey(row);
+      const existing = deduped.get(key);
+      if (!existing || getDedupePriority(row) >= getDedupePriority(existing)) {
+        deduped.set(key, row);
+      }
+    });
+
+    return Array.from(deduped.values());
+  };
 
   const getResultKey = (row: Partial<TestResult>, index = 0) => {
     const parameter = normalizeResultKey(row.parameter_name);
@@ -480,12 +516,12 @@ const ReviewReport = () => {
           };
         });
 
-        const recalculated = normalizeTestResultFlags(corrected);
+        const recalculated = dedupeTestResults(normalizeTestResultFlags(corrected));
         setTestResults(recalculated);
         const abnormalCount = recalculated.filter((r) => r.flag === "H" || r.flag === "L").length;
         toast({ title: "Re-verification complete", description: `${allVerified.length} parameters rechecked from matching pages. ${abnormalCount} abnormal result(s) confirmed.` });
       } else {
-        const recalculated = normalizeTestResultFlags(testResults);
+        const recalculated = dedupeTestResults(normalizeTestResultFlags(testResults));
         setTestResults(recalculated);
         toast({ title: "Re-verification complete", description: "No corrections were needed." });
       }
@@ -553,7 +589,7 @@ const ReviewReport = () => {
     }
     setSaving(true);
     try {
-      const flaggedResults = calculateFlags(testResults);
+      const flaggedResults = dedupeTestResults(calculateFlags(testResults));
       setTestResults(flaggedResults);
 
       // Update extracted data
