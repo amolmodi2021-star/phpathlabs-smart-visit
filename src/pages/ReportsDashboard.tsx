@@ -7,7 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
-import { Upload, Eye, Search, RefreshCw, Loader2, Trash2 } from "lucide-react";
+import { Upload, Eye, Search, RefreshCw, Loader2, Trash2, Pencil } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
