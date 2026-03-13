@@ -22,6 +22,20 @@ interface SelectedParam {
   display_order: number;
 }
 
+const SortableParamItem = ({ sp, onRemove }: { sp: SelectedParam; onRemove: () => void }) => {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: sp.parameter_id });
+  const style = { transform: CSS.Transform.toString(transform), transition };
+  return (
+    <div ref={setNodeRef} style={style} className="flex items-center gap-2 p-2 bg-accent/50 rounded text-sm">
+      <button type="button" className="cursor-grab touch-none text-muted-foreground" {...attributes} {...listeners}>
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <span className="flex-1 font-medium">{sp.parameter_name}</span>
+      <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={onRemove}><Trash2 className="h-3 w-3" /></Button>
+    </div>
+  );
+};
+
 const ReportProfiles = () => {
   const [profiles, setProfiles] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
