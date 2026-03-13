@@ -25,6 +25,8 @@ const buildPageTextContext = (pageTexts: string[] = [], pageNumbers: number[] = 
     .join("\n\n");
 };
 
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -37,6 +39,38 @@ serve(async (req) => {
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
+
+    // Fetch recent corrections for feedback loop
+    let correctionsBlock = "";
+    try {
+      const supabase = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      );
+      const { data: corrections } = await supabase
+        .from("extraction_corrections")
+        .select("parameter_name, field_corrected, original_value, corrected_value")
+        .order("created_at", { ascending: false })
+        .limit(100);
+
+      if (corrections && corrections.length > 0) {
+        // Deduplicate: keep latest per parameter_name + field_corrected
+        const seen = new Set<string>();
+        const unique: typeof corrections = [];
+        for (const c of corrections) {
+          const key = `${c.parameter_name}|${c.field_corrected}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            unique.push(c);
+          }
+        }
+        correctionsBlock = unique.slice(0, 50).map(
+          (c: any) => `- Parameter "${c.parameter_name}": ${c.field_corrected} should be "${c.corrected_value}" not "${c.original_value}"`
+        ).join("\n");
+      }
+    } catch (e) {
+      console.error("Failed to fetch corrections (non-fatal):", e);
+    }
 
     const paramList = (testParameters || [])
       .map(
@@ -107,6 +141,9 @@ ABNORMAL FLAG RULE:
 
 KNOWN PARAMETERS:
 ${paramList || "No parameters configured yet"}
+
+${correctionsBlock ? `LEARNED CORRECTIONS (from past user fixes — apply these patterns to avoid repeating mistakes):
+${correctionsBlock}` : ""}
 
 MATCHING:
 - Fuzzy match abbreviations (CBC, LFT, KFT, TFT).

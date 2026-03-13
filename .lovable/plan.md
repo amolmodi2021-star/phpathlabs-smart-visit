@@ -1,45 +1,65 @@
 
 
-## Plan: Corrections Feedback Loop
+## Live Sync / Auto-Refresh for All Tabs
 
-### Concept
-When a user edits extracted data in the Review screen and saves, compare the AI-extracted values against the user-corrected values. Store the differences in a new `extraction_corrections` table. Then, when the extract-report edge function runs, fetch recent corrections and inject them as few-shot examples into the system prompt so the AI learns from past mistakes.
+### What This Does
+When data changes on one device (e.g., a new home visit is added, a test is updated, an estimate is created), all other devices viewing the app will automatically refresh and show the updated data -- no manual refresh needed.
 
-### Database Change
-New table `extraction_corrections`:
+### Implementation Steps
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| parameter_name | text | The parameter that was corrected |
-| field_corrected | text | Which field: result_value, normal_range_low, normal_range_high, normal_range_text, unit, flag |
-| original_value | text | What AI extracted |
-| corrected_value | text | What user changed it to |
-| created_at | timestamptz | Auto |
+**Step 1: Database Migration -- Enable Realtime**
 
-RLS: permissive (matches existing pattern).
+Add all 7 core tables to the realtime publication so the database broadcasts changes:
+- `home_visits`
+- `estimates`
+- `estimate_tests`
+- `tests`
+- `phlebotomists`
+- `message_templates`
+- `abnormal_history`
 
-### Code Changes
+**Step 2: Create a Reusable Realtime Hook**
 
-**1. `src/pages/ReviewReport.tsx` — Log corrections on save**
+Create a new hook `src/hooks/useRealtimeSync.ts` that:
+- Subscribes to Postgres changes on a given table
+- On any INSERT, UPDATE, or DELETE event, automatically invalidates the matching React Query cache keys
+- Cleans up the subscription when the component unmounts
 
-In `handleSaveAndGenerate`, before saving, compare `testResults` (user-edited) against the originally loaded `extractedData.test_results` (AI-extracted). For each parameter where `result_value`, `unit`, `normal_range_low`, `normal_range_high`, `normal_range_text`, or `flag` differs, insert a row into `extraction_corrections`. Store the original AI results in a `useRef` at load time so edits don't overwrite them.
+**Step 3: Wire Up Each Page**
 
-**2. `supabase/functions/extract-report/index.ts` — Inject corrections into prompt**
+Add the realtime hook to each page/component so queries auto-refresh:
 
-Before calling the AI gateway, query `extraction_corrections` for the most recent ~50 corrections (deduplicated by parameter_name + field_corrected, keeping latest). Append them to the system prompt as a "LEARNED CORRECTIONS" section:
+| Page | Table(s) Listened | Query Keys Invalidated |
+|------|-------------------|----------------------|
+| HomeVisits | `home_visits` | `home_visits` |
+| CreateEstimate | `tests` | `tests` |
+| EstimateDashboard | `estimates`, `estimate_tests` | `estimates` |
+| TestManagement | `tests` | `tests` |
+| PhlebotomistManagement | `phlebotomists` | `phlebotomists` |
+| MessageTemplates | `message_templates` | `message_templates` |
+| AbnormalHistory | `abnormal_history` | `abnormal_history`, `abnormal_history_counts` |
+
+### Technical Details
+
+The reusable hook will look like:
 
 ```text
-LEARNED CORRECTIONS (from past user fixes — apply these patterns):
-- Parameter "Abs Monocytes": normal_range_low should be "200" not "2000"
-- Parameter "HDL Cholesterol": normal_range_text should include full advisory range
-...
+useRealtimeSync(tableName, queryKeysToInvalidate[])
 ```
 
-This gives the AI concrete examples of its past mistakes without any model retraining.
+It subscribes to `postgres_changes` on the specified table and calls `queryClient.invalidateQueries()` for each key whenever a change is detected. This triggers a fresh fetch from the database automatically.
 
-### Files Modified
-1. **Database migration** — create `extraction_corrections` table
-2. **`src/pages/ReviewReport.tsx`** — store original results in ref, diff on save, insert corrections
-3. **`supabase/functions/extract-report/index.ts`** — fetch corrections from DB, append to system prompt
+### Files to Create/Modify
+
+1. **New migration** -- SQL to add tables to `supabase_realtime` publication
+2. **New file**: `src/hooks/useRealtimeSync.ts` -- reusable realtime subscription hook
+3. **Modified**: `src/pages/HomeVisits.tsx` -- add `useRealtimeSync("home_visits", ...)`
+4. **Modified**: `src/pages/CreateEstimate.tsx` -- add `useRealtimeSync("tests", ...)`
+5. **Modified**: `src/pages/EstimateDashboard.tsx` -- add `useRealtimeSync("estimates", ...)` and `useRealtimeSync("estimate_tests", ...)`
+6. **Modified**: `src/pages/TestManagement.tsx` -- add `useRealtimeSync("tests", ...)`
+7. **Modified**: `src/pages/PhlebotomistManagement.tsx` -- add `useRealtimeSync("phlebotomists", ...)`
+8. **Modified**: `src/pages/MessageTemplates.tsx` -- add `useRealtimeSync("message_templates", ...)`
+9. **Modified**: `src/pages/AbnormalHistory.tsx` -- add `useRealtimeSync("abnormal_history", ...)`
+
+This is included in your Lovable Cloud usage and should be well within the free tier for a small team.
 

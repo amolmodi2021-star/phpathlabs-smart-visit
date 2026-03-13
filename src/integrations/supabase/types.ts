@@ -253,6 +253,33 @@ export type Database = {
           },
         ]
       }
+      extraction_corrections: {
+        Row: {
+          corrected_value: string | null
+          created_at: string
+          field_corrected: string
+          id: string
+          original_value: string | null
+          parameter_name: string
+        }
+        Insert: {
+          corrected_value?: string | null
+          created_at?: string
+          field_corrected: string
+          id?: string
+          original_value?: string | null
+          parameter_name: string
+        }
+        Update: {
+          corrected_value?: string | null
+          created_at?: string
+          field_corrected?: string
+          id?: string
+          original_value?: string | null
+          parameter_name?: string
+        }
+        Relationships: []
+      }
       generated_reports: {
         Row: {
           created_at: string | null

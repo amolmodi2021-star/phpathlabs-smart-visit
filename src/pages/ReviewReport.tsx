@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -75,6 +75,7 @@ const ReviewReport = () => {
   const [remarkIndex, setRemarkIndex] = useState<number | null>(null);
   const [remarkText, setRemarkText] = useState("");
   const [paramSearch, setParamSearch] = useState("");
+  const originalAiResultsRef = useRef<TestResult[] | null>(null);
 
   useEffect(() => {
     loadData();
@@ -262,7 +263,12 @@ const ReviewReport = () => {
       const rawResults = (extracted.test_results as unknown as TestResult[]) || [];
 
       const enrichedResults = enrichResults(rawResults, masterMap, profileGroups, paramIdToNameKey);
-      setTestResults(normalizeTestResultFlags(enrichedResults));
+      const normalized = normalizeTestResultFlags(enrichedResults);
+      setTestResults(normalized);
+      // Store original AI results for corrections feedback loop
+      if (!originalAiResultsRef.current) {
+        originalAiResultsRef.current = normalized.map(r => ({ ...r }));
+      }
       if (!extracted.umr_id) setShowUmrDialog(true);
     }
     setPathologists(sigs || []);
@@ -497,6 +503,38 @@ const ReviewReport = () => {
   // Get unique approving doctors from test results
   const uniqueApprovers = [...new Set(testResults.map(r => r.approved_by).filter(Boolean))];
 
+  const TRACKED_FIELDS: (keyof TestResult)[] = ["result_value", "unit", "normal_range_low", "normal_range_high", "normal_range_text", "flag"];
+
+  const logCorrections = async (finalResults: TestResult[]) => {
+    const originals = originalAiResultsRef.current;
+    if (!originals || originals.length === 0) return;
+
+    const corrections: Array<{ parameter_name: string; field_corrected: string; original_value: string; corrected_value: string }> = [];
+
+    for (const curr of finalResults) {
+      const orig = originals.find(o => o.parameter_name === curr.parameter_name);
+      if (!orig) continue;
+
+      for (const field of TRACKED_FIELDS) {
+        const origVal = String(orig[field] ?? "");
+        const currVal = String(curr[field] ?? "");
+        if (origVal !== currVal && currVal !== "") {
+          corrections.push({
+            parameter_name: curr.parameter_name,
+            field_corrected: field,
+            original_value: origVal,
+            corrected_value: currVal,
+          });
+        }
+      }
+    }
+
+    if (corrections.length > 0) {
+      await supabase.from("extraction_corrections" as any).insert(corrections);
+      console.log(`Logged ${corrections.length} extraction corrections for feedback loop.`);
+    }
+  };
+
   const handleSaveAndGenerate = async () => {
     if (!umrId) {
       setShowUmrDialog(true);
@@ -577,6 +615,9 @@ const ReviewReport = () => {
         reg_no: regNo,
         reg_date: regDate,
       } as any).eq("id", reportId);
+
+      // Log corrections feedback loop
+      await logCorrections(flaggedResults);
 
       toast({ title: "Report verified and saved!" });
       navigate(`/reports/view/${reportId}`);
