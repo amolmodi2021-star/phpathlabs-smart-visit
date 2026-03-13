@@ -237,17 +237,9 @@ const ViewReport = () => {
     const { data: ext } = await supabase.from("extracted_report_data").select("*").eq("report_id", reportId).single();
     if (!ext) { setLoading(false); return; }
 
-    // Deduplicate first (parameter + test_name, latest wins), then enrich
+    // First pass dedupe, then backfill test_name from master data, then dedupe again
     const rawResults = (ext.test_results as unknown as TestResult[]) || [];
-    const results = dedupeResultsLatest(rawResults);
-
-    if (rawResults.length !== results.length) {
-      await supabase
-        .from("extracted_report_data")
-        .update({ test_results: results as unknown as any })
-        .eq("report_id", reportId);
-      ext.test_results = results as any;
-    }
+    let results = dedupeResultsLatest(rawResults);
 
     const paramNames = results.map((r) => r.parameter_name);
     const { data: masterParams } = await supabase
@@ -256,8 +248,8 @@ const ViewReport = () => {
       .in("parameter_name", paramNames);
 
     // Also fetch with case-insensitive fallback for mismatched casing (e.g. pH vs PH)
-    const unmatchedNames = paramNames.filter(pn => 
-      !masterParams?.some(mp => mp.parameter_name === pn)
+    const unmatchedNames = paramNames.filter((pn) =>
+      !masterParams?.some((mp) => mp.parameter_name === pn)
     );
     let allMasterParams = masterParams || [];
     if (unmatchedNames.length > 0) {
@@ -266,10 +258,10 @@ const ViewReport = () => {
         .select("parameter_name, test_name, report_profiles(profile_name)");
       if (fallbackParams) {
         const lowerMap = new Map<string, typeof fallbackParams[0]>();
-        fallbackParams.forEach(fp => {
+        fallbackParams.forEach((fp) => {
           lowerMap.set(fp.parameter_name.toLowerCase(), fp);
         });
-        unmatchedNames.forEach(name => {
+        unmatchedNames.forEach((name) => {
           const match = lowerMap.get(name.toLowerCase());
           if (match) allMasterParams.push({ ...match, parameter_name: name });
         });
@@ -289,18 +281,36 @@ const ViewReport = () => {
           }
         }
       });
-      results.forEach((r) => {
+
+      results = results.map((r) => {
         // Prefer profile-specific match to avoid cross-profile contamination
         const paramLower = r.parameter_name.toLowerCase();
         const profileKey = r.profile_name ? `${r.profile_name.toLowerCase()}::${paramLower}` : null;
+
         if (profileKey && profileSpecificMap[profileKey]) {
-          r.test_name = profileSpecificMap[profileKey];
-        } else if (genericMap[paramLower]) {
-          r.test_name = genericMap[paramLower];
+          return { ...r, test_name: profileSpecificMap[profileKey] };
         }
+
+        if (genericMap[paramLower]) {
+          return { ...r, test_name: genericMap[paramLower] };
+        }
+
+        return r;
       });
-      ext.test_results = results as any;
     }
+
+    // Critical: run dedupe again after test_name backfill so old blank-test duplicates are removed
+    results = dedupeResultsLatest(results);
+
+    const shouldPersistNormalizedResults = JSON.stringify(rawResults) !== JSON.stringify(results);
+    if (shouldPersistNormalizedResults) {
+      await supabase
+        .from("extracted_report_data")
+        .update({ test_results: results as unknown as any })
+        .eq("report_id", reportId);
+    }
+
+    ext.test_results = results as any;
 
     // Fetch profile master data for metadata (sample_type, outsourced, interpretation)
     const profileNames = [...new Set(results.map(r => r.profile_name).filter(Boolean))] as string[];
