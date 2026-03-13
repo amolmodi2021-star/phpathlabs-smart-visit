@@ -142,6 +142,9 @@ ABNORMAL FLAG RULE:
 KNOWN PARAMETERS:
 ${paramList || "No parameters configured yet"}
 
+${correctionsBlock ? `LEARNED CORRECTIONS (from past user fixes — apply these patterns to avoid repeating mistakes):
+${correctionsBlock}` : ""}
+
 MATCHING:
 - Fuzzy match abbreviations (CBC, LFT, KFT, TFT).
 - Prefer closest known parameter name and return matched_parameter_id if known.`;
