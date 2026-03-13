@@ -485,7 +485,8 @@ const ViewReport = () => {
   const topMarginMm = layoutSettings.top_margin_cm * 10;
   const bottomMarginMm = layoutSettings.bottom_margin_cm * 10;
   const PAGE_HEIGHT_MM = 297;
-  const usableHeight = PAGE_HEIGHT_MM - topMarginMm - bottomMarginMm - HEADER_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM;
+  const SAFETY_BUFFER_MM = 4; // extra buffer to prevent overlap
+  const usableHeight = PAGE_HEIGHT_MM - topMarginMm - bottomMarginMm - HEADER_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM - SAFETY_BUFFER_MM;
 
   // Count unique test_names in params for height estimation
   const countTestNameHeaders = (params: TestResult[]): number => {
