@@ -2,7 +2,9 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Loader2, Printer, ArrowLeft } from "lucide-react";
+import { Loader2, Printer, ArrowLeft, Download } from "lucide-react";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import * as pdfjsLib from "pdfjs-dist";
@@ -100,6 +102,7 @@ const ViewReport = () => {
   const navigate = useNavigate();
   const printRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState(false);
   const [extracted, setExtracted] = useState<any>(null);
   const [pathologistMap, setPathologistMap] = useState<Record<string, any>>({});
   const [deptOrderMap, setDeptOrderMap] = useState<Record<string, number>>({});
@@ -259,6 +262,41 @@ const ViewReport = () => {
   };
 
   const handlePrint = () => window.print();
+
+  const handleDownloadPdf = async () => {
+    if (!printRef.current || !extracted) return;
+    setDownloading(true);
+    try {
+      const pages = printRef.current.querySelectorAll('.report-page');
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pdfWidth = 210;
+      const pdfHeight = 297;
+
+      for (let i = 0; i < pages.length; i++) {
+        const page = pages[i] as HTMLElement;
+        const canvas = await html2canvas(page, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#ffffff',
+          width: page.scrollWidth,
+          height: page.scrollHeight,
+        });
+        const imgData = canvas.toDataURL('image/png');
+        if (i > 0) pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      }
+
+      const patientName = (extracted.patient_name || 'Report').replace(/[^a-zA-Z0-9\s]/g, '').trim();
+      const regDate = extracted.reg_date || extracted.report_date || new Date().toISOString().split('T')[0];
+      const fileName = `${patientName}_${regDate}.pdf`;
+      pdf.save(fileName);
+    } catch (err) {
+      console.error('PDF download failed:', err);
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   if (loading) return <div className="flex items-center justify-center p-12"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   if (!extracted) return <div className="p-8 text-center">Report not found.</div>;
@@ -464,6 +502,10 @@ const ViewReport = () => {
       <div className="flex items-center gap-4 print:hidden flex-wrap">
         <Button variant="outline" size="sm" onClick={() => navigate("/reports")}><ArrowLeft className="h-4 w-4 mr-1" />Back</Button>
         <Button size="sm" onClick={handlePrint}><Printer className="h-4 w-4 mr-1" />Print</Button>
+        <Button size="sm" variant="outline" onClick={handleDownloadPdf} disabled={downloading}>
+          {downloading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}
+          {downloading ? "Downloading..." : "Download PDF"}
+        </Button>
         <div className="flex items-center gap-2">
           <Switch id="show-header" checked={showHeader} onCheckedChange={setShowHeader} />
           <Label htmlFor="show-header" className="text-sm cursor-pointer">
