@@ -41,10 +41,10 @@ const ReportAbnormalSummary = ({ abnormalResults, isContinuation = false }: Repo
         <tbody>
           {abnormalResults.map((r, i) => (
             <tr key={i} className="text-red-800 font-semibold">
-              <td className="py-0.5 truncate">{r.parameter_name}</td>
+              <td className="py-0.5 break-words">{r.parameter_name}</td>
               <td className="py-0.5">{r.result_value}</td>
               <td className="py-0.5">{r.unit}</td>
-              <td className="py-0.5">{r.normal_range_text || `${r.normal_range_low || ""}-${r.normal_range_high || ""}`}</td>
+              <td className="py-0.5 break-words">{r.normal_range_text || `${r.normal_range_low || ""}-${r.normal_range_high || ""}`}</td>
               <td className="py-0.5"><span className="bg-red-600 text-white px-1.5 py-0.5 rounded text-xs">{r.flag}</span></td>
             </tr>
           ))}
