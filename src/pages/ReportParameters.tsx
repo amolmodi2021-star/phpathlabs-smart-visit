@@ -354,6 +354,19 @@ const ReportParameters = () => {
           <DialogFooter><Button onClick={handleSave}>Save</Button></DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <DeletePasswordDialog
+        open={deletePwdOpen}
+        onOpenChange={setDeletePwdOpen}
+        onSuccess={handleDeleteSelected}
+        description={`Delete ${selectedIds.size} selected parameter(s)?`}
+      />
+      <DeletePasswordDialog
+        open={deleteAllPwdOpen}
+        onOpenChange={setDeleteAllPwdOpen}
+        onSuccess={handleDeleteAll}
+        description={`Delete ALL ${params.length} parameters? This cannot be undone.`}
+      />
     </div>
   );
 };
