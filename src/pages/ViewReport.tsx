@@ -32,6 +32,21 @@ interface TestResult {
   normal_range_text?: string;
   flag?: string;
   approved_by?: string;
+  sample_type?: string;
+  analyzer?: string;
+  method?: string;
+  is_outsourced?: boolean;
+  outsourced_caption?: string;
+  interpretation?: string;
+}
+
+interface ProfileMeta {
+  sample_type?: string;
+  analyzer?: string;
+  method?: string;
+  is_outsourced?: boolean;
+  outsourced_caption?: string;
+  interpretation?: string;
 }
 
 interface TrendData {
