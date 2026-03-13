@@ -49,6 +49,12 @@ const isTestGroupedProfile = (profName: string): boolean => {
   return TEST_GROUPED_PROFILES.some(cp => lower.includes(cp));
 };
 
+const isMorphologySection = (testName: string | null | undefined): boolean => {
+  if (!testName) return false;
+  const lower = testName.toLowerCase();
+  return MORPHOLOGY_TESTS.some(m => lower.includes(m));
+};
+
 const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHeader }: ReportResultsSectionProps) => {
   return (
     <>
