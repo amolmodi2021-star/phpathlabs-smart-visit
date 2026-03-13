@@ -262,13 +262,19 @@ const ReviewReport = () => {
       setLocationField((extracted as any).location || "");
       const rawResults = (extracted.test_results as unknown as TestResult[]) || [];
 
-      const enrichedResults = enrichResults(rawResults, masterMap, profileGroups, paramIdToNameKey);
+      // Deduplicate by parameter_name + test_name + profile_name, keeping latest entry
+      const deduped = new Map<string, TestResult>();
+      for (const row of rawResults) {
+        const key = `${(row.parameter_name || "").toLowerCase().trim()}::${(row.test_name || "").toLowerCase().trim()}::${(row.profile_name || "").toLowerCase().trim()}`;
+        deduped.set(key, row); // last one wins
+      }
+      const dedupedResults = Array.from(deduped.values());
+
+      const enrichedResults = enrichResults(dedupedResults, masterMap, profileGroups, paramIdToNameKey);
       const normalized = normalizeTestResultFlags(enrichedResults);
       setTestResults(normalized);
-      // Store original AI results for corrections feedback loop
-      if (!originalAiResultsRef.current) {
-        originalAiResultsRef.current = normalized.map(r => ({ ...r }));
-      }
+      // Always refresh original AI results snapshot on load/reload
+      originalAiResultsRef.current = normalized.map(r => ({ ...r }));
       if (!extracted.umr_id) setShowUmrDialog(true);
     }
     setPathologists(sigs || []);
