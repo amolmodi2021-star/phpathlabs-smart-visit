@@ -632,6 +632,36 @@ const ViewReport = () => {
           }
           ` : ''}
         }
+
+        .pdf-export-mode .report-page {
+          height: 296mm !important;
+          max-height: 296mm !important;
+          margin: 0 auto !important;
+          border: 0 !important;
+        }
+        .pdf-export-mode .recharts-tooltip-wrapper {
+          display: none !important;
+          visibility: hidden !important;
+        }
+        .pdf-export-mode .flag-badge {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 14px;
+          height: 14px;
+          padding: 0 3px !important;
+          line-height: 1 !important;
+          font-size: 10px !important;
+          font-weight: 700;
+        }
+        ${showHeader && letterheadImageUrl ? `
+        .pdf-export-mode .report-page {
+          background-image: url("${letterheadImageUrl}");
+          background-size: 210mm 296mm;
+          background-repeat: no-repeat;
+          background-position: top center;
+        }
+        ` : ''}
         /* Screen preview */
         .report-page {
           min-height: 297mm;
