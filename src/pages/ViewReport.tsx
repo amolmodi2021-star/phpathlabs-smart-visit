@@ -745,9 +745,10 @@ const ViewReport = () => {
     });
   });
 
-  // Add trends page
+  // Add trends pages (6 charts per page)
   const hasTrends = trends.length > 0;
-  const totalPages = allPages.length + (hasTrends ? 1 : 0);
+  const trendPageCount = hasTrends ? Math.ceil(trends.length / 6) : 0;
+  const totalPages = allPages.length + trendPageCount;
 
   const renderPageSections = (sections: PageSection[]) => {
     const seenDepts = new Set<string>();
