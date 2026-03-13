@@ -74,6 +74,7 @@ interface PageSection {
   abnormals?: TestResult[];
   estimatedHeightMm: number;
   isAbnormalOnly?: boolean;
+  isContinuation?: boolean;
 }
 
 const HEADER_HEIGHT_MM = 32;
