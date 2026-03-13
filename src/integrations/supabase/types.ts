@@ -915,6 +915,7 @@ export type Database = {
           file_name: string | null
           file_path: string
           id: string
+          mobile_number: string | null
           patient_name: string | null
           reg_date: string | null
           reg_no: string | null
@@ -928,6 +929,7 @@ export type Database = {
           file_name?: string | null
           file_path: string
           id?: string
+          mobile_number?: string | null
           patient_name?: string | null
           reg_date?: string | null
           reg_no?: string | null
@@ -941,6 +943,7 @@ export type Database = {
           file_name?: string | null
           file_path?: string
           id?: string
+          mobile_number?: string | null
           patient_name?: string | null
           reg_date?: string | null
           reg_no?: string | null

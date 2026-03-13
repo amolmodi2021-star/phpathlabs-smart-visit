@@ -1,0 +1,1 @@
+ALTER TABLE public.uploaded_reports ADD COLUMN IF NOT EXISTS mobile_number text;
