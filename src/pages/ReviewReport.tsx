@@ -298,6 +298,47 @@ const ReviewReport = () => {
       .replace(/\s+/g, " ")
       .trim();
 
+  const getResultScopeKey = (row: Partial<TestResult>) => {
+    const parameter = normalizeResultKey(row.parameter_name);
+    const testName = normalizeResultKey(row.test_name);
+    const profileName = normalizeResultKey(row.profile_name);
+    if (testName && testName !== parameter) return testName;
+    return profileName || testName || parameter;
+  };
+
+  const getDedupeKey = (row: Partial<TestResult>) => {
+    const parameter = normalizeResultKey(row.parameter_name);
+    const scope = getResultScopeKey(row);
+    return `${parameter}::${scope}`;
+  };
+
+  const getDedupePriority = (row: Partial<TestResult>) => {
+    const mergePriority = row._merge_status === "new" ? 30 : row._merge_status === "updated" ? 20 : row._merge_status === "existing" ? 10 : 0;
+    const richness =
+      (normalizeResultKey(row.profile_name) ? 4 : 0) +
+      (normalizeResultKey(row.department) ? 3 : 0) +
+      (normalizeResultKey(row.test_name) ? 2 : 0) +
+      (normalizeResultKey(row.result_value) ? 2 : 0) +
+      ((normalizeResultKey(row.normal_range_text) || normalizeResultKey(row.normal_range_low) || normalizeResultKey(row.normal_range_high)) ? 1 : 0) +
+      (row.matched_parameter_id ? 1 : 0);
+    const confidence = Number(row.confidence_score ?? 0) / 1000;
+    return mergePriority + richness + confidence;
+  };
+
+  const dedupeTestResults = (rows: TestResult[]) => {
+    const deduped = new Map<string, TestResult>();
+
+    rows.forEach((row) => {
+      const key = getDedupeKey(row);
+      const existing = deduped.get(key);
+      if (!existing || getDedupePriority(row) >= getDedupePriority(existing)) {
+        deduped.set(key, row);
+      }
+    });
+
+    return Array.from(deduped.values());
+  };
+
   const getResultKey = (row: Partial<TestResult>, index = 0) => {
     const parameter = normalizeResultKey(row.parameter_name);
     const testName = normalizeResultKey(row.test_name || row.parameter_name);
