@@ -695,8 +695,14 @@ const ReviewReport = () => {
               <TableBody>
                 {testResults.map((r, i) => {
                   if (paramSearch && !(`${r.parameter_name} ${r.department || ""} ${r.profile_name || ""}`).toLowerCase().includes(paramSearch.toLowerCase())) return null;
+                  const mergeClass = r._merge_status === "new"
+                    ? "bg-emerald-50 border-l-2 border-l-emerald-500"
+                    : r._merge_status === "updated"
+                    ? "bg-amber-50 border-l-2 border-l-amber-500"
+                    : "";
+                  const abnormalClass = r.flag === "H" || r.flag === "L" ? "bg-destructive/5" : "";
                   return (
-                  <TableRow key={i} className={r.flag === "H" || r.flag === "L" ? "bg-destructive/5" : ""}>
+                  <TableRow key={i} className={`${mergeClass || abnormalClass}`}>
                     <TableCell>
                       <Input value={r.department || ""} readOnly className="h-8 text-xs bg-muted/50" />
                     </TableCell>
