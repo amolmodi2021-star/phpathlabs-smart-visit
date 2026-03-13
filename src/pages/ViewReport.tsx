@@ -416,17 +416,9 @@ const ViewReport = () => {
     setPathologistMap(sigMap);
 
     if (ext.umr_id) {
-      // Fetch all analytics-marked parameter names
-      const { data: analyticsParams } = await supabase
-        .from("report_test_parameters")
-        .select("parameter_name")
-        .eq("store_for_analytics", true);
-      const analyticsParamNames = analyticsParams?.map((p: any) => p.parameter_name) || [];
-      
-      // Also include current report params as fallback
+      // Only include parameters that exist in the current report
       const currentResults = (ext.test_results as unknown as TestResult[]) || [];
-      const currentParamNames = currentResults.map((r) => r.parameter_name);
-      const allParamNames = [...new Set([...analyticsParamNames, ...currentParamNames])];
+      const allParamNames = [...new Set(currentResults.map((r) => r.parameter_name))];
       
       if (allParamNames.length === 0) { setLoading(false); return; }
       
@@ -753,9 +745,10 @@ const ViewReport = () => {
     });
   });
 
-  // Add trends page
+  // Add trends pages (6 charts per page)
   const hasTrends = trends.length > 0;
-  const totalPages = allPages.length + (hasTrends ? 1 : 0);
+  const trendPageCount = hasTrends ? Math.ceil(trends.length / 6) : 0;
+  const totalPages = allPages.length + trendPageCount;
 
   const renderPageSections = (sections: PageSection[]) => {
     const seenDepts = new Set<string>();
@@ -848,17 +841,26 @@ const ViewReport = () => {
           );
         })}
 
-        {hasTrends && (
-          <div className="report-page" style={{ paddingTop: `${topMarginMm}mm`, paddingBottom: `${bottomMarginMm}mm` }}>
-            <ReportHeader extracted={extracted} />
-            <div style={{ paddingLeft: '12mm', paddingRight: '12mm' }}>
-              <ReportTrendCharts trends={trends} />
+        {hasTrends && (() => {
+          // Split trends into pages of 6 charts each (3 rows x 2 cols)
+          const chartsPerPage = 6;
+          const trendPages: TrendData[][] = [];
+          for (let i = 0; i < trends.length; i += chartsPerPage) {
+            trendPages.push(trends.slice(i, i + chartsPerPage));
+          }
+          const basePageNum = allPages.length;
+          return trendPages.map((pageTrends, tpIdx) => (
+            <div key={`trend-page-${tpIdx}`} className="report-page" style={{ paddingTop: `${topMarginMm}mm`, paddingBottom: `${bottomMarginMm}mm` }}>
+              <ReportHeader extracted={extracted} />
+              <div style={{ paddingLeft: '12mm', paddingRight: '12mm' }}>
+                <ReportTrendCharts trends={pageTrends} />
+              </div>
+              <div className="page-number-footer" style={{ position: 'absolute', bottom: `${bottomMarginMm + 2}mm`, left: 0, right: 0, textAlign: 'center', fontSize: '9px', color: '#666' }}>
+                Page {basePageNum + tpIdx + 1} of {totalPages}
+              </div>
             </div>
-            <div className="page-number-footer" style={{ position: 'absolute', bottom: `${bottomMarginMm + 2}mm`, left: 0, right: 0, textAlign: 'center', fontSize: '9px', color: '#666' }}>
-              Page {totalPages} of {totalPages}
-            </div>
-          </div>
-        )}
+          ));
+        })()}
       </div>
 
       <style>{`
