@@ -69,7 +69,7 @@ const ReportTrendCharts = ({ trends }: ReportTrendChartsProps) => {
                      tickFormatter={(val: number) => Number(val.toFixed(2)).toString()}
                      padding={{ top: 10, bottom: 10 }}
                    />
-                  <Tooltip active={false} />
+                  <Tooltip />
                   <Line
                     type="monotone"
                     dataKey="value"
