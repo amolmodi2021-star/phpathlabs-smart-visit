@@ -145,32 +145,34 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                             const isAbnormal = r.flag === "H" || r.flag === "L";
                             const isMorphRow = isMorphologySection(group.testName);
                             return (
-                              <tr key={`${gIdx}-${i}`} className={`border-b border-gray-100 ${isAbnormal ? "bg-red-50" : ""}`} style={useCompact ? { lineHeight: '1.2' } : undefined}>
-                                <td className={`px-3 ${useCompact ? 'py-[2px]' : 'py-1'}`}>{r.parameter_name}</td>
-                                <td className={`text-right ${useCompact ? 'py-[2px]' : 'py-1'}`}>
-                                  {isAbnormal && <span className="flag-badge inline-flex items-center justify-center min-w-[14px] h-[14px] rounded bg-red-600 text-white text-[10px] leading-none font-bold">{r.flag}</span>}
-                                </td>
-                                {isMorphRow ? (
-                                  <td colSpan={3} className={`text-left px-2 text-gray-800 ${useCompact ? 'py-[2px]' : 'py-1'}`} style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>
-                                    {r.result_value}
+                              <>
+                                <tr key={`${gIdx}-${i}`} className={`border-b border-gray-100 ${isAbnormal ? "bg-red-50" : ""}`} style={useCompact ? { lineHeight: '1.2' } : undefined}>
+                                  <td className={`px-3 ${useCompact ? 'py-[2px]' : 'py-1'}`}>{r.parameter_name}</td>
+                                  <td className={`text-right ${useCompact ? 'py-[2px]' : 'py-1'}`}>
+                                    {isAbnormal && <span className="flag-badge inline-flex items-center justify-center min-w-[14px] h-[14px] rounded bg-red-600 text-white text-[10px] leading-none font-bold">{r.flag}</span>}
                                   </td>
-                                ) : (
-                                  <>
-                                    <td className={`text-center font-semibold ${useCompact ? 'py-[2px]' : 'py-1'} ${isAbnormal ? "text-red-600 font-bold" : ""}`}>
+                                  {isMorphRow ? (
+                                    <td colSpan={3} className={`text-left px-2 text-gray-800 ${useCompact ? 'py-[2px]' : 'py-1'}`} style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>
                                       {r.result_value}
                                     </td>
-                                    <td className={`text-center text-gray-600 ${useCompact ? 'py-[2px]' : 'py-1'}`}>{r.unit}</td>
-                                    <td className={`text-center text-gray-600 ${useCompact ? 'py-[2px]' : 'py-1'}`}>{r.normal_range_text || `${r.normal_range_low || ""} - ${r.normal_range_high || ""}`}</td>
-                                  </>
-                                )}
-                              </tr>
-                              {r.remark && (
-                                <tr key={`${gIdx}-${i}-remark`} className="border-b border-gray-100">
-                                  <td colSpan={5} className="px-3 py-0.5">
-                                    <span className="text-[10px] italic text-gray-600">* {r.remark}</span>
-                                  </td>
+                                  ) : (
+                                    <>
+                                      <td className={`text-center font-semibold ${useCompact ? 'py-[2px]' : 'py-1'} ${isAbnormal ? "text-red-600 font-bold" : ""}`}>
+                                        {r.result_value}
+                                      </td>
+                                      <td className={`text-center text-gray-600 ${useCompact ? 'py-[2px]' : 'py-1'}`}>{r.unit}</td>
+                                      <td className={`text-center text-gray-600 ${useCompact ? 'py-[2px]' : 'py-1'}`}>{r.normal_range_text || `${r.normal_range_low || ""} - ${r.normal_range_high || ""}`}</td>
+                                    </>
+                                  )}
                                 </tr>
-                              )}
+                                {r.remark && (
+                                  <tr key={`${gIdx}-${i}-remark`} className="border-b border-gray-100">
+                                    <td colSpan={5} className="px-3 py-0.5">
+                                      <span className="text-[10px] italic text-gray-600">* {r.remark}</span>
+                                    </td>
+                                  </tr>
+                                )}
+                              </>
                             );
                           })}
                         </>
