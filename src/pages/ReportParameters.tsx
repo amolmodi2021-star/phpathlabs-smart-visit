@@ -10,8 +10,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Loader2, Search } from "lucide-react";
+import { Plus, Pencil, Trash2, Loader2, Search, Download, Upload } from "lucide-react";
 import RichTextEditor from "@/components/RichTextEditor";
+import { exportToExcel, parseExcelFile } from "@/lib/excel";
+import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 
 const ReportParameters = () => {
   const [params, setParams] = useState<any[]>([]);
@@ -20,6 +22,7 @@ const ReportParameters = () => {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [exportPwdOpen, setExportPwdOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState({
     parameter_name: "", test_name: "", profile_id: "", department_id: "",
@@ -99,6 +102,65 @@ const ReportParameters = () => {
     load();
   };
 
+  const handleExport = () => {
+    const rows = params.map((p) => ({
+      "Parameter Name": p.parameter_name || "",
+      "Test Name": p.test_name || "",
+      "Department": p.report_departments?.department_name || "",
+      "Profile": p.report_profiles?.profile_name || "",
+      "Unit": p.unit || "",
+      "Sample Type": p.sample_type || "",
+      "Analyzer": p.analyzer || "",
+      "Method": p.method || "",
+      "Display Order": p.display_order ?? 0,
+      "Store for Analytics": p.store_for_analytics ? "Yes" : "No",
+      "Is Outsourced": p.is_outsourced ? "Yes" : "No",
+      "Outsourced Caption": p.outsourced_caption || "",
+      "Interpretation": p.interpretation || "",
+    }));
+    exportToExcel(rows, "test_parameters_export");
+    toast({ title: "Exported successfully" });
+  };
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const rows = await parseExcelFile(file);
+      if (!rows.length) { toast({ title: "Empty file", variant: "destructive" }); return; }
+
+      // Build lookup maps for department and profile names → ids
+      const deptMap = new Map(departments.map((d: any) => [d.department_name.toLowerCase(), d.id]));
+      const profMap = new Map(profiles.map((p: any) => [p.profile_name.toLowerCase(), p.id]));
+
+      const inserts = rows.map((r: any) => ({
+        parameter_name: r["Parameter Name"] || "",
+        test_name: r["Test Name"] || null,
+        department_id: deptMap.get((r["Department"] || "").toLowerCase()) || null,
+        profile_id: profMap.get((r["Profile"] || "").toLowerCase()) || null,
+        unit: r["Unit"] || null,
+        sample_type: r["Sample Type"] || null,
+        analyzer: r["Analyzer"] || null,
+        method: r["Method"] || null,
+        display_order: Number(r["Display Order"]) || 0,
+        store_for_analytics: (r["Store for Analytics"] || "").toString().toLowerCase() === "yes",
+        is_outsourced: (r["Is Outsourced"] || "").toString().toLowerCase() === "yes",
+        outsourced_caption: r["Outsourced Caption"] || null,
+        interpretation: r["Interpretation"] || null,
+      })).filter((r: any) => r.parameter_name);
+
+      if (!inserts.length) { toast({ title: "No valid rows found", variant: "destructive" }); return; }
+
+      const { error } = await supabase.from("report_test_parameters").insert(inserts);
+      if (error) throw error;
+      toast({ title: `${inserts.length} parameters imported` });
+      load();
+    } catch (err: any) {
+      toast({ title: "Import failed", description: err.message, variant: "destructive" });
+    }
+    e.target.value = "";
+  };
+
   const openNew = () => {
     setEditId(null);
     setForm({
@@ -111,10 +173,23 @@ const ReportParameters = () => {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-bold">Test Parameter Management</h1>
-        <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />Add Parameter</Button>
+        <div className="flex gap-2 flex-wrap">
+          <Button variant="outline" onClick={() => setExportPwdOpen(true)}>
+            <Download className="h-4 w-4 mr-2" />Export
+          </Button>
+          <Button variant="outline" asChild>
+            <label className="cursor-pointer">
+              <Upload className="h-4 w-4 mr-2" />Import
+              <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImport} />
+            </label>
+          </Button>
+          <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />Add Parameter</Button>
+        </div>
       </div>
+
+      <ExportPasswordDialog open={exportPwdOpen} onOpenChange={setExportPwdOpen} onSuccess={handleExport} />
 
       <Card>
         <CardContent className="pt-6">
