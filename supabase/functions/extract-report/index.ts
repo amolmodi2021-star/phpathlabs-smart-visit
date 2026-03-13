@@ -235,11 +235,53 @@ MATCHING:
       throw new Error(`AI error: ${response.status}`);
     }
 
-    const aiResult = await response.json();
+    const rawText = await response.text();
+    let aiResult: any;
+    try {
+      aiResult = JSON.parse(rawText);
+    } catch (_e) {
+      console.error("Failed to parse AI response, attempting recovery. Length:", rawText.length);
+      // Try to recover truncated JSON
+      const lastBrace = rawText.lastIndexOf("}");
+      if (lastBrace > 0) {
+        try {
+          aiResult = JSON.parse(rawText.substring(0, lastBrace + 1));
+        } catch (_e2) {
+          throw new Error("AI returned truncated response that could not be repaired");
+        }
+      } else {
+        throw new Error("AI returned invalid response");
+      }
+    }
+
     const toolCall = aiResult.choices?.[0]?.message?.tool_calls?.[0];
     if (!toolCall) throw new Error("No structured data returned from AI");
 
-    const extracted = JSON.parse(toolCall.function.arguments || "{}");
+    let extracted: any;
+    const fnArgs = toolCall.function.arguments || "{}";
+    try {
+      extracted = JSON.parse(fnArgs);
+    } catch (_e) {
+      console.error("Failed to parse tool arguments, attempting recovery. Length:", fnArgs.length);
+      // Repair truncated tool call JSON
+      const lastBrace = fnArgs.lastIndexOf("}");
+      if (lastBrace > 0) {
+        const repaired = fnArgs.substring(0, lastBrace + 1);
+        try {
+          extracted = JSON.parse(repaired);
+        } catch (_e2) {
+          // Try closing array + object
+          const lastObjBrace = fnArgs.lastIndexOf("}");
+          try {
+            extracted = JSON.parse(fnArgs.substring(0, lastObjBrace + 1) + "]}");
+          } catch (_e3) {
+            throw new Error("Tool arguments truncated beyond repair");
+          }
+        }
+      } else {
+        throw new Error("No valid JSON in tool arguments");
+      }
+    }
     const fallbackPage = Number(pageNumbers?.[0] ?? 1) || 1;
 
     const normalizedResults = Array.isArray(extracted?.test_results)
