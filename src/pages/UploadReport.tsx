@@ -426,16 +426,40 @@ const UploadReport = () => {
             const existingResults = (existingExtracted[0].test_results as any[]) || [];
 
             // Merge: composite key = lowercase(parameter_name) + "::" + lowercase(profile_name)
-            const mergedMap = new Map<string, any>();
+            const getMergeKey = (r: any) =>
+              `${(r.parameter_name || "").toLowerCase().trim()}::${(r.profile_name || "").toLowerCase().trim()}`;
+
+            const existingMap = new Map<string, any>();
             existingResults.forEach((r: any) => {
-              const key = `${(r.parameter_name || "").toLowerCase()}::${(r.profile_name || "").toLowerCase()}`;
-              mergedMap.set(key, r);
+              // Strip old merge status from previous merges
+              const { _merge_status, ...clean } = r;
+              existingMap.set(getMergeKey(r), clean);
             });
-            // New results overwrite existing ones for the same key
+
+            const mergedMap = new Map<string, any>();
+            // First, add all existing results as "existing" (unchanged)
+            existingMap.forEach((r, key) => {
+              mergedMap.set(key, { ...r, _merge_status: "existing" });
+            });
+
+            // Then overlay new results — mark as "new" or "updated"
             mergedData.test_results.forEach((r: any) => {
-              const key = `${(r.parameter_name || "").toLowerCase()}::${(r.profile_name || "").toLowerCase()}`;
-              mergedMap.set(key, r);
+              const key = getMergeKey(r);
+              const old = existingMap.get(key);
+              if (!old) {
+                mergedMap.set(key, { ...r, _merge_status: "new" });
+              } else {
+                // Check if data actually changed
+                const changed =
+                  String(r.result_value ?? "") !== String(old.result_value ?? "") ||
+                  String(r.normal_range_text ?? "") !== String(old.normal_range_text ?? "") ||
+                  String(r.normal_range_low ?? "") !== String(old.normal_range_low ?? "") ||
+                  String(r.normal_range_high ?? "") !== String(old.normal_range_high ?? "") ||
+                  String(r.unit ?? "") !== String(old.unit ?? "");
+                mergedMap.set(key, { ...r, _merge_status: changed ? "updated" : "existing" });
+              }
             });
+
             finalTestResultsToSave = Array.from(mergedMap.values());
           }
 

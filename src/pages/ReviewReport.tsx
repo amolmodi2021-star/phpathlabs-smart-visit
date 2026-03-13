@@ -35,6 +35,7 @@ interface TestResult {
   confidence_score?: number;
   extraction_basis?: string;
   remark?: string;
+  _merge_status?: "new" | "updated" | "existing";
 }
 
 const ReviewReport = () => {
@@ -658,7 +659,15 @@ const ReviewReport = () => {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle className="text-lg">Test Results ({testResults.length} parameters)</CardTitle>
+            <div className="flex items-center gap-3">
+              <CardTitle className="text-lg">Test Results ({testResults.length} parameters)</CardTitle>
+              {testResults.some(r => r._merge_status === "new" || r._merge_status === "updated") && (
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 border border-emerald-200">● New</span>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200">● Updated</span>
+                </div>
+              )}
+            </div>
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input placeholder="Search parameter..." value={paramSearch} onChange={(e) => setParamSearch(e.target.value)} className="pl-8 w-64" />
@@ -686,8 +695,14 @@ const ReviewReport = () => {
               <TableBody>
                 {testResults.map((r, i) => {
                   if (paramSearch && !(`${r.parameter_name} ${r.department || ""} ${r.profile_name || ""}`).toLowerCase().includes(paramSearch.toLowerCase())) return null;
+                  const mergeClass = r._merge_status === "new"
+                    ? "bg-emerald-50 border-l-2 border-l-emerald-500"
+                    : r._merge_status === "updated"
+                    ? "bg-amber-50 border-l-2 border-l-amber-500"
+                    : "";
+                  const abnormalClass = r.flag === "H" || r.flag === "L" ? "bg-destructive/5" : "";
                   return (
-                  <TableRow key={i} className={r.flag === "H" || r.flag === "L" ? "bg-destructive/5" : ""}>
+                  <TableRow key={i} className={`${mergeClass || abnormalClass}`}>
                     <TableCell>
                       <Input value={r.department || ""} readOnly className="h-8 text-xs bg-muted/50" />
                     </TableCell>
