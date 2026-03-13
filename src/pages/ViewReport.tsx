@@ -657,7 +657,7 @@ const ViewReport = () => {
           const rowHeight = estimateAbnormalRowHeight(row);
           const shouldStartNewChunk =
             currentChunk.length > 0 &&
-            (currentChunk.length >= maxRowsPerChunk || (currentChunkHeight + rowHeight) > abnormalBodyMaxHeight);
+            (currentChunkHeight + rowHeight) > abnormalBodyMaxHeight;
 
           if (shouldStartNewChunk) {
             chunkedAbnormals.push({ rows: currentChunk, height: currentChunkHeight });
