@@ -226,7 +226,7 @@ const ReportParameters = () => {
               <Trash2 className="h-4 w-4 mr-2" />Delete Selected ({selectedIds.size})
             </Button>
           )}
-          <Button variant="destructive" variant="outline" onClick={() => setDeleteAllPwdOpen(true)}>
+          <Button variant="outline" className="text-destructive border-destructive" onClick={() => setDeleteAllPwdOpen(true)}>
             <Trash2 className="h-4 w-4 mr-2" />Delete All
           </Button>
           <Button variant="outline" onClick={() => setExportPwdOpen(true)}>
