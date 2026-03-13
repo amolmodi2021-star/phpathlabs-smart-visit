@@ -86,11 +86,12 @@ const TABLE_HEADER_HEIGHT_MM = 5;
 const ROW_HEIGHT_MM = 5;
 const ROW_HEIGHT_COMPACT_MM = 3.8;
 const PROFILE_GAP_MM = 2;
-const ABNORMAL_SUMMARY_BASE_MM = 18;
-const ABNORMAL_ROW_MM = 5.2;
-const ABNORMAL_EXTRA_LINE_MM = 3.6;
-const ABNORMAL_PARAM_CHARS_PER_LINE = 34;
-const ABNORMAL_RANGE_CHARS_PER_LINE = 24;
+const ABNORMAL_SUMMARY_BASE_MM = 22;
+const ABNORMAL_ROW_MM = 5.4;
+const ABNORMAL_EXTRA_LINE_MM = 4.2;
+const ABNORMAL_PARAM_CHARS_PER_LINE = 28;
+const ABNORMAL_RANGE_CHARS_PER_LINE = 14;
+const ABNORMAL_MAX_ROWS_HARD_CAP = 12;
 const TEST_NAME_HEADER_MM = 4;
 
 const COMPACT_PROFILES = ["cbc", "complete blood count", "urine routine"];
@@ -634,7 +635,9 @@ const ViewReport = () => {
         // so long range text moves correctly to continuation pages.
         const abnormalContentReserve = PAGE_NUM_HEIGHT_MM + 2;
         const abnormalUsableHeight = PAGE_HEIGHT_MM - topMarginMm - bottomMarginMm - HEADER_HEIGHT_MM - PAGE_NUM_HEIGHT_MM - abnormalContentReserve;
-        const abnormalBodyMaxHeight = Math.max(20, abnormalUsableHeight - ABNORMAL_SUMMARY_BASE_MM);
+        const abnormalBodyMaxHeight = Math.max(20, abnormalUsableHeight - ABNORMAL_SUMMARY_BASE_MM - SAFETY_BUFFER_MM);
+        const maxRowsByHeight = Math.max(1, Math.floor(abnormalBodyMaxHeight / ABNORMAL_ROW_MM));
+        const maxRowsPerChunk = Math.max(1, Math.min(maxRowsByHeight, ABNORMAL_MAX_ROWS_HARD_CAP));
 
         const estimateAbnormalRowHeight = (row: TestResult) => {
           const rangeText =
@@ -654,7 +657,9 @@ const ViewReport = () => {
 
         allAbnormals.forEach((row) => {
           const rowHeight = estimateAbnormalRowHeight(row);
-          const shouldStartNewChunk = currentChunk.length > 0 && (currentChunkHeight + rowHeight) > abnormalBodyMaxHeight;
+          const shouldStartNewChunk =
+            currentChunk.length > 0 &&
+            (currentChunk.length >= maxRowsPerChunk || (currentChunkHeight + rowHeight) > abnormalBodyMaxHeight);
 
           if (shouldStartNewChunk) {
             chunkedAbnormals.push({ rows: currentChunk, height: currentChunkHeight });
