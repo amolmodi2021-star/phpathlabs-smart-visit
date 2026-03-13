@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.reverify-abnormals]
 verify_jwt = false
+
+[functions.process-report-queue]
+verify_jwt = false
