@@ -675,6 +675,12 @@ const ViewReport = () => {
             ? supabase.storage.from("signatures").getPublicUrl(pathologist.signature_image_path).data.publicUrl
             : null;
 
+          const isDedicatedPage = page.sections.length === 1 && isDedicatedReportProfile(page.sections[0]);
+          // For dedicated CBC/Urine pages, compute max content height for auto-scaling
+          const contentMaxHeightMm = isDedicatedPage
+            ? PAGE_HEIGHT_MM - topMarginMm - bottomMarginMm - HEADER_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM - 6
+            : 0;
+
           return (
             <div key={pageIdx} className="report-page"
               style={{ paddingTop: `${topMarginMm}mm`, paddingBottom: `${bottomMarginMm}mm` }}>
@@ -682,7 +688,13 @@ const ViewReport = () => {
               <ReportHeader extracted={extracted} />
 
               <div className="space-y-1" style={{ paddingLeft: '12mm', paddingRight: '12mm', paddingBottom: `${contentBottomReserveMm}mm` }}>
-                {renderPageSections(page.sections)}
+                {isDedicatedPage ? (
+                  <AutoScaleContent maxHeightMm={contentMaxHeightMm}>
+                    {renderPageSections(page.sections)}
+                  </AutoScaleContent>
+                ) : (
+                  renderPageSections(page.sections)
+                )}
               </div>
 
               {!isAbnormalOnlyPage && (
