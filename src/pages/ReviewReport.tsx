@@ -273,10 +273,8 @@ const ReviewReport = () => {
       const enrichedResults = enrichResults(dedupedResults, masterMap, profileGroups, paramIdToNameKey);
       const normalized = normalizeTestResultFlags(enrichedResults);
       setTestResults(normalized);
-      // Store original AI results for corrections feedback loop
-      if (!originalAiResultsRef.current) {
-        originalAiResultsRef.current = normalized.map(r => ({ ...r }));
-      }
+      // Always refresh original AI results snapshot on load/reload
+      originalAiResultsRef.current = normalized.map(r => ({ ...r }));
       if (!extracted.umr_id) setShowUmrDialog(true);
     }
     setPathologists(sigs || []);
