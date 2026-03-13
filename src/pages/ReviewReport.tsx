@@ -560,7 +560,7 @@ const ReviewReport = () => {
   // Get unique approving doctors from test results
   const uniqueApprovers = [...new Set(testResults.map(r => r.approved_by).filter(Boolean))];
 
-  const TRACKED_FIELDS: (keyof TestResult)[] = ["result_value", "unit", "normal_range_low", "normal_range_high", "normal_range_text", "flag"];
+  const TRACKED_FIELDS: (keyof TestResult)[] = ["parameter_name", "result_value", "unit", "normal_range_low", "normal_range_high", "normal_range_text", "flag"];
 
   const logCorrections = async (finalResults: TestResult[]) => {
     const originals = originalAiResultsRef.current;
