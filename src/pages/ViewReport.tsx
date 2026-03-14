@@ -236,7 +236,7 @@ const ViewReport = () => {
 
     // First pass dedupe, then backfill test_name from master data, then dedupe again
     const rawResults = (ext.test_results as unknown as TestResult[]) || [];
-    let results = dedupeResultsLatest(rawResults);
+    let results = rawResults;
 
     const paramNames = [...new Set(results.map((r) => r.parameter_name).filter(Boolean))];
     const { data: masterParams } = await supabase
