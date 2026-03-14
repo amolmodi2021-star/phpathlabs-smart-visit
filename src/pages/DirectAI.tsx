@@ -520,7 +520,7 @@ const DirectAI = () => {
                   />
                 )}
 
-                <div className="relative" style={{ zIndex: 1, paddingLeft: "12mm", paddingRight: "12mm" }}>
+                <div className="relative" style={{ zIndex: 1, paddingLeft: "12mm", paddingRight: "12mm", maxHeight: `${usableH + HEADER_H}mm`, overflow: "hidden" }}>
                   {/* Patient header on every page */}
                   <div className="border-b border-gray-300 pb-3 mb-3">
                     <div className="grid grid-cols-2 gap-x-8 gap-y-0.5 text-sm">
