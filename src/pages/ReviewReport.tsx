@@ -388,15 +388,6 @@ const ReviewReport = () => {
       .replace(/\s+/g, " ")
       .trim();
 
-  const dedupeTestResults = (rows: TestResult[]) => {
-    // Key = parameter_name + test_name (AI-extracted). Latest occurrence wins.
-    const deduped = new Map<string, TestResult>();
-    rows.forEach((row) => {
-      const key = `${normalizeResultKey(row.parameter_name)}::${normalizeResultKey(row.test_name)}`;
-      deduped.set(key, row);
-    });
-    return Array.from(deduped.values());
-  };
 
   const getResultKey = (row: Partial<TestResult>, index = 0) => {
     const parameter = normalizeResultKey(row.parameter_name);
