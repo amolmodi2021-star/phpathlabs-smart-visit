@@ -177,36 +177,73 @@ const toolSchema = {
   },
 };
 
-const parseAIResponse = (rawText: string): any => {
-  let aiResult: any;
-  try {
-    aiResult = JSON.parse(rawText);
-  } catch (_e) {
-    const lastBrace = rawText.lastIndexOf("}");
-    if (lastBrace > 0) {
-      aiResult = JSON.parse(rawText.substring(0, lastBrace + 1));
-    } else {
-      throw new Error("AI returned invalid response");
-    }
+const repairJson = (text: string): string => {
+  // Remove markdown wrappers
+  let cleaned = text.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+  // Remove control characters
+  cleaned = cleaned.replace(/[\x00-\x1F\x7F]/g, (ch) => ch === '\n' || ch === '\r' || ch === '\t' ? ch : '');
+  // Fix trailing commas
+  cleaned = cleaned.replace(/,\s*}/g, "}").replace(/,\s*]/g, "]");
+  return cleaned;
+};
+
+const balanceJson = (text: string): string => {
+  const opens = (text.match(/{/g) || []).length;
+  const closes = (text.match(/}/g) || []).length;
+  const openBrackets = (text.match(/\[/g) || []).length;
+  const closeBrackets = (text.match(/\]/g) || []).length;
+
+  let result = text;
+  for (let i = 0; i < openBrackets - closeBrackets; i++) result += "]";
+  for (let i = 0; i < opens - closes; i++) result += "}";
+  return result;
+};
+
+const safeParse = (text: string): any => {
+  const cleaned = repairJson(text);
+  // Try direct parse
+  try { return JSON.parse(cleaned); } catch (_) {}
+  // Try balancing
+  try { return JSON.parse(balanceJson(cleaned)); } catch (_) {}
+  // Find JSON boundaries
+  const start = cleaned.search(/[\{\[]/);
+  if (start === -1) throw new Error("No JSON found in text");
+  const sub = cleaned.substring(start);
+  try { return JSON.parse(balanceJson(sub)); } catch (_) {}
+  // Last resort: find last valid closing brace
+  const lastBrace = sub.lastIndexOf("}");
+  if (lastBrace > 0) {
+    const truncated = sub.substring(0, lastBrace + 1);
+    try { return JSON.parse(balanceJson(truncated)); } catch (_) {}
   }
+  throw new Error("Could not parse JSON from text");
+};
+
+const parseAIResponse = (rawText: string): any => {
+  console.log("AI response length:", rawText.length, "chars");
+  
+  const aiResult = safeParse(rawText);
 
   const toolCall = aiResult.choices?.[0]?.message?.tool_calls?.[0];
-  if (!toolCall) throw new Error("No structured data returned from AI");
-
-  const fnArgs = toolCall.function.arguments || "{}";
-  try {
-    return JSON.parse(fnArgs);
-  } catch (_e) {
-    const lastBrace = fnArgs.lastIndexOf("}");
-    if (lastBrace > 0) {
-      try {
-        return JSON.parse(fnArgs.substring(0, lastBrace + 1));
-      } catch (_e2) {
-        return JSON.parse(fnArgs.substring(0, lastBrace + 1) + "]}");
-      }
-    }
-    throw new Error("No valid JSON in tool arguments");
+  if (toolCall) {
+    const fnArgs = toolCall.function.arguments || "{}";
+    console.log("Tool call args length:", fnArgs.length, "chars");
+    return safeParse(fnArgs);
   }
+
+  // Fallback: maybe the AI returned content directly
+  const content = aiResult.choices?.[0]?.message?.content;
+  if (content) {
+    console.log("Falling back to message content parsing");
+    return safeParse(content);
+  }
+
+  // If the parsed result itself has test_results, use it directly
+  if (aiResult.test_results || aiResult.patient) {
+    return aiResult;
+  }
+
+  throw new Error("No structured data returned from AI");
 };
 
 const callAI = async (
