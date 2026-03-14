@@ -698,6 +698,7 @@ export type Database = {
           created_at: string | null
           department_id: string | null
           display_order: number | null
+          enable_test_grouping: boolean | null
           id: string
           interpretation: string | null
           is_outsourced: boolean | null
@@ -713,6 +714,7 @@ export type Database = {
           created_at?: string | null
           department_id?: string | null
           display_order?: number | null
+          enable_test_grouping?: boolean | null
           id?: string
           interpretation?: string | null
           is_outsourced?: boolean | null
@@ -728,6 +730,7 @@ export type Database = {
           created_at?: string | null
           department_id?: string | null
           display_order?: number | null
+          enable_test_grouping?: boolean | null
           id?: string
           interpretation?: string | null
           is_outsourced?: boolean | null
