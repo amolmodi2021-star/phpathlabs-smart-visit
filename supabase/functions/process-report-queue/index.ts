@@ -348,20 +348,8 @@ MATCHING:
         }))
       : [];
 
-    // Deduplicate by parameter_name + test_name. Latest occurrence wins.
-    const normalizeKey = (v: unknown) =>
-      String(v ?? "")
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
-
-    const deduped = new Map<string, any>();
-    testResults.forEach((row: any) => {
-      const key = `${normalizeKey(row.parameter_name)}::${normalizeKey(row.test_name)}`;
-      deduped.set(key, row);
-    });
-    const finalResults = Array.from(deduped.values());
+    // No deduplication - keep all AI-extracted results as-is
+    const finalResults = testResults;
 
     const patient = { ...(extracted?.patient || {}) };
     if (!patient.collection_date && patient.sample_collection_date) {
