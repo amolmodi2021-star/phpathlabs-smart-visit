@@ -155,7 +155,7 @@ const ReportProfiles = () => {
     setForm({
       profile_name: "", department_id: "", analyzer: "", method: "", remarks: "", display_order: 0,
       sample_type: "", is_outsourced: false, outsourced_caption: "", interpretation: "",
-      enable_test_grouping: false,
+      enable_test_grouping: false, force_single_page: false,
     });
     setSelectedParams([]);
     setParamSearch("");
