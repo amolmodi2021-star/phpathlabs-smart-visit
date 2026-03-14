@@ -699,6 +699,7 @@ export type Database = {
           department_id: string | null
           display_order: number | null
           enable_test_grouping: boolean | null
+          force_single_page: boolean | null
           id: string
           interpretation: string | null
           is_outsourced: boolean | null
@@ -715,6 +716,7 @@ export type Database = {
           department_id?: string | null
           display_order?: number | null
           enable_test_grouping?: boolean | null
+          force_single_page?: boolean | null
           id?: string
           interpretation?: string | null
           is_outsourced?: boolean | null
@@ -731,6 +733,7 @@ export type Database = {
           department_id?: string | null
           display_order?: number | null
           enable_test_grouping?: boolean | null
+          force_single_page?: boolean | null
           id?: string
           interpretation?: string | null
           is_outsourced?: boolean | null

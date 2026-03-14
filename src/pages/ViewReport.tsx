@@ -51,6 +51,7 @@ interface ProfileMeta {
   outsourced_caption?: string;
   interpretation?: string;
   enable_test_grouping?: boolean;
+  force_single_page?: boolean;
 }
 
 interface TrendData {
@@ -123,6 +124,11 @@ const isDedicatedReportProfile = (section: PageSection): boolean => {
   );
 
   return isCbc || isUrine;
+};
+
+const isForceSinglePageProfile = (section: PageSection, metaMap: Record<string, ProfileMeta>): boolean => {
+  if (section.type !== "department-profile" || !section.profName) return false;
+  return metaMap[section.profName]?.force_single_page === true;
 };
 
 const normalizeDedupeKey = (value: unknown) =>
@@ -410,7 +416,7 @@ const ViewReport = () => {
     if (profileNames.length > 0) {
       const { data: masterProfiles } = await supabase
         .from("report_profiles")
-        .select("profile_name, display_order, sample_type, analyzer, method, is_outsourced, outsourced_caption, interpretation, enable_test_grouping")
+        .select("profile_name, display_order, sample_type, analyzer, method, is_outsourced, outsourced_caption, interpretation, enable_test_grouping, force_single_page")
         .in("profile_name", profileNames);
       if (masterProfiles) {
         const metaMap: Record<string, ProfileMeta> = {};
@@ -424,6 +430,7 @@ const ViewReport = () => {
             outsourced_caption: mp.outsourced_caption,
             interpretation: mp.interpretation,
             enable_test_grouping: mp.enable_test_grouping,
+            force_single_page: mp.force_single_page,
           };
           profOrdMap[mp.profile_name] = mp.display_order ?? 999;
         });
@@ -801,8 +808,8 @@ const ViewReport = () => {
         return;
       }
 
-      // CBC / Urine profiles always get their own dedicated page
-      if (isDedicatedReportProfile(section)) {
+      // CBC / Urine profiles or force_single_page profiles get their own dedicated page
+      if (isDedicatedReportProfile(section) || isForceSinglePageProfile(section, profileMetaMap)) {
         if (currentPage.length > 0) {
           pages.push(currentPage);
           currentPage = [];
@@ -905,8 +912,8 @@ const ViewReport = () => {
             ? supabase.storage.from("signatures").getPublicUrl(pathologist.signature_image_path).data.publicUrl
             : null;
 
-          const isDedicatedPage = page.sections.length === 1 && isDedicatedReportProfile(page.sections[0]);
-          // For dedicated CBC/Urine pages, compute max content height for auto-scaling
+          const isDedicatedPage = page.sections.length === 1 && (isDedicatedReportProfile(page.sections[0]) || isForceSinglePageProfile(page.sections[0], profileMetaMap));
+          // For dedicated/force-single-page profiles, compute max content height for auto-scaling
           const contentMaxHeightMm = isDedicatedPage
             ? PAGE_HEIGHT_MM - topMarginMm - bottomMarginMm - HEADER_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM - 6
             : 0;

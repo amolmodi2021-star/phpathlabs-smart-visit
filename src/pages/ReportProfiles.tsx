@@ -47,7 +47,7 @@ const ReportProfiles = () => {
   const [form, setForm] = useState({
     profile_name: "", department_id: "", analyzer: "", method: "", remarks: "", display_order: 0,
     sample_type: "", is_outsourced: false, outsourced_caption: "", interpretation: "",
-    enable_test_grouping: false,
+    enable_test_grouping: false, force_single_page: false,
   });
   const [selectedParams, setSelectedParams] = useState<SelectedParam[]>([]);
   const [paramSearch, setParamSearch] = useState("");
@@ -88,6 +88,7 @@ const ReportProfiles = () => {
       outsourced_caption: form.outsourced_caption || null,
       interpretation: form.interpretation || null,
       enable_test_grouping: form.enable_test_grouping,
+      force_single_page: form.force_single_page,
     };
     let profileId = editId;
 
@@ -123,7 +124,7 @@ const ReportProfiles = () => {
       method: p.method || "", remarks: p.remarks || "", display_order: p.display_order || 0,
       sample_type: p.sample_type || "", is_outsourced: p.is_outsourced || false,
       outsourced_caption: p.outsourced_caption || "", interpretation: p.interpretation || "",
-      enable_test_grouping: p.enable_test_grouping || false,
+      enable_test_grouping: p.enable_test_grouping || false, force_single_page: p.force_single_page || false,
     });
 
     const { data: pp } = await supabase
@@ -154,7 +155,7 @@ const ReportProfiles = () => {
     setForm({
       profile_name: "", department_id: "", analyzer: "", method: "", remarks: "", display_order: 0,
       sample_type: "", is_outsourced: false, outsourced_caption: "", interpretation: "",
-      enable_test_grouping: false,
+      enable_test_grouping: false, force_single_page: false,
     });
     setSelectedParams([]);
     setParamSearch("");
@@ -272,6 +273,11 @@ const ReportProfiles = () => {
             <div className="flex items-center gap-2">
               <Checkbox checked={form.enable_test_grouping} onCheckedChange={(c) => setForm({ ...form, enable_test_grouping: !!c })} />
               <Label>Group parameters by test name (sub-headers like CBC)</Label>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Checkbox checked={form.force_single_page} onCheckedChange={(c) => setForm({ ...form, force_single_page: !!c })} />
+              <Label>Force single page (auto-shrink content to fit one page)</Label>
             </div>
 
             <div className="flex items-center gap-2">
