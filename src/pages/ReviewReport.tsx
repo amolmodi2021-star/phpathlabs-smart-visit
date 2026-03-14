@@ -152,9 +152,18 @@ const ReviewReport = () => {
     return { masterMap, profileGroups, paramIdToNameKey, masterIds };
   };
 
+  // Helper: check if two normalized strings share significant keywords
+  const hasKeywordOverlap = (a: string, b: string): boolean => {
+    if (!a || !b) return false;
+    if (a === b || a.includes(b) || b.includes(a)) return true;
+    const wordsA = a.split(" ").filter(w => w.length > 3);
+    const wordsB = new Set(b.split(" ").filter(w => w.length > 3));
+    return wordsA.some(w => wordsB.has(w));
+  };
+
   const enrichResults = (
     results: TestResult[],
-    masterMap: Map<string, Array<{ department_name?: string; profile_name?: string }>>,
+    masterMap: Map<string, Array<{ department_name?: string; profile_name?: string; test_name?: string }>>,
     profileGroups: Map<string, { name: string; deptName: string; paramNames: string[] }>,
     paramIdToNameKey: Map<string, string>,
   ) => {
@@ -186,13 +195,37 @@ const ReviewReport = () => {
       const key = normalizeParameterForMatch(r.parameter_name);
       const matchedKeyFromId = r.matched_parameter_id ? paramIdToNameKey.get(r.matched_parameter_id) : "";
 
-      // Try composite key lookup first for disambiguation (parameter::test_name or parameter::profile_name)
+      const allMasterEntries = masterMap.get(key) || (matchedKeyFromId ? masterMap.get(matchedKeyFromId) : undefined) || [];
+      const profileEntries = matchedProfileParams.get(key) || (matchedKeyFromId ? matchedProfileParams.get(matchedKeyFromId) : undefined) || [];
+
+      // Build AI context strings for keyword matching
       const aiTestKey = normalizeParameterForMatch(r.test_name);
       const aiProfileKey = normalizeParameterForMatch(r.profile_name);
-      const compositeByTest = aiTestKey ? masterMap.get(`${key}::${aiTestKey}`) : undefined;
-      const compositeByProfile = aiProfileKey ? masterMap.get(`${key}::${aiProfileKey}`) : undefined;
-      const masterEntries = compositeByTest || compositeByProfile || masterMap.get(key) || (matchedKeyFromId ? masterMap.get(matchedKeyFromId) : undefined) || [];
-      const profileEntries = matchedProfileParams.get(key) || (matchedKeyFromId ? matchedProfileParams.get(matchedKeyFromId) : undefined) || [];
+      // Combine AI test_name + profile_name for broader keyword matching
+      const aiContext = [aiTestKey, aiProfileKey].filter(Boolean).join(" ");
+
+      // When multiple master entries exist, disambiguate by keyword overlap
+      // between AI-extracted context (test_name, profile_name) and master test_name/profile_name
+      let masterEntries = allMasterEntries;
+      if (allMasterEntries.length > 1 && aiContext) {
+        const scored = allMasterEntries.map(me => {
+          const dbTestKey = normalizeParameterForMatch(me.test_name);
+          const dbProfKey = normalizeParameterForMatch(me.profile_name);
+          const dbContext = [dbTestKey, dbProfKey].filter(Boolean).join(" ");
+          let score = 0;
+          // Check keyword overlap between AI context and DB context
+          if (hasKeywordOverlap(aiContext, dbContext)) score += 10;
+          // Bonus for direct profile_name match
+          if (aiProfileKey && dbProfKey && hasKeywordOverlap(aiProfileKey, dbProfKey)) score += 5;
+          // Bonus for direct test_name match  
+          if (aiTestKey && dbTestKey && hasKeywordOverlap(aiTestKey, dbTestKey)) score += 5;
+          return { entry: me, score };
+        });
+        const maxScore = Math.max(...scored.map(s => s.score));
+        if (maxScore > 0) {
+          masterEntries = scored.filter(s => s.score === maxScore).map(s => s.entry);
+        }
+      }
 
       // Use AI-extracted profile_name/department to disambiguate duplicates
       const aiProfile = normalizeParameterForMatch(r.profile_name);
@@ -208,8 +241,7 @@ const ReviewReport = () => {
         // Fuzzy keyword matching for profile disambiguation
         const byProfile = aiProfile ? profileEntries.find((pe) => {
           const dbProf = normalizeParameterForMatch(pe.profileName);
-          return dbProf === aiProfile || dbProf.includes(aiProfile) || aiProfile.includes(dbProf)
-            || aiProfile.split(" ").some(word => word.length > 3 && dbProf.includes(word));
+          return hasKeywordOverlap(aiProfile, dbProf);
         }) : undefined;
         const byDept = aiDept ? profileEntries.find((pe) => normalizeParameterForMatch(pe.deptName) === aiDept) : undefined;
         const best = byProfile || byDept || profileEntries[0];
