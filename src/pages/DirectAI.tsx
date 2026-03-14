@@ -688,8 +688,16 @@ const DirectAI = () => {
                     </div>
                   ))}
 
-                  {/* Signature blocks */}
-                  <div className="mt-4 pt-2 border-t flex justify-end gap-8 print:break-inside-avoid">
+                  {/* Signature blocks - anchored to bottom */}
+                  <div
+                    className="flex justify-end gap-8 print:break-inside-avoid border-t pt-2"
+                    style={{
+                      position: "absolute",
+                      bottom: `${bottomMarginMm + PAGE_NUM_H + 2}mm`,
+                      left: "12mm",
+                      right: "12mm",
+                    }}
+                  >
                     {displayApprovers.map((doc) => {
                       const sig = getSignatureForDoctor(doc);
                       return (
