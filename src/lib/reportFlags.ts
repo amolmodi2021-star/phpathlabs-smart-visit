@@ -18,6 +18,52 @@ const extractNumber = (value: string | number | null | undefined): number | null
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+const NORMAL_CATEGORY_KEYWORDS = [
+  "normal", "non-diabetic", "nondiabetic", "non diabetic",
+  "sufficient", "sufficiency", "desirable", "optimal",
+  "no risk", "norisk", "acceptable", "negative", "reference",
+];
+
+/**
+ * For advisory-style ranges (e.g. HbA1c, Vitamin D, HDL), try to locate the
+ * "normal" category by keyword and extract its numeric bounds.
+ */
+const findNormalCategoryBounds = (text: string): { low: number | null; high: number | null } | null => {
+  const lower = text.toLowerCase();
+
+  for (const keyword of NORMAL_CATEGORY_KEYWORDS) {
+    const idx = lower.indexOf(keyword);
+    if (idx === -1) continue;
+
+    // Extract a segment around the keyword (generous window)
+    const segment = text.substring(Math.max(0, idx - 10), idx + keyword.length + 80);
+
+    // Look for range pattern first (e.g. "30-100")
+    const rangeMatch = segment.match(/(-?\d*\.?\d+)\s*(?:to|-|–|—)\s*(-?\d*\.?\d+)/i);
+    if (rangeMatch) {
+      const lo = Number.parseFloat(rangeMatch[1]);
+      const hi = Number.parseFloat(rangeMatch[2]);
+      if (Number.isFinite(lo) && Number.isFinite(hi)) return { low: lo, high: hi };
+    }
+
+    // Look for <= or < pattern (e.g. "Non-Diabetic: <= 5.6")
+    const upperMatch = segment.match(/(?:<=|≤|<)\s*(-?\d*\.?\d+)/);
+    if (upperMatch) {
+      const hi = Number.parseFloat(upperMatch[1]);
+      if (Number.isFinite(hi)) return { low: null, high: hi };
+    }
+
+    // Look for >= or > pattern (e.g. "No Risk: > 60")
+    const lowerMatch = segment.match(/(?:>=|≥|>)\s*(-?\d*\.?\d+)/);
+    if (lowerMatch) {
+      const lo = Number.parseFloat(lowerMatch[1]);
+      if (Number.isFinite(lo)) return { low: lo, high: null };
+    }
+  }
+
+  return null;
+};
+
 const parseBoundsFromText = (rangeText?: string | null): { low: number | null; high: number | null } => {
   if (!rangeText) return { low: null, high: null };
 
@@ -45,9 +91,15 @@ const parseBoundsFromText = (rangeText?: string | null): { low: number | null; h
     }
   }
 
-  // Handle advisory ranges like Vitamin D (Deficiency: <10, Sufficiency: 30-100, Toxicity: >100):
-  // When < gives high and > gives low, they appear swapped. Swap them to get correct normal bounds.
+  // Handle advisory ranges (e.g. HbA1c: <=5.6 and >=6.5, Vitamin D: <10 and >100)
+  // When < gives high and > gives low, they appear swapped → advisory range detected.
+  // Use keyword-based detection to find the "normal" category bounds.
   if (low !== null && high !== null && low > high) {
+    const normalBounds = findNormalCategoryBounds(text);
+    if (normalBounds && (normalBounds.low !== null || normalBounds.high !== null)) {
+      return normalBounds;
+    }
+    // Last resort: swap (legacy fallback)
     const temp = low;
     low = high;
     high = temp;

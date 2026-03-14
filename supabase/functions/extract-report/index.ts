@@ -131,8 +131,10 @@ REFERENCE RANGE RULE (CRITICAL):
 - You MUST extract the COMPLETE reference range text including ALL categories, not just one line.
 - Example: For HDL Cholesterol, extract "No Risk: >60 mg/dL, Moderate Risk: 40-60 mg/dL, High Risk: <40 mg/dL" — NOT just "Moderate Risk 40-60 mg/dL".
 - Example: For Vitamin D, extract "Deficiency: <10 ng/mL, Insufficiency: 10-30 ng/mL, Sufficiency: 30-100 ng/mL, Toxicity: >100 ng/mL".
+- Example: For HbA1c, extract "Non-Diabetic: <= 5.6%, Pre-Diabetic: 5.7-6.4%, Diabetic: >= 6.5% (ADA guideline 2019)". Set normal_range_high=5.6, normal_range_low=null (Non-Diabetic upper bound).
 - Put the full multi-line reference text in normal_range_text.
-- For normal_range_low and normal_range_high, use the "normal/sufficient/no-risk" category bounds (e.g., HDL: low=60, high=null for ">60"; Vitamin D: low=30, high=100 for "30-100").
+- For normal_range_low and normal_range_high, use the "normal/non-diabetic/sufficient/no-risk" category bounds (e.g., HDL: low=60, high=null for ">60"; Vitamin D: low=30, high=100 for "30-100"; HbA1c: low=null, high=5.6 for "<=5.6").
+- CRITICAL: For HbA1c and similar diabetes markers, the NORMAL upper bound is the Non-Diabetic threshold (e.g., 5.6). Any value above this MUST be flagged as H.
 
 ABNORMAL FLAG RULE:
 - Compare numeric result with normal_range_low/high:
