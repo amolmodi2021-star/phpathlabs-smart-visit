@@ -277,6 +277,7 @@ const ExtractionCorrections = () => {
                   <SelectItem value="normal_range_high">Normal Range High</SelectItem>
                   <SelectItem value="normal_range_text">Normal Range Text</SelectItem>
                   <SelectItem value="flag">Flag</SelectItem>
+                  <SelectItem value="test_name">Test Name</SelectItem>
                 </SelectContent>
               </Select>
             </div>
