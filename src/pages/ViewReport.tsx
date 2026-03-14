@@ -126,6 +126,11 @@ const isDedicatedReportProfile = (section: PageSection): boolean => {
   return isCbc || isUrine;
 };
 
+const isForceSinglePageProfile = (section: PageSection, metaMap: Record<string, ProfileMeta>): boolean => {
+  if (section.type !== "department-profile" || !section.profName) return false;
+  return metaMap[section.profName]?.force_single_page === true;
+};
+
 const normalizeDedupeKey = (value: unknown) =>
   String(value ?? "")
     .toLowerCase()
