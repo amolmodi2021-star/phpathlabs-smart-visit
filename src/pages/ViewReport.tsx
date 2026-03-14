@@ -392,6 +392,9 @@ const ViewReport = () => {
     // Critical: run dedupe again after test_name backfill so old blank-test duplicates are removed
     results = dedupeResultsLatest(results);
 
+    // Recompute H/L/N flags from result values and ranges (fixes missing flags after enrichment)
+    results = normalizeTestResultFlags(results);
+
     const shouldPersistNormalizedResults = JSON.stringify(rawResults) !== JSON.stringify(results);
     if (shouldPersistNormalizedResults) {
       await supabase
