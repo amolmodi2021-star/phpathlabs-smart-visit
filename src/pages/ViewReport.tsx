@@ -49,6 +49,7 @@ interface ProfileMeta {
   is_outsourced?: boolean;
   outsourced_caption?: string;
   interpretation?: string;
+  enable_test_grouping?: boolean;
 }
 
 interface TrendData {
