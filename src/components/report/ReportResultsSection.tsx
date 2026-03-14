@@ -81,98 +81,111 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
               const useCompact = compact || isCompactProfile(profName);
               const isStandalone = profName === "_individual";
 
-              // For standalone parameters, render each one individually with its own metadata
+              // For standalone parameters, render in a single table with one header
               if (isStandalone) {
-                return params.map((r, pIdx) => {
-                  const isAbnormal = r.flag === "H" || r.flag === "L";
-                  const isMorphRow = isMorphologySection(r.test_name);
-                  const paramMeta = {
-                    sample_type: r.sample_type,
-                    analyzer: r.analyzer,
-                    method: r.method,
-                    is_outsourced: r.is_outsourced,
-                    outsourced_caption: r.outsourced_caption,
-                    interpretation: r.interpretation,
-                  };
-                  const hasParamMeta = paramMeta.sample_type || paramMeta.analyzer || paramMeta.method;
-                  const hasParamOutsourced = paramMeta.is_outsourced && paramMeta.outsourced_caption;
-                  const hasParamInterpretation = paramMeta.interpretation && paramMeta.interpretation.replace(/<[^>]*>/g, '').trim().length > 0;
+                return (
+                  <div key="standalone-group" data-pdf-section="profile" className="print:break-inside-avoid">
+                    {profIdx > 0 && <div style={{ height: '2mm' }} />}
+                    <table className={`w-full ${useCompact ? 'text-xs' : 'text-sm'}`} style={{ tableLayout: 'fixed' }}>
+                      <colgroup>
+                        <col style={{ width: '36%' }} />
+                        <col style={{ width: '24px' }} />
+                        <col style={{ width: 'auto' }} />
+                        <col style={{ width: '14%' }} />
+                        <col style={{ width: '28%' }} />
+                      </colgroup>
+                      <thead>
+                        <tr className={`text-gray-500 border-b ${useCompact ? 'text-[10px]' : 'text-xs'}`}>
+                          <th className="text-left py-0.5 px-3">Parameter</th>
+                          <th></th>
+                          <th className="text-center py-0.5">Result</th>
+                          <th className="text-center py-0.5">Unit</th>
+                          <th className="text-center py-0.5">Reference Range</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {params.map((r, pIdx) => {
+                          const isAbnormal = r.flag === "H" || r.flag === "L";
+                          const isMorphRow = isMorphologySection(r.test_name);
+                          const paramMeta = {
+                            sample_type: r.sample_type,
+                            analyzer: r.analyzer,
+                            method: r.method,
+                            is_outsourced: r.is_outsourced,
+                            outsourced_caption: r.outsourced_caption,
+                            interpretation: r.interpretation,
+                          };
+                          const hasParamMeta = paramMeta.sample_type || paramMeta.analyzer || paramMeta.method;
+                          const hasParamOutsourced = paramMeta.is_outsourced && paramMeta.outsourced_caption;
+                          const hasParamInterpretation = paramMeta.interpretation && paramMeta.interpretation.replace(/<[^>]*>/g, '').trim().length > 0;
 
-                  return (
-                    <div key={`standalone-${pIdx}`} data-pdf-section="profile" className="print:break-inside-avoid">
-                      {pIdx > 0 && <div className="border-t-2 border-gray-400" style={{ marginBottom: '3mm' }} />}
-                      {(profIdx > 0 && pIdx === 0) && <div style={{ height: '2mm' }} />}
-                      <table className={`w-full ${useCompact ? 'text-xs' : 'text-sm'}`} style={{ tableLayout: 'fixed' }}>
-                        <colgroup>
-                          <col style={{ width: '36%' }} />
-                          <col style={{ width: '24px' }} />
-                          <col style={{ width: 'auto' }} />
-                          <col style={{ width: '14%' }} />
-                          <col style={{ width: '28%' }} />
-                        </colgroup>
-                        <thead>
-                          <tr className={`text-gray-500 border-b ${useCompact ? 'text-[10px]' : 'text-xs'}`}>
-                            <th className="text-left py-0.5 px-3">Parameter</th>
-                            <th></th>
-                            <th className="text-center py-0.5">Result</th>
-                            <th className="text-center py-0.5">Unit</th>
-                            <th className="text-center py-0.5">Reference Range</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr className={`border-b border-gray-100 ${isAbnormal ? "bg-red-50" : ""}`}>
-                            <td className="px-3 py-1 font-semibold">{r.parameter_name}</td>
-                            <td className="text-right py-1">
-                              {isAbnormal && <span className="flag-badge inline-flex items-center justify-center min-w-[14px] h-[14px] rounded bg-red-600 text-white text-[10px] leading-none font-bold">{r.flag}</span>}
-                            </td>
-                            {isMorphRow ? (
-                              <td colSpan={3} className="text-left px-2 text-gray-800 py-1" style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>
-                                {r.result_value}
-                              </td>
-                            ) : (
-                              <>
-                                <td className={`text-center font-semibold py-1 ${isAbnormal ? "text-red-600 font-bold" : ""}`}>
-                                  {r.result_value}
+                          return (
+                            <React.Fragment key={`standalone-${pIdx}`}>
+                              {pIdx > 0 && (
+                                <tr><td colSpan={5}><div className="border-t-2 border-gray-400" style={{ marginBottom: '3mm' }} /></td></tr>
+                              )}
+                              <tr className={`border-b border-gray-100 ${isAbnormal ? "bg-red-50" : ""}`}>
+                                <td className="px-3 py-1 font-semibold">{r.parameter_name}</td>
+                                <td className="text-right py-1">
+                                  {isAbnormal && <span className="flag-badge inline-flex items-center justify-center min-w-[14px] h-[14px] rounded bg-red-600 text-white text-[10px] leading-none font-bold">{r.flag}</span>}
                                 </td>
-                                <td className="text-center text-gray-600 py-1">{r.unit}</td>
-                                <td className="text-center text-gray-600 py-1">{r.normal_range_text || `${r.normal_range_low || ""} - ${r.normal_range_high || ""}`}</td>
-                              </>
-                            )}
-                          </tr>
-                          {r.remark && (
-                            <tr className="border-b border-gray-100">
-                              <td colSpan={5} className="px-3 py-0.5">
-                                <span className="text-[10px] italic text-gray-600">* {r.remark}</span>
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-
-                      {hasParamMeta && (
-                        <div className="px-3 py-1 text-[10px] text-gray-500 border-t border-gray-100 flex gap-4 flex-wrap">
-                          {paramMeta.sample_type && <span><strong>Sample Type:</strong> {paramMeta.sample_type}</span>}
-                          {paramMeta.analyzer && <span><strong>Analyzer:</strong> {paramMeta.analyzer}</span>}
-                          {paramMeta.method && <span><strong>Method:</strong> {paramMeta.method}</span>}
-                        </div>
-                      )}
-                      {hasParamInterpretation && (
-                        <div className="px-3 py-1.5 border-t border-gray-100">
-                          <div className="text-[9px] font-semibold text-gray-600 mb-0.5">Interpretation:</div>
-                          <div
-                            className="text-[9px] text-gray-700 prose prose-xs max-w-none [&_img]:max-h-[60mm] [&_img]:inline-block [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
-                            dangerouslySetInnerHTML={{ __html: paramMeta.interpretation! }}
-                          />
-                        </div>
-                      )}
-                      {hasParamOutsourced && (
-                        <div className="px-3 py-1 text-[10px] text-gray-500 italic border-t border-gray-100">
-                          {paramMeta.outsourced_caption}
-                        </div>
-                      )}
-                    </div>
-                  );
-                });
+                                {isMorphRow ? (
+                                  <td colSpan={3} className="text-left px-2 text-gray-800 py-1" style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>
+                                    {r.result_value}
+                                  </td>
+                                ) : (
+                                  <>
+                                    <td className={`text-center font-semibold py-1 ${isAbnormal ? "text-red-600 font-bold" : ""}`}>
+                                      {r.result_value}
+                                    </td>
+                                    <td className="text-center text-gray-600 py-1">{r.unit}</td>
+                                    <td className="text-center text-gray-600 py-1">{r.normal_range_text || `${r.normal_range_low || ""} - ${r.normal_range_high || ""}`}</td>
+                                  </>
+                                )}
+                              </tr>
+                              {r.remark && (
+                                <tr className="border-b border-gray-100">
+                                  <td colSpan={5} className="px-3 py-0.5">
+                                    <span className="text-[10px] italic text-gray-600">* {r.remark}</span>
+                                  </td>
+                                </tr>
+                              )}
+                              {hasParamMeta && (
+                                <tr>
+                                  <td colSpan={5} className="px-3 py-1 text-[10px] text-gray-500 border-t border-gray-100">
+                                    <div className="flex gap-4 flex-wrap">
+                                      {paramMeta.sample_type && <span><strong>Sample Type:</strong> {paramMeta.sample_type}</span>}
+                                      {paramMeta.analyzer && <span><strong>Analyzer:</strong> {paramMeta.analyzer}</span>}
+                                      {paramMeta.method && <span><strong>Method:</strong> {paramMeta.method}</span>}
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                              {hasParamInterpretation && (
+                                <tr>
+                                  <td colSpan={5} className="px-3 py-1.5 border-t border-gray-100">
+                                    <div className="text-[9px] font-semibold text-gray-600 mb-0.5">Interpretation:</div>
+                                    <div
+                                      className="text-[9px] text-gray-700 prose prose-xs max-w-none [&_img]:max-h-[60mm] [&_img]:inline-block [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
+                                      dangerouslySetInnerHTML={{ __html: paramMeta.interpretation! }}
+                                    />
+                                  </td>
+                                </tr>
+                              )}
+                              {hasParamOutsourced && (
+                                <tr>
+                                  <td colSpan={5} className="px-3 py-1 text-[10px] text-gray-500 italic border-t border-gray-100">
+                                    {paramMeta.outsourced_caption}
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                );
               }
 
               // Profile-level rendering (non-standalone)
