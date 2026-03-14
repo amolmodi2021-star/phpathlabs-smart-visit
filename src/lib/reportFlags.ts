@@ -56,10 +56,45 @@ const parseBoundsFromText = (rangeText?: string | null): { low: number | null; h
   return { low, high };
 };
 
+const ABSENT_MARKERS = ["absent", "nil", "negative", "none", "not seen", "no "];
+const PRESENT_MARKERS = ["present", "positive", "trace", "occasional", "few", "many", "seen", "detected"];
+
+const normalizeText = (value: string | number | null | undefined): string =>
+  String(value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const containsMarker = (text: string, markers: string[]) => markers.some((marker) => text.includes(marker));
+
+const computeQualitativeFlag = (row: FlagEvaluationInput): AbnormalFlag | null => {
+  const resultText = normalizeText(row.result_value);
+  const referenceText = normalizeText(row.normal_range_text);
+  if (!resultText || !referenceText) return null;
+
+  const referenceExpectsAbsent = containsMarker(referenceText, ABSENT_MARKERS);
+  const resultIsPresent = containsMarker(resultText, PRESENT_MARKERS);
+  if (referenceExpectsAbsent && resultIsPresent) return "H";
+
+  const referenceExpectsPresent = containsMarker(referenceText, PRESENT_MARKERS);
+  const resultIsAbsent = containsMarker(resultText, ABSENT_MARKERS);
+  if (referenceExpectsPresent && resultIsAbsent) return "L";
+
+  if (resultText === referenceText || resultText.includes(referenceText) || referenceText.includes(resultText)) {
+    return "N";
+  }
+
+  return null;
+};
+
 export const computeAbnormalFlag = (row: FlagEvaluationInput): AbnormalFlag => {
+  const existingFlag = String(row.flag ?? "").toUpperCase();
   const value = extractNumber(row.result_value);
   if (value === null) {
-    return row.flag === "H" || row.flag === "L" ? row.flag : "N";
+    const qualitativeFlag = computeQualitativeFlag(row);
+    if (qualitativeFlag) return qualitativeFlag;
+    return existingFlag === "H" || existingFlag === "L" ? existingFlag : "N";
   }
 
   const explicitLow = extractNumber(row.normal_range_low);
@@ -82,6 +117,10 @@ export const computeAbnormalFlag = (row: FlagEvaluationInput): AbnormalFlag => {
       low = high;
       high = temp;
     }
+  }
+
+  if (low === null && high === null) {
+    return existingFlag === "H" || existingFlag === "L" ? existingFlag : "N";
   }
 
   if (high !== null && value > high) return "H";
