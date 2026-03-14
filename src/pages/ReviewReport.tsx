@@ -854,6 +854,9 @@ const ReviewReport = () => {
                       <Input value={r.parameter_name} onChange={(e) => updateTestResult(i, "parameter_name", e.target.value)} className="h-8 text-xs font-medium" />
                     </TableCell>
                     <TableCell>
+                      <Input value={r.test_name || ""} onChange={(e) => updateTestResult(i, "test_name" as keyof TestResult, e.target.value)} className="h-8 text-xs" />
+                    </TableCell>
+                    <TableCell>
                       <Input value={r.result_value} onChange={(e) => updateTestResult(i, "result_value", e.target.value)} className={`h-8 text-xs font-bold ${r.flag === "H" || r.flag === "L" ? "text-destructive" : ""}`} />
                     </TableCell>
                     <TableCell>
