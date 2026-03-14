@@ -130,6 +130,36 @@ const normalizeDedupeKey = (value: unknown) =>
     .replace(/\s+/g, " ")
     .trim();
 
+const normalizeMatchKey = (value: unknown) =>
+  String(value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean)
+    .map((token) => (token.endsWith("s") && token.length > 3 ? token.slice(0, -1) : token))
+    .join(" ");
+
+const GENERIC_LAB_WORDS = new Set(["physical", "chemical", "microscopic", "examination", "routine", "analysi", "analysis", "test"]);
+
+const getDistinguishingWords = (normalized: string): string[] =>
+  normalized.split(" ").filter((w) => w.length > 2 && !GENERIC_LAB_WORDS.has(w));
+
+const hasKeywordOverlap = (a: string, b: string): boolean => {
+  if (!a || !b) return false;
+  if (a === b || a.includes(b) || b.includes(a)) return true;
+  const wordsA = a.split(" ").filter((w) => w.length > 3);
+  const wordsB = new Set(b.split(" ").filter((w) => w.length > 3));
+  return wordsA.some((w) => wordsB.has(w));
+};
+
+const hasDistinguishingOverlap = (a: string, b: string): boolean => {
+  if (!a || !b) return false;
+  const wordsA = getDistinguishingWords(a);
+  const wordsB = new Set(getDistinguishingWords(b));
+  return wordsA.some((w) => wordsB.has(w));
+};
+
 const getCanonicalResultScope = (row: Partial<TestResult>) => {
   const profileName = normalizeDedupeKey(row.profile_name);
   const testName = normalizeDedupeKey(row.test_name);
