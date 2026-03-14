@@ -282,10 +282,20 @@ const ReviewReport = () => {
         }
       }
 
+      // Map AI test_name → DB master test_name for consistent grouping
+      let bestTestName = r.test_name || "";
+      if (masterEntries.length === 1 && masterEntries[0].test_name) {
+        bestTestName = masterEntries[0].test_name;
+      } else if (masterEntries.length > 1) {
+        const matched = masterEntries.find(me => me.test_name);
+        if (matched) bestTestName = matched.test_name || bestTestName;
+      }
+
       return {
         ...r,
         department: bestDept,
         profile_name: bestProfile,
+        test_name: bestTestName || r.test_name,
       };
     });
   };

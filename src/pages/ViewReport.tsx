@@ -353,8 +353,8 @@ const ViewReport = () => {
         if (!updated.profile_name && best?.profile_name) updated.profile_name = best.profile_name;
         if (!updated.department && best?.department_name) updated.department = best.department_name;
 
-        // Only overwrite test_name when we have a confident match or test_name is missing
-        if (best?.test_name && (maxScore > 0 || !updated.test_name)) {
+        // Always map test_name to DB master test_name for consistent grouping
+        if (best?.test_name) {
           updated.test_name = best.test_name;
         }
 
