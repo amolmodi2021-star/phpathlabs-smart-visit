@@ -324,10 +324,9 @@ const DirectAI = () => {
   const bottomMarginMm = layoutSettings.bottom_margin_cm * 10;
   const PAGE_H = 297;
   const HEADER_H = 30;
-  const SIGNATURE_H = 18; // signature block reserved at bottom
-  const PAGE_NUM_H = 8;
-  const SAFETY_BUFFER = 4;
-  const usableH = PAGE_H - topMarginMm - bottomMarginMm - HEADER_H - SIGNATURE_H - PAGE_NUM_H - SAFETY_BUFFER;
+  // Signature lives INSIDE the bottom margin — content stops at (PAGE_H - bottomMarginMm)
+  const SAFETY_BUFFER = 2;
+  const usableH = PAGE_H - topMarginMm - bottomMarginMm - HEADER_H - SAFETY_BUFFER;
 
   // Height estimation constants (mm) — intentionally generous to prevent overflow
   const ROW_H = 7;
