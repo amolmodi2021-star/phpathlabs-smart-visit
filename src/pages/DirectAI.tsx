@@ -503,8 +503,7 @@ const DirectAI = () => {
                 className="relative bg-white text-black mx-auto mb-4 print:mb-0 print:break-after-page overflow-hidden"
                 style={{
                   width: "210mm",
-                  minHeight: "297mm",
-                  maxHeight: isPdfExporting ? "297mm" : undefined,
+                  height: "297mm",
                   paddingTop: `${topMarginMm}mm`,
                   paddingBottom: `${bottomMarginMm}mm`,
                   fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
