@@ -85,7 +85,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
       </header>
 
       <div className="flex">
-        <aside className="hidden md:flex w-56 flex-col border-r bg-card min-h-[calc(100vh-3.5rem)] sticky top-14">
+        <aside className="hidden md:flex w-56 shrink-0 flex-col border-r bg-card h-[calc(100vh-3.5rem)] sticky top-14 overflow-hidden">
           <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
             <NavSection items={navItems} />
             <Separator className="my-3" />
