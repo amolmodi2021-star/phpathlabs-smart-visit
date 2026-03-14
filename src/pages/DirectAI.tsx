@@ -324,7 +324,9 @@ const DirectAI = () => {
   const bottomMarginMm = layoutSettings.bottom_margin_cm * 10;
   const PAGE_H = 297;
   const HEADER_H = 30;
-  // Signature lives INSIDE the bottom margin — content stops at (PAGE_H - bottomMarginMm)
+  // Signature block lives INSIDE the bottom margin
+  // Content area: from topMargin to (PAGE_H - bottomMarginMm)
+  // Signature area: within the bottomMarginMm zone at the bottom of the page
   const SAFETY_BUFFER = 2;
   const usableH = PAGE_H - topMarginMm - bottomMarginMm - HEADER_H - SAFETY_BUFFER;
 
@@ -337,22 +339,20 @@ const DirectAI = () => {
   const META_ROW_H = 6;
   const INTERPRETATION_LINE_H = 3.5;
   const INTERPRETATION_BASE_H = 8;
-  const SECTION_MARGIN_H = 4; // mb-3 spacing between sections
+  const SECTION_MARGIN_H = 4;
+
+  const estimateRowH = (r: TestResult): number => {
+    const rangeText = r.normal_range_text || "";
+    const isAdvisory = rangeText.includes("\\n") || rangeText.includes("\n") || rangeText.length > 50;
+    return isAdvisory ? ADVISORY_ROW_H : ROW_H;
+  };
 
   const estimateSectionH = (results: TestResult[], profName: string): number => {
     let h = TABLE_HEADER_H + SECTION_MARGIN_H;
-    // Profile header
     if (profName && profName !== "_individual") h += PROFILE_H;
-    // Metadata row
     const firstR = results[0];
     if (firstR?.sample_type || firstR?.analyzer || firstR?.method) h += META_ROW_H;
-    // Each result row
-    results.forEach((r) => {
-      const rangeText = r.normal_range_text || "";
-      const isAdvisory = rangeText.includes("\\n") || rangeText.includes("\n") || rangeText.length > 50;
-      h += isAdvisory ? ADVISORY_ROW_H : ROW_H;
-    });
-    // Interpretation block
+    results.forEach((r) => { h += estimateRowH(r); });
     const interpResult = results.find(r => r.interpretation);
     if (interpResult?.interpretation) {
       const lines = interpResult.interpretation.split(/\\n|\n/).length;
@@ -361,9 +361,18 @@ const DirectAI = () => {
     return h;
   };
 
+  interface PageSection {
+    type: string;
+    dept?: string;
+    profile?: string;
+    results: TestResult[];
+    continued?: boolean; // true if this is a continuation from previous page
+    hasInterpretation?: boolean; // only the last chunk gets the interpretation
+  }
+
   const buildPages = () => {
-    const pages: { sections: { type: string; dept?: string; profile?: string; results: TestResult[] }[] }[] = [];
-    let currentPage: typeof pages[0] = { sections: [] };
+    const pages: { sections: PageSection[] }[] = [];
+    let currentPage: { sections: PageSection[] } = { sections: [] };
     let currentH = 0;
     let lastDeptOnPage: string | null = null;
 
@@ -374,22 +383,74 @@ const DirectAI = () => {
         const sectionH = estimateSectionH(results, profName);
         const totalNeeded = deptHeaderH + sectionH;
 
-        // If this section won't fit, start a new page
-        if (currentH + totalNeeded > usableH && currentH > 0) {
+        // Case 1: section fits on current page
+        if (currentH + totalNeeded <= usableH || currentH === 0 && totalNeeded <= usableH) {
+          if (needsDeptHeader) {
+            currentH += DEPT_H;
+            lastDeptOnPage = dept;
+          }
+          const interpResult = results.find(r => r.interpretation);
+          currentPage.sections.push({ type: "profile", dept, profile: profName, results, continued: false, hasInterpretation: !!interpResult?.interpretation });
+          currentH += sectionH;
+          return;
+        }
+
+        // Case 2: section doesn't fit — try splitting row-by-row
+        // First, start a new page if current page has content
+        if (currentH > 0 && currentH + deptHeaderH + TABLE_HEADER_H + PROFILE_H + ROW_H > usableH) {
           pages.push(currentPage);
           currentPage = { sections: [] };
           currentH = 0;
           lastDeptOnPage = null;
         }
 
-        // Re-check dept header after potential page break
+        // Add dept header if needed
         if (dept !== lastDeptOnPage) {
           currentH += DEPT_H;
           lastDeptOnPage = dept;
         }
 
-        currentPage.sections.push({ type: "profile", dept, profile: profName, results });
-        currentH += sectionH;
+        // Split the section's rows across pages
+        let isContinued = false;
+        let chunk: TestResult[] = [];
+        // Account for profile header + table header + metadata
+        const firstR = results[0];
+        const hasMeta = !!(firstR?.sample_type || firstR?.analyzer || firstR?.method);
+        let chunkHeaderH = TABLE_HEADER_H + SECTION_MARGIN_H + (profName && profName !== "_individual" ? PROFILE_H : 0) + (hasMeta ? META_ROW_H : 0);
+        let chunkH = chunkHeaderH;
+        const interpResult = results.find(r => r.interpretation);
+        const interpH = interpResult?.interpretation ? INTERPRETATION_BASE_H + interpResult.interpretation.split(/\\n|\n/).length * INTERPRETATION_LINE_H : 0;
+
+        results.forEach((r, rIdx) => {
+          const rowH = estimateRowH(r);
+          const isLastRow = rIdx === results.length - 1;
+          const neededForRow = rowH + (isLastRow ? interpH : 0);
+
+          if (currentH + chunkH + neededForRow > usableH && chunk.length > 0) {
+            // Push current chunk to current page
+            currentPage.sections.push({ type: "profile", dept, profile: profName, results: chunk, continued: isContinued, hasInterpretation: false });
+            currentH += chunkH;
+            // Start new page
+            pages.push(currentPage);
+            currentPage = { sections: [] };
+            currentH = 0;
+            lastDeptOnPage = dept; // dept carries over conceptually
+            chunk = [];
+            isContinued = true;
+            // New chunk header (continued version - no metadata, just header + profile name)
+            chunkHeaderH = TABLE_HEADER_H + SECTION_MARGIN_H + (profName && profName !== "_individual" ? PROFILE_H : 0);
+            chunkH = chunkHeaderH;
+          }
+
+          chunk.push(r);
+          chunkH += rowH;
+        });
+
+        // Push remaining chunk
+        if (chunk.length > 0) {
+          currentPage.sections.push({ type: "profile", dept, profile: profName, results: chunk, continued: isContinued, hasInterpretation: !!interpResult?.interpretation });
+          currentH += chunkH + interpH;
+        }
       });
     });
 
