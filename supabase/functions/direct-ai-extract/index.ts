@@ -72,6 +72,14 @@ ${paramList || "No parameters configured yet"}
 
 ${correctionsBlock ? `LEARNED CORRECTIONS:\n${correctionsBlock}` : ""}
 
+DEPARTMENT GROUPING RULE (CRITICAL):
+- EVERY test result MUST have a "department" field assigned.
+- Use the department column from KNOWN PARAMETERS to assign departments.
+- Common department mappings: CBC/Haematology tests -> HAEMATOLOGY, LFT/Liver tests -> BIOCHEMISTRY, KFT/Kidney tests -> BIOCHEMISTRY, TFT/Thyroid -> BIOCHEMISTRY, Urine tests -> CLINICAL PATHOLOGY, Stool tests -> CLINICAL PATHOLOGY, Blood grouping -> SEROLOGY/IMMUNOLOGY.
+- If a parameter matches a known parameter, use that parameter's department.
+- If no match found, infer department from the section header in the PDF (e.g., "HAEMATOLOGY", "BIOCHEMISTRY", "CLINICAL PATHOLOGY", "MICROBIOLOGY", "SEROLOGY").
+- Group results logically: all CBC parameters under same department, all LFT under same department, etc.
+
 PROFILE MAPPING RULE (CRITICAL FOR DISAMBIGUATION):
 - Use the "profile" column in KNOWN PARAMETERS to set profile_name for each extracted row.
 - Section headers like "STOOL EXAMINATION", "URINE EXAMINATION" should map to the closest known profile name.
