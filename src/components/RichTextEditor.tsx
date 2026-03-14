@@ -1,6 +1,6 @@
 import { useRef, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Bold, Italic, Underline, List, ListOrdered, ImagePlus } from "lucide-react";
+import { Bold, Italic, Underline, List, ListOrdered, ImagePlus, AArrowUp, AArrowDown } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 interface RichTextEditorProps {
@@ -54,6 +54,18 @@ const RichTextEditor = ({ value, onChange }: RichTextEditorProps) => {
     input.click();
   };
 
+  const changeFontSize = (increase: boolean) => {
+    const sizes = ["1", "2", "3", "4", "5", "6", "7"];
+    let current = 3; // default "medium"
+    const parentFont = document.queryCommandValue("fontSize");
+    if (parentFont) {
+      const idx = sizes.indexOf(parentFont);
+      if (idx >= 0) current = idx;
+    }
+    const next = increase ? Math.min(current + 1, 6) : Math.max(current - 1, 0);
+    exec("fontSize", sizes[next]);
+  };
+
   return (
     <div className="border rounded-md overflow-hidden">
       <div className="flex gap-0.5 p-1.5 border-b bg-muted/30 flex-wrap">
@@ -74,6 +86,13 @@ const RichTextEditor = ({ value, onChange }: RichTextEditorProps) => {
         </Button>
         <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onMouseDown={(e) => { e.preventDefault(); handleImageUpload(); }}>
           <ImagePlus className="h-3.5 w-3.5" />
+        </Button>
+        <div className="w-px h-5 bg-border mx-0.5 self-center" />
+        <Button type="button" variant="ghost" size="icon" className="h-7 w-7" title="Decrease font size" onMouseDown={(e) => { e.preventDefault(); changeFontSize(false); }}>
+          <AArrowDown className="h-3.5 w-3.5" />
+        </Button>
+        <Button type="button" variant="ghost" size="icon" className="h-7 w-7" title="Increase font size" onMouseDown={(e) => { e.preventDefault(); changeFontSize(true); }}>
+          <AArrowUp className="h-3.5 w-3.5" />
         </Button>
       </div>
       <div

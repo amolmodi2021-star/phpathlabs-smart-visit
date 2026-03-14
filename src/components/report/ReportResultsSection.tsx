@@ -273,9 +273,9 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                   )}
                   {hasInterpretation && (
                     <div className="px-3 py-1.5 border-t border-gray-100">
-                      <div className="text-[10px] font-semibold text-gray-600 mb-0.5">Interpretation:</div>
+                      <div className="text-[9px] font-semibold text-gray-600 mb-0.5">Interpretation:</div>
                       <div
-                        className="text-[10px] text-gray-700 prose prose-xs max-w-none [&_img]:max-h-[60mm] [&_img]:inline-block [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
+                        className="text-[9px] text-gray-700 prose prose-xs max-w-none [&_img]:max-h-[60mm] [&_img]:inline-block [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
                         dangerouslySetInnerHTML={{ __html: meta!.interpretation! }}
                       />
                     </div>
