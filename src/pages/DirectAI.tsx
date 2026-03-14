@@ -28,6 +28,10 @@ interface TestResult {
   normal_range_text?: string;
   flag?: string;
   approved_by?: string;
+  sample_type?: string;
+  analyzer?: string;
+  method?: string;
+  interpretation?: string;
   source_page?: number;
   confidence_score?: number;
   extraction_basis?: string;
@@ -513,12 +517,31 @@ const DirectAI = () => {
                         {dept}
                       </div>
 
-                      {sections.map((section, sIdx) => (
+                      {sections.map((section, sIdx) => {
+                        // Collect section-level metadata from first result
+                        const firstR = section.results[0];
+                        const sampleType = firstR?.sample_type || "";
+                        const analyzer = firstR?.analyzer || "";
+                        const method = firstR?.method || "";
+                        // Collect interpretation from last result or any result that has it
+                        const interpretationResult = section.results.find(r => r.interpretation);
+                        const interpretation = interpretationResult?.interpretation || "";
+
+                        return (
                         <div key={sIdx} className="mb-3">
                           {/* Profile/Test name header */}
                           {section.profile && section.profile !== "_individual" && (
                             <div className="font-semibold text-xs mb-1 py-0.5 px-1" style={{ color: "#2E3192" }}>
                               {section.profile}
+                            </div>
+                          )}
+
+                          {/* Metadata row: Sample Type, Analyzer, Method */}
+                          {(sampleType || analyzer || method) && (
+                            <div className="flex flex-wrap gap-x-6 gap-y-0.5 text-[9px] text-gray-500 mb-1 px-1 border-b border-gray-100 pb-1">
+                              {sampleType && <span><strong>Sample Type:</strong> {sampleType}</span>}
+                              {analyzer && <span><strong>Instrument:</strong> {analyzer}</span>}
+                              {method && <span><strong>Method:</strong> {method}</span>}
                             </div>
                           )}
 
@@ -543,10 +566,15 @@ const DirectAI = () => {
                             <tbody>
                               {section.results.map((r, rIdx) => {
                                 const isAbnormal = r.flag === "H" || r.flag === "L";
+                                // Format advisory-style normal range
+                                const rangeText = r.normal_range_text || (r.normal_range_low || r.normal_range_high ? `${r.normal_range_low || ""} - ${r.normal_range_high || ""}` : "");
+                                const isAdvisoryRange = rangeText.includes("\\n") || rangeText.includes("\n") || rangeText.length > 50;
+
                                 return (
                                   <tr
                                     key={rIdx}
                                     className={`border-b border-gray-100 ${isAbnormal ? "bg-red-50" : ""}`}
+                                    style={{ verticalAlign: isAdvisoryRange ? "top" : "middle" }}
                                   >
                                     <td className="py-1 font-medium break-words">{r.parameter_name}</td>
                                     <td className="py-1 text-center">
@@ -564,15 +592,67 @@ const DirectAI = () => {
                                     </td>
                                     <td className="py-1 text-gray-600">{r.unit || ""}</td>
                                     <td className="py-1 text-gray-500 break-words text-[9px]">
-                                      {r.normal_range_text || (r.normal_range_low || r.normal_range_high ? `${r.normal_range_low || ""} - ${r.normal_range_high || ""}` : "")}
+                                      {isAdvisoryRange ? (
+                                        <div className="space-y-0.5">
+                                          {rangeText.split(/\\n|\n/).map((line: string, i: number) => {
+                                            const trimmed = line.trim();
+                                            if (!trimmed) return null;
+                                            // Check if this line contains the "normal/sufficient" category
+                                            const isNormalLine = /\b(normal|sufficient|no risk|non[- ]?diabetic|optimal|desirable)\b/i.test(trimmed);
+                                            return (
+                                              <div
+                                                key={i}
+                                                className={`leading-tight ${isNormalLine ? "font-semibold text-green-700" : ""}`}
+                                              >
+                                                {trimmed}
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      ) : (
+                                        rangeText
+                                      )}
                                     </td>
                                   </tr>
                                 );
                               })}
                             </tbody>
                           </table>
+
+                          {/* Interpretation block */}
+                          {interpretation && (
+                            <div className="mt-1 mb-2 px-1 py-1.5 border-l-2 border-blue-300 bg-blue-50/50">
+                              <div className="text-[9px] font-semibold text-gray-700 mb-0.5">Interpretation:</div>
+                              <div className="text-[9px] text-gray-600 leading-relaxed">
+                                {interpretation.split(/\\n|\n/).map((line: string, i: number) => {
+                                  const trimmed = line.trim();
+                                  if (!trimmed) return <div key={i} className="h-1" />;
+                                  // Detect bullet/numbered points
+                                  const isBullet = /^[•\-\*\d+\.\)]/.test(trimmed);
+                                  // Detect table-like lines with separators
+                                  const isTableRow = (trimmed.match(/[:\|]/g) || []).length >= 2;
+                                  if (isTableRow) {
+                                    const cells = trimmed.split(/[:\|]/).map(c => c.trim());
+                                    return (
+                                      <div key={i} className="grid gap-x-2 text-[9px]" style={{ gridTemplateColumns: `repeat(${cells.length}, auto)` }}>
+                                        {cells.map((cell, ci) => (
+                                          <span key={ci} className={ci === 0 ? "font-medium" : ""}>{cell}</span>
+                                        ))}
+                                      </div>
+                                    );
+                                  }
+                                  return (
+                                    <div key={i} className={isBullet ? "pl-2" : ""}>
+                                      {isBullet ? `${trimmed}` : trimmed}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ))}
 
