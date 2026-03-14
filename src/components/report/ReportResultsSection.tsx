@@ -63,10 +63,6 @@ const isCompactProfile = (profName: string): boolean => {
   return COMPACT_PROFILES.some(cp => lower.includes(cp));
 };
 
-const isTestGroupedProfile = (profName: string): boolean => {
-  const lower = profName.toLowerCase();
-  return TEST_GROUPED_PROFILES.some(cp => lower.includes(cp));
-};
 
 const isMorphologySection = (testName: string | null | undefined): boolean => {
   if (!testName) return false;
