@@ -79,25 +79,107 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
           <div className={`border ${hideDeptHeader ? 'rounded' : 'border-t-0 rounded-b'}`}>
             {Object.entries(profiles).map(([profName, params], profIdx) => {
               const useCompact = compact || isCompactProfile(profName);
+              const isStandalone = profName === "_individual";
+
+              // For standalone parameters, render each one individually with its own metadata
+              if (isStandalone) {
+                return params.map((r, pIdx) => {
+                  const isAbnormal = r.flag === "H" || r.flag === "L";
+                  const isMorphRow = isMorphologySection(r.test_name);
+                  const paramMeta = {
+                    sample_type: r.sample_type,
+                    analyzer: r.analyzer,
+                    method: r.method,
+                    is_outsourced: r.is_outsourced,
+                    outsourced_caption: r.outsourced_caption,
+                    interpretation: r.interpretation,
+                  };
+                  const hasParamMeta = paramMeta.sample_type || paramMeta.analyzer || paramMeta.method;
+                  const hasParamOutsourced = paramMeta.is_outsourced && paramMeta.outsourced_caption;
+                  const hasParamInterpretation = paramMeta.interpretation && paramMeta.interpretation.replace(/<[^>]*>/g, '').trim().length > 0;
+
+                  return (
+                    <div key={`standalone-${pIdx}`} data-pdf-section="profile" className="print:break-inside-avoid">
+                      {(profIdx > 0 || pIdx > 0) && <div style={{ height: '2mm' }} />}
+                      <table className={`w-full ${useCompact ? 'text-xs' : 'text-sm'}`} style={{ tableLayout: 'fixed' }}>
+                        <colgroup>
+                          <col style={{ width: '36%' }} />
+                          <col style={{ width: '24px' }} />
+                          <col style={{ width: 'auto' }} />
+                          <col style={{ width: '14%' }} />
+                          <col style={{ width: '28%' }} />
+                        </colgroup>
+                        <thead>
+                          <tr className={`text-gray-500 border-b ${useCompact ? 'text-[10px]' : 'text-xs'}`}>
+                            <th className="text-left py-0.5 px-3">Parameter</th>
+                            <th></th>
+                            <th className="text-center py-0.5">Result</th>
+                            <th className="text-center py-0.5">Unit</th>
+                            <th className="text-center py-0.5">Reference Range</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr className={`border-b border-gray-100 ${isAbnormal ? "bg-red-50" : ""}`}>
+                            <td className="px-3 py-1">{r.parameter_name}</td>
+                            <td className="text-right py-1">
+                              {isAbnormal && <span className="flag-badge inline-flex items-center justify-center min-w-[14px] h-[14px] rounded bg-red-600 text-white text-[10px] leading-none font-bold">{r.flag}</span>}
+                            </td>
+                            {isMorphRow ? (
+                              <td colSpan={3} className="text-left px-2 text-gray-800 py-1" style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>
+                                {r.result_value}
+                              </td>
+                            ) : (
+                              <>
+                                <td className={`text-center font-semibold py-1 ${isAbnormal ? "text-red-600 font-bold" : ""}`}>
+                                  {r.result_value}
+                                </td>
+                                <td className="text-center text-gray-600 py-1">{r.unit}</td>
+                                <td className="text-center text-gray-600 py-1">{r.normal_range_text || `${r.normal_range_low || ""} - ${r.normal_range_high || ""}`}</td>
+                              </>
+                            )}
+                          </tr>
+                          {r.remark && (
+                            <tr className="border-b border-gray-100">
+                              <td colSpan={5} className="px-3 py-0.5">
+                                <span className="text-[10px] italic text-gray-600">* {r.remark}</span>
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+
+                      {hasParamMeta && (
+                        <div className="px-3 py-1 text-[10px] text-gray-500 border-t border-gray-100 flex gap-4 flex-wrap">
+                          {paramMeta.sample_type && <span><strong>Sample Type:</strong> {paramMeta.sample_type}</span>}
+                          {paramMeta.analyzer && <span><strong>Analyzer:</strong> {paramMeta.analyzer}</span>}
+                          {paramMeta.method && <span><strong>Method:</strong> {paramMeta.method}</span>}
+                        </div>
+                      )}
+                      {hasParamOutsourced && (
+                        <div className="px-3 py-1 text-[10px] text-gray-500 italic border-t border-gray-100">
+                          {paramMeta.outsourced_caption}
+                        </div>
+                      )}
+                      {hasParamInterpretation && (
+                        <div className="px-3 py-1.5 border-t border-gray-100">
+                          <div className="text-[10px] font-semibold text-gray-600 mb-0.5">Interpretation:</div>
+                          <div
+                            className="text-[10px] text-gray-700 prose prose-xs max-w-none [&_img]:max-h-[60mm] [&_img]:inline-block [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
+                            dangerouslySetInnerHTML={{ __html: paramMeta.interpretation! }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                });
+              }
+
+              // Profile-level rendering (non-standalone)
               const testGroups = groupByTestName(params);
               const isGroupedProfile = profileMetaMap?.[profName]?.enable_test_grouping ?? false;
               const hasMultipleTestNames = isGroupedProfile && testGroups.filter(g => g.testName).length >= 1;
-
-              // Get metadata: profile-level from profileMetaMap, or parameter-level for standalone
-              const isStandalone = profName === "_individual";
-              const profMeta = !isStandalone && profileMetaMap ? profileMetaMap[profName] : null;
-
-              // For standalone parameters, collect metadata from the first parameter
-              const standaloneMeta = isStandalone && params.length > 0 ? {
-                sample_type: params[0].sample_type,
-                analyzer: params[0].analyzer,
-                method: params[0].method,
-                is_outsourced: params[0].is_outsourced,
-                outsourced_caption: params[0].outsourced_caption,
-                interpretation: params[0].interpretation,
-              } : null;
-
-              const meta = profMeta || standaloneMeta;
+              const profMeta = profileMetaMap ? profileMetaMap[profName] : null;
+              const meta = profMeta;
               const hasMetaRow = meta && (meta.sample_type || meta.analyzer || meta.method);
               const hasOutsourced = meta?.is_outsourced && meta?.outsourced_caption;
               const hasInterpretation = meta?.interpretation && meta.interpretation.replace(/<[^>]*>/g, '').trim().length > 0;
@@ -105,7 +187,7 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
               return (
                 <div key={profName} data-pdf-section="profile" className="print:break-inside-avoid">
                   {profIdx > 0 && <div style={{ height: useCompact ? '1.5mm' : '2mm' }} />}
-                  {profName !== "_individual" && shouldShowProfile(params) && (
+                  {shouldShowProfile(params) && (
                     <>
                       <div style={{ height: '1mm' }} />
                       <div className="bg-blue-50 px-3 py-1 font-semibold text-sm border-b" style={{ color: '#2E3192' }}>{profName}</div>
@@ -177,7 +259,6 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                     </tbody>
                   </table>
 
-                  {/* Metadata row: Sample Type, Analyzer, Method */}
                   {hasMetaRow && (
                     <div className="px-3 py-1 text-[10px] text-gray-500 border-t border-gray-100 flex gap-4 flex-wrap">
                       {meta!.sample_type && <span><strong>Sample Type:</strong> {meta!.sample_type}</span>}
@@ -185,15 +266,11 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                       {meta!.method && <span><strong>Method:</strong> {meta!.method}</span>}
                     </div>
                   )}
-
-                  {/* Outsourced caption line */}
                   {hasOutsourced && (
                     <div className="px-3 py-1 text-[10px] text-gray-500 italic border-t border-gray-100">
                       {meta!.outsourced_caption}
                     </div>
                   )}
-
-                  {/* Interpretation block */}
                   {hasInterpretation && (
                     <div className="px-3 py-1.5 border-t border-gray-100">
                       <div className="text-[10px] font-semibold text-gray-600 mb-0.5">Interpretation:</div>
