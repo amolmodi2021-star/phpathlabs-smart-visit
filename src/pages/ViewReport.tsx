@@ -51,6 +51,7 @@ interface ProfileMeta {
   outsourced_caption?: string;
   interpretation?: string;
   enable_test_grouping?: boolean;
+  force_single_page?: boolean;
 }
 
 interface TrendData {
