@@ -28,6 +28,10 @@ interface TestResult {
   normal_range_text?: string;
   flag?: string;
   approved_by?: string;
+  sample_type?: string;
+  analyzer?: string;
+  method?: string;
+  interpretation?: string;
   source_page?: number;
   confidence_score?: number;
   extraction_basis?: string;
