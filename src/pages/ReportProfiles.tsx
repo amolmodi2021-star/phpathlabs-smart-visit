@@ -276,6 +276,11 @@ const ReportProfiles = () => {
             </div>
 
             <div className="flex items-center gap-2">
+              <Checkbox checked={form.force_single_page} onCheckedChange={(c) => setForm({ ...form, force_single_page: !!c })} />
+              <Label>Force single page (auto-shrink content to fit one page)</Label>
+            </div>
+
+            <div className="flex items-center gap-2">
               <Checkbox checked={form.is_outsourced} onCheckedChange={(c) => setForm({ ...form, is_outsourced: !!c })} />
               <Label>Mark as Outsourced</Label>
             </div>
