@@ -130,6 +130,36 @@ const normalizeDedupeKey = (value: unknown) =>
     .replace(/\s+/g, " ")
     .trim();
 
+const normalizeMatchKey = (value: unknown) =>
+  String(value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean)
+    .map((token) => (token.endsWith("s") && token.length > 3 ? token.slice(0, -1) : token))
+    .join(" ");
+
+const GENERIC_LAB_WORDS = new Set(["physical", "chemical", "microscopic", "examination", "routine", "analysi", "analysis", "test"]);
+
+const getDistinguishingWords = (normalized: string): string[] =>
+  normalized.split(" ").filter((w) => w.length > 2 && !GENERIC_LAB_WORDS.has(w));
+
+const hasKeywordOverlap = (a: string, b: string): boolean => {
+  if (!a || !b) return false;
+  if (a === b || a.includes(b) || b.includes(a)) return true;
+  const wordsA = a.split(" ").filter((w) => w.length > 3);
+  const wordsB = new Set(b.split(" ").filter((w) => w.length > 3));
+  return wordsA.some((w) => wordsB.has(w));
+};
+
+const hasDistinguishingOverlap = (a: string, b: string): boolean => {
+  if (!a || !b) return false;
+  const wordsA = getDistinguishingWords(a);
+  const wordsB = new Set(getDistinguishingWords(b));
+  return wordsA.some((w) => wordsB.has(w));
+};
+
 const getCanonicalResultScope = (row: Partial<TestResult>) => {
   const profileName = normalizeDedupeKey(row.profile_name);
   const testName = normalizeDedupeKey(row.test_name);
@@ -243,13 +273,13 @@ const ViewReport = () => {
     const rawResults = (ext.test_results as unknown as TestResult[]) || [];
     let results = dedupeResultsLatest(rawResults);
 
-    const paramNames = results.map((r) => r.parameter_name);
+    const paramNames = [...new Set(results.map((r) => r.parameter_name).filter(Boolean))];
     const { data: masterParams } = await supabase
       .from("report_test_parameters")
       .select("parameter_name, test_name, department_id, report_profiles(profile_name), report_departments:department_id(department_name)")
       .in("parameter_name", paramNames);
 
-    // Also fetch with case-insensitive fallback for mismatched casing (e.g. pH vs PH)
+    // Also fetch with case-insensitive + singular/plural fallback for mismatched naming
     const unmatchedNames = paramNames.filter((pn) =>
       !masterParams?.some((mp) => mp.parameter_name === pn)
     );
@@ -259,75 +289,99 @@ const ViewReport = () => {
         .from("report_test_parameters")
         .select("parameter_name, test_name, department_id, report_profiles(profile_name), report_departments:department_id(department_name)");
       if (fallbackParams) {
-        const lowerMap = new Map<string, typeof fallbackParams[0]>();
+        const lowerMap = new Map<string, Array<typeof fallbackParams[0]>>();
         fallbackParams.forEach((fp) => {
-          lowerMap.set(fp.parameter_name.toLowerCase(), fp);
+          const key = normalizeMatchKey(fp.parameter_name);
+          const arr = lowerMap.get(key) || [];
+          arr.push(fp);
+          lowerMap.set(key, arr);
         });
         unmatchedNames.forEach((name) => {
-          const lower = name.toLowerCase();
-          let match = lowerMap.get(lower);
+          const norm = normalizeMatchKey(name);
+          let matches = lowerMap.get(norm);
           // Fuzzy fallback: try adding/removing trailing 's' for singular/plural mismatch
-          if (!match) {
-            if (lower.endsWith('s')) {
-              match = lowerMap.get(lower.slice(0, -1));
+          if ((!matches || matches.length === 0) && norm) {
+            if (norm.endsWith("s")) {
+              matches = lowerMap.get(norm.slice(0, -1));
             } else {
-              match = lowerMap.get(lower + 's');
+              matches = lowerMap.get(`${norm}s`);
             }
           }
-          if (match) allMasterParams.push({ ...match, parameter_name: name });
+          if (matches && matches.length > 0) {
+            matches.forEach((m) => allMasterParams.push({ ...m, parameter_name: name }));
+          }
         });
       }
     }
 
     if (allMasterParams.length > 0) {
-      // Build profile-specific map using lowercase keys for case-insensitive matching
-      const profileSpecificMap: Record<string, string> = {};
-      const genericMap: Record<string, string> = {};
-      // Build profile_name backfill map and department backfill map
-      const profileNameMap: Record<string, string> = {};
-      const deptNameMap: Record<string, string> = {};
+      type MasterEntry = {
+        parameter_name: string;
+        test_name: string;
+        profile_name: string;
+        department_name: string;
+      };
+
+      const byParam = new Map<string, MasterEntry[]>();
       allMasterParams.forEach((mp: any) => {
-        const paramLower = mp.parameter_name.toLowerCase();
-        if (mp.test_name) {
-          genericMap[paramLower] = mp.test_name;
-          const profName = mp.report_profiles?.profile_name;
-          if (profName) {
-            profileSpecificMap[`${profName.toLowerCase()}::${paramLower}`] = mp.test_name;
-          }
-        }
-        // Backfill profile_name from master
-        const profName = mp.report_profiles?.profile_name;
-        if (profName) {
-          profileNameMap[paramLower] = profName;
-        }
-        // Backfill department from master
-        const deptName = (mp as any).report_departments?.department_name;
-        if (deptName) {
-          deptNameMap[paramLower] = deptName;
-        }
+        const key = normalizeMatchKey(mp.parameter_name);
+        if (!key) return;
+        const entry: MasterEntry = {
+          parameter_name: mp.parameter_name || "",
+          test_name: mp.test_name || "",
+          profile_name: mp.report_profiles?.profile_name || "",
+          department_name: mp.report_departments?.department_name || "",
+        };
+        const arr = byParam.get(key) || [];
+        arr.push(entry);
+        byParam.set(key, arr);
       });
 
+      const resolveEntries = (parameterName: string) => {
+        const key = normalizeMatchKey(parameterName);
+        if (!key) return [] as MasterEntry[];
+        let entries = byParam.get(key) || [];
+        if (entries.length === 0) {
+          entries = key.endsWith("s") ? byParam.get(key.slice(0, -1)) || [] : byParam.get(`${key}s`) || [];
+        }
+        return entries;
+      };
+
       results = results.map((r) => {
-        const paramLower = r.parameter_name.toLowerCase();
-        let updated = { ...r };
+        const updated = { ...r };
+        const entries = resolveEntries(updated.parameter_name);
+        if (entries.length === 0) return updated;
 
-        // Backfill profile_name if missing
-        if (!updated.profile_name && profileNameMap[paramLower]) {
-          updated.profile_name = profileNameMap[paramLower];
-        }
+        const aiProfile = normalizeMatchKey(updated.profile_name);
+        const aiTest = normalizeMatchKey(updated.test_name);
 
-        // Backfill department if missing
-        if (!updated.department && deptNameMap[paramLower]) {
-          updated.department = deptNameMap[paramLower];
-        }
+        const scored = entries.map((me) => {
+          const dbProfile = normalizeMatchKey(me.profile_name);
+          const dbTest = normalizeMatchKey(me.test_name);
+          let score = 0;
 
-        // Prefer profile-specific match to avoid cross-profile contamination
-        const profileKey = updated.profile_name ? `${updated.profile_name.toLowerCase()}::${paramLower}` : null;
+          // Critical disambiguation: AI profile keywords (stool/urine) may exist only in DB test_name
+          if (aiProfile && dbTest && hasDistinguishingOverlap(aiProfile, dbTest)) score += 20;
+          if (aiTest && dbProfile && hasDistinguishingOverlap(aiTest, dbProfile)) score += 20;
+          if (aiProfile && dbProfile && hasDistinguishingOverlap(aiProfile, dbProfile)) score += 15;
+          if (aiTest && dbTest && hasKeywordOverlap(aiTest, dbTest)) score += 5;
 
-        if (profileKey && profileSpecificMap[profileKey]) {
-          updated.test_name = profileSpecificMap[profileKey];
-        } else if (genericMap[paramLower]) {
-          updated.test_name = genericMap[paramLower];
+          return { me, score };
+        });
+
+        const maxScore = Math.max(...scored.map((s) => s.score));
+        const best = maxScore > 0
+          ? scored.find((s) => s.score === maxScore)?.me
+          : entries.find((e) => normalizeMatchKey(e.profile_name) === aiProfile)
+            || entries.find((e) => normalizeMatchKey(e.test_name) === aiTest)
+            || entries[0];
+
+        if (!updated.profile_name && best?.profile_name) updated.profile_name = best.profile_name;
+        if (!updated.department && best?.department_name) updated.department = best.department_name;
+
+        // Only overwrite test_name when we have a confident match or test_name is missing
+        if (best?.test_name && (maxScore > 0 || !updated.test_name)) {
+          updated.test_name = best.test_name;
         }
 
         return updated;
