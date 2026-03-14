@@ -156,11 +156,6 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                           {paramMeta.method && <span><strong>Method:</strong> {paramMeta.method}</span>}
                         </div>
                       )}
-                      {hasParamOutsourced && (
-                        <div className="px-3 py-1 text-[10px] text-gray-500 italic border-t border-gray-100">
-                          {paramMeta.outsourced_caption}
-                        </div>
-                      )}
                       {hasParamInterpretation && (
                         <div className="px-3 py-1.5 border-t border-gray-100">
                           <div className="text-[9px] font-semibold text-gray-600 mb-0.5">Interpretation:</div>
@@ -168,6 +163,11 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                             className="text-[9px] text-gray-700 prose prose-xs max-w-none [&_img]:max-h-[60mm] [&_img]:inline-block [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
                             dangerouslySetInnerHTML={{ __html: paramMeta.interpretation! }}
                           />
+                        </div>
+                      )}
+                      {hasParamOutsourced && (
+                        <div className="px-3 py-1 text-[10px] text-gray-500 italic border-t border-gray-100">
+                          {paramMeta.outsourced_caption}
                         </div>
                       )}
                     </div>
