@@ -87,6 +87,7 @@ const ReportProfiles = () => {
       is_outsourced: form.is_outsourced,
       outsourced_caption: form.outsourced_caption || null,
       interpretation: form.interpretation || null,
+      enable_test_grouping: form.enable_test_grouping,
     };
     let profileId = editId;
 
