@@ -31,6 +31,7 @@ const reportNavItems = [
   { to: "/report-admin/signatures", label: "Signatures", icon: PenTool },
   { to: "/report-admin/layout", label: "Report Layout", icon: Layers },
   { to: "/report-admin/corrections", label: "AI Corrections", icon: BookOpen },
+  { to: "/direct-ai", label: "Direct AI", icon: Zap },
 ];
 
 const NavSection = ({ items, onClick }: { items: typeof navItems; onClick?: () => void }) => (
