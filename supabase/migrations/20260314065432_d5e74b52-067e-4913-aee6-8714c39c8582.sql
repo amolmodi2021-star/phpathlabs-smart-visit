@@ -1,0 +1,1 @@
+ALTER TABLE public.report_profiles ADD COLUMN force_single_page boolean DEFAULT false;
