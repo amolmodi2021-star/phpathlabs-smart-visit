@@ -808,8 +808,8 @@ const ViewReport = () => {
         return;
       }
 
-      // CBC / Urine profiles always get their own dedicated page
-      if (isDedicatedReportProfile(section)) {
+      // CBC / Urine profiles or force_single_page profiles get their own dedicated page
+      if (isDedicatedReportProfile(section) || isForceSinglePageProfile(section, profileMetaMap)) {
         if (currentPage.length > 0) {
           pages.push(currentPage);
           currentPage = [];
