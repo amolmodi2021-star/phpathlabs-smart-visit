@@ -88,6 +88,7 @@ const ReportProfiles = () => {
       outsourced_caption: form.outsourced_caption || null,
       interpretation: form.interpretation || null,
       enable_test_grouping: form.enable_test_grouping,
+      force_single_page: form.force_single_page,
     };
     let profileId = editId;
 
