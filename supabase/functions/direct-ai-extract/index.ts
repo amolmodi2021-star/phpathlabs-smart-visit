@@ -63,8 +63,13 @@ REFERENCE RANGE RULE (CRITICAL):
 - Extract COMPLETE reference range text including ALL categories for advisory-style ranges.
 - For normal_range_low/high, use the "normal/sufficient/no-risk" bounds.
 
-ABNORMAL FLAG RULE:
-- Compare numeric result with normal_range_low/high: > high => H, < low => L, else N.
+ABNORMAL FLAG RULE (AGE/GENDER-AWARE — CRITICAL):
+- The patient's age and gender are extracted in the header (demographics). Use them to determine the correct reference range.
+- Many parameters have age-specific or gender-specific reference ranges (e.g., Haemoglobin: Male 13-17, Female 12-16; ALP higher in children; hormones vary by gender).
+- When the PDF shows MULTIPLE reference ranges for different age groups or genders, pick the range that matches THIS patient's age and gender.
+- Set normal_range_low and normal_range_high to the bounds of the APPLICABLE range only (not all ranges).
+- Still include the FULL reference text (all categories) in normal_range_text for display purposes.
+- Compare numeric result with the APPLICABLE normal_range_low/high: > high => H, < low => L, else N.
 - For qualitative results, set flag to "N".
 
 KNOWN PARAMETERS:
