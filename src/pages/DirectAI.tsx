@@ -341,7 +341,7 @@ const DirectAI = () => {
   const SECTION_MARGIN_H = 4; // mb-3 spacing between sections
 
   const estimateSectionH = (results: TestResult[], profName: string): number => {
-    let h = TABLE_HEADER_H;
+    let h = TABLE_HEADER_H + SECTION_MARGIN_H;
     // Profile header
     if (profName && profName !== "_individual") h += PROFILE_H;
     // Metadata row
