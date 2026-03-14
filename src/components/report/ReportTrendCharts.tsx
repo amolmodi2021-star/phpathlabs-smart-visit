@@ -52,7 +52,7 @@ const ReportTrendCharts = ({ trends }: ReportTrendChartsProps) => {
           if (trend.high != null) allVals.push(trend.high);
           const minVal = Math.min(...allVals);
           const maxVal = Math.max(...allVals);
-          const padding = (maxVal - minVal) * 0.15 || 1;
+          const padding = (maxVal - minVal) * 0.15 || (maxVal * 0.1) || 1;
 
           const refRange = trend.low != null && trend.high != null
             ? `${trend.low} - ${trend.high}`
@@ -70,7 +70,7 @@ const ReportTrendCharts = ({ trends }: ReportTrendChartsProps) => {
                    <YAxis
                      tick={{ fontSize: 9 }}
                      width={40}
-                     domain={[Math.floor((minVal - padding) * 100) / 100, Math.ceil((maxVal + padding) * 100) / 100]}
+                     domain={[Math.max(0, Math.floor((minVal - padding) * 100) / 100), Math.ceil((maxVal + padding) * 100) / 100]}
                      tickFormatter={(val: number) => Number(val.toFixed(2)).toString()}
                      padding={{ top: 10, bottom: 10 }}
                    />
