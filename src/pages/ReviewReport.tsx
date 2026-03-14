@@ -152,12 +152,26 @@ const ReviewReport = () => {
     return { masterMap, profileGroups, paramIdToNameKey, masterIds };
   };
 
+  // Helper: extract distinguishing keywords (skip generic lab terms)
+  const GENERIC_LAB_WORDS = new Set(["physical", "chemical", "microscopic", "examination", "routine", "analysi", "analysis", "test"]);
+  
+  const getDistinguishingWords = (normalized: string): string[] =>
+    normalized.split(" ").filter(w => w.length > 2 && !GENERIC_LAB_WORDS.has(w));
+
   // Helper: check if two normalized strings share significant keywords
   const hasKeywordOverlap = (a: string, b: string): boolean => {
     if (!a || !b) return false;
     if (a === b || a.includes(b) || b.includes(a)) return true;
     const wordsA = a.split(" ").filter(w => w.length > 3);
     const wordsB = new Set(b.split(" ").filter(w => w.length > 3));
+    return wordsA.some(w => wordsB.has(w));
+  };
+
+  // Helper: check if two strings share distinguishing (non-generic) keywords
+  const hasDistinguishingOverlap = (a: string, b: string): boolean => {
+    if (!a || !b) return false;
+    const wordsA = getDistinguishingWords(a);
+    const wordsB = new Set(getDistinguishingWords(b));
     return wordsA.some(w => wordsB.has(w));
   };
 
@@ -205,19 +219,20 @@ const ReviewReport = () => {
       const aiContext = [aiTestKey, aiProfileKey].filter(Boolean).join(" ");
 
       // When multiple master entries exist, disambiguate by keyword overlap
-      // between AI-extracted context (test_name, profile_name) and master test_name/profile_name
+      // Focus on DISTINGUISHING keywords (e.g., "stool", "urine") not generic ones ("physical", "examination")
       let masterEntries = allMasterEntries;
       if (allMasterEntries.length > 1 && aiContext) {
         const scored = allMasterEntries.map(me => {
           const dbTestKey = normalizeParameterForMatch(me.test_name);
           const dbProfKey = normalizeParameterForMatch(me.profile_name);
-          const dbContext = [dbTestKey, dbProfKey].filter(Boolean).join(" ");
           let score = 0;
-          // Check keyword overlap between AI context and DB context
-          if (hasKeywordOverlap(aiContext, dbContext)) score += 10;
-          // Bonus for direct profile_name match
-          if (aiProfileKey && dbProfKey && hasKeywordOverlap(aiProfileKey, dbProfKey)) score += 5;
-          // Bonus for direct test_name match  
+          // Cross-match: AI profile_name keywords ↔ DB test_name (critical for stool/urine disambiguation)
+          if (aiProfileKey && dbTestKey && hasDistinguishingOverlap(aiProfileKey, dbTestKey)) score += 20;
+          // Cross-match: AI test_name keywords ↔ DB profile_name
+          if (aiTestKey && dbProfKey && hasDistinguishingOverlap(aiTestKey, dbProfKey)) score += 20;
+          // Direct profile match with distinguishing words
+          if (aiProfileKey && dbProfKey && hasDistinguishingOverlap(aiProfileKey, dbProfKey)) score += 15;
+          // Direct test_name match
           if (aiTestKey && dbTestKey && hasKeywordOverlap(aiTestKey, dbTestKey)) score += 5;
           return { entry: me, score };
         });
