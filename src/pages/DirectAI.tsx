@@ -688,36 +688,38 @@ const DirectAI = () => {
                     </div>
                   ))}
 
-                  {/* Signature blocks - anchored to bottom */}
-                  <div
-                    className="flex justify-end gap-8 print:break-inside-avoid border-t pt-2"
-                    style={{
-                      position: "absolute",
-                      bottom: `${bottomMarginMm + PAGE_NUM_H + 2}mm`,
-                      left: "12mm",
-                      right: "12mm",
-                    }}
-                  >
-                    {displayApprovers.map((doc) => {
-                      const sig = getSignatureForDoctor(doc);
-                      return (
-                        <div key={doc} className="text-center">
-                          {sig?.url && <img src={sig.url} alt="Signature" className="h-8 mx-auto mb-0" />}
-                          <p className="font-semibold text-[10px] leading-tight">{doc}</p>
-                          {sig?.qualification && <p className="text-[9px] text-gray-500 leading-tight">{sig.qualification}</p>}
-                          {sig?.designation && <p className="text-[9px] text-gray-500 leading-tight">{sig.designation}</p>}
-                        </div>
-                      );
-                    })}
-                  </div>
+                </div>
 
-                  {/* Page number */}
-                  <div
-                    className="text-center text-[9px] text-gray-400"
-                    style={{ position: "absolute", bottom: `${bottomMarginMm + 2}mm`, left: 0, right: 0 }}
-                  >
-                    Page {pageIdx + 1} of {totalPages}
-                  </div>
+                {/* Signature blocks - anchored to bottom of page div */}
+                <div
+                  className="flex justify-end gap-8 border-t pt-2"
+                  style={{
+                    position: "absolute",
+                    bottom: `${bottomMarginMm + PAGE_NUM_H + 2}mm`,
+                    left: "12mm",
+                    right: "12mm",
+                    zIndex: 1,
+                  }}
+                >
+                  {displayApprovers.map((doc) => {
+                    const sig = getSignatureForDoctor(doc);
+                    return (
+                      <div key={doc} className="text-center">
+                        {sig?.url && <img src={sig.url} alt="Signature" className="h-8 mx-auto mb-0" />}
+                        <p className="font-semibold text-[10px] leading-tight">{doc}</p>
+                        {sig?.qualification && <p className="text-[9px] text-gray-500 leading-tight">{sig.qualification}</p>}
+                        {sig?.designation && <p className="text-[9px] text-gray-500 leading-tight">{sig.designation}</p>}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Page number */}
+                <div
+                  className="text-center text-[9px] text-gray-400"
+                  style={{ position: "absolute", bottom: `${bottomMarginMm + 2}mm`, left: 0, right: 0, zIndex: 1 }}
+                >
+                  Page {pageIdx + 1} of {totalPages}
                 </div>
               </div>
             );
