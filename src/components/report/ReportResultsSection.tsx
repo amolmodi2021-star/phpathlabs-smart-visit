@@ -121,10 +121,23 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                           const hasParamOutsourced = paramMeta.is_outsourced && paramMeta.outsourced_caption;
                           const hasParamInterpretation = paramMeta.interpretation && paramMeta.interpretation.replace(/<[^>]*>/g, '').trim().length > 0;
 
+                          // Check if the previous parameter had an interpretation
+                          const prevParam = pIdx > 0 ? params[pIdx - 1] : null;
+                          const prevHadInterpretation = prevParam?.interpretation && prevParam.interpretation.replace(/<[^>]*>/g, '').trim().length > 0;
+
                           return (
                             <React.Fragment key={`standalone-${pIdx}`}>
                               {pIdx > 0 && (
                                 <tr><td colSpan={5}><div className="border-t-2 border-gray-400" style={{ marginBottom: '3mm' }} /></td></tr>
+                              )}
+                              {prevHadInterpretation && (
+                                <tr className={`text-gray-500 border-b ${useCompact ? 'text-[10px]' : 'text-xs'}`}>
+                                  <th className="text-left py-0.5 px-3">Parameter</th>
+                                  <th></th>
+                                  <th className="text-center py-0.5">Result</th>
+                                  <th className="text-center py-0.5">Unit</th>
+                                  <th className="text-center py-0.5">Reference Range</th>
+                                </tr>
                               )}
                               <tr className={`border-b border-gray-100 ${isAbnormal ? "bg-red-50" : ""}`}>
                                 <td className="px-3 py-1 font-semibold">{r.parameter_name}</td>
