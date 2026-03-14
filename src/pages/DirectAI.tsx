@@ -329,18 +329,19 @@ const DirectAI = () => {
   const SAFETY_BUFFER = 4;
   const usableH = PAGE_H - topMarginMm - bottomMarginMm - HEADER_H - SIGNATURE_H - PAGE_NUM_H - SAFETY_BUFFER;
 
-  // Height estimation constants (mm)
-  const ROW_H = 5.5;
-  const ADVISORY_ROW_H = 12; // advisory-style multi-line range rows are taller
-  const DEPT_H = 8;
-  const PROFILE_H = 6;
-  const TABLE_HEADER_H = 5;
-  const META_ROW_H = 4;
-  const INTERPRETATION_LINE_H = 3;
-  const INTERPRETATION_BASE_H = 6;
+  // Height estimation constants (mm) — intentionally generous to prevent overflow
+  const ROW_H = 7;
+  const ADVISORY_ROW_H = 14;
+  const DEPT_H = 10;
+  const PROFILE_H = 8;
+  const TABLE_HEADER_H = 7;
+  const META_ROW_H = 6;
+  const INTERPRETATION_LINE_H = 3.5;
+  const INTERPRETATION_BASE_H = 8;
+  const SECTION_MARGIN_H = 4; // mb-3 spacing between sections
 
   const estimateSectionH = (results: TestResult[], profName: string): number => {
-    let h = TABLE_HEADER_H;
+    let h = TABLE_HEADER_H + SECTION_MARGIN_H;
     // Profile header
     if (profName && profName !== "_individual") h += PROFILE_H;
     // Metadata row
@@ -519,7 +520,7 @@ const DirectAI = () => {
                   />
                 )}
 
-                <div className="relative" style={{ zIndex: 1, paddingLeft: "12mm", paddingRight: "12mm" }}>
+                <div className="relative" style={{ zIndex: 1, paddingLeft: "12mm", paddingRight: "12mm", maxHeight: `${usableH + HEADER_H}mm`, overflow: "hidden" }}>
                   {/* Patient header on every page */}
                   <div className="border-b border-gray-300 pb-3 mb-3">
                     <div className="grid grid-cols-2 gap-x-8 gap-y-0.5 text-sm">
