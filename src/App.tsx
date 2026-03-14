@@ -24,6 +24,7 @@ import ReportParameters from "./pages/ReportParameters";
 import SignatureManagement from "./pages/SignatureManagement";
 import ReportLayoutSettings from "./pages/ReportLayoutSettings";
 import ExtractionCorrections from "./pages/ExtractionCorrections";
+import DirectAI from "./pages/DirectAI";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -59,6 +60,7 @@ const App = () => (
           <Route path="/report-admin/signatures" element={<ProtectedRoute><SignatureManagement /></ProtectedRoute>} />
           <Route path="/report-admin/layout" element={<ProtectedRoute><ReportLayoutSettings /></ProtectedRoute>} />
           <Route path="/report-admin/corrections" element={<ProtectedRoute><ExtractionCorrections /></ProtectedRoute>} />
+          <Route path="/direct-ai" element={<ProtectedRoute><DirectAI /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
