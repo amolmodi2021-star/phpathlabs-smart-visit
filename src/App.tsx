@@ -24,6 +24,7 @@ import ReportParameters from "./pages/ReportParameters";
 import SignatureManagement from "./pages/SignatureManagement";
 import ReportLayoutSettings from "./pages/ReportLayoutSettings";
 import ExtractionCorrections from "./pages/ExtractionCorrections";
+import DirectAI from "./pages/DirectAI";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
