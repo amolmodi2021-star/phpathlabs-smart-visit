@@ -525,7 +525,7 @@ const ViewReport = () => {
             high: h.normal_range_high,
           });
         });
-        setTrends(Object.values(grouped).filter((t) => t.data.length >= 2));
+        setTrends(Object.values(grouped).filter((t) => t.data.length >= 1));
       }
     }
     setLoading(false);
