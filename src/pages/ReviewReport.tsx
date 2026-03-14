@@ -152,12 +152,26 @@ const ReviewReport = () => {
     return { masterMap, profileGroups, paramIdToNameKey, masterIds };
   };
 
+  // Helper: extract distinguishing keywords (skip generic lab terms)
+  const GENERIC_LAB_WORDS = new Set(["physical", "chemical", "microscopic", "examination", "routine", "analysi", "analysis", "test"]);
+  
+  const getDistinguishingWords = (normalized: string): string[] =>
+    normalized.split(" ").filter(w => w.length > 2 && !GENERIC_LAB_WORDS.has(w));
+
   // Helper: check if two normalized strings share significant keywords
   const hasKeywordOverlap = (a: string, b: string): boolean => {
     if (!a || !b) return false;
     if (a === b || a.includes(b) || b.includes(a)) return true;
     const wordsA = a.split(" ").filter(w => w.length > 3);
     const wordsB = new Set(b.split(" ").filter(w => w.length > 3));
+    return wordsA.some(w => wordsB.has(w));
+  };
+
+  // Helper: check if two strings share distinguishing (non-generic) keywords
+  const hasDistinguishingOverlap = (a: string, b: string): boolean => {
+    if (!a || !b) return false;
+    const wordsA = getDistinguishingWords(a);
+    const wordsB = new Set(getDistinguishingWords(b));
     return wordsA.some(w => wordsB.has(w));
   };
 
