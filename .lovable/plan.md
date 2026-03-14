@@ -1,65 +1,84 @@
 
 
-## Live Sync / Auto-Refresh for All Tabs
+## Plan: Disambiguate Identical Parameters Using Section Headers (Stool vs Urine)
 
-### What This Does
-When data changes on one device (e.g., a new home visit is added, a test is updated, an estimate is created), all other devices viewing the app will automatically refresh and show the updated data -- no manual refresh needed.
+### Problem
 
-### Implementation Steps
+The PDF has "Colour" in both "STOOL EXAMINATION" and "URINE EXAMINATION" sections with the same `test_name`. The current matching uses only `parameter_name` as the lookup key, so both "Colour" rows resolve to the same master entries. The disambiguation then tries exact normalized matching of AI-extracted `profile_name` (e.g., "stool examination") against database profile names (e.g., "urine routine analysis") — which fails because the names differ significantly.
 
-**Step 1: Database Migration -- Enable Realtime**
+**Current master data:**
+- Colour → test_name: "PHYSICAL EXAMINATION", profile: "URINE ROUTINE ANALYSIS"
+- Colour → test_name: "PHYSICAL EXAMINATION - STOOL", profile: (none)
 
-Add all 7 core tables to the realtime publication so the database broadcasts changes:
-- `home_visits`
-- `estimates`
-- `estimate_tests`
-- `tests`
-- `phlebotomists`
-- `message_templates`
-- `abnormal_history`
+### Solution: Composite Key Matching + Fuzzy Profile Disambiguation
 
-**Step 2: Create a Reusable Realtime Hook**
+#### Step 1: Include `test_name` in master data fetch and build composite keys
 
-Create a new hook `src/hooks/useRealtimeSync.ts` that:
-- Subscribes to Postgres changes on a given table
-- On any INSERT, UPDATE, or DELETE event, automatically invalidates the matching React Query cache keys
-- Cleans up the subscription when the component unmounts
+In `ReviewReport.tsx` `buildMasterMaps()`:
+- Fetch `test_name` alongside other fields from `report_test_parameters`
+- Build a composite key `parameter_name::test_name` so "colour::physical examination" and "colour::physical examination stool" are distinct
+- Keep the plain `parameter_name` key as fallback
 
-**Step 3: Wire Up Each Page**
+#### Step 2: Use AI-extracted `test_name`/`profile_name` for composite key lookup
 
-Add the realtime hook to each page/component so queries auto-refresh:
+In `enrichResults()`:
+- Try composite key `normalizedParamName::normalizedAiTestName` first
+- Then try `normalizedParamName::normalizedAiProfileName` (since the section header may come as profile_name)
+- Fall back to plain `parameter_name` key
 
-| Page | Table(s) Listened | Query Keys Invalidated |
-|------|-------------------|----------------------|
-| HomeVisits | `home_visits` | `home_visits` |
-| CreateEstimate | `tests` | `tests` |
-| EstimateDashboard | `estimates`, `estimate_tests` | `estimates` |
-| TestManagement | `tests` | `tests` |
-| PhlebotomistManagement | `phlebotomists` | `phlebotomists` |
-| MessageTemplates | `message_templates` | `message_templates` |
-| AbnormalHistory | `abnormal_history` | `abnormal_history`, `abnormal_history_counts` |
+#### Step 3: Improve profile disambiguation with keyword matching
+
+Replace the exact match at line 198 with a keyword/partial match — if `aiProfile` contains "stool", match it to a profile containing "stool". This handles "STOOL EXAMINATION" matching "Stool Routine Analysis".
+
+#### Step 4: Update AI prompts to include profile names in known parameters
+
+Both `extract-report` and `process-report-queue` already send the profile name in the `paramList`. Add explicit instruction: "Use the profile column from KNOWN PARAMETERS to populate `profile_name` for each extracted row."
 
 ### Technical Details
 
-The reusable hook will look like:
+**`buildMasterMaps()` change:**
+```typescript
+// Fetch test_name too
+supabase.from("report_test_parameters").select("id, parameter_name, test_name, department_id, profile_id")
 
-```text
-useRealtimeSync(tableName, queryKeysToInvalidate[])
+// Build composite keys
+const testKey = normalizeParameterForMatch(p.test_name);
+if (testKey) {
+  const compositeKey = `${key}::${testKey}`;
+  masterMap.set(compositeKey, [...(masterMap.get(compositeKey) || []), entry]);
+}
 ```
 
-It subscribes to `postgres_changes` on the specified table and calls `queryClient.invalidateQueries()` for each key whenever a change is detected. This triggers a fresh fetch from the database automatically.
+**`enrichResults()` composite lookup:**
+```typescript
+const aiTestKey = normalizeParameterForMatch(r.test_name);
+const aiProfileKey = normalizeParameterForMatch(r.profile_name);
+const compositeByTest = aiTestKey ? masterMap.get(`${key}::${aiTestKey}`) : undefined;
+const compositeByProfile = aiProfileKey ? masterMap.get(`${key}::${aiProfileKey}`) : undefined;
+const masterEntries = compositeByTest || compositeByProfile || masterMap.get(key) || [];
+```
 
-### Files to Create/Modify
+**Fuzzy profile disambiguation:**
+```typescript
+// Instead of exact match, use keyword overlap
+const byProfile = aiProfile ? profileEntries.find(pe => {
+  const dbProf = normalizeParameterForMatch(pe.profileName);
+  return dbProf.includes(aiProfile) || aiProfile.includes(dbProf) 
+    || aiProfile.split(" ").some(word => word.length > 3 && dbProf.includes(word));
+}) : undefined;
+```
 
-1. **New migration** -- SQL to add tables to `supabase_realtime` publication
-2. **New file**: `src/hooks/useRealtimeSync.ts` -- reusable realtime subscription hook
-3. **Modified**: `src/pages/HomeVisits.tsx` -- add `useRealtimeSync("home_visits", ...)`
-4. **Modified**: `src/pages/CreateEstimate.tsx` -- add `useRealtimeSync("tests", ...)`
-5. **Modified**: `src/pages/EstimateDashboard.tsx` -- add `useRealtimeSync("estimates", ...)` and `useRealtimeSync("estimate_tests", ...)`
-6. **Modified**: `src/pages/TestManagement.tsx` -- add `useRealtimeSync("tests", ...)`
-7. **Modified**: `src/pages/PhlebotomistManagement.tsx` -- add `useRealtimeSync("phlebotomists", ...)`
-8. **Modified**: `src/pages/MessageTemplates.tsx` -- add `useRealtimeSync("message_templates", ...)`
-9. **Modified**: `src/pages/AbnormalHistory.tsx` -- add `useRealtimeSync("abnormal_history", ...)`
+**AI prompt addition (both edge functions):**
+```
+PROFILE MAPPING RULE:
+- The KNOWN PARAMETERS list includes a "profile" column. Use it to set profile_name for each extracted row.
+- Section headers like "STOOL EXAMINATION", "URINE EXAMINATION" should map to the closest known profile name.
+- This is critical for disambiguating parameters with identical names across different test sections.
+```
 
-This is included in your Lovable Cloud usage and should be well within the free tier for a small team.
+### Files to Edit
+
+1. `src/pages/ReviewReport.tsx` — composite key in `buildMasterMaps()`, composite lookup + fuzzy match in `enrichResults()`
+2. `supabase/functions/extract-report/index.ts` — add profile mapping instruction to prompt
+3. `supabase/functions/process-report-queue/index.ts` — add profile mapping instruction to prompt
 
