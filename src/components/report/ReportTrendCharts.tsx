@@ -70,7 +70,7 @@ const ReportTrendCharts = ({ trends }: ReportTrendChartsProps) => {
                    <YAxis
                      tick={{ fontSize: 9 }}
                      width={40}
-                     domain={[Math.floor((minVal - padding) * 100) / 100, Math.ceil((maxVal + padding) * 100) / 100]}
+                     domain={[Math.max(0, Math.floor((minVal - padding) * 100) / 100), Math.ceil((maxVal + padding) * 100) / 100]}
                      tickFormatter={(val: number) => Number(val.toFixed(2)).toString()}
                      padding={{ top: 10, bottom: 10 }}
                    />
