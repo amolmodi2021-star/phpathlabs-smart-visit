@@ -52,7 +52,8 @@ const ReportTrendCharts = ({ trends }: ReportTrendChartsProps) => {
           if (trend.high != null) allVals.push(trend.high);
           const minVal = Math.min(...allVals);
           const maxVal = Math.max(...allVals);
-          const padding = (maxVal - minVal) * 0.15 || (maxVal * 0.1) || 1;
+          const range = maxVal - minVal;
+          const padding = range > 0 ? range * 0.25 : (maxVal * 0.15) || 1;
 
           const refRange = trend.low != null && trend.high != null
             ? `${trend.low} - ${trend.high}`
