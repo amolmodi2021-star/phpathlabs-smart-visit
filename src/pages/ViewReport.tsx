@@ -18,6 +18,7 @@ import ReportSignatureBlock from "@/components/report/ReportSignatureBlock";
 import AutoScaleContent from "@/components/report/AutoScaleContent";
 import { shareOnWhatsApp } from "@/lib/whatsapp";
 import { useToast } from "@/hooks/use-toast";
+import { normalizeTestResultFlags } from "@/lib/reportFlags";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs";
 
