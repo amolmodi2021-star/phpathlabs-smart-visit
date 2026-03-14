@@ -18,6 +18,7 @@ import ReportSignatureBlock from "@/components/report/ReportSignatureBlock";
 import AutoScaleContent from "@/components/report/AutoScaleContent";
 import { shareOnWhatsApp } from "@/lib/whatsapp";
 import { useToast } from "@/hooks/use-toast";
+import { normalizeTestResultFlags } from "@/lib/reportFlags";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs";
 
@@ -390,6 +391,9 @@ const ViewReport = () => {
 
     // Critical: run dedupe again after test_name backfill so old blank-test duplicates are removed
     results = dedupeResultsLatest(results);
+
+    // Recompute H/L/N flags from result values and ranges (fixes missing flags after enrichment)
+    results = normalizeTestResultFlags(results);
 
     const shouldPersistNormalizedResults = JSON.stringify(rawResults) !== JSON.stringify(results);
     if (shouldPersistNormalizedResults) {
