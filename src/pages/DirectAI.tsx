@@ -627,8 +627,8 @@ const DirectAI = () => {
                             </div>
                           )}
 
-                          {/* Metadata row: Sample Type, Analyzer, Method */}
-                          {(sampleType || analyzer || method) && (
+                          {/* Metadata row: only on first chunk, not continued */}
+                          {!section.continued && (sampleType || analyzer || method) && (
                             <div className="flex flex-wrap gap-x-6 gap-y-0.5 text-[9px] text-gray-500 mb-1 px-1 border-b border-gray-100 pb-1">
                               {sampleType && <span><strong>Sample Type:</strong> {sampleType}</span>}
                               {analyzer && <span><strong>Instrument:</strong> {analyzer}</span>}
