@@ -100,7 +100,7 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
 
                   return (
                     <div key={`standalone-${pIdx}`} data-pdf-section="profile" className="print:break-inside-avoid">
-                      {pIdx > 0 && <div className="border-t-2 border-gray-400" />}
+                      {pIdx > 0 && <div className="border-t-2 border-gray-400" style={{ marginBottom: '3mm' }} />}
                       {(profIdx > 0 && pIdx === 0) && <div style={{ height: '2mm' }} />}
                       <table className={`w-full ${useCompact ? 'text-xs' : 'text-sm'}`} style={{ tableLayout: 'fixed' }}>
                         <colgroup>
