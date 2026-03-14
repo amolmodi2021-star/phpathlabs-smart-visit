@@ -192,14 +192,14 @@ const ReviewReport = () => {
       }
     });
 
-    // matchedProfileParams: normalized param name → array of { profileName, deptName }
-    const matchedProfileParams = new Map<string, Array<{ profileName: string; deptName: string }>>();
+    // matchedProfileParams: normalized param name → array of { profileName, deptName, paramCount }
+    const matchedProfileParams = new Map<string, Array<{ profileName: string; deptName: string; paramCount: number }>>();
     profileGroups.forEach((group) => {
       const allPresent = group.paramNames.every((pn) => extractedParamNames.has(pn));
       if (allPresent) {
         group.paramNames.forEach((pn) => {
           const arr = matchedProfileParams.get(pn) || [];
-          arr.push({ profileName: group.name, deptName: group.deptName });
+          arr.push({ profileName: group.name, deptName: group.deptName, paramCount: group.paramNames.length });
           matchedProfileParams.set(pn, arr);
         });
       }
@@ -253,15 +253,24 @@ const ReviewReport = () => {
         bestProfile = profileEntries[0].profileName;
         bestDept = profileEntries[0].deptName;
       } else if (profileEntries.length > 1) {
-        // Fuzzy keyword matching for profile disambiguation
-        const byProfile = aiProfile ? profileEntries.find((pe) => {
-          const dbProf = normalizeParameterForMatch(pe.profileName);
-          return hasKeywordOverlap(aiProfile, dbProf);
-        }) : undefined;
-        const byDept = aiDept ? profileEntries.find((pe) => normalizeParameterForMatch(pe.deptName) === aiDept) : undefined;
-        const best = byProfile || byDept || profileEntries[0];
-        bestProfile = best.profileName;
-        bestDept = best.deptName;
+        // Prefer the LARGEST profile (most parameters) — it's the most specific match
+        // e.g., "CBC + ESR" (25 params) over "CBC" (24 params)
+        const sorted = [...profileEntries].sort((a, b) => b.paramCount - a.paramCount);
+        // If the largest profile is strictly bigger, use it directly
+        if (sorted[0].paramCount > sorted[1].paramCount) {
+          bestProfile = sorted[0].profileName;
+          bestDept = sorted[0].deptName;
+        } else {
+          // Same size — fall back to keyword disambiguation
+          const byProfile = aiProfile ? profileEntries.find((pe) => {
+            const dbProf = normalizeParameterForMatch(pe.profileName);
+            return hasKeywordOverlap(aiProfile, dbProf);
+          }) : undefined;
+          const byDept = aiDept ? profileEntries.find((pe) => normalizeParameterForMatch(pe.deptName) === aiDept) : undefined;
+          const best = byProfile || byDept || sorted[0];
+          bestProfile = best.profileName;
+          bestDept = best.deptName;
+        }
       }
 
       if (!bestDept && masterEntries.length > 0) {
