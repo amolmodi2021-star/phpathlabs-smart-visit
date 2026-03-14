@@ -406,13 +406,15 @@ MATCHING:
           const existingResults = (existingExtracted[0].test_results as any[]) || [];
           const mergedMap = new Map<string, any>();
 
+          const getMergeKey = (r: any) => `${normalizeKey(r.parameter_name)}::${normalizeKey(r.test_name)}`;
+
           existingResults.forEach((r: any) => {
             const { _merge_status, ...clean } = r;
-            mergedMap.set(getKey(r), { ...clean, _merge_status: "existing" });
+            mergedMap.set(getMergeKey(r), { ...clean, _merge_status: "existing" });
           });
 
           finalResultsWithApproval.forEach((r: any) => {
-            const key = getKey(r);
+            const key = getMergeKey(r);
             const old = mergedMap.get(key);
             if (!old) {
               mergedMap.set(key, { ...r, _merge_status: "new" });
