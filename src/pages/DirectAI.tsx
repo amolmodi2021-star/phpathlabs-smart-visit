@@ -615,16 +615,15 @@ const DirectAI = () => {
                         const sampleType = firstR?.sample_type || "";
                         const analyzer = firstR?.analyzer || "";
                         const method = firstR?.method || "";
-                        // Collect interpretation from last result or any result that has it
-                        const interpretationResult = section.results.find(r => r.interpretation);
-                        const interpretation = interpretationResult?.interpretation || "";
+                        // Only show interpretation on the last chunk
+                        const interpretation = section.hasInterpretation ? (section.results.find(r => r.interpretation)?.interpretation || "") : "";
 
                         return (
                         <div key={sIdx} className="mb-3">
-                          {/* Profile/Test name header */}
+                          {/* Profile/Test name header with (Continued) */}
                           {section.profile && section.profile !== "_individual" && (
                             <div className="font-semibold text-xs mb-1 py-0.5 px-1" style={{ color: "#2E3192" }}>
-                              {section.profile}
+                              {section.profile}{section.continued ? " (Continued)" : ""}
                             </div>
                           )}
 
