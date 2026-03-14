@@ -112,7 +112,8 @@ const ReviewReport = () => {
     const profileNameMap = new Map((profiles || []).map((p: any) => [p.id, p.profile_name]));
 
     // masterMap: normalized name → array of possible master entries (handles duplicate param names)
-    const masterMap = new Map<string, Array<{ department_name?: string; profile_name?: string }>>();
+    // Each entry includes test_name and profile_name for keyword-based disambiguation
+    const masterMap = new Map<string, Array<{ department_name?: string; profile_name?: string; test_name?: string }>>();
     const paramIdToNameKey = new Map<string, string>();
     const masterIds = new Set<string>();
 
@@ -123,30 +124,11 @@ const ReviewReport = () => {
       masterIds.add(p.id);
       const deptName = p.department_id ? deptMap.get(p.department_id) || "" : "";
       const profName = p.profile_id ? profileNameMap.get(p.profile_id) || "" : "";
-      const entry = { department_name: deptName, profile_name: profName };
+      const entry = { department_name: deptName, profile_name: profName, test_name: p.test_name || "" };
 
-      // Store under plain parameter_name key
       const existing = masterMap.get(key) || [];
       existing.push(entry);
       masterMap.set(key, existing);
-
-      // Also store under composite key parameter_name::test_name for disambiguation
-      const testKey = normalizeParameterForMatch(p.test_name);
-      if (testKey) {
-        const compositeKey = `${key}::${testKey}`;
-        const compositeExisting = masterMap.get(compositeKey) || [];
-        compositeExisting.push(entry);
-        masterMap.set(compositeKey, compositeExisting);
-      }
-
-      // Also store under composite key parameter_name::profile_name for disambiguation
-      const profKey = normalizeParameterForMatch(profName);
-      if (profKey) {
-        const compositeKey = `${key}::${profKey}`;
-        const compositeExisting = masterMap.get(compositeKey) || [];
-        compositeExisting.push(entry);
-        masterMap.set(compositeKey, compositeExisting);
-      }
     });
 
     const profileGroups = new Map<string, { name: string; deptName: string; paramNames: string[] }>();
