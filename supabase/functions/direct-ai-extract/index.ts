@@ -84,6 +84,26 @@ PROFILE MAPPING RULE (CRITICAL FOR DISAMBIGUATION):
 - Use the "profile" column in KNOWN PARAMETERS to set profile_name for each extracted row.
 - Section headers like "STOOL EXAMINATION", "URINE EXAMINATION" should map to the closest known profile name.
 
+CLINICAL METADATA EXTRACTION (CRITICAL):
+- For each test result or profile/section, extract these fields if visible on the PDF:
+  1) sample_type: The specimen type (e.g., "EDTA Whole Blood", "Serum", "Urine", "Stool", "Citrated Blood")
+  2) analyzer: The instrument/machine name used (e.g., "Sysmex XN-1000", "Beckman AU5800", "Mindray BC-6800")
+  3) method: The testing methodology (e.g., "Automated Cell Counter", "Ion Selective Electrode", "Turbidimetry", "ELISA")
+  4) interpretation: Any clinical interpretation, notes, or comments printed on the report for that test/profile section.
+     - Extract the FULL interpretation text including all bullet points, categories, classifications.
+     - Preserve the original formatting structure (line breaks, bullet points, table-like data).
+     - For advisory ranges with categories (e.g., Vitamin D levels, HbA1c classifications), extract the COMPLETE category table/list.
+- These fields are often printed as metadata rows above or below a test section, or in a footer area.
+- If metadata applies to an entire profile/section (e.g., sample type for CBC), assign it to ALL parameters in that section.
+- If not visible, leave the field as empty string.
+
+NORMAL RANGE FORMATTING (CRITICAL):
+- For simple numeric ranges, use normal_range_low and normal_range_high.
+- For advisory/categorical ranges (e.g., Vitamin D, HbA1c, Lipid profiles), extract the COMPLETE text into normal_range_text.
+- Preserve line breaks and categories in normal_range_text using "\\n" for each new line.
+- Example format for advisory ranges:
+  "Deficient: < 20 ng/mL\\nInsufficient: 20 - 30 ng/mL\\nSufficient: 30 - 100 ng/mL\\nToxic: > 100 ng/mL"
+
 MATCHING:
 - Fuzzy match abbreviations (CBC, LFT, KFT, TFT).
 - Prefer closest known parameter name and return matched_parameter_id if known.`;
