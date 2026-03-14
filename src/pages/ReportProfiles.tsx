@@ -123,6 +123,7 @@ const ReportProfiles = () => {
       method: p.method || "", remarks: p.remarks || "", display_order: p.display_order || 0,
       sample_type: p.sample_type || "", is_outsourced: p.is_outsourced || false,
       outsourced_caption: p.outsourced_caption || "", interpretation: p.interpretation || "",
+      enable_test_grouping: p.enable_test_grouping || false,
     });
 
     const { data: pp } = await supabase
