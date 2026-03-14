@@ -120,7 +120,7 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                         </thead>
                         <tbody>
                           <tr className={`border-b border-gray-100 ${isAbnormal ? "bg-red-50" : ""}`}>
-                            <td className="px-3 py-1">{r.parameter_name}</td>
+                            <td className="px-3 py-1 font-semibold">{r.parameter_name}</td>
                             <td className="text-right py-1">
                               {isAbnormal && <span className="flag-badge inline-flex items-center justify-center min-w-[14px] h-[14px] rounded bg-red-600 text-white text-[10px] leading-none font-bold">{r.flag}</span>}
                             </td>
