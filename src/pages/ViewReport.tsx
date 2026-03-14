@@ -167,15 +167,6 @@ const hasDistinguishingOverlap = (a: string, b: string): boolean => {
   return wordsA.some((w) => wordsB.has(w));
 };
 
-const dedupeResultsLatest = (rows: TestResult[]) => {
-  // Key = parameter_name + test_name (AI-extracted). Latest occurrence wins.
-  const deduped = new Map<string, TestResult>();
-  rows.forEach((row) => {
-    const key = `${normalizeDedupeKey(row.parameter_name)}::${normalizeDedupeKey(row.test_name)}`;
-    deduped.set(key, row);
-  });
-  return Array.from(deduped.values());
-};
 
 const ViewReport = () => {
   const { reportId } = useParams();
