@@ -613,13 +613,14 @@ const ReviewReport = () => {
     const corrections: Array<{ parameter_name: string; field_corrected: string; original_value: string; corrected_value: string }> = [];
 
     // Build lookup by key, but also keep index-based fallback for parameter_name changes
+    const getDedupeKeyLocal = (row: Partial<TestResult>) =>
+      `${normalizeResultKey(row.parameter_name)}::${normalizeResultKey(row.test_name)}`;
     const originalsByKey = new Map<string, TestResult>();
-    originals.forEach((row) => originalsByKey.set(getDedupeKey(row), row));
+    originals.forEach((row) => originalsByKey.set(getDedupeKeyLocal(row), row));
 
     for (let i = 0; i < finalResults.length; i++) {
       const curr = finalResults[i];
-      // Try key-based match first; fall back to same-index match (handles parameter_name renames)
-      const orig = originalsByKey.get(getDedupeKey(curr)) || (i < originals.length ? originals[i] : null);
+      const orig = originalsByKey.get(getDedupeKeyLocal(curr)) || (i < originals.length ? originals[i] : null);
       if (!orig) continue;
 
       for (const field of TRACKED_FIELDS) {
