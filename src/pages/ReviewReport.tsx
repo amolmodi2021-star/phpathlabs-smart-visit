@@ -192,14 +192,14 @@ const ReviewReport = () => {
       }
     });
 
-    // matchedProfileParams: normalized param name → array of { profileName, deptName }
-    const matchedProfileParams = new Map<string, Array<{ profileName: string; deptName: string }>>();
+    // matchedProfileParams: normalized param name → array of { profileName, deptName, paramCount }
+    const matchedProfileParams = new Map<string, Array<{ profileName: string; deptName: string; paramCount: number }>>();
     profileGroups.forEach((group) => {
       const allPresent = group.paramNames.every((pn) => extractedParamNames.has(pn));
       if (allPresent) {
         group.paramNames.forEach((pn) => {
           const arr = matchedProfileParams.get(pn) || [];
-          arr.push({ profileName: group.name, deptName: group.deptName });
+          arr.push({ profileName: group.name, deptName: group.deptName, paramCount: group.paramNames.length });
           matchedProfileParams.set(pn, arr);
         });
       }
