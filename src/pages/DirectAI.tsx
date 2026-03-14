@@ -690,11 +690,11 @@ const DirectAI = () => {
 
                 </div>
 
-                {/* Signature blocks - anchored to bottom of page div */}
+                {/* Signature block - lives INSIDE the bottom margin area */}
                 <div
                   style={{
                     position: "absolute",
-                    bottom: `${bottomMarginMm}mm`,
+                    bottom: "3mm",
                     left: "12mm",
                     right: "12mm",
                     zIndex: 1,
