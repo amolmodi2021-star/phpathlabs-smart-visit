@@ -566,7 +566,6 @@ const DirectAI = () => {
                   width: "210mm",
                   height: "297mm",
                   paddingTop: `${topMarginMm}mm`,
-                  paddingBottom: `${bottomMarginMm}mm`,
                   fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
                 }}
               >
