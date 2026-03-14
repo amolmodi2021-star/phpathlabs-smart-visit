@@ -346,8 +346,8 @@ const ReviewReport = () => {
       setLocationField((extracted as any).location || "");
       const rawResults = (extracted.test_results as unknown as TestResult[]) || [];
 
-      const enrichedResults = enrichResults(dedupeTestResults(rawResults), masterMap, profileGroups, paramIdToNameKey);
-      const normalized = dedupeTestResults(normalizeTestResultFlags(enrichedResults));
+      const enrichedResults = enrichResults(rawResults, masterMap, profileGroups, paramIdToNameKey);
+      const normalized = normalizeTestResultFlags(enrichedResults);
       setTestResults(normalized);
       // Always refresh original AI results snapshot on load/reload
       originalAiResultsRef.current = normalized.map(r => ({ ...r }));
