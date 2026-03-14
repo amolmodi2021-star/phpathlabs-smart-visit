@@ -4,7 +4,7 @@ import { logout } from "@/lib/auth";
 import {
   FileText, LayoutDashboard, Home, Users, TestTubes, MessageSquare,
   Menu, X, LogOut, FlaskConical, AlertTriangle, BarChart3,
-  FileUp, ClipboardList, Building2, Layers, Microscope, PenTool, BookOpen,
+  FileUp, ClipboardList, Building2, Layers, Microscope, PenTool, BookOpen, Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
