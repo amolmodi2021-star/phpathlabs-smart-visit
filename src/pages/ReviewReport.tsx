@@ -646,7 +646,7 @@ const ReviewReport = () => {
     }
     setSaving(true);
     try {
-      const flaggedResults = dedupeTestResults(calculateFlags(testResults));
+      const flaggedResults = calculateFlags(testResults);
       setTestResults(flaggedResults);
 
       // Update extracted data
