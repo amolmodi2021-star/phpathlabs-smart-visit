@@ -1,40 +1,65 @@
 
 
-## Problem
+## Live Sync / Auto-Refresh for All Tabs
 
-The current deduplication logic uses `profile_name` as part of the key (`parameter_name::profile_name`), which causes parameters to be incorrectly deleted when profiles get reassigned during enrichment. The content fingerprint pass also collapses rows that shouldn't be collapsed.
+### What This Does
+When data changes on one device (e.g., a new home visit is added, a test is updated, an estimate is created), all other devices viewing the app will automatically refresh and show the updated data -- no manual refresh needed.
 
-## New Deduplication Logic (User's Final Rule)
+### Implementation Steps
 
-**Key = `parameter_name + test_name` (AI-extracted test_name)**
-- If duplicates exist on this key, keep the **latest** (last occurrence wins).
-- If after dedup, two rows still share the same `parameter_name` but different `test_name`, keep both — they are legitimately different tests.
-- After dedup, update each row's `test_name` to the **DB master test_name** (from `report_test_parameters`) so that parameter grouping in reports uses the master test_name rather than the AI-extracted one.
+**Step 1: Database Migration -- Enable Realtime**
 
-## Files to Change
+Add all 7 core tables to the realtime publication so the database broadcasts changes:
+- `home_visits`
+- `estimates`
+- `estimate_tests`
+- `tests`
+- `phlebotomists`
+- `message_templates`
+- `abnormal_history`
 
-### 1. `src/pages/ReviewReport.tsx`
-- **Replace `dedupeTestResults`** (lines ~387-426): New function uses `normalizeResultKey(parameter_name) + "::" + normalizeResultKey(test_name)` as key. Latest row wins, no content fingerprint pass.
-- **Remove** `getCanonicalResultScope`, `getContentFingerprint`, `normalizeComparable` (lines ~381-409) — no longer needed.
-- **Update `enrichResults`** (lines ~208-291): After profile/department enrichment, also set `r.test_name` to the matched master `test_name` from `report_test_parameters` when a match is found. This ensures grouping headers in the report use DB test names.
+**Step 2: Create a Reusable Realtime Hook**
 
-### 2. `src/pages/ViewReport.tsx`
-- **Replace `dedupeResultsLatest`** (lines ~199-210): Same new logic — key = `parameter_name + test_name`, latest wins, no content fingerprint.
-- **Remove** `getCanonicalResultScope`, `getResultDedupeKey`, `normalizeComparableValue`, `getResultContentFingerprint` — replaced by the simpler key function.
-- **Add test_name enrichment** from master data during the backfill pass (already partially exists around line 280+).
+Create a new hook `src/hooks/useRealtimeSync.ts` that:
+- Subscribes to Postgres changes on a given table
+- On any INSERT, UPDATE, or DELETE event, automatically invalidates the matching React Query cache keys
+- Cleans up the subscription when the component unmounts
 
-### 3. `supabase/functions/process-report-queue/index.ts`
-- **Replace dedupe block** (lines ~351-372): Same new logic — key = `normalizeKey(parameter_name) + "::" + normalizeKey(test_name)`, latest wins.
-- **Remove** `getScope` function — no longer needed.
-- Keep the merge logic for duplicate `reg_no` reports as-is (that's a different concern).
+**Step 3: Wire Up Each Page**
 
-## Summary of Changes
+Add the realtime hook to each page/component so queries auto-refresh:
 
-| Location | Old Key | New Key |
-|----------|---------|---------|
-| ReviewReport | `param::profile\|test\|param` + content fingerprint | `param::test_name` only |
-| ViewReport | `param::profile\|test\|param` + content fingerprint | `param::test_name` only |
-| process-report-queue | `param::profile\|test\|param` | `param::test_name` only |
+| Page | Table(s) Listened | Query Keys Invalidated |
+|------|-------------------|----------------------|
+| HomeVisits | `home_visits` | `home_visits` |
+| CreateEstimate | `tests` | `tests` |
+| EstimateDashboard | `estimates`, `estimate_tests` | `estimates` |
+| TestManagement | `tests` | `tests` |
+| PhlebotomistManagement | `phlebotomists` | `phlebotomists` |
+| MessageTemplates | `message_templates` | `message_templates` |
+| AbnormalHistory | `abnormal_history` | `abnormal_history`, `abnormal_history_counts` |
 
-The enrichment step will also map AI `test_name` → DB master `test_name` so that report grouping headers reflect the master data naming.
+### Technical Details
+
+The reusable hook will look like:
+
+```text
+useRealtimeSync(tableName, queryKeysToInvalidate[])
+```
+
+It subscribes to `postgres_changes` on the specified table and calls `queryClient.invalidateQueries()` for each key whenever a change is detected. This triggers a fresh fetch from the database automatically.
+
+### Files to Create/Modify
+
+1. **New migration** -- SQL to add tables to `supabase_realtime` publication
+2. **New file**: `src/hooks/useRealtimeSync.ts` -- reusable realtime subscription hook
+3. **Modified**: `src/pages/HomeVisits.tsx` -- add `useRealtimeSync("home_visits", ...)`
+4. **Modified**: `src/pages/CreateEstimate.tsx` -- add `useRealtimeSync("tests", ...)`
+5. **Modified**: `src/pages/EstimateDashboard.tsx` -- add `useRealtimeSync("estimates", ...)` and `useRealtimeSync("estimate_tests", ...)`
+6. **Modified**: `src/pages/TestManagement.tsx` -- add `useRealtimeSync("tests", ...)`
+7. **Modified**: `src/pages/PhlebotomistManagement.tsx` -- add `useRealtimeSync("phlebotomists", ...)`
+8. **Modified**: `src/pages/MessageTemplates.tsx` -- add `useRealtimeSync("message_templates", ...)`
+9. **Modified**: `src/pages/AbnormalHistory.tsx` -- add `useRealtimeSync("abnormal_history", ...)`
+
+This is included in your Lovable Cloud usage and should be well within the free tier for a small team.
 

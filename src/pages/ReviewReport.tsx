@@ -282,10 +282,20 @@ const ReviewReport = () => {
         }
       }
 
+      // Map AI test_name → DB master test_name for consistent grouping
+      let bestTestName = r.test_name || "";
+      if (masterEntries.length === 1 && masterEntries[0].test_name) {
+        bestTestName = masterEntries[0].test_name;
+      } else if (masterEntries.length > 1) {
+        const matched = masterEntries.find(me => me.test_name);
+        if (matched) bestTestName = matched.test_name || bestTestName;
+      }
+
       return {
         ...r,
         department: bestDept,
         profile_name: bestProfile,
+        test_name: bestTestName || r.test_name,
       };
     });
   };
@@ -378,51 +388,14 @@ const ReviewReport = () => {
       .replace(/\s+/g, " ")
       .trim();
 
-  const getCanonicalResultScope = (row: Partial<TestResult>) => {
-    const profileName = normalizeResultKey(row.profile_name);
-    const testName = normalizeResultKey(row.test_name);
-    return profileName || testName || normalizeResultKey(row.parameter_name) || "unknown-scope";
-  };
-
-  const getDedupeKey = (row: Partial<TestResult>) => {
-    const parameter = normalizeResultKey(row.parameter_name) || "unknown-parameter";
-    return `${parameter}::${getCanonicalResultScope(row)}`;
-  };
-
-  const normalizeComparable = (value: unknown) => {
-    const normalized = normalizeResultKey(value);
-    return ["-", "--", "na", "n a", "nil", "null"].includes(normalized) ? "" : normalized;
-  };
-
-  const getContentFingerprint = (row: Partial<TestResult>) => {
-    const parameter = normalizeComparable(row.parameter_name);
-    const profile = normalizeComparable(row.profile_name);
-    const department = normalizeComparable(row.department);
-    const result = normalizeComparable(row.result_value);
-    const unit = normalizeComparable(row.unit);
-    const rangeText = normalizeComparable(row.normal_range_text);
-    const low = normalizeComparable(row.normal_range_low);
-    const high = normalizeComparable(row.normal_range_high);
-    const flag = normalizeComparable(row.flag);
-
-    return `${parameter}::${profile}::${department}::${result}::${unit}::${rangeText}::${low}::${high}::${flag}`;
-  };
-
   const dedupeTestResults = (rows: TestResult[]) => {
-    const byParameterAndTest = new Map<string, TestResult>();
-
-    // Latest row wins (older duplicate overwritten)
+    // Key = parameter_name + test_name (AI-extracted). Latest occurrence wins.
+    const deduped = new Map<string, TestResult>();
     rows.forEach((row) => {
-      byParameterAndTest.set(getDedupeKey(row), row);
+      const key = `${normalizeResultKey(row.parameter_name)}::${normalizeResultKey(row.test_name)}`;
+      deduped.set(key, row);
     });
-
-    // Safety pass: collapse visually identical duplicates (often caused by missing test_name in one row)
-    const byContent = new Map<string, TestResult>();
-    byParameterAndTest.forEach((row) => {
-      byContent.set(getContentFingerprint(row), row);
-    });
-
-    return Array.from(byContent.values());
+    return Array.from(deduped.values());
   };
 
   const getResultKey = (row: Partial<TestResult>, index = 0) => {
@@ -640,13 +613,14 @@ const ReviewReport = () => {
     const corrections: Array<{ parameter_name: string; field_corrected: string; original_value: string; corrected_value: string }> = [];
 
     // Build lookup by key, but also keep index-based fallback for parameter_name changes
+    const getDedupeKeyLocal = (row: Partial<TestResult>) =>
+      `${normalizeResultKey(row.parameter_name)}::${normalizeResultKey(row.test_name)}`;
     const originalsByKey = new Map<string, TestResult>();
-    originals.forEach((row) => originalsByKey.set(getDedupeKey(row), row));
+    originals.forEach((row) => originalsByKey.set(getDedupeKeyLocal(row), row));
 
     for (let i = 0; i < finalResults.length; i++) {
       const curr = finalResults[i];
-      // Try key-based match first; fall back to same-index match (handles parameter_name renames)
-      const orig = originalsByKey.get(getDedupeKey(curr)) || (i < originals.length ? originals[i] : null);
+      const orig = originalsByKey.get(getDedupeKeyLocal(curr)) || (i < originals.length ? originals[i] : null);
       if (!orig) continue;
 
       for (const field of TRACKED_FIELDS) {

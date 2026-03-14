@@ -167,47 +167,14 @@ const hasDistinguishingOverlap = (a: string, b: string): boolean => {
   return wordsA.some((w) => wordsB.has(w));
 };
 
-const getCanonicalResultScope = (row: Partial<TestResult>) => {
-  const profileName = normalizeDedupeKey(row.profile_name);
-  const testName = normalizeDedupeKey(row.test_name);
-  return profileName || testName || normalizeDedupeKey(row.parameter_name);
-};
-
-const getResultDedupeKey = (row: Partial<TestResult>) => {
-  const parameter = normalizeDedupeKey(row.parameter_name);
-  return `${parameter}::${getCanonicalResultScope(row)}`;
-};
-
-const normalizeComparableValue = (value: unknown) => {
-  const normalized = normalizeDedupeKey(value);
-  return ["-", "--", "na", "n/a", "nil", "null"].includes(normalized) ? "" : normalized;
-};
-
-const getResultContentFingerprint = (row: Partial<TestResult>) => {
-  const parameter = normalizeComparableValue(row.parameter_name);
-  const profile = normalizeComparableValue(row.profile_name);
-  const department = normalizeComparableValue(row.department);
-  const result = normalizeComparableValue(row.result_value);
-  const unit = normalizeComparableValue(row.unit);
-  const rangeText = normalizeComparableValue(row.normal_range_text);
-  const low = normalizeComparableValue(row.normal_range_low);
-  const high = normalizeComparableValue(row.normal_range_high);
-  const flag = normalizeComparableValue(row.flag);
-  return `${parameter}::${profile}::${department}::${result}::${unit}::${rangeText}::${low}::${high}::${flag}`;
-};
-
 const dedupeResultsLatest = (rows: TestResult[]) => {
-  const byParameterAndTest = new Map<string, TestResult>();
+  // Key = parameter_name + test_name (AI-extracted). Latest occurrence wins.
+  const deduped = new Map<string, TestResult>();
   rows.forEach((row) => {
-    byParameterAndTest.set(getResultDedupeKey(row), row);
+    const key = `${normalizeDedupeKey(row.parameter_name)}::${normalizeDedupeKey(row.test_name)}`;
+    deduped.set(key, row);
   });
-
-  const byContent = new Map<string, TestResult>();
-  byParameterAndTest.forEach((row) => {
-    byContent.set(getResultContentFingerprint(row), row);
-  });
-
-  return Array.from(byContent.values());
+  return Array.from(deduped.values());
 };
 
 const ViewReport = () => {
@@ -386,8 +353,8 @@ const ViewReport = () => {
         if (!updated.profile_name && best?.profile_name) updated.profile_name = best.profile_name;
         if (!updated.department && best?.department_name) updated.department = best.department_name;
 
-        // Only overwrite test_name when we have a confident match or test_name is missing
-        if (best?.test_name && (maxScore > 0 || !updated.test_name)) {
+        // Always map test_name to DB master test_name for consistent grouping
+        if (best?.test_name) {
           updated.test_name = best.test_name;
         }
 
