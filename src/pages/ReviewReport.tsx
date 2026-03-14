@@ -311,8 +311,8 @@ const ReviewReport = () => {
     setMasterParams(masterMap);
     setMasterParamIds(masterIds);
     setTestResults((prev) => {
-      const enriched = enrichResults(dedupeTestResults(prev), masterMap, profileGroups, paramIdToNameKey);
-      return dedupeTestResults(normalizeTestResultFlags(enriched));
+      const enriched = enrichResults(prev, masterMap, profileGroups, paramIdToNameKey);
+      return normalizeTestResultFlags(enriched);
     });
   };
 
@@ -346,8 +346,8 @@ const ReviewReport = () => {
       setLocationField((extracted as any).location || "");
       const rawResults = (extracted.test_results as unknown as TestResult[]) || [];
 
-      const enrichedResults = enrichResults(dedupeTestResults(rawResults), masterMap, profileGroups, paramIdToNameKey);
-      const normalized = dedupeTestResults(normalizeTestResultFlags(enrichedResults));
+      const enrichedResults = enrichResults(rawResults, masterMap, profileGroups, paramIdToNameKey);
+      const normalized = normalizeTestResultFlags(enrichedResults);
       setTestResults(normalized);
       // Always refresh original AI results snapshot on load/reload
       originalAiResultsRef.current = normalized.map(r => ({ ...r }));
@@ -388,15 +388,6 @@ const ReviewReport = () => {
       .replace(/\s+/g, " ")
       .trim();
 
-  const dedupeTestResults = (rows: TestResult[]) => {
-    // Key = parameter_name + test_name (AI-extracted). Latest occurrence wins.
-    const deduped = new Map<string, TestResult>();
-    rows.forEach((row) => {
-      const key = `${normalizeResultKey(row.parameter_name)}::${normalizeResultKey(row.test_name)}`;
-      deduped.set(key, row);
-    });
-    return Array.from(deduped.values());
-  };
 
   const getResultKey = (row: Partial<TestResult>, index = 0) => {
     const parameter = normalizeResultKey(row.parameter_name);
@@ -575,12 +566,12 @@ const ReviewReport = () => {
           };
         });
 
-        const recalculated = dedupeTestResults(normalizeTestResultFlags(corrected));
+        const recalculated = normalizeTestResultFlags(corrected);
         setTestResults(recalculated);
         const abnormalCount = recalculated.filter((r) => r.flag === "H" || r.flag === "L").length;
         toast({ title: "Re-verification complete", description: `${allVerified.length} parameters rechecked from matching pages. ${abnormalCount} abnormal result(s) confirmed.` });
       } else {
-        const recalculated = dedupeTestResults(normalizeTestResultFlags(testResults));
+        const recalculated = normalizeTestResultFlags(testResults);
         setTestResults(recalculated);
         toast({ title: "Re-verification complete", description: "No corrections were needed." });
       }
@@ -655,7 +646,7 @@ const ReviewReport = () => {
     }
     setSaving(true);
     try {
-      const flaggedResults = dedupeTestResults(calculateFlags(testResults));
+      const flaggedResults = calculateFlags(testResults);
       setTestResults(flaggedResults);
 
       // Update extracted data
@@ -831,6 +822,7 @@ const ReviewReport = () => {
                    <TableHead className="w-[120px]">Department</TableHead>
                    <TableHead className="w-[120px]">Profile</TableHead>
                    <TableHead>Parameter</TableHead>
+                   <TableHead className="w-[140px]">Test Name</TableHead>
                    <TableHead className="w-[100px]">Result</TableHead>
                    <TableHead className="w-[80px]">Unit</TableHead>
                    <TableHead className="w-[120px]">Range</TableHead>
@@ -860,6 +852,9 @@ const ReviewReport = () => {
                     </TableCell>
                     <TableCell>
                       <Input value={r.parameter_name} onChange={(e) => updateTestResult(i, "parameter_name", e.target.value)} className="h-8 text-xs font-medium" />
+                    </TableCell>
+                    <TableCell>
+                      <Input value={r.test_name || ""} onChange={(e) => updateTestResult(i, "test_name" as keyof TestResult, e.target.value)} className="h-8 text-xs" />
                     </TableCell>
                     <TableCell>
                       <Input value={r.result_value} onChange={(e) => updateTestResult(i, "result_value", e.target.value)} className={`h-8 text-xs font-bold ${r.flag === "H" || r.flag === "L" ? "text-destructive" : ""}`} />
