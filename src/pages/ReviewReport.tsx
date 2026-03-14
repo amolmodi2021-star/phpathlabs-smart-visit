@@ -311,8 +311,8 @@ const ReviewReport = () => {
     setMasterParams(masterMap);
     setMasterParamIds(masterIds);
     setTestResults((prev) => {
-      const enriched = enrichResults(dedupeTestResults(prev), masterMap, profileGroups, paramIdToNameKey);
-      return dedupeTestResults(normalizeTestResultFlags(enriched));
+      const enriched = enrichResults(prev, masterMap, profileGroups, paramIdToNameKey);
+      return normalizeTestResultFlags(enriched);
     });
   };
 
