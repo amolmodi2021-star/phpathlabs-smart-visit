@@ -1,3 +1,5 @@
+import React from 'react';
+
 interface TestResult {
   department?: string;
   profile_name?: string;
