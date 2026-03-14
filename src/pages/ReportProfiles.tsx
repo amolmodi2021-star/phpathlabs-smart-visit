@@ -47,6 +47,7 @@ const ReportProfiles = () => {
   const [form, setForm] = useState({
     profile_name: "", department_id: "", analyzer: "", method: "", remarks: "", display_order: 0,
     sample_type: "", is_outsourced: false, outsourced_caption: "", interpretation: "",
+    enable_test_grouping: false,
   });
   const [selectedParams, setSelectedParams] = useState<SelectedParam[]>([]);
   const [paramSearch, setParamSearch] = useState("");
