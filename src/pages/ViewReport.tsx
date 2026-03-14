@@ -411,7 +411,7 @@ const ViewReport = () => {
     if (profileNames.length > 0) {
       const { data: masterProfiles } = await supabase
         .from("report_profiles")
-        .select("profile_name, display_order, sample_type, analyzer, method, is_outsourced, outsourced_caption, interpretation, enable_test_grouping")
+        .select("profile_name, display_order, sample_type, analyzer, method, is_outsourced, outsourced_caption, interpretation, enable_test_grouping, force_single_page")
         .in("profile_name", profileNames);
       if (masterProfiles) {
         const metaMap: Record<string, ProfileMeta> = {};
