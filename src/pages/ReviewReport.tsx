@@ -822,6 +822,7 @@ const ReviewReport = () => {
                    <TableHead className="w-[120px]">Department</TableHead>
                    <TableHead className="w-[120px]">Profile</TableHead>
                    <TableHead>Parameter</TableHead>
+                   <TableHead className="w-[140px]">Test Name</TableHead>
                    <TableHead className="w-[100px]">Result</TableHead>
                    <TableHead className="w-[80px]">Unit</TableHead>
                    <TableHead className="w-[120px]">Range</TableHead>
