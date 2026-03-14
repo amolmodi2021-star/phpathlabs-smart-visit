@@ -324,37 +324,70 @@ const DirectAI = () => {
   const bottomMarginMm = layoutSettings.bottom_margin_cm * 10;
   const PAGE_H = 297;
   const HEADER_H = 30;
-  const SIGNATURE_H = 14;
+  const SIGNATURE_H = 18; // signature block reserved at bottom
   const PAGE_NUM_H = 8;
-  const usableH = PAGE_H - topMarginMm - bottomMarginMm - HEADER_H - SIGNATURE_H - PAGE_NUM_H;
+  const SAFETY_BUFFER = 4;
+  const usableH = PAGE_H - topMarginMm - bottomMarginMm - HEADER_H - SIGNATURE_H - PAGE_NUM_H - SAFETY_BUFFER;
 
-  // Simple pagination: group all results into pages
+  // Height estimation constants (mm)
   const ROW_H = 5.5;
+  const ADVISORY_ROW_H = 12; // advisory-style multi-line range rows are taller
   const DEPT_H = 8;
   const PROFILE_H = 6;
   const TABLE_HEADER_H = 5;
+  const META_ROW_H = 4;
+  const INTERPRETATION_LINE_H = 3;
+  const INTERPRETATION_BASE_H = 6;
+
+  const estimateSectionH = (results: TestResult[], profName: string): number => {
+    let h = TABLE_HEADER_H;
+    // Profile header
+    if (profName && profName !== "_individual") h += PROFILE_H;
+    // Metadata row
+    const firstR = results[0];
+    if (firstR?.sample_type || firstR?.analyzer || firstR?.method) h += META_ROW_H;
+    // Each result row
+    results.forEach((r) => {
+      const rangeText = r.normal_range_text || "";
+      const isAdvisory = rangeText.includes("\\n") || rangeText.includes("\n") || rangeText.length > 50;
+      h += isAdvisory ? ADVISORY_ROW_H : ROW_H;
+    });
+    // Interpretation block
+    const interpResult = results.find(r => r.interpretation);
+    if (interpResult?.interpretation) {
+      const lines = interpResult.interpretation.split(/\\n|\n/).length;
+      h += INTERPRETATION_BASE_H + lines * INTERPRETATION_LINE_H;
+    }
+    return h;
+  };
 
   const buildPages = () => {
     const pages: { sections: { type: string; dept?: string; profile?: string; results: TestResult[] }[] }[] = [];
     let currentPage: typeof pages[0] = { sections: [] };
     let currentH = 0;
+    let lastDeptOnPage: string | null = null;
 
     groupedResults.forEach((profMap, dept) => {
-      // Department header
-      if (currentH + DEPT_H > usableH) {
-        pages.push(currentPage);
-        currentPage = { sections: [] };
-        currentH = 0;
-      }
-      currentH += DEPT_H;
-
       profMap.forEach((results, profName) => {
-        const sectionH = PROFILE_H + TABLE_HEADER_H + results.length * ROW_H;
-        if (currentH + sectionH > usableH && currentH > DEPT_H) {
+        const needsDeptHeader = dept !== lastDeptOnPage;
+        const deptHeaderH = needsDeptHeader ? DEPT_H : 0;
+        const sectionH = estimateSectionH(results, profName);
+        const totalNeeded = deptHeaderH + sectionH;
+
+        // If this section won't fit, start a new page
+        if (currentH + totalNeeded > usableH && currentH > 0) {
           pages.push(currentPage);
           currentPage = { sections: [] };
-          currentH = DEPT_H; // re-add dept header space
+          currentH = 0;
+          lastDeptOnPage = null;
         }
+
+        // Re-check dept header after potential page break
+        if (dept !== lastDeptOnPage) {
+          currentH += DEPT_H;
+          lastDeptOnPage = dept;
+        }
+
         currentPage.sections.push({ type: "profile", dept, profile: profName, results });
         currentH += sectionH;
       });
