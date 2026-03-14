@@ -145,6 +145,12 @@ ${paramList || "No parameters configured yet"}
 ${correctionsBlock ? `LEARNED CORRECTIONS (from past user fixes — apply these patterns to avoid repeating mistakes):
 ${correctionsBlock}` : ""}
 
+PROFILE MAPPING RULE (CRITICAL FOR DISAMBIGUATION):
+- The KNOWN PARAMETERS list includes a "profile" column. Use it to set profile_name for each extracted row.
+- Section headers like "STOOL EXAMINATION", "URINE EXAMINATION" should map to the closest known profile name from the list.
+- This is critical for disambiguating parameters with identical names across different test sections (e.g., "Colour" in Stool vs Urine).
+- If a section header says "STOOL EXAMINATION" and the known profiles include "Stool Routine Analysis", set profile_name to "Stool Routine Analysis".
+
 MATCHING:
 - Fuzzy match abbreviations (CBC, LFT, KFT, TFT).
 - Prefer closest known parameter name and return matched_parameter_id if known.`;

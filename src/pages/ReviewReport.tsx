@@ -203,7 +203,13 @@ const ReviewReport = () => {
     return results.map((r) => {
       const key = normalizeParameterForMatch(r.parameter_name);
       const matchedKeyFromId = r.matched_parameter_id ? paramIdToNameKey.get(r.matched_parameter_id) : "";
-      const masterEntries = masterMap.get(key) || (matchedKeyFromId ? masterMap.get(matchedKeyFromId) : undefined) || [];
+
+      // Try composite key lookup first for disambiguation (parameter::test_name or parameter::profile_name)
+      const aiTestKey = normalizeParameterForMatch(r.test_name);
+      const aiProfileKey = normalizeParameterForMatch(r.profile_name);
+      const compositeByTest = aiTestKey ? masterMap.get(`${key}::${aiTestKey}`) : undefined;
+      const compositeByProfile = aiProfileKey ? masterMap.get(`${key}::${aiProfileKey}`) : undefined;
+      const masterEntries = compositeByTest || compositeByProfile || masterMap.get(key) || (matchedKeyFromId ? masterMap.get(matchedKeyFromId) : undefined) || [];
       const profileEntries = matchedProfileParams.get(key) || (matchedKeyFromId ? matchedProfileParams.get(matchedKeyFromId) : undefined) || [];
 
       // Use AI-extracted profile_name/department to disambiguate duplicates
@@ -217,7 +223,12 @@ const ReviewReport = () => {
         bestProfile = profileEntries[0].profileName;
         bestDept = profileEntries[0].deptName;
       } else if (profileEntries.length > 1) {
-        const byProfile = aiProfile ? profileEntries.find((pe) => normalizeParameterForMatch(pe.profileName) === aiProfile) : undefined;
+        // Fuzzy keyword matching for profile disambiguation
+        const byProfile = aiProfile ? profileEntries.find((pe) => {
+          const dbProf = normalizeParameterForMatch(pe.profileName);
+          return dbProf === aiProfile || dbProf.includes(aiProfile) || aiProfile.includes(dbProf)
+            || aiProfile.split(" ").some(word => word.length > 3 && dbProf.includes(word));
+        }) : undefined;
         const byDept = aiDept ? profileEntries.find((pe) => normalizeParameterForMatch(pe.deptName) === aiDept) : undefined;
         const best = byProfile || byDept || profileEntries[0];
         bestProfile = best.profileName;
