@@ -102,10 +102,10 @@ const ReviewReport = () => {
 
   const buildMasterMaps = async () => {
     const [{ data: params }, { data: depts }, { data: profiles }, { data: profileParams }] = await Promise.all([
-      supabase.from("report_test_parameters").select("id, parameter_name, department_id, profile_id"),
+      supabase.from("report_test_parameters").select("id, parameter_name, test_name, department_id, profile_id"),
       supabase.from("report_departments").select("id, department_name"),
       supabase.from("report_profiles").select("id, profile_name, department_id"),
-      supabase.from("profile_parameters").select("profile_id, parameter_id, report_test_parameters(parameter_name)"),
+      supabase.from("profile_parameters").select("profile_id, parameter_id, report_test_parameters(parameter_name, test_name)"),
     ]);
 
     const deptMap = new Map((depts || []).map((d: any) => [d.id, d.department_name]));
@@ -122,9 +122,31 @@ const ReviewReport = () => {
       paramIdToNameKey.set(p.id, key);
       masterIds.add(p.id);
       const deptName = p.department_id ? deptMap.get(p.department_id) || "" : "";
+      const profName = p.profile_id ? profileNameMap.get(p.profile_id) || "" : "";
+      const entry = { department_name: deptName, profile_name: profName };
+
+      // Store under plain parameter_name key
       const existing = masterMap.get(key) || [];
-      existing.push({ department_name: deptName, profile_name: "" });
+      existing.push(entry);
       masterMap.set(key, existing);
+
+      // Also store under composite key parameter_name::test_name for disambiguation
+      const testKey = normalizeParameterForMatch(p.test_name);
+      if (testKey) {
+        const compositeKey = `${key}::${testKey}`;
+        const compositeExisting = masterMap.get(compositeKey) || [];
+        compositeExisting.push(entry);
+        masterMap.set(compositeKey, compositeExisting);
+      }
+
+      // Also store under composite key parameter_name::profile_name for disambiguation
+      const profKey = normalizeParameterForMatch(profName);
+      if (profKey) {
+        const compositeKey = `${key}::${profKey}`;
+        const compositeExisting = masterMap.get(compositeKey) || [];
+        compositeExisting.push(entry);
+        masterMap.set(compositeKey, compositeExisting);
+      }
     });
 
     const profileGroups = new Map<string, { name: string; deptName: string; paramNames: string[] }>();
@@ -181,7 +203,13 @@ const ReviewReport = () => {
     return results.map((r) => {
       const key = normalizeParameterForMatch(r.parameter_name);
       const matchedKeyFromId = r.matched_parameter_id ? paramIdToNameKey.get(r.matched_parameter_id) : "";
-      const masterEntries = masterMap.get(key) || (matchedKeyFromId ? masterMap.get(matchedKeyFromId) : undefined) || [];
+
+      // Try composite key lookup first for disambiguation (parameter::test_name or parameter::profile_name)
+      const aiTestKey = normalizeParameterForMatch(r.test_name);
+      const aiProfileKey = normalizeParameterForMatch(r.profile_name);
+      const compositeByTest = aiTestKey ? masterMap.get(`${key}::${aiTestKey}`) : undefined;
+      const compositeByProfile = aiProfileKey ? masterMap.get(`${key}::${aiProfileKey}`) : undefined;
+      const masterEntries = compositeByTest || compositeByProfile || masterMap.get(key) || (matchedKeyFromId ? masterMap.get(matchedKeyFromId) : undefined) || [];
       const profileEntries = matchedProfileParams.get(key) || (matchedKeyFromId ? matchedProfileParams.get(matchedKeyFromId) : undefined) || [];
 
       // Use AI-extracted profile_name/department to disambiguate duplicates
@@ -195,7 +223,12 @@ const ReviewReport = () => {
         bestProfile = profileEntries[0].profileName;
         bestDept = profileEntries[0].deptName;
       } else if (profileEntries.length > 1) {
-        const byProfile = aiProfile ? profileEntries.find((pe) => normalizeParameterForMatch(pe.profileName) === aiProfile) : undefined;
+        // Fuzzy keyword matching for profile disambiguation
+        const byProfile = aiProfile ? profileEntries.find((pe) => {
+          const dbProf = normalizeParameterForMatch(pe.profileName);
+          return dbProf === aiProfile || dbProf.includes(aiProfile) || aiProfile.includes(dbProf)
+            || aiProfile.split(" ").some(word => word.length > 3 && dbProf.includes(word));
+        }) : undefined;
         const byDept = aiDept ? profileEntries.find((pe) => normalizeParameterForMatch(pe.deptName) === aiDept) : undefined;
         const best = byProfile || byDept || profileEntries[0];
         bestProfile = best.profileName;
