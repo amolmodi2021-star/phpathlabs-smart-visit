@@ -54,6 +54,9 @@ const ReportTrendCharts = ({ trends }: ReportTrendChartsProps) => {
           const maxVal = Math.max(...allVals);
           const range = maxVal - minVal;
           const padding = range > 0 ? range * 0.25 : (maxVal * 0.15) || 1;
+          const yMin = Math.max(0, Math.floor((minVal - padding) * 100) / 100);
+          const yMax = Math.ceil((maxVal + padding) * 100) / 100;
+          const yAxisTicks = [...new Set([yMin, trend.low, trend.high, yMax].filter((v): v is number => v != null))].sort((a, b) => a - b);
 
           const refRange = trend.low != null && trend.high != null
             ? `${trend.low} - ${trend.high}`
