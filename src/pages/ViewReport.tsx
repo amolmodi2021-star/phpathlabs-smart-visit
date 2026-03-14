@@ -49,6 +49,7 @@ interface ProfileMeta {
   is_outsourced?: boolean;
   outsourced_caption?: string;
   interpretation?: string;
+  enable_test_grouping?: boolean;
 }
 
 interface TrendData {
@@ -351,7 +352,7 @@ const ViewReport = () => {
     if (profileNames.length > 0) {
       const { data: masterProfiles } = await supabase
         .from("report_profiles")
-        .select("profile_name, display_order, sample_type, analyzer, method, is_outsourced, outsourced_caption, interpretation")
+        .select("profile_name, display_order, sample_type, analyzer, method, is_outsourced, outsourced_caption, interpretation, enable_test_grouping")
         .in("profile_name", profileNames);
       if (masterProfiles) {
         const metaMap: Record<string, ProfileMeta> = {};
@@ -364,6 +365,7 @@ const ViewReport = () => {
             is_outsourced: mp.is_outsourced,
             outsourced_caption: mp.outsourced_caption,
             interpretation: mp.interpretation,
+            enable_test_grouping: mp.enable_test_grouping,
           };
           profOrdMap[mp.profile_name] = mp.display_order ?? 999;
         });

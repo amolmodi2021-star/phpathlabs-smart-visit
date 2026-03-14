@@ -26,6 +26,7 @@ interface ProfileMeta {
   is_outsourced?: boolean;
   outsourced_caption?: string;
   interpretation?: string;
+  enable_test_grouping?: boolean;
 }
 
 interface ReportResultsSectionProps {
@@ -54,7 +55,7 @@ const groupByTestName = (params: TestResult[]): { testName: string | null; param
 };
 
 const COMPACT_PROFILES = ["cbc", "complete blood count", "urine routine"];
-const TEST_GROUPED_PROFILES = ["cbc", "complete blood count", "urine routine"];
+
 const MORPHOLOGY_TESTS = ["morphology", "rbc morphology", "wbc morphology", "platelet morphology", "peripheral smear"];
 
 const isCompactProfile = (profName: string): boolean => {
@@ -62,10 +63,6 @@ const isCompactProfile = (profName: string): boolean => {
   return COMPACT_PROFILES.some(cp => lower.includes(cp));
 };
 
-const isTestGroupedProfile = (profName: string): boolean => {
-  const lower = profName.toLowerCase();
-  return TEST_GROUPED_PROFILES.some(cp => lower.includes(cp));
-};
 
 const isMorphologySection = (testName: string | null | undefined): boolean => {
   if (!testName) return false;
@@ -83,7 +80,7 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
             {Object.entries(profiles).map(([profName, params], profIdx) => {
               const useCompact = compact || isCompactProfile(profName);
               const testGroups = groupByTestName(params);
-              const isGroupedProfile = isTestGroupedProfile(profName);
+              const isGroupedProfile = profileMetaMap?.[profName]?.enable_test_grouping ?? false;
               const hasMultipleTestNames = isGroupedProfile && testGroups.filter(g => g.testName).length >= 1;
 
               // Get metadata: profile-level from profileMetaMap, or parameter-level for standalone

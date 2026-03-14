@@ -1,47 +1,65 @@
 
 
-## Plan: Per-Profile Toggle for Test Name Grouping
+## Live Sync / Auto-Refresh for All Tabs
 
-### What Changes
+### What This Does
+When data changes on one device (e.g., a new home visit is added, a test is updated, an estimate is created), all other devices viewing the app will automatically refresh and show the updated data -- no manual refresh needed.
 
-Currently, test-name grouping (showing sub-headers like "DIFFERENTIAL COUNT", "PHYSICAL EXAMINATION" within a profile) is **hardcoded** to only CBC and Urine Routine profiles. The user wants this to be a **per-profile setting** controlled via a toggle in the Profile Management dialog.
+### Implementation Steps
 
-### Steps
+**Step 1: Database Migration -- Enable Realtime**
 
-1. **Database Migration** — Add a boolean column `enable_test_grouping` (default `false`) to the `report_profiles` table. This replaces the hardcoded `TEST_GROUPED_PROFILES` list.
+Add all 7 core tables to the realtime publication so the database broadcasts changes:
+- `home_visits`
+- `estimates`
+- `estimate_tests`
+- `tests`
+- `phlebotomists`
+- `message_templates`
+- `abnormal_history`
 
-2. **Profile Management UI (`ReportProfiles.tsx`)** — Add a Switch/toggle in the edit/add dialog labeled "Group parameters by test name" (near the existing outsourced checkbox). Wire it to the new `enable_test_grouping` field in the form state and save payload.
+**Step 2: Create a Reusable Realtime Hook**
 
-3. **Report Rendering (`ReportResultsSection.tsx`)** — 
-   - Add `enable_test_grouping` to the `ProfileMeta` interface and accept it via `profileMetaMap`.
-   - Replace the hardcoded `isTestGroupedProfile(profName)` check with a lookup: `profileMetaMap?.[profName]?.enable_test_grouping`.
-   - Remove the `TEST_GROUPED_PROFILES` constant (keep `COMPACT_PROFILES` and `MORPHOLOGY_TESTS`).
+Create a new hook `src/hooks/useRealtimeSync.ts` that:
+- Subscribes to Postgres changes on a given table
+- On any INSERT, UPDATE, or DELETE event, automatically invalidates the matching React Query cache keys
+- Cleans up the subscription when the component unmounts
 
-4. **Report Data Flow** — In the page that builds `profileMetaMap` (likely `ViewReport.tsx` or `ReviewReport.tsx`), include `enable_test_grouping` when fetching profile data so it flows through to `ReportResultsSection`.
+**Step 3: Wire Up Each Page**
+
+Add the realtime hook to each page/component so queries auto-refresh:
+
+| Page | Table(s) Listened | Query Keys Invalidated |
+|------|-------------------|----------------------|
+| HomeVisits | `home_visits` | `home_visits` |
+| CreateEstimate | `tests` | `tests` |
+| EstimateDashboard | `estimates`, `estimate_tests` | `estimates` |
+| TestManagement | `tests` | `tests` |
+| PhlebotomistManagement | `phlebotomists` | `phlebotomists` |
+| MessageTemplates | `message_templates` | `message_templates` |
+| AbnormalHistory | `abnormal_history` | `abnormal_history`, `abnormal_history_counts` |
 
 ### Technical Details
 
-**Migration SQL:**
-```sql
-ALTER TABLE public.report_profiles 
-  ADD COLUMN enable_test_grouping boolean DEFAULT false;
+The reusable hook will look like:
 
--- Set existing CBC/Urine profiles to true for backward compatibility
-UPDATE public.report_profiles 
-  SET enable_test_grouping = true 
-  WHERE lower(profile_name) LIKE '%cbc%' 
-     OR lower(profile_name) LIKE '%complete blood count%' 
-     OR lower(profile_name) LIKE '%urine routine%';
+```text
+useRealtimeSync(tableName, queryKeysToInvalidate[])
 ```
 
-**UI Toggle** — A `Switch` component placed after the "Display Order" field in the profile dialog, with label "Group parameters by test name (like CBC sub-headers)".
+It subscribes to `postgres_changes` on the specified table and calls `queryClient.invalidateQueries()` for each key whenever a change is detected. This triggers a fresh fetch from the database automatically.
 
-**Rendering Logic Change:**
-```typescript
-// Before (hardcoded):
-const isGroupedProfile = isTestGroupedProfile(profName);
+### Files to Create/Modify
 
-// After (data-driven):
-const isGroupedProfile = profileMetaMap?.[profName]?.enable_test_grouping ?? false;
-```
+1. **New migration** -- SQL to add tables to `supabase_realtime` publication
+2. **New file**: `src/hooks/useRealtimeSync.ts` -- reusable realtime subscription hook
+3. **Modified**: `src/pages/HomeVisits.tsx` -- add `useRealtimeSync("home_visits", ...)`
+4. **Modified**: `src/pages/CreateEstimate.tsx` -- add `useRealtimeSync("tests", ...)`
+5. **Modified**: `src/pages/EstimateDashboard.tsx` -- add `useRealtimeSync("estimates", ...)` and `useRealtimeSync("estimate_tests", ...)`
+6. **Modified**: `src/pages/TestManagement.tsx` -- add `useRealtimeSync("tests", ...)`
+7. **Modified**: `src/pages/PhlebotomistManagement.tsx` -- add `useRealtimeSync("phlebotomists", ...)`
+8. **Modified**: `src/pages/MessageTemplates.tsx` -- add `useRealtimeSync("message_templates", ...)`
+9. **Modified**: `src/pages/AbnormalHistory.tsx` -- add `useRealtimeSync("abnormal_history", ...)`
+
+This is included in your Lovable Cloud usage and should be well within the free tier for a small team.
 
