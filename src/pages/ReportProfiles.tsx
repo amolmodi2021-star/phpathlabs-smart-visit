@@ -270,6 +270,11 @@ const ReportProfiles = () => {
             <div><Label>Display Order</Label><Input type="number" value={form.display_order} onChange={(e) => setForm({ ...form, display_order: Number(e.target.value) })} /></div>
 
             <div className="flex items-center gap-2">
+              <Checkbox checked={form.enable_test_grouping} onCheckedChange={(c) => setForm({ ...form, enable_test_grouping: !!c })} />
+              <Label>Group parameters by test name (sub-headers like CBC)</Label>
+            </div>
+
+            <div className="flex items-center gap-2">
               <Checkbox checked={form.is_outsourced} onCheckedChange={(c) => setForm({ ...form, is_outsourced: !!c })} />
               <Label>Mark as Outsourced</Label>
             </div>

@@ -80,7 +80,7 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
             {Object.entries(profiles).map(([profName, params], profIdx) => {
               const useCompact = compact || isCompactProfile(profName);
               const testGroups = groupByTestName(params);
-              const isGroupedProfile = isTestGroupedProfile(profName);
+              const isGroupedProfile = profileMetaMap?.[profName]?.enable_test_grouping ?? false;
               const hasMultipleTestNames = isGroupedProfile && testGroups.filter(g => g.testName).length >= 1;
 
               // Get metadata: profile-level from profileMetaMap, or parameter-level for standalone

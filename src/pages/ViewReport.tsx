@@ -365,6 +365,7 @@ const ViewReport = () => {
             is_outsourced: mp.is_outsourced,
             outsourced_caption: mp.outsourced_caption,
             interpretation: mp.interpretation,
+            enable_test_grouping: mp.enable_test_grouping,
           };
           profOrdMap[mp.profile_name] = mp.display_order ?? 999;
         });
