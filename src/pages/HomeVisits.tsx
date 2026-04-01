@@ -219,20 +219,48 @@ const HomeVisits = () => {
           if (error) throw error;
         }
       } else {
-        // Multi-patient: distribute paid amount equally, rounding remainder to primary (index 0)
+        // Multi-patient: distribute paid amount AND each payment mode amount equally
         const perPatient = Math.floor(data.paid_amount / n);
         const primaryPaid = data.paid_amount - perPatient * (n - 1);
+
+        // Parse individual mode amounts from the mode string (e.g. "Cash: ₹41, GPay: ₹500")
+        const modeEntries: { mode: string; amount: number }[] = [];
+        if (data.payment_mode) {
+          const parts = data.payment_mode.split(", ");
+          for (const part of parts) {
+            const colonIdx = part.indexOf(": ₹");
+            if (colonIdx !== -1) {
+              const mode = part.substring(0, colonIdx).trim();
+              const amount = parseFloat(part.substring(colonIdx + 3)) || 0;
+              modeEntries.push({ mode, amount });
+            }
+          }
+        }
+
         for (let i = 0; i < n; i++) {
           const visitId = visitIds[i];
           const v = consolidatedPaymentVisits?.find((x: any) => x.id === visitId);
           const patientFinal = Number(v?.estimates?.final_amount || 0);
           const patientPaid = i === 0 ? primaryPaid : perPatient;
           const patientDue = Math.max(0, patientFinal - patientPaid);
+
+          // Distribute each mode amount with same rounding logic
+          let patientModeStr = data.payment_mode;
+          if (modeEntries.length > 0) {
+            const distributedModes = modeEntries.map(({ mode, amount }) => {
+              const modePerPatient = Math.floor(amount / n);
+              const modePrimary = amount - modePerPatient * (n - 1);
+              const modeAmount = i === 0 ? modePrimary : modePerPatient;
+              return `${mode}: ₹${modeAmount}`;
+            });
+            patientModeStr = distributedModes.join(", ");
+          }
+
           const { error } = await supabase.from("home_visits").update({
             status: "Completed",
             paid_amount: patientPaid,
             due_amount: patientDue,
-            payment_mode: data.payment_mode,
+            payment_mode: patientModeStr,
             payment_remarks: data.payment_remarks,
           }).eq("id", visitId);
           if (error) throw error;
