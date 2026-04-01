@@ -786,8 +786,19 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
 
               {/* Payment */}
               <div className="border-t border-gray-200 pt-1 space-y-0.5 text-xs">
-                <div className="flex justify-between"><span className="text-gray-600">Paid:</span><span className="font-semibold text-green-700">₹{paidAmount}</span></div>
-                <div className="flex justify-between"><span className="text-gray-600">Due:</span><span className={`font-semibold ${dueAmount > 0 ? 'text-red-600' : 'text-green-700'}`}>₹{dueAmount}</span></div>
+                {consolidatedVisits && consolidatedVisits.length > 1 && (
+                  <>
+                    {allPatients.map((p, i) => (
+                      <div key={i} className="flex justify-between">
+                        <span className="text-gray-600">{p.est?.patient_name || `Patient ${i + 1}`}:</span>
+                        <span className="font-semibold">Paid ₹{perPatientPayment[i]?.paid ?? 0} | Due ₹{perPatientPayment[i]?.due ?? 0}</span>
+                      </div>
+                    ))}
+                    <div className="border-t border-gray-200 pt-0.5" />
+                  </>
+                )}
+                <div className="flex justify-between"><span className="text-gray-600">Total Paid:</span><span className="font-semibold text-green-700">₹{paidAmount}</span></div>
+                <div className="flex justify-between"><span className="text-gray-600">Total Due:</span><span className={`font-semibold ${dueAmount > 0 ? 'text-red-600' : 'text-green-700'}`}>₹{dueAmount}</span></div>
                 {modeStr && <div className="flex justify-between"><span className="text-gray-600">Mode:</span><span className="font-semibold">{modeStr}</span></div>}
               </div>
 
