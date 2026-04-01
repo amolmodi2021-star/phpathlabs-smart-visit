@@ -47,6 +47,8 @@ interface PaymentDetailsDialogProps {
   isPending?: boolean;
   initialData?: { paid_amount: number; payment_mode: string; payment_remarks: string };
   visitData?: VisitData;
+  /** Multiple visits for consolidated multi-patient payment */
+  consolidatedVisits?: VisitData[];
 }
 
 const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card"];
@@ -60,7 +62,7 @@ const formatTime12hr = (time: string) => {
   return `${h12}:${m} ${ampm}`;
 };
 
-const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, initialData, visitData }: PaymentDetailsDialogProps) => {
+const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, initialData, visitData, consolidatedVisits }: PaymentDetailsDialogProps) => {
   const [selectedModes, setSelectedModes] = useState<Set<string>>(new Set());
   const [modeAmounts, setModeAmounts] = useState<Record<string, number>>({});
   const [remarks, setRemarks] = useState("");
@@ -277,17 +279,32 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
   const buildReceiptText = () => {
     let msg = `📋 *PH PathLabs — Home Visit Receipt*\n`;
     if (receiptNumber) msg += `*Receipt No:* ${receiptNumber}\n`;
-    msg += `\n*Patient:* ${[est?.title, est?.patient_name].filter(Boolean).join(" ") || "—"}\n`;
-    msg += `*Mobile:* ${est?.whatsapp_number || "—"}\n`;
     msg += `*Visit:* ${formatDateDDMMYYYY(visitData?.visit_date) || "—"} | ${visitData?.visit_time ? formatTime12hr(visitData.visit_time) : "—"}\n`;
     msg += `*Address:* ${visitData?.address || "—"}\n\n`;
-    msg += `*Tests & Report Delivery:*\n`;
-    tests.forEach((t, i) => {
-      const rd = formatDateShort(reportDates[i]);
-      const rt = reportTimes[i] ? formatTime12hr(reportTimes[i]) : "";
-      msg += `• ${t.test_name} — ₹${t.discounted_price}${rd ? ` (Report by: ${rd} at ${rt})` : ""}\n`;
-    });
-    msg += `\n*Final Amount:* ₹${est?.final_amount || 0}\n`;
+
+    if (consolidatedVisits && consolidatedVisits.length > 1) {
+      consolidatedVisits.forEach((cv: any, idx: number) => {
+        const cEst = cv.estimates || cv;
+        const cTests = cEst?.estimate_tests || [];
+        msg += `*Patient ${idx + 1}: ${[cEst?.title, cEst?.patient_name].filter(Boolean).join(" ") || "—"}*\n`;
+        msg += `Mobile: ${cEst?.whatsapp_number || "—"}\n`;
+        cTests.forEach((t: any) => { msg += `• ${t.test_name} — ₹${t.discounted_price}\n`; });
+        msg += `Subtotal: ₹${cEst?.final_amount || 0}\n`;
+        if (idx === 0 && Number(cEst?.home_visit_charges) > 0) msg += `Home Visit: ₹${cEst?.home_visit_charges}\n`;
+        msg += `\n`;
+      });
+      msg += `*Grand Total (${consolidatedVisits.length} patients):* ₹${finalAmount}\n`;
+    } else {
+      msg += `*Patient:* ${[est?.title, est?.patient_name].filter(Boolean).join(" ") || "—"}\n`;
+      msg += `*Mobile:* ${est?.whatsapp_number || "—"}\n\n`;
+      msg += `*Tests & Report Delivery:*\n`;
+      tests.forEach((t, i) => {
+        const rd = formatDateShort(reportDates[i]);
+        const rt = reportTimes[i] ? formatTime12hr(reportTimes[i]) : "";
+        msg += `• ${t.test_name} — ₹${t.discounted_price}${rd ? ` (Report by: ${rd} at ${rt})` : ""}\n`;
+      });
+      msg += `\n*Final Amount:* ₹${est?.final_amount || 0}\n`;
+    }
     msg += `*Paid:* ₹${paidAmount} | *Due:* ₹${dueAmount}\n`;
     return msg;
   };
@@ -363,9 +380,41 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
             <DialogTitle>Review All Details</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 text-sm">
+            {/* Multi-patient summary */}
+            {consolidatedVisits && consolidatedVisits.length > 1 && (
+              <>
+                <div className="space-y-1">
+                  <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Patients in this Visit ({consolidatedVisits.length})</h4>
+                  {consolidatedVisits.map((cv: any, idx: number) => {
+                    const cEst = cv.estimates || cv;
+                    return (
+                      <div key={idx} className="bg-muted/50 rounded-lg p-2 space-y-1">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="text-sm font-medium">{[cEst?.title, cEst?.patient_name].filter(Boolean).join(" ") || "—"}</p>
+                            <p className="text-xs text-muted-foreground">{cEst?.whatsapp_number}</p>
+                          </div>
+                          <p className="text-sm font-bold">₹{cEst?.final_amount || 0}</p>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {(cEst?.estimate_tests || []).map((t: any, ti: number) => (
+                            <span key={ti} className="text-[10px] bg-accent rounded px-1 py-0.5">{t.test_name}</span>
+                          ))}
+                        </div>
+                        {idx === 0 && Number(cEst?.home_visit_charges) > 0 && (
+                          <p className="text-[10px] text-muted-foreground">Home Visit Charges: ₹{cEst?.home_visit_charges}</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <Separator />
+              </>
+            )}
+
            {/* Patient Info */}
             <div className="space-y-1">
-              <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Patient Information</h4>
+              <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">{consolidatedVisits && consolidatedVisits.length > 1 ? "Primary Patient" : "Patient Information"}</h4>
               <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
                 <span className="text-muted-foreground">Name:</span>
                 <span className="font-medium">{[est?.title, est?.patient_name].filter(Boolean).join(" ") || "—"}</span>
@@ -483,22 +532,43 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
             <Separator />
             <div className="space-y-1">
               <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Amount Details</h4>
-              <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-                <span className="text-muted-foreground">Total Amount:</span>
-                <span className="font-medium">₹{est?.total_amount || 0}</span>
-                {(est?.discount_amount || 0) > 0 && (
-                  <>
-                    <span className="text-muted-foreground">Discount:</span>
-                    <span className="font-medium text-emerald-600 dark:text-emerald-400">
-                      -₹{est?.discount_amount}
-                    </span>
-                  </>
-                )}
-                <span className="text-muted-foreground">Home Visit Charges:</span>
-                <span className="font-medium">₹{est?.home_visit_charges || 0}</span>
-                <span className="text-muted-foreground font-semibold">Final Amount:</span>
-                <span className="font-bold text-primary">₹{est?.final_amount || 0}</span>
-              </div>
+              {consolidatedVisits && consolidatedVisits.length > 1 ? (
+                <div className="space-y-2">
+                  {consolidatedVisits.map((cv: any, idx: number) => {
+                    const cEst = cv.estimates || cv;
+                    return (
+                      <div key={idx} className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+                        <span className="text-muted-foreground font-medium col-span-2">{cEst?.patient_name || `Patient ${idx + 1}`}:</span>
+                        <span className="text-muted-foreground pl-2">Tests:</span>
+                        <span>₹{cEst?.total_amount || 0}</span>
+                        {Number(cEst?.discount_amount) > 0 && (<><span className="text-muted-foreground pl-2">Discount:</span><span className="text-success">-₹{cEst?.discount_amount}</span></>)}
+                        {idx === 0 && Number(cEst?.home_visit_charges) > 0 && (<><span className="text-muted-foreground pl-2">Home Visit:</span><span>₹{cEst?.home_visit_charges}</span></>)}
+                        <span className="text-muted-foreground pl-2 font-medium">Subtotal:</span>
+                        <span className="font-medium">₹{cEst?.final_amount || 0}</span>
+                      </div>
+                    );
+                  })}
+                  <div className="border-t pt-1 flex justify-between font-bold">
+                    <span>Grand Total</span>
+                    <span className="text-primary">₹{finalAmount}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+                  <span className="text-muted-foreground">Total Amount:</span>
+                  <span className="font-medium">₹{est?.total_amount || 0}</span>
+                  {(est?.discount_amount || 0) > 0 && (
+                    <>
+                      <span className="text-muted-foreground">Discount:</span>
+                      <span className="font-medium text-success">-₹{est?.discount_amount}</span>
+                    </>
+                  )}
+                  <span className="text-muted-foreground">Home Visit Charges:</span>
+                  <span className="font-medium">₹{est?.home_visit_charges || 0}</span>
+                  <span className="text-muted-foreground font-semibold">Final Amount:</span>
+                  <span className="font-bold text-primary">₹{est?.final_amount || 0}</span>
+                </div>
+              )}
             </div>
 
             <Separator />
@@ -575,15 +645,52 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
               </div>
 
               {/* Patient Info */}
-              <div className="space-y-0.5 text-xs">
-                <div className="flex justify-between"><span className="text-gray-600">Patient:</span><span className="font-semibold">{[est?.title, est?.patient_name].filter(Boolean).join(" ") || "—"}</span></div>
-                <div className="flex justify-between"><span className="text-gray-600">Mobile:</span><span className="font-semibold">{est?.whatsapp_number || "—"}</span></div>
-                {est?.gender && <div className="flex justify-between"><span className="text-gray-600">Gender:</span><span className="font-semibold">{est.gender}</span></div>}
-                {est?.dob && <div className="flex justify-between"><span className="text-gray-600">DOB:</span><span className="font-semibold">{formatDateDDMMYYYY(est.dob)}</span></div>}
-                {est?.dob && <div className="flex justify-between"><span className="text-gray-600">Age:</span><span className="font-semibold">{Math.floor((Date.now() - new Date(est.dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000))} Years</span></div>}
-                {est?.doctor_name && <div className="flex justify-between"><span className="text-gray-600">Doctor:</span><span className="font-semibold">{est.doctor_name}</span></div>}
-                {est?.umr_number && <div className="flex justify-between"><span className="text-gray-600">UMR No:</span><span className="font-semibold">{est.umr_number}</span></div>}
-              </div>
+              {consolidatedVisits && consolidatedVisits.length > 1 ? (
+                <div className="space-y-2 text-xs">
+                  {consolidatedVisits.map((cv: any, idx: number) => {
+                    const cEst = cv.estimates || cv;
+                    const cTests = cEst?.estimate_tests || [];
+                    return (
+                      <div key={idx} className="space-y-0.5">
+                        <div className="flex justify-between font-semibold border-b border-gray-200 pb-0.5">
+                          <span>Patient {idx + 1}: {[cEst?.title, cEst?.patient_name].filter(Boolean).join(" ") || "—"}</span>
+                          <span>{cEst?.whatsapp_number}</span>
+                        </div>
+                        <table className="w-full text-[10px]">
+                          <tbody>
+                            {cTests.map((t: any, ti: number) => (
+                              <tr key={ti}>
+                                <td className="py-0.5">{t.test_name}{t.fasting_required ? " (F)" : ""}</td>
+                                <td className="py-0.5 text-right font-semibold">₹{t.discounted_price}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        <div className="flex justify-between text-[10px]">
+                          <span>Subtotal:</span>
+                          <span className="font-semibold">₹{cEst?.final_amount || 0}</span>
+                        </div>
+                        {idx === 0 && Number(cEst?.home_visit_charges) > 0 && (
+                          <div className="flex justify-between text-[10px]">
+                            <span>Home Visit Charges:</span>
+                            <span className="font-semibold">₹{cEst?.home_visit_charges}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="space-y-0.5 text-xs">
+                  <div className="flex justify-between"><span className="text-gray-600">Patient:</span><span className="font-semibold">{[est?.title, est?.patient_name].filter(Boolean).join(" ") || "—"}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-600">Mobile:</span><span className="font-semibold">{est?.whatsapp_number || "—"}</span></div>
+                  {est?.gender && <div className="flex justify-between"><span className="text-gray-600">Gender:</span><span className="font-semibold">{est.gender}</span></div>}
+                  {est?.dob && <div className="flex justify-between"><span className="text-gray-600">DOB:</span><span className="font-semibold">{formatDateDDMMYYYY(est.dob)}</span></div>}
+                  {est?.dob && <div className="flex justify-between"><span className="text-gray-600">Age:</span><span className="font-semibold">{Math.floor((Date.now() - new Date(est.dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000))} Years</span></div>}
+                  {est?.doctor_name && <div className="flex justify-between"><span className="text-gray-600">Doctor:</span><span className="font-semibold">{est.doctor_name}</span></div>}
+                  {est?.umr_number && <div className="flex justify-between"><span className="text-gray-600">UMR No:</span><span className="font-semibold">{est.umr_number}</span></div>}
+                </div>
+              )}
 
               {/* Visit Info */}
               <div className="border-t border-gray-200 pt-1 space-y-0.5 text-xs">
@@ -592,7 +699,8 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
                 <div className="flex justify-between"><span className="text-gray-600">Address:</span><span className="font-semibold text-right max-w-[60%]">{visitData?.address || "—"}</span></div>
               </div>
 
-              {/* Tests with Report Delivery */}
+              {/* Tests with Report Delivery - only for single patient */}
+              {(!consolidatedVisits || consolidatedVisits.length <= 1) && (
               <div className="border-t border-gray-200 pt-1">
                 <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Tests & Report Delivery</p>
                 <table className="w-full text-xs">
@@ -621,15 +729,24 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
                   </tbody>
                 </table>
               </div>
+              )}
 
               {/* Financials */}
               <div className="border-t-2 border-gray-800 pt-1 space-y-0.5 text-xs">
-                <div className="flex justify-between"><span className="text-gray-600">Total Amount:</span><span className="font-semibold">₹{est?.total_amount || 0}</span></div>
-                {(est?.discount_amount || 0) > 0 && (
-                  <div className="flex justify-between"><span className="text-gray-600">Discount:</span><span className="font-semibold text-green-600">-₹{est?.discount_amount}</span></div>
+                {consolidatedVisits && consolidatedVisits.length > 1 ? (
+                  <>
+                    <div className="flex justify-between text-sm font-bold"><span>Grand Total ({consolidatedVisits.length} patients):</span><span>₹{finalAmount}</span></div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex justify-between"><span className="text-gray-600">Total Amount:</span><span className="font-semibold">₹{est?.total_amount || 0}</span></div>
+                    {(est?.discount_amount || 0) > 0 && (
+                      <div className="flex justify-between"><span className="text-gray-600">Discount:</span><span className="font-semibold text-green-600">-₹{est?.discount_amount}</span></div>
+                    )}
+                    <div className="flex justify-between"><span className="text-gray-600">Home Visit:</span><span className="font-semibold">₹{est?.home_visit_charges || 0}</span></div>
+                    <div className="flex justify-between text-sm font-bold border-t border-gray-300 pt-1"><span>Final Amount:</span><span>₹{est?.final_amount || 0}</span></div>
+                  </>
                 )}
-                <div className="flex justify-between"><span className="text-gray-600">Home Visit:</span><span className="font-semibold">₹{est?.home_visit_charges || 0}</span></div>
-                <div className="flex justify-between text-sm font-bold border-t border-gray-300 pt-1"><span>Final Amount:</span><span>₹{est?.final_amount || 0}</span></div>
               </div>
 
               {/* Payment */}

@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { Download, Phone, MapPin, ChevronDown, ChevronUp, Pencil, Trash2, Plus, AlertTriangle, Clock, FileImage, Eye } from "lucide-react";
+import { Download, Phone, MapPin, ChevronDown, ChevronUp, Pencil, Trash2, Plus, AlertTriangle, Clock, FileImage, Eye, UserPlus } from "lucide-react";
 import { exportToExcel } from "@/lib/excel";
 import { formatDateDDMMYYYY } from "@/lib/utils";
 import { useState, useCallback, useMemo } from "react";
@@ -21,6 +21,7 @@ import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import EditHomeVisitDialog from "@/components/EditHomeVisitDialog";
 import AddHomeVisitDialog from "@/components/AddHomeVisitDialog";
+import AddPatientToVisitDialog from "@/components/AddPatientToVisitDialog";
 import PaymentDetailsDialog from "@/components/PaymentDetailsDialog";
 import ReceiptViewDialog from "@/components/ReceiptViewDialog";
 import MessagePreviewDialog from "@/components/MessagePreviewDialog";
@@ -76,6 +77,18 @@ const HomeVisits = () => {
   const [receiptViewVisit, setReceiptViewVisit] = useState<any>(null);
   const [previewMessage, setPreviewMessage] = useState<string | null>(null);
   const { data: templates } = useMessageTemplates();
+
+  // Multi-patient session state
+  const [multiPatientSession, setMultiPatientSession] = useState<{
+    primaryVisitId: string;
+    visitDate: string;
+    visitTime: string;
+    address: string;
+    phlebotomistId: string | null;
+    allVisitIds: string[];
+  } | null>(null);
+  const [addPatientDialogOpen, setAddPatientDialogOpen] = useState(false);
+  const [consolidatedPaymentVisits, setConsolidatedPaymentVisits] = useState<any[] | null>(null);
 
   const { data: visits = [], isLoading } = useQuery({
     queryKey: ["home_visits"],
@@ -184,6 +197,27 @@ const HomeVisits = () => {
       qc.invalidateQueries({ queryKey: ["home_visits"] });
       toast.success("Marked as Completed");
       setPaymentVisit(null);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const saveConsolidatedPayment = useMutation({
+    mutationFn: async ({ visitIds, data }: { visitIds: string[]; data: { paid_amount: number; due_amount: number; payment_mode: string; payment_remarks: string } }) => {
+      for (const visitId of visitIds) {
+        const { error } = await supabase.from("home_visits").update({
+          status: "Completed",
+          paid_amount: data.paid_amount,
+          due_amount: data.due_amount,
+          payment_mode: data.payment_mode,
+          payment_remarks: data.payment_remarks,
+        }).eq("id", visitId);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["home_visits"] });
+      toast.success(`All patients marked as Completed`);
+      setConsolidatedPaymentVisits(null);
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -803,20 +837,115 @@ const HomeVisits = () => {
         onClose={() => setCompletionEditVisit(null)}
         completionMode
         onCompletionSave={async () => {
-          const visitId = completionEditVisit?.id;
+          const visit = completionEditVisit;
+          const visitId = visit?.id;
           setCompletionEditVisit(null);
-          // Wait for refetch to complete, then proceed directly to payment
+          // Start multi-patient session
           await qc.refetchQueries({ queryKey: ["home_visits"] });
-          setTimeout(() => {
-            const updated = qc.getQueryData<any[]>(["home_visits"])?.find((v: any) => v.id === visitId);
-            if (updated) {
-              setPaymentVisit(updated);
-            }
-          }, 200);
+          setMultiPatientSession({
+            primaryVisitId: visitId,
+            visitDate: visit?.visit_date || "",
+            visitTime: visit?.visit_time || "",
+            address: visit?.address || "",
+            phlebotomistId: visit?.phlebotomist_id || null,
+            allVisitIds: [visitId],
+          });
         }}
       />
 
-      {/* Delay reason dialog */}
+      {/* Multi-patient intermediate dialog */}
+      <Dialog open={!!multiPatientSession && !addPatientDialogOpen} onOpenChange={(o) => { if (!o) { /* Don't allow closing without action */ } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Visit Patients</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            {/* List patients in this session */}
+            <div className="space-y-2">
+              {multiPatientSession?.allVisitIds.map((vid, idx) => {
+                const v = visits.find((x: any) => x.id === vid);
+                const est = v?.estimates;
+                return (
+                  <div key={vid} className="flex items-center justify-between bg-muted/50 rounded-lg p-3">
+                    <div>
+                      <p className="text-sm font-medium">{est?.patient_name || "—"}</p>
+                      <p className="text-xs text-muted-foreground">{est?.whatsapp_number}</p>
+                      <div className="flex gap-1 mt-1 flex-wrap">
+                        {(est?.estimate_tests || []).map((t: any) => (
+                          <span key={t.id} className="text-[10px] bg-accent rounded px-1 py-0.5">{t.test_name}</span>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-bold">₹{est?.final_amount || 0}</p>
+                      {idx === 0 && Number(est?.home_visit_charges) > 0 && (
+                        <p className="text-[10px] text-muted-foreground">incl. HV ₹{est?.home_visit_charges}</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Grand total */}
+            {multiPatientSession && multiPatientSession.allVisitIds.length > 0 && (() => {
+              const grandTotal = multiPatientSession.allVisitIds.reduce((sum, vid) => {
+                const v = visits.find((x: any) => x.id === vid);
+                return sum + Number(v?.estimates?.final_amount || 0);
+              }, 0);
+              return (
+                <div className="rounded-lg bg-muted p-3 text-sm font-bold flex justify-between">
+                  <span>Grand Total ({multiPatientSession.allVisitIds.length} patient{multiPatientSession.allVisitIds.length > 1 ? "s" : ""})</span>
+                  <span>₹{grandTotal}</span>
+                </div>
+              );
+            })()}
+
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1 gap-1" onClick={() => setAddPatientDialogOpen(true)}>
+                <UserPlus className="h-4 w-4" />Add Patient
+              </Button>
+              <Button className="flex-1" onClick={async () => {
+                // Proceed to payment for primary visit (consolidated)
+                await qc.refetchQueries({ queryKey: ["home_visits"] });
+                const primaryVisit = qc.getQueryData<any[]>(["home_visits"])?.find((v: any) => v.id === multiPatientSession?.primaryVisitId);
+                const allIds = multiPatientSession?.allVisitIds || [];
+                setMultiPatientSession(null);
+                if (primaryVisit) {
+                  // For multi-patient, we'll process payment for each visit
+                  // But show consolidated payment dialog with primary visit first
+                  if (allIds.length > 1) {
+                    // Store all visit IDs for consolidated payment
+                    const allVisits = allIds.map(id => qc.getQueryData<any[]>(["home_visits"])?.find((v: any) => v.id === id)).filter(Boolean);
+                    setConsolidatedPaymentVisits(allVisits);
+                  } else {
+                    setPaymentVisit(primaryVisit);
+                  }
+                }
+              }}>
+                Proceed to Payment →
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add patient to visit dialog */}
+      <AddPatientToVisitDialog
+        open={addPatientDialogOpen}
+        onClose={() => setAddPatientDialogOpen(false)}
+        visitDate={multiPatientSession?.visitDate || ""}
+        visitTime={multiPatientSession?.visitTime || ""}
+        address={multiPatientSession?.address || ""}
+        phlebotomistId={multiPatientSession?.phlebotomistId || null}
+        onSaved={(newVisitId) => {
+          setAddPatientDialogOpen(false);
+          setMultiPatientSession(prev => prev ? {
+            ...prev,
+            allVisitIds: [...prev.allVisitIds, newVisitId],
+          } : null);
+          // Refetch to get the new visit data
+          qc.refetchQueries({ queryKey: ["home_visits"] });
+        }}
+      />
       <Dialog open={!!delayReasonDialog} onOpenChange={(o) => { if (!o) setDelayReasonDialog(null); }}>
         <DialogContent>
           <DialogHeader><DialogTitle>Visit Delayed — Reason Required</DialogTitle></DialogHeader>
@@ -879,6 +1008,22 @@ const HomeVisits = () => {
           visitData={paymentVisit}
         />
       )}
+
+      {/* Consolidated payment dialog for multi-patient visits */}
+      {consolidatedPaymentVisits && consolidatedPaymentVisits.length > 0 && (() => {
+        const grandTotal = consolidatedPaymentVisits.reduce((sum: number, v: any) => sum + Number(v.estimates?.final_amount || 0), 0);
+        return (
+          <PaymentDetailsDialog
+            open={true}
+            onClose={() => setConsolidatedPaymentVisits(null)}
+            finalAmount={grandTotal}
+            isPending={saveConsolidatedPayment.isPending}
+            onSave={(data) => saveConsolidatedPayment.mutate({ visitIds: consolidatedPaymentVisits.map((v: any) => v.id), data })}
+            visitData={consolidatedPaymentVisits[0]}
+            consolidatedVisits={consolidatedPaymentVisits}
+          />
+        );
+      })()}
 
 
       {/* Password dialog for editing completed visits */}
