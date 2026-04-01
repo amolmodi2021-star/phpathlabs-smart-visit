@@ -343,7 +343,13 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
       });
       msg += `\n*Final Amount:* ₹${est?.final_amount || 0}\n`;
     }
-    msg += `*Paid:* ₹${paidAmount} | *Due:* ₹${dueAmount}\n`;
+    if (consolidatedVisits && consolidatedVisits.length > 1) {
+      consolidatedVisits.forEach((cv: any, idx: number) => {
+        const cEst = cv.estimates || cv;
+        msg += `  ${cEst?.patient_name || `Patient ${idx + 1}`}: Paid ₹${perPatientPayment[idx]?.paid ?? 0} | Due ₹${perPatientPayment[idx]?.due ?? 0}\n`;
+      });
+    }
+    msg += `*Total Paid:* ₹${paidAmount} | *Total Due:* ₹${dueAmount}\n`;
     return msg;
   };
 
