@@ -181,6 +181,26 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
 
   const dueAmount = useMemo(() => Math.max(0, finalAmount - paidAmount), [finalAmount, paidAmount]);
 
+  // Per-patient payment mode distribution
+  const perPatientModes = useMemo(() => {
+    const n = allPatients.length;
+    const modes = Array.from(selectedModes).filter(m => (modeAmounts[m] || 0) > 0);
+    if (n <= 1) {
+      const modeMap: Record<string, number> = {};
+      modes.forEach(m => { modeMap[m] = modeAmounts[m] || 0; });
+      return [modeMap];
+    }
+    return allPatients.map((_, i) => {
+      const modeMap: Record<string, number> = {};
+      modes.forEach(m => {
+        const total = modeAmounts[m] || 0;
+        const per = Math.floor(total / n);
+        modeMap[m] = i === 0 ? total - per * (n - 1) : per;
+      });
+      return modeMap;
+    });
+  }, [selectedModes, modeAmounts, allPatients]);
+
   // Per-patient payment distribution for multi-patient visits
   const perPatientPayment = useMemo(() => {
     const n = allPatients.length;
@@ -339,7 +359,10 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
       msg += `*Total:* ₹${pEst?.total_amount || 0}`;
       if ((pEst?.discount_amount || 0) > 0) msg += ` | *Discount:* -₹${pEst?.discount_amount}`;
       msg += ` | *Home Visit:* ₹${pEst?.home_visit_charges || 0}\n`;
-      msg += `*Final:* ₹${pEst?.final_amount || 0} | *Paid:* ₹${perPatientPayment[pIdx]?.paid ?? 0} | *Due:* ₹${perPatientPayment[pIdx]?.due ?? 0}\n\n`;
+      const pModes = perPatientModes[pIdx] || {};
+      const modeLines = Object.entries(pModes).filter(([, a]) => a > 0).map(([m, a]) => `  ${m}: ₹${a}`).join("\n");
+      if (modeLines) msg += modeLines + "\n";
+      msg += `*Total Paid:* ₹${perPatientPayment[pIdx]?.paid ?? 0} | *Due:* ₹${perPatientPayment[pIdx]?.due ?? 0}\n\n`;
     });
 
     if (allPatients.length > 1) msg += `*Grand Total (${allPatients.length} patients):* ₹${finalAmount}\n`;
@@ -750,7 +773,11 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
                       )}
                       <div className="flex justify-between"><span className="text-gray-600">Home Visit:</span><span className="font-semibold">₹{pEst?.home_visit_charges || 0}</span></div>
                       <div className="flex justify-between font-bold"><span>Final Amount:</span><span>₹{pEst?.final_amount || 0}</span></div>
-                      <div className="flex justify-between"><span className="text-gray-600">Paid:</span><span className="font-semibold text-green-700">₹{perPatientPayment[pIdx]?.paid ?? 0}</span></div>
+                      {/* Per-patient payment mode bifurcation */}
+                      {Object.entries(perPatientModes[pIdx] || {}).map(([mode, amt]) => (
+                        amt > 0 ? <div key={mode} className="flex justify-between"><span className="text-gray-600 pl-2">{mode}:</span><span className="font-semibold">₹{amt}</span></div> : null
+                      ))}
+                      <div className="flex justify-between"><span className="text-gray-600">Total Paid:</span><span className="font-semibold text-green-700">₹{perPatientPayment[pIdx]?.paid ?? 0}</span></div>
                       <div className="flex justify-between"><span className="text-gray-600">Due:</span><span className={`font-semibold ${(perPatientPayment[pIdx]?.due ?? 0) > 0 ? 'text-red-600' : 'text-green-700'}`}>₹{perPatientPayment[pIdx]?.due ?? 0}</span></div>
                     </div>
                   </div>
