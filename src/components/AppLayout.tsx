@@ -22,17 +22,18 @@ const navItems = [
   { to: "/phlebo-dashboard", label: "Phlebo Dashboard", icon: BarChart3 },
 ];
 
-const reportNavItems = [
-  { to: "/reports", label: "Reports Dashboard", icon: ClipboardList },
-  { to: "/reports/upload", label: "Upload Report", icon: FileUp },
-  { to: "/report-admin/departments", label: "Departments", icon: Building2 },
-  { to: "/report-admin/profiles", label: "Profiles", icon: Layers },
-  { to: "/report-admin/parameters", label: "Parameters", icon: Microscope },
-  { to: "/report-admin/signatures", label: "Signatures", icon: PenTool },
-  { to: "/report-admin/layout", label: "Report Layout", icon: Layers },
-  { to: "/report-admin/corrections", label: "AI Corrections", icon: BookOpen },
-  { to: "/direct-ai", label: "Direct AI", icon: Zap },
-];
+// Report System modules archived — uncomment to restore
+// const reportNavItems = [
+//   { to: "/reports", label: "Reports Dashboard", icon: ClipboardList },
+//   { to: "/reports/upload", label: "Upload Report", icon: FileUp },
+//   { to: "/report-admin/departments", label: "Departments", icon: Building2 },
+//   { to: "/report-admin/profiles", label: "Profiles", icon: Layers },
+//   { to: "/report-admin/parameters", label: "Parameters", icon: Microscope },
+//   { to: "/report-admin/signatures", label: "Signatures", icon: PenTool },
+//   { to: "/report-admin/layout", label: "Report Layout", icon: Layers },
+//   { to: "/report-admin/corrections", label: "AI Corrections", icon: BookOpen },
+//   { to: "/direct-ai", label: "Direct AI", icon: Zap },
+// ];
 
 const NavSection = ({ items, onClick }: { items: typeof navItems; onClick?: () => void }) => (
   <>
@@ -89,9 +90,6 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
         <aside className="hidden md:flex w-56 shrink-0 flex-col border-r bg-card h-[calc(100vh-3.5rem)] sticky top-14 overflow-hidden">
           <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
             <NavSection items={navItems} />
-            <Separator className="my-3" />
-            <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Report System</p>
-            <NavSection items={reportNavItems} />
           </nav>
         </aside>
 
@@ -100,9 +98,6 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
             <div className="absolute inset-0 bg-foreground/20" onClick={() => setOpen(false)} />
             <aside className="absolute left-0 top-14 bottom-0 w-64 bg-card border-r p-3 space-y-1 animate-fade-in overflow-y-auto">
               <NavSection items={navItems} onClick={() => setOpen(false)} />
-              <Separator className="my-3" />
-              <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Report System</p>
-              <NavSection items={reportNavItems} onClick={() => setOpen(false)} />
             </aside>
           </div>
         )}
