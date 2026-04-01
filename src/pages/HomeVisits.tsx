@@ -88,6 +88,7 @@ const HomeVisits = () => {
     allVisitIds: string[];
   } | null>(null);
   const [addPatientDialogOpen, setAddPatientDialogOpen] = useState(false);
+  const [consolidatedPaymentVisits, setConsolidatedPaymentVisits] = useState<any[] | null>(null);
 
   const { data: visits = [], isLoading } = useQuery({
     queryKey: ["home_visits"],
