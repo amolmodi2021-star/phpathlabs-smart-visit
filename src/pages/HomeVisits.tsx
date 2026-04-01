@@ -815,20 +815,115 @@ const HomeVisits = () => {
         onClose={() => setCompletionEditVisit(null)}
         completionMode
         onCompletionSave={async () => {
-          const visitId = completionEditVisit?.id;
+          const visit = completionEditVisit;
+          const visitId = visit?.id;
           setCompletionEditVisit(null);
-          // Wait for refetch to complete, then proceed directly to payment
+          // Start multi-patient session
           await qc.refetchQueries({ queryKey: ["home_visits"] });
-          setTimeout(() => {
-            const updated = qc.getQueryData<any[]>(["home_visits"])?.find((v: any) => v.id === visitId);
-            if (updated) {
-              setPaymentVisit(updated);
-            }
-          }, 200);
+          setMultiPatientSession({
+            primaryVisitId: visitId,
+            visitDate: visit?.visit_date || "",
+            visitTime: visit?.visit_time || "",
+            address: visit?.address || "",
+            phlebotomistId: visit?.phlebotomist_id || null,
+            allVisitIds: [visitId],
+          });
         }}
       />
 
-      {/* Delay reason dialog */}
+      {/* Multi-patient intermediate dialog */}
+      <Dialog open={!!multiPatientSession && !addPatientDialogOpen} onOpenChange={(o) => { if (!o) { /* Don't allow closing without action */ } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Visit Patients</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            {/* List patients in this session */}
+            <div className="space-y-2">
+              {multiPatientSession?.allVisitIds.map((vid, idx) => {
+                const v = visits.find((x: any) => x.id === vid);
+                const est = v?.estimates;
+                return (
+                  <div key={vid} className="flex items-center justify-between bg-muted/50 rounded-lg p-3">
+                    <div>
+                      <p className="text-sm font-medium">{est?.patient_name || "—"}</p>
+                      <p className="text-xs text-muted-foreground">{est?.whatsapp_number}</p>
+                      <div className="flex gap-1 mt-1 flex-wrap">
+                        {(est?.estimate_tests || []).map((t: any) => (
+                          <span key={t.id} className="text-[10px] bg-accent rounded px-1 py-0.5">{t.test_name}</span>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-bold">₹{est?.final_amount || 0}</p>
+                      {idx === 0 && Number(est?.home_visit_charges) > 0 && (
+                        <p className="text-[10px] text-muted-foreground">incl. HV ₹{est?.home_visit_charges}</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Grand total */}
+            {multiPatientSession && multiPatientSession.allVisitIds.length > 0 && (() => {
+              const grandTotal = multiPatientSession.allVisitIds.reduce((sum, vid) => {
+                const v = visits.find((x: any) => x.id === vid);
+                return sum + Number(v?.estimates?.final_amount || 0);
+              }, 0);
+              return (
+                <div className="rounded-lg bg-muted p-3 text-sm font-bold flex justify-between">
+                  <span>Grand Total ({multiPatientSession.allVisitIds.length} patient{multiPatientSession.allVisitIds.length > 1 ? "s" : ""})</span>
+                  <span>₹{grandTotal}</span>
+                </div>
+              );
+            })()}
+
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1 gap-1" onClick={() => setAddPatientDialogOpen(true)}>
+                <UserPlus className="h-4 w-4" />Add Patient
+              </Button>
+              <Button className="flex-1" onClick={async () => {
+                // Proceed to payment for primary visit (consolidated)
+                await qc.refetchQueries({ queryKey: ["home_visits"] });
+                const primaryVisit = qc.getQueryData<any[]>(["home_visits"])?.find((v: any) => v.id === multiPatientSession?.primaryVisitId);
+                const allIds = multiPatientSession?.allVisitIds || [];
+                setMultiPatientSession(null);
+                if (primaryVisit) {
+                  // For multi-patient, we'll process payment for each visit
+                  // But show consolidated payment dialog with primary visit first
+                  if (allIds.length > 1) {
+                    // Store all visit IDs for consolidated payment
+                    const allVisits = allIds.map(id => qc.getQueryData<any[]>(["home_visits"])?.find((v: any) => v.id === id)).filter(Boolean);
+                    setConsolidatedPaymentVisits(allVisits);
+                  } else {
+                    setPaymentVisit(primaryVisit);
+                  }
+                }
+              }}>
+                Proceed to Payment →
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add patient to visit dialog */}
+      <AddPatientToVisitDialog
+        open={addPatientDialogOpen}
+        onClose={() => setAddPatientDialogOpen(false)}
+        visitDate={multiPatientSession?.visitDate || ""}
+        visitTime={multiPatientSession?.visitTime || ""}
+        address={multiPatientSession?.address || ""}
+        phlebotomistId={multiPatientSession?.phlebotomistId || null}
+        onSaved={(newVisitId) => {
+          setAddPatientDialogOpen(false);
+          setMultiPatientSession(prev => prev ? {
+            ...prev,
+            allVisitIds: [...prev.allVisitIds, newVisitId],
+          } : null);
+          // Refetch to get the new visit data
+          qc.refetchQueries({ queryKey: ["home_visits"] });
+        }}
+      />
       <Dialog open={!!delayReasonDialog} onOpenChange={(o) => { if (!o) setDelayReasonDialog(null); }}>
         <DialogContent>
           <DialogHeader><DialogTitle>Visit Delayed — Reason Required</DialogTitle></DialogHeader>
