@@ -113,7 +113,7 @@ const PhleboDashboard = () => {
     return m;
   }, [estimateTests, testIncentiveMap]);
 
-  // Aggregate per phlebotomist per month — deduplicate home visit charges per physical visit
+  // Aggregate per phlebotomist per month
   const { amountData, incentiveData } = useMemo(() => {
     const amounts: Record<string, { current: number; previous: number }> = {};
     const incentives: Record<string, { current: number; previous: number }> = {};
@@ -122,11 +122,6 @@ const PhleboDashboard = () => {
       amounts[p.id] = { current: 0, previous: 0 };
       incentives[p.id] = { current: 0, previous: 0 };
     });
-
-    // Track which visit groups already had their home visit charge counted
-    const chargeUsed = new Set<string>();
-    const getGroupKey = (v: { visit_date: string; phlebotomist_id: string | null }) =>
-      `${v.visit_date}||${v.phlebotomist_id || ""}`;
 
     visits.forEach((v) => {
       if (!v.phlebotomist_id) return;
@@ -138,17 +133,7 @@ const PhleboDashboard = () => {
       if (!amounts[v.phlebotomist_id]) amounts[v.phlebotomist_id] = { current: 0, previous: 0 };
       if (!incentives[v.phlebotomist_id]) incentives[v.phlebotomist_id] = { current: 0, previous: 0 };
 
-      // Only count home visit charge once per visit group
-      let hvCharge = estimateMap[v.estimate_id] || 0;
-      const groupKey = `${period}||${getGroupKey(v)}`;
-      if (hvCharge > 0) {
-        if (chargeUsed.has(groupKey)) {
-          hvCharge = 0;
-        } else {
-          chargeUsed.add(groupKey);
-        }
-      }
-      amounts[v.phlebotomist_id][period] += hvCharge;
+      amounts[v.phlebotomist_id][period] += estimateMap[v.estimate_id] || 0;
       incentives[v.phlebotomist_id][period] += estimateIncentiveMap[v.estimate_id] || 0;
     });
 
