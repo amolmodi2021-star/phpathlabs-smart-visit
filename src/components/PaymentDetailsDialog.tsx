@@ -630,15 +630,52 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
               </div>
 
               {/* Patient Info */}
-              <div className="space-y-0.5 text-xs">
-                <div className="flex justify-between"><span className="text-gray-600">Patient:</span><span className="font-semibold">{[est?.title, est?.patient_name].filter(Boolean).join(" ") || "—"}</span></div>
-                <div className="flex justify-between"><span className="text-gray-600">Mobile:</span><span className="font-semibold">{est?.whatsapp_number || "—"}</span></div>
-                {est?.gender && <div className="flex justify-between"><span className="text-gray-600">Gender:</span><span className="font-semibold">{est.gender}</span></div>}
-                {est?.dob && <div className="flex justify-between"><span className="text-gray-600">DOB:</span><span className="font-semibold">{formatDateDDMMYYYY(est.dob)}</span></div>}
-                {est?.dob && <div className="flex justify-between"><span className="text-gray-600">Age:</span><span className="font-semibold">{Math.floor((Date.now() - new Date(est.dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000))} Years</span></div>}
-                {est?.doctor_name && <div className="flex justify-between"><span className="text-gray-600">Doctor:</span><span className="font-semibold">{est.doctor_name}</span></div>}
-                {est?.umr_number && <div className="flex justify-between"><span className="text-gray-600">UMR No:</span><span className="font-semibold">{est.umr_number}</span></div>}
-              </div>
+              {consolidatedVisits && consolidatedVisits.length > 1 ? (
+                <div className="space-y-2 text-xs">
+                  {consolidatedVisits.map((cv: any, idx: number) => {
+                    const cEst = cv.estimates || cv;
+                    const cTests = cEst?.estimate_tests || [];
+                    return (
+                      <div key={idx} className="space-y-0.5">
+                        <div className="flex justify-between font-semibold border-b border-gray-200 pb-0.5">
+                          <span>Patient {idx + 1}: {[cEst?.title, cEst?.patient_name].filter(Boolean).join(" ") || "—"}</span>
+                          <span>{cEst?.whatsapp_number}</span>
+                        </div>
+                        <table className="w-full text-[10px]">
+                          <tbody>
+                            {cTests.map((t: any, ti: number) => (
+                              <tr key={ti}>
+                                <td className="py-0.5">{t.test_name}{t.fasting_required ? " (F)" : ""}</td>
+                                <td className="py-0.5 text-right font-semibold">₹{t.discounted_price}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        <div className="flex justify-between text-[10px]">
+                          <span>Subtotal:</span>
+                          <span className="font-semibold">₹{cEst?.final_amount || 0}</span>
+                        </div>
+                        {idx === 0 && Number(cEst?.home_visit_charges) > 0 && (
+                          <div className="flex justify-between text-[10px]">
+                            <span>Home Visit Charges:</span>
+                            <span className="font-semibold">₹{cEst?.home_visit_charges}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="space-y-0.5 text-xs">
+                  <div className="flex justify-between"><span className="text-gray-600">Patient:</span><span className="font-semibold">{[est?.title, est?.patient_name].filter(Boolean).join(" ") || "—"}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-600">Mobile:</span><span className="font-semibold">{est?.whatsapp_number || "—"}</span></div>
+                  {est?.gender && <div className="flex justify-between"><span className="text-gray-600">Gender:</span><span className="font-semibold">{est.gender}</span></div>}
+                  {est?.dob && <div className="flex justify-between"><span className="text-gray-600">DOB:</span><span className="font-semibold">{formatDateDDMMYYYY(est.dob)}</span></div>}
+                  {est?.dob && <div className="flex justify-between"><span className="text-gray-600">Age:</span><span className="font-semibold">{Math.floor((Date.now() - new Date(est.dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000))} Years</span></div>}
+                  {est?.doctor_name && <div className="flex justify-between"><span className="text-gray-600">Doctor:</span><span className="font-semibold">{est.doctor_name}</span></div>}
+                  {est?.umr_number && <div className="flex justify-between"><span className="text-gray-600">UMR No:</span><span className="font-semibold">{est.umr_number}</span></div>}
+                </div>
+              )}
 
               {/* Visit Info */}
               <div className="border-t border-gray-200 pt-1 space-y-0.5 text-xs">
@@ -647,7 +684,8 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
                 <div className="flex justify-between"><span className="text-gray-600">Address:</span><span className="font-semibold text-right max-w-[60%]">{visitData?.address || "—"}</span></div>
               </div>
 
-              {/* Tests with Report Delivery */}
+              {/* Tests with Report Delivery - only for single patient */}
+              {(!consolidatedVisits || consolidatedVisits.length <= 1) && (
               <div className="border-t border-gray-200 pt-1">
                 <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Tests & Report Delivery</p>
                 <table className="w-full text-xs">
@@ -676,15 +714,24 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
                   </tbody>
                 </table>
               </div>
+              )}
 
               {/* Financials */}
               <div className="border-t-2 border-gray-800 pt-1 space-y-0.5 text-xs">
-                <div className="flex justify-between"><span className="text-gray-600">Total Amount:</span><span className="font-semibold">₹{est?.total_amount || 0}</span></div>
-                {(est?.discount_amount || 0) > 0 && (
-                  <div className="flex justify-between"><span className="text-gray-600">Discount:</span><span className="font-semibold text-green-600">-₹{est?.discount_amount}</span></div>
+                {consolidatedVisits && consolidatedVisits.length > 1 ? (
+                  <>
+                    <div className="flex justify-between text-sm font-bold"><span>Grand Total ({consolidatedVisits.length} patients):</span><span>₹{finalAmount}</span></div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex justify-between"><span className="text-gray-600">Total Amount:</span><span className="font-semibold">₹{est?.total_amount || 0}</span></div>
+                    {(est?.discount_amount || 0) > 0 && (
+                      <div className="flex justify-between"><span className="text-gray-600">Discount:</span><span className="font-semibold text-green-600">-₹{est?.discount_amount}</span></div>
+                    )}
+                    <div className="flex justify-between"><span className="text-gray-600">Home Visit:</span><span className="font-semibold">₹{est?.home_visit_charges || 0}</span></div>
+                    <div className="flex justify-between text-sm font-bold border-t border-gray-300 pt-1"><span>Final Amount:</span><span>₹{est?.final_amount || 0}</span></div>
+                  </>
                 )}
-                <div className="flex justify-between"><span className="text-gray-600">Home Visit:</span><span className="font-semibold">₹{est?.home_visit_charges || 0}</span></div>
-                <div className="flex justify-between text-sm font-bold border-t border-gray-300 pt-1"><span>Final Amount:</span><span>₹{est?.final_amount || 0}</span></div>
               </div>
 
               {/* Payment */}
