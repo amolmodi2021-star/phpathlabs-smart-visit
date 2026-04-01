@@ -62,7 +62,7 @@ const formatTime12hr = (time: string) => {
   return `${h12}:${m} ${ampm}`;
 };
 
-const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, initialData, visitData }: PaymentDetailsDialogProps) => {
+const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, initialData, visitData, consolidatedVisits }: PaymentDetailsDialogProps) => {
   const [selectedModes, setSelectedModes] = useState<Set<string>>(new Set());
   const [modeAmounts, setModeAmounts] = useState<Record<string, number>>({});
   const [remarks, setRemarks] = useState("");
