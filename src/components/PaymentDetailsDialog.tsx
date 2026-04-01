@@ -319,36 +319,30 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
     msg += `*Visit:* ${formatDateDDMMYYYY(visitData?.visit_date) || "—"} | ${visitData?.visit_time ? formatTime12hr(visitData.visit_time) : "—"}\n`;
     msg += `*Address:* ${visitData?.address || "—"}\n\n`;
 
-    if (consolidatedVisits && consolidatedVisits.length > 1) {
-      consolidatedVisits.forEach((cv: any, idx: number) => {
-        const cEst = cv.estimates || cv;
-        const cTests = cEst?.estimate_tests || [];
-        msg += `*Patient ${idx + 1}: ${[cEst?.title, cEst?.patient_name].filter(Boolean).join(" ") || "—"}*\n`;
-        msg += `Mobile: ${cEst?.whatsapp_number || "—"}\n`;
-        cTests.forEach((t: any) => { msg += `• ${t.test_name} — ₹${t.discounted_price}\n`; });
-        msg += `Subtotal: ₹${cEst?.final_amount || 0}\n`;
-        if (idx === 0 && Number(cEst?.home_visit_charges) > 0) msg += `Home Visit: ₹${cEst?.home_visit_charges}\n`;
-        msg += `\n`;
-      });
-      msg += `*Grand Total (${consolidatedVisits.length} patients):* ₹${finalAmount}\n`;
-    } else {
-      msg += `*Patient:* ${[est?.title, est?.patient_name].filter(Boolean).join(" ") || "—"}\n`;
-      msg += `*Mobile:* ${est?.whatsapp_number || "—"}\n\n`;
-      msg += `*Tests & Report Delivery:*\n`;
-      tests.forEach((t, i) => {
-        const key = `0:${i}`;
+    allPatients.forEach((p, pIdx) => {
+      const pEst = p.est;
+      const pTests = p.tests;
+      if (allPatients.length > 1) msg += `--- *Patient ${pIdx + 1} of ${allPatients.length}* ---\n`;
+      msg += `*Patient:* ${[pEst?.title, pEst?.patient_name].filter(Boolean).join(" ") || "—"}\n`;
+      msg += `*Mobile:* ${pEst?.whatsapp_number || "—"}\n`;
+      if (pEst?.gender) msg += `*Gender:* ${pEst.gender}\n`;
+      if (pEst?.dob) msg += `*DOB:* ${formatDateDDMMYYYY(pEst.dob)} | *Age:* ${Math.floor((Date.now() - new Date(pEst.dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000))} Years\n`;
+      if (pEst?.doctor_name) msg += `*Doctor:* ${pEst.doctor_name}\n`;
+      if (pEst?.umr_number) msg += `*UMR:* ${pEst.umr_number}\n`;
+      msg += `\n*Tests & Report Delivery:*\n`;
+      pTests.forEach((t: any, ti: number) => {
+        const key = `${p.idx}:${ti}`;
         const rd = formatDateShort(reportDates[key]);
         const rt = reportTimes[key] ? formatTime12hr(reportTimes[key]) : "";
         msg += `• ${t.test_name} — ₹${t.discounted_price}${rd ? ` (Report by: ${rd} at ${rt})` : ""}\n`;
       });
-      msg += `\n*Final Amount:* ₹${est?.final_amount || 0}\n`;
-    }
-    if (consolidatedVisits && consolidatedVisits.length > 1) {
-      consolidatedVisits.forEach((cv: any, idx: number) => {
-        const cEst = cv.estimates || cv;
-        msg += `  ${cEst?.patient_name || `Patient ${idx + 1}`}: Paid ₹${perPatientPayment[idx]?.paid ?? 0} | Due ₹${perPatientPayment[idx]?.due ?? 0}\n`;
-      });
-    }
+      msg += `*Total:* ₹${pEst?.total_amount || 0}`;
+      if ((pEst?.discount_amount || 0) > 0) msg += ` | *Discount:* -₹${pEst?.discount_amount}`;
+      msg += ` | *Home Visit:* ₹${pEst?.home_visit_charges || 0}\n`;
+      msg += `*Final:* ₹${pEst?.final_amount || 0} | *Paid:* ₹${perPatientPayment[pIdx]?.paid ?? 0} | *Due:* ₹${perPatientPayment[pIdx]?.due ?? 0}\n\n`;
+    });
+
+    if (allPatients.length > 1) msg += `*Grand Total (${allPatients.length} patients):* ₹${finalAmount}\n`;
     msg += `*Total Paid:* ₹${paidAmount} | *Total Due:* ₹${dueAmount}\n`;
     return msg;
   };
