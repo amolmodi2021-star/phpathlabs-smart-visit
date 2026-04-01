@@ -90,9 +90,6 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
         <aside className="hidden md:flex w-56 shrink-0 flex-col border-r bg-card h-[calc(100vh-3.5rem)] sticky top-14 overflow-hidden">
           <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
             <NavSection items={navItems} />
-            <Separator className="my-3" />
-            <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Report System</p>
-            <NavSection items={reportNavItems} />
           </nav>
         </aside>
 
