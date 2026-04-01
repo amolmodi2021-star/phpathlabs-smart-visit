@@ -233,15 +233,18 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
       payment_remarks: remarks,
     });
 
-    // Save report delivery dates/times to estimate_tests
+    // Save report delivery dates/times to estimate_tests for all patients
     try {
-      for (let i = 0; i < tests.length; i++) {
-        const t = tests[i] as any;
-        if (t.id && (reportDates[i] || reportTimes[i])) {
-          await supabase.from("estimate_tests").update({
-            report_date: reportDates[i] || null,
-            report_time: reportTimes[i] || null,
-          }).eq("id", t.id);
+      for (const p of allPatients) {
+        for (let ti = 0; ti < p.tests.length; ti++) {
+          const t = p.tests[ti] as any;
+          const key = `${p.idx}:${ti}`;
+          if (t.id && (reportDates[key] || reportTimes[key])) {
+            await supabase.from("estimate_tests").update({
+              report_date: reportDates[key] || null,
+              report_time: reportTimes[key] || null,
+            }).eq("id", t.id);
+          }
         }
       }
     } catch (e) {
