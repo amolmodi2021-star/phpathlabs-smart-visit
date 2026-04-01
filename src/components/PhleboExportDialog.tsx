@@ -91,6 +91,12 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
         }
       });
 
+      // Deduplicate home visit charges: only count once per physical visit group
+      // Group by visit_date + address + phlebotomist_id
+      const visitGroupChargeUsed = new Set<string>();
+      const getVisitGroupKey = (v: { visit_date: string; address: string; phlebotomist_id: string | null }) =>
+        `${v.visit_date}||${v.address}||${v.phlebotomist_id || ""}`;
+
       // Group visits by phlebotomist
       const grouped: Record<string, typeof visits> = {};
       visits.forEach((v) => {
@@ -119,7 +125,16 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
         for (const v of pVisits) {
           const est = estimateMap[v.estimate_id] || { patient_name: "", home_visit_charges: 0 };
           const incData = estimateIncentiveMap[v.estimate_id] || { names: [], total: 0 };
-          const homeCharge = est.home_visit_charges;
+          // Only count home visit charge once per physical visit group
+          const groupKey = getVisitGroupKey(v);
+          let homeCharge = est.home_visit_charges;
+          if (homeCharge > 0) {
+            if (visitGroupChargeUsed.has(groupKey)) {
+              homeCharge = 0;
+            } else {
+              visitGroupChargeUsed.add(groupKey);
+            }
+          }
           const incAmount = incData.total;
           const totalAmt = homeCharge + incAmount;
 
