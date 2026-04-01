@@ -50,17 +50,7 @@ const App = () => (
           <Route path="/templates" element={<ProtectedRoute><MessageTemplates /></ProtectedRoute>} />
           <Route path="/abnormal-history" element={<ProtectedRoute><AbnormalHistory /></ProtectedRoute>} />
           <Route path="/phlebo-dashboard" element={<ProtectedRoute><PhleboDashboard /></ProtectedRoute>} />
-          <Route path="/reports" element={<ProtectedRoute><ReportsDashboard /></ProtectedRoute>} />
-          <Route path="/reports/upload" element={<ProtectedRoute><UploadReport /></ProtectedRoute>} />
-          <Route path="/reports/review/:reportId" element={<ProtectedRoute><ReviewReport /></ProtectedRoute>} />
-          <Route path="/reports/view/:reportId" element={<ProtectedRoute><ViewReport /></ProtectedRoute>} />
-          <Route path="/report-admin/departments" element={<ProtectedRoute><ReportDepartments /></ProtectedRoute>} />
-          <Route path="/report-admin/profiles" element={<ProtectedRoute><ReportProfiles /></ProtectedRoute>} />
-          <Route path="/report-admin/parameters" element={<ProtectedRoute><ReportParameters /></ProtectedRoute>} />
-          <Route path="/report-admin/signatures" element={<ProtectedRoute><SignatureManagement /></ProtectedRoute>} />
-          <Route path="/report-admin/layout" element={<ProtectedRoute><ReportLayoutSettings /></ProtectedRoute>} />
-          <Route path="/report-admin/corrections" element={<ProtectedRoute><ExtractionCorrections /></ProtectedRoute>} />
-          <Route path="/direct-ai" element={<ProtectedRoute><DirectAI /></ProtectedRoute>} />
+          {/* Report System routes archived — uncomment to restore */}
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
