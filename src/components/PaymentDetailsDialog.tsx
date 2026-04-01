@@ -719,8 +719,9 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
                   </thead>
                   <tbody>
                     {tests.map((t, i) => {
-                      const rd = formatDateShort(reportDates[i]);
-                      const rt = reportTimes[i] ? formatTime12hr(reportTimes[i]) : "";
+                      const key = `0:${i}`;
+                      const rd = formatDateShort(reportDates[key]);
+                      const rt = reportTimes[key] ? formatTime12hr(reportTimes[key]) : "";
                       return (
                         <tr key={i} className="border-b border-gray-100">
                           <td className="py-1 pr-1">
