@@ -70,27 +70,45 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
   const [finalReviewOpen, setFinalReviewOpen] = useState(false);
   const [dueConfirmOpen, setDueConfirmOpen] = useState(false);
   const [dueConfirmText, setDueConfirmText] = useState("");
-  const [reportDates, setReportDates] = useState<Record<number, string>>({});
-  const [reportTimes, setReportTimes] = useState<Record<number, string>>({});
+  // Keys are "patientIdx:testIdx" for multi-patient, or just testIdx for single
+  const [reportDates, setReportDates] = useState<Record<string, string>>({});
+  const [reportTimes, setReportTimes] = useState<Record<string, string>>({});
   const [receiptNumber, setReceiptNumber] = useState("");
 
   const est = visitData?.estimates;
   const tests = est?.estimate_tests || [];
 
+  // Build a unified list of all patients for review
+  const allPatients = useMemo(() => {
+    if (consolidatedVisits && consolidatedVisits.length > 1) {
+      return consolidatedVisits.map((cv: any, idx: number) => {
+        const cEst = cv.estimates || cv;
+        return { idx, est: cEst, tests: cEst?.estimate_tests || [], visitData: cv };
+      });
+    }
+    return [{ idx: 0, est, tests, visitData }];
+  }, [consolidatedVisits, est, tests, visitData]);
+
   // Auto-fill report delivery date/time per test when review opens
   useEffect(() => {
-    if (reviewOpen && Object.keys(reportDates).length === 0 && tests.length > 0) {
+    if (reviewOpen && Object.keys(reportDates).length === 0) {
       const now = new Date();
       const todayStr = format(now, "yyyy-MM-dd");
       const currentHour = now.getHours();
       const defaultTime = currentHour < 13 ? "15:30" : "19:30";
-      const dates: Record<number, string> = {};
-      const times: Record<number, string> = {};
-      tests.forEach((_, i) => { dates[i] = todayStr; times[i] = defaultTime; });
+      const dates: Record<string, string> = {};
+      const times: Record<string, string> = {};
+      allPatients.forEach(p => {
+        p.tests.forEach((_: any, ti: number) => {
+          const key = `${p.idx}:${ti}`;
+          dates[key] = todayStr;
+          times[key] = defaultTime;
+        });
+      });
       setReportDates(dates);
       setReportTimes(times);
     }
-  }, [reviewOpen, tests.length]);
+  }, [reviewOpen, allPatients]);
 
   // Generate receipt number when final review opens
   useEffect(() => {
@@ -215,15 +233,18 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
       payment_remarks: remarks,
     });
 
-    // Save report delivery dates/times to estimate_tests
+    // Save report delivery dates/times to estimate_tests for all patients
     try {
-      for (let i = 0; i < tests.length; i++) {
-        const t = tests[i] as any;
-        if (t.id && (reportDates[i] || reportTimes[i])) {
-          await supabase.from("estimate_tests").update({
-            report_date: reportDates[i] || null,
-            report_time: reportTimes[i] || null,
-          }).eq("id", t.id);
+      for (const p of allPatients) {
+        for (let ti = 0; ti < p.tests.length; ti++) {
+          const t = p.tests[ti] as any;
+          const key = `${p.idx}:${ti}`;
+          if (t.id && (reportDates[key] || reportTimes[key])) {
+            await supabase.from("estimate_tests").update({
+              report_date: reportDates[key] || null,
+              report_time: reportTimes[key] || null,
+            }).eq("id", t.id);
+          }
         }
       }
     } catch (e) {
@@ -299,8 +320,9 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
       msg += `*Mobile:* ${est?.whatsapp_number || "—"}\n\n`;
       msg += `*Tests & Report Delivery:*\n`;
       tests.forEach((t, i) => {
-        const rd = formatDateShort(reportDates[i]);
-        const rt = reportTimes[i] ? formatTime12hr(reportTimes[i]) : "";
+        const key = `0:${i}`;
+        const rd = formatDateShort(reportDates[key]);
+        const rt = reportTimes[key] ? formatTime12hr(reportTimes[key]) : "";
         msg += `• ${t.test_name} — ₹${t.discounted_price}${rd ? ` (Report by: ${rd} at ${rt})` : ""}\n`;
       });
       msg += `\n*Final Amount:* ₹${est?.final_amount || 0}\n`;
@@ -380,72 +402,7 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
             <DialogTitle>Review All Details</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 text-sm">
-            {/* Multi-patient summary */}
-            {consolidatedVisits && consolidatedVisits.length > 1 && (
-              <>
-                <div className="space-y-1">
-                  <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Patients in this Visit ({consolidatedVisits.length})</h4>
-                  {consolidatedVisits.map((cv: any, idx: number) => {
-                    const cEst = cv.estimates || cv;
-                    return (
-                      <div key={idx} className="bg-muted/50 rounded-lg p-2 space-y-1">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <p className="text-sm font-medium">{[cEst?.title, cEst?.patient_name].filter(Boolean).join(" ") || "—"}</p>
-                            <p className="text-xs text-muted-foreground">{cEst?.whatsapp_number}</p>
-                          </div>
-                          <p className="text-sm font-bold">₹{cEst?.final_amount || 0}</p>
-                        </div>
-                        <div className="flex flex-wrap gap-1">
-                          {(cEst?.estimate_tests || []).map((t: any, ti: number) => (
-                            <span key={ti} className="text-[10px] bg-accent rounded px-1 py-0.5">{t.test_name}</span>
-                          ))}
-                        </div>
-                        {idx === 0 && Number(cEst?.home_visit_charges) > 0 && (
-                          <p className="text-[10px] text-muted-foreground">Home Visit Charges: ₹{cEst?.home_visit_charges}</p>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-                <Separator />
-              </>
-            )}
-
-           {/* Patient Info */}
-            <div className="space-y-1">
-              <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">{consolidatedVisits && consolidatedVisits.length > 1 ? "Primary Patient" : "Patient Information"}</h4>
-              <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-                <span className="text-muted-foreground">Name:</span>
-                <span className="font-medium">{[est?.title, est?.patient_name].filter(Boolean).join(" ") || "—"}</span>
-                <span className="text-muted-foreground">Gender:</span>
-                <span className="font-medium">{est?.gender || "—"}</span>
-                <span className="text-muted-foreground">DOB:</span>
-                <span className="font-medium">{formatDateDDMMYYYY(est?.dob) || "—"}</span>
-                <span className="text-muted-foreground">Age:</span>
-                <span className="font-medium">{est?.dob ? `${Math.floor((Date.now() - new Date(est.dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000))} years` : "—"}</span>
-                <span className="text-muted-foreground">Mobile:</span>
-                <span className="font-medium">{est?.whatsapp_number || "—"}</span>
-                {est?.email && (
-                  <>
-                    <span className="text-muted-foreground">Email:</span>
-                    <span className="font-medium">{est.email}</span>
-                  </>
-                )}
-                <span className="text-muted-foreground">Doctor:</span>
-                <span className="font-medium">{est?.doctor_name || "SELF"}</span>
-                {est?.umr_number && (
-                  <>
-                    <span className="text-muted-foreground">UMR No:</span>
-                    <span className="font-medium">{est.umr_number}</span>
-                  </>
-                )}
-              </div>
-            </div>
-
-            <Separator />
-
-            {/* Visit Info */}
+            {/* Visit Info - shared across all patients */}
             <div className="space-y-1">
               <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Visit Details</h4>
               <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
@@ -462,72 +419,122 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
 
             <Separator />
 
-            {/* Tests with Report Delivery */}
-            <div className="space-y-1">
-              <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Tests & Report Delivery ({tests.length})</h4>
-              <div className="bg-muted/30 rounded p-2 space-y-3">
-                {tests.map((t, i) => (
-                  <div key={i} className="text-xs space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-muted-foreground">{i + 1}.</span>
-                        <span className="font-medium">{t.test_name}</span>
-                        {t.fasting_required && <Badge variant="outline" className="text-[10px] px-1 py-0">Fasting</Badge>}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {t.price !== t.discounted_price && (
-                          <span className="line-through text-muted-foreground">₹{t.price}</span>
-                        )}
-                        <span className="font-medium">₹{t.discounted_price}</span>
-                      </div>
+            {/* Each patient's full details */}
+            {allPatients.map((p, pIdx) => {
+              const pEst = p.est;
+              const pTests = p.tests;
+              return (
+                <div key={pIdx} className="space-y-2">
+                  {allPatients.length > 1 && (
+                    <div className="bg-primary/10 rounded px-2 py-1">
+                      <span className="text-xs font-bold text-primary">Patient {pIdx + 1} of {allPatients.length}</span>
                     </div>
-                    {/* Per-test report delivery */}
-                    <div className="ml-4 space-y-1 border-l-2 border-primary/20 pl-2">
-                      <span className="text-[10px] text-muted-foreground uppercase font-semibold">Report by:</span>
-                      <div className="flex flex-wrap gap-1">
-                        {[0, 1, 2].map(offset => {
-                          const d = addDays(new Date(), offset);
-                          const dateStr = format(d, "yyyy-MM-dd");
-                          const lbl = offset === 0 ? "Today" : offset === 1 ? "Tomorrow" : "Day After";
-                          return (
-                            <Button key={offset} type="button" size="sm"
-                              variant={reportDates[i] === dateStr ? "default" : "outline"}
-                              className="h-6 text-[10px] px-2"
-                              onClick={() => setReportDates(p => ({ ...p, [i]: dateStr }))}>
-                              {lbl}
-                            </Button>
-                          );
-                        })}
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <Input type="date" value={reportDates[i] || ""} onChange={e => setReportDates(p => ({ ...p, [i]: e.target.value }))} className="flex-1 h-7 text-[10px]" />
-                        <Select value={reportTimes[i] || ""} onValueChange={v => setReportTimes(p => ({ ...p, [i]: v }))}>
-                          <SelectTrigger className="w-24 h-7 text-[10px]"><SelectValue placeholder="Time" /></SelectTrigger>
-                          <SelectContent>
-                            {(() => {
-                              const slots: { val: string; lbl: string }[] = [];
-                              for (let h = 8; h <= 20; h++) {
-                                slots.push({ val: `${h.toString().padStart(2, "0")}:00`, lbl: `${h % 12 || 12}:00 ${h >= 12 ? "PM" : "AM"}` });
-                              }
-                              slots.push({ val: "15:30", lbl: "3:30 PM" });
-                              slots.push({ val: "19:30", lbl: "7:30 PM" });
-                              slots.sort((a, b) => a.val.localeCompare(b.val));
-                              return slots.map(s => <SelectItem key={s.val} value={s.val}>{s.lbl}</SelectItem>);
-                            })()}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      {reportDates[i] && reportTimes[i] && (
-                        <p className="text-[10px] font-medium text-primary">
-                          📋 {formatDateShort(reportDates[i])} at {formatTime12hr(reportTimes[i])}
-                        </p>
+                  )}
+
+                  {/* Patient Info */}
+                  <div className="space-y-1">
+                    <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Patient Information</h4>
+                    <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+                      <span className="text-muted-foreground">Name:</span>
+                      <span className="font-medium">{[pEst?.title, pEst?.patient_name].filter(Boolean).join(" ") || "—"}</span>
+                      <span className="text-muted-foreground">Gender:</span>
+                      <span className="font-medium">{pEst?.gender || "—"}</span>
+                      <span className="text-muted-foreground">DOB:</span>
+                      <span className="font-medium">{formatDateDDMMYYYY(pEst?.dob) || "—"}</span>
+                      <span className="text-muted-foreground">Age:</span>
+                      <span className="font-medium">{pEst?.dob ? `${Math.floor((Date.now() - new Date(pEst.dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000))} years` : "—"}</span>
+                      <span className="text-muted-foreground">Mobile:</span>
+                      <span className="font-medium">{pEst?.whatsapp_number || "—"}</span>
+                      {pEst?.email && (
+                        <>
+                          <span className="text-muted-foreground">Email:</span>
+                          <span className="font-medium">{pEst.email}</span>
+                        </>
+                      )}
+                      <span className="text-muted-foreground">Doctor:</span>
+                      <span className="font-medium">{pEst?.doctor_name || "SELF"}</span>
+                      {pEst?.umr_number && (
+                        <>
+                          <span className="text-muted-foreground">UMR No:</span>
+                          <span className="font-medium">{pEst.umr_number}</span>
+                        </>
                       )}
                     </div>
-                    {i < tests.length - 1 && <Separator className="mt-2" />}
                   </div>
-                ))}
-              </div>
-            </div>
+
+                  {/* Tests with Report Delivery */}
+                  <div className="space-y-1">
+                    <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Tests & Report Delivery ({pTests.length})</h4>
+                    <div className="bg-muted/30 rounded p-2 space-y-3">
+                      {pTests.map((t: any, ti: number) => {
+                        const key = `${p.idx}:${ti}`;
+                        return (
+                          <div key={ti} className="text-xs space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-muted-foreground">{ti + 1}.</span>
+                                <span className="font-medium">{t.test_name}</span>
+                                {t.fasting_required && <Badge variant="outline" className="text-[10px] px-1 py-0">Fasting</Badge>}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {t.price !== t.discounted_price && (
+                                  <span className="line-through text-muted-foreground">₹{t.price}</span>
+                                )}
+                                <span className="font-medium">₹{t.discounted_price}</span>
+                              </div>
+                            </div>
+                            <div className="ml-4 space-y-1 border-l-2 border-primary/20 pl-2">
+                              <span className="text-[10px] text-muted-foreground uppercase font-semibold">Report by:</span>
+                              <div className="flex flex-wrap gap-1">
+                                {[0, 1, 2].map(offset => {
+                                  const d = addDays(new Date(), offset);
+                                  const dateStr = format(d, "yyyy-MM-dd");
+                                  const lbl = offset === 0 ? "Today" : offset === 1 ? "Tomorrow" : "Day After";
+                                  return (
+                                    <Button key={offset} type="button" size="sm"
+                                      variant={reportDates[key] === dateStr ? "default" : "outline"}
+                                      className="h-6 text-[10px] px-2"
+                                      onClick={() => setReportDates(prev => ({ ...prev, [key]: dateStr }))}>
+                                      {lbl}
+                                    </Button>
+                                  );
+                                })}
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <Input type="date" value={reportDates[key] || ""} onChange={e => setReportDates(prev => ({ ...prev, [key]: e.target.value }))} className="flex-1 h-7 text-[10px]" />
+                                <Select value={reportTimes[key] || ""} onValueChange={v => setReportTimes(prev => ({ ...prev, [key]: v }))}>
+                                  <SelectTrigger className="w-24 h-7 text-[10px]"><SelectValue placeholder="Time" /></SelectTrigger>
+                                  <SelectContent>
+                                    {(() => {
+                                      const slots: { val: string; lbl: string }[] = [];
+                                      for (let h = 8; h <= 20; h++) {
+                                        slots.push({ val: `${h.toString().padStart(2, "0")}:00`, lbl: `${h % 12 || 12}:00 ${h >= 12 ? "PM" : "AM"}` });
+                                      }
+                                      slots.push({ val: "15:30", lbl: "3:30 PM" });
+                                      slots.push({ val: "19:30", lbl: "7:30 PM" });
+                                      slots.sort((a, b) => a.val.localeCompare(b.val));
+                                      return slots.map(s => <SelectItem key={s.val} value={s.val}>{s.lbl}</SelectItem>);
+                                    })()}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              {reportDates[key] && reportTimes[key] && (
+                                <p className="text-[10px] font-medium text-primary">
+                                  📋 {formatDateShort(reportDates[key])} at {formatTime12hr(reportTimes[key])}
+                                </p>
+                              )}
+                            </div>
+                            {ti < pTests.length - 1 && <Separator className="mt-2" />}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {pIdx < allPatients.length - 1 && <Separator className="my-2" />}
+                </div>
+              );
+            })}
 
             <Separator />
             <div className="space-y-1">
@@ -713,8 +720,9 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
                   </thead>
                   <tbody>
                     {tests.map((t, i) => {
-                      const rd = formatDateShort(reportDates[i]);
-                      const rt = reportTimes[i] ? formatTime12hr(reportTimes[i]) : "";
+                      const key = `0:${i}`;
+                      const rd = formatDateShort(reportDates[key]);
+                      const rt = reportTimes[key] ? formatTime12hr(reportTimes[key]) : "";
                       return (
                         <tr key={i} className="border-b border-gray-100">
                           <td className="py-1 pr-1">
