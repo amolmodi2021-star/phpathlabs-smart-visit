@@ -359,7 +359,10 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
       msg += `*Total:* ₹${pEst?.total_amount || 0}`;
       if ((pEst?.discount_amount || 0) > 0) msg += ` | *Discount:* -₹${pEst?.discount_amount}`;
       msg += ` | *Home Visit:* ₹${pEst?.home_visit_charges || 0}\n`;
-      msg += `*Final:* ₹${pEst?.final_amount || 0} | *Paid:* ₹${perPatientPayment[pIdx]?.paid ?? 0} | *Due:* ₹${perPatientPayment[pIdx]?.due ?? 0}\n\n`;
+      const pModes = perPatientModes[pIdx] || {};
+      const modeLines = Object.entries(pModes).filter(([, a]) => a > 0).map(([m, a]) => `  ${m}: ₹${a}`).join("\n");
+      if (modeLines) msg += modeLines + "\n";
+      msg += `*Total Paid:* ₹${perPatientPayment[pIdx]?.paid ?? 0} | *Due:* ₹${perPatientPayment[pIdx]?.due ?? 0}\n\n`;
     });
 
     if (allPatients.length > 1) msg += `*Grand Total (${allPatients.length} patients):* ₹${finalAmount}\n`;
