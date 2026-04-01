@@ -181,6 +181,22 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
 
   const dueAmount = useMemo(() => Math.max(0, finalAmount - paidAmount), [finalAmount, paidAmount]);
 
+  // Per-patient payment distribution for multi-patient visits
+  const perPatientPayment = useMemo(() => {
+    const n = allPatients.length;
+    if (n <= 1) {
+      const patientFinal = Number(allPatients[0]?.est?.final_amount || finalAmount);
+      return [{ paid: paidAmount, due: Math.max(0, patientFinal - paidAmount) }];
+    }
+    const perPatient = Math.floor(paidAmount / n);
+    const primaryPaid = paidAmount - perPatient * (n - 1);
+    return allPatients.map((_, i) => {
+      const patientFinal = Number(allPatients[i]?.est?.final_amount || 0);
+      const pp = i === 0 ? primaryPaid : perPatient;
+      return { paid: pp, due: Math.max(0, patientFinal - pp) };
+    });
+  }, [paidAmount, allPatients, finalAmount]);
+
   const modeStr = useMemo(() => {
     return Array.from(selectedModes)
       .filter(m => (modeAmounts[m] || 0) > 0)
@@ -287,7 +303,7 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
       }
     }
     setFinalReviewOpen(false);
-  }, [paidAmount, dueAmount, modeStr, remarks, onSave, est, tests, reportDates, reportTimes]);
+  }, [paidAmount, dueAmount, modeStr, remarks, onSave, est, tests, reportDates, reportTimes, allPatients, perPatientPayment, consolidatedVisits]);
 
   const downloadImage = (canvas: HTMLCanvasElement) => {
     const link = document.createElement("a");
@@ -327,7 +343,13 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
       });
       msg += `\n*Final Amount:* ₹${est?.final_amount || 0}\n`;
     }
-    msg += `*Paid:* ₹${paidAmount} | *Due:* ₹${dueAmount}\n`;
+    if (consolidatedVisits && consolidatedVisits.length > 1) {
+      consolidatedVisits.forEach((cv: any, idx: number) => {
+        const cEst = cv.estimates || cv;
+        msg += `  ${cEst?.patient_name || `Patient ${idx + 1}`}: Paid ₹${perPatientPayment[idx]?.paid ?? 0} | Due ₹${perPatientPayment[idx]?.due ?? 0}\n`;
+      });
+    }
+    msg += `*Total Paid:* ₹${paidAmount} | *Total Due:* ₹${dueAmount}\n`;
     return msg;
   };
 
@@ -583,10 +605,21 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
             {/* Payment */}
             <div className="space-y-1">
               <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Payment Details</h4>
+              {allPatients.length > 1 && (
+                <div className="space-y-1 mb-2">
+                  {allPatients.map((p, i) => (
+                    <div key={i} className="grid grid-cols-[1fr_auto_auto] gap-x-3 text-xs items-center">
+                      <span className="text-muted-foreground truncate">{p.est?.patient_name || `Patient ${i + 1}`}</span>
+                      <span className="text-success font-medium">Paid: ₹{perPatientPayment[i]?.paid ?? 0}</span>
+                      <span className={`font-medium ${(perPatientPayment[i]?.due ?? 0) > 0 ? 'text-destructive' : 'text-success'}`}>Due: ₹{perPatientPayment[i]?.due ?? 0}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-1">
-                <span className="text-muted-foreground">Paid Amount:</span>
+                <span className="text-muted-foreground">Total Paid:</span>
                 <span className="font-medium">₹{paidAmount}</span>
-                <span className="text-muted-foreground">Due Amount:</span>
+                <span className="text-muted-foreground">Total Due:</span>
                 <span className={`font-medium ${dueAmount > 0 ? 'text-destructive' : 'text-success'}`}>₹{dueAmount}</span>
                 <span className="text-muted-foreground">Payment Mode:</span>
                 <span className="font-medium">{modeStr || "—"}</span>
@@ -759,8 +792,19 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
 
               {/* Payment */}
               <div className="border-t border-gray-200 pt-1 space-y-0.5 text-xs">
-                <div className="flex justify-between"><span className="text-gray-600">Paid:</span><span className="font-semibold text-green-700">₹{paidAmount}</span></div>
-                <div className="flex justify-between"><span className="text-gray-600">Due:</span><span className={`font-semibold ${dueAmount > 0 ? 'text-red-600' : 'text-green-700'}`}>₹{dueAmount}</span></div>
+                {consolidatedVisits && consolidatedVisits.length > 1 && (
+                  <>
+                    {allPatients.map((p, i) => (
+                      <div key={i} className="flex justify-between">
+                        <span className="text-gray-600">{p.est?.patient_name || `Patient ${i + 1}`}:</span>
+                        <span className="font-semibold">Paid ₹{perPatientPayment[i]?.paid ?? 0} | Due ₹{perPatientPayment[i]?.due ?? 0}</span>
+                      </div>
+                    ))}
+                    <div className="border-t border-gray-200 pt-0.5" />
+                  </>
+                )}
+                <div className="flex justify-between"><span className="text-gray-600">Total Paid:</span><span className="font-semibold text-green-700">₹{paidAmount}</span></div>
+                <div className="flex justify-between"><span className="text-gray-600">Total Due:</span><span className={`font-semibold ${dueAmount > 0 ? 'text-red-600' : 'text-green-700'}`}>₹{dueAmount}</span></div>
                 {modeStr && <div className="flex justify-between"><span className="text-gray-600">Mode:</span><span className="font-semibold">{modeStr}</span></div>}
               </div>
 
