@@ -248,6 +248,23 @@ const HomeVisits = () => {
             }
           }
         }
+        for (let i = 0; i < n; i++) {
+          const visitId = visitIds[i];
+          const patientPaid = patientPaids[i];
+          const patientDue = Math.max(0, patientFinals[i] - patientPaid);
+
+          // Distribute each mode amount proportionally
+          let patientModeStr = data.payment_mode;
+          if (modeEntries.length > 0) {
+            const distributedModes = modeEntries.map(({ mode, amount }) => {
+              const rawModeAmts = patientFinals.map(f => grandTotal > 0 ? Math.floor((amount * f) / grandTotal) : 0);
+              const rawModeSum = rawModeAmts.reduce((s, v) => s + v, 0);
+              rawModeAmts[0] += amount - rawModeSum;
+              const cappedMode = rawModeAmts.map((a, j) => Math.min(a, patientFinals[j]));
+              return `${mode}: ₹${cappedMode[i]}`;
+            });
+            patientModeStr = distributedModes.join(", ");
+          }
 
           const { error } = await supabase.from("home_visits").update({
             status: "Completed",
