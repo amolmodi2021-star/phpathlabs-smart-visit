@@ -201,6 +201,27 @@ const HomeVisits = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const saveConsolidatedPayment = useMutation({
+    mutationFn: async ({ visitIds, data }: { visitIds: string[]; data: { paid_amount: number; due_amount: number; payment_mode: string; payment_remarks: string } }) => {
+      for (const visitId of visitIds) {
+        const { error } = await supabase.from("home_visits").update({
+          status: "Completed",
+          paid_amount: data.paid_amount,
+          due_amount: data.due_amount,
+          payment_mode: data.payment_mode,
+          payment_remarks: data.payment_remarks,
+        }).eq("id", visitId);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["home_visits"] });
+      toast.success(`All patients marked as Completed`);
+      setConsolidatedPaymentVisits(null);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const updatePaymentDetails = useMutation({
     mutationFn: async ({ visitId, data }: { visitId: string; data: { paid_amount: number; due_amount: number; payment_mode: string; payment_remarks: string } }) => {
       const { error } = await supabase.from("home_visits").update({
