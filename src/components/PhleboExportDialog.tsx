@@ -125,7 +125,16 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
         for (const v of pVisits) {
           const est = estimateMap[v.estimate_id] || { patient_name: "", home_visit_charges: 0 };
           const incData = estimateIncentiveMap[v.estimate_id] || { names: [], total: 0 };
-          const homeCharge = est.home_visit_charges;
+          // Only count home visit charge once per physical visit group
+          const groupKey = getVisitGroupKey(v);
+          let homeCharge = est.home_visit_charges;
+          if (homeCharge > 0) {
+            if (visitGroupChargeUsed.has(groupKey)) {
+              homeCharge = 0;
+            } else {
+              visitGroupChargeUsed.add(groupKey);
+            }
+          }
           const incAmount = incData.total;
           const totalAmt = homeCharge + incAmount;
 
