@@ -599,10 +599,21 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
             {/* Payment */}
             <div className="space-y-1">
               <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Payment Details</h4>
+              {allPatients.length > 1 && (
+                <div className="space-y-1 mb-2">
+                  {allPatients.map((p, i) => (
+                    <div key={i} className="grid grid-cols-[1fr_auto_auto] gap-x-3 text-xs items-center">
+                      <span className="text-muted-foreground truncate">{p.est?.patient_name || `Patient ${i + 1}`}</span>
+                      <span className="text-success font-medium">Paid: ₹{perPatientPayment[i]?.paid ?? 0}</span>
+                      <span className={`font-medium ${(perPatientPayment[i]?.due ?? 0) > 0 ? 'text-destructive' : 'text-success'}`}>Due: ₹{perPatientPayment[i]?.due ?? 0}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-1">
-                <span className="text-muted-foreground">Paid Amount:</span>
+                <span className="text-muted-foreground">Total Paid:</span>
                 <span className="font-medium">₹{paidAmount}</span>
-                <span className="text-muted-foreground">Due Amount:</span>
+                <span className="text-muted-foreground">Total Due:</span>
                 <span className={`font-medium ${dueAmount > 0 ? 'text-destructive' : 'text-success'}`}>₹{dueAmount}</span>
                 <span className="text-muted-foreground">Payment Mode:</span>
                 <span className="font-medium">{modeStr || "—"}</span>
