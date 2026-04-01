@@ -219,9 +219,21 @@ const HomeVisits = () => {
           if (error) throw error;
         }
       } else {
-        // Multi-patient: distribute paid amount AND each payment mode amount equally
-        const perPatient = Math.floor(data.paid_amount / n);
-        const primaryPaid = data.paid_amount - perPatient * (n - 1);
+        // Multi-patient: distribute paid amount proportionally to each patient's final_amount
+        // Collect each patient's final_amount
+        const patientFinals = visitIds.map(vid => {
+          const v = consolidatedPaymentVisits?.find((x: any) => x.id === vid);
+          return Number(v?.estimates?.final_amount || 0);
+        });
+        const grandTotal = patientFinals.reduce((s, f) => s + f, 0);
+
+        // Calculate proportional paid amounts, capped at each patient's final
+        const rawPaid = patientFinals.map(f => grandTotal > 0 ? Math.floor((data.paid_amount * f) / grandTotal) : 0);
+        // Assign rounding remainder to primary patient (index 0)
+        const rawSum = rawPaid.reduce((s, v) => s + v, 0);
+        rawPaid[0] += data.paid_amount - rawSum;
+        // Cap at each patient's final amount
+        const patientPaids = rawPaid.map((p, i) => Math.min(p, patientFinals[i]));
 
         // Parse individual mode amounts from the mode string (e.g. "Cash: ₹41, GPay: ₹500")
         const modeEntries: { mode: string; amount: number }[] = [];
@@ -236,22 +248,20 @@ const HomeVisits = () => {
             }
           }
         }
-
         for (let i = 0; i < n; i++) {
           const visitId = visitIds[i];
-          const v = consolidatedPaymentVisits?.find((x: any) => x.id === visitId);
-          const patientFinal = Number(v?.estimates?.final_amount || 0);
-          const patientPaid = i === 0 ? primaryPaid : perPatient;
-          const patientDue = Math.max(0, patientFinal - patientPaid);
+          const patientPaid = patientPaids[i];
+          const patientDue = Math.max(0, patientFinals[i] - patientPaid);
 
-          // Distribute each mode amount with same rounding logic
+          // Distribute each mode amount proportionally
           let patientModeStr = data.payment_mode;
           if (modeEntries.length > 0) {
             const distributedModes = modeEntries.map(({ mode, amount }) => {
-              const modePerPatient = Math.floor(amount / n);
-              const modePrimary = amount - modePerPatient * (n - 1);
-              const modeAmount = i === 0 ? modePrimary : modePerPatient;
-              return `${mode}: ₹${modeAmount}`;
+              const rawModeAmts = patientFinals.map(f => grandTotal > 0 ? Math.floor((amount * f) / grandTotal) : 0);
+              const rawModeSum = rawModeAmts.reduce((s, v) => s + v, 0);
+              rawModeAmts[0] += amount - rawModeSum;
+              const cappedMode = rawModeAmts.map((a, j) => Math.min(a, patientFinals[j]));
+              return `${mode}: ₹${cappedMode[i]}`;
             });
             patientModeStr = distributedModes.join(", ");
           }

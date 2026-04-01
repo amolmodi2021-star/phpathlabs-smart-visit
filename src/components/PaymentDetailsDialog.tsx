@@ -181,7 +181,7 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
 
   const dueAmount = useMemo(() => Math.max(0, finalAmount - paidAmount), [finalAmount, paidAmount]);
 
-  // Per-patient payment mode distribution
+  // Per-patient payment mode distribution (proportional to final_amount)
   const perPatientModes = useMemo(() => {
     const n = allPatients.length;
     const modes = Array.from(selectedModes).filter(m => (modeAmounts[m] || 0) > 0);
@@ -190,30 +190,36 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
       modes.forEach(m => { modeMap[m] = modeAmounts[m] || 0; });
       return [modeMap];
     }
+    const finals = allPatients.map(p => Number(p.est?.final_amount || 0));
+    const grandTotal = finals.reduce((s, f) => s + f, 0);
     return allPatients.map((_, i) => {
       const modeMap: Record<string, number> = {};
       modes.forEach(m => {
         const total = modeAmounts[m] || 0;
-        const per = Math.floor(total / n);
-        modeMap[m] = i === 0 ? total - per * (n - 1) : per;
+        const rawAmts = finals.map(f => grandTotal > 0 ? Math.floor((total * f) / grandTotal) : 0);
+        const rawSum = rawAmts.reduce((s, v) => s + v, 0);
+        rawAmts[0] += total - rawSum;
+        modeMap[m] = rawAmts[i];
       });
       return modeMap;
     });
   }, [selectedModes, modeAmounts, allPatients]);
 
-  // Per-patient payment distribution for multi-patient visits
+  // Per-patient payment distribution (proportional to final_amount)
   const perPatientPayment = useMemo(() => {
     const n = allPatients.length;
     if (n <= 1) {
       const patientFinal = Number(allPatients[0]?.est?.final_amount || finalAmount);
       return [{ paid: paidAmount, due: Math.max(0, patientFinal - paidAmount) }];
     }
-    const perPatient = Math.floor(paidAmount / n);
-    const primaryPaid = paidAmount - perPatient * (n - 1);
+    const finals = allPatients.map(p => Number(p.est?.final_amount || 0));
+    const grandTotal = finals.reduce((s, f) => s + f, 0);
+    const rawPaid = finals.map(f => grandTotal > 0 ? Math.floor((paidAmount * f) / grandTotal) : 0);
+    const rawSum = rawPaid.reduce((s, v) => s + v, 0);
+    rawPaid[0] += paidAmount - rawSum;
     return allPatients.map((_, i) => {
-      const patientFinal = Number(allPatients[i]?.est?.final_amount || 0);
-      const pp = i === 0 ? primaryPaid : perPatient;
-      return { paid: pp, due: Math.max(0, patientFinal - pp) };
+      const pp = Math.min(rawPaid[i], finals[i]);
+      return { paid: pp, due: Math.max(0, finals[i] - pp) };
     });
   }, [paidAmount, allPatients, finalAmount]);
 
