@@ -181,6 +181,26 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
 
   const dueAmount = useMemo(() => Math.max(0, finalAmount - paidAmount), [finalAmount, paidAmount]);
 
+  // Per-patient payment mode distribution
+  const perPatientModes = useMemo(() => {
+    const n = allPatients.length;
+    const modes = Array.from(selectedModes).filter(m => (modeAmounts[m] || 0) > 0);
+    if (n <= 1) {
+      const modeMap: Record<string, number> = {};
+      modes.forEach(m => { modeMap[m] = modeAmounts[m] || 0; });
+      return [modeMap];
+    }
+    return allPatients.map((_, i) => {
+      const modeMap: Record<string, number> = {};
+      modes.forEach(m => {
+        const total = modeAmounts[m] || 0;
+        const per = Math.floor(total / n);
+        modeMap[m] = i === 0 ? total - per * (n - 1) : per;
+      });
+      return modeMap;
+    });
+  }, [selectedModes, modeAmounts, allPatients]);
+
   // Per-patient payment distribution for multi-patient visits
   const perPatientPayment = useMemo(() => {
     const n = allPatients.length;
