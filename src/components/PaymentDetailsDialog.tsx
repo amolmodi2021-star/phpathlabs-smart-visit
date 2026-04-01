@@ -770,7 +770,11 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
                       )}
                       <div className="flex justify-between"><span className="text-gray-600">Home Visit:</span><span className="font-semibold">₹{pEst?.home_visit_charges || 0}</span></div>
                       <div className="flex justify-between font-bold"><span>Final Amount:</span><span>₹{pEst?.final_amount || 0}</span></div>
-                      <div className="flex justify-between"><span className="text-gray-600">Paid:</span><span className="font-semibold text-green-700">₹{perPatientPayment[pIdx]?.paid ?? 0}</span></div>
+                      {/* Per-patient payment mode bifurcation */}
+                      {Object.entries(perPatientModes[pIdx] || {}).map(([mode, amt]) => (
+                        amt > 0 ? <div key={mode} className="flex justify-between"><span className="text-gray-600 pl-2">{mode}:</span><span className="font-semibold">₹{amt}</span></div> : null
+                      ))}
+                      <div className="flex justify-between"><span className="text-gray-600">Total Paid:</span><span className="font-semibold text-green-700">₹{perPatientPayment[pIdx]?.paid ?? 0}</span></div>
                       <div className="flex justify-between"><span className="text-gray-600">Due:</span><span className={`font-semibold ${(perPatientPayment[pIdx]?.due ?? 0) > 0 ? 'text-red-600' : 'text-green-700'}`}>₹{perPatientPayment[pIdx]?.due ?? 0}</span></div>
                     </div>
                   </div>
