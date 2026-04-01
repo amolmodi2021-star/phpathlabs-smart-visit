@@ -320,8 +320,9 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
       msg += `*Mobile:* ${est?.whatsapp_number || "—"}\n\n`;
       msg += `*Tests & Report Delivery:*\n`;
       tests.forEach((t, i) => {
-        const rd = formatDateShort(reportDates[i]);
-        const rt = reportTimes[i] ? formatTime12hr(reportTimes[i]) : "";
+        const key = `0:${i}`;
+        const rd = formatDateShort(reportDates[key]);
+        const rt = reportTimes[key] ? formatTime12hr(reportTimes[key]) : "";
         msg += `• ${t.test_name} — ₹${t.discounted_price}${rd ? ` (Report by: ${rd} at ${rt})` : ""}\n`;
       });
       msg += `\n*Final Amount:* ₹${est?.final_amount || 0}\n`;
