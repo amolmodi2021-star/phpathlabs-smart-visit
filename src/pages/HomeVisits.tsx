@@ -203,15 +203,40 @@ const HomeVisits = () => {
 
   const saveConsolidatedPayment = useMutation({
     mutationFn: async ({ visitIds, data }: { visitIds: string[]; data: { paid_amount: number; due_amount: number; payment_mode: string; payment_remarks: string } }) => {
-      for (const visitId of visitIds) {
-        const { error } = await supabase.from("home_visits").update({
-          status: "Completed",
-          paid_amount: data.paid_amount,
-          due_amount: data.due_amount,
-          payment_mode: data.payment_mode,
-          payment_remarks: data.payment_remarks,
-        }).eq("id", visitId);
-        if (error) throw error;
+      const n = visitIds.length;
+      if (n <= 1) {
+        // Single patient — save as-is
+        for (const visitId of visitIds) {
+          const v = consolidatedPaymentVisits?.find((x: any) => x.id === visitId);
+          const patientFinal = Number(v?.estimates?.final_amount || 0);
+          const { error } = await supabase.from("home_visits").update({
+            status: "Completed",
+            paid_amount: data.paid_amount,
+            due_amount: Math.max(0, patientFinal - data.paid_amount),
+            payment_mode: data.payment_mode,
+            payment_remarks: data.payment_remarks,
+          }).eq("id", visitId);
+          if (error) throw error;
+        }
+      } else {
+        // Multi-patient: distribute paid amount equally, rounding remainder to primary (index 0)
+        const perPatient = Math.floor(data.paid_amount / n);
+        const primaryPaid = data.paid_amount - perPatient * (n - 1);
+        for (let i = 0; i < n; i++) {
+          const visitId = visitIds[i];
+          const v = consolidatedPaymentVisits?.find((x: any) => x.id === visitId);
+          const patientFinal = Number(v?.estimates?.final_amount || 0);
+          const patientPaid = i === 0 ? primaryPaid : perPatient;
+          const patientDue = Math.max(0, patientFinal - patientPaid);
+          const { error } = await supabase.from("home_visits").update({
+            status: "Completed",
+            paid_amount: patientPaid,
+            due_amount: patientDue,
+            payment_mode: data.payment_mode,
+            payment_remarks: data.payment_remarks,
+          }).eq("id", visitId);
+          if (error) throw error;
+        }
       }
     },
     onSuccess: () => {
