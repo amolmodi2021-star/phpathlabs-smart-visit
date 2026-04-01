@@ -70,27 +70,45 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
   const [finalReviewOpen, setFinalReviewOpen] = useState(false);
   const [dueConfirmOpen, setDueConfirmOpen] = useState(false);
   const [dueConfirmText, setDueConfirmText] = useState("");
-  const [reportDates, setReportDates] = useState<Record<number, string>>({});
-  const [reportTimes, setReportTimes] = useState<Record<number, string>>({});
+  // Keys are "patientIdx:testIdx" for multi-patient, or just testIdx for single
+  const [reportDates, setReportDates] = useState<Record<string, string>>({});
+  const [reportTimes, setReportTimes] = useState<Record<string, string>>({});
   const [receiptNumber, setReceiptNumber] = useState("");
 
   const est = visitData?.estimates;
   const tests = est?.estimate_tests || [];
 
+  // Build a unified list of all patients for review
+  const allPatients = useMemo(() => {
+    if (consolidatedVisits && consolidatedVisits.length > 1) {
+      return consolidatedVisits.map((cv: any, idx: number) => {
+        const cEst = cv.estimates || cv;
+        return { idx, est: cEst, tests: cEst?.estimate_tests || [], visitData: cv };
+      });
+    }
+    return [{ idx: 0, est, tests, visitData }];
+  }, [consolidatedVisits, est, tests, visitData]);
+
   // Auto-fill report delivery date/time per test when review opens
   useEffect(() => {
-    if (reviewOpen && Object.keys(reportDates).length === 0 && tests.length > 0) {
+    if (reviewOpen && Object.keys(reportDates).length === 0) {
       const now = new Date();
       const todayStr = format(now, "yyyy-MM-dd");
       const currentHour = now.getHours();
       const defaultTime = currentHour < 13 ? "15:30" : "19:30";
-      const dates: Record<number, string> = {};
-      const times: Record<number, string> = {};
-      tests.forEach((_, i) => { dates[i] = todayStr; times[i] = defaultTime; });
+      const dates: Record<string, string> = {};
+      const times: Record<string, string> = {};
+      allPatients.forEach(p => {
+        p.tests.forEach((_: any, ti: number) => {
+          const key = `${p.idx}:${ti}`;
+          dates[key] = todayStr;
+          times[key] = defaultTime;
+        });
+      });
       setReportDates(dates);
       setReportTimes(times);
     }
-  }, [reviewOpen, tests.length]);
+  }, [reviewOpen, allPatients]);
 
   // Generate receipt number when final review opens
   useEffect(() => {
