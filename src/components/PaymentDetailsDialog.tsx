@@ -534,7 +534,6 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
                 </div>
               );
             })}
-            </div>
 
             <Separator />
             <div className="space-y-1">
