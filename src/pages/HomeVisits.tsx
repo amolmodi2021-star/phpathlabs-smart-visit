@@ -78,6 +78,17 @@ const HomeVisits = () => {
   const [previewMessage, setPreviewMessage] = useState<string | null>(null);
   const { data: templates } = useMessageTemplates();
 
+  // Multi-patient session state
+  const [multiPatientSession, setMultiPatientSession] = useState<{
+    primaryVisitId: string;
+    visitDate: string;
+    visitTime: string;
+    address: string;
+    phlebotomistId: string | null;
+    allVisitIds: string[];
+  } | null>(null);
+  const [addPatientDialogOpen, setAddPatientDialogOpen] = useState(false);
+
   const { data: visits = [], isLoading } = useQuery({
     queryKey: ["home_visits"],
     queryFn: async () => {
