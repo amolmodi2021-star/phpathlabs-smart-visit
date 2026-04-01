@@ -1009,6 +1009,22 @@ const HomeVisits = () => {
         />
       )}
 
+      {/* Consolidated payment dialog for multi-patient visits */}
+      {consolidatedPaymentVisits && consolidatedPaymentVisits.length > 0 && (() => {
+        const grandTotal = consolidatedPaymentVisits.reduce((sum: number, v: any) => sum + Number(v.estimates?.final_amount || 0), 0);
+        return (
+          <PaymentDetailsDialog
+            open={true}
+            onClose={() => setConsolidatedPaymentVisits(null)}
+            finalAmount={grandTotal}
+            isPending={saveConsolidatedPayment.isPending}
+            onSave={(data) => saveConsolidatedPayment.mutate({ visitIds: consolidatedPaymentVisits.map((v: any) => v.id), data })}
+            visitData={consolidatedPaymentVisits[0]}
+            consolidatedVisits={consolidatedPaymentVisits}
+          />
+        );
+      })()}
+
 
       {/* Password dialog for editing completed visits */}
       <DeletePasswordDialog
