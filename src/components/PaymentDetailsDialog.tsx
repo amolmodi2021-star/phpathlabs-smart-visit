@@ -47,6 +47,8 @@ interface PaymentDetailsDialogProps {
   isPending?: boolean;
   initialData?: { paid_amount: number; payment_mode: string; payment_remarks: string };
   visitData?: VisitData;
+  /** Multiple visits for consolidated multi-patient payment */
+  consolidatedVisits?: VisitData[];
 }
 
 const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card"];
