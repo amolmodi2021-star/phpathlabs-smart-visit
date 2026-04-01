@@ -22,17 +22,18 @@ const navItems = [
   { to: "/phlebo-dashboard", label: "Phlebo Dashboard", icon: BarChart3 },
 ];
 
-const reportNavItems = [
-  { to: "/reports", label: "Reports Dashboard", icon: ClipboardList },
-  { to: "/reports/upload", label: "Upload Report", icon: FileUp },
-  { to: "/report-admin/departments", label: "Departments", icon: Building2 },
-  { to: "/report-admin/profiles", label: "Profiles", icon: Layers },
-  { to: "/report-admin/parameters", label: "Parameters", icon: Microscope },
-  { to: "/report-admin/signatures", label: "Signatures", icon: PenTool },
-  { to: "/report-admin/layout", label: "Report Layout", icon: Layers },
-  { to: "/report-admin/corrections", label: "AI Corrections", icon: BookOpen },
-  { to: "/direct-ai", label: "Direct AI", icon: Zap },
-];
+// Report System modules archived — uncomment to restore
+// const reportNavItems = [
+//   { to: "/reports", label: "Reports Dashboard", icon: ClipboardList },
+//   { to: "/reports/upload", label: "Upload Report", icon: FileUp },
+//   { to: "/report-admin/departments", label: "Departments", icon: Building2 },
+//   { to: "/report-admin/profiles", label: "Profiles", icon: Layers },
+//   { to: "/report-admin/parameters", label: "Parameters", icon: Microscope },
+//   { to: "/report-admin/signatures", label: "Signatures", icon: PenTool },
+//   { to: "/report-admin/layout", label: "Report Layout", icon: Layers },
+//   { to: "/report-admin/corrections", label: "AI Corrections", icon: BookOpen },
+//   { to: "/direct-ai", label: "Direct AI", icon: Zap },
+// ];
 
 const NavSection = ({ items, onClick }: { items: typeof navItems; onClick?: () => void }) => (
   <>
