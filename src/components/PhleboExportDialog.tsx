@@ -91,6 +91,12 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
         }
       });
 
+      // Deduplicate home visit charges: only count once per physical visit group
+      // Group by visit_date + address + phlebotomist_id
+      const visitGroupChargeUsed = new Set<string>();
+      const getVisitGroupKey = (v: { visit_date: string; address: string; phlebotomist_id: string | null }) =>
+        `${v.visit_date}||${v.address}||${v.phlebotomist_id || ""}`;
+
       // Group visits by phlebotomist
       const grouped: Record<string, typeof visits> = {};
       visits.forEach((v) => {
