@@ -219,9 +219,9 @@ const AddPatientToVisitDialog = ({ open, onClose, visitDate, visitTime, address,
           <div className="space-y-4">
             {/* Auto-populated visit info (read-only) */}
             <div className="bg-muted/50 rounded-lg p-3 space-y-1 text-xs">
-              <p><span className="text-muted-foreground">Date:</span> <span className="font-medium">{format(new Date(visitDate), "dd-MM-yyyy")}</span></p>
-              <p><span className="text-muted-foreground">Time:</span> <span className="font-medium">{(() => { const [h, m] = visitTime.split(":"); const hour = parseInt(h); return `${hour % 12 || 12}:${m} ${hour >= 12 ? "PM" : "AM"}`; })()}</span></p>
-              <p><span className="text-muted-foreground">Address:</span> <span className="font-medium">{address}</span></p>
+              <p><span className="text-muted-foreground">Date:</span> <span className="font-medium">{visitDate ? format(new Date(visitDate), "dd-MM-yyyy") : "—"}</span></p>
+              <p><span className="text-muted-foreground">Time:</span> <span className="font-medium">{visitTime ? (() => { const [h, m] = visitTime.split(":"); const hour = parseInt(h); return `${hour % 12 || 12}:${m} ${hour >= 12 ? "PM" : "AM"}`; })() : "—"}</span></p>
+              <p><span className="text-muted-foreground">Address:</span> <span className="font-medium">{address || "—"}</span></p>
               <p className="text-muted-foreground italic">Home visit charges: ₹0 (charged to primary patient only)</p>
             </div>
 
