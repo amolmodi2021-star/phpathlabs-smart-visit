@@ -517,22 +517,43 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
             <Separator />
             <div className="space-y-1">
               <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Amount Details</h4>
-              <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-                <span className="text-muted-foreground">Total Amount:</span>
-                <span className="font-medium">₹{est?.total_amount || 0}</span>
-                {(est?.discount_amount || 0) > 0 && (
-                  <>
-                    <span className="text-muted-foreground">Discount:</span>
-                    <span className="font-medium text-emerald-600 dark:text-emerald-400">
-                      -₹{est?.discount_amount}
-                    </span>
-                  </>
-                )}
-                <span className="text-muted-foreground">Home Visit Charges:</span>
-                <span className="font-medium">₹{est?.home_visit_charges || 0}</span>
-                <span className="text-muted-foreground font-semibold">Final Amount:</span>
-                <span className="font-bold text-primary">₹{est?.final_amount || 0}</span>
-              </div>
+              {consolidatedVisits && consolidatedVisits.length > 1 ? (
+                <div className="space-y-2">
+                  {consolidatedVisits.map((cv: any, idx: number) => {
+                    const cEst = cv.estimates || cv;
+                    return (
+                      <div key={idx} className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+                        <span className="text-muted-foreground font-medium col-span-2">{cEst?.patient_name || `Patient ${idx + 1}`}:</span>
+                        <span className="text-muted-foreground pl-2">Tests:</span>
+                        <span>₹{cEst?.total_amount || 0}</span>
+                        {Number(cEst?.discount_amount) > 0 && (<><span className="text-muted-foreground pl-2">Discount:</span><span className="text-success">-₹{cEst?.discount_amount}</span></>)}
+                        {idx === 0 && Number(cEst?.home_visit_charges) > 0 && (<><span className="text-muted-foreground pl-2">Home Visit:</span><span>₹{cEst?.home_visit_charges}</span></>)}
+                        <span className="text-muted-foreground pl-2 font-medium">Subtotal:</span>
+                        <span className="font-medium">₹{cEst?.final_amount || 0}</span>
+                      </div>
+                    );
+                  })}
+                  <div className="border-t pt-1 flex justify-between font-bold">
+                    <span>Grand Total</span>
+                    <span className="text-primary">₹{finalAmount}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+                  <span className="text-muted-foreground">Total Amount:</span>
+                  <span className="font-medium">₹{est?.total_amount || 0}</span>
+                  {(est?.discount_amount || 0) > 0 && (
+                    <>
+                      <span className="text-muted-foreground">Discount:</span>
+                      <span className="font-medium text-success">-₹{est?.discount_amount}</span>
+                    </>
+                  )}
+                  <span className="text-muted-foreground">Home Visit Charges:</span>
+                  <span className="font-medium">₹{est?.home_visit_charges || 0}</span>
+                  <span className="text-muted-foreground font-semibold">Final Amount:</span>
+                  <span className="font-bold text-primary">₹{est?.final_amount || 0}</span>
+                </div>
+              )}
             </div>
 
             <Separator />
