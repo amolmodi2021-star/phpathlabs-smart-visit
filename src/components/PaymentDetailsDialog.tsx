@@ -365,9 +365,41 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
             <DialogTitle>Review All Details</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 text-sm">
+            {/* Multi-patient summary */}
+            {consolidatedVisits && consolidatedVisits.length > 1 && (
+              <>
+                <div className="space-y-1">
+                  <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Patients in this Visit ({consolidatedVisits.length})</h4>
+                  {consolidatedVisits.map((cv: any, idx: number) => {
+                    const cEst = cv.estimates || cv;
+                    return (
+                      <div key={idx} className="bg-muted/50 rounded-lg p-2 space-y-1">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="text-sm font-medium">{[cEst?.title, cEst?.patient_name].filter(Boolean).join(" ") || "—"}</p>
+                            <p className="text-xs text-muted-foreground">{cEst?.whatsapp_number}</p>
+                          </div>
+                          <p className="text-sm font-bold">₹{cEst?.final_amount || 0}</p>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {(cEst?.estimate_tests || []).map((t: any, ti: number) => (
+                            <span key={ti} className="text-[10px] bg-accent rounded px-1 py-0.5">{t.test_name}</span>
+                          ))}
+                        </div>
+                        {idx === 0 && Number(cEst?.home_visit_charges) > 0 && (
+                          <p className="text-[10px] text-muted-foreground">Home Visit Charges: ₹{cEst?.home_visit_charges}</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <Separator />
+              </>
+            )}
+
            {/* Patient Info */}
             <div className="space-y-1">
-              <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Patient Information</h4>
+              <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">{consolidatedVisits && consolidatedVisits.length > 1 ? "Primary Patient" : "Patient Information"}</h4>
               <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
                 <span className="text-muted-foreground">Name:</span>
                 <span className="font-medium">{[est?.title, est?.patient_name].filter(Boolean).join(" ") || "—"}</span>
