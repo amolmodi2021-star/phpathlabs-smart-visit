@@ -303,7 +303,7 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
       }
     }
     setFinalReviewOpen(false);
-  }, [paidAmount, dueAmount, modeStr, remarks, onSave, est, tests, reportDates, reportTimes]);
+  }, [paidAmount, dueAmount, modeStr, remarks, onSave, est, tests, reportDates, reportTimes, allPatients, perPatientPayment, consolidatedVisits]);
 
   const downloadImage = (canvas: HTMLCanvasElement) => {
     const link = document.createElement("a");
