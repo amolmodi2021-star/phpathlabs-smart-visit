@@ -609,6 +609,31 @@ const LoyaltyCardSender = () => {
           </div>
         )}
       </div>
+
+      {/* API Payload Logs */}
+      {apiLogs.length > 0 && (
+        <Card>
+          <CardHeader className="py-3 flex flex-row items-center justify-between">
+            <CardTitle className="text-sm flex items-center gap-2"><FileText className="h-4 w-4" /> WhatsApp API Payload Logs</CardTitle>
+            <Button variant="outline" size="sm" onClick={() => setApiLogs([])}>Clear Logs</Button>
+          </CardHeader>
+          <CardContent className="space-y-2 max-h-[400px] overflow-y-auto">
+            {apiLogs.map((log, idx) => (
+              <div key={idx} className="border rounded p-2 text-xs">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`font-bold ${log.direction.includes("ERROR") ? "text-red-600" : log.direction.includes("RESPONSE") ? "text-green-600" : "text-blue-600"}`}>
+                    {log.direction}
+                  </span>
+                  <span className="text-muted-foreground">{log.timestamp}</span>
+                </div>
+                <pre className="whitespace-pre-wrap bg-muted rounded p-2 font-mono text-xs overflow-x-auto">
+                  {typeof log.data === "string" ? log.data : JSON.stringify(log.data, null, 2)}
+                </pre>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };
