@@ -25,6 +25,7 @@ import SignatureManagement from "./pages/SignatureManagement";
 import ReportLayoutSettings from "./pages/ReportLayoutSettings";
 import ExtractionCorrections from "./pages/ExtractionCorrections";
 import DirectAI from "./pages/DirectAI";
+import LoyaltyCards from "./pages/LoyaltyCards";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
