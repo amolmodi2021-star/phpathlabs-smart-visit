@@ -234,7 +234,9 @@ const LoyaltyCardSender = () => {
       const template = templates.find((t: any) => t.id === selectedTemplateId);
       if (!template?.background_image_url) throw new Error("Template has no background image");
 
-      // Load background image ONCE
+      // Load barcode font and background image
+      const hasBarcodes = ((template.placeholders as any[]) || []).some((p: any) => p.field === "Barcode");
+      if (hasBarcodes) await loadBarcodeFont();
       const bgImg = await loadImage(template.background_image_url);
       const canvas = document.createElement("canvas");
       canvas.width = bgImg.naturalWidth;
