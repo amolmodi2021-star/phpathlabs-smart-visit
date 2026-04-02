@@ -52,12 +52,12 @@ Deno.serve(async (req) => {
       if (!text) continue;
       if (isBarcode) needsBarcodeFont = true;
       const x = (p.x / 100) * width;
-      const y = (p.y / 100) * height + (p.fontSize || 32);
+      const y = (p.y / 100) * height;
       const fontSize = p.fontSize || 32;
       const fontColor = p.fontColor || "#000000";
       const bold = p.bold ? "bold" : "normal";
       const fontFamily = isBarcode ? "'Libre Barcode 128', cursive" : "Arial, Helvetica, sans-serif";
-      svgTexts += `<text x="${x}" y="${y}" font-size="${fontSize}" fill="${fontColor}" font-weight="${bold}" font-family="${fontFamily}">${escapeXml(text)}</text>`;
+      svgTexts += `<text x="${x}" y="${y}" font-size="${fontSize}" fill="${fontColor}" font-weight="${bold}" font-family="${fontFamily}" dominant-baseline="hanging">${escapeXml(text)}</text>`;
     }
 
     const barcodeFontImport = needsBarcodeFont
