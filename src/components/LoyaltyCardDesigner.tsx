@@ -20,7 +20,7 @@ interface Placeholder {
   bold: boolean;
 }
 
-const FIELD_OPTIONS = ["Name", "Mobile", "UMR", "Discount %", "Expiry Date"];
+const FIELD_OPTIONS = ["Name", "Mobile", "UMR", "Discount %", "Expiry Date", "Barcode"];
 
 const SAMPLE_DATA: Record<string, string> = {
   "Name": "JOHN DOE",
@@ -28,7 +28,10 @@ const SAMPLE_DATA: Record<string, string> = {
   "UMR": "UMR001234",
   "Discount %": "15%",
   "Expiry Date": "31-12-2026",
+  "Barcode": "9876543210",
 };
+
+const BARCODE_FONT_URL = "https://fonts.googleapis.com/css2?family=Libre+Barcode+128&display=swap";
 
 const LoyaltyCardDesigner = () => {
   const { toast } = useToast();
@@ -54,6 +57,17 @@ const LoyaltyCardDesigner = () => {
       return data;
     },
   });
+
+  // Load barcode font
+  useEffect(() => {
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = BARCODE_FONT_URL;
+    document.head.appendChild(link);
+    const font = new FontFace("Libre Barcode 128", `url(https://fonts.gstatic.com/s/librebarcode128/v28/cIfnMbdUsUoiW3O_hVviCQYljbGlQMfe1ZkBg_8.woff2)`);
+    font.load().then((f) => { document.fonts.add(f); drawCanvas(); });
+    return () => { document.head.removeChild(link); };
+  }, []);
 
   const drawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -94,12 +108,13 @@ const LoyaltyCardDesigner = () => {
       const py = (p.y / 100) * ch;
       const scaledFontSize = Math.max(10, (p.fontSize / bgNaturalSize.h) * ch);
 
-      ctx.font = `${p.bold ? "bold " : ""}${scaledFontSize}px sans-serif`;
+      const fontFamily = p.field === "Barcode" ? "'Libre Barcode 128'" : "sans-serif";
+      ctx.font = `${p.bold ? "bold " : ""}${scaledFontSize}px ${fontFamily}`;
       ctx.fillStyle = p.fontColor;
       ctx.textAlign = "left";
       ctx.textBaseline = "top";
 
-      const text = SAMPLE_DATA[p.field] || p.field;
+      const text = p.field === "Barcode" ? (SAMPLE_DATA["Mobile"] || "0000000000") : (SAMPLE_DATA[p.field] || p.field);
       ctx.fillText(text, px, py);
 
       if (p.id === selectedId) {
