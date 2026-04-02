@@ -220,9 +220,14 @@ const LoyaltyCardSender = () => {
       const y = (p.y / 100) * canvas.height;
       const fontSize = p.fontSize || 32;
       const fontColor = p.fontColor || "#000000";
-      const bold = p.bold ? "bold" : "normal";
-      const fontFamily = isBarcode ? "'Libre Barcode 128'" : "Arial, Helvetica, sans-serif";
-      ctx.font = `${bold} ${fontSize}px ${fontFamily}`;
+
+      if (isBarcode) {
+        ctx.font = `${fontSize}px "Libre Barcode 128"`;
+      } else {
+        const bold = p.bold ? "bold" : "normal";
+        ctx.font = `${bold} ${fontSize}px Arial, Helvetica, sans-serif`;
+      }
+
       ctx.fillStyle = fontColor;
       ctx.textBaseline = "top";
       ctx.fillText(text, x, y);
