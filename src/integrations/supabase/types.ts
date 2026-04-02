@@ -397,6 +397,133 @@ export type Database = {
           },
         ]
       }
+      loyalty_card_jobs: {
+        Row: {
+          created_at: string
+          delay_ms: number
+          excel_data: Json | null
+          id: string
+          queue_enabled: boolean
+          sent_count: number
+          status: string
+          template_id: string | null
+          total_cards: number
+          whatsapp_template_name: string | null
+          whatsapp_variables_mapping: Json | null
+        }
+        Insert: {
+          created_at?: string
+          delay_ms?: number
+          excel_data?: Json | null
+          id?: string
+          queue_enabled?: boolean
+          sent_count?: number
+          status?: string
+          template_id?: string | null
+          total_cards?: number
+          whatsapp_template_name?: string | null
+          whatsapp_variables_mapping?: Json | null
+        }
+        Update: {
+          created_at?: string
+          delay_ms?: number
+          excel_data?: Json | null
+          id?: string
+          queue_enabled?: boolean
+          sent_count?: number
+          status?: string
+          template_id?: string | null
+          total_cards?: number
+          whatsapp_template_name?: string | null
+          whatsapp_variables_mapping?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_card_jobs_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_card_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_card_templates: {
+        Row: {
+          background_image_url: string | null
+          created_at: string
+          id: string
+          name: string
+          placeholders: Json
+          updated_at: string
+        }
+        Insert: {
+          background_image_url?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          placeholders?: Json
+          updated_at?: string
+        }
+        Update: {
+          background_image_url?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          placeholders?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      loyalty_cards: {
+        Row: {
+          created_at: string
+          discount: string | null
+          expiry_date: string | null
+          id: string
+          image_url: string | null
+          job_id: string | null
+          mobile: string | null
+          patient_name: string | null
+          sent_at: string | null
+          umr: string | null
+          whatsapp_status: string
+        }
+        Insert: {
+          created_at?: string
+          discount?: string | null
+          expiry_date?: string | null
+          id?: string
+          image_url?: string | null
+          job_id?: string | null
+          mobile?: string | null
+          patient_name?: string | null
+          sent_at?: string | null
+          umr?: string | null
+          whatsapp_status?: string
+        }
+        Update: {
+          created_at?: string
+          discount?: string | null
+          expiry_date?: string | null
+          id?: string
+          image_url?: string | null
+          job_id?: string | null
+          mobile?: string | null
+          patient_name?: string | null
+          sent_at?: string | null
+          umr?: string | null
+          whatsapp_status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_cards_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "loyalty_card_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       message_templates: {
         Row: {
           created_at: string

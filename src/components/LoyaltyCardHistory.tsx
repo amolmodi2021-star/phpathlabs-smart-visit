@@ -1,0 +1,120 @@
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { format } from "date-fns";
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
+
+const LoyaltyCardHistory = () => {
+  const [expandedJob, setExpandedJob] = useState<string | null>(null);
+
+  const { data: jobs = [] } = useQuery({
+    queryKey: ["loyalty_card_jobs"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("loyalty_card_jobs")
+        .select("*, loyalty_card_templates(name)")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const { data: cards = [] } = useQuery({
+    queryKey: ["loyalty_cards", expandedJob],
+    queryFn: async () => {
+      if (!expandedJob) return [];
+      const { data, error } = await supabase
+        .from("loyalty_cards")
+        .select("*")
+        .eq("job_id", expandedJob)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!expandedJob,
+  });
+
+  const statusColor = (s: string) => {
+    switch (s) {
+      case "completed": return "default";
+      case "processing": return "secondary";
+      case "failed": return "destructive";
+      default: return "outline";
+    }
+  };
+
+  const whatsappStatusColor = (s: string) => {
+    switch (s) {
+      case "sent": return "default";
+      case "failed": return "destructive";
+      default: return "outline";
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {jobs.length === 0 && <p className="text-sm text-muted-foreground">No jobs yet. Generate cards from the Send Cards tab.</p>}
+      {jobs.map((job: any) => (
+        <Card key={job.id}>
+          <CardHeader className="py-3 cursor-pointer" onClick={() => setExpandedJob(expandedJob === job.id ? null : job.id)}>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm flex items-center gap-2">
+                {job.loyalty_card_templates?.name || "Unknown Template"}
+                <Badge variant={statusColor(job.status)}>{job.status}</Badge>
+                <span className="text-xs text-muted-foreground">{job.total_cards} cards</span>
+              </CardTitle>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">{format(new Date(job.created_at), "dd-MM-yyyy HH:mm")}</span>
+                {expandedJob === job.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </div>
+            </div>
+          </CardHeader>
+          {expandedJob === job.id && (
+            <CardContent>
+              <div className="overflow-auto max-h-64">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-xs">Name</TableHead>
+                      <TableHead className="text-xs">Mobile</TableHead>
+                      <TableHead className="text-xs">UMR</TableHead>
+                      <TableHead className="text-xs">Discount</TableHead>
+                      <TableHead className="text-xs">Expiry</TableHead>
+                      <TableHead className="text-xs">Image</TableHead>
+                      <TableHead className="text-xs">WhatsApp</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {cards.map((c: any) => (
+                      <TableRow key={c.id}>
+                        <TableCell className="text-xs">{c.patient_name}</TableCell>
+                        <TableCell className="text-xs">{c.mobile}</TableCell>
+                        <TableCell className="text-xs">{c.umr}</TableCell>
+                        <TableCell className="text-xs">{c.discount}</TableCell>
+                        <TableCell className="text-xs">{c.expiry_date}</TableCell>
+                        <TableCell className="text-xs">
+                          {c.image_url ? (
+                            <a href={c.image_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1">
+                              View <ExternalLink className="h-3 w-3" />
+                            </a>
+                          ) : "—"}
+                        </TableCell>
+                        <TableCell><Badge variant={whatsappStatusColor(c.whatsapp_status)} className="text-xs">{c.whatsapp_status}</Badge></TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          )}
+        </Card>
+      ))}
+    </div>
+  );
+};
+
+export default LoyaltyCardHistory;

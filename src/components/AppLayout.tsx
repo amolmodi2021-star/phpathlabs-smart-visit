@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { logout } from "@/lib/auth";
 import {
   FileText, LayoutDashboard, Home, Users, TestTubes, MessageSquare,
-  Menu, X, LogOut, FlaskConical, AlertTriangle, BarChart3,
+  Menu, X, LogOut, FlaskConical, AlertTriangle, BarChart3, CreditCard,
   FileUp, ClipboardList, Building2, Layers, Microscope, PenTool, BookOpen, Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ const navItems = [
   { to: "/templates", label: "Message Templates", icon: MessageSquare },
   { to: "/abnormal-history", label: "Abnormal History", icon: AlertTriangle },
   { to: "/phlebo-dashboard", label: "Phlebo Dashboard", icon: BarChart3 },
+  { to: "/loyalty-cards", label: "Loyalty Cards", icon: CreditCard },
 ];
 
 // Report System modules archived — uncomment to restore
