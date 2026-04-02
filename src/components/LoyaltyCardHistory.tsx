@@ -62,7 +62,7 @@ const LoyaltyCardHistory = () => {
       queryClient.invalidateQueries({ queryKey: ["loyalty_card_jobs"] });
       queryClient.invalidateQueries({ queryKey: ["loyalty_cards"] });
     } catch (err: any) {
-      setApiLogs(prev => [...prev, { timestamp: new Date().toLocaleTimeString(), direction: "ERROR", data: err.message }]);
+      
       toast({ title: "WhatsApp send failed", description: err.message, variant: "destructive" });
     } finally {
       setSendingJobId(null);
