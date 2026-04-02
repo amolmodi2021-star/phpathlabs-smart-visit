@@ -9,6 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Upload, Play, Loader2 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { parseExcelFile } from "@/lib/excel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
@@ -35,6 +36,8 @@ const LoyaltyCardSender = () => {
   const [delayMs, setDelayMs] = useState(3000);
   const [generating, setGenerating] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
+  const [useStaticExpiry, setUseStaticExpiry] = useState(true);
+  const [staticExpiryDate, setStaticExpiryDate] = useState("");
 
   const { data: templates = [] } = useQuery({
     queryKey: ["loyalty_card_templates"],
@@ -283,7 +286,13 @@ const LoyaltyCardSender = () => {
             let val = col ? String(row[col] ?? "") : "";
              if (f === "Mobile" && val) val = normalizeIndianMobile(val, false);
             if (f === "Discount %" && val && !val.includes("%")) val = val + "%";
-            if (f === "Expiry Date" && col) val = formatExpiryDate(row[col]);
+            if (f === "Expiry Date") {
+              if (useStaticExpiry && staticExpiryDate) {
+                val = staticExpiryDate;
+              } else if (col) {
+                val = formatExpiryDate(row[col]);
+              }
+            }
             patientData[f] = val;
           });
            const blob = await renderCard(canvas, ctx, bgImg, placeholders, patientData);
@@ -380,6 +389,28 @@ const LoyaltyCardSender = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Expiry Date Option */}
+      <Card>
+        <CardHeader className="py-3"><CardTitle className="text-sm">3. Expiry Date</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center gap-3">
+            <Switch checked={useStaticExpiry} onCheckedChange={setUseStaticExpiry} />
+            <Label className="text-xs">{useStaticExpiry ? "Use static expiry date for all cards" : "Use expiry date from Excel data"}</Label>
+          </div>
+          {useStaticExpiry && (
+            <div>
+              <Label className="text-xs">Expiry Date (dd-mm-yyyy)</Label>
+              <Input
+                placeholder="e.g. 31-12-2026"
+                value={staticExpiryDate}
+                onChange={(e) => setStaticExpiryDate(e.target.value)}
+                className="h-8 max-w-xs"
+              />
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Preview Data */}
       {excelData.length > 0 && (
