@@ -90,7 +90,7 @@ const LoyaltyCardSender = () => {
         const patientData: Record<string, string> = {};
         FIELDS.forEach((f) => {
           const col = columnMapping[f];
-          let val = col ? String(row[col] || "") : "";
+          let val = col ? String(row[col] ?? "") : "";
           if (f === "Discount %" && val && !val.includes("%")) {
             val = val + "%";
           }
