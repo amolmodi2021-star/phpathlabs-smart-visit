@@ -57,7 +57,7 @@ const LoyaltyCardHistory = () => {
       });
       if (res.error) throw res.error;
       const result = res.data;
-      setApiLogs(prev => [...prev, { timestamp: new Date().toLocaleTimeString(), direction: "RESPONSE ← Edge Function", data: result }]);
+      
       toast({ title: `Sent ${result.sentCount}/${result.total} messages` });
       queryClient.invalidateQueries({ queryKey: ["loyalty_card_jobs"] });
       queryClient.invalidateQueries({ queryKey: ["loyalty_cards"] });
