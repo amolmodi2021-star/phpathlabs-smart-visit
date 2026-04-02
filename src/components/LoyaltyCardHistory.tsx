@@ -203,9 +203,8 @@ const LoyaltyCardHistory = () => {
       <DeletePasswordDialog
         open={deleteDialogOpen}
         onOpenChange={setDeleteDialogOpen}
-        onConfirm={handleDeleteConfirmed}
-        title={deleteMode === "all" ? "Delete All Jobs" : `Delete ${selectedJobs.size} Job(s)`}
-        description="This will permanently delete the selected jobs and all associated cards. Enter password to confirm."
+        onSuccess={handleDeleteConfirmed}
+        description={deleteMode === "all" ? "Delete all jobs and associated cards permanently." : `Delete ${selectedJobs.size} selected job(s) and associated cards permanently.`}
       />
     </div>
   );
