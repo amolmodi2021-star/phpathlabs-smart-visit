@@ -38,18 +38,27 @@ Deno.serve(async (req) => {
 
     // Build SVG with background image and text overlays
     let svgTexts = "";
+    let needsBarcodeFont = false;
     for (const p of placeholders as any[]) {
-      const text = patientData[p.field] || "";
+      const isBarcode = p.field === "Barcode";
+      const text = isBarcode ? (patientData["Mobile"] || "") : (patientData[p.field] || "");
       if (!text) continue;
+      if (isBarcode) needsBarcodeFont = true;
       const x = (p.x / 100) * width;
       const y = (p.y / 100) * height + (p.fontSize || 32);
       const fontSize = p.fontSize || 32;
       const fontColor = p.fontColor || "#000000";
       const bold = p.bold ? "bold" : "normal";
-      svgTexts += `<text x="${x}" y="${y}" font-size="${fontSize}" fill="${fontColor}" font-weight="${bold}" font-family="Arial, Helvetica, sans-serif">${escapeXml(text)}</text>`;
+      const fontFamily = isBarcode ? "'Libre Barcode 128', cursive" : "Arial, Helvetica, sans-serif";
+      svgTexts += `<text x="${x}" y="${y}" font-size="${fontSize}" fill="${fontColor}" font-weight="${bold}" font-family="${fontFamily}">${escapeXml(text)}</text>`;
     }
 
+    const barcodeFontImport = needsBarcodeFont
+      ? `<defs><style>@import url('https://fonts.googleapis.com/css2?family=Libre+Barcode+128&amp;display=swap');</style></defs>`
+      : "";
+
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${height}">
+      ${barcodeFontImport}
       <image href="data:${bgMime};base64,${bgBase64}" width="${width}" height="${height}"/>
       ${svgTexts}
     </svg>`;
