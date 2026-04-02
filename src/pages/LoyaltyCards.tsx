@@ -8,16 +8,13 @@ const LoyaltyCards = () => {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">ABC Loyalty Cards</h1>
-      <Tabs defaultValue="designer" className="w-full">
+      <Tabs defaultValue="send" className="w-full">
         <TabsList>
-          <TabsTrigger value="designer">Card Designer</TabsTrigger>
           <TabsTrigger value="send">Send Cards</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
           <TabsTrigger value="whatsapp">WhatsApp API Settings</TabsTrigger>
+          <TabsTrigger value="designer">Card Designer</TabsTrigger>
         </TabsList>
-        <TabsContent value="designer">
-          <LoyaltyCardDesigner />
-        </TabsContent>
         <TabsContent value="send">
           <LoyaltyCardSender />
         </TabsContent>
@@ -26,6 +23,9 @@ const LoyaltyCards = () => {
         </TabsContent>
         <TabsContent value="whatsapp">
           <WhatsAppSettings />
+        </TabsContent>
+        <TabsContent value="designer">
+          <LoyaltyCardDesigner />
         </TabsContent>
       </Tabs>
     </div>
