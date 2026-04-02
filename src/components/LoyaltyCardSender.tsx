@@ -171,13 +171,24 @@ const LoyaltyCardSender = () => {
 
   // Load barcode font if needed
   const loadBarcodeFont = async () => {
-    if (document.fonts.check("12px 'Libre Barcode 128'")) return;
-    const font = new FontFace(
-      "Libre Barcode 128",
-      "url(https://fonts.gstatic.com/s/librebarcode128/v28/cIfnMbdUsUoiW3O_hVviCQYljbGlQMfe1ZkBg_8.woff2)"
-    );
-    const loaded = await font.load();
-    document.fonts.add(loaded);
+    if (!document.querySelector(`link[href="${BARCODE_FONT_URL}"]`)) {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = BARCODE_FONT_URL;
+      document.head.appendChild(link);
+    }
+
+    if (!document.fonts.check("32px 'Libre Barcode 128'")) {
+      const font = new FontFace(
+        "Libre Barcode 128",
+        "url(https://fonts.gstatic.com/s/librebarcode128/v28/cIfnMbdUsUoiW3O_hVviCQYljbGlQMfe1ZkBg_8.woff2)"
+      );
+      const loaded = await font.load();
+      document.fonts.add(loaded);
+    }
+
+    await document.fonts.load("32px 'Libre Barcode 128'");
+    await document.fonts.ready;
   };
 
   // Load background image once, returns HTMLImageElement
