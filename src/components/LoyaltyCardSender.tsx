@@ -167,6 +167,17 @@ const LoyaltyCardSender = () => {
     return stringValue;
   };
 
+  // Load barcode font if needed
+  const loadBarcodeFont = async () => {
+    if (document.fonts.check("12px 'Libre Barcode 128'")) return;
+    const font = new FontFace(
+      "Libre Barcode 128",
+      "url(https://fonts.gstatic.com/s/librebarcode128/v28/cIfnMbdUsUoiW3O_hVviCQYljbGlQMfe1ZkBg_8.woff2)"
+    );
+    const loaded = await font.load();
+    document.fonts.add(loaded);
+  };
+
   // Load background image once, returns HTMLImageElement
   const loadImage = (url: string): Promise<HTMLImageElement> =>
     new Promise((resolve, reject) => {
@@ -223,7 +234,9 @@ const LoyaltyCardSender = () => {
       const template = templates.find((t: any) => t.id === selectedTemplateId);
       if (!template?.background_image_url) throw new Error("Template has no background image");
 
-      // Load background image ONCE
+      // Load barcode font and background image
+      const hasBarcodes = ((template.placeholders as any[]) || []).some((p: any) => p.field === "Barcode");
+      if (hasBarcodes) await loadBarcodeFont();
       const bgImg = await loadImage(template.background_image_url);
       const canvas = document.createElement("canvas");
       canvas.width = bgImg.naturalWidth;
