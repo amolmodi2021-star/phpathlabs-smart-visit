@@ -337,47 +337,6 @@ const LoyaltyCardSender = () => {
       setGenerating(false);
     }
   };
-  const sendViaWhatsApp = async (jobId: string) => {
-    if (!waBaseUrl || !waApiKey || !waTemplateName) {
-      return toast({ title: "Configure WhatsApp API settings first", variant: "destructive" });
-    }
-
-    setSending(true);
-    try {
-      const payload = {
-        jobId,
-        apiBaseUrl: waBaseUrl,
-        apiKey: "***hidden***",
-        authHeaderName: waAuthHeaderName,
-        authHeaderPrefix: waAuthHeaderPrefix,
-        fromNumber: waFromNumber,
-        campaignName: waCampaignName,
-        templateName: waTemplateName,
-        variablesMapping: waBodyMapping ? JSON.parse(waBodyMapping) : {},
-        includeMediaHeader: waMediaHeader,
-        queueEnabled,
-        delayMs,
-      };
-      setApiLogs(prev => [...prev, { timestamp: new Date().toLocaleTimeString(), direction: "REQUEST → Edge Function", data: payload }]);
-
-      const res = await supabase.functions.invoke("send-loyalty-whatsapp", {
-        body: {
-          ...payload,
-          apiKey: waApiKey,
-        },
-      });
-      if (res.error) throw res.error;
-      const result = res.data;
-      setApiLogs(prev => [...prev, { timestamp: new Date().toLocaleTimeString(), direction: "RESPONSE ← Edge Function", data: result }]);
-      toast({ title: `Sent ${result.sentCount}/${result.total} messages` });
-      queryClient.invalidateQueries({ queryKey: ["loyalty_card_jobs"] });
-    } catch (err: any) {
-      setApiLogs(prev => [...prev, { timestamp: new Date().toLocaleTimeString(), direction: "ERROR", data: err.message }]);
-      toast({ title: "WhatsApp send failed", description: err.message, variant: "destructive" });
-    } finally {
-      setSending(false);
-    }
-  };
 
   return (
     <div className="space-y-4">
@@ -423,86 +382,6 @@ const LoyaltyCardSender = () => {
         </Card>
       </div>
 
-      <Card>
-        <CardHeader className="py-3">
-          <CardTitle className="text-sm">3. Queue Settings</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Switch checked={queueEnabled} onCheckedChange={setQueueEnabled} />
-              <Label className="text-xs">Queue Mode</Label>
-            </div>
-            {queueEnabled && (
-              <div className="flex items-center gap-2">
-                <Label className="text-xs">Delay (ms)</Label>
-                <Input type="number" value={delayMs} onChange={(e) => setDelayMs(Number(e.target.value))} className="w-24 h-8" min={500} step={500} />
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Collapsible open={waSettingsOpen} onOpenChange={setWaSettingsOpen}>
-        <Card>
-          <CollapsibleTrigger asChild>
-            <CardHeader className="py-3 cursor-pointer hover:bg-muted/50">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Settings className="h-4 w-4" />
-                4. WhatsApp API Settings
-              </CardTitle>
-            </CardHeader>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <CardContent className="space-y-3">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs">API Base URL</Label>
-                  <Input value={waBaseUrl} onChange={(e) => setWaBaseUrl(e.target.value)} placeholder="https://api.aoc-portal.com/v1/whatsapp" className="h-8" />
-                </div>
-                <div>
-                  <Label className="text-xs">API Key</Label>
-                  <div className="relative">
-                    <Input type={showApiKey ? "text" : "password"} value={waApiKey} onChange={(e) => setWaApiKey(e.target.value)} placeholder="Your API key" className="h-8 pr-8" />
-                    <button type="button" onClick={() => setShowApiKey(!showApiKey)} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                      {showApiKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-xs">Auth Header Name</Label>
-                  <Input value={waAuthHeaderName} onChange={(e) => setWaAuthHeaderName(e.target.value)} placeholder="apikey" className="h-8" />
-                </div>
-                <div>
-                  <Label className="text-xs">Auth Header Prefix (optional)</Label>
-                  <Input value={waAuthHeaderPrefix} onChange={(e) => setWaAuthHeaderPrefix(e.target.value)} placeholder="Bearer / Basic / empty" className="h-8" />
-                </div>
-                <div>
-                  <Label className="text-xs">From Number (with country code)</Label>
-                  <Input value={waFromNumber} onChange={(e) => setWaFromNumber(e.target.value)} placeholder="+91XXXXXXXXXX" className="h-8" />
-                </div>
-                <div>
-                  <Label className="text-xs">Campaign Name (optional)</Label>
-                  <Input value={waCampaignName} onChange={(e) => setWaCampaignName(e.target.value)} placeholder="loyalty-cards" className="h-8" />
-                </div>
-                <div>
-                  <Label className="text-xs">Template Name</Label>
-                  <Input value={waTemplateName} onChange={(e) => setWaTemplateName(e.target.value)} placeholder="e.g. loyalty_card_v1" className="h-8" />
-                </div>
-                <div>
-                  <Label className="text-xs">Body Variables Mapping (JSON)</Label>
-                  <Input value={waBodyMapping} onChange={(e) => setWaBodyMapping(e.target.value)} placeholder='{"1":"Name","2":"Discount %"}' className="h-8" />
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Switch checked={waMediaHeader} onCheckedChange={setWaMediaHeader} />
-                <Label className="text-xs">Include card image in media header</Label>
-              </div>
-            </CardContent>
-          </CollapsibleContent>
-        </Card>
-      </Collapsible>
-
       {/* Preview Data */}
       {excelData.length > 0 && (
         <Card>
@@ -541,31 +420,6 @@ const LoyaltyCardSender = () => {
           </div>
         )}
       </div>
-
-      {/* API Payload Logs */}
-      {apiLogs.length > 0 && (
-        <Card>
-          <CardHeader className="py-3 flex flex-row items-center justify-between">
-            <CardTitle className="text-sm flex items-center gap-2"><FileText className="h-4 w-4" /> WhatsApp API Payload Logs</CardTitle>
-            <Button variant="outline" size="sm" onClick={() => setApiLogs([])}>Clear Logs</Button>
-          </CardHeader>
-          <CardContent className="space-y-2 max-h-[400px] overflow-y-auto">
-            {apiLogs.map((log, idx) => (
-              <div key={idx} className="border rounded p-2 text-xs">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className={`font-bold ${log.direction.includes("ERROR") ? "text-red-600" : log.direction.includes("RESPONSE") ? "text-green-600" : "text-blue-600"}`}>
-                    {log.direction}
-                  </span>
-                  <span className="text-muted-foreground">{log.timestamp}</span>
-                </div>
-                <pre className="whitespace-pre-wrap bg-muted rounded p-2 font-mono text-xs overflow-x-auto">
-                  {typeof log.data === "string" ? log.data : JSON.stringify(log.data, null, 2)}
-                </pre>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 };
