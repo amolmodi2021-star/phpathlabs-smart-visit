@@ -39,6 +39,41 @@ const LoyaltyCardSender = () => {
   const [useStaticExpiry, setUseStaticExpiry] = useState(true);
   const [staticExpiryDate, setStaticExpiryDate] = useState("");
 
+  // Load saved static expiry settings from app_settings
+  useEffect(() => {
+    const loadSettings = async () => {
+      const { data } = await supabase
+        .from("app_settings")
+        .select("setting_key, setting_value")
+        .in("setting_key", ["loyalty_static_expiry_enabled", "loyalty_static_expiry_date"]);
+      if (data) {
+        for (const row of data) {
+          if (row.setting_key === "loyalty_static_expiry_enabled") setUseStaticExpiry(row.setting_value === "true");
+          if (row.setting_key === "loyalty_static_expiry_date") setStaticExpiryDate(row.setting_value);
+        }
+      }
+    };
+    loadSettings();
+  }, []);
+
+  // Save static expiry settings whenever they change
+  const saveExpirySetting = useCallback(async (key: string, value: string) => {
+    await supabase.from("app_settings").upsert(
+      { setting_key: key, setting_value: value, updated_at: new Date().toISOString() },
+      { onConflict: "setting_key" }
+    );
+  }, []);
+
+  const handleStaticExpiryToggle = (checked: boolean) => {
+    setUseStaticExpiry(checked);
+    saveExpirySetting("loyalty_static_expiry_enabled", String(checked));
+  };
+
+  const handleStaticExpiryDateChange = (val: string) => {
+    setStaticExpiryDate(val);
+    saveExpirySetting("loyalty_static_expiry_date", val);
+  };
+
   const { data: templates = [] } = useQuery({
     queryKey: ["loyalty_card_templates"],
     queryFn: async () => {
