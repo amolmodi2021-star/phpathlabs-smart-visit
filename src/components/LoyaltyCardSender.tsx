@@ -14,6 +14,8 @@ import { parseExcelFile } from "@/lib/excel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
+const BARCODE_FONT_URL = "https://fonts.googleapis.com/css2?family=Libre+Barcode+128&display=swap";
+
 const LoyaltyCardSender = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -169,13 +171,24 @@ const LoyaltyCardSender = () => {
 
   // Load barcode font if needed
   const loadBarcodeFont = async () => {
-    if (document.fonts.check("12px 'Libre Barcode 128'")) return;
-    const font = new FontFace(
-      "Libre Barcode 128",
-      "url(https://fonts.gstatic.com/s/librebarcode128/v28/cIfnMbdUsUoiW3O_hVviCQYljbGlQMfe1ZkBg_8.woff2)"
-    );
-    const loaded = await font.load();
-    document.fonts.add(loaded);
+    if (!document.querySelector(`link[href="${BARCODE_FONT_URL}"]`)) {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = BARCODE_FONT_URL;
+      document.head.appendChild(link);
+    }
+
+    if (!document.fonts.check("32px 'Libre Barcode 128'")) {
+      const font = new FontFace(
+        "Libre Barcode 128",
+        "url(https://fonts.gstatic.com/s/librebarcode128/v28/cIfnMbdUsUoiW3O_hVviCQYljbGlQMfe1ZkBg_8.woff2)"
+      );
+      const loaded = await font.load();
+      document.fonts.add(loaded);
+    }
+
+    await document.fonts.load("32px 'Libre Barcode 128'");
+    await document.fonts.ready;
   };
 
   // Load background image once, returns HTMLImageElement
@@ -207,9 +220,14 @@ const LoyaltyCardSender = () => {
       const y = (p.y / 100) * canvas.height;
       const fontSize = p.fontSize || 32;
       const fontColor = p.fontColor || "#000000";
-      const bold = p.bold ? "bold" : "normal";
-      const fontFamily = isBarcode ? "'Libre Barcode 128'" : "Arial, Helvetica, sans-serif";
-      ctx.font = `${bold} ${fontSize}px ${fontFamily}`;
+
+      if (isBarcode) {
+        ctx.font = `${fontSize}px "Libre Barcode 128"`;
+      } else {
+        const bold = p.bold ? "bold" : "normal";
+        ctx.font = `${bold} ${fontSize}px Arial, Helvetica, sans-serif`;
+      }
+
       ctx.fillStyle = fontColor;
       ctx.textBaseline = "top";
       ctx.fillText(text, x, y);
