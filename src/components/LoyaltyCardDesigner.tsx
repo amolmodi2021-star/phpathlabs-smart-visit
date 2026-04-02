@@ -108,12 +108,13 @@ const LoyaltyCardDesigner = () => {
       const py = (p.y / 100) * ch;
       const scaledFontSize = Math.max(10, (p.fontSize / bgNaturalSize.h) * ch);
 
-      ctx.font = `${p.bold ? "bold " : ""}${scaledFontSize}px sans-serif`;
+      const fontFamily = p.field === "Barcode" ? "'Libre Barcode 128'" : "sans-serif";
+      ctx.font = `${p.bold ? "bold " : ""}${scaledFontSize}px ${fontFamily}`;
       ctx.fillStyle = p.fontColor;
       ctx.textAlign = "left";
       ctx.textBaseline = "top";
 
-      const text = SAMPLE_DATA[p.field] || p.field;
+      const text = p.field === "Barcode" ? (SAMPLE_DATA["Mobile"] || "0000000000") : (SAMPLE_DATA[p.field] || p.field);
       ctx.fillText(text, px, py);
 
       if (p.id === selectedId) {
