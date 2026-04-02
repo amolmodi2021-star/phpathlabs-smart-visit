@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -6,10 +6,18 @@ import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ChevronDown, ChevronUp, ExternalLink, Trash2 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 
 const LoyaltyCardHistory = () => {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [expandedJob, setExpandedJob] = useState<string | null>(null);
+  const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set());
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteMode, setDeleteMode] = useState<"selected" | "all">("selected");
 
   const { data: jobs = [] } = useQuery({
     queryKey: ["loyalty_card_jobs"],
@@ -38,6 +46,44 @@ const LoyaltyCardHistory = () => {
     enabled: !!expandedJob,
   });
 
+  const toggleJob = (id: string) => {
+    setSelectedJobs((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selectedJobs.size === jobs.length) {
+      setSelectedJobs(new Set());
+    } else {
+      setSelectedJobs(new Set(jobs.map((j: any) => j.id)));
+    }
+  };
+
+  const handleDeleteConfirmed = async () => {
+    const idsToDelete = deleteMode === "all" ? jobs.map((j: any) => j.id) : Array.from(selectedJobs);
+    if (idsToDelete.length === 0) return;
+
+    try {
+      // Delete cards first, then jobs
+      for (const jobId of idsToDelete) {
+        await supabase.from("loyalty_cards").delete().eq("job_id", jobId);
+      }
+      await supabase.from("loyalty_card_jobs").delete().in("id", idsToDelete);
+
+      setSelectedJobs(new Set());
+      setExpandedJob(null);
+      queryClient.invalidateQueries({ queryKey: ["loyalty_card_jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["loyalty_cards"] });
+      toast({ title: `${idsToDelete.length} job(s) deleted` });
+    } catch (err: any) {
+      toast({ title: "Delete failed", description: err.message, variant: "destructive" });
+    }
+  };
+
   const statusColor = (s: string) => {
     switch (s) {
       case "completed": return "default";
@@ -57,19 +103,59 @@ const LoyaltyCardHistory = () => {
 
   return (
     <div className="space-y-4">
+      {jobs.length > 0 && (
+        <div className="flex items-center gap-2">
+          <Checkbox
+            checked={jobs.length > 0 && selectedJobs.size === jobs.length}
+            onCheckedChange={toggleAll}
+          />
+          <span className="text-xs text-muted-foreground">Select All</span>
+          <div className="flex-1" />
+          {selectedJobs.size > 0 && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => { setDeleteMode("selected"); setDeleteDialogOpen(true); }}
+            >
+              <Trash2 className="h-4 w-4 mr-1" />
+              Delete Selected ({selectedJobs.size})
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => { setDeleteMode("all"); setDeleteDialogOpen(true); }}
+          >
+            <Trash2 className="h-4 w-4 mr-1" />
+            Delete All
+          </Button>
+        </div>
+      )}
+
       {jobs.length === 0 && <p className="text-sm text-muted-foreground">No jobs yet. Generate cards from the Send Cards tab.</p>}
+
       {jobs.map((job: any) => (
         <Card key={job.id}>
-          <CardHeader className="py-3 cursor-pointer" onClick={() => setExpandedJob(expandedJob === job.id ? null : job.id)}>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm flex items-center gap-2">
-                {job.loyalty_card_templates?.name || "Unknown Template"}
-                <Badge variant={statusColor(job.status)}>{job.status}</Badge>
-                <span className="text-xs text-muted-foreground">{job.total_cards} cards</span>
-              </CardTitle>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">{format(new Date(job.created_at), "dd-MM-yyyy HH:mm")}</span>
-                {expandedJob === job.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          <CardHeader className="py-3">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                checked={selectedJobs.has(job.id)}
+                onCheckedChange={() => toggleJob(job.id)}
+                onClick={(e) => e.stopPropagation()}
+              />
+              <div
+                className="flex items-center justify-between flex-1 cursor-pointer"
+                onClick={() => setExpandedJob(expandedJob === job.id ? null : job.id)}
+              >
+                <CardTitle className="text-sm flex items-center gap-2">
+                  {job.loyalty_card_templates?.name || "Unknown Template"}
+                  <Badge variant={statusColor(job.status)}>{job.status}</Badge>
+                  <span className="text-xs text-muted-foreground">{job.total_cards} cards</span>
+                </CardTitle>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">{format(new Date(job.created_at), "dd-MM-yyyy HH:mm")}</span>
+                  {expandedJob === job.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </div>
               </div>
             </div>
           </CardHeader>
@@ -113,6 +199,13 @@ const LoyaltyCardHistory = () => {
           )}
         </Card>
       ))}
+
+      <DeletePasswordDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        onSuccess={handleDeleteConfirmed}
+        description={deleteMode === "all" ? "Delete all jobs and associated cards permanently." : `Delete ${selectedJobs.size} selected job(s) and associated cards permanently.`}
+      />
     </div>
   );
 };
