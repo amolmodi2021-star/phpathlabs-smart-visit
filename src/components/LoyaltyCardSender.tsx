@@ -333,7 +333,7 @@ const LoyaltyCardSender = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs">API Base URL</Label>
-                  <Input value={waBaseUrl} onChange={(e) => setWaBaseUrl(e.target.value)} placeholder="https://api.example.com/v1/whatsapp" className="h-8" />
+                  <Input value={waBaseUrl} onChange={(e) => setWaBaseUrl(e.target.value)} placeholder="https://api.aoc-portal.com/v1/whatsapp" className="h-8" />
                 </div>
                 <div>
                   <Label className="text-xs">API Key</Label>
@@ -351,6 +351,14 @@ const LoyaltyCardSender = () => {
                 <div>
                   <Label className="text-xs">Auth Header Prefix (optional)</Label>
                   <Input value={waAuthHeaderPrefix} onChange={(e) => setWaAuthHeaderPrefix(e.target.value)} placeholder="Bearer / Basic / empty" className="h-8" />
+                </div>
+                <div>
+                  <Label className="text-xs">From Number (with country code)</Label>
+                  <Input value={waFromNumber} onChange={(e) => setWaFromNumber(e.target.value)} placeholder="+91XXXXXXXXXX" className="h-8" />
+                </div>
+                <div>
+                  <Label className="text-xs">Campaign Name (optional)</Label>
+                  <Input value={waCampaignName} onChange={(e) => setWaCampaignName(e.target.value)} placeholder="loyalty-cards" className="h-8" />
                 </div>
                 <div>
                   <Label className="text-xs">Template Name</Label>
