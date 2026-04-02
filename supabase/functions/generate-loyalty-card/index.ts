@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.97.0";
-import { Resvg, initWasm } from "https://esm.sh/@aspect-dev/resvg-wasm@2.6.2";
+// @ts-ignore - Deno module
+import { Resvg, initWasm } from "https://deno.land/x/resvg_wasm@0.0.5/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,14 +10,10 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-// Initialize WASM once
 let wasmInitialized = false;
 async function ensureWasm() {
   if (wasmInitialized) return;
-  const wasmUrl = "https://esm.sh/@aspect-dev/resvg-wasm@2.6.2/index_bg.wasm";
-  const wasmResponse = await fetch(wasmUrl);
-  const wasmBytes = await wasmResponse.arrayBuffer();
-  await initWasm(wasmBytes);
+  await initWasm();
   wasmInitialized = true;
 }
 
