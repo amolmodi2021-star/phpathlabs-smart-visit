@@ -20,6 +20,7 @@ const navItems = [
   { to: "/templates", label: "Message Templates", icon: MessageSquare },
   { to: "/abnormal-history", label: "Abnormal History", icon: AlertTriangle },
   { to: "/phlebo-dashboard", label: "Phlebo Dashboard", icon: BarChart3 },
+  { to: "/loyalty-cards", label: "Loyalty Cards", icon: CreditCard },
 ];
 
 // Report System modules archived — uncomment to restore

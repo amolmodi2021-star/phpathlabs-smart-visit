@@ -51,7 +51,7 @@ const App = () => (
           <Route path="/templates" element={<ProtectedRoute><MessageTemplates /></ProtectedRoute>} />
           <Route path="/abnormal-history" element={<ProtectedRoute><AbnormalHistory /></ProtectedRoute>} />
           <Route path="/phlebo-dashboard" element={<ProtectedRoute><PhleboDashboard /></ProtectedRoute>} />
-          {/* Report System routes archived — uncomment to restore */}
+          <Route path="/loyalty-cards" element={<ProtectedRoute><LoyaltyCards /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
