@@ -40,6 +40,8 @@ const LoyaltyCardHistory = () => {
   const [queueEnabled, setQueueEnabled] = useState(true);
   const [delayMs, setDelayMs] = useState(3000);
 
+  const [waSettingsLoaded, setWaSettingsLoaded] = useState(false);
+
   // Load WA settings from DB
   useEffect(() => {
     const loadSettings = async () => {
@@ -58,9 +60,37 @@ const LoyaltyCardHistory = () => {
       if (map["loyalty_wa_mediaHeader"]) setWaMediaHeader(map["loyalty_wa_mediaHeader"] === "true");
       if (map["loyalty_wa_queueEnabled"]) setQueueEnabled(map["loyalty_wa_queueEnabled"] === "true");
       if (map["loyalty_wa_delayMs"]) setDelayMs(Number(map["loyalty_wa_delayMs"]));
+      setWaSettingsLoaded(true);
     };
     loadSettings();
   }, []);
+
+  // Save WA settings to database (debounced after load)
+  useEffect(() => {
+    if (!waSettingsLoaded) return;
+    const settings: Record<string, string> = {
+      loyalty_wa_baseUrl: waBaseUrl,
+      loyalty_wa_apiKey: waApiKey,
+      loyalty_wa_authHeaderName: waAuthHeaderName,
+      loyalty_wa_authHeaderPrefix: waAuthHeaderPrefix,
+      loyalty_wa_fromNumber: waFromNumber,
+      loyalty_wa_campaignName: waCampaignName,
+      loyalty_wa_templateName: waTemplateName,
+      loyalty_wa_bodyMapping: waBodyMapping,
+      loyalty_wa_mediaHeader: String(waMediaHeader),
+      loyalty_wa_queueEnabled: String(queueEnabled),
+      loyalty_wa_delayMs: String(delayMs),
+    };
+    const timer = setTimeout(() => {
+      Object.entries(settings).forEach(async ([key, value]) => {
+        await supabase.from("app_settings").upsert(
+          { setting_key: key, setting_value: value, updated_at: new Date().toISOString() },
+          { onConflict: "setting_key" }
+        );
+      });
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [waBaseUrl, waApiKey, waAuthHeaderName, waAuthHeaderPrefix, waFromNumber, waCampaignName, waTemplateName, waBodyMapping, waMediaHeader, queueEnabled, delayMs, waSettingsLoaded]);
 
   const sendViaWhatsApp = async (jobId: string) => {
     if (!waBaseUrl || !waApiKey || !waTemplateName) {
