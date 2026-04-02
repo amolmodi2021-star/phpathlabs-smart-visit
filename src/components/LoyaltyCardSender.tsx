@@ -23,10 +23,32 @@ const LoyaltyCardSender = () => {
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
   const [queueEnabled, setQueueEnabled] = useState(true);
   const [delayMs, setDelayMs] = useState(3000);
-  const [whatsappTemplateName, setWhatsappTemplateName] = useState("");
-  const [whatsappMapping, setWhatsappMapping] = useState("");
   const [generating, setGenerating] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
+  const [sending, setSending] = useState(false);
+  const [sendProgress, setSendProgress] = useState({ current: 0, total: 0 });
+
+  // WhatsApp API Settings (persisted in localStorage)
+  const [waBaseUrl, setWaBaseUrl] = useState(() => localStorage.getItem("loyalty_wa_baseUrl") || "");
+  const [waApiKey, setWaApiKey] = useState(() => localStorage.getItem("loyalty_wa_apiKey") || "");
+  const [waAuthHeaderName, setWaAuthHeaderName] = useState(() => localStorage.getItem("loyalty_wa_authHeaderName") || "apikey");
+  const [waAuthHeaderPrefix, setWaAuthHeaderPrefix] = useState(() => localStorage.getItem("loyalty_wa_authHeaderPrefix") || "");
+  const [waTemplateName, setWaTemplateName] = useState(() => localStorage.getItem("loyalty_wa_templateName") || "");
+  const [waBodyMapping, setWaBodyMapping] = useState(() => localStorage.getItem("loyalty_wa_bodyMapping") || '{"1":"Name","2":"Discount %"}');
+  const [waMediaHeader, setWaMediaHeader] = useState(() => localStorage.getItem("loyalty_wa_mediaHeader") !== "false");
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [waSettingsOpen, setWaSettingsOpen] = useState(false);
+
+  // Persist WA settings
+  useEffect(() => {
+    localStorage.setItem("loyalty_wa_baseUrl", waBaseUrl);
+    localStorage.setItem("loyalty_wa_apiKey", waApiKey);
+    localStorage.setItem("loyalty_wa_authHeaderName", waAuthHeaderName);
+    localStorage.setItem("loyalty_wa_authHeaderPrefix", waAuthHeaderPrefix);
+    localStorage.setItem("loyalty_wa_templateName", waTemplateName);
+    localStorage.setItem("loyalty_wa_bodyMapping", waBodyMapping);
+    localStorage.setItem("loyalty_wa_mediaHeader", String(waMediaHeader));
+  }, [waBaseUrl, waApiKey, waAuthHeaderName, waAuthHeaderPrefix, waTemplateName, waBodyMapping, waMediaHeader]);
 
   const { data: templates = [] } = useQuery({
     queryKey: ["loyalty_card_templates"],
