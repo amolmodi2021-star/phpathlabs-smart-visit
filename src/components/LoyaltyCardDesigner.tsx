@@ -58,6 +58,17 @@ const LoyaltyCardDesigner = () => {
     },
   });
 
+  // Load barcode font
+  useEffect(() => {
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = BARCODE_FONT_URL;
+    document.head.appendChild(link);
+    const font = new FontFace("Libre Barcode 128", `url(https://fonts.gstatic.com/s/librebarcode128/v28/cIfnMbdUsUoiW3O_hVviCQYljbGlQMfe1ZkBg_8.woff2)`);
+    font.load().then((f) => { document.fonts.add(f); drawCanvas(); });
+    return () => { document.head.removeChild(link); };
+  }, []);
+
   const drawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
