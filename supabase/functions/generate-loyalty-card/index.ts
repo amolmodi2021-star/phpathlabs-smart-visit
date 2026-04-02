@@ -1,6 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.97.0";
-// @ts-ignore - Deno module
-import { Resvg, initWasm } from "https://deno.land/x/resvg_wasm@0.0.5/mod.ts";
+import { Resvg } from "npm:@aspect-dev/resvg-wasm@2.6.2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
