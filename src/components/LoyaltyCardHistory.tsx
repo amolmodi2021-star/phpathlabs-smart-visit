@@ -22,6 +22,84 @@ const LoyaltyCardHistory = () => {
   const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteMode, setDeleteMode] = useState<"selected" | "all">("selected");
+  const [sendingJobId, setSendingJobId] = useState<string | null>(null);
+  const [apiLogs, setApiLogs] = useState<{ timestamp: string; direction: string; data: unknown }[]>([]);
+
+  // WhatsApp API Settings (persisted in app_settings)
+  const [waSettingsOpen, setWaSettingsOpen] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [waBaseUrl, setWaBaseUrl] = useState("https://api.aoc-portal.com/v1/whatsapp");
+  const [waApiKey, setWaApiKey] = useState("");
+  const [waAuthHeaderName, setWaAuthHeaderName] = useState("apikey");
+  const [waAuthHeaderPrefix, setWaAuthHeaderPrefix] = useState("");
+  const [waFromNumber, setWaFromNumber] = useState("");
+  const [waCampaignName, setWaCampaignName] = useState("");
+  const [waTemplateName, setWaTemplateName] = useState("");
+  const [waBodyMapping, setWaBodyMapping] = useState("");
+  const [waMediaHeader, setWaMediaHeader] = useState(true);
+  const [queueEnabled, setQueueEnabled] = useState(true);
+  const [delayMs, setDelayMs] = useState(3000);
+
+  // Load WA settings from DB
+  useEffect(() => {
+    const loadSettings = async () => {
+      const { data } = await supabase.from("app_settings").select("setting_key, setting_value");
+      if (!data) return;
+      const map: Record<string, string> = {};
+      data.forEach((r: any) => { map[r.setting_key] = r.setting_value; });
+      if (map["loyalty_wa_baseUrl"]) setWaBaseUrl(map["loyalty_wa_baseUrl"]);
+      if (map["loyalty_wa_apiKey"]) setWaApiKey(map["loyalty_wa_apiKey"]);
+      if (map["loyalty_wa_authHeaderName"]) setWaAuthHeaderName(map["loyalty_wa_authHeaderName"]);
+      if (map["loyalty_wa_authHeaderPrefix"]) setWaAuthHeaderPrefix(map["loyalty_wa_authHeaderPrefix"]);
+      if (map["loyalty_wa_fromNumber"]) setWaFromNumber(map["loyalty_wa_fromNumber"]);
+      if (map["loyalty_wa_campaignName"]) setWaCampaignName(map["loyalty_wa_campaignName"]);
+      if (map["loyalty_wa_templateName"]) setWaTemplateName(map["loyalty_wa_templateName"]);
+      if (map["loyalty_wa_bodyMapping"]) setWaBodyMapping(map["loyalty_wa_bodyMapping"]);
+      if (map["loyalty_wa_mediaHeader"]) setWaMediaHeader(map["loyalty_wa_mediaHeader"] === "true");
+      if (map["loyalty_wa_queueEnabled"]) setQueueEnabled(map["loyalty_wa_queueEnabled"] === "true");
+      if (map["loyalty_wa_delayMs"]) setDelayMs(Number(map["loyalty_wa_delayMs"]));
+    };
+    loadSettings();
+  }, []);
+
+  const sendViaWhatsApp = async (jobId: string) => {
+    if (!waBaseUrl || !waApiKey || !waTemplateName) {
+      return toast({ title: "Configure WhatsApp API settings first (expand settings below)", variant: "destructive" });
+    }
+    setSendingJobId(jobId);
+    try {
+      const payload = {
+        jobId,
+        apiBaseUrl: waBaseUrl,
+        apiKey: "***hidden***",
+        authHeaderName: waAuthHeaderName,
+        authHeaderPrefix: waAuthHeaderPrefix,
+        fromNumber: waFromNumber,
+        campaignName: waCampaignName,
+        templateName: waTemplateName,
+        variablesMapping: waBodyMapping ? JSON.parse(waBodyMapping) : {},
+        includeMediaHeader: waMediaHeader,
+        queueEnabled,
+        delayMs,
+      };
+      setApiLogs(prev => [...prev, { timestamp: new Date().toLocaleTimeString(), direction: "REQUEST → Edge Function", data: payload }]);
+
+      const res = await supabase.functions.invoke("send-loyalty-whatsapp", {
+        body: { ...payload, apiKey: waApiKey },
+      });
+      if (res.error) throw res.error;
+      const result = res.data;
+      setApiLogs(prev => [...prev, { timestamp: new Date().toLocaleTimeString(), direction: "RESPONSE ← Edge Function", data: result }]);
+      toast({ title: `Sent ${result.sentCount}/${result.total} messages` });
+      queryClient.invalidateQueries({ queryKey: ["loyalty_card_jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["loyalty_cards"] });
+    } catch (err: any) {
+      setApiLogs(prev => [...prev, { timestamp: new Date().toLocaleTimeString(), direction: "ERROR", data: err.message }]);
+      toast({ title: "WhatsApp send failed", description: err.message, variant: "destructive" });
+    } finally {
+      setSendingJobId(null);
+    }
+  };
 
   const { data: jobs = [] } = useQuery({
     queryKey: ["loyalty_card_jobs"],
