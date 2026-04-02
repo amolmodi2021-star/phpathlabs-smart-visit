@@ -9,12 +9,7 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-let wasmInitialized = false;
-async function ensureWasm() {
-  if (wasmInitialized) return;
-  await initWasm();
-  wasmInitialized = true;
-}
+// No WASM init needed for npm package
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
