@@ -167,45 +167,49 @@ const LoyaltyCardSender = () => {
     return stringValue;
   };
 
-  // Client-side PNG generation using canvas
-  const generateCardPng = async (
-    bgUrl: string,
-    placeholders: any[],
-    patientData: Record<string, string>,
-  ): Promise<string> => {
-    return new Promise((resolve, reject) => {
+  // Load background image once, returns HTMLImageElement
+  const loadImage = (url: string): Promise<HTMLImageElement> =>
+    new Promise((resolve, reject) => {
       const img = new Image();
       img.crossOrigin = "anonymous";
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return reject(new Error("Canvas not supported"));
-
-        ctx.drawImage(img, 0, 0);
-
-        for (const p of placeholders) {
-          const isBarcode = p.field === "Barcode";
-          const text = isBarcode ? (patientData["Mobile"] || "") : (patientData[p.field] || "");
-          if (!text) continue;
-          const x = (p.x / 100) * canvas.width;
-          const y = (p.y / 100) * canvas.height;
-          const fontSize = p.fontSize || 32;
-          const fontColor = p.fontColor || "#000000";
-          const bold = p.bold ? "bold" : "normal";
-          const fontFamily = isBarcode ? "'Libre Barcode 128'" : "Arial, Helvetica, sans-serif";
-          ctx.font = `${bold} ${fontSize}px ${fontFamily}`;
-          ctx.fillStyle = fontColor;
-          ctx.textBaseline = "top";
-          ctx.fillText(text, x, y);
-        }
-
-        resolve(canvas.toDataURL("image/png"));
-      };
+      img.onload = () => resolve(img);
       img.onerror = () => reject(new Error("Failed to load background image"));
-      img.src = bgUrl;
+      img.src = url;
     });
+
+  // Render a single card on an existing canvas (no image reload)
+  const renderCard = (
+    canvas: HTMLCanvasElement,
+    ctx: CanvasRenderingContext2D,
+    bgImg: HTMLImageElement,
+    placeholders: any[],
+    patientData: Record<string, string>,
+  ): Blob | null => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bgImg, 0, 0);
+
+    for (const p of placeholders) {
+      const isBarcode = p.field === "Barcode";
+      const text = isBarcode ? (patientData["Mobile"] || "") : (patientData[p.field] || "");
+      if (!text) continue;
+      const x = (p.x / 100) * canvas.width;
+      const y = (p.y / 100) * canvas.height;
+      const fontSize = p.fontSize || 32;
+      const fontColor = p.fontColor || "#000000";
+      const bold = p.bold ? "bold" : "normal";
+      const fontFamily = isBarcode ? "'Libre Barcode 128'" : "Arial, Helvetica, sans-serif";
+      ctx.font = `${bold} ${fontSize}px ${fontFamily}`;
+      ctx.fillStyle = fontColor;
+      ctx.textBaseline = "top";
+      ctx.fillText(text, x, y);
+    }
+
+    // Convert to blob synchronously-ish via toBlob won't work, use toDataURL -> blob
+    const dataUrl = canvas.toDataURL("image/png");
+    const binary = atob(dataUrl.split(",")[1]);
+    const arr = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
+    return new Blob([arr], { type: "image/png" });
   };
 
   const generateCards = async () => {
@@ -216,6 +220,17 @@ const LoyaltyCardSender = () => {
     setProgress({ current: 0, total: excelData.length });
 
     try {
+      const template = templates.find((t: any) => t.id === selectedTemplateId);
+      if (!template?.background_image_url) throw new Error("Template has no background image");
+
+      // Load background image ONCE
+      const bgImg = await loadImage(template.background_image_url);
+      const canvas = document.createElement("canvas");
+      canvas.width = bgImg.naturalWidth;
+      canvas.height = bgImg.naturalHeight;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Canvas not supported");
+
       // Create job
       const { data: job, error: jobError } = await supabase.from("loyalty_card_jobs").insert({
         template_id: selectedTemplateId,
@@ -230,70 +245,114 @@ const LoyaltyCardSender = () => {
 
       if (jobError) throw jobError;
 
-      const template = templates.find((t: any) => t.id === selectedTemplateId);
+      const placeholders = (template.placeholders as any[]) || [];
+      const BATCH_SIZE = 5; // Upload 5 in parallel
 
-      for (let i = 0; i < excelData.length; i++) {
-        const row = excelData[i];
-        const patientData: Record<string, string> = {};
-        FIELDS.forEach((f) => {
-          const col = columnMapping[f];
-          let val = col ? String(row[col] ?? "") : "";
-          if (f === "Discount %" && val && !val.includes("%")) {
-            val = val + "%";
+      for (let i = 0; i < excelData.length; i += BATCH_SIZE) {
+        const batch = excelData.slice(i, i + BATCH_SIZE);
+        const batchPromises = batch.map(async (row, batchIdx) => {
+          const idx = i + batchIdx;
+          const patientData: Record<string, string> = {};
+          FIELDS.forEach((f) => {
+            const col = columnMapping[f];
+            let val = col ? String(row[col] ?? "") : "";
+            if (f === "Discount %" && val && !val.includes("%")) val = val + "%";
+            if (f === "Expiry Date" && col) val = formatExpiryDate(row[col]);
+            patientData[f] = val;
+          });
+
+          try {
+            // Render PNG on canvas (must be sequential for canvas sharing)
+            const blob = renderCard(canvas, ctx, bgImg, placeholders, patientData);
+            if (!blob) throw new Error("Failed to render card");
+
+            // Upload directly to storage
+            const fileName = `generated/${job.id}/${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 6)}.png`;
+            const { error: uploadError } = await supabase.storage
+              .from("loyalty-cards")
+              .upload(fileName, blob, { contentType: "image/png" });
+            if (uploadError) throw uploadError;
+
+            const { data: urlData } = supabase.storage.from("loyalty-cards").getPublicUrl(fileName);
+
+            await supabase.from("loyalty_cards").insert({
+              job_id: job.id,
+              patient_name: patientData["Name"],
+              mobile: patientData["Mobile"],
+              umr: patientData["UMR"],
+              discount: patientData["Discount %"],
+              expiry_date: patientData["Expiry Date"],
+              image_url: urlData.publicUrl,
+              whatsapp_status: "pending",
+            });
+          } catch (err) {
+            console.error("Failed to generate card for row", idx, err);
+            await supabase.from("loyalty_cards").insert({
+              job_id: job.id,
+              patient_name: patientData["Name"],
+              mobile: patientData["Mobile"],
+              umr: patientData["UMR"],
+              discount: patientData["Discount %"],
+              expiry_date: patientData["Expiry Date"],
+              whatsapp_status: "failed",
+            });
           }
-          if (f === "Expiry Date" && col) {
-            val = formatExpiryDate(row[col]);
-          }
-          patientData[f] = val;
         });
 
-        try {
-          // Generate PNG client-side
-          const imageBase64 = await generateCardPng(
-            template?.background_image_url,
-            template?.placeholders as any[] || [],
-            patientData,
-          );
-
-          // Upload via edge function
-          const res = await supabase.functions.invoke("generate-loyalty-card", {
-            body: {
-              imageBase64,
-              jobId: job.id,
-            },
+        // Canvas can't be shared in parallel, so process batch sequentially for rendering
+        // but we can parallelize the uploads
+        // Actually, since canvas is shared, render sequentially then upload in parallel
+        const renderResults: { patientData: Record<string, string>; blob: Blob | null }[] = [];
+        for (let b = 0; b < batch.length; b++) {
+          const row = batch[b];
+          const patientData: Record<string, string> = {};
+          FIELDS.forEach((f) => {
+            const col = columnMapping[f];
+            let val = col ? String(row[col] ?? "") : "";
+            if (f === "Discount %" && val && !val.includes("%")) val = val + "%";
+            if (f === "Expiry Date" && col) val = formatExpiryDate(row[col]);
+            patientData[f] = val;
           });
-
-          if (res.error) throw res.error;
-
-          const result = res.data;
-          await supabase.from("loyalty_cards").insert({
-            job_id: job.id,
-            patient_name: patientData["Name"],
-            mobile: patientData["Mobile"],
-            umr: patientData["UMR"],
-            discount: patientData["Discount %"],
-            expiry_date: patientData["Expiry Date"],
-            image_url: result?.imageUrl || null,
-            whatsapp_status: "pending",
-          });
-        } catch (err) {
-          console.error("Failed to generate card for row", i, err);
-          await supabase.from("loyalty_cards").insert({
-            job_id: job.id,
-            patient_name: patientData["Name"],
-            mobile: patientData["Mobile"],
-            umr: patientData["UMR"],
-            discount: patientData["Discount %"],
-            expiry_date: patientData["Expiry Date"],
-            whatsapp_status: "failed",
-          });
+          const blob = renderCard(canvas, ctx, bgImg, placeholders, patientData);
+          renderResults.push({ patientData, blob });
         }
 
-        setProgress({ current: i + 1, total: excelData.length });
+        // Upload all blobs in parallel
+        await Promise.all(renderResults.map(async ({ patientData, blob }, batchIdx) => {
+          const idx = i + batchIdx;
+          try {
+            if (!blob) throw new Error("Failed to render card");
+            const fileName = `generated/${job.id}/${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 6)}.png`;
+            const { error: uploadError } = await supabase.storage
+              .from("loyalty-cards")
+              .upload(fileName, blob, { contentType: "image/png" });
+            if (uploadError) throw uploadError;
+            const { data: urlData } = supabase.storage.from("loyalty-cards").getPublicUrl(fileName);
+            await supabase.from("loyalty_cards").insert({
+              job_id: job.id,
+              patient_name: patientData["Name"],
+              mobile: patientData["Mobile"],
+              umr: patientData["UMR"],
+              discount: patientData["Discount %"],
+              expiry_date: patientData["Expiry Date"],
+              image_url: urlData.publicUrl,
+              whatsapp_status: "pending",
+            });
+          } catch (err) {
+            console.error("Failed card for row", idx, err);
+            await supabase.from("loyalty_cards").insert({
+              job_id: job.id,
+              patient_name: patientData["Name"],
+              mobile: patientData["Mobile"],
+              umr: patientData["UMR"],
+              discount: patientData["Discount %"],
+              expiry_date: patientData["Expiry Date"],
+              whatsapp_status: "failed",
+            });
+          }
+        }));
 
-        if (queueEnabled && i < excelData.length - 1) {
-          await new Promise((r) => setTimeout(r, 500));
-        }
+        setProgress({ current: Math.min(i + BATCH_SIZE, excelData.length), total: excelData.length });
       }
 
       await supabase.from("loyalty_card_jobs").update({ status: "completed", sent_count: excelData.length }).eq("id", job.id);
@@ -305,7 +364,6 @@ const LoyaltyCardSender = () => {
       setGenerating(false);
     }
   };
-  const sendViaWhatsApp = async (jobId: string) => {
     if (!waBaseUrl || !waApiKey || !waTemplateName) {
       return toast({ title: "Configure WhatsApp API settings first", variant: "destructive" });
     }
