@@ -17,3 +17,9 @@ verify_jwt = false
 
 [functions.direct-ai-extract]
 verify_jwt = false
+
+[functions.generate-loyalty-card]
+verify_jwt = false
+
+[functions.send-loyalty-whatsapp]
+verify_jwt = false
