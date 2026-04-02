@@ -439,7 +439,7 @@ const LoyaltyCardSender = () => {
               <Input
                 placeholder="e.g. 31-12-2026"
                 value={staticExpiryDate}
-                onChange={(e) => setStaticExpiryDate(e.target.value)}
+                onChange={(e) => handleStaticExpiryDateChange(e.target.value)}
                 className="h-8 max-w-xs"
               />
             </div>
