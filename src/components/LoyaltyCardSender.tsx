@@ -234,6 +234,8 @@ const LoyaltyCardSender = () => {
           apiKey: waApiKey,
           authHeaderName: waAuthHeaderName,
           authHeaderPrefix: waAuthHeaderPrefix,
+          fromNumber: waFromNumber,
+          campaignName: waCampaignName,
           templateName: waTemplateName,
           variablesMapping: waBodyMapping ? JSON.parse(waBodyMapping) : {},
           includeMediaHeader: waMediaHeader,
