@@ -292,8 +292,10 @@ const LoyaltyCardSender = () => {
       </div>
 
       <Card>
-        <CardHeader className="py-3"><CardTitle className="text-sm">3. Queue & WhatsApp Settings</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
+        <CardHeader className="py-3">
+          <CardTitle className="text-sm">3. Queue Settings</CardTitle>
+        </CardHeader>
+        <CardContent>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <Switch checked={queueEnabled} onCheckedChange={setQueueEnabled} />
@@ -306,18 +308,60 @@ const LoyaltyCardSender = () => {
               </div>
             )}
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs">WhatsApp Template Name (optional)</Label>
-              <Input value={whatsappTemplateName} onChange={(e) => setWhatsappTemplateName(e.target.value)} placeholder="e.g. loyalty_card_v1" />
-            </div>
-            <div>
-              <Label className="text-xs">Variables Mapping JSON (optional)</Label>
-              <Input value={whatsappMapping} onChange={(e) => setWhatsappMapping(e.target.value)} placeholder='{"1":"Name","2":"Discount %"}' />
-            </div>
-          </div>
         </CardContent>
       </Card>
+
+      <Collapsible open={waSettingsOpen} onOpenChange={setWaSettingsOpen}>
+        <Card>
+          <CollapsibleTrigger asChild>
+            <CardHeader className="py-3 cursor-pointer hover:bg-muted/50">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Settings className="h-4 w-4" />
+                4. WhatsApp API Settings
+              </CardTitle>
+            </CardHeader>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">API Base URL</Label>
+                  <Input value={waBaseUrl} onChange={(e) => setWaBaseUrl(e.target.value)} placeholder="https://api.example.com/v1/whatsapp" className="h-8" />
+                </div>
+                <div>
+                  <Label className="text-xs">API Key</Label>
+                  <div className="relative">
+                    <Input type={showApiKey ? "text" : "password"} value={waApiKey} onChange={(e) => setWaApiKey(e.target.value)} placeholder="Your API key" className="h-8 pr-8" />
+                    <button type="button" onClick={() => setShowApiKey(!showApiKey)} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                      {showApiKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs">Auth Header Name</Label>
+                  <Input value={waAuthHeaderName} onChange={(e) => setWaAuthHeaderName(e.target.value)} placeholder="apikey" className="h-8" />
+                </div>
+                <div>
+                  <Label className="text-xs">Auth Header Prefix (optional)</Label>
+                  <Input value={waAuthHeaderPrefix} onChange={(e) => setWaAuthHeaderPrefix(e.target.value)} placeholder="Bearer / Basic / empty" className="h-8" />
+                </div>
+                <div>
+                  <Label className="text-xs">Template Name</Label>
+                  <Input value={waTemplateName} onChange={(e) => setWaTemplateName(e.target.value)} placeholder="e.g. loyalty_card_v1" className="h-8" />
+                </div>
+                <div>
+                  <Label className="text-xs">Body Variables Mapping (JSON)</Label>
+                  <Input value={waBodyMapping} onChange={(e) => setWaBodyMapping(e.target.value)} placeholder='{"1":"Name","2":"Discount %"}' className="h-8" />
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch checked={waMediaHeader} onCheckedChange={setWaMediaHeader} />
+                <Label className="text-xs">Include card image in media header</Label>
+              </div>
+            </CardContent>
+          </CollapsibleContent>
+        </Card>
+      </Collapsible>
 
       {/* Preview Data */}
       {excelData.length > 0 && (
