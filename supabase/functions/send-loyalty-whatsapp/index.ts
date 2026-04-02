@@ -81,10 +81,11 @@ Deno.serve(async (req) => {
         const normalizedLocalMobile = rawMobile.length > 10 ? rawMobile.slice(-10) : rawMobile;
         const toNumber = normalizedLocalMobile ? `+91${normalizedLocalMobile}` : "";
 
-        // Build components object with body and header nested inside
-        const components: Record<string, unknown> = {
-          body: { params: params.length > 0 ? params : [] },
-        };
+        // Build components object — only include body if there are actual params
+        const components: Record<string, unknown> = {};
+        if (params.length > 0) {
+          components.body = { params };
+        }
 
         if (includeMediaHeader && card.image_url) {
           components.header = {
