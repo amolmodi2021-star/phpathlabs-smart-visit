@@ -364,6 +364,7 @@ const LoyaltyCardSender = () => {
       setGenerating(false);
     }
   };
+  const sendViaWhatsApp = async (jobId: string) => {
     if (!waBaseUrl || !waApiKey || !waTemplateName) {
       return toast({ title: "Configure WhatsApp API settings first", variant: "destructive" });
     }
