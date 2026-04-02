@@ -390,6 +390,28 @@ const LoyaltyCardSender = () => {
         </Card>
       </div>
 
+      {/* Expiry Date Option */}
+      <Card>
+        <CardHeader className="py-3"><CardTitle className="text-sm">3. Expiry Date</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center gap-3">
+            <Switch checked={useStaticExpiry} onCheckedChange={setUseStaticExpiry} />
+            <Label className="text-xs">{useStaticExpiry ? "Use static expiry date for all cards" : "Use expiry date from Excel data"}</Label>
+          </div>
+          {useStaticExpiry && (
+            <div>
+              <Label className="text-xs">Expiry Date (dd-mm-yyyy)</Label>
+              <Input
+                placeholder="e.g. 31-12-2026"
+                value={staticExpiryDate}
+                onChange={(e) => setStaticExpiryDate(e.target.value)}
+                className="h-8 max-w-xs"
+              />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Preview Data */}
       {excelData.length > 0 && (
         <Card>
