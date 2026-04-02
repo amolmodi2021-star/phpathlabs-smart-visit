@@ -29,10 +29,12 @@ const LoyaltyCardSender = () => {
   const [sendProgress, setSendProgress] = useState({ current: 0, total: 0 });
 
   // WhatsApp API Settings (persisted in localStorage)
-  const [waBaseUrl, setWaBaseUrl] = useState(() => localStorage.getItem("loyalty_wa_baseUrl") || "");
+  const [waBaseUrl, setWaBaseUrl] = useState(() => localStorage.getItem("loyalty_wa_baseUrl") || "https://api.aoc-portal.com/v1/whatsapp");
   const [waApiKey, setWaApiKey] = useState(() => localStorage.getItem("loyalty_wa_apiKey") || "");
   const [waAuthHeaderName, setWaAuthHeaderName] = useState(() => localStorage.getItem("loyalty_wa_authHeaderName") || "apikey");
   const [waAuthHeaderPrefix, setWaAuthHeaderPrefix] = useState(() => localStorage.getItem("loyalty_wa_authHeaderPrefix") || "");
+  const [waFromNumber, setWaFromNumber] = useState(() => localStorage.getItem("loyalty_wa_fromNumber") || "");
+  const [waCampaignName, setWaCampaignName] = useState(() => localStorage.getItem("loyalty_wa_campaignName") || "");
   const [waTemplateName, setWaTemplateName] = useState(() => localStorage.getItem("loyalty_wa_templateName") || "");
   const [waBodyMapping, setWaBodyMapping] = useState(() => localStorage.getItem("loyalty_wa_bodyMapping") || '{"1":"Name","2":"Discount %"}');
   const [waMediaHeader, setWaMediaHeader] = useState(() => localStorage.getItem("loyalty_wa_mediaHeader") !== "false");
@@ -45,10 +47,12 @@ const LoyaltyCardSender = () => {
     localStorage.setItem("loyalty_wa_apiKey", waApiKey);
     localStorage.setItem("loyalty_wa_authHeaderName", waAuthHeaderName);
     localStorage.setItem("loyalty_wa_authHeaderPrefix", waAuthHeaderPrefix);
+    localStorage.setItem("loyalty_wa_fromNumber", waFromNumber);
+    localStorage.setItem("loyalty_wa_campaignName", waCampaignName);
     localStorage.setItem("loyalty_wa_templateName", waTemplateName);
     localStorage.setItem("loyalty_wa_bodyMapping", waBodyMapping);
     localStorage.setItem("loyalty_wa_mediaHeader", String(waMediaHeader));
-  }, [waBaseUrl, waApiKey, waAuthHeaderName, waAuthHeaderPrefix, waTemplateName, waBodyMapping, waMediaHeader]);
+  }, [waBaseUrl, waApiKey, waAuthHeaderName, waAuthHeaderPrefix, waFromNumber, waCampaignName, waTemplateName, waBodyMapping, waMediaHeader]);
 
   const { data: templates = [] } = useQuery({
     queryKey: ["loyalty_card_templates"],
