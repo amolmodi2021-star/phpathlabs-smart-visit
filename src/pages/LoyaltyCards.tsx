@@ -2,6 +2,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import LoyaltyCardDesigner from "@/components/LoyaltyCardDesigner";
 import LoyaltyCardSender from "@/components/LoyaltyCardSender";
 import LoyaltyCardHistory from "@/components/LoyaltyCardHistory";
+import WhatsAppSettings from "@/components/WhatsAppSettings";
 
 const LoyaltyCards = () => {
   return (
@@ -12,6 +13,7 @@ const LoyaltyCards = () => {
           <TabsTrigger value="designer">Card Designer</TabsTrigger>
           <TabsTrigger value="send">Send Cards</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
+          <TabsTrigger value="whatsapp">WhatsApp API Settings</TabsTrigger>
         </TabsList>
         <TabsContent value="designer">
           <LoyaltyCardDesigner />
@@ -21,6 +23,9 @@ const LoyaltyCards = () => {
         </TabsContent>
         <TabsContent value="history">
           <LoyaltyCardHistory />
+        </TabsContent>
+        <TabsContent value="whatsapp">
+          <WhatsAppSettings />
         </TabsContent>
       </Tabs>
     </div>
