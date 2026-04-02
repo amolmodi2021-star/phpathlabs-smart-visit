@@ -50,7 +50,7 @@ const LoyaltyCardHistory = () => {
         queueEnabled: map["loyalty_wa_queueEnabled"] !== "false",
         delayMs: Number(map["loyalty_wa_delayMs"] || 3000),
       };
-      setApiLogs(prev => [...prev, { timestamp: new Date().toLocaleTimeString(), direction: "REQUEST → Edge Function", data: payload }]);
+      
 
       const res = await supabase.functions.invoke("send-loyalty-whatsapp", {
         body: { ...payload, apiKey: waApiKey },
