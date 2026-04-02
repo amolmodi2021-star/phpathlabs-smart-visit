@@ -28,7 +28,14 @@ Deno.serve(async (req) => {
     if (!bgResponse.ok) throw new Error(`Failed to fetch background: ${bgResponse.status}`);
     const bgBuffer = await bgResponse.arrayBuffer();
     const bgBytes = new Uint8Array(bgBuffer);
-    const bgBase64 = btoa(String.fromCharCode(...bgBytes));
+    // Convert to base64 in chunks to avoid stack overflow
+    let binary = "";
+    const chunkSize = 8192;
+    for (let i = 0; i < bgBytes.length; i += chunkSize) {
+      const chunk = bgBytes.subarray(i, i + chunkSize);
+      binary += String.fromCharCode(...chunk);
+    }
+    const bgBase64 = btoa(binary);
     const bgMime = bgResponse.headers.get("content-type") || "image/jpeg";
 
     // Get image dimensions from binary header
