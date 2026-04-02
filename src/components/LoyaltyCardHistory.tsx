@@ -235,6 +235,15 @@ const LoyaltyCardHistory = () => {
                   <span className="text-xs text-muted-foreground">{job.total_cards} cards</span>
                 </CardTitle>
                 <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={sendingJobId === job.id}
+                    onClick={(e) => { e.stopPropagation(); sendViaWhatsApp(job.id); }}
+                  >
+                    {sendingJobId === job.id ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Send className="h-3.5 w-3.5 mr-1" />}
+                    Send WhatsApp
+                  </Button>
                   <span className="text-xs text-muted-foreground">{format(new Date(job.created_at), "dd-MM-yyyy HH:mm")}</span>
                   {expandedJob === job.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                 </div>
