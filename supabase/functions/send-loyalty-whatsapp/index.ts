@@ -20,6 +20,8 @@ Deno.serve(async (req) => {
       apiKey,
       authHeaderName = "apikey",
       authHeaderPrefix = "",
+      fromNumber = "",
+      campaignName = "",
       templateName,
       variablesMapping,
       includeMediaHeader = true,
@@ -74,22 +76,37 @@ Deno.serve(async (req) => {
           }
         }
 
-        const phoneNumber = (card.mobile || "").replace(/^\+?91/, "").replace(/\D/g, "");
+        // Format recipient number
+        const rawMobile = (card.mobile || "").replace(/\D/g, "");
+        const toNumber = rawMobile.startsWith("91") ? `+${rawMobile}` : `+91${rawMobile}`;
 
-        // Build generic payload
+        // Build payload matching the API format:
+        // { from, campaignName, to, templateName, components, type, body: { params }, header: { type, image: { link } } }
         const payload: Record<string, unknown> = {
-          to: `+91${phoneNumber}`,
+          from: fromNumber,
+          to: toNumber,
           templateName: templateName,
+          components: "",
           type: "template",
-          body: { params },
+          body: {
+            params: params,
+          },
         };
+
+        if (campaignName) {
+          payload.campaignName = campaignName;
+        }
 
         if (includeMediaHeader && card.image_url) {
           payload.header = {
             type: "image",
-            image: { link: card.image_url },
+            image: {
+              link: card.image_url,
+            },
           };
         }
+
+        console.log(`Sending to ${toNumber}:`, JSON.stringify(payload));
 
         const whatsappRes = await fetch(apiBaseUrl, {
           method: "POST",
@@ -101,6 +118,7 @@ Deno.serve(async (req) => {
         });
 
         const responseText = await whatsappRes.text();
+        console.log(`Response for ${toNumber}:`, whatsappRes.status, responseText);
 
         if (whatsappRes.ok) {
           await supabase.from("loyalty_cards").update({ whatsapp_status: "sent", sent_at: new Date().toISOString() }).eq("id", card.id);
