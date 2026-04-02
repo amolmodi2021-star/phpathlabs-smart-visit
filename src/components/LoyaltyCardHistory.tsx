@@ -19,7 +19,6 @@ const LoyaltyCardHistory = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteMode, setDeleteMode] = useState<"selected" | "all">("selected");
   const [sendingJobId, setSendingJobId] = useState<string | null>(null);
-  const [apiLogs, setApiLogs] = useState<{ timestamp: string; direction: string; data: unknown }[]>([]);
 
   const sendViaWhatsApp = async (jobId: string) => {
     // Load settings from DB at send time
