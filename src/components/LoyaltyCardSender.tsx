@@ -167,6 +167,47 @@ const LoyaltyCardSender = () => {
     return stringValue;
   };
 
+  // Client-side PNG generation using canvas
+  const generateCardPng = async (
+    bgUrl: string,
+    placeholders: any[],
+    patientData: Record<string, string>,
+  ): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return reject(new Error("Canvas not supported"));
+
+        ctx.drawImage(img, 0, 0);
+
+        for (const p of placeholders) {
+          const isBarcode = p.field === "Barcode";
+          const text = isBarcode ? (patientData["Mobile"] || "") : (patientData[p.field] || "");
+          if (!text) continue;
+          const x = (p.x / 100) * canvas.width;
+          const y = (p.y / 100) * canvas.height;
+          const fontSize = p.fontSize || 32;
+          const fontColor = p.fontColor || "#000000";
+          const bold = p.bold ? "bold" : "normal";
+          const fontFamily = isBarcode ? "'Libre Barcode 128'" : "Arial, Helvetica, sans-serif";
+          ctx.font = `${bold} ${fontSize}px ${fontFamily}`;
+          ctx.fillStyle = fontColor;
+          ctx.textBaseline = "top";
+          ctx.fillText(text, x, y);
+        }
+
+        resolve(canvas.toDataURL("image/png"));
+      };
+      img.onerror = () => reject(new Error("Failed to load background image"));
+      img.src = bgUrl;
+    });
+  };
+
   const generateCards = async () => {
     if (!selectedTemplateId) return toast({ title: "Select a template", variant: "destructive" });
     if (excelData.length === 0) return toast({ title: "Upload an Excel file", variant: "destructive" });
@@ -207,11 +248,17 @@ const LoyaltyCardSender = () => {
         });
 
         try {
+          // Generate PNG client-side
+          const imageBase64 = await generateCardPng(
+            template?.background_image_url,
+            template?.placeholders as any[] || [],
+            patientData,
+          );
+
+          // Upload via edge function
           const res = await supabase.functions.invoke("generate-loyalty-card", {
             body: {
-              backgroundUrl: template?.background_image_url,
-              placeholders: template?.placeholders,
-              patientData,
+              imageBase64,
               jobId: job.id,
             },
           });
