@@ -191,15 +191,25 @@ const LoyaltyCardSender = () => {
     await document.fonts.ready;
   };
 
-  // Load background image once, returns HTMLImageElement
-  const loadImage = (url: string): Promise<HTMLImageElement> =>
-    new Promise((resolve, reject) => {
+  // Load background image as data URL to avoid CORS/tainted canvas issues
+  const loadImage = async (url: string): Promise<HTMLImageElement> => {
+    // Fetch the image as a blob first to avoid tainted canvas
+    const response = await fetch(url);
+    if (!response.ok) throw new Error("Failed to fetch background image");
+    const blob = await response.blob();
+    const dataUrl = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.readAsDataURL(blob);
+    });
+
+    return new Promise((resolve, reject) => {
       const img = new Image();
-      img.crossOrigin = "anonymous";
       img.onload = () => resolve(img);
       img.onerror = () => reject(new Error("Failed to load background image"));
-      img.src = url;
+      img.src = dataUrl;
     });
+  };
 
   // Render a single card on an existing canvas (no image reload)
   const renderCard = (
