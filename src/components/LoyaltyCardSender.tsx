@@ -94,15 +94,22 @@ const LoyaltyCardSender = () => {
           if (f === "Discount %" && val && !val.includes("%")) {
             val = val + "%";
           }
-          if (f === "Expiry Date" && val) {
-            const num = Number(val);
-            if (!isNaN(num) && num > 30000) {
-              // Excel serial date to dd-MM-yyyy
-              const d = new Date(Math.round((num - 25569) * 86400 * 1000));
-              const dd = String(d.getUTCDate()).padStart(2, "0");
-              const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-              const yyyy = d.getUTCFullYear();
+          if (f === "Expiry Date" && col && row[col] != null) {
+            const rawVal = row[col];
+            if (rawVal instanceof Date) {
+              const dd = String(rawVal.getDate()).padStart(2, "0");
+              const mm = String(rawVal.getMonth() + 1).padStart(2, "0");
+              const yyyy = rawVal.getFullYear();
               val = `${dd}-${mm}-${yyyy}`;
+            } else {
+              const num = Number(val);
+              if (!isNaN(num) && num > 30000) {
+                const d = new Date(Math.round((num - 25569) * 86400 * 1000));
+                const dd = String(d.getUTCDate()).padStart(2, "0");
+                const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+                const yyyy = d.getUTCFullYear();
+                val = `${dd}-${mm}-${yyyy}`;
+              }
             }
           }
           patientData[f] = val;
