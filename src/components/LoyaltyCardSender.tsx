@@ -90,7 +90,22 @@ const LoyaltyCardSender = () => {
         const patientData: Record<string, string> = {};
         FIELDS.forEach((f) => {
           const col = columnMapping[f];
-          patientData[f] = col ? String(row[col] || "") : "";
+          let val = col ? String(row[col] || "") : "";
+          if (f === "Discount %" && val && !val.includes("%")) {
+            val = val + "%";
+          }
+          if (f === "Expiry Date" && val) {
+            const num = Number(val);
+            if (!isNaN(num) && num > 30000) {
+              // Excel serial date to dd-MM-yyyy
+              const d = new Date(Math.round((num - 25569) * 86400 * 1000));
+              const dd = String(d.getUTCDate()).padStart(2, "0");
+              const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+              const yyyy = d.getUTCFullYear();
+              val = `${dd}-${mm}-${yyyy}`;
+            }
+          }
+          patientData[f] = val;
         });
 
         try {
