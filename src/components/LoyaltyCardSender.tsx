@@ -412,27 +412,35 @@ const LoyaltyCardSender = () => {
 
     setSending(true);
     try {
+      const payload = {
+        jobId,
+        apiBaseUrl: waBaseUrl,
+        apiKey: "***hidden***",
+        authHeaderName: waAuthHeaderName,
+        authHeaderPrefix: waAuthHeaderPrefix,
+        fromNumber: waFromNumber,
+        campaignName: waCampaignName,
+        templateName: waTemplateName,
+        variablesMapping: waBodyMapping ? JSON.parse(waBodyMapping) : {},
+        includeMediaHeader: waMediaHeader,
+        queueEnabled,
+        delayMs,
+      };
+      setApiLogs(prev => [...prev, { timestamp: new Date().toLocaleTimeString(), direction: "REQUEST → Edge Function", data: payload }]);
+
       const res = await supabase.functions.invoke("send-loyalty-whatsapp", {
         body: {
-          jobId,
-          apiBaseUrl: waBaseUrl,
+          ...payload,
           apiKey: waApiKey,
-          authHeaderName: waAuthHeaderName,
-          authHeaderPrefix: waAuthHeaderPrefix,
-          fromNumber: waFromNumber,
-          campaignName: waCampaignName,
-          templateName: waTemplateName,
-          variablesMapping: waBodyMapping ? JSON.parse(waBodyMapping) : {},
-          includeMediaHeader: waMediaHeader,
-          queueEnabled,
-          delayMs,
         },
       });
       if (res.error) throw res.error;
       const result = res.data;
+      setApiLogs(prev => [...prev, { timestamp: new Date().toLocaleTimeString(), direction: "RESPONSE ← Edge Function", data: result }]);
       toast({ title: `Sent ${result.sentCount}/${result.total} messages` });
       queryClient.invalidateQueries({ queryKey: ["loyalty_card_jobs"] });
     } catch (err: any) {
+      setApiLogs(prev => [...prev, { timestamp: new Date().toLocaleTimeString(), direction: "ERROR", data: err.message }]);
       toast({ title: "WhatsApp send failed", description: err.message, variant: "destructive" });
     } finally {
       setSending(false);
