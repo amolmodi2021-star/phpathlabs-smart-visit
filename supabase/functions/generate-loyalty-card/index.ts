@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.97.0";
+import { Resvg, initWasm } from "https://esm.sh/@aspect-dev/resvg-wasm@2.6.2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,6 +8,17 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+// Initialize WASM once
+let wasmInitialized = false;
+async function ensureWasm() {
+  if (wasmInitialized) return;
+  const wasmUrl = "https://esm.sh/@aspect-dev/resvg-wasm@2.6.2/index_bg.wasm";
+  const wasmResponse = await fetch(wasmUrl);
+  const wasmBytes = await wasmResponse.arrayBuffer();
+  await initWasm(wasmBytes);
+  wasmInitialized = true;
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -43,41 +55,78 @@ Deno.serve(async (req) => {
     const width = dims.width;
     const height = dims.height;
 
+    // Fetch barcode font if needed
+    let barcodeFontBase64 = "";
+    let needsBarcodeFont = false;
+    for (const p of placeholders as any[]) {
+      if (p.field === "Barcode") { needsBarcodeFont = true; break; }
+    }
+
+    if (needsBarcodeFont) {
+      try {
+        // Fetch the actual font file from Google Fonts
+        const cssRes = await fetch("https://fonts.googleapis.com/css2?family=Libre+Barcode+128&display=swap", {
+          headers: { "User-Agent": "Mozilla/5.0" },
+        });
+        const cssText = await cssRes.text();
+        const fontUrlMatch = cssText.match(/url\((https:\/\/[^)]+\.woff2?)\)/);
+        if (fontUrlMatch) {
+          const fontRes = await fetch(fontUrlMatch[1]);
+          const fontBuf = await fontRes.arrayBuffer();
+          const fontBytes = new Uint8Array(fontBuf);
+          let fontBin = "";
+          for (let i = 0; i < fontBytes.length; i += chunkSize) {
+            const chunk = fontBytes.subarray(i, i + chunkSize);
+            fontBin += String.fromCharCode(...chunk);
+          }
+          barcodeFontBase64 = btoa(fontBin);
+        }
+      } catch (e) {
+        console.warn("Failed to fetch barcode font:", e);
+      }
+    }
+
     // Build SVG with background image and text overlays
     let svgTexts = "";
-    let needsBarcodeFont = false;
     for (const p of placeholders as any[]) {
       const isBarcode = p.field === "Barcode";
       const text = isBarcode ? (patientData["Mobile"] || "") : (patientData[p.field] || "");
       if (!text) continue;
-      if (isBarcode) needsBarcodeFont = true;
       const x = (p.x / 100) * width;
       const y = (p.y / 100) * height;
       const fontSize = p.fontSize || 32;
       const fontColor = p.fontColor || "#000000";
       const bold = p.bold ? "bold" : "normal";
-      const fontFamily = isBarcode ? "'Libre Barcode 128', cursive" : "Arial, Helvetica, sans-serif";
+      const fontFamily = isBarcode ? "'Libre Barcode 128'" : "Arial, Helvetica, sans-serif";
       svgTexts += `<text x="${x}" y="${y}" font-size="${fontSize}" fill="${fontColor}" font-weight="${bold}" font-family="${fontFamily}" dominant-baseline="hanging">${escapeXml(text)}</text>`;
     }
 
-    const barcodeFontImport = needsBarcodeFont
-      ? `<defs><style>@import url('https://fonts.googleapis.com/css2?family=Libre+Barcode+128&amp;display=swap');</style></defs>`
+    // Embed barcode font directly as base64 @font-face for resvg compatibility
+    const fontDefs = needsBarcodeFont && barcodeFontBase64
+      ? `<defs><style>@font-face { font-family: 'Libre Barcode 128'; src: url('data:font/woff2;base64,${barcodeFontBase64}') format('woff2'); }</style></defs>`
       : "";
 
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${height}">
-      ${barcodeFontImport}
+      ${fontDefs}
       <image href="data:${bgMime};base64,${bgBase64}" width="${width}" height="${height}"/>
       ${svgTexts}
     </svg>`;
 
-    // Upload SVG to storage
+    // Convert SVG to PNG using resvg-wasm
+    await ensureWasm();
+    const resvg = new Resvg(svg, {
+      fitTo: { mode: "width", value: width },
+    });
+    const pngData = resvg.render();
+    const pngBuffer = pngData.asPng();
+
+    // Upload PNG to storage
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const fileName = `generated/${jobId || "manual"}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.svg`;
-    const svgBlob = new Blob([svg], { type: "image/svg+xml" });
+    const fileName = `generated/${jobId || "manual"}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.png`;
 
     const { error: uploadError } = await supabase.storage
       .from("loyalty-cards")
-      .upload(fileName, svgBlob, { contentType: "image/svg+xml" });
+      .upload(fileName, pngBuffer, { contentType: "image/png" });
 
     if (uploadError) throw uploadError;
 
