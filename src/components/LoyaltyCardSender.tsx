@@ -216,8 +216,38 @@ const LoyaltyCardSender = () => {
       setGenerating(false);
     }
   };
+  const sendViaWhatsApp = async (jobId: string) => {
+    if (!waBaseUrl || !waApiKey || !waTemplateName) {
+      return toast({ title: "Configure WhatsApp API settings first", variant: "destructive" });
+    }
 
-  return (
+    setSending(true);
+    try {
+      const res = await supabase.functions.invoke("send-loyalty-whatsapp", {
+        body: {
+          jobId,
+          apiBaseUrl: waBaseUrl,
+          apiKey: waApiKey,
+          authHeaderName: waAuthHeaderName,
+          authHeaderPrefix: waAuthHeaderPrefix,
+          templateName: waTemplateName,
+          variablesMapping: waBodyMapping ? JSON.parse(waBodyMapping) : {},
+          includeMediaHeader: waMediaHeader,
+          queueEnabled,
+          delayMs,
+        },
+      });
+      if (res.error) throw res.error;
+      const result = res.data;
+      toast({ title: `Sent ${result.sentCount}/${result.total} messages` });
+      queryClient.invalidateQueries({ queryKey: ["loyalty_card_jobs"] });
+    } catch (err: any) {
+      toast({ title: "WhatsApp send failed", description: err.message, variant: "destructive" });
+    } finally {
+      setSending(false);
+    }
+  };
+
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card>
