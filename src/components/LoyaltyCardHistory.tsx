@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ChevronDown, ChevronUp, ExternalLink, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { DeletePasswordDialog } from "@/components/DeletePasswordDialog";
+import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 
 const LoyaltyCardHistory = () => {
   const { toast } = useToast();
