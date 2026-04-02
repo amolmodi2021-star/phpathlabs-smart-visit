@@ -262,8 +262,8 @@ const LoyaltyCardSender = () => {
         total_cards: excelData.length,
         queue_enabled: queueEnabled,
         delay_ms: delayMs,
-        whatsapp_template_name: waTemplateName || null,
-        whatsapp_variables_mapping: waBodyMapping ? JSON.parse(waBodyMapping) : {},
+        whatsapp_template_name: null,
+        whatsapp_variables_mapping: {},
       }).select().single();
 
       if (jobError) throw jobError;
