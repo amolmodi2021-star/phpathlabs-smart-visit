@@ -61,6 +61,47 @@ const LoyaltyCardSender = () => {
   const excelColumns = excelData.length > 0 ? Object.keys(excelData[0]) : [];
   const FIELDS = ["Name", "Mobile", "UMR", "Discount %", "Expiry Date"];
 
+  const formatExpiryDate = (value: unknown) => {
+    if (value == null || value === "") return "";
+
+    const formatParts = (day: number, month: number, year: number) => {
+      const normalizedYear = year < 100 ? 2000 + year : year;
+      return `${String(day).padStart(2, "0")}-${String(month).padStart(2, "0")}-${normalizedYear}`;
+    };
+
+    if (value instanceof Date && !isNaN(value.getTime())) {
+      return formatParts(value.getDate(), value.getMonth() + 1, value.getFullYear());
+    }
+
+    const stringValue = String(value).trim();
+    if (!stringValue) return "";
+
+    const serialNumber = Number(stringValue);
+    if (!isNaN(serialNumber) && serialNumber > 30000) {
+      const d = new Date(Math.round((serialNumber - 25569) * 86400 * 1000));
+      return formatParts(d.getUTCDate(), d.getUTCMonth() + 1, d.getUTCFullYear());
+    }
+
+    const slashMatch = stringValue.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+    if (slashMatch) {
+      const [, month, day, year] = slashMatch;
+      return formatParts(Number(day), Number(month), Number(year));
+    }
+
+    const dashMatch = stringValue.match(/^(\d{1,2})-(\d{1,2})-(\d{2,4})$/);
+    if (dashMatch) {
+      const [, day, month, year] = dashMatch;
+      return formatParts(Number(day), Number(month), Number(year));
+    }
+
+    const parsedDate = new Date(stringValue);
+    if (!isNaN(parsedDate.getTime())) {
+      return formatParts(parsedDate.getDate(), parsedDate.getMonth() + 1, parsedDate.getFullYear());
+    }
+
+    return stringValue;
+  };
+
   const generateCards = async () => {
     if (!selectedTemplateId) return toast({ title: "Select a template", variant: "destructive" });
     if (excelData.length === 0) return toast({ title: "Upload an Excel file", variant: "destructive" });
@@ -94,23 +135,8 @@ const LoyaltyCardSender = () => {
           if (f === "Discount %" && val && !val.includes("%")) {
             val = val + "%";
           }
-          if (f === "Expiry Date" && col && row[col] != null) {
-            const rawVal = row[col];
-            if (rawVal instanceof Date) {
-              const dd = String(rawVal.getDate()).padStart(2, "0");
-              const mm = String(rawVal.getMonth() + 1).padStart(2, "0");
-              const yyyy = rawVal.getFullYear();
-              val = `${dd}-${mm}-${yyyy}`;
-            } else {
-              const num = Number(val);
-              if (!isNaN(num) && num > 30000) {
-                const d = new Date(Math.round((num - 25569) * 86400 * 1000));
-                const dd = String(d.getUTCDate()).padStart(2, "0");
-                const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-                const yyyy = d.getUTCFullYear();
-                val = `${dd}-${mm}-${yyyy}`;
-              }
-            }
+          if (f === "Expiry Date" && col) {
+            val = formatExpiryDate(row[col]);
           }
           patientData[f] = val;
         });
