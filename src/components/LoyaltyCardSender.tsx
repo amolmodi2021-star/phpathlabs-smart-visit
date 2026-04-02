@@ -14,7 +14,17 @@ import { parseExcelFile } from "@/lib/excel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
-const BARCODE_FONT_URL = "https://fonts.googleapis.com/css2?family=Libre+Barcode+128&display=swap";
+const CODE128_PATTERNS = [
+  "212222", "222122", "222221", "121223", "121322", "131222", "122213", "122312", "132212", "221213", "221312", "231212",
+  "112232", "122132", "122231", "113222", "123122", "123221", "223211", "221132", "221231", "213212", "223112", "312131",
+  "311222", "321122", "321221", "312212", "322112", "322211", "212123", "212321", "232121", "111323", "131123", "131321",
+  "112313", "132113", "132311", "211313", "231113", "231311", "112133", "112331", "132131", "113123", "113321", "133121",
+  "313121", "211331", "231131", "213113", "213311", "213131", "311123", "311321", "331121", "312113", "312311", "332111",
+  "314111", "221411", "431111", "111224", "111422", "121124", "121421", "141122", "141221", "112214", "112412", "122114",
+  "122411", "142112", "142211", "241211", "221114", "413111", "241112", "134111", "111242", "121142", "121241", "114212",
+  "124112", "124211", "411212", "421112", "421211", "212141", "214121", "412121", "111143", "111341", "131141", "114113",
+  "114311", "411113", "411311", "113141", "114131", "311141", "411131", "211412", "211214", "211232", "2331112",
+];
 
 const LoyaltyCardSender = () => {
   const { toast } = useToast();
@@ -169,26 +179,67 @@ const LoyaltyCardSender = () => {
     return stringValue;
   };
 
-  // Load barcode font if needed
-  const loadBarcodeFont = async () => {
-    if (!document.querySelector(`link[href="${BARCODE_FONT_URL}"]`)) {
-      const link = document.createElement("link");
-      link.rel = "stylesheet";
-      link.href = BARCODE_FONT_URL;
-      document.head.appendChild(link);
+  const normalizeIndianMobile = (value: string, withCountryCode = false) => {
+    const digits = value.replace(/\D/g, "");
+    const localNumber = digits.length > 10 ? digits.slice(-10) : digits;
+    if (!localNumber) return "";
+    return withCountryCode ? `+91${localNumber}` : localNumber;
+  };
+
+  const encodeCode128C = (digits: string) => {
+    if (!/^\d+$/.test(digits) || digits.length % 2 !== 0) return null;
+
+    const codes = [105];
+    for (let i = 0; i < digits.length; i += 2) {
+      codes.push(Number(digits.slice(i, i + 2)));
     }
 
-    if (!document.fonts.check("32px 'Libre Barcode 128'")) {
-      const font = new FontFace(
-        "Libre Barcode 128",
-        "url(https://fonts.gstatic.com/s/librebarcode128/v28/cIfnMbdUsUoiW3O_hVviCQYljbGlQMfe1ZkBg_8.woff2)"
-      );
-      const loaded = await font.load();
-      document.fonts.add(loaded);
+    let checksum = 105;
+    for (let i = 1; i < codes.length; i++) checksum += codes[i] * i;
+    codes.push(checksum % 103);
+    codes.push(106);
+    return codes;
+  };
+
+  const drawBarcode = (
+    ctx: CanvasRenderingContext2D,
+    value: string,
+    x: number,
+    y: number,
+    height: number,
+    color: string,
+  ) => {
+    const digits = normalizeIndianMobile(value, false);
+    if (!digits) return;
+
+    const evenDigits = digits.length % 2 === 0 ? digits : `0${digits}`;
+    const codes = encodeCode128C(evenDigits);
+    if (!codes) return;
+
+    const patterns = codes.map((code) => CODE128_PATTERNS[code]).filter(Boolean);
+    const totalModules = patterns.reduce(
+      (sum, pattern) => sum + pattern.split("").reduce((acc, width) => acc + Number(width), 0),
+      0,
+    );
+
+    const targetWidth = Math.max(evenDigits.length * height * 0.38, height * 2.8);
+    const moduleWidth = targetWidth / totalModules;
+
+    ctx.save();
+    ctx.fillStyle = color;
+
+    let cursorX = x;
+    for (const pattern of patterns) {
+      pattern.split("").forEach((segment, index) => {
+        const width = Number(segment) * moduleWidth;
+        if (index % 2 === 0) {
+          ctx.fillRect(cursorX, y, width, height);
+        }
+        cursorX += width;
+      });
     }
 
-    await document.fonts.load("32px 'Libre Barcode 128'");
-    await document.fonts.ready;
+    ctx.restore();
   };
 
   // Load background image as data URL to avoid CORS/tainted canvas issues
@@ -212,13 +263,13 @@ const LoyaltyCardSender = () => {
   };
 
   // Render a single card on an existing canvas (no image reload)
-  const renderCard = (
+  const renderCard = async (
     canvas: HTMLCanvasElement,
     ctx: CanvasRenderingContext2D,
     bgImg: HTMLImageElement,
     placeholders: any[],
     patientData: Record<string, string>,
-  ): Blob | null => {
+  ): Promise<Blob> => {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(bgImg, 0, 0);
 
@@ -232,23 +283,24 @@ const LoyaltyCardSender = () => {
       const fontColor = p.fontColor || "#000000";
 
       if (isBarcode) {
-        ctx.font = `${fontSize}px "Libre Barcode 128"`;
-      } else {
-        const bold = p.bold ? "bold" : "normal";
-        ctx.font = `${bold} ${fontSize}px Arial, Helvetica, sans-serif`;
+        drawBarcode(ctx, text, x, y, fontSize, fontColor);
+        continue;
       }
+
+      const bold = p.bold ? "bold" : "normal";
+      ctx.font = `${bold} ${fontSize}px Arial, Helvetica, sans-serif`;
 
       ctx.fillStyle = fontColor;
       ctx.textBaseline = "top";
       ctx.fillText(text, x, y);
     }
 
-    // Convert to blob synchronously-ish via toBlob won't work, use toDataURL -> blob
-    const dataUrl = canvas.toDataURL("image/png");
-    const binary = atob(dataUrl.split(",")[1]);
-    const arr = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
-    return new Blob([arr], { type: "image/png" });
+    return await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("Failed to render card image"));
+      }, "image/png");
+    });
   };
 
   const generateCards = async () => {
@@ -262,9 +314,6 @@ const LoyaltyCardSender = () => {
       const template = templates.find((t: any) => t.id === selectedTemplateId);
       if (!template?.background_image_url) throw new Error("Template has no background image");
 
-      // Load barcode font and background image
-      const hasBarcodes = ((template.placeholders as any[]) || []).some((p: any) => p.field === "Barcode");
-      if (hasBarcodes) await loadBarcodeFont();
       const bgImg = await loadImage(template.background_image_url);
       const canvas = document.createElement("canvas");
       canvas.width = bgImg.naturalWidth;
@@ -293,18 +342,19 @@ const LoyaltyCardSender = () => {
         const batch = excelData.slice(i, i + BATCH_SIZE);
 
         // Canvas can't be shared in parallel, so render sequentially then upload in parallel
-        const renderResults: { patientData: Record<string, string>; blob: Blob | null }[] = [];
+         const renderResults: { patientData: Record<string, string>; blob: Blob }[] = [];
         for (let b = 0; b < batch.length; b++) {
           const row = batch[b];
           const patientData: Record<string, string> = {};
           FIELDS.forEach((f) => {
             const col = columnMapping[f];
             let val = col ? String(row[col] ?? "") : "";
+             if (f === "Mobile" && val) val = normalizeIndianMobile(val, false);
             if (f === "Discount %" && val && !val.includes("%")) val = val + "%";
             if (f === "Expiry Date" && col) val = formatExpiryDate(row[col]);
             patientData[f] = val;
           });
-          const blob = renderCard(canvas, ctx, bgImg, placeholders, patientData);
+           const blob = await renderCard(canvas, ctx, bgImg, placeholders, patientData);
           renderResults.push({ patientData, blob });
         }
 
@@ -312,7 +362,6 @@ const LoyaltyCardSender = () => {
         await Promise.all(renderResults.map(async ({ patientData, blob }, batchIdx) => {
           const idx = i + batchIdx;
           try {
-            if (!blob) throw new Error("Failed to render card");
             const fileName = `generated/${job.id}/${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 6)}.png`;
             const { error: uploadError } = await supabase.storage
               .from("loyalty-cards")

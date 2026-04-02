@@ -78,7 +78,8 @@ Deno.serve(async (req) => {
 
         // Format recipient number
         const rawMobile = (card.mobile || "").replace(/\D/g, "");
-        const toNumber = rawMobile.startsWith("91") ? `+${rawMobile}` : `+91${rawMobile}`;
+        const normalizedLocalMobile = rawMobile.length > 10 ? rawMobile.slice(-10) : rawMobile;
+        const toNumber = normalizedLocalMobile ? `+91${normalizedLocalMobile}` : "";
 
         // Build components object with body and header nested inside
         const components: Record<string, unknown> = {
