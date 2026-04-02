@@ -119,10 +119,10 @@ Deno.serve(async (req) => {
         if (whatsappRes.ok) {
           await supabase.from("loyalty_cards").update({ whatsapp_status: "sent", sent_at: new Date().toISOString() }).eq("id", card.id);
           sentCount++;
-          results.push({ id: card.id, status: "sent" });
+          results.push({ id: card.id, status: "sent", payload, apiResponse: responseText });
         } else {
           await supabase.from("loyalty_cards").update({ whatsapp_status: "failed" }).eq("id", card.id);
-          results.push({ id: card.id, status: "failed", error: responseText });
+          results.push({ id: card.id, status: "failed", payload, error: responseText });
         }
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
