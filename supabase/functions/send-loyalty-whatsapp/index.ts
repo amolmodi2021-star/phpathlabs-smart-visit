@@ -14,7 +14,18 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { jobId, apiKey, apiBaseUrl, templateName, variablesMapping, queueEnabled, delayMs } = await req.json();
+    const {
+      jobId,
+      apiBaseUrl,
+      apiKey,
+      authHeaderName = "apikey",
+      authHeaderPrefix = "",
+      templateName,
+      variablesMapping,
+      includeMediaHeader = true,
+      queueEnabled,
+      delayMs,
+    } = await req.json();
 
     if (!jobId || !apiKey || !apiBaseUrl || !templateName) {
       return new Response(JSON.stringify({ error: "Missing required fields: jobId, apiKey, apiBaseUrl, templateName" }), {
@@ -25,7 +36,6 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Get all pending cards for this job
     const { data: cards, error: cardsError } = await supabase
       .from("loyalty_cards")
       .select("*")
@@ -35,54 +45,59 @@ Deno.serve(async (req) => {
 
     if (cardsError) throw cardsError;
     if (!cards || cards.length === 0) {
-      return new Response(JSON.stringify({ message: "No pending cards to send" }), {
+      return new Response(JSON.stringify({ message: "No pending cards to send", sentCount: 0, total: 0 }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // Build dynamic auth header
+    const authHeaderValue = authHeaderPrefix ? `${authHeaderPrefix} ${apiKey}` : apiKey;
 
     let sentCount = 0;
     const results: { id: string; status: string; error?: string }[] = [];
 
     for (const card of cards) {
       try {
-        // Build template variables from card data and mapping
-        const variables: Record<string, string> = {};
+        // Build body params from mapping
         const mapping = variablesMapping || {};
-        for (const [varKey, fieldName] of Object.entries(mapping)) {
-          const field = fieldName as string;
+        const params: string[] = [];
+        const sortedKeys = Object.keys(mapping).sort((a, b) => Number(a) - Number(b));
+        for (const key of sortedKeys) {
+          const field = mapping[key] as string;
           switch (field) {
-            case "Name": variables[varKey] = card.patient_name || ""; break;
-            case "Mobile": variables[varKey] = card.mobile || ""; break;
-            case "UMR": variables[varKey] = card.umr || ""; break;
-            case "Discount %": variables[varKey] = card.discount || ""; break;
-            case "Expiry Date": variables[varKey] = card.expiry_date || ""; break;
-            default: variables[varKey] = "";
+            case "Name": params.push(card.patient_name || ""); break;
+            case "Mobile": params.push(card.mobile || ""); break;
+            case "UMR": params.push(card.umr || ""); break;
+            case "Discount %": params.push(card.discount || ""); break;
+            case "Expiry Date": params.push(card.expiry_date || ""); break;
+            default: params.push("");
           }
         }
 
-        // Call WhatsApp BSP API (generic format — works with Interakt/Wati/AiSensy style APIs)
-        const whatsappPayload = {
-          countryCode: "+91",
-          phoneNumber: card.mobile?.replace(/^\+?91/, "") || "",
-          type: "Template",
-          template: {
-            name: templateName,
-            languageCode: "en",
-            headerValues: card.image_url ? [card.image_url] : [],
-            bodyValues: Object.values(variables),
-          },
-          data: {
-            media: card.image_url ? { url: card.image_url } : undefined,
-          },
+        const phoneNumber = (card.mobile || "").replace(/^\+?91/, "").replace(/\D/g, "");
+
+        // Build generic payload
+        const payload: Record<string, unknown> = {
+          to: `+91${phoneNumber}`,
+          templateName: templateName,
+          type: "template",
+          body: { params },
         };
+
+        if (includeMediaHeader && card.image_url) {
+          payload.header = {
+            type: "image",
+            image: { link: card.image_url },
+          };
+        }
 
         const whatsappRes = await fetch(apiBaseUrl, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Basic ${apiKey}`,
+            [authHeaderName]: authHeaderValue,
           },
-          body: JSON.stringify(whatsappPayload),
+          body: JSON.stringify(payload),
         });
 
         const responseText = await whatsappRes.text();
@@ -95,26 +110,26 @@ Deno.serve(async (req) => {
           await supabase.from("loyalty_cards").update({ whatsapp_status: "failed" }).eq("id", card.id);
           results.push({ id: card.id, status: "failed", error: responseText });
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
         await supabase.from("loyalty_cards").update({ whatsapp_status: "failed" }).eq("id", card.id);
-        results.push({ id: card.id, status: "failed", error: err.message });
+        results.push({ id: card.id, status: "failed", error: message });
       }
 
-      // Delay between messages if queue enabled
       if (queueEnabled && delayMs > 0) {
         await new Promise((r) => setTimeout(r, delayMs));
       }
     }
 
-    // Update job sent count
     await supabase.from("loyalty_card_jobs").update({ sent_count: sentCount, status: "completed" }).eq("id", jobId);
 
     return new Response(JSON.stringify({ sentCount, total: cards.length, results }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (err: any) {
-    console.error("send-loyalty-whatsapp error:", err);
-    return new Response(JSON.stringify({ error: err.message }), {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("send-loyalty-whatsapp error:", message);
+    return new Response(JSON.stringify({ error: message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
