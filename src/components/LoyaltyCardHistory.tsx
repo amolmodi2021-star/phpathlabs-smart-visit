@@ -7,7 +7,7 @@ import { format } from "date-fns";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ChevronDown, ChevronUp, ExternalLink, Trash2, Send, Loader2, FileText } from "lucide-react";
+import { ChevronDown, ChevronUp, ExternalLink, Trash2, Send, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 
@@ -19,7 +19,6 @@ const LoyaltyCardHistory = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteMode, setDeleteMode] = useState<"selected" | "all">("selected");
   const [sendingJobId, setSendingJobId] = useState<string | null>(null);
-  const [apiLogs, setApiLogs] = useState<{ timestamp: string; direction: string; data: unknown }[]>([]);
 
   const sendViaWhatsApp = async (jobId: string) => {
     // Load settings from DB at send time
@@ -51,19 +50,19 @@ const LoyaltyCardHistory = () => {
         queueEnabled: map["loyalty_wa_queueEnabled"] !== "false",
         delayMs: Number(map["loyalty_wa_delayMs"] || 3000),
       };
-      setApiLogs(prev => [...prev, { timestamp: new Date().toLocaleTimeString(), direction: "REQUEST → Edge Function", data: payload }]);
+      
 
       const res = await supabase.functions.invoke("send-loyalty-whatsapp", {
         body: { ...payload, apiKey: waApiKey },
       });
       if (res.error) throw res.error;
       const result = res.data;
-      setApiLogs(prev => [...prev, { timestamp: new Date().toLocaleTimeString(), direction: "RESPONSE ← Edge Function", data: result }]);
+      
       toast({ title: `Sent ${result.sentCount}/${result.total} messages` });
       queryClient.invalidateQueries({ queryKey: ["loyalty_card_jobs"] });
       queryClient.invalidateQueries({ queryKey: ["loyalty_cards"] });
     } catch (err: any) {
-      setApiLogs(prev => [...prev, { timestamp: new Date().toLocaleTimeString(), direction: "ERROR", data: err.message }]);
+      
       toast({ title: "WhatsApp send failed", description: err.message, variant: "destructive" });
     } finally {
       setSendingJobId(null);
@@ -258,31 +257,6 @@ const LoyaltyCardHistory = () => {
           )}
         </Card>
       ))}
-
-      {/* API Payload Logs */}
-      {apiLogs.length > 0 && (
-        <Card>
-          <CardHeader className="py-3 flex flex-row items-center justify-between">
-            <CardTitle className="text-sm flex items-center gap-2"><FileText className="h-4 w-4" /> WhatsApp API Payload Logs</CardTitle>
-            <Button variant="outline" size="sm" onClick={() => setApiLogs([])}>Clear Logs</Button>
-          </CardHeader>
-          <CardContent className="space-y-2 max-h-[400px] overflow-y-auto">
-            {apiLogs.map((log, idx) => (
-              <div key={idx} className="border rounded p-2 text-xs">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className={`font-bold ${log.direction.includes("ERROR") ? "text-red-600" : log.direction.includes("RESPONSE") ? "text-green-600" : "text-blue-600"}`}>
-                    {log.direction}
-                  </span>
-                  <span className="text-muted-foreground">{log.timestamp}</span>
-                </div>
-                <pre className="whitespace-pre-wrap bg-muted rounded p-2 font-mono text-xs overflow-x-auto">
-                  {typeof log.data === "string" ? log.data : JSON.stringify(log.data, null, 2)}
-                </pre>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
 
       <DeletePasswordDialog
         open={deleteDialogOpen}
