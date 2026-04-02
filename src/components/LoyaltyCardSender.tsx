@@ -12,6 +12,8 @@ import { useToast } from "@/hooks/use-toast";
 import { Upload, Play, Loader2, Eye, EyeOff, Send, Settings } from "lucide-react";
 import { parseExcelFile } from "@/lib/excel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+
 const BARCODE_FONT_URL = "https://fonts.googleapis.com/css2?family=Libre+Barcode+128&display=swap";
 
 const LoyaltyCardSender = () => {
