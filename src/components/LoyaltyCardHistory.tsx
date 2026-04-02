@@ -7,7 +7,7 @@ import { format } from "date-fns";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ChevronDown, ChevronUp, ExternalLink, Trash2, Send, Loader2, FileText } from "lucide-react";
+import { ChevronDown, ChevronUp, ExternalLink, Trash2, Send, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 
