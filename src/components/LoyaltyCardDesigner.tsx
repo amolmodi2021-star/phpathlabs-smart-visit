@@ -20,7 +20,7 @@ interface Placeholder {
   bold: boolean;
 }
 
-const FIELD_OPTIONS = ["Name", "Mobile", "UMR", "Discount %", "Expiry Date"];
+const FIELD_OPTIONS = ["Name", "Mobile", "UMR", "Discount %", "Expiry Date", "Barcode"];
 
 const SAMPLE_DATA: Record<string, string> = {
   "Name": "JOHN DOE",
@@ -28,7 +28,10 @@ const SAMPLE_DATA: Record<string, string> = {
   "UMR": "UMR001234",
   "Discount %": "15%",
   "Expiry Date": "31-12-2026",
+  "Barcode": "9876543210",
 };
+
+const BARCODE_FONT_URL = "https://fonts.googleapis.com/css2?family=Libre+Barcode+128&display=swap";
 
 const LoyaltyCardDesigner = () => {
   const { toast } = useToast();
