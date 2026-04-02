@@ -39,6 +39,7 @@ const LoyaltyCardSender = () => {
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [sending, setSending] = useState(false);
   const [sendProgress, setSendProgress] = useState({ current: 0, total: 0 });
+  const [apiLogs, setApiLogs] = useState<{ timestamp: string; direction: string; data: unknown }[]>([]);
 
   // WhatsApp API Settings (persisted in database)
   const [waBaseUrl, setWaBaseUrl] = useState("https://api.aoc-portal.com/v1/whatsapp");
