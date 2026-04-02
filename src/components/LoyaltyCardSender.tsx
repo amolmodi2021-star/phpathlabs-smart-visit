@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Upload, Play, Loader2, Eye, EyeOff, Send, Settings } from "lucide-react";
+import { Upload, Play, Loader2, Eye, EyeOff, Send, Settings, FileText } from "lucide-react";
 import { parseExcelFile } from "@/lib/excel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -39,6 +39,7 @@ const LoyaltyCardSender = () => {
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [sending, setSending] = useState(false);
   const [sendProgress, setSendProgress] = useState({ current: 0, total: 0 });
+  const [apiLogs, setApiLogs] = useState<{ timestamp: string; direction: string; data: unknown }[]>([]);
 
   // WhatsApp API Settings (persisted in database)
   const [waBaseUrl, setWaBaseUrl] = useState("https://api.aoc-portal.com/v1/whatsapp");
@@ -411,27 +412,35 @@ const LoyaltyCardSender = () => {
 
     setSending(true);
     try {
+      const payload = {
+        jobId,
+        apiBaseUrl: waBaseUrl,
+        apiKey: "***hidden***",
+        authHeaderName: waAuthHeaderName,
+        authHeaderPrefix: waAuthHeaderPrefix,
+        fromNumber: waFromNumber,
+        campaignName: waCampaignName,
+        templateName: waTemplateName,
+        variablesMapping: waBodyMapping ? JSON.parse(waBodyMapping) : {},
+        includeMediaHeader: waMediaHeader,
+        queueEnabled,
+        delayMs,
+      };
+      setApiLogs(prev => [...prev, { timestamp: new Date().toLocaleTimeString(), direction: "REQUEST → Edge Function", data: payload }]);
+
       const res = await supabase.functions.invoke("send-loyalty-whatsapp", {
         body: {
-          jobId,
-          apiBaseUrl: waBaseUrl,
+          ...payload,
           apiKey: waApiKey,
-          authHeaderName: waAuthHeaderName,
-          authHeaderPrefix: waAuthHeaderPrefix,
-          fromNumber: waFromNumber,
-          campaignName: waCampaignName,
-          templateName: waTemplateName,
-          variablesMapping: waBodyMapping ? JSON.parse(waBodyMapping) : {},
-          includeMediaHeader: waMediaHeader,
-          queueEnabled,
-          delayMs,
         },
       });
       if (res.error) throw res.error;
       const result = res.data;
+      setApiLogs(prev => [...prev, { timestamp: new Date().toLocaleTimeString(), direction: "RESPONSE ← Edge Function", data: result }]);
       toast({ title: `Sent ${result.sentCount}/${result.total} messages` });
       queryClient.invalidateQueries({ queryKey: ["loyalty_card_jobs"] });
     } catch (err: any) {
+      setApiLogs(prev => [...prev, { timestamp: new Date().toLocaleTimeString(), direction: "ERROR", data: err.message }]);
       toast({ title: "WhatsApp send failed", description: err.message, variant: "destructive" });
     } finally {
       setSending(false);
@@ -600,6 +609,31 @@ const LoyaltyCardSender = () => {
           </div>
         )}
       </div>
+
+      {/* API Payload Logs */}
+      {apiLogs.length > 0 && (
+        <Card>
+          <CardHeader className="py-3 flex flex-row items-center justify-between">
+            <CardTitle className="text-sm flex items-center gap-2"><FileText className="h-4 w-4" /> WhatsApp API Payload Logs</CardTitle>
+            <Button variant="outline" size="sm" onClick={() => setApiLogs([])}>Clear Logs</Button>
+          </CardHeader>
+          <CardContent className="space-y-2 max-h-[400px] overflow-y-auto">
+            {apiLogs.map((log, idx) => (
+              <div key={idx} className="border rounded p-2 text-xs">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`font-bold ${log.direction.includes("ERROR") ? "text-red-600" : log.direction.includes("RESPONSE") ? "text-green-600" : "text-blue-600"}`}>
+                    {log.direction}
+                  </span>
+                  <span className="text-muted-foreground">{log.timestamp}</span>
+                </div>
+                <pre className="whitespace-pre-wrap bg-muted rounded p-2 font-mono text-xs overflow-x-auto">
+                  {typeof log.data === "string" ? log.data : JSON.stringify(log.data, null, 2)}
+                </pre>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };
