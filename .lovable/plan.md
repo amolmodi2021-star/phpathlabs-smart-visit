@@ -1,93 +1,41 @@
 
 
-# ABC Loyalty Card Module — Implementation Plan
+# WhatsApp API Settings — Generic Third-Party Provider
 
 ## Overview
+Replace the AiSensy-specific references with a generic "WhatsApp API" configuration. Add a dedicated settings card where the user can configure their third-party WhatsApp API details (base URL, API key, auth header format, template name, body/header structure). The edge function will use these settings as-is, making it provider-agnostic.
 
-A new "Loyalty Cards" module that lets you:
-1. Design a loyalty card with a background image and draggable/configurable text placeholders
-2. Upload an Excel sheet with patient data to bulk-generate personalized card JPG images
-3. Send cards via WhatsApp API (Interakt/Wati/AiSensy) with queue and delay controls
+## What Changes
 
-## Architecture
+### 1. Add WhatsApp API Settings Card (`src/components/LoyaltyCardSender.tsx`)
+Add a new collapsible card section "WhatsApp API Settings" with these fields, all persisted in localStorage:
+- **API Base URL** — the endpoint to POST messages to
+- **API Key** — masked password input with show/hide toggle
+- **Auth Header Name** — text input (e.g. `apikey`, `Authorization`, `x-api-key`) so it works with any provider
+- **Auth Header Prefix** — optional prefix (e.g. `Basic`, `Bearer`, or empty)
+- **Template Name** — the approved WhatsApp template name
+- **Body Variables Mapping** — JSON input mapping param positions to card fields (e.g. `{"1":"Name","2":"Discount %"}`)
+- **Media Header** — toggle to include card image URL in header
 
-```text
-┌─────────────────────────────────────────────────┐
-│  Loyalty Cards Page (new route /loyalty-cards)   │
-├──────────┬──────────────┬───────────────────────┤
-│ Card     │ Excel Upload │ WhatsApp Send         │
-│ Designer │ & Preview    │ Queue Manager         │
-└──────────┴──────────────┴───────────────────────┘
-       │            │                │
-       ▼            ▼                ▼
-  Lovable Cloud   Edge Function:    Edge Function:
-  Storage         generate-card     send-loyalty-whatsapp
-  (backgrounds    (HTML→image)      (WhatsApp BSP API)
-   + generated
-   cards)
-```
+Add a "Send via WhatsApp" button that triggers the edge function after cards are generated.
 
-## Step-by-Step Plan
+### 2. Update Edge Function (`supabase/functions/send-loyalty-whatsapp/index.ts`)
+Make the payload and auth header fully configurable:
+- Accept `authHeaderName` and `authHeaderPrefix` from the request body
+- Construct the auth header dynamically: `headers[authHeaderName] = prefix ? `${prefix} ${apiKey}` : apiKey`
+- Keep the payload structure generic with configurable template name, body params array, and optional media header
+- The frontend sends the exact structure the user's provider expects
 
-### 1. Database Setup
-Create a `loyalty_card_templates` table:
-- `id`, `name`, `background_image_url`, `placeholders` (JSONB — array of {field, x, y, fontSize, fontColor, bold}), `created_at`, `updated_at`
+### 3. Remove Hardcoded AiSensy References
+- Remove any AiSensy-specific field names (`campaignName`, `fromNumber`, etc.) from the current code
+- Keep the payload flexible: `templateName`, `params` array, optional `header.image.link`
 
-Create a `loyalty_card_jobs` table:
-- `id`, `template_id`, `excel_data` (JSONB), `status` (pending/processing/completed/failed), `total_cards`, `sent_count`, `queue_enabled`, `delay_ms`, `whatsapp_template_name`, `whatsapp_variables_mapping` (JSONB), `created_at`
-
-Create a `loyalty_cards` table:
-- `id`, `job_id`, `patient_name`, `mobile`, `umr`, `discount`, `expiry_date`, `image_url`, `whatsapp_status` (pending/sent/failed), `sent_at`
-
-### 2. Card Designer UI (frontend)
-- Upload background image → stored in Lovable Cloud Storage (`loyalty-cards` bucket)
-- Define placeholders: Name, Mobile, UMR, Discount %, Expiry Date
-- For each placeholder: position (x, y via drag or manual input), font size, color (color picker), bold toggle
-- Live preview using HTML Canvas rendering of the card with sample data
-- Save template to `loyalty_card_templates`
-
-### 3. Image Generation (Edge Function: `generate-loyalty-card`)
-- Receives: background image URL, placeholder config, patient data
-- Uses **Deno Canvas (jsr:@gfx/canvas)** to render the background image and overlay text at configured positions with styling
-- Outputs a JPG buffer → uploaded to Lovable Cloud Storage
-- Returns public URL
-- This approach produces exact JPG images matching the uploaded background
-
-### 4. Bulk Generation Flow (frontend + edge function)
-- Upload Excel with columns: Name, Mobile, UMR, Discount %, Expiry Date
-- Parse with xlsx library (already in project), preview data in a table
-- On "Generate Cards": call edge function for each row, store results in `loyalty_cards` table
-- Show progress bar with generated/total count
-
-### 5. WhatsApp Integration (Edge Function: `send-loyalty-whatsapp`)
-- Settings panel: WhatsApp API key (stored as secret), API base URL, template name, variable mapping
-- Edge function calls the BSP API (Interakt/Wati/AiSensy) with:
-  - Media URL (public card image URL from storage)
-  - Template variables mapped from patient data
-- Queue controls:
-  - **Queue enabled**: send one-by-one with configurable delay (e.g., 2-5 seconds between messages)
-  - **Queue disabled**: fire all requests together
-- Status tracking per card (pending → sent / failed) with live UI updates
-
-### 6. Navigation & Route
-- Add `/loyalty-cards` route and nav item with `CreditCard` icon
-- New page: `src/pages/LoyaltyCards.tsx` with tabs: "Card Designer" | "Send Cards" | "History"
+## Files to Modify
+- `src/components/LoyaltyCardSender.tsx` — Add settings card with all config fields, "Send via WhatsApp" button, localStorage persistence
+- `supabase/functions/send-loyalty-whatsapp/index.ts` — Make auth header and payload provider-agnostic
 
 ## Technical Details
-
-**Image generation approach**: Deno Canvas (`jsr:@gfx/canvas`) in the edge function can load the background JPG, draw text with exact font/size/color/bold settings, and export as JPG. This produces real image files matching the uploaded background exactly.
-
-**Storage bucket**: New `loyalty-cards` bucket (public) for backgrounds and generated cards.
-
-**WhatsApp API secret**: Will use `add_secret` tool to request the API key once you confirm your BSP provider and are ready to integrate.
-
-**Files to create/modify**:
-- `src/pages/LoyaltyCards.tsx` — main page with 3 tabs
-- `src/components/LoyaltyCardDesigner.tsx` — card template designer
-- `src/components/LoyaltyCardSender.tsx` — Excel upload + send flow
-- `supabase/functions/generate-loyalty-card/index.ts` — image generation
-- `supabase/functions/send-loyalty-whatsapp/index.ts` — WhatsApp sending
-- `src/App.tsx` — add route
-- `src/components/AppLayout.tsx` — add nav item
-- DB migration for 3 new tables + storage bucket
+- localStorage keys: `loyalty_wa_baseUrl`, `loyalty_wa_apiKey`, `loyalty_wa_authHeaderName`, `loyalty_wa_authHeaderPrefix`, `loyalty_wa_templateName`
+- API key input uses `type="password"` with eye toggle
+- Edge function receives all config from frontend request body — no hardcoded provider assumptions
 
