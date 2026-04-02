@@ -103,8 +103,7 @@ Deno.serve(async (req) => {
       ${svgTexts}
     </svg>`;
 
-    // Convert SVG to PNG using resvg-wasm
-    await ensureWasm();
+    // Convert SVG to PNG using resvg
     const resvg = new Resvg(svg, {
       fitTo: { mode: "width", value: width },
     });
