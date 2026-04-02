@@ -80,31 +80,26 @@ Deno.serve(async (req) => {
         const rawMobile = (card.mobile || "").replace(/\D/g, "");
         const toNumber = rawMobile.startsWith("91") ? `+${rawMobile}` : `+91${rawMobile}`;
 
-        // Build payload matching the API format:
-        // { from, campaignName, to, templateName, components, type, body: { params }, header: { type, image: { link } } }
-        const payload: Record<string, unknown> = {
-          from: fromNumber,
-          to: toNumber,
-          templateName: templateName,
-          components: "",
-          type: "template",
-          body: {
-            params: params,
-          },
+        // Build components object with body and header nested inside
+        const components: Record<string, unknown> = {
+          body: { params: params.length > 0 ? params : [] },
         };
 
-        if (campaignName) {
-          payload.campaignName = campaignName;
-        }
-
         if (includeMediaHeader && card.image_url) {
-          payload.header = {
+          components.header = {
             type: "image",
-            image: {
-              link: card.image_url,
-            },
+            image: { link: card.image_url },
           };
         }
+
+        const payload = {
+          from: fromNumber,
+          to: toNumber,
+          templateName,
+          campaignName: campaignName || "",
+          type: "template",
+          components,
+        };
 
         console.log(`Sending to ${toNumber}:`, JSON.stringify(payload));
 
