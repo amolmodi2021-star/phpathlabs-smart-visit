@@ -250,58 +250,8 @@ const LoyaltyCardSender = () => {
 
       for (let i = 0; i < excelData.length; i += BATCH_SIZE) {
         const batch = excelData.slice(i, i + BATCH_SIZE);
-        const batchPromises = batch.map(async (row, batchIdx) => {
-          const idx = i + batchIdx;
-          const patientData: Record<string, string> = {};
-          FIELDS.forEach((f) => {
-            const col = columnMapping[f];
-            let val = col ? String(row[col] ?? "") : "";
-            if (f === "Discount %" && val && !val.includes("%")) val = val + "%";
-            if (f === "Expiry Date" && col) val = formatExpiryDate(row[col]);
-            patientData[f] = val;
-          });
 
-          try {
-            // Render PNG on canvas (must be sequential for canvas sharing)
-            const blob = renderCard(canvas, ctx, bgImg, placeholders, patientData);
-            if (!blob) throw new Error("Failed to render card");
-
-            // Upload directly to storage
-            const fileName = `generated/${job.id}/${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 6)}.png`;
-            const { error: uploadError } = await supabase.storage
-              .from("loyalty-cards")
-              .upload(fileName, blob, { contentType: "image/png" });
-            if (uploadError) throw uploadError;
-
-            const { data: urlData } = supabase.storage.from("loyalty-cards").getPublicUrl(fileName);
-
-            await supabase.from("loyalty_cards").insert({
-              job_id: job.id,
-              patient_name: patientData["Name"],
-              mobile: patientData["Mobile"],
-              umr: patientData["UMR"],
-              discount: patientData["Discount %"],
-              expiry_date: patientData["Expiry Date"],
-              image_url: urlData.publicUrl,
-              whatsapp_status: "pending",
-            });
-          } catch (err) {
-            console.error("Failed to generate card for row", idx, err);
-            await supabase.from("loyalty_cards").insert({
-              job_id: job.id,
-              patient_name: patientData["Name"],
-              mobile: patientData["Mobile"],
-              umr: patientData["UMR"],
-              discount: patientData["Discount %"],
-              expiry_date: patientData["Expiry Date"],
-              whatsapp_status: "failed",
-            });
-          }
-        });
-
-        // Canvas can't be shared in parallel, so process batch sequentially for rendering
-        // but we can parallelize the uploads
-        // Actually, since canvas is shared, render sequentially then upload in parallel
+        // Canvas can't be shared in parallel, so render sequentially then upload in parallel
         const renderResults: { patientData: Record<string, string>; blob: Blob | null }[] = [];
         for (let b = 0; b < batch.length; b++) {
           const row = batch[b];
