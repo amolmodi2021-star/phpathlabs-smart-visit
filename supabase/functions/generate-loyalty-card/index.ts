@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.97.0";
-import { Resvg } from "npm:@aspect-dev/resvg-wasm@2.6.2";
+import { Resvg } from "npm:resvg-wasm@2.4.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
