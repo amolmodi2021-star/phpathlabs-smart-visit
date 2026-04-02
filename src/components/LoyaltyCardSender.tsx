@@ -286,7 +286,13 @@ const LoyaltyCardSender = () => {
             let val = col ? String(row[col] ?? "") : "";
              if (f === "Mobile" && val) val = normalizeIndianMobile(val, false);
             if (f === "Discount %" && val && !val.includes("%")) val = val + "%";
-            if (f === "Expiry Date" && col) val = formatExpiryDate(row[col]);
+            if (f === "Expiry Date") {
+              if (useStaticExpiry && staticExpiryDate) {
+                val = staticExpiryDate;
+              } else if (col) {
+                val = formatExpiryDate(row[col]);
+              }
+            }
             patientData[f] = val;
           });
            const blob = await renderCard(canvas, ctx, bgImg, placeholders, patientData);
