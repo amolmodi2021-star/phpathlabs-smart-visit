@@ -36,6 +36,8 @@ const LoyaltyCardSender = () => {
   const [delayMs, setDelayMs] = useState(3000);
   const [generating, setGenerating] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
+  const [useStaticExpiry, setUseStaticExpiry] = useState(true);
+  const [staticExpiryDate, setStaticExpiryDate] = useState("");
 
   const { data: templates = [] } = useQuery({
     queryKey: ["loyalty_card_templates"],
