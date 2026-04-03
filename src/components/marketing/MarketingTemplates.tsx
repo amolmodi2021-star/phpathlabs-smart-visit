@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Trash2, Edit2 } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Plus, Trash2, Edit2, Settings, Eye, EyeOff, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 
 interface Variable {
@@ -24,6 +25,15 @@ const MarketingTemplates = () => {
   const [variables, setVariables] = useState<Variable[]>([]);
   const [newVarName, setNewVarName] = useState("");
   const [newVarDesc, setNewVarDesc] = useState("");
+
+  // API settings per template
+  const [apiBaseUrl, setApiBaseUrl] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [authHeaderName, setAuthHeaderName] = useState("apikey");
+  const [authHeaderPrefix, setAuthHeaderPrefix] = useState("");
+  const [fromNumber, setFromNumber] = useState("");
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [apiSettingsOpen, setApiSettingsOpen] = useState(false);
 
   const { data: templates = [] } = useQuery({
     queryKey: ["marketing_templates"],
@@ -44,6 +54,13 @@ const MarketingTemplates = () => {
     setVariables([]);
     setNewVarName("");
     setNewVarDesc("");
+    setApiBaseUrl("");
+    setApiKey("");
+    setAuthHeaderName("apikey");
+    setAuthHeaderPrefix("");
+    setFromNumber("");
+    setShowApiKey(false);
+    setApiSettingsOpen(false);
   };
 
   const addVariable = () => {
@@ -67,6 +84,11 @@ const MarketingTemplates = () => {
       template_name: templateName.trim(),
       whatsapp_template_name: whatsappTemplateName.trim(),
       variables: variables as any,
+      api_base_url: apiBaseUrl.trim() || null,
+      api_key: apiKey.trim() || null,
+      auth_header_name: authHeaderName.trim() || "apikey",
+      auth_header_prefix: authHeaderPrefix.trim() || "",
+      from_number: fromNumber.trim() || null,
     };
 
     if (editId) {
@@ -89,6 +111,12 @@ const MarketingTemplates = () => {
     setTemplateName(t.template_name);
     setWhatsappTemplateName(t.whatsapp_template_name);
     setVariables(Array.isArray(t.variables) ? t.variables : []);
+    setApiBaseUrl(t.api_base_url || "");
+    setApiKey(t.api_key || "");
+    setAuthHeaderName(t.auth_header_name || "apikey");
+    setAuthHeaderPrefix(t.auth_header_prefix || "");
+    setFromNumber(t.from_number || "");
+    setApiSettingsOpen(!!t.api_base_url || !!t.api_key);
     setOpen(true);
   };
 
@@ -107,7 +135,7 @@ const MarketingTemplates = () => {
           <DialogTrigger asChild>
             <Button size="sm"><Plus className="h-4 w-4 mr-1" /> Add Template</Button>
           </DialogTrigger>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editId ? "Edit" : "Add"} Template</DialogTitle>
             </DialogHeader>
@@ -140,6 +168,49 @@ const MarketingTemplates = () => {
                 </div>
               </div>
 
+              {/* WhatsApp API Settings */}
+              <Collapsible open={apiSettingsOpen} onOpenChange={setApiSettingsOpen}>
+                <CollapsibleTrigger asChild>
+                  <Button variant="outline" className="w-full justify-between" type="button">
+                    <span className="flex items-center gap-2">
+                      <Settings className="h-4 w-4" />
+                      WhatsApp API Settings
+                    </span>
+                    <ChevronDown className={`h-4 w-4 transition-transform ${apiSettingsOpen ? "rotate-180" : ""}`} />
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="space-y-3 pt-3">
+                  <div>
+                    <Label className="text-xs">API Base URL</Label>
+                    <Input value={apiBaseUrl} onChange={(e) => setApiBaseUrl(e.target.value)} placeholder="https://api.aoc-portal.com/v1/whatsapp" className="h-8" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">API Key</Label>
+                    <div className="relative">
+                      <Input type={showApiKey ? "text" : "password"} value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="Your API key" className="h-8 pr-8" />
+                      <button type="button" onClick={() => setShowApiKey(!showApiKey)} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                        {showApiKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs">Auth Header Name</Label>
+                      <Input value={authHeaderName} onChange={(e) => setAuthHeaderName(e.target.value)} placeholder="apikey" className="h-8" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Auth Header Prefix</Label>
+                      <Input value={authHeaderPrefix} onChange={(e) => setAuthHeaderPrefix(e.target.value)} placeholder="Bearer / empty" className="h-8" />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">From Number</Label>
+                    <Input value={fromNumber} onChange={(e) => setFromNumber(e.target.value)} placeholder="+91XXXXXXXXXX" className="h-8" />
+                  </div>
+                  <p className="text-xs text-muted-foreground">If left empty, global settings from Loyalty Cards will be used as fallback.</p>
+                </CollapsibleContent>
+              </Collapsible>
+
               <Button className="w-full" onClick={handleSave}>
                 {editId ? "Update" : "Save"} Template
               </Button>
@@ -157,6 +228,7 @@ const MarketingTemplates = () => {
                 <TableHead>Name</TableHead>
                 <TableHead>WhatsApp Template</TableHead>
                 <TableHead>Variables</TableHead>
+                <TableHead>API</TableHead>
                 <TableHead className="w-24">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -169,6 +241,13 @@ const MarketingTemplates = () => {
                     {(Array.isArray(t.variables) ? t.variables : []).map((v: Variable, i: number) => (
                       <span key={i} className="inline-block bg-muted text-xs px-1.5 py-0.5 rounded mr-1 mb-1">{`{{${i + 1}}} ${v.name}`}</span>
                     ))}
+                  </TableCell>
+                  <TableCell>
+                    {t.api_base_url ? (
+                      <span className="inline-block bg-primary/10 text-primary text-xs px-1.5 py-0.5 rounded">Custom</span>
+                    ) : (
+                      <span className="inline-block bg-muted text-xs px-1.5 py-0.5 rounded text-muted-foreground">Global</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1">
