@@ -604,6 +604,7 @@ export type Database = {
           api_key: string | null
           auth_header_name: string | null
           auth_header_prefix: string | null
+          body_mapping: string | null
           created_at: string
           from_number: string | null
           id: string
@@ -617,6 +618,7 @@ export type Database = {
           api_key?: string | null
           auth_header_name?: string | null
           auth_header_prefix?: string | null
+          body_mapping?: string | null
           created_at?: string
           from_number?: string | null
           id?: string
@@ -630,6 +632,7 @@ export type Database = {
           api_key?: string | null
           auth_header_name?: string | null
           auth_header_prefix?: string | null
+          body_mapping?: string | null
           created_at?: string
           from_number?: string | null
           id?: string

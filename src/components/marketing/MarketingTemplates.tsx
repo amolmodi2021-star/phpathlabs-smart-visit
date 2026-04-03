@@ -34,6 +34,7 @@ const MarketingTemplates = () => {
   const [fromNumber, setFromNumber] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
   const [apiSettingsOpen, setApiSettingsOpen] = useState(false);
+  const [bodyMapping, setBodyMapping] = useState("");
 
   const { data: templates = [] } = useQuery({
     queryKey: ["marketing_templates"],
@@ -61,6 +62,7 @@ const MarketingTemplates = () => {
     setFromNumber("");
     setShowApiKey(false);
     setApiSettingsOpen(false);
+    setBodyMapping("");
   };
 
   const addVariable = () => {
@@ -89,6 +91,7 @@ const MarketingTemplates = () => {
       auth_header_name: authHeaderName.trim() || "apikey",
       auth_header_prefix: authHeaderPrefix.trim() || "",
       from_number: fromNumber.trim() || null,
+      body_mapping: bodyMapping.trim() || "",
     };
 
     if (editId) {
@@ -116,6 +119,7 @@ const MarketingTemplates = () => {
     setAuthHeaderName(t.auth_header_name || "apikey");
     setAuthHeaderPrefix(t.auth_header_prefix || "");
     setFromNumber(t.from_number || "");
+    setBodyMapping(t.body_mapping || "");
     setApiSettingsOpen(!!t.api_base_url || !!t.api_key);
     setOpen(true);
   };
@@ -206,6 +210,11 @@ const MarketingTemplates = () => {
                   <div>
                     <Label className="text-xs">From Number</Label>
                     <Input value={fromNumber} onChange={(e) => setFromNumber(e.target.value)} placeholder="+91XXXXXXXXXX" className="h-8" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Body Variable Mapping</Label>
+                    <Input value={bodyMapping} onChange={(e) => setBodyMapping(e.target.value)} placeholder="e.g. {{1}},{{2}},{{3}}" className="h-8" />
+                    <p className="text-xs text-muted-foreground mt-1">Comma-separated body parameters matching template variables above</p>
                   </div>
                   <p className="text-xs text-muted-foreground">If left empty, global settings from Loyalty Cards will be used as fallback.</p>
                 </CollapsibleContent>
