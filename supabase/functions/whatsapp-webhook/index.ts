@@ -108,6 +108,7 @@ Deno.serve(async (req) => {
       const authHeaderValue = authHeaderPrefix ? `${authHeaderPrefix} ${apiKey}` : apiKey;
 
       const replyPayload = {
+        recipient_type: "individual",
         from: fromNumber,
         to: senderNumber,
         type: "text",
