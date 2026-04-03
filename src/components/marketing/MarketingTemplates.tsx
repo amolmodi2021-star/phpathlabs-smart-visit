@@ -34,6 +34,7 @@ const MarketingTemplates = () => {
   const [fromNumber, setFromNumber] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
   const [apiSettingsOpen, setApiSettingsOpen] = useState(false);
+  const [bodyMapping, setBodyMapping] = useState("");
 
   const { data: templates = [] } = useQuery({
     queryKey: ["marketing_templates"],
