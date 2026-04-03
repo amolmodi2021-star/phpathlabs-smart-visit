@@ -30,6 +30,14 @@ Deno.serve(async (req) => {
     const body = await req.json();
     console.log("Webhook received:", JSON.stringify(body));
 
+    // Skip message_status events (delivery receipts) — only process actual messages
+    if (body.event === "message_status" || body.statuses) {
+      return new Response(JSON.stringify({ success: true, skipped: "status_event" }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Load settings from app_settings
     const { data: settings } = await supabase
       .from("app_settings")
