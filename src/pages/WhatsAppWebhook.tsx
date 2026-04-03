@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQuery } from "@tanstack/react-query";
 import { exportToExcel } from "@/lib/excel";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
+import PasswordGate from "@/components/PasswordGate";
 
 const WEBHOOK_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-webhook`;
 
