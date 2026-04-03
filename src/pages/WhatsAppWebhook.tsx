@@ -272,8 +272,19 @@ const WhatsAppWebhook = () => {
                     )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium">{msg.sender_name || getCustomerNumber(msg)}</span>
-                        <span className="text-xs text-muted-foreground">{getCustomerNumber(msg)}</span>
+                        {msg.direction === "inbound" ? (
+                          <>
+                            <span className="text-xs text-muted-foreground">From:</span>
+                            <span className="font-medium">{msg.sender_name || getCustomerNumber(msg)}</span>
+                            <span className="text-xs text-muted-foreground">{getCustomerNumber(msg)}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-xs text-muted-foreground">Replied to:</span>
+                            <span className="font-medium">{msg.sender_name || getCustomerNumber(msg)}</span>
+                            <span className="text-xs text-muted-foreground">{getCustomerNumber(msg)}</span>
+                          </>
+                        )}
                         <Badge variant={msg.direction === "inbound" ? "secondary" : "default"} className="text-xs">
                           {msg.direction}
                         </Badge>
