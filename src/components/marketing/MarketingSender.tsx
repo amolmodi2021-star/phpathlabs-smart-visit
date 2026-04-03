@@ -37,7 +37,7 @@ const MarketingSender = () => {
   });
 
   const selectedTemplate = templates.find((t: any) => t.id === selectedTemplateId);
-  const templateVariables: Variable[] = selectedTemplate && Array.isArray(selectedTemplate.variables) ? selectedTemplate.variables : [];
+  const templateVariables: Variable[] = selectedTemplate && Array.isArray(selectedTemplate.variables) ? (selectedTemplate.variables as any as Variable[]) : [];
   const excelColumns = excelData.length > 0 ? Object.keys(excelData[0]) : [];
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

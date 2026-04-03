@@ -51,7 +51,7 @@ const MarketingHistory = () => {
                   <TableCell className="text-sm">{format(new Date(c.created_at), "dd-MM-yyyy hh:mm a")}</TableCell>
                   <TableCell className="font-medium">{c.marketing_templates?.template_name || "—"}</TableCell>
                   <TableCell>{c.total_messages}</TableCell>
-                  <TableCell className="text-green-600">{c.sent_count}</TableCell>
+                  <TableCell className="text-primary">{c.sent_count}</TableCell>
                   <TableCell className="text-destructive">{c.failed_count}</TableCell>
                   <TableCell><Badge variant={statusColor(c.status) as any}>{c.status}</Badge></TableCell>
                 </TableRow>
