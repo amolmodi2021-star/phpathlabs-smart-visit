@@ -26,6 +26,7 @@ import ReportLayoutSettings from "./pages/ReportLayoutSettings";
 import ExtractionCorrections from "./pages/ExtractionCorrections";
 import DirectAI from "./pages/DirectAI";
 import LoyaltyCards from "./pages/LoyaltyCards";
+import WhatsAppWebhook from "./pages/WhatsAppWebhook";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
