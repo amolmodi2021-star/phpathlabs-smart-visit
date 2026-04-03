@@ -45,6 +45,7 @@ Deno.serve(async (req) => {
       .in("setting_key", [
         "webhook_auto_reply_message",
         "webhook_auto_reply_enabled",
+        "webhook_wa_me_url",
         "loyalty_wa_baseUrl",
         "loyalty_wa_apiKey",
         "loyalty_wa_authHeaderName",
