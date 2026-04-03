@@ -548,6 +548,83 @@ export type Database = {
           },
         ]
       }
+      marketing_campaigns: {
+        Row: {
+          created_at: string
+          delay_ms: number
+          excel_data: Json | null
+          failed_count: number
+          id: string
+          sent_count: number
+          status: string
+          template_id: string | null
+          total_messages: number
+          updated_at: string
+          variable_mapping: Json | null
+        }
+        Insert: {
+          created_at?: string
+          delay_ms?: number
+          excel_data?: Json | null
+          failed_count?: number
+          id?: string
+          sent_count?: number
+          status?: string
+          template_id?: string | null
+          total_messages?: number
+          updated_at?: string
+          variable_mapping?: Json | null
+        }
+        Update: {
+          created_at?: string
+          delay_ms?: number
+          excel_data?: Json | null
+          failed_count?: number
+          id?: string
+          sent_count?: number
+          status?: string
+          template_id?: string | null
+          total_messages?: number
+          updated_at?: string
+          variable_mapping?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketing_campaigns_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "marketing_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      marketing_templates: {
+        Row: {
+          created_at: string
+          id: string
+          template_name: string
+          updated_at: string
+          variables: Json
+          whatsapp_template_name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          template_name: string
+          updated_at?: string
+          variables?: Json
+          whatsapp_template_name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          template_name?: string
+          updated_at?: string
+          variables?: Json
+          whatsapp_template_name?: string
+        }
+        Relationships: []
+      }
       message_templates: {
         Row: {
           created_at: string
