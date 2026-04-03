@@ -159,7 +159,7 @@ const ReportsDashboard = () => {
                     <TableCell>{r.umr_id || "-"}</TableCell>
                     <TableCell>{(r as any).mobile_number || "-"}</TableCell>
                     <TableCell><Badge className={statusColors[r.status] || ""}>{r.status}</Badge></TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{format(new Date(r.created_at), "dd MMM yyyy HH:mm")}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{format(new Date(r.created_at), "dd-MM-yyyy hh:mm a")}</TableCell>
                     <TableCell>
                       <div className="flex gap-1">
                         {r.status === "Awaiting Review" && (
