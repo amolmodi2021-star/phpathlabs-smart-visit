@@ -1162,6 +1162,39 @@ export type Database = {
         }
         Relationships: []
       }
+      webhook_messages: {
+        Row: {
+          created_at: string
+          direction: string
+          id: string
+          message: string | null
+          raw_payload: Json | null
+          sender_name: string | null
+          sender_number: string | null
+          status: string | null
+        }
+        Insert: {
+          created_at?: string
+          direction?: string
+          id?: string
+          message?: string | null
+          raw_payload?: Json | null
+          sender_name?: string | null
+          sender_number?: string | null
+          status?: string | null
+        }
+        Update: {
+          created_at?: string
+          direction?: string
+          id?: string
+          message?: string | null
+          raw_payload?: Json | null
+          sender_name?: string | null
+          sender_number?: string | null
+          status?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
