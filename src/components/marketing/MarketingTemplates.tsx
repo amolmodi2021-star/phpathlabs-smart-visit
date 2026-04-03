@@ -119,6 +119,7 @@ const MarketingTemplates = () => {
     setAuthHeaderName(t.auth_header_name || "apikey");
     setAuthHeaderPrefix(t.auth_header_prefix || "");
     setFromNumber(t.from_number || "");
+    setBodyMapping(t.body_mapping || "");
     setApiSettingsOpen(!!t.api_base_url || !!t.api_key);
     setOpen(true);
   };
