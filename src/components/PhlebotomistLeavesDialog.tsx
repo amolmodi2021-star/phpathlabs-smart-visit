@@ -337,7 +337,7 @@ const PhlebotomistLeavesDialog = ({ open, onClose, phlebotomist }: Props) => {
                     >
                       <div>
                         <span className="text-sm font-medium">
-                          {format(parseISO(l.leave_date), "dd MMM yyyy (EEEE)")}
+                          {format(parseISO(l.leave_date), "dd-MM-yyyy (EEEE)")}
                         </span>
                         {l.reason && (
                           <span className="text-xs text-muted-foreground ml-2">
@@ -381,7 +381,7 @@ const PhlebotomistLeavesDialog = ({ open, onClose, phlebotomist }: Props) => {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium">
-                        {format(parseISO(v.visit_date), "dd MMM yyyy")} • {v.visit_time}
+                        {format(parseISO(v.visit_date), "dd-MM-yyyy")} • {v.visit_time}
                       </p>
                       <p className="text-xs text-muted-foreground">{v.address}</p>
                       {(v.estimate as any)?.patient_name && (
