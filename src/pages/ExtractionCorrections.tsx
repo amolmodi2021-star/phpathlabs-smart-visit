@@ -327,7 +327,7 @@ const ExtractionCorrections = () => {
                       <TableCell className="text-destructive">{c.original_value || "—"}</TableCell>
                       <TableCell className="text-green-600 dark:text-green-400">{c.corrected_value || "—"}</TableCell>
                       <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                        {format(new Date(c.created_at), "dd MMM yyyy HH:mm")}
+                        {format(new Date(c.created_at), "dd-MM-yyyy hh:mm a")}
                       </TableCell>
                       <TableCell>
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => deleteMutation.mutate(c.id)} disabled={deleteMutation.isPending}>
