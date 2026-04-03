@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQuery } from "@tanstack/react-query";
 import { exportToExcel } from "@/lib/excel";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
+import PasswordGate from "@/components/PasswordGate";
 
 const WEBHOOK_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-webhook`;
 
@@ -157,6 +158,7 @@ const WhatsAppWebhook = () => {
   };
 
   return (
+    <PasswordGate title="WhatsApp Webhook">
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">WhatsApp Webhook</h1>
 
@@ -312,6 +314,7 @@ const WhatsAppWebhook = () => {
         description={`Delete ${selectedIds.size} selected message(s)? This action cannot be undone.`}
       />
     </div>
+    </PasswordGate>
   );
 };
 
