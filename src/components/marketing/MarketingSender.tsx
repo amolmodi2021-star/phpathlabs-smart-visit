@@ -148,16 +148,19 @@ const MarketingSender = () => {
       }
 
       try {
-        const authValue = headerPrefix ? `${headerPrefix} ${apiKey}` : apiKey;
-        const resp = await fetch(apiUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", [headerName]: authValue },
-          body: JSON.stringify(payload),
+        const { data: proxyResp, error: proxyErr } = await supabase.functions.invoke("send-marketing-message", {
+          body: {
+            apiUrl,
+            apiKey,
+            headerName,
+            headerPrefix,
+            payload,
+          },
         });
-        if (resp.ok) {
-          sentCount++;
-        } else {
+        if (proxyErr || !proxyResp || proxyResp.status < 200 || proxyResp.status >= 300) {
           failedCount++;
+        } else {
+          sentCount++;
         }
       } catch {
         failedCount++;
