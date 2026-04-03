@@ -116,8 +116,9 @@ const MarketingSender = () => {
     for (let i = 0; i < excelData.length; i++) {
       const row = excelData[i];
       const rawMobile = String(row[mobileColumn] || "").replace(/\D/g, "");
-      const mobile = rawMobile.length > 10 ? rawMobile.slice(-10) : rawMobile;
-      const phone = `+91${mobile}`;
+      // Always ensure +91 prefix: strip country code if present, take last 10 digits
+      const mobile10 = rawMobile.slice(-10);
+      const phone = `+91${mobile10}`;
 
       // Build parameters from variable mapping
       const params = templateVariables.map((v, idx) => {
