@@ -55,6 +55,17 @@ const MarketingSender = () => {
   };
 
   const getApiSettings = async () => {
+    // Use per-template settings if available, fallback to global
+    if (selectedTemplate?.api_base_url && selectedTemplate?.api_key) {
+      return {
+        whatsapp_api_url: selectedTemplate.api_base_url,
+        whatsapp_api_key: selectedTemplate.api_key,
+        whatsapp_auth_header_name: selectedTemplate.auth_header_name || "apikey",
+        whatsapp_auth_prefix: selectedTemplate.auth_header_prefix || "",
+        whatsapp_from_number: selectedTemplate.from_number || "",
+      };
+    }
+    // Fallback to global settings
     const { data } = await supabase
       .from("app_settings")
       .select("setting_key, setting_value")
