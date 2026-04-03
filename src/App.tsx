@@ -27,6 +27,7 @@ import ExtractionCorrections from "./pages/ExtractionCorrections";
 import DirectAI from "./pages/DirectAI";
 import LoyaltyCards from "./pages/LoyaltyCards";
 import WhatsAppWebhook from "./pages/WhatsAppWebhook";
+import Marketing from "./pages/Marketing";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -53,6 +54,7 @@ const App = () => (
           <Route path="/abnormal-history" element={<ProtectedRoute><AbnormalHistory /></ProtectedRoute>} />
           <Route path="/phlebo-dashboard" element={<ProtectedRoute><PhleboDashboard /></ProtectedRoute>} />
           <Route path="/loyalty-cards" element={<ProtectedRoute><LoyaltyCards /></ProtectedRoute>} />
+          <Route path="/marketing" element={<ProtectedRoute><Marketing /></ProtectedRoute>} />
           <Route path="/whatsapp-webhook" element={<ProtectedRoute><WhatsAppWebhook /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
