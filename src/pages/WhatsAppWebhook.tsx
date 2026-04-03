@@ -186,7 +186,17 @@ const WhatsAppWebhook = () => {
                     </div>
                     <p className="text-muted-foreground mt-1 break-all">{msg.message || "(no text)"}</p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {new Date(msg.created_at).toLocaleString()}
+                      {(() => {
+                        const d = new Date(msg.created_at);
+                        const dd = String(d.getDate()).padStart(2, '0');
+                        const mm = String(d.getMonth() + 1).padStart(2, '0');
+                        const yyyy = d.getFullYear();
+                        const hh = d.getHours();
+                        const min = String(d.getMinutes()).padStart(2, '0');
+                        const ampm = hh >= 12 ? 'PM' : 'AM';
+                        const h12 = hh % 12 || 12;
+                        return `${dd}-${mm}-${yyyy} ${String(h12).padStart(2, '0')}:${min} ${ampm}`;
+                      })()}
                     </p>
                   </div>
                 </div>
