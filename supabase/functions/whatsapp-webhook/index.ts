@@ -58,35 +58,39 @@ Deno.serve(async (req) => {
     const fromNumber = settingsMap["whatsapp_from_number"] || "";
 
     // Extract sender info from inbound payload
-    // Support common payload structures (AOC Portal / generic)
+    // Support AOC Portal structure (messages is an object, not array)
     let senderNumber = "";
     let inboundMessage = "";
     let senderName = "";
 
-    // AOC Portal / generic structure
+    // Sender number: AOC uses top-level "from"
     if (body.from) {
       senderNumber = body.from;
     } else if (body.payload?.sender?.phone) {
       senderNumber = body.payload.sender.phone;
-    } else if (body.messages?.[0]?.from) {
-      senderNumber = body.messages[0].from;
     }
 
-    if (body.text?.body) {
+    // Message text: AOC uses messages.text.body (object) not messages[0]
+    if (body.messages?.text?.body) {
+      inboundMessage = body.messages.text.body;
+    } else if (body.text?.body) {
       inboundMessage = body.text.body;
     } else if (body.payload?.text) {
       inboundMessage = body.payload.text;
-    } else if (body.messages?.[0]?.text?.body) {
+    } else if (Array.isArray(body.messages) && body.messages[0]?.text?.body) {
       inboundMessage = body.messages[0].text.body;
     } else if (body.message) {
       inboundMessage = typeof body.message === "string" ? body.message : JSON.stringify(body.message);
     }
 
-    if (body.senderName) {
+    // Sender name: AOC uses contacts.profileName (object, not array)
+    if (body.contacts?.profileName) {
+      senderName = body.contacts.profileName;
+    } else if (body.senderName) {
       senderName = body.senderName;
     } else if (body.payload?.sender?.name) {
       senderName = body.payload.sender.name;
-    } else if (body.contacts?.[0]?.profile?.name) {
+    } else if (Array.isArray(body.contacts) && body.contacts[0]?.profile?.name) {
       senderName = body.contacts[0].profile.name;
     }
 
