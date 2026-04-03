@@ -207,6 +207,11 @@ const MarketingTemplates = () => {
                     <Label className="text-xs">From Number</Label>
                     <Input value={fromNumber} onChange={(e) => setFromNumber(e.target.value)} placeholder="+91XXXXXXXXXX" className="h-8" />
                   </div>
+                  <div>
+                    <Label className="text-xs">Body Variable Mapping</Label>
+                    <Input value={bodyMapping} onChange={(e) => setBodyMapping(e.target.value)} placeholder="e.g. {{1}},{{2}},{{3}}" className="h-8" />
+                    <p className="text-xs text-muted-foreground mt-1">Comma-separated body parameters matching template variables above</p>
+                  </div>
                   <p className="text-xs text-muted-foreground">If left empty, global settings from Loyalty Cards will be used as fallback.</p>
                 </CollapsibleContent>
               </Collapsible>
