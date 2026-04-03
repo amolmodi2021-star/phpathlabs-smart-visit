@@ -337,7 +337,7 @@ const PhlebotomistLeavesDialog = ({ open, onClose, phlebotomist }: Props) => {
                     >
                       <div>
                         <span className="text-sm font-medium">
-                          {format(parseISO(l.leave_date), "dd MMM yyyy (EEEE)")}
+                          {format(parseISO(l.leave_date), "dd-MM-yyyy (EEEE)")}
                         </span>
                         {l.reason && (
                           <span className="text-xs text-muted-foreground ml-2">
