@@ -21,6 +21,7 @@ const navItems = [
   { to: "/abnormal-history", label: "Abnormal History", icon: AlertTriangle },
   { to: "/phlebo-dashboard", label: "Phlebo Dashboard", icon: BarChart3 },
   { to: "/loyalty-cards", label: "Loyalty Cards", icon: CreditCard },
+  { to: "/whatsapp-webhook", label: "WhatsApp Webhook", icon: Webhook },
 ];
 
 // Report System modules archived — uncomment to restore
