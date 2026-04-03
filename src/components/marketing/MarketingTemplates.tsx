@@ -91,6 +91,7 @@ const MarketingTemplates = () => {
       auth_header_name: authHeaderName.trim() || "apikey",
       auth_header_prefix: authHeaderPrefix.trim() || "",
       from_number: fromNumber.trim() || null,
+      body_mapping: bodyMapping.trim() || "",
     };
 
     if (editId) {
