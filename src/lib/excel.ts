@@ -13,6 +13,16 @@ export function exportToExcel(data: Record<string, unknown>[], filename: string)
   XLSX.writeFile(wb, `${filename}.xlsx`);
 }
 
+function formatDateValue(val: unknown): unknown {
+  if (val instanceof Date && !isNaN(val.getTime())) {
+    const dd = String(val.getDate()).padStart(2, '0');
+    const mm = String(val.getMonth() + 1).padStart(2, '0');
+    const yyyy = val.getFullYear();
+    return `${dd}-${mm}-${yyyy}`;
+  }
+  return val;
+}
+
 export function parseExcelFile(file: File): Promise<Record<string, unknown>[]> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -25,8 +35,16 @@ export function parseExcelFile(file: File): Promise<Record<string, unknown>[]> {
           defval: "",
           raw: false,
           dateNF: "dd-mm-yyyy",
+        }) as Record<string, unknown>[];
+        // Ensure all Date objects are formatted as dd-MM-yyyy strings
+        const formatted = json.map((row) => {
+          const newRow: Record<string, unknown> = {};
+          for (const key of Object.keys(row)) {
+            newRow[key] = formatDateValue(row[key]);
+          }
+          return newRow;
         });
-        resolve(json as Record<string, unknown>[]);
+        resolve(formatted);
       } catch (err) { reject(err); }
     };
     reader.onerror = reject;
