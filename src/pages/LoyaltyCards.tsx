@@ -3,9 +3,11 @@ import LoyaltyCardDesigner from "@/components/LoyaltyCardDesigner";
 import LoyaltyCardSender from "@/components/LoyaltyCardSender";
 import LoyaltyCardHistory from "@/components/LoyaltyCardHistory";
 import WhatsAppSettings from "@/components/WhatsAppSettings";
+import PasswordGate from "@/components/PasswordGate";
 
 const LoyaltyCards = () => {
   return (
+    <PasswordGate title="ABC Loyalty Cards">
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">ABC Loyalty Cards</h1>
       <Tabs defaultValue="send" className="w-full">
