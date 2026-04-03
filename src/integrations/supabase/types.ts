@@ -600,7 +600,12 @@ export type Database = {
       }
       marketing_templates: {
         Row: {
+          api_base_url: string | null
+          api_key: string | null
+          auth_header_name: string | null
+          auth_header_prefix: string | null
           created_at: string
+          from_number: string | null
           id: string
           template_name: string
           updated_at: string
@@ -608,7 +613,12 @@ export type Database = {
           whatsapp_template_name: string
         }
         Insert: {
+          api_base_url?: string | null
+          api_key?: string | null
+          auth_header_name?: string | null
+          auth_header_prefix?: string | null
           created_at?: string
+          from_number?: string | null
           id?: string
           template_name: string
           updated_at?: string
@@ -616,7 +626,12 @@ export type Database = {
           whatsapp_template_name: string
         }
         Update: {
+          api_base_url?: string | null
+          api_key?: string | null
+          auth_header_name?: string | null
+          auth_header_prefix?: string | null
           created_at?: string
+          from_number?: string | null
           id?: string
           template_name?: string
           updated_at?: string
