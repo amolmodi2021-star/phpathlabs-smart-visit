@@ -37,11 +37,11 @@ Deno.serve(async (req) => {
       .in("setting_key", [
         "webhook_auto_reply_message",
         "webhook_auto_reply_enabled",
-        "whatsapp_api_base_url",
-        "whatsapp_api_key",
-        "whatsapp_auth_header_name",
-        "whatsapp_auth_header_prefix",
-        "whatsapp_from_number",
+        "loyalty_wa_baseUrl",
+        "loyalty_wa_apiKey",
+        "loyalty_wa_authHeaderName",
+        "loyalty_wa_authHeaderPrefix",
+        "loyalty_wa_fromNumber",
       ]);
 
     const settingsMap: Record<string, string> = {};
@@ -51,11 +51,11 @@ Deno.serve(async (req) => {
 
     const autoReplyEnabled = settingsMap["webhook_auto_reply_enabled"] !== "false";
     const autoReplyMessage = settingsMap["webhook_auto_reply_message"] || "Thank you for your message. We will get back to you shortly.";
-    const apiBaseUrl = settingsMap["whatsapp_api_base_url"] || "";
-    const apiKey = settingsMap["whatsapp_api_key"] || "";
-    const authHeaderName = settingsMap["whatsapp_auth_header_name"] || "apikey";
-    const authHeaderPrefix = settingsMap["whatsapp_auth_header_prefix"] || "";
-    const fromNumber = settingsMap["whatsapp_from_number"] || "";
+    const apiBaseUrl = settingsMap["loyalty_wa_baseUrl"] || "";
+    const apiKey = settingsMap["loyalty_wa_apiKey"] || "";
+    const authHeaderName = settingsMap["loyalty_wa_authHeaderName"] || "apikey";
+    const authHeaderPrefix = settingsMap["loyalty_wa_authHeaderPrefix"] || "";
+    const fromNumber = settingsMap["loyalty_wa_fromNumber"] || "";
 
     // Extract sender info from inbound payload
     // Support AOC Portal structure (messages is an object, not array)
