@@ -120,31 +120,24 @@ const MarketingSender = () => {
       const mobile10 = rawMobile.slice(-10);
       const phone = `+91${mobile10}`;
 
-      // Build parameters from variable mapping
-      const params = templateVariables.map((v, idx) => {
+      const params = templateVariables.map((_, idx) => {
         const col = variableMapping[String(idx)];
-        return { type: "text", text: col ? String(row[col] || "") : "" };
+        return col ? String(row[col] || "") : "";
       });
 
       const payload: any = {
-        messaging_product: "whatsapp",
-        recipient_type: "individual",
+        from: fromNumber,
         to: phone,
+        templateName: selectedTemplate.whatsapp_template_name,
+        campaignName: selectedTemplate.template_name || "",
         type: "template",
-        template: {
-          name: selectedTemplate.whatsapp_template_name,
-          language: { code: "en" },
-          components: [],
-        },
+        components: {},
       };
 
-      if (fromNumber) payload.from = fromNumber;
-
       if (params.length > 0) {
-        payload.template.components.push({
-          type: "body",
-          parameters: params,
-        });
+        payload.components.body = {
+          params,
+        };
       }
 
       try {
