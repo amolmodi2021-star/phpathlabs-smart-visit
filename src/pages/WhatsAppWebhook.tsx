@@ -313,6 +313,7 @@ const WhatsAppWebhook = () => {
         description={`Delete ${selectedIds.size} selected message(s)? This action cannot be undone.`}
       />
     </div>
+    </PasswordGate>
   );
 };
 

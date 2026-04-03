@@ -31,6 +31,7 @@ const LoyaltyCards = () => {
         </TabsContent>
       </Tabs>
     </div>
+    </PasswordGate>
   );
 };
 
