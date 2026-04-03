@@ -63,11 +63,18 @@ Deno.serve(async (req) => {
     let inboundMessage = "";
     let senderName = "";
 
-    // Sender number: AOC uses top-level "from"
-    if (body.from) {
-      senderNumber = body.from;
+    // Sender number: AOC uses contacts.recipient (the customer who sent the message)
+    // body.from is the business number in AOC Portal
+    if (body.contacts?.recipient) {
+      senderNumber = body.contacts.recipient;
+      // Ensure it has + prefix
+      if (!senderNumber.startsWith("+")) {
+        senderNumber = `+${senderNumber}`;
+      }
     } else if (body.payload?.sender?.phone) {
       senderNumber = body.payload.sender.phone;
+    } else if (body.from) {
+      senderNumber = body.from;
     }
 
     // Message text: AOC uses messages.text.body (object) not messages[0]
