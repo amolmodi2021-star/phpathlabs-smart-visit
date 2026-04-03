@@ -62,6 +62,7 @@ const MarketingTemplates = () => {
     setFromNumber("");
     setShowApiKey(false);
     setApiSettingsOpen(false);
+    setBodyMapping("");
   };
 
   const addVariable = () => {
