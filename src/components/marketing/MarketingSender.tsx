@@ -116,8 +116,9 @@ const MarketingSender = () => {
     for (let i = 0; i < excelData.length; i++) {
       const row = excelData[i];
       const rawMobile = String(row[mobileColumn] || "").replace(/\D/g, "");
-      const mobile = rawMobile.length > 10 ? rawMobile.slice(-10) : rawMobile;
-      const phone = `+91${mobile}`;
+      // Always ensure +91 prefix: strip country code if present, take last 10 digits
+      const mobile10 = rawMobile.slice(-10);
+      const phone = `+91${mobile10}`;
 
       // Build parameters from variable mapping
       const params = templateVariables.map((v, idx) => {
@@ -207,17 +208,19 @@ const MarketingSender = () => {
             <div className="bg-muted p-3 rounded-lg text-sm space-y-1">
               <p className="font-medium">WhatsApp API Template: <span className="font-mono text-primary">{selectedTemplate.whatsapp_template_name}</span></p>
               {selectedTemplate.api_base_url ? (
-                <p className="text-xs text-muted-foreground">Using custom API settings</p>
+                <p className="text-xs text-muted-foreground">Using custom API settings (From: {selectedTemplate.from_number || "not set"})</p>
               ) : (
                 <p className="text-xs text-muted-foreground">Using global API settings</p>
               )}
-              {templateVariables.length > 0 && (
+              {templateVariables.length > 0 ? (
                 <>
-                  <p className="font-medium mt-2">Variables Required:</p>
+                  <p className="font-medium mt-2">Body Variables Required ({templateVariables.length}):</p>
                   {templateVariables.map((v, i) => (
                     <p key={i} className="text-muted-foreground">{`{{${i + 1}}} - ${v.name}`}{v.description ? ` (${v.description})` : ""}</p>
                   ))}
                 </>
+              ) : (
+                <p className="text-xs text-muted-foreground mt-1">No body variables defined for this template</p>
               )}
             </div>
           )}
