@@ -202,13 +202,23 @@ const MarketingSender = () => {
             </Select>
           </div>
 
-          {/* Show template variables info */}
-          {selectedTemplate && templateVariables.length > 0 && (
+          {/* Show template info */}
+          {selectedTemplate && (
             <div className="bg-muted p-3 rounded-lg text-sm space-y-1">
-              <p className="font-medium">Template Variables Required:</p>
-              {templateVariables.map((v, i) => (
-                <p key={i} className="text-muted-foreground">{`{{${i + 1}}} - ${v.name}`}{v.description ? ` (${v.description})` : ""}</p>
-              ))}
+              <p className="font-medium">WhatsApp API Template: <span className="font-mono text-primary">{selectedTemplate.whatsapp_template_name}</span></p>
+              {selectedTemplate.api_base_url ? (
+                <p className="text-xs text-muted-foreground">Using custom API settings</p>
+              ) : (
+                <p className="text-xs text-muted-foreground">Using global API settings</p>
+              )}
+              {templateVariables.length > 0 && (
+                <>
+                  <p className="font-medium mt-2">Variables Required:</p>
+                  {templateVariables.map((v, i) => (
+                    <p key={i} className="text-muted-foreground">{`{{${i + 1}}} - ${v.name}`}{v.description ? ` (${v.description})` : ""}</p>
+                  ))}
+                </>
+              )}
             </div>
           )}
 
