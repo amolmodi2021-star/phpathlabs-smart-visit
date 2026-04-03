@@ -1,0 +1,1 @@
+ALTER TABLE public.marketing_templates ADD COLUMN IF NOT EXISTS body_mapping text DEFAULT '';
