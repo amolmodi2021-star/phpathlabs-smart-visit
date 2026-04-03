@@ -59,7 +59,9 @@ Deno.serve(async (req) => {
     });
 
     const autoReplyEnabled = settingsMap["webhook_auto_reply_enabled"] !== "false";
-    const autoReplyMessage = settingsMap["webhook_auto_reply_message"] || "Thank you for your message. We will get back to you shortly.";
+    const baseReplyMessage = settingsMap["webhook_auto_reply_message"] || "Thank you for your message. We will get back to you shortly.";
+    const waMeUrl = settingsMap["webhook_wa_me_url"] || "";
+    const autoReplyMessage = waMeUrl ? `${baseReplyMessage}\n\n${waMeUrl}` : baseReplyMessage;
     const apiBaseUrl = settingsMap["loyalty_wa_baseUrl"] || "";
     const apiKey = settingsMap["loyalty_wa_apiKey"] || "";
     const authHeaderName = settingsMap["loyalty_wa_authHeaderName"] || "apikey";
