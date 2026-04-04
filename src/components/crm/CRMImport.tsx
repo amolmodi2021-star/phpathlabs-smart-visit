@@ -136,10 +136,18 @@ const CRMImport = () => {
 
         const mobile = String(mapped.mobile_number);
         const isBlacklisted = blacklist.has(mobile);
-        const isUpdate = existingPks.has(pk);
+        const existingRecord = existingMap.get(pk);
+        const isUpdate = !!existingRecord;
 
-        if (isBlacklisted) s.blacklisted++;
-        if (isUpdate) s.updates++;
+        // Skip if record exists and new bill_number is not greater
+        if (isUpdate) {
+          const existingBill = existingRecord.bill_number || "";
+          const newBill = mapped.bill_number ? String(mapped.bill_number) : "";
+          if (newBill <= existingBill) {
+            s.skippedDuplicate++;
+            continue;
+          }
+        }
 
         toInsert.push({
           batch_id: batchId,
