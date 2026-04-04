@@ -541,6 +541,7 @@ const CRMContacts = () => {
               <TableHead>Bill #</TableHead>
               
               <TableHead>Net Amt</TableHead>
+              <TableHead>Discount %</TableHead>
               <TableHead>Tag</TableHead>
               <TableHead>Created Date</TableHead>
               <TableHead>Last Sent</TableHead>
