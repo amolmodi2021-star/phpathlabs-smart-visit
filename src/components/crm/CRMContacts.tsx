@@ -353,7 +353,7 @@ const CRMContacts = () => {
         <span className="text-sm text-muted-foreground">Total: {totalCount}</span>
       </div>
       <p className="text-xs text-muted-foreground">
-        💡 <strong>Bulk Update Names:</strong> Upload Excel with columns "primary_key" (or "mobile") and "patient_name" to update names in bulk.
+        💡 <strong>Bulk Update:</strong> Upload Excel with "primary_key" (or "mobile") + "patient_name" for names, or "primary_key" (or "mobile") + "discount" for discount %.
       </p>
 
       <div className="border rounded-lg overflow-auto max-h-[60vh]">
