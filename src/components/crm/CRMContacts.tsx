@@ -227,6 +227,8 @@ const CRMContacts = () => {
     { key: "created_by", label: "Created By" },
     { key: "record_tag", label: "Tag" },
     { key: "default_discount_pct", label: "Default Discount %" },
+    { key: "last_sent_type", label: "Sent Type" },
+    { key: "last_sent_date", label: "Last Sent Date" },
   ];
 
   const openEdit = (contact: any) => {
