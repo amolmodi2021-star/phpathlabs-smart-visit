@@ -541,6 +541,7 @@ const CRMContacts = () => {
               <TableHead>Bill #</TableHead>
               
               <TableHead>Net Amt</TableHead>
+              <TableHead>Discount %</TableHead>
               <TableHead>Tag</TableHead>
               <TableHead>Created Date</TableHead>
               <TableHead>Last Sent</TableHead>
@@ -549,9 +550,9 @@ const CRMContacts = () => {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={13} className="text-center py-8">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={14} className="text-center py-8">Loading...</TableCell></TableRow>
             ) : contacts.length === 0 ? (
-              <TableRow><TableCell colSpan={13} className="text-center py-8">No contacts found. Import data to get started.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={14} className="text-center py-8">No contacts found. Import data to get started.</TableCell></TableRow>
             ) : contacts.map((c: any) => (
               <TableRow key={c.id}>
                 <TableCell><Checkbox checked={selected.has(c.id)} onCheckedChange={() => toggleSelect(c.id)} /></TableCell>
@@ -568,6 +569,7 @@ const CRMContacts = () => {
                 <TableCell>{c.bill_number || "—"}</TableCell>
                 
                 <TableCell>{c.net_amount ?? "—"}</TableCell>
+                <TableCell>{c.default_discount_pct ?? "—"}</TableCell>
                 <TableCell>{c.record_tag || "—"}</TableCell>
                 <TableCell>{c.created_at ? format(new Date(c.created_at), "dd-MM-yyyy") : "—"}</TableCell>
                 <TableCell>{c.last_sent_type || "—"}</TableCell>
