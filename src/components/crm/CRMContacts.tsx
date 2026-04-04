@@ -298,6 +298,71 @@ const CRMContacts = () => {
     }
   };
 
+  const handleBulkLastSentUpdate = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    try {
+      const rows = await parseExcelFile(file);
+      if (!rows.length) return toast.error("No data in file");
+
+      const keys = Object.keys(rows[0]);
+      const pkCol = keys.find(k => k.toLowerCase().includes("primary") || k.toLowerCase().includes("key"));
+      const mobileCol = keys.find(k => k.toLowerCase().includes("mobile") || k.toLowerCase().includes("phone"));
+      const umrCol = keys.find(k => k.toLowerCase().includes("umr"));
+      const dateCol = keys.find(k => k.toLowerCase().includes("date") || k.toLowerCase().includes("sent"));
+      const typeCol = keys.find(k => k.toLowerCase().includes("type") || k.toLowerCase().includes("channel"));
+
+      if (!dateCol) return toast.error("Excel must have a column with 'date' or 'sent' in the header");
+      if (!pkCol && !mobileCol && !umrCol) return toast.error("Excel must have a 'primary_key', 'mobile', or 'umr' column");
+
+      setBulkUpdating(true);
+      let updated = 0, failed = 0;
+
+      for (const row of rows) {
+        const dateStr = String(row[dateCol!] || "").trim();
+        if (!dateStr) { failed++; continue; }
+
+        // Parse dd-mm-yyyy or yyyy-mm-dd to ISO
+        let isoDate: string;
+        const ddmmyyyy = dateStr.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+        if (ddmmyyyy) {
+          isoDate = `${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}T00:00:00Z`;
+        } else {
+          const parsed = new Date(dateStr);
+          if (isNaN(parsed.getTime())) { failed++; continue; }
+          isoDate = parsed.toISOString();
+        }
+
+        const updates: Record<string, any> = { last_sent_date: isoDate };
+        if (typeCol && row[typeCol]) updates.last_sent_type = String(row[typeCol]).trim();
+
+        let q;
+        if (pkCol && row[pkCol]) {
+          q = supabase.from("crm_contacts").update(updates).eq("primary_key", String(row[pkCol]).trim());
+        } else if (umrCol && row[umrCol]) {
+          q = supabase.from("crm_contacts").update(updates).eq("umr_number", String(row[umrCol]).trim());
+        } else if (mobileCol && row[mobileCol]) {
+          const mob = String(row[mobileCol]).replace(/\D/g, "").slice(-10);
+          if (mob.length !== 10) { failed++; continue; }
+          q = supabase.from("crm_contacts").update(updates).eq("mobile_number", mob);
+        } else {
+          failed++; continue;
+        }
+
+        const { error } = await q;
+        if (error) failed++; else updated++;
+      }
+
+      setBulkUpdating(false);
+      qc.invalidateQueries({ queryKey: ["crm-contacts"] });
+      toast.success(`Bulk last sent update: ${updated} updated, ${failed} failed`);
+    } catch {
+      setBulkUpdating(false);
+      toast.error("Failed to parse Excel");
+    }
+  };
+
   const handleDelete = async () => {
     if (deletePassword !== "9819111107") return toast.error("Incorrect password");
     setDeleting(true);
