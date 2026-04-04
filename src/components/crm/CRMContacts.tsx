@@ -1,13 +1,15 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
-import { exportToExcel } from "@/lib/excel";
-import { Download, Search } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { exportToExcel, parseExcelFile } from "@/lib/excel";
+import { Download, Search, Pencil, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 const CRMContacts = () => {
@@ -17,6 +19,16 @@ const CRMContacts = () => {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
+  const qc = useQueryClient();
+
+  // Edit dialog state
+  const [editOpen, setEditOpen] = useState(false);
+  const [editContact, setEditContact] = useState<any>(null);
+  const [editName, setEditName] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+
+  // Bulk update state
+  const [bulkUpdating, setBulkUpdating] = useState(false);
 
   const { data: contacts = [], isLoading } = useQuery({
     queryKey: ["crm-contacts", locationFilter, tagFilter, search, page],
@@ -86,6 +98,75 @@ const CRMContacts = () => {
     toast.success("Exported!");
   };
 
+  const openEdit = (contact: any) => {
+    setEditContact(contact);
+    setEditName(contact.patient_name || "");
+    setEditOpen(true);
+  };
+
+  const saveEdit = async () => {
+    if (!editContact) return;
+    setEditSaving(true);
+    const { error } = await supabase.from("crm_contacts").update({ patient_name: editName.trim().toUpperCase() }).eq("id", editContact.id);
+    setEditSaving(false);
+    if (error) {
+      toast.error("Failed to update name");
+    } else {
+      toast.success("Name updated");
+      setEditOpen(false);
+      qc.invalidateQueries({ queryKey: ["crm-contacts"] });
+    }
+  };
+
+  const handleBulkNameUpdate = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    try {
+      const rows = await parseExcelFile(file);
+      if (!rows.length) return toast.error("No data in file");
+
+      const keys = Object.keys(rows[0]);
+      // Expect columns: primary_key (or mobile_number) and patient_name
+      // Try to find by header name first
+      const pkCol = keys.find(k => k.toLowerCase().includes("primary") || k.toLowerCase().includes("key"));
+      const mobileCol = keys.find(k => k.toLowerCase().includes("mobile") || k.toLowerCase().includes("phone"));
+      const nameCol = keys.find(k => k.toLowerCase().includes("name") || k.toLowerCase().includes("patient"));
+
+      if (!nameCol) return toast.error("Excel must have a column with 'name' or 'patient' in the header");
+      if (!pkCol && !mobileCol) return toast.error("Excel must have a 'primary_key' or 'mobile' column");
+
+      setBulkUpdating(true);
+      let updated = 0, failed = 0;
+
+      for (const row of rows) {
+        const name = String(row[nameCol!] || "").trim().toUpperCase();
+        if (!name) { failed++; continue; }
+
+        let q;
+        if (pkCol && row[pkCol]) {
+          q = supabase.from("crm_contacts").update({ patient_name: name }).eq("primary_key", String(row[pkCol]).trim());
+        } else if (mobileCol && row[mobileCol]) {
+          const mob = String(row[mobileCol]).replace(/\D/g, "").slice(-10);
+          if (mob.length !== 10) { failed++; continue; }
+          q = supabase.from("crm_contacts").update({ patient_name: name }).eq("mobile_number", mob);
+        } else {
+          failed++; continue;
+        }
+
+        const { error } = await q;
+        if (error) failed++; else updated++;
+      }
+
+      setBulkUpdating(false);
+      qc.invalidateQueries({ queryKey: ["crm-contacts"] });
+      toast.success(`Bulk update: ${updated} updated, ${failed} failed`);
+    } catch {
+      setBulkUpdating(false);
+      toast.error("Failed to parse Excel");
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2 items-center">
@@ -110,8 +191,17 @@ const CRMContacts = () => {
           </SelectContent>
         </Select>
         <Button variant="outline" size="sm" onClick={handleExport}><Download className="h-4 w-4 mr-1" />Export</Button>
+        <label className="cursor-pointer">
+          <Button variant="outline" size="sm" asChild disabled={bulkUpdating}>
+            <span><Upload className="h-4 w-4 mr-1" />{bulkUpdating ? "Updating..." : "Bulk Update Names"}</span>
+          </Button>
+          <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleBulkNameUpdate} disabled={bulkUpdating} />
+        </label>
         <span className="text-sm text-muted-foreground">Total: {totalCount}</span>
       </div>
+      <p className="text-xs text-muted-foreground">
+        💡 <strong>Bulk Update Names:</strong> Upload Excel with columns "primary_key" (or "mobile") and "patient_name" to update names in bulk.
+      </p>
 
       <div className="border rounded-lg overflow-auto max-h-[60vh]">
         <Table>
@@ -119,6 +209,7 @@ const CRMContacts = () => {
             <TableRow>
               <TableHead className="w-8"><Checkbox checked={contacts.length > 0 && selected.size === contacts.length} onCheckedChange={toggleAll} /></TableHead>
               <TableHead>Name</TableHead>
+              <TableHead className="w-8"></TableHead>
               <TableHead>Mobile</TableHead>
               <TableHead>UMR</TableHead>
               <TableHead>Location</TableHead>
@@ -133,13 +224,18 @@ const CRMContacts = () => {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={12} className="text-center py-8">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={13} className="text-center py-8">Loading...</TableCell></TableRow>
             ) : contacts.length === 0 ? (
-              <TableRow><TableCell colSpan={12} className="text-center py-8">No contacts found. Import data to get started.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={13} className="text-center py-8">No contacts found. Import data to get started.</TableCell></TableRow>
             ) : contacts.map((c: any) => (
               <TableRow key={c.id}>
                 <TableCell><Checkbox checked={selected.has(c.id)} onCheckedChange={() => toggleSelect(c.id)} /></TableCell>
                 <TableCell className="font-medium">{c.patient_name || "—"}</TableCell>
+                <TableCell>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => openEdit(c)} title="Edit name">
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                </TableCell>
                 <TableCell>{c.mobile_number || "—"}</TableCell>
                 <TableCell>{c.umr_number || "—"}</TableCell>
                 <TableCell>{c.location || "—"}</TableCell>
@@ -161,6 +257,26 @@ const CRMContacts = () => {
         <span className="text-sm self-center">Page {page + 1}</span>
         <Button variant="outline" size="sm" disabled={contacts.length < PAGE_SIZE} onClick={() => setPage(p => p + 1)}>Next</Button>
       </div>
+
+      {/* Edit Name Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Edit Patient Name</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label className="text-xs text-muted-foreground">Primary Key</Label><p className="text-sm font-mono">{editContact?.primary_key}</p></div>
+            <div><Label className="text-xs text-muted-foreground">Mobile</Label><p className="text-sm">{editContact?.mobile_number || "—"}</p></div>
+            <div><Label className="text-xs text-muted-foreground">Location</Label><p className="text-sm">{editContact?.location || "—"}</p></div>
+            <div>
+              <Label>Patient Name</Label>
+              <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Enter patient name" className="uppercase" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+            <Button onClick={saveEdit} disabled={editSaving || !editName.trim()}>{editSaving ? "Saving..." : "Save"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
