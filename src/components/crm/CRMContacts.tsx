@@ -140,14 +140,14 @@ const CRMContacts = () => {
   };
 
   const handleExport = async () => {
-    toast.info("Fetching all contacts for export...");
+    toast.info("Fetching all contacts for export... This may take a moment.");
     try {
       const allContacts: any[] = [];
-      const BATCH = 1000;
+      const BATCH = 900;
       let from = 0;
       let hasMore = true;
       while (hasMore) {
-        let q = supabase.from("crm_contacts").select("*").range(from, from + BATCH - 1);
+        let q = supabase.from("crm_contacts").select("*").order("created_at", { ascending: true }).range(from, from + BATCH - 1);
         if (locationFilter !== "ALL") q = q.eq("location", locationFilter);
         if (tagFilter !== "ALL") q = q.eq("record_tag", tagFilter);
         if (search) q = q.or(`patient_name.ilike.%${search}%,mobile_number.ilike.%${search}%,umr_number.ilike.%${search}%`);
@@ -155,6 +155,7 @@ const CRMContacts = () => {
         if (error) throw error;
         if (!data || data.length === 0) { hasMore = false; break; }
         allContacts.push(...data);
+        toast.info(`Fetched ${allContacts.length} records so far...`, { id: "export-progress" });
         if (data.length < BATCH) hasMore = false;
         else from += BATCH;
       }
