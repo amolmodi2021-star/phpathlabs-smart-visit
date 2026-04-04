@@ -27,8 +27,8 @@ const COLUMN_MAP: Record<number, string> = {
   5: "mobile_number",    // F - MOBILE_PHONE
   6: "visit_type",       // G - REFERENCE_SOURCE_NAME
   // 7 skipped (H - COMPANY_NAME)
-  8: "doctor_name",      // I - REFRL_CUSTOMER_NAME
-  // 9 skipped (J - REFERAL_NAME)
+  // 8 skipped (I - REFRL_CUSTOMER_NAME)
+  9: "doctor_name",      // J - REFERAL_NAME
   10: "gross_amount",    // K - GROSS_AMOUNT
   11: "discount_amount", // L - CONCESSION_AMOUNT
   12: "net_amount",      // M - NET_AMOUNT
