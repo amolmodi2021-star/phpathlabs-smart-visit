@@ -794,8 +794,9 @@ const CRMContacts = () => {
         } else {
           sent++;
           await supabase.from("crm_contacts").update({
-            last_sent_type: "ABC Card",
+            last_sent_type: "ABC",
             last_sent_date: new Date().toISOString(),
+            record_tag: null,
           }).eq("id", r.id);
 
           if (normalizedMobile) {
