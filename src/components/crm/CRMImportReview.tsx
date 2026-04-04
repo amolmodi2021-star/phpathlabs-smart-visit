@@ -183,12 +183,9 @@ const CRMImportReview = () => {
       return toast.error("WhatsApp API not configured. Set up in Loyalty Cards → WhatsApp Settings.");
     }
 
-    // Parse body mapping or use default Name/Mobile/UMR/Discount mapping
+    // Parse body mapping — only include body params if mapping is explicitly configured
     let mapping: Record<string, string> = {};
     try { mapping = bodyMapping ? JSON.parse(bodyMapping) : {}; } catch { mapping = {}; }
-    if (Object.keys(mapping).length === 0) {
-      mapping = { "1": "Name", "2": "Mobile", "3": "UMR", "4": "Discount %" };
-    }
 
     const authHeaderValue = authHeaderPrefix ? `${authHeaderPrefix} ${apiKey}` : apiKey;
 
@@ -203,22 +200,22 @@ const CRMImportReview = () => {
       const normalizedMobile = rawMobile.length > 10 ? rawMobile.slice(-10) : rawMobile;
       const toNumber = normalizedMobile ? `+91${normalizedMobile}` : "";
 
-      // Build body params from mapping
-      const sortedKeys = Object.keys(mapping).sort((a, b) => Number(a) - Number(b));
-      const params: string[] = sortedKeys.map((key) => {
-        const field = mapping[key];
-        switch (field) {
-          case "Name": return r.patient_name || "";
-          case "Mobile": return r.mobile_number || "";
-          case "UMR": return r.umr_number || "";
-          case "Discount %": return `${r.default_discount_pct ?? 20}%`;
-          case "Expiry Date": return "";
-          default: return "";
-        }
-      });
-
       const components: Record<string, unknown> = {};
-      if (params.length > 0) {
+
+      // Only add body params if mapping is explicitly set
+      if (Object.keys(mapping).length > 0) {
+        const sortedKeys = Object.keys(mapping).sort((a, b) => Number(a) - Number(b));
+        const params: string[] = sortedKeys.map((key) => {
+          const field = mapping[key];
+          switch (field) {
+            case "Name": return r.patient_name || "";
+            case "Mobile": return r.mobile_number || "";
+            case "UMR": return r.umr_number || "";
+            case "Discount %": return `${r.default_discount_pct ?? 20}%`;
+            case "Expiry Date": return "";
+            default: return "";
+          }
+        });
         components.body = { params };
       }
 
