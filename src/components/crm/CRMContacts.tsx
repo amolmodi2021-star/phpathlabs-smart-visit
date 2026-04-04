@@ -98,21 +98,54 @@ const CRMContacts = () => {
     toast.success("Exported!");
   };
 
+  const EDITABLE_FIELDS = [
+    { key: "patient_name", label: "Patient Name", uppercase: true },
+    { key: "mobile_number", label: "Mobile Number" },
+    { key: "umr_number", label: "UMR Number" },
+    { key: "location", label: "Location" },
+    { key: "visit_date", label: "Visit Date" },
+    { key: "bill_number", label: "Bill Number" },
+    { key: "visit_type", label: "Visit Type" },
+    { key: "doctor_name", label: "Doctor Name", uppercase: true },
+    { key: "gross_amount", label: "Gross Amount" },
+    { key: "discount_amount", label: "Discount Amount" },
+    { key: "net_amount", label: "Net Amount" },
+    { key: "paid_amount", label: "Paid Amount" },
+    { key: "due_amount", label: "Due Amount" },
+    { key: "payment_type", label: "Payment Type" },
+    { key: "remarks", label: "Remarks" },
+    { key: "created_by", label: "Created By" },
+    { key: "record_tag", label: "Tag" },
+    { key: "default_discount_pct", label: "Default Discount %" },
+  ];
+
   const openEdit = (contact: any) => {
     setEditContact(contact);
-    setEditName(contact.patient_name || "");
+    const fields: Record<string, string> = {};
+    EDITABLE_FIELDS.forEach(f => { fields[f.key] = String(contact[f.key] ?? ""); });
+    setEditFields(fields);
     setEditOpen(true);
   };
 
   const saveEdit = async () => {
     if (!editContact) return;
     setEditSaving(true);
-    const { error } = await supabase.from("crm_contacts").update({ patient_name: editName.trim().toUpperCase() }).eq("id", editContact.id);
+    const updates: Record<string, any> = {};
+    EDITABLE_FIELDS.forEach(f => {
+      let val = editFields[f.key] ?? "";
+      if (f.uppercase) val = val.toUpperCase();
+      if (["gross_amount", "discount_amount", "net_amount", "paid_amount", "due_amount", "default_discount_pct"].includes(f.key)) {
+        updates[f.key] = parseFloat(val) || 0;
+      } else {
+        updates[f.key] = val || null;
+      }
+    });
+    const { error } = await supabase.from("crm_contacts").update(updates).eq("id", editContact.id);
     setEditSaving(false);
     if (error) {
-      toast.error("Failed to update name");
+      toast.error("Failed to update contact");
     } else {
-      toast.success("Name updated");
+      toast.success("Contact updated");
       setEditOpen(false);
       qc.invalidateQueries({ queryKey: ["crm-contacts"] });
     }
