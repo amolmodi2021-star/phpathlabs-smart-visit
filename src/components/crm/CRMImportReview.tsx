@@ -125,27 +125,36 @@ const CRMImportReview = () => {
 
     for (let i = 0; i < toApprove.length; i += BATCH) {
       const batch = toApprove.slice(i, i + BATCH);
-      const upsertData = batch.map((r: any) => ({
-        primary_key: r.primary_key,
-        patient_name: r.patient_name,
-        mobile_number: r.mobile_number,
-        umr_number: r.umr_number,
-        location: r.location,
-        bill_number: r.bill_number,
-        visit_date: r.location === "NON PHPL" ? null : r.visit_date,
-        visit_type: r.visit_type,
-        gross_amount: r.gross_amount || 0,
-        discount_amount: r.discount_amount || 0,
-        net_amount: r.net_amount || 0,
-        paid_amount: r.paid_amount || 0,
-        due_amount: r.due_amount || 0,
-        payment_type: r.payment_type,
-        remarks: r.remarks,
-        created_by: r.created_by,
-        doctor_name: r.doctor_name,
-        default_discount_pct: r.default_discount_pct,
-        record_tag: r.record_tag || "DAILY",
-      }));
+      const upsertData = batch.map((r: any) => {
+        const base: any = {
+          primary_key: r.primary_key,
+          patient_name: r.patient_name,
+          mobile_number: r.mobile_number,
+          umr_number: r.umr_number,
+          location: r.location,
+          bill_number: r.bill_number,
+          visit_date: r.location === "NON PHPL" ? null : r.visit_date,
+          visit_type: r.visit_type,
+          gross_amount: r.gross_amount || 0,
+          discount_amount: r.discount_amount || 0,
+          net_amount: r.net_amount || 0,
+          paid_amount: r.paid_amount || 0,
+          due_amount: r.due_amount || 0,
+          payment_type: r.payment_type,
+          remarks: r.remarks,
+          created_by: r.created_by,
+          doctor_name: r.doctor_name,
+          default_discount_pct: r.default_discount_pct,
+          record_tag: r.record_tag || "DAILY",
+        };
+        // If ABC was sent from review, carry over sent info and clear DAILY tag
+        if (r.record_tag === null || r.record_tag === "") {
+          base.record_tag = null;
+          base.last_sent_type = "ABC";
+          base.last_sent_date = new Date().toISOString();
+        }
+        return base;
+      });
 
       const { error } = await supabase.from("crm_contacts").upsert(upsertData, { onConflict: "primary_key" });
       if (error) console.error("Approve upsert error:", error);
@@ -328,10 +337,12 @@ const CRMImportReview = () => {
               record_tag: null,
             }).eq("primary_key", pk);
           }
-          // Also clear DAILY tag on the staging record
+          // Mark staging record as ABC sent (so Approve & Transfer carries it over)
           await supabase.from("crm_import_staging").update({
             record_tag: null,
           }).eq("id", r.id);
+          // Also update crm_contacts if it already exists (for update records)
+          // For new records, the sent info will be carried via staging → approve
           // Update loyalty_cards whatsapp_status
           if (normalizedMobile) {
             await supabase.from("loyalty_cards")
