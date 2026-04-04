@@ -921,6 +921,34 @@ const CRMContacts = () => {
         }}>
           <Send className="h-4 w-4 mr-1" />Select All DAILY
         </Button>
+        <Button variant="outline" size="sm" onClick={async () => {
+          if (!window.confirm("Clear DAILY tag from ALL contacts with DAILY tag?")) return;
+          toast.info("Clearing all DAILY tags...");
+          const BATCH = 200;
+          let cleared = 0;
+          let from = 0;
+          while (true) {
+            const { data: chunk } = await supabase
+              .from("crm_contacts")
+              .select("id")
+              .eq("record_tag", "DAILY")
+              .range(from, from + 999);
+            if (!chunk || chunk.length === 0) break;
+            const ids = chunk.map((c: any) => c.id);
+            for (let i = 0; i < ids.length; i += BATCH) {
+              const batch = ids.slice(i, i + BATCH);
+              await supabase.from("crm_contacts").update({ record_tag: null }).in("id", batch);
+              cleared += batch.length;
+            }
+            if (chunk.length < 1000) break;
+            from += 1000;
+          }
+          setSelected(new Set());
+          qc.invalidateQueries({ queryKey: ["crm-contacts"] });
+          toast.success(`Cleared DAILY tag from ${cleared} records`);
+        }}>
+          Clear All DAILY Tags
+        </Button>
         <Button variant="destructive" size="sm" onClick={() => { setDeleteMode("all"); setDeleteOpen(true); }}>
           <Trash2 className="h-4 w-4 mr-1" />Delete All
         </Button>
