@@ -90,33 +90,55 @@ const CRMContacts = () => {
     return diff >= 0 ? diff : "—";
   };
 
-  const handleExport = () => {
-    if (!contacts.length) return toast.error("No data to export");
-    const rows = contacts.map((c: any) => ({
-      "Primary Key": c.primary_key,
-      Location: c.location,
-      UMR: c.umr_number,
-      "Bill #": c.bill_number,
-      "Visit Date": c.visit_date,
-      "Patient Name": c.patient_name,
-      Mobile: c.mobile_number,
-      "Visit Type": c.visit_type,
-      Doctor: c.doctor_name,
-      "Gross Amt": c.gross_amount,
-      "Discount Amt": c.discount_amount,
-      "Net Amt": c.net_amount,
-      "Paid Amt": c.paid_amount,
-      "Due Amt": c.due_amount,
-      "Payment Type": c.payment_type,
-      Remarks: c.remarks,
-      "Created By": c.created_by,
-      Tag: c.record_tag,
-      "Discount %": c.default_discount_pct,
-      "Last Sent": c.last_sent_type,
-      "Last Sent Date": c.last_sent_date,
-    }));
-    exportToExcel(rows, `CRM_Contacts_${new Date().toISOString().slice(0, 10)}`);
-    toast.success("Exported!");
+  const handleExport = async () => {
+    toast.info("Fetching all contacts for export...");
+    try {
+      const allContacts: any[] = [];
+      const BATCH = 1000;
+      let from = 0;
+      let hasMore = true;
+      while (hasMore) {
+        let q = supabase.from("crm_contacts").select("*").range(from, from + BATCH - 1);
+        if (locationFilter !== "ALL") q = q.eq("location", locationFilter);
+        if (tagFilter !== "ALL") q = q.eq("record_tag", tagFilter);
+        if (search) q = q.or(`patient_name.ilike.%${search}%,mobile_number.ilike.%${search}%,umr_number.ilike.%${search}%`);
+        const { data, error } = await q;
+        if (error) throw error;
+        if (!data || data.length === 0) { hasMore = false; break; }
+        allContacts.push(...data);
+        if (data.length < BATCH) hasMore = false;
+        else from += BATCH;
+      }
+      if (!allContacts.length) return toast.error("No data to export");
+      const rows = allContacts.map((c: any) => ({
+        "Primary Key": c.primary_key,
+        Location: c.location,
+        UMR: c.umr_number,
+        "Bill #": c.bill_number,
+        "Visit Date": c.visit_date,
+        "Patient Name": c.patient_name,
+        Mobile: c.mobile_number,
+        "Visit Type": c.visit_type,
+        Doctor: c.doctor_name,
+        "Gross Amt": c.gross_amount,
+        "Discount Amt": c.discount_amount,
+        "Net Amt": c.net_amount,
+        "Paid Amt": c.paid_amount,
+        "Due Amt": c.due_amount,
+        "Payment Type": c.payment_type,
+        Remarks: c.remarks,
+        "Created By": c.created_by,
+        Tag: c.record_tag,
+        "Discount %": c.default_discount_pct,
+        "Last Sent": c.last_sent_type,
+        "Last Sent Date": c.last_sent_date,
+      }));
+      exportToExcel(rows, `CRM_Contacts_${new Date().toISOString().slice(0, 10)}`);
+      toast.success(`Exported ${allContacts.length} contacts!`);
+    } catch (err) {
+      console.error(err);
+      toast.error("Export failed");
+    }
   };
 
   const EDITABLE_FIELDS = [
