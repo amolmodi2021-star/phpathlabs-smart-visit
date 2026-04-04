@@ -363,7 +363,25 @@ const CRMContacts = () => {
     }
   };
 
-  const handleDelete = async () => {
+  const handleClearTags = async () => {
+    if (selected.size === 0) return;
+    const ids = Array.from(selected);
+    try {
+      const BATCH = 50;
+      for (let i = 0; i < ids.length; i += BATCH) {
+        const batch = ids.slice(i, i + BATCH);
+        const { error } = await supabase.from("crm_contacts").update({ record_tag: null }).in("id", batch);
+        if (error) throw error;
+      }
+      toast.success(`Cleared tags for ${ids.length} records`);
+      setSelected(new Set());
+      qc.invalidateQueries({ queryKey: ["crm-contacts"] });
+    } catch {
+      toast.error("Failed to clear tags");
+    }
+  };
+
+
     if (deletePassword !== "9819111107") return toast.error("Incorrect password");
     setDeleting(true);
     try {
