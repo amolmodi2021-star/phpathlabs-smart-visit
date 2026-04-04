@@ -104,7 +104,7 @@ const CRMImport = () => {
     setStats(null);
     setProgress(0);
 
-    const s: ImportStats = { added: 0, updated: 0, skippedBlacklist: 0, skippedDuplicate: 0, upgradedFromNonPhpl: 0 };
+    const s: ImportStats = { added: 0, updated: 0, skippedBlacklist: 0, skippedDuplicate: 0, upgradedFromNonPhpl: 0, skippedInvalid: 0 };
 
     // Fetch blacklist
     const { data: blacklistData } = await supabase.from("crm_blacklist").select("mobile_number");
