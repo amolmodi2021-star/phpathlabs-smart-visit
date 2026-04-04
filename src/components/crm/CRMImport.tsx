@@ -15,6 +15,7 @@ interface ImportStats {
   skippedBlacklist: number;
   skippedDuplicate: number;
   upgradedFromNonPhpl: number;
+  skippedInvalid: number;
 }
 
 const COLUMN_MAP: Record<number, string> = {
