@@ -131,7 +131,7 @@ const CRMImport = () => {
 
       for (const raw of batch) {
         const mapped = mapRow(raw);
-        if (!mapped) continue;
+        if (!mapped) { s.skippedInvalid++; continue; }
         const pk = String(mapped.primary_key).trim();
         if (seenPks.has(pk)) { s.skippedDuplicate++; continue; }
         seenPks.add(pk);
