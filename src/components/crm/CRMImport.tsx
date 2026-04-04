@@ -19,26 +19,26 @@ interface ImportStats {
 }
 
 const COLUMN_MAP: Record<number, string> = {
-  0: "location",       // A
-  1: "umr_number",     // B
-  2: "bill_number",    // C
-  3: "visit_date",     // D
-  4: "patient_name",   // E
-  5: "mobile_number",  // F
-  6: "visit_type",     // G
-  // 7,8 skipped (H, I)
-  9: "doctor_name",    // J
-  10: "gross_amount",  // K
-  11: "discount_amount", // L
-  12: "net_amount",    // M
-  13: "paid_amount",   // N
-  14: "due_amount",    // O
-  15: "payment_type",  // P
-  16: "remarks",       // Q
-  17: "created_by",    // R
-  18: "record_tag",    // S
-  19: "default_discount_pct", // T
-  20: "primary_key",   // U
+  0: "location",       // A - LOCATION_NAME
+  1: "umr_number",     // B - UMR_NO
+  2: "bill_number",    // C - BILL_NO
+  3: "visit_date",     // D - TRANSACTION_DT
+  4: "patient_name",   // E - PATIENT_NAME
+  5: "mobile_number",  // F - MOBILE_PHONE
+  6: "visit_type",     // G - A (visit type)
+  7: "doctor_name",    // H - REFRL_CUSTOMER_NAME
+  // 8 skipped (REFERAL_NAME)
+  9: "gross_amount",   // J - GROSS_AMOUNT
+  10: "discount_amount", // K - CONCESSION_AMOUNT
+  11: "net_amount",    // L - NET_AMOUNT
+  12: "paid_amount",   // M - PAID_AMOUNT
+  13: "due_amount",    // N - DUE_AMOUNT
+  14: "payment_type",  // O - PAYMENT_TYPE
+  15: "remarks",       // P - REMARKS
+  16: "created_by",    // Q - CREATE_BY
+  17: "record_tag",    // R - daily
+  18: "default_discount_pct", // S - %
+  19: "primary_key",   // T - B|F (UMR|Mobile)
 };
 
 function normalizeMobile(val: unknown): string {
