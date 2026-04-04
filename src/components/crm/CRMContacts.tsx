@@ -253,6 +253,8 @@ const CRMContacts = () => {
         let q;
         if (pkCol && row[pkCol]) {
           q = supabase.from("crm_contacts").update({ default_discount_pct: discount }).eq("primary_key", String(row[pkCol]).trim());
+        } else if (umrCol && row[umrCol]) {
+          q = supabase.from("crm_contacts").update({ default_discount_pct: discount }).eq("umr_number", String(row[umrCol]).trim());
         } else if (mobileCol && row[mobileCol]) {
           const mob = String(row[mobileCol]).replace(/\D/g, "").slice(-10);
           if (mob.length !== 10) { failed++; continue; }
