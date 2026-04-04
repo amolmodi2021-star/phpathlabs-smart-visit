@@ -423,39 +423,74 @@ const CRMContacts = () => {
       setBulkUpdating(true);
       let updated = 0, failed = 0;
 
+      // Build a composite key for batching: isoDate + sentType
+      const pkBatches = new Map<string, string[]>();
+      const umrBatches = new Map<string, string[]>();
+      const mobBatches = new Map<string, string[]>();
+
+      const parseDate = (dateStr: string): string | null => {
+        const ddmmyyyy = dateStr.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+        if (ddmmyyyy) return `${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}T00:00:00Z`;
+        const parsed = new Date(dateStr);
+        if (isNaN(parsed.getTime())) return null;
+        return parsed.toISOString();
+      };
+
       for (const row of rows) {
         const dateStr = String(row[dateCol!] || "").trim();
         if (!dateStr) { failed++; continue; }
+        const isoDate = parseDate(dateStr);
+        if (!isoDate) { failed++; continue; }
+        const sentType = typeCol && row[typeCol] ? String(row[typeCol]).trim() : "";
+        const batchKey = `${isoDate}|||${sentType}`;
 
-        // Parse dd-mm-yyyy or yyyy-mm-dd to ISO
-        let isoDate: string;
-        const ddmmyyyy = dateStr.match(/^(\d{2})-(\d{2})-(\d{4})$/);
-        if (ddmmyyyy) {
-          isoDate = `${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}T00:00:00Z`;
-        } else {
-          const parsed = new Date(dateStr);
-          if (isNaN(parsed.getTime())) { failed++; continue; }
-          isoDate = parsed.toISOString();
-        }
-
-        const updates: Record<string, any> = { last_sent_date: isoDate };
-        if (typeCol && row[typeCol]) updates.last_sent_type = String(row[typeCol]).trim();
-
-        let q;
         if (pkCol && row[pkCol]) {
-          q = supabase.from("crm_contacts").update(updates).eq("primary_key", String(row[pkCol]).trim());
+          if (!pkBatches.has(batchKey)) pkBatches.set(batchKey, []);
+          pkBatches.get(batchKey)!.push(String(row[pkCol]).trim());
         } else if (umrCol && row[umrCol]) {
-          q = supabase.from("crm_contacts").update(updates).eq("umr_number", String(row[umrCol]).trim());
+          if (!umrBatches.has(batchKey)) umrBatches.set(batchKey, []);
+          umrBatches.get(batchKey)!.push(String(row[umrCol]).trim());
         } else if (mobileCol && row[mobileCol]) {
           const mob = String(row[mobileCol]).replace(/\D/g, "").slice(-10);
           if (mob.length !== 10) { failed++; continue; }
-          q = supabase.from("crm_contacts").update(updates).eq("mobile_number", mob);
+          if (!mobBatches.has(batchKey)) mobBatches.set(batchKey, []);
+          mobBatches.get(batchKey)!.push(mob);
         } else {
           failed++; continue;
         }
+      }
 
-        const { error } = await q;
-        if (error) failed++; else updated++;
+      const CHUNK = 200;
+      const buildUpdates = (batchKey: string) => {
+        const [isoDate, sentType] = batchKey.split("|||");
+        const updates: Record<string, any> = { last_sent_date: isoDate };
+        if (sentType) updates.last_sent_type = sentType;
+        return updates;
+      };
+
+      for (const [batchKey, pks] of pkBatches) {
+        const updates = buildUpdates(batchKey);
+        for (let i = 0; i < pks.length; i += CHUNK) {
+          const chunk = pks.slice(i, i + CHUNK);
+          const { error } = await supabase.from("crm_contacts").update(updates).in("primary_key", chunk);
+          if (error) failed += chunk.length; else updated += chunk.length;
+        }
+      }
+      for (const [batchKey, umrs] of umrBatches) {
+        const updates = buildUpdates(batchKey);
+        for (let i = 0; i < umrs.length; i += CHUNK) {
+          const chunk = umrs.slice(i, i + CHUNK);
+          const { error } = await supabase.from("crm_contacts").update(updates).in("umr_number", chunk);
+          if (error) failed += chunk.length; else updated += chunk.length;
+        }
+      }
+      for (const [batchKey, mobs] of mobBatches) {
+        const updates = buildUpdates(batchKey);
+        for (let i = 0; i < mobs.length; i += CHUNK) {
+          const chunk = mobs.slice(i, i + CHUNK);
+          const { error } = await supabase.from("crm_contacts").update(updates).in("mobile_number", chunk);
+          if (error) failed += chunk.length; else updated += chunk.length;
+        }
       }
 
       setBulkUpdating(false);
