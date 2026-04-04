@@ -7,6 +7,7 @@ import CRMAbnormalTests from "@/components/crm/CRMAbnormalTests";
 import CRMBlacklist from "@/components/crm/CRMBlacklist";
 import CRMSequences from "@/components/crm/CRMSequences";
 import CRMSettings from "@/components/crm/CRMSettings";
+import CRMSentHistory from "@/components/crm/CRMSentHistory";
 
 const CRM = () => (
   <PasswordGate title="CRM Access">
@@ -17,6 +18,7 @@ const CRM = () => (
           <TabsTrigger value="contacts">Contacts</TabsTrigger>
           <TabsTrigger value="import">Import Data</TabsTrigger>
           <TabsTrigger value="review">Review & Approve</TabsTrigger>
+          <TabsTrigger value="history">History</TabsTrigger>
           <TabsTrigger value="abnormal">Abnormal Tests</TabsTrigger>
           <TabsTrigger value="blacklist">Blacklist</TabsTrigger>
           <TabsTrigger value="sequences">Sequences</TabsTrigger>
@@ -25,6 +27,7 @@ const CRM = () => (
         <TabsContent value="contacts"><CRMContacts /></TabsContent>
         <TabsContent value="import"><CRMImport /></TabsContent>
         <TabsContent value="review"><CRMImportReview /></TabsContent>
+        <TabsContent value="history"><CRMSentHistory /></TabsContent>
         <TabsContent value="abnormal"><CRMAbnormalTests /></TabsContent>
         <TabsContent value="blacklist"><CRMBlacklist /></TabsContent>
         <TabsContent value="sequences"><CRMSequences /></TabsContent>
