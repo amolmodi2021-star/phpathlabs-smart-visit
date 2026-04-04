@@ -273,7 +273,7 @@ const CRMContacts = () => {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
-            <Button onClick={saveEdit} disabled={editSaving || !editName.trim()}>{editSaving ? "Saving..." : "Save"}</Button>
+            <Button onClick={saveEdit} disabled={editSaving}>{editSaving ? "Saving..." : "Save"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
