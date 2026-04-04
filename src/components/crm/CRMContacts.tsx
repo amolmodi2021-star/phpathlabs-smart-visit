@@ -824,7 +824,16 @@ const CRMContacts = () => {
     toast.success(`Loyalty cards sent: ${sent} success, ${failed} failed`);
   };
 
+  return (
     <div className="space-y-4">
+      {sending && (
+        <div className="space-y-2 p-3 border rounded-lg bg-muted/50">
+          <p className="text-sm font-medium">{sendPhase}</p>
+          <Progress value={sendProgress} />
+          <p className="text-xs text-muted-foreground">{sendProgress}% complete</p>
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-2 items-center">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
