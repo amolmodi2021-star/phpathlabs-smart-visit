@@ -71,6 +71,179 @@ export type Database = {
         }
         Relationships: []
       }
+      crm_abnormal_tests: {
+        Row: {
+          contact_primary_key: string
+          created_at: string
+          id: string
+          normal_range: string | null
+          result_value: string | null
+          test_date: string | null
+          test_name: string
+        }
+        Insert: {
+          contact_primary_key: string
+          created_at?: string
+          id?: string
+          normal_range?: string | null
+          result_value?: string | null
+          test_date?: string | null
+          test_name: string
+        }
+        Update: {
+          contact_primary_key?: string
+          created_at?: string
+          id?: string
+          normal_range?: string | null
+          result_value?: string | null
+          test_date?: string | null
+          test_name?: string
+        }
+        Relationships: []
+      }
+      crm_blacklist: {
+        Row: {
+          created_at: string
+          id: string
+          mobile_number: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          mobile_number: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          mobile_number?: string
+        }
+        Relationships: []
+      }
+      crm_contacts: {
+        Row: {
+          bill_number: string | null
+          created_at: string
+          created_by: string | null
+          default_discount_pct: number | null
+          discount_amount: number | null
+          doctor_name: string | null
+          due_amount: number | null
+          gross_amount: number | null
+          id: string
+          last_sent_date: string | null
+          last_sent_type: string | null
+          location: string | null
+          mobile_number: string | null
+          net_amount: number | null
+          paid_amount: number | null
+          patient_name: string | null
+          payment_type: string | null
+          primary_key: string
+          record_tag: string | null
+          remarks: string | null
+          umr_number: string | null
+          updated_at: string
+          visit_date: string | null
+          visit_type: string | null
+        }
+        Insert: {
+          bill_number?: string | null
+          created_at?: string
+          created_by?: string | null
+          default_discount_pct?: number | null
+          discount_amount?: number | null
+          doctor_name?: string | null
+          due_amount?: number | null
+          gross_amount?: number | null
+          id?: string
+          last_sent_date?: string | null
+          last_sent_type?: string | null
+          location?: string | null
+          mobile_number?: string | null
+          net_amount?: number | null
+          paid_amount?: number | null
+          patient_name?: string | null
+          payment_type?: string | null
+          primary_key: string
+          record_tag?: string | null
+          remarks?: string | null
+          umr_number?: string | null
+          updated_at?: string
+          visit_date?: string | null
+          visit_type?: string | null
+        }
+        Update: {
+          bill_number?: string | null
+          created_at?: string
+          created_by?: string | null
+          default_discount_pct?: number | null
+          discount_amount?: number | null
+          doctor_name?: string | null
+          due_amount?: number | null
+          gross_amount?: number | null
+          id?: string
+          last_sent_date?: string | null
+          last_sent_type?: string | null
+          location?: string | null
+          mobile_number?: string | null
+          net_amount?: number | null
+          paid_amount?: number | null
+          patient_name?: string | null
+          payment_type?: string | null
+          primary_key?: string
+          record_tag?: string | null
+          remarks?: string | null
+          umr_number?: string | null
+          updated_at?: string
+          visit_date?: string | null
+          visit_type?: string | null
+        }
+        Relationships: []
+      }
+      crm_sequence_rules: {
+        Row: {
+          action_type: string
+          created_at: string
+          delay_days: number
+          enabled: boolean
+          filter_location: string
+          id: string
+          step_order: number
+          template_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          action_type?: string
+          created_at?: string
+          delay_days?: number
+          enabled?: boolean
+          filter_location?: string
+          id?: string
+          step_order?: number
+          template_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          action_type?: string
+          created_at?: string
+          delay_days?: number
+          enabled?: boolean
+          filter_location?: string
+          id?: string
+          step_order?: number
+          template_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_sequence_rules_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "marketing_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       estimate_tests: {
         Row: {
           created_at: string
