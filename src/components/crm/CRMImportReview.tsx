@@ -158,18 +158,39 @@ const CRMImportReview = () => {
 
     if (targets.length === 0) return toast.error("No valid records to send");
 
-    // Fetch WhatsApp settings
+    // Fetch WhatsApp settings — same keys as Loyalty Cards WhatsApp Settings tab
     const { data: settings } = await supabase
       .from("app_settings")
       .select("setting_key, setting_value")
-      .in("setting_key", ["loyalty_wa_api_base_url", "loyalty_wa_api_key", "loyalty_wa_template_name", "loyalty_wa_auth_header_name", "loyalty_wa_auth_header_prefix", "loyalty_wa_from_number"]);
+      .like("setting_key", "loyalty_wa_%");
 
     const cfg: Record<string, string> = {};
     (settings || []).forEach((s: any) => { cfg[s.setting_key] = s.setting_value; });
 
-    if (!cfg.loyalty_wa_api_base_url || !cfg.loyalty_wa_api_key) {
+    const apiBaseUrl = cfg["loyalty_wa_baseUrl"];
+    const apiKey = cfg["loyalty_wa_apiKey"];
+    const templateName = cfg["loyalty_wa_templateName"];
+    const authHeaderName = cfg["loyalty_wa_authHeaderName"] || "apikey";
+    const authHeaderPrefix = cfg["loyalty_wa_authHeaderPrefix"] || "";
+    const fromNumber = cfg["loyalty_wa_fromNumber"] || "";
+    const campaignName = cfg["loyalty_wa_campaignName"] || "";
+    const includeMediaHeader = cfg["loyalty_wa_mediaHeader"] !== "false";
+    const bodyMapping = cfg["loyalty_wa_bodyMapping"];
+    const queueEnabled = cfg["loyalty_wa_queueEnabled"] !== "false";
+    const delayMs = Number(cfg["loyalty_wa_delayMs"]) || 3000;
+
+    if (!apiBaseUrl || !apiKey || !templateName) {
       return toast.error("WhatsApp API not configured. Set up in Loyalty Cards → WhatsApp Settings.");
     }
+
+    // Parse body mapping or use default Name/Mobile/UMR/Discount mapping
+    let mapping: Record<string, string> = {};
+    try { mapping = bodyMapping ? JSON.parse(bodyMapping) : {}; } catch { mapping = {}; }
+    if (Object.keys(mapping).length === 0) {
+      mapping = { "1": "Name", "2": "Mobile", "3": "UMR", "4": "Discount %" };
+    }
+
+    const authHeaderValue = authHeaderPrefix ? `${authHeaderPrefix} ${apiKey}` : apiKey;
 
     setSending(true);
     setProgress(0);
@@ -178,47 +199,84 @@ const CRMImportReview = () => {
 
     for (let i = 0; i < targets.length; i++) {
       const r = targets[i];
-      const mobile = `91${r.mobile_number}`;
-      try {
-        const payload: any = {
-          messaging_product: "whatsapp",
-          recipient_type: "individual",
-          to: mobile,
-          type: "template",
-          template: {
-            name: cfg.loyalty_wa_template_name || "loyalty_card",
-            language: { code: "en" },
-            components: [],
-          },
-        };
+      const rawMobile = (r.mobile_number || "").replace(/\D/g, "");
+      const normalizedMobile = rawMobile.length > 10 ? rawMobile.slice(-10) : rawMobile;
+      const toNumber = normalizedMobile ? `+91${normalizedMobile}` : "";
 
-        if (cfg.loyalty_wa_from_number) {
-          payload.from = cfg.loyalty_wa_from_number;
+      // Build body params from mapping
+      const sortedKeys = Object.keys(mapping).sort((a, b) => Number(a) - Number(b));
+      const params: string[] = sortedKeys.map((key) => {
+        const field = mapping[key];
+        switch (field) {
+          case "Name": return r.patient_name || "";
+          case "Mobile": return r.mobile_number || "";
+          case "UMR": return r.umr_number || "";
+          case "Discount %": return `${r.default_discount_pct ?? 20}%`;
+          case "Expiry Date": return "";
+          default: return "";
         }
+      });
 
-        const headers: Record<string, string> = { "Content-Type": "application/json" };
-        const headerName = cfg.loyalty_wa_auth_header_name || "apikey";
-        const prefix = cfg.loyalty_wa_auth_header_prefix || "";
-        headers[headerName] = prefix ? `${prefix} ${cfg.loyalty_wa_api_key}` : cfg.loyalty_wa_api_key;
+      const components: Record<string, unknown> = {};
+      if (params.length > 0) {
+        components.body = { params };
+      }
 
-        await fetch(cfg.loyalty_wa_api_base_url, {
+      // Find loyalty card image for this record if available
+      if (includeMediaHeader) {
+        const { data: cardData } = await supabase
+          .from("loyalty_cards")
+          .select("image_url")
+          .eq("mobile", r.mobile_number)
+          .not("image_url", "is", null)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (cardData?.image_url) {
+          components.header = { type: "image", image: { link: cardData.image_url } };
+        }
+      }
+
+      const payload = {
+        from: fromNumber,
+        to: toNumber,
+        templateName,
+        campaignName,
+        type: "template",
+        components,
+      };
+
+      try {
+        const res = await fetch(apiBaseUrl, {
           method: "POST",
-          headers,
+          headers: {
+            "Content-Type": "application/json",
+            [authHeaderName]: authHeaderValue,
+          },
           body: JSON.stringify(payload),
         });
-        sent++;
-        // Update last_sent_type and last_sent_date in crm_contacts
-        const pk = r.primary_key;
-        if (pk) {
-          await supabase.from("crm_contacts").update({
-            last_sent_type: "ABC Card",
-            last_sent_date: new Date().toISOString(),
-          }).eq("primary_key", pk);
+
+        if (res.ok) {
+          sent++;
+          const pk = r.primary_key;
+          if (pk) {
+            await supabase.from("crm_contacts").update({
+              last_sent_type: "ABC Card",
+              last_sent_date: new Date().toISOString(),
+            }).eq("primary_key", pk);
+          }
+        } else {
+          failed++;
         }
       } catch {
         failed++;
       }
       setProgress(Math.round(((i + 1) / targets.length) * 100));
+
+      if (queueEnabled && delayMs > 0 && i < targets.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
     }
 
     setSending(false);
