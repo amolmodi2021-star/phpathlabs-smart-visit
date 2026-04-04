@@ -258,35 +258,62 @@ const CRMContacts = () => {
       if (!rows.length) return toast.error("No data in file");
 
       const keys = Object.keys(rows[0]);
-      // Expect columns: primary_key (or mobile_number) and patient_name
-      // Try to find by header name first
       const pkCol = keys.find(k => k.toLowerCase().includes("primary") || k.toLowerCase().includes("key"));
       const mobileCol = keys.find(k => k.toLowerCase().includes("mobile") || k.toLowerCase().includes("phone"));
+      const umrCol = keys.find(k => k.toLowerCase().includes("umr"));
       const nameCol = keys.find(k => k.toLowerCase().includes("name") || k.toLowerCase().includes("patient"));
 
       if (!nameCol) return toast.error("Excel must have a column with 'name' or 'patient' in the header");
-      if (!pkCol && !mobileCol) return toast.error("Excel must have a 'primary_key' or 'mobile' column");
+      if (!pkCol && !mobileCol && !umrCol) return toast.error("Excel must have a 'primary_key', 'mobile', or 'umr' column");
 
       setBulkUpdating(true);
       let updated = 0, failed = 0;
+
+      const pkBatches = new Map<string, string[]>();
+      const umrBatches = new Map<string, string[]>();
+      const mobBatches = new Map<string, string[]>();
 
       for (const row of rows) {
         const name = String(row[nameCol!] || "").trim().toUpperCase();
         if (!name) { failed++; continue; }
 
-        let q;
         if (pkCol && row[pkCol]) {
-          q = supabase.from("crm_contacts").update({ patient_name: name }).eq("primary_key", String(row[pkCol]).trim());
+          if (!pkBatches.has(name)) pkBatches.set(name, []);
+          pkBatches.get(name)!.push(String(row[pkCol]).trim());
+        } else if (umrCol && row[umrCol]) {
+          if (!umrBatches.has(name)) umrBatches.set(name, []);
+          umrBatches.get(name)!.push(String(row[umrCol]).trim());
         } else if (mobileCol && row[mobileCol]) {
           const mob = String(row[mobileCol]).replace(/\D/g, "").slice(-10);
           if (mob.length !== 10) { failed++; continue; }
-          q = supabase.from("crm_contacts").update({ patient_name: name }).eq("mobile_number", mob);
+          if (!mobBatches.has(name)) mobBatches.set(name, []);
+          mobBatches.get(name)!.push(mob);
         } else {
           failed++; continue;
         }
+      }
 
-        const { error } = await q;
-        if (error) failed++; else updated++;
+      const CHUNK = 200;
+      for (const [name, pks] of pkBatches) {
+        for (let i = 0; i < pks.length; i += CHUNK) {
+          const chunk = pks.slice(i, i + CHUNK);
+          const { error } = await supabase.from("crm_contacts").update({ patient_name: name }).in("primary_key", chunk);
+          if (error) failed += chunk.length; else updated += chunk.length;
+        }
+      }
+      for (const [name, umrs] of umrBatches) {
+        for (let i = 0; i < umrs.length; i += CHUNK) {
+          const chunk = umrs.slice(i, i + CHUNK);
+          const { error } = await supabase.from("crm_contacts").update({ patient_name: name }).in("umr_number", chunk);
+          if (error) failed += chunk.length; else updated += chunk.length;
+        }
+      }
+      for (const [name, mobs] of mobBatches) {
+        for (let i = 0; i < mobs.length; i += CHUNK) {
+          const chunk = mobs.slice(i, i + CHUNK);
+          const { error } = await supabase.from("crm_contacts").update({ patient_name: name }).in("mobile_number", chunk);
+          if (error) failed += chunk.length; else updated += chunk.length;
+        }
       }
 
       setBulkUpdating(false);
@@ -396,39 +423,74 @@ const CRMContacts = () => {
       setBulkUpdating(true);
       let updated = 0, failed = 0;
 
+      // Build a composite key for batching: isoDate + sentType
+      const pkBatches = new Map<string, string[]>();
+      const umrBatches = new Map<string, string[]>();
+      const mobBatches = new Map<string, string[]>();
+
+      const parseDate = (dateStr: string): string | null => {
+        const ddmmyyyy = dateStr.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+        if (ddmmyyyy) return `${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}T00:00:00Z`;
+        const parsed = new Date(dateStr);
+        if (isNaN(parsed.getTime())) return null;
+        return parsed.toISOString();
+      };
+
       for (const row of rows) {
         const dateStr = String(row[dateCol!] || "").trim();
         if (!dateStr) { failed++; continue; }
+        const isoDate = parseDate(dateStr);
+        if (!isoDate) { failed++; continue; }
+        const sentType = typeCol && row[typeCol] ? String(row[typeCol]).trim() : "";
+        const batchKey = `${isoDate}|||${sentType}`;
 
-        // Parse dd-mm-yyyy or yyyy-mm-dd to ISO
-        let isoDate: string;
-        const ddmmyyyy = dateStr.match(/^(\d{2})-(\d{2})-(\d{4})$/);
-        if (ddmmyyyy) {
-          isoDate = `${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}T00:00:00Z`;
-        } else {
-          const parsed = new Date(dateStr);
-          if (isNaN(parsed.getTime())) { failed++; continue; }
-          isoDate = parsed.toISOString();
-        }
-
-        const updates: Record<string, any> = { last_sent_date: isoDate };
-        if (typeCol && row[typeCol]) updates.last_sent_type = String(row[typeCol]).trim();
-
-        let q;
         if (pkCol && row[pkCol]) {
-          q = supabase.from("crm_contacts").update(updates).eq("primary_key", String(row[pkCol]).trim());
+          if (!pkBatches.has(batchKey)) pkBatches.set(batchKey, []);
+          pkBatches.get(batchKey)!.push(String(row[pkCol]).trim());
         } else if (umrCol && row[umrCol]) {
-          q = supabase.from("crm_contacts").update(updates).eq("umr_number", String(row[umrCol]).trim());
+          if (!umrBatches.has(batchKey)) umrBatches.set(batchKey, []);
+          umrBatches.get(batchKey)!.push(String(row[umrCol]).trim());
         } else if (mobileCol && row[mobileCol]) {
           const mob = String(row[mobileCol]).replace(/\D/g, "").slice(-10);
           if (mob.length !== 10) { failed++; continue; }
-          q = supabase.from("crm_contacts").update(updates).eq("mobile_number", mob);
+          if (!mobBatches.has(batchKey)) mobBatches.set(batchKey, []);
+          mobBatches.get(batchKey)!.push(mob);
         } else {
           failed++; continue;
         }
+      }
 
-        const { error } = await q;
-        if (error) failed++; else updated++;
+      const CHUNK = 200;
+      const buildUpdates = (batchKey: string) => {
+        const [isoDate, sentType] = batchKey.split("|||");
+        const updates: Record<string, any> = { last_sent_date: isoDate };
+        if (sentType) updates.last_sent_type = sentType;
+        return updates;
+      };
+
+      for (const [batchKey, pks] of pkBatches) {
+        const updates = buildUpdates(batchKey);
+        for (let i = 0; i < pks.length; i += CHUNK) {
+          const chunk = pks.slice(i, i + CHUNK);
+          const { error } = await supabase.from("crm_contacts").update(updates).in("primary_key", chunk);
+          if (error) failed += chunk.length; else updated += chunk.length;
+        }
+      }
+      for (const [batchKey, umrs] of umrBatches) {
+        const updates = buildUpdates(batchKey);
+        for (let i = 0; i < umrs.length; i += CHUNK) {
+          const chunk = umrs.slice(i, i + CHUNK);
+          const { error } = await supabase.from("crm_contacts").update(updates).in("umr_number", chunk);
+          if (error) failed += chunk.length; else updated += chunk.length;
+        }
+      }
+      for (const [batchKey, mobs] of mobBatches) {
+        const updates = buildUpdates(batchKey);
+        for (let i = 0; i < mobs.length; i += CHUNK) {
+          const chunk = mobs.slice(i, i + CHUNK);
+          const { error } = await supabase.from("crm_contacts").update(updates).in("mobile_number", chunk);
+          if (error) failed += chunk.length; else updated += chunk.length;
+        }
       }
 
       setBulkUpdating(false);
@@ -572,15 +634,16 @@ const CRMContacts = () => {
               <TableHead>Discount %</TableHead>
               <TableHead>Tag</TableHead>
               <TableHead>Created Date</TableHead>
-              <TableHead>Last Sent</TableHead>
+              <TableHead>Sent Type</TableHead>
+              <TableHead>Last Sent Date</TableHead>
               <TableHead>Days Since</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={14} className="text-center py-8">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={15} className="text-center py-8">Loading...</TableCell></TableRow>
             ) : contacts.length === 0 ? (
-              <TableRow><TableCell colSpan={14} className="text-center py-8">No contacts found. Import data to get started.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={15} className="text-center py-8">No contacts found. Import data to get started.</TableCell></TableRow>
             ) : contacts.map((c: any) => (
               <TableRow key={c.id}>
                 <TableCell><Checkbox checked={selected.has(c.id)} onCheckedChange={() => toggleSelect(c.id)} /></TableCell>
@@ -601,6 +664,7 @@ const CRMContacts = () => {
                 <TableCell>{c.record_tag || "—"}</TableCell>
                 <TableCell>{c.created_at ? format(new Date(c.created_at), "dd-MM-yyyy") : "—"}</TableCell>
                 <TableCell>{c.last_sent_type || "—"}</TableCell>
+                <TableCell>{c.last_sent_date ? format(new Date(c.last_sent_date), "dd-MM-yyyy") : "—"}</TableCell>
                 <TableCell>{daysSince(c.last_sent_date)}</TableCell>
               </TableRow>
             ))}
