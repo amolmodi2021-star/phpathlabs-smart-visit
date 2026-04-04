@@ -56,7 +56,7 @@ function mapRow(row: Record<string, unknown>): Record<string, unknown> | null {
   const umr = String(mapped.umr_number || "").trim();
   const mob = normalizeMobile(mapped.mobile_number);
   if (mob.length === 10) {
-    mapped.primary_key = umr ? `${umr}|${mob}` : `NOPHPL|${mob}`;
+    mapped.primary_key = `${umr}|${mob}`;
   } else {
     return null;
   }
