@@ -207,6 +207,14 @@ const CRMImportReview = () => {
           body: JSON.stringify(payload),
         });
         sent++;
+        // Update last_sent_type and last_sent_date in crm_contacts
+        const pk = r.primary_key;
+        if (pk) {
+          await supabase.from("crm_contacts").update({
+            last_sent_type: "ABC Card",
+            last_sent_date: new Date().toISOString(),
+          }).eq("primary_key", pk);
+        }
       } catch {
         failed++;
       }
@@ -214,6 +222,7 @@ const CRMImportReview = () => {
     }
 
     setSending(false);
+    qc.invalidateQueries({ queryKey: ["crm-contacts"] });
     toast.success(`WhatsApp sent: ${sent} success, ${failed} failed`);
   };
 
