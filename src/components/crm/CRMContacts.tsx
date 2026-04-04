@@ -318,24 +318,52 @@ const CRMContacts = () => {
       setBulkUpdating(true);
       let updated = 0, failed = 0;
 
+      // Group rows by discount value and match type for batching
+      const pkBatches = new Map<number, string[]>();
+      const umrBatches = new Map<number, string[]>();
+      const mobBatches = new Map<number, string[]>();
+
       for (const row of rows) {
         const discount = parseFloat(String(row[discountCol!] || "0")) || 0;
 
-        let q;
         if (pkCol && row[pkCol]) {
-          q = supabase.from("crm_contacts").update({ default_discount_pct: discount }).eq("primary_key", String(row[pkCol]).trim());
+          if (!pkBatches.has(discount)) pkBatches.set(discount, []);
+          pkBatches.get(discount)!.push(String(row[pkCol]).trim());
         } else if (umrCol && row[umrCol]) {
-          q = supabase.from("crm_contacts").update({ default_discount_pct: discount }).eq("umr_number", String(row[umrCol]).trim());
+          if (!umrBatches.has(discount)) umrBatches.set(discount, []);
+          umrBatches.get(discount)!.push(String(row[umrCol]).trim());
         } else if (mobileCol && row[mobileCol]) {
           const mob = String(row[mobileCol]).replace(/\D/g, "").slice(-10);
           if (mob.length !== 10) { failed++; continue; }
-          q = supabase.from("crm_contacts").update({ default_discount_pct: discount }).eq("mobile_number", mob);
+          if (!mobBatches.has(discount)) mobBatches.set(discount, []);
+          mobBatches.get(discount)!.push(mob);
         } else {
           failed++; continue;
         }
+      }
 
-        const { error } = await q;
-        if (error) failed++; else updated++;
+      // Execute batched updates (one query per discount value per match type)
+      const CHUNK = 200;
+      for (const [discount, pks] of pkBatches) {
+        for (let i = 0; i < pks.length; i += CHUNK) {
+          const chunk = pks.slice(i, i + CHUNK);
+          const { error } = await supabase.from("crm_contacts").update({ default_discount_pct: discount }).in("primary_key", chunk);
+          if (error) failed += chunk.length; else updated += chunk.length;
+        }
+      }
+      for (const [discount, umrs] of umrBatches) {
+        for (let i = 0; i < umrs.length; i += CHUNK) {
+          const chunk = umrs.slice(i, i + CHUNK);
+          const { error } = await supabase.from("crm_contacts").update({ default_discount_pct: discount }).in("umr_number", chunk);
+          if (error) failed += chunk.length; else updated += chunk.length;
+        }
+      }
+      for (const [discount, mobs] of mobBatches) {
+        for (let i = 0; i < mobs.length; i += CHUNK) {
+          const chunk = mobs.slice(i, i + CHUNK);
+          const { error } = await supabase.from("crm_contacts").update({ default_discount_pct: discount }).in("mobile_number", chunk);
+          if (error) failed += chunk.length; else updated += chunk.length;
+        }
       }
 
       setBulkUpdating(false);
