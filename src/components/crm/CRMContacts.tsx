@@ -40,27 +40,32 @@ const CRMContacts = () => {
   const { data: contacts = [], isLoading } = useQuery({
     queryKey: ["crm-contacts", locationFilter, tagFilter, search, page],
     queryFn: async () => {
-      let q = supabase.from("crm_contacts").select("*")
-        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+      let q = supabase.from("crm_contacts").select("*");
       if (locationFilter !== "ALL") q = q.eq("location", locationFilter);
       if (tagFilter !== "ALL") q = q.eq("record_tag", tagFilter);
       if (search) q = q.or(`patient_name.ilike.%${search}%,mobile_number.ilike.%${search}%,umr_number.ilike.%${search}%`);
+      
+      // Fetch all matching records to sort properly across pages
       const { data, error } = await q;
       if (error) throw error;
-      // Sort client-side: PH VESU first (by visit_date desc), then NON PHPL (by created_at desc)
+      
+      // Sort: PH VESU first (by visit_date desc), then NON PHPL (by created_at desc)
       const parseDate = (d: string | null) => {
         if (!d) return 0;
         const parts = d.split("-");
         if (parts.length === 3) return new Date(`${parts[2]}-${parts[1]}-${parts[0]}`).getTime() || 0;
         return 0;
       };
-      return (data || []).sort((a: any, b: any) => {
+      const sorted = (data || []).sort((a: any, b: any) => {
         const locA = a.location === "PH VESU" ? 0 : 1;
         const locB = b.location === "PH VESU" ? 0 : 1;
         if (locA !== locB) return locA - locB;
         if (a.location === "PH VESU") return parseDate(b.visit_date) - parseDate(a.visit_date);
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       });
+      
+      // Apply pagination client-side
+      return sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
     },
   });
 
