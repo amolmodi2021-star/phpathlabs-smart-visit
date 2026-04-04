@@ -27,18 +27,19 @@ const COLUMN_MAP: Record<number, string> = {
   5: "mobile_number",  // F - MOBILE_PHONE
   6: "visit_type",     // G - A (visit type)
   7: "doctor_name",    // H - REFRL_CUSTOMER_NAME
-  // 8 skipped (REFERAL_NAME)
-  9: "gross_amount",   // J - GROSS_AMOUNT
-  10: "discount_amount", // K - CONCESSION_AMOUNT
-  11: "net_amount",    // L - NET_AMOUNT
-  12: "paid_amount",   // M - PAID_AMOUNT
-  13: "due_amount",    // N - DUE_AMOUNT
-  14: "payment_type",  // O - PAYMENT_TYPE
-  15: "remarks",       // P - REMARKS
-  16: "created_by",    // Q - CREATE_BY
-  17: "record_tag",    // R - daily
-  18: "default_discount_pct", // S - %
-  19: "primary_key",   // T - B|F (UMR|Mobile)
+  // 8 skipped (I - REFERAL_NAME)
+  // 9 skipped (J - empty/unused column)
+  10: "gross_amount",  // K - GROSS_AMOUNT
+  11: "discount_amount", // L - CESSION_AMOUNT
+  12: "net_amount",    // M - NET_AMOUNT
+  13: "paid_amount",   // N - PAID_AMOUNT
+  14: "due_amount",    // O - DUE_AMOUNT
+  15: "payment_type",  // P - PAYMENT_TYPE
+  16: "remarks",       // Q - REMARKS
+  17: "created_by",    // R - CREATE_BY
+  18: "record_tag",    // S - daily
+  19: "default_discount_pct", // T - %
+  20: "primary_key",   // U - B|F (UMR|Mobile)
 };
 
 function normalizeMobile(val: unknown): string {
