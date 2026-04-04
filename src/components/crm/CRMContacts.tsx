@@ -65,7 +65,7 @@ const CRMContacts = () => {
         if (parts.length === 3) return new Date(`${parts[2]}-${parts[1]}-${parts[0]}`).getTime() || 0;
         return 0;
       };
-      const sorted = (data || []).sort((a: any, b: any) => {
+      const sorted = allData.sort((a: any, b: any) => {
         const locA = a.location === "PH VESU" ? 0 : 1;
         const locB = b.location === "PH VESU" ? 0 : 1;
         if (locA !== locB) return locA - locB;
