@@ -238,10 +238,11 @@ const CRMContacts = () => {
       const keys = Object.keys(rows[0]);
       const pkCol = keys.find(k => k.toLowerCase().includes("primary") || k.toLowerCase().includes("key"));
       const mobileCol = keys.find(k => k.toLowerCase().includes("mobile") || k.toLowerCase().includes("phone"));
+      const umrCol = keys.find(k => k.toLowerCase().includes("umr"));
       const discountCol = keys.find(k => k.toLowerCase().includes("discount") || k.toLowerCase().includes("%"));
 
       if (!discountCol) return toast.error("Excel must have a column with 'discount' or '%' in the header");
-      if (!pkCol && !mobileCol) return toast.error("Excel must have a 'primary_key' or 'mobile' column");
+      if (!pkCol && !mobileCol && !umrCol) return toast.error("Excel must have a 'primary_key', 'mobile', or 'umr' column");
 
       setBulkUpdating(true);
       let updated = 0, failed = 0;
