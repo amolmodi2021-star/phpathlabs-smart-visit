@@ -894,6 +894,24 @@ const CRMContacts = () => {
             </Button>
           </>
         )}
+        <Button size="sm" variant="secondary" onClick={async () => {
+          toast.info("Fetching all DAILY contacts...");
+          const BATCH = 1000;
+          let allIds: string[] = [];
+          let from = 0;
+          while (true) {
+            const { data } = await supabase.from("crm_contacts").select("id").eq("record_tag", "DAILY").range(from, from + BATCH - 1);
+            if (!data || data.length === 0) break;
+            allIds = allIds.concat(data.map((r: any) => r.id));
+            if (data.length < BATCH) break;
+            from += BATCH;
+          }
+          if (allIds.length === 0) return toast.error("No DAILY tagged contacts found");
+          setSelected(new Set(allIds));
+          toast.success(`Selected ${allIds.length} DAILY contacts`);
+        }}>
+          <Send className="h-4 w-4 mr-1" />Select All DAILY
+        </Button>
         <Button variant="destructive" size="sm" onClick={() => { setDeleteMode("all"); setDeleteOpen(true); }}>
           <Trash2 className="h-4 w-4 mr-1" />Delete All
         </Button>
