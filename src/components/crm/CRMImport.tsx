@@ -89,7 +89,13 @@ const CRMImport = () => {
     try {
       const rows = await parseExcelFile(file);
       setPreview(rows.slice(0, 5));
-      toast.success(`Parsed ${rows.length} rows. Click Import to proceed.`);
+      // Debug: log first row keys and column count
+      if (rows.length > 0) {
+        console.log("CRM Import: columns found:", Object.keys(rows[0]));
+        console.log("CRM Import: column count:", Object.keys(rows[0]).length);
+        console.log("CRM Import: first row sample:", rows[0]);
+      }
+      toast.success(`Parsed ${rows.length} rows with ${rows.length > 0 ? Object.keys(rows[0]).length : 0} columns. Click Import to proceed.`);
       (window as any).__crmImportRows = rows;
     } catch {
       toast.error("Failed to parse Excel file");
