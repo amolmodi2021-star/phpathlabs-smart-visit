@@ -15,6 +15,7 @@ interface ImportStats {
   skippedBlacklist: number;
   skippedDuplicate: number;
   upgradedFromNonPhpl: number;
+  skippedInvalid: number;
 }
 
 const COLUMN_MAP: Record<number, string> = {
@@ -52,7 +53,18 @@ function mapRow(row: Record<string, unknown>): Record<string, unknown> | null {
     const field = COLUMN_MAP[idx];
     if (field) mapped[field] = row[key];
   });
-  if (!mapped.primary_key || !String(mapped.primary_key).trim()) return null;
+  
+  // If primary_key wasn't mapped or is empty, try to build it from umr_number + mobile_number
+  if (!mapped.primary_key || !String(mapped.primary_key).trim()) {
+    const umr = String(mapped.umr_number || "").trim();
+    const mob = normalizeMobile(mapped.mobile_number);
+    if (umr && mob.length === 10) {
+      mapped.primary_key = `${umr}|${mob}`;
+    } else {
+      return null;
+    }
+  }
+  
   mapped.mobile_number = normalizeMobile(mapped.mobile_number);
   if (mapped.mobile_number && String(mapped.mobile_number).length !== 10) return null;
   // numeric fields
@@ -77,7 +89,13 @@ const CRMImport = () => {
     try {
       const rows = await parseExcelFile(file);
       setPreview(rows.slice(0, 5));
-      toast.success(`Parsed ${rows.length} rows. Click Import to proceed.`);
+      // Debug: log first row keys and column count
+      if (rows.length > 0) {
+        console.log("CRM Import: columns found:", Object.keys(rows[0]));
+        console.log("CRM Import: column count:", Object.keys(rows[0]).length);
+        console.log("CRM Import: first row sample:", rows[0]);
+      }
+      toast.success(`Parsed ${rows.length} rows with ${rows.length > 0 ? Object.keys(rows[0]).length : 0} columns. Click Import to proceed.`);
       (window as any).__crmImportRows = rows;
     } catch {
       toast.error("Failed to parse Excel file");
@@ -92,7 +110,7 @@ const CRMImport = () => {
     setStats(null);
     setProgress(0);
 
-    const s: ImportStats = { added: 0, updated: 0, skippedBlacklist: 0, skippedDuplicate: 0, upgradedFromNonPhpl: 0 };
+    const s: ImportStats = { added: 0, updated: 0, skippedBlacklist: 0, skippedDuplicate: 0, upgradedFromNonPhpl: 0, skippedInvalid: 0 };
 
     // Fetch blacklist
     const { data: blacklistData } = await supabase.from("crm_blacklist").select("mobile_number");
@@ -119,7 +137,7 @@ const CRMImport = () => {
 
       for (const raw of batch) {
         const mapped = mapRow(raw);
-        if (!mapped) continue;
+        if (!mapped) { s.skippedInvalid++; continue; }
         const pk = String(mapped.primary_key).trim();
         if (seenPks.has(pk)) { s.skippedDuplicate++; continue; }
         seenPks.add(pk);
@@ -193,9 +211,10 @@ const CRMImport = () => {
           </div>
           {importing && <Progress value={progress} />}
           {stats && (
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-2 text-sm">
               <div className="p-2 bg-muted rounded"><span className="font-medium">Added:</span> {stats.added}</div>
               <div className="p-2 bg-muted rounded"><span className="font-medium">Updated:</span> {stats.updated}</div>
+              <div className="p-2 bg-muted rounded"><span className="font-medium">Skipped (Invalid):</span> {stats.skippedInvalid}</div>
               <div className="p-2 bg-muted rounded"><span className="font-medium">Skipped (Dup):</span> {stats.skippedDuplicate}</div>
               <div className="p-2 bg-muted rounded"><span className="font-medium">Skipped (Blacklist):</span> {stats.skippedBlacklist}</div>
               <div className="p-2 bg-muted rounded"><span className="font-medium">Upgraded:</span> {stats.upgradedFromNonPhpl}</div>
