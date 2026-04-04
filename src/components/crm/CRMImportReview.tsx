@@ -332,8 +332,6 @@ const CRMImportReview = () => {
           await supabase.from("crm_import_staging").update({
             record_tag: null,
           }).eq("id", r.id);
-          if (pk) {
-          }
           // Update loyalty_cards whatsapp_status
           if (normalizedMobile) {
             await supabase.from("loyalty_cards")
