@@ -640,7 +640,190 @@ const CRMContacts = () => {
     setDeleting(false);
   };
 
-  return (
+  const handleSendLoyaltyCards = async () => {
+    if (selected.size === 0) return toast.error("Select contacts first");
+    if (!selectedTemplateId) return toast.error("Select a card template first");
+
+    const selectedContacts = contacts.filter((c: any) => selected.has(c.id) && c.mobile_number);
+    if (selectedContacts.length === 0) return toast.error("No selected contacts with mobile numbers");
+
+    // Fetch WhatsApp settings
+    const { data: settings } = await supabase
+      .from("app_settings")
+      .select("setting_key, setting_value")
+      .like("setting_key", "loyalty_%");
+
+    const cfg: Record<string, string> = {};
+    (settings || []).forEach((s: any) => { cfg[s.setting_key] = s.setting_value; });
+
+    const apiBaseUrl = cfg["loyalty_wa_baseUrl"];
+    const apiKey = cfg["loyalty_wa_apiKey"];
+    const templateName = cfg["loyalty_wa_templateName"];
+    const authHeaderName = cfg["loyalty_wa_authHeaderName"] || "apikey";
+    const authHeaderPrefix = cfg["loyalty_wa_authHeaderPrefix"] || "";
+    const fromNumber = cfg["loyalty_wa_fromNumber"] || "";
+    const campaignName = cfg["loyalty_wa_campaignName"] || "";
+    const bodyMapping = cfg["loyalty_wa_bodyMapping"];
+    const queueEnabled = cfg["loyalty_wa_queueEnabled"] !== "false";
+    const delayMs = Number(cfg["loyalty_wa_delayMs"]) || 3000;
+    const useStaticExpiry = cfg["loyalty_static_expiry_enabled"] === "true";
+    const staticExpiryDate = cfg["loyalty_static_expiry_date"] || "";
+
+    if (!apiBaseUrl || !apiKey || !templateName) {
+      return toast.error("WhatsApp API not configured. Set up in Loyalty Cards → WhatsApp Settings.");
+    }
+
+    let mapping: Record<string, string> = {};
+    try { mapping = bodyMapping ? JSON.parse(bodyMapping) : {}; } catch { mapping = {}; }
+
+    setSending(true);
+    setSendProgress(0);
+    setSendOpen(false);
+
+    // Phase 1: Generate card images
+    setSendPhase("Generating card images...");
+    let templateAssets: Awaited<ReturnType<typeof getTemplateAssets>>;
+    try {
+      templateAssets = await getTemplateAssets(selectedTemplateId);
+      if (!templateAssets) throw new Error("Template not found or has no background image");
+    } catch (err: any) {
+      setSending(false);
+      setSendPhase("");
+      return toast.error(err.message || "Failed to load template");
+    }
+
+    const { bgImg, canvas, ctx, placeholders } = templateAssets;
+    const imageUrls: (string | null)[] = [];
+
+    for (let i = 0; i < selectedContacts.length; i++) {
+      const r = selectedContacts[i];
+      const mobile = (r.mobile_number || "").replace(/\D/g, "");
+      const normalizedMobile = mobile.length > 10 ? mobile.slice(-10) : mobile;
+
+      // Check existing card
+      const { data: existingCard } = await supabase
+        .from("loyalty_cards")
+        .select("image_url")
+        .eq("mobile", normalizedMobile)
+        .not("image_url", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existingCard?.image_url) {
+        imageUrls.push(existingCard.image_url);
+      } else {
+        const cardData: CardData = {
+          Name: r.patient_name || "",
+          Mobile: normalizedMobile,
+          UMR: r.umr_number || "",
+          "Discount %": `${r.default_discount_pct ?? 20}%`,
+          "Expiry Date": useStaticExpiry && staticExpiryDate ? staticExpiryDate : "",
+        };
+
+        const imageUrl = await generateAndUploadCard(selectedTemplateId, cardData, bgImg, canvas, ctx, placeholders);
+        imageUrls.push(imageUrl);
+
+        if (imageUrl) {
+          await supabase.from("loyalty_cards").insert({
+            patient_name: cardData.Name,
+            mobile: normalizedMobile,
+            umr: cardData.UMR,
+            discount: cardData["Discount %"],
+            expiry_date: cardData["Expiry Date"],
+            image_url: imageUrl,
+            whatsapp_status: "pending",
+          });
+        }
+      }
+      setSendProgress(Math.round(((i + 1) / selectedContacts.length) * 50));
+    }
+
+    // Phase 2: Send WhatsApp
+    setSendPhase("Sending WhatsApp messages...");
+    let sent = 0;
+    let failed = 0;
+
+    for (let i = 0; i < selectedContacts.length; i++) {
+      const r = selectedContacts[i];
+      const rawMobile = (r.mobile_number || "").replace(/\D/g, "");
+      const normalizedMobile = rawMobile.length > 10 ? rawMobile.slice(-10) : rawMobile;
+      const toNumber = normalizedMobile ? `+91${normalizedMobile}` : "";
+
+      const components: Record<string, unknown> = {};
+
+      if (Object.keys(mapping).length > 0) {
+        const sortedKeys = Object.keys(mapping).sort((a, b) => Number(a) - Number(b));
+        const params: string[] = sortedKeys.map((key) => {
+          const field = mapping[key];
+          switch (field) {
+            case "Name": return r.patient_name || "";
+            case "Mobile": return r.mobile_number || "";
+            case "UMR": return r.umr_number || "";
+            case "Discount %": return `${r.default_discount_pct ?? 20}%`;
+            case "Expiry Date": return "";
+            default: return "";
+          }
+        });
+        components.body = { params };
+      }
+
+      const imgUrl = imageUrls[i];
+      if (imgUrl) {
+        components.header = { type: "image", image: { link: imgUrl } };
+      }
+
+      const payload: Record<string, unknown> = {
+        from: fromNumber,
+        to: toNumber,
+        templateName,
+        campaignName,
+        type: "template",
+      };
+      if (Object.keys(components).length > 0) {
+        payload.components = components;
+      }
+
+      try {
+        const proxyRes = await supabase.functions.invoke("whatsapp-proxy", {
+          body: { apiBaseUrl, apiKey, authHeaderName, authHeaderPrefix, payload },
+        });
+
+        if (proxyRes.error || proxyRes.data?.status >= 400) {
+          failed++;
+        } else {
+          sent++;
+          await supabase.from("crm_contacts").update({
+            last_sent_type: "ABC Card",
+            last_sent_date: new Date().toISOString(),
+          }).eq("id", r.id);
+
+          if (normalizedMobile) {
+            await supabase.from("loyalty_cards")
+              .update({ whatsapp_status: "sent", sent_at: new Date().toISOString() })
+              .eq("mobile", normalizedMobile)
+              .eq("whatsapp_status", "pending")
+              .order("created_at", { ascending: false })
+              .limit(1);
+          }
+        }
+      } catch {
+        failed++;
+      }
+      setSendProgress(50 + Math.round(((i + 1) / selectedContacts.length) * 50));
+
+      if (queueEnabled && delayMs > 0 && i < selectedContacts.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+
+    setSending(false);
+    setSendPhase("");
+    setSelected(new Set());
+    qc.invalidateQueries({ queryKey: ["crm-contacts"] });
+    toast.success(`Loyalty cards sent: ${sent} success, ${failed} failed`);
+  };
+
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2 items-center">
         <div className="relative flex-1 min-w-[200px]">
