@@ -227,6 +227,52 @@ const CRMContacts = () => {
     }
   };
 
+  const handleBulkDiscountUpdate = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    try {
+      const rows = await parseExcelFile(file);
+      if (!rows.length) return toast.error("No data in file");
+
+      const keys = Object.keys(rows[0]);
+      const pkCol = keys.find(k => k.toLowerCase().includes("primary") || k.toLowerCase().includes("key"));
+      const mobileCol = keys.find(k => k.toLowerCase().includes("mobile") || k.toLowerCase().includes("phone"));
+      const discountCol = keys.find(k => k.toLowerCase().includes("discount") || k.toLowerCase().includes("%"));
+
+      if (!discountCol) return toast.error("Excel must have a column with 'discount' or '%' in the header");
+      if (!pkCol && !mobileCol) return toast.error("Excel must have a 'primary_key' or 'mobile' column");
+
+      setBulkUpdating(true);
+      let updated = 0, failed = 0;
+
+      for (const row of rows) {
+        const discount = parseFloat(String(row[discountCol!] || "0")) || 0;
+
+        let q;
+        if (pkCol && row[pkCol]) {
+          q = supabase.from("crm_contacts").update({ default_discount_pct: discount }).eq("primary_key", String(row[pkCol]).trim());
+        } else if (mobileCol && row[mobileCol]) {
+          const mob = String(row[mobileCol]).replace(/\D/g, "").slice(-10);
+          if (mob.length !== 10) { failed++; continue; }
+          q = supabase.from("crm_contacts").update({ default_discount_pct: discount }).eq("mobile_number", mob);
+        } else {
+          failed++; continue;
+        }
+
+        const { error } = await q;
+        if (error) failed++; else updated++;
+      }
+
+      setBulkUpdating(false);
+      qc.invalidateQueries({ queryKey: ["crm-contacts"] });
+      toast.success(`Bulk discount update: ${updated} updated, ${failed} failed`);
+    } catch {
+      setBulkUpdating(false);
+      toast.error("Failed to parse Excel");
+    }
+  };
+
   const handleDelete = async () => {
     if (deletePassword !== "9819111107") return toast.error("Incorrect password");
     setDeleting(true);
