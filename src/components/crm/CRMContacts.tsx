@@ -381,7 +381,7 @@ const CRMContacts = () => {
     }
   };
 
-
+  const handleDelete = async () => {
     if (deletePassword !== "9819111107") return toast.error("Incorrect password");
     setDeleting(true);
     try {
