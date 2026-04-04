@@ -363,14 +363,27 @@ const CRMImportReview = () => {
         <CardHeader>
           <CardTitle className="flex items-center justify-between flex-wrap gap-2">
             <span>Review Staged Import ({staged.length} records)</span>
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex gap-2 flex-wrap items-center">
+              <div className="flex items-center gap-2">
+                <Label className="text-xs whitespace-nowrap">Card Template:</Label>
+                <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
+                  <SelectTrigger className="h-8 w-[180px]">
+                    <SelectValue placeholder="Select template" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {templates.map((t: any) => (
+                      <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <Button variant="destructive" size="sm" onClick={handleRemoveBlacklisted} disabled={blacklistedCount === 0}>
                 <Trash2 className="h-4 w-4 mr-1" />Remove Blacklisted ({blacklistedCount})
               </Button>
               <Button variant="destructive" size="sm" onClick={handleRemoveSelected} disabled={selected.size === 0}>
                 <Trash2 className="h-4 w-4 mr-1" />Remove Selected ({selected.size})
               </Button>
-              <Button size="sm" onClick={handleSendLoyaltyCards} disabled={sending || staged.length === 0}>
+              <Button size="sm" onClick={handleSendLoyaltyCards} disabled={sending || staged.length === 0 || !selectedTemplateId}>
                 <Send className="h-4 w-4 mr-1" />{sending ? "Sending..." : `Send Loyalty Card (${selected.size > 0 ? selected.size : staged.filter((r: any) => !r.is_blacklisted).length})`}
               </Button>
               <Button size="sm" onClick={handleApprove} disabled={approving || staged.length === 0}>
@@ -380,7 +393,12 @@ const CRMImportReview = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {(approving || sending) && <Progress value={progress} />}
+          {(approving || sending) && (
+            <div className="space-y-1">
+              <Progress value={progress} />
+              {sendPhase && <p className="text-xs text-muted-foreground">{sendPhase}</p>}
+            </div>
+          )}
 
           <div className="flex gap-2 items-center flex-wrap">
             <div className="relative flex-1 min-w-[200px]">
