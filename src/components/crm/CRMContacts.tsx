@@ -882,6 +882,9 @@ const CRMContacts = () => {
         </label>
         {selected.size > 0 && (
           <>
+            <Button size="sm" onClick={() => setSendOpen(true)} disabled={sending}>
+              <Send className="h-4 w-4 mr-1" />Send Loyalty Card ({selected.size})
+            </Button>
             <Button variant="outline" size="sm" onClick={handleClearTags}>
               Clear Tags ({selected.size})
             </Button>
