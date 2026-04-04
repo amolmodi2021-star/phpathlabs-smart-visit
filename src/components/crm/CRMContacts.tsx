@@ -10,7 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { exportToExcel, parseExcelFile } from "@/lib/excel";
-import { Download, Search, Pencil, Upload } from "lucide-react";
+import { Download, Search, Pencil, Upload, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 const CRMContacts = () => {
@@ -30,6 +30,12 @@ const CRMContacts = () => {
 
   // Bulk update state
   const [bulkUpdating, setBulkUpdating] = useState(false);
+
+  // Delete state
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteMode, setDeleteMode] = useState<"selected" | "all">("selected");
+  const [deleting, setDeleting] = useState(false);
 
   const { data: contacts = [], isLoading } = useQuery({
     queryKey: ["crm-contacts", locationFilter, tagFilter, search, page],
@@ -221,6 +227,39 @@ const CRMContacts = () => {
     }
   };
 
+  const handleDelete = async () => {
+    if (deletePassword !== "9819111107") return toast.error("Incorrect password");
+    setDeleting(true);
+    try {
+      if (deleteMode === "all") {
+        // Delete all in batches
+        let hasMore = true;
+        while (hasMore) {
+          const { data } = await supabase.from("crm_contacts").select("id").limit(500);
+          if (!data || data.length === 0) { hasMore = false; break; }
+          const ids = data.map((r: any) => r.id);
+          await supabase.from("crm_contacts").delete().in("id", ids);
+        }
+        toast.success("All contacts deleted");
+      } else {
+        if (selected.size === 0) { setDeleting(false); return toast.error("No contacts selected"); }
+        const ids = Array.from(selected);
+        for (let i = 0; i < ids.length; i += 100) {
+          await supabase.from("crm_contacts").delete().in("id", ids.slice(i, i + 100));
+        }
+        toast.success(`${ids.length} contacts deleted`);
+        setSelected(new Set());
+      }
+      qc.invalidateQueries({ queryKey: ["crm-contacts"] });
+      qc.invalidateQueries({ queryKey: ["crm-contacts-count"] });
+      setDeleteOpen(false);
+      setDeletePassword("");
+    } catch {
+      toast.error("Delete failed");
+    }
+    setDeleting(false);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2 items-center">
@@ -251,6 +290,14 @@ const CRMContacts = () => {
           </Button>
           <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleBulkNameUpdate} disabled={bulkUpdating} />
         </label>
+        {selected.size > 0 && (
+          <Button variant="destructive" size="sm" onClick={() => { setDeleteMode("selected"); setDeleteOpen(true); }}>
+            <Trash2 className="h-4 w-4 mr-1" />Delete Selected ({selected.size})
+          </Button>
+        )}
+        <Button variant="destructive" size="sm" onClick={() => { setDeleteMode("all"); setDeleteOpen(true); }}>
+          <Trash2 className="h-4 w-4 mr-1" />Delete All
+        </Button>
         <span className="text-sm text-muted-foreground">Total: {totalCount}</span>
       </div>
       <p className="text-xs text-muted-foreground">
@@ -334,6 +381,30 @@ const CRMContacts = () => {
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
             <Button onClick={saveEdit} disabled={editSaving}>{editSaving ? "Saving..." : "Save"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteOpen} onOpenChange={(o) => { setDeleteOpen(o); if (!o) setDeletePassword(""); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{deleteMode === "all" ? "Delete All Contacts" : `Delete ${selected.size} Selected Contacts`}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {deleteMode === "all"
+              ? "This will permanently delete ALL CRM contacts. This action cannot be undone."
+              : `This will permanently delete ${selected.size} selected contacts.`}
+          </p>
+          <div>
+            <Label>Enter password to confirm</Label>
+            <Input type="password" value={deletePassword} onChange={(e) => setDeletePassword(e.target.value)} placeholder="Enter password" />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setDeleteOpen(false); setDeletePassword(""); }}>Cancel</Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={deleting || !deletePassword}>
+              {deleting ? "Deleting..." : "Confirm Delete"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
