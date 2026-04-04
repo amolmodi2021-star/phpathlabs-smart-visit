@@ -439,9 +439,14 @@ const CRMContacts = () => {
           <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleBulkLastSentUpdate} disabled={bulkUpdating} />
         </label>
         {selected.size > 0 && (
-          <Button variant="destructive" size="sm" onClick={() => { setDeleteMode("selected"); setDeleteOpen(true); }}>
-            <Trash2 className="h-4 w-4 mr-1" />Delete Selected ({selected.size})
-          </Button>
+          <>
+            <Button variant="outline" size="sm" onClick={handleClearTags}>
+              Clear Tags ({selected.size})
+            </Button>
+            <Button variant="destructive" size="sm" onClick={() => { setDeleteMode("selected"); setDeleteOpen(true); }}>
+              <Trash2 className="h-4 w-4 mr-1" />Delete Selected ({selected.size})
+            </Button>
+          </>
         )}
         <Button variant="destructive" size="sm" onClick={() => { setDeleteMode("all"); setDeleteOpen(true); }}>
           <Trash2 className="h-4 w-4 mr-1" />Delete All
