@@ -40,14 +40,23 @@ const CRMContacts = () => {
   const { data: contacts = [], isLoading } = useQuery({
     queryKey: ["crm-contacts", locationFilter, tagFilter, search, page],
     queryFn: async () => {
-      let q = supabase.from("crm_contacts").select("*");
-      if (locationFilter !== "ALL") q = q.eq("location", locationFilter);
-      if (tagFilter !== "ALL") q = q.eq("record_tag", tagFilter);
-      if (search) q = q.or(`patient_name.ilike.%${search}%,mobile_number.ilike.%${search}%,umr_number.ilike.%${search}%`);
-      
-      // Fetch all matching records to sort properly across pages
-      const { data, error } = await q;
-      if (error) throw error;
+      // Fetch all matching records in batches (Supabase has 1000 row limit per query)
+      const BATCH = 1000;
+      let allData: any[] = [];
+      let from = 0;
+      let hasMore = true;
+      while (hasMore) {
+        let q = supabase.from("crm_contacts").select("*").range(from, from + BATCH - 1);
+        if (locationFilter !== "ALL") q = q.eq("location", locationFilter);
+        if (tagFilter !== "ALL") q = q.eq("record_tag", tagFilter);
+        if (search) q = q.or(`patient_name.ilike.%${search}%,mobile_number.ilike.%${search}%,umr_number.ilike.%${search}%`);
+        const { data, error } = await q;
+        if (error) throw error;
+        if (!data || data.length === 0) { hasMore = false; break; }
+        allData = allData.concat(data);
+        if (data.length < BATCH) hasMore = false;
+        else from += BATCH;
+      }
       
       // Sort: PH VESU first (by visit_date desc), then NON PHPL (by created_at desc)
       const parseDate = (d: string | null) => {
