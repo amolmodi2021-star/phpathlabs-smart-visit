@@ -644,7 +644,16 @@ const CRMContacts = () => {
     if (selected.size === 0) return toast.error("Select contacts first");
     if (!selectedTemplateId) return toast.error("Select a card template first");
 
-    const selectedContacts = contacts.filter((c: any) => selected.has(c.id) && c.mobile_number);
+    // Fetch full data for all selected IDs (may span multiple pages)
+    const selectedIds = Array.from(selected);
+    let selectedContacts: any[] = [];
+    const FETCH_CHUNK = 200;
+    for (let i = 0; i < selectedIds.length; i += FETCH_CHUNK) {
+      const chunk = selectedIds.slice(i, i + FETCH_CHUNK);
+      const { data } = await supabase.from("crm_contacts").select("*").in("id", chunk);
+      if (data) selectedContacts = selectedContacts.concat(data);
+    }
+    selectedContacts = selectedContacts.filter((c: any) => c.mobile_number);
     if (selectedContacts.length === 0) return toast.error("No selected contacts with mobile numbers");
 
     // Fetch WhatsApp settings
