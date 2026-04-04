@@ -149,6 +149,9 @@ const CRMImport = () => {
           }
         }
 
+        if (isBlacklisted) s.blacklisted++;
+        if (isUpdate) s.updates++;
+
         toInsert.push({
           batch_id: batchId,
           primary_key: pk,
