@@ -443,6 +443,7 @@ const CRMImportReview = () => {
                     <TableHead>Visit Date</TableHead>
                     <TableHead>Discount %</TableHead>
                     <TableHead>Net Amt</TableHead>
+                    <TableHead>Remarks</TableHead>
                     <TableHead>Tag</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -476,6 +477,7 @@ const CRMImportReview = () => {
                         />
                       </TableCell>
                       <TableCell>₹{r.net_amount || 0}</TableCell>
+                      <TableCell className="max-w-[150px] truncate text-xs" title={r.remarks || ""}>{r.remarks || "—"}</TableCell>
                       <TableCell>
                         <Badge variant="outline">{r.record_tag || "DAILY"}</Badge>
                       </TableCell>
