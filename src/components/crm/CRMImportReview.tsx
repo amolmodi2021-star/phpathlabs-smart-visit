@@ -328,10 +328,12 @@ const CRMImportReview = () => {
               record_tag: null,
             }).eq("primary_key", pk);
           }
-          // Also clear DAILY tag on the staging record
+          // Mark staging record as ABC sent (so Approve & Transfer carries it over)
           await supabase.from("crm_import_staging").update({
             record_tag: null,
           }).eq("id", r.id);
+          // Also update crm_contacts if it already exists (for update records)
+          // For new records, the sent info will be carried via staging → approve
           // Update loyalty_cards whatsapp_status
           if (normalizedMobile) {
             await supabase.from("loyalty_cards")
