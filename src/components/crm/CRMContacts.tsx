@@ -238,10 +238,11 @@ const CRMContacts = () => {
       const keys = Object.keys(rows[0]);
       const pkCol = keys.find(k => k.toLowerCase().includes("primary") || k.toLowerCase().includes("key"));
       const mobileCol = keys.find(k => k.toLowerCase().includes("mobile") || k.toLowerCase().includes("phone"));
+      const umrCol = keys.find(k => k.toLowerCase().includes("umr"));
       const discountCol = keys.find(k => k.toLowerCase().includes("discount") || k.toLowerCase().includes("%"));
 
       if (!discountCol) return toast.error("Excel must have a column with 'discount' or '%' in the header");
-      if (!pkCol && !mobileCol) return toast.error("Excel must have a 'primary_key' or 'mobile' column");
+      if (!pkCol && !mobileCol && !umrCol) return toast.error("Excel must have a 'primary_key', 'mobile', or 'umr' column");
 
       setBulkUpdating(true);
       let updated = 0, failed = 0;
@@ -252,6 +253,8 @@ const CRMContacts = () => {
         let q;
         if (pkCol && row[pkCol]) {
           q = supabase.from("crm_contacts").update({ default_discount_pct: discount }).eq("primary_key", String(row[pkCol]).trim());
+        } else if (umrCol && row[umrCol]) {
+          q = supabase.from("crm_contacts").update({ default_discount_pct: discount }).eq("umr_number", String(row[umrCol]).trim());
         } else if (mobileCol && row[mobileCol]) {
           const mob = String(row[mobileCol]).replace(/\D/g, "").slice(-10);
           if (mob.length !== 10) { failed++; continue; }
