@@ -22,6 +22,7 @@ const navItems = [
   { to: "/phlebo-dashboard", label: "Phlebo Dashboard", icon: BarChart3 },
   { to: "/loyalty-cards", label: "Loyalty Cards", icon: CreditCard },
   { to: "/marketing", label: "Marketing", icon: Megaphone },
+  { to: "/crm", label: "CRM", icon: Contact },
   { to: "/whatsapp-webhook", label: "WhatsApp Webhook", icon: Webhook },
 ];
 

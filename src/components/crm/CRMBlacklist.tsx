@@ -126,8 +126,8 @@ const CRMBlacklist = () => {
         </Table>
       </div>
 
-      <DeletePasswordDialog open={deleteOpen} onOpenChange={setDeleteOpen} onConfirm={handleDelete}
-        title="Delete Blacklist Entries" description={`Delete ${selected.size} selected entries?`} />
+      <DeletePasswordDialog open={deleteOpen} onOpenChange={setDeleteOpen} onSuccess={handleDelete}
+        description={`Delete ${selected.size} selected entries?`} />
     </div>
   );
 };
