@@ -235,14 +235,17 @@ const CRMImportReview = () => {
         }
       }
 
-      const payload = {
+      const payload: Record<string, unknown> = {
         from: fromNumber,
         to: toNumber,
         templateName,
         campaignName,
         type: "template",
-        components,
       };
+      // Only include components if there's something in it
+      if (Object.keys(components).length > 0) {
+        payload.components = components;
+      }
 
       try {
         const proxyRes = await supabase.functions.invoke("whatsapp-proxy", {
