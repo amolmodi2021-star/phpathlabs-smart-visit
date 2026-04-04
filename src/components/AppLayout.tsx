@@ -4,7 +4,7 @@ import { logout } from "@/lib/auth";
 import {
   FileText, LayoutDashboard, Home, Users, TestTubes, MessageSquare,
   Menu, X, LogOut, FlaskConical, AlertTriangle, BarChart3, CreditCard,
-  FileUp, ClipboardList, Building2, Layers, Microscope, PenTool, BookOpen, Zap, Webhook, Megaphone,
+  FileUp, ClipboardList, Building2, Layers, Microscope, PenTool, BookOpen, Zap, Webhook, Megaphone, Contact,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -22,6 +22,7 @@ const navItems = [
   { to: "/phlebo-dashboard", label: "Phlebo Dashboard", icon: BarChart3 },
   { to: "/loyalty-cards", label: "Loyalty Cards", icon: CreditCard },
   { to: "/marketing", label: "Marketing", icon: Megaphone },
+  { to: "/crm", label: "CRM", icon: Contact },
   { to: "/whatsapp-webhook", label: "WhatsApp Webhook", icon: Webhook },
 ];
 
