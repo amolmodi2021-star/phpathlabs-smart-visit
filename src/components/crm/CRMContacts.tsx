@@ -9,8 +9,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import { exportToExcel, parseExcelFile } from "@/lib/excel";
-import { Download, Search, Pencil, Upload, Trash2 } from "lucide-react";
+import { generateAndUploadCard, getTemplateAssets, type CardData } from "@/lib/cardRenderer";
+import { Download, Search, Pencil, Upload, Trash2, Send } from "lucide-react";
 import { toast } from "sonner";
 
 const CRMContacts = () => {
