@@ -502,6 +502,75 @@ const CRMContacts = () => {
     }
   };
 
+  const handleNonPhplUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    try {
+      const rows = await parseExcelFile(file);
+      if (!rows.length) return toast.error("No data in file");
+
+      const keys = Object.keys(rows[0]);
+      const nameCol = keys.find(k => k.toLowerCase().includes("name"));
+      const mobileCol = keys.find(k => k.toLowerCase().includes("mobile") || k.toLowerCase().includes("phone"));
+      const umrCol = keys.find(k => k.toLowerCase().includes("umr"));
+      const locationCol = keys.find(k => k.toLowerCase().includes("location"));
+      const discountCol = keys.find(k => k.toLowerCase().includes("discount") || k.toLowerCase().includes("%"));
+
+      if (!mobileCol) return toast.error("Excel must have a 'Mobile' column");
+
+      setBulkUpdating(true);
+      let added = 0, skipped = 0, failed = 0;
+
+      const { data: blacklistData } = await supabase.from("crm_blacklist").select("mobile_number");
+      const blacklist = new Set((blacklistData || []).map((b: any) => b.mobile_number));
+
+      const toUpsert: any[] = [];
+      const seenPks = new Set<string>();
+
+      for (const row of rows) {
+        const rawMob = String(row[mobileCol!] || "").replace(/\D/g, "").slice(-10);
+        if (rawMob.length !== 10) { failed++; continue; }
+        if (blacklist.has(rawMob)) { skipped++; continue; }
+
+        const umr = umrCol ? String(row[umrCol] || "").trim() : "";
+        const pk = `${umr}|${rawMob}`;
+        if (seenPks.has(pk)) { skipped++; continue; }
+        seenPks.add(pk);
+
+        const name = nameCol ? String(row[nameCol] || "").trim() : "";
+        const location = locationCol ? String(row[locationCol] || "").trim() || "NON PHPL" : "NON PHPL";
+        const discount = discountCol ? (parseFloat(String(row[discountCol] || "20")) || 20) : 20;
+
+        toUpsert.push({
+          primary_key: pk,
+          mobile_number: rawMob,
+          umr_number: umr || null,
+          patient_name: name || null,
+          location,
+          default_discount_pct: discount,
+          record_tag: null,
+          visit_date: null,
+        });
+      }
+
+      const CHUNK = 200;
+      for (let i = 0; i < toUpsert.length; i += CHUNK) {
+        const chunk = toUpsert.slice(i, i + CHUNK);
+        const { error } = await supabase.from("crm_contacts").upsert(chunk, { onConflict: "primary_key" });
+        if (error) { console.error(error); failed += chunk.length; } else { added += chunk.length; }
+      }
+
+      setBulkUpdating(false);
+      qc.invalidateQueries({ queryKey: ["crm-contacts"] });
+      qc.invalidateQueries({ queryKey: ["crm-contacts-count"] });
+      toast.success(`NON PHPL upload: ${added} added/updated, ${skipped} skipped, ${failed} failed`);
+    } catch {
+      setBulkUpdating(false);
+      toast.error("Failed to parse Excel");
+    }
+  };
+
   const handleClearTags = async () => {
     if (selected.size === 0) return;
     const ids = Array.from(selected);
