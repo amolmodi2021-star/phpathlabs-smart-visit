@@ -258,35 +258,62 @@ const CRMContacts = () => {
       if (!rows.length) return toast.error("No data in file");
 
       const keys = Object.keys(rows[0]);
-      // Expect columns: primary_key (or mobile_number) and patient_name
-      // Try to find by header name first
       const pkCol = keys.find(k => k.toLowerCase().includes("primary") || k.toLowerCase().includes("key"));
       const mobileCol = keys.find(k => k.toLowerCase().includes("mobile") || k.toLowerCase().includes("phone"));
+      const umrCol = keys.find(k => k.toLowerCase().includes("umr"));
       const nameCol = keys.find(k => k.toLowerCase().includes("name") || k.toLowerCase().includes("patient"));
 
       if (!nameCol) return toast.error("Excel must have a column with 'name' or 'patient' in the header");
-      if (!pkCol && !mobileCol) return toast.error("Excel must have a 'primary_key' or 'mobile' column");
+      if (!pkCol && !mobileCol && !umrCol) return toast.error("Excel must have a 'primary_key', 'mobile', or 'umr' column");
 
       setBulkUpdating(true);
       let updated = 0, failed = 0;
+
+      const pkBatches = new Map<string, string[]>();
+      const umrBatches = new Map<string, string[]>();
+      const mobBatches = new Map<string, string[]>();
 
       for (const row of rows) {
         const name = String(row[nameCol!] || "").trim().toUpperCase();
         if (!name) { failed++; continue; }
 
-        let q;
         if (pkCol && row[pkCol]) {
-          q = supabase.from("crm_contacts").update({ patient_name: name }).eq("primary_key", String(row[pkCol]).trim());
+          if (!pkBatches.has(name)) pkBatches.set(name, []);
+          pkBatches.get(name)!.push(String(row[pkCol]).trim());
+        } else if (umrCol && row[umrCol]) {
+          if (!umrBatches.has(name)) umrBatches.set(name, []);
+          umrBatches.get(name)!.push(String(row[umrCol]).trim());
         } else if (mobileCol && row[mobileCol]) {
           const mob = String(row[mobileCol]).replace(/\D/g, "").slice(-10);
           if (mob.length !== 10) { failed++; continue; }
-          q = supabase.from("crm_contacts").update({ patient_name: name }).eq("mobile_number", mob);
+          if (!mobBatches.has(name)) mobBatches.set(name, []);
+          mobBatches.get(name)!.push(mob);
         } else {
           failed++; continue;
         }
+      }
 
-        const { error } = await q;
-        if (error) failed++; else updated++;
+      const CHUNK = 200;
+      for (const [name, pks] of pkBatches) {
+        for (let i = 0; i < pks.length; i += CHUNK) {
+          const chunk = pks.slice(i, i + CHUNK);
+          const { error } = await supabase.from("crm_contacts").update({ patient_name: name }).in("primary_key", chunk);
+          if (error) failed += chunk.length; else updated += chunk.length;
+        }
+      }
+      for (const [name, umrs] of umrBatches) {
+        for (let i = 0; i < umrs.length; i += CHUNK) {
+          const chunk = umrs.slice(i, i + CHUNK);
+          const { error } = await supabase.from("crm_contacts").update({ patient_name: name }).in("umr_number", chunk);
+          if (error) failed += chunk.length; else updated += chunk.length;
+        }
+      }
+      for (const [name, mobs] of mobBatches) {
+        for (let i = 0; i < mobs.length; i += CHUNK) {
+          const chunk = mobs.slice(i, i + CHUNK);
+          const { error } = await supabase.from("crm_contacts").update({ patient_name: name }).in("mobile_number", chunk);
+          if (error) failed += chunk.length; else updated += chunk.length;
+        }
       }
 
       setBulkUpdating(false);
