@@ -187,7 +187,7 @@ const CRMContacts = () => {
     const umr = String(updates.umr_number || "").trim();
     const mob = String(updates.mobile_number || "").replace(/\D/g, "").slice(-10);
     if (mob.length === 10) {
-      updates.primary_key = umr ? `${umr}|${mob}` : `NOPHPL|${mob}`;
+      updates.primary_key = `${umr}|${mob}`;
     }
     const { error } = await supabase.from("crm_contacts").update(updates).eq("id", editContact.id);
     setEditSaving(false);
