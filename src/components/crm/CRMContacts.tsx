@@ -664,6 +664,7 @@ const CRMContacts = () => {
                 <TableCell>{c.record_tag || "—"}</TableCell>
                 <TableCell>{c.created_at ? format(new Date(c.created_at), "dd-MM-yyyy") : "—"}</TableCell>
                 <TableCell>{c.last_sent_type || "—"}</TableCell>
+                <TableCell>{c.last_sent_date ? format(new Date(c.last_sent_date), "dd-MM-yyyy") : "—"}</TableCell>
                 <TableCell>{daysSince(c.last_sent_date)}</TableCell>
               </TableRow>
             ))}
