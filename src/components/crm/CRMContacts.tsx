@@ -33,7 +33,11 @@ const CRMContacts = () => {
   const { data: contacts = [], isLoading } = useQuery({
     queryKey: ["crm-contacts", locationFilter, tagFilter, search, page],
     queryFn: async () => {
-      let q = supabase.from("crm_contacts").select("*").order("updated_at", { ascending: false }).range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+      let q = supabase.from("crm_contacts").select("*")
+        .order("location", { ascending: true }) // PH VESU before NON PHPL alphabetically
+        .order("visit_date", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false })
+        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
       if (locationFilter !== "ALL") q = q.eq("location", locationFilter);
       if (tagFilter !== "ALL") q = q.eq("record_tag", tagFilter);
       if (search) q = q.or(`patient_name.ilike.%${search}%,mobile_number.ilike.%${search}%,umr_number.ilike.%${search}%`);
