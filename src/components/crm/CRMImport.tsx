@@ -163,7 +163,15 @@ const CRMImport = () => {
             toUpsert.push(mapped);
             s.updated++;
           } else {
-            s.skippedDuplicate++;
+            // Still update patient_name if it changed (latest name wins)
+            const newName = String(mapped.patient_name || "").trim();
+            const oldName = String(existing.patient_name || "").trim();
+            if (newName && newName !== oldName) {
+              toUpsert.push({ primary_key: pk, patient_name: newName });
+              s.updated++;
+            } else {
+              s.skippedDuplicate++;
+            }
           }
         } else {
           toUpsert.push(mapped);
