@@ -432,6 +432,12 @@ const CRMContacts = () => {
           </Button>
           <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleBulkDiscountUpdate} disabled={bulkUpdating} />
         </label>
+        <label className="cursor-pointer">
+          <Button variant="outline" size="sm" asChild disabled={bulkUpdating}>
+            <span><Upload className="h-4 w-4 mr-1" />{bulkUpdating ? "Updating..." : "Bulk Update Last Sent"}</span>
+          </Button>
+          <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleBulkLastSentUpdate} disabled={bulkUpdating} />
+        </label>
         {selected.size > 0 && (
           <Button variant="destructive" size="sm" onClick={() => { setDeleteMode("selected"); setDeleteOpen(true); }}>
             <Trash2 className="h-4 w-4 mr-1" />Delete Selected ({selected.size})
