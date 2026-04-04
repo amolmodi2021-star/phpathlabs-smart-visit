@@ -8,8 +8,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { Trash2, CheckCircle, Send, Search } from "lucide-react";
 import { toast } from "sonner";
+import { generateAndUploadCard, getTemplateAssets, type CardData } from "@/lib/cardRenderer";
 
 const CRMImportReview = () => {
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -18,7 +21,17 @@ const CRMImportReview = () => {
   const [sending, setSending] = useState(false);
   const [progress, setProgress] = useState(0);
   const [filterType, setFilterType] = useState<"all" | "blacklisted" | "new" | "update">("all");
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [sendPhase, setSendPhase] = useState<string>("");
   const qc = useQueryClient();
+
+  const { data: templates = [] } = useQuery({
+    queryKey: ["loyalty_card_templates"],
+    queryFn: async () => {
+      const { data } = await supabase.from("loyalty_card_templates").select("*").order("created_at", { ascending: false });
+      return data || [];
+    },
+  });
 
   const { data: staged = [], isLoading } = useQuery({
     queryKey: ["crm-staging"],
@@ -157,12 +170,13 @@ const CRMImportReview = () => {
       : staged.filter((r: any) => !r.is_blacklisted);
 
     if (targets.length === 0) return toast.error("No valid records to send");
+    if (!selectedTemplateId) return toast.error("Select a card template first");
 
-    // Fetch WhatsApp settings — same keys as Loyalty Cards WhatsApp Settings tab
+    // Fetch WhatsApp settings
     const { data: settings } = await supabase
       .from("app_settings")
       .select("setting_key, setting_value")
-      .like("setting_key", "loyalty_wa_%");
+      .like("setting_key", "loyalty_%");
 
     const cfg: Record<string, string> = {};
     (settings || []).forEach((s: any) => { cfg[s.setting_key] = s.setting_value; });
@@ -174,23 +188,85 @@ const CRMImportReview = () => {
     const authHeaderPrefix = cfg["loyalty_wa_authHeaderPrefix"] || "";
     const fromNumber = cfg["loyalty_wa_fromNumber"] || "";
     const campaignName = cfg["loyalty_wa_campaignName"] || "";
-    const includeMediaHeader = cfg["loyalty_wa_mediaHeader"] !== "false";
     const bodyMapping = cfg["loyalty_wa_bodyMapping"];
     const queueEnabled = cfg["loyalty_wa_queueEnabled"] !== "false";
     const delayMs = Number(cfg["loyalty_wa_delayMs"]) || 3000;
+    const useStaticExpiry = cfg["loyalty_static_expiry_enabled"] === "true";
+    const staticExpiryDate = cfg["loyalty_static_expiry_date"] || "";
 
     if (!apiBaseUrl || !apiKey || !templateName) {
       return toast.error("WhatsApp API not configured. Set up in Loyalty Cards → WhatsApp Settings.");
     }
 
-    // Parse body mapping — only include body params if mapping is explicitly configured
     let mapping: Record<string, string> = {};
     try { mapping = bodyMapping ? JSON.parse(bodyMapping) : {}; } catch { mapping = {}; }
 
-    const authHeaderValue = authHeaderPrefix ? `${authHeaderPrefix} ${apiKey}` : apiKey;
-
     setSending(true);
     setProgress(0);
+
+    // Phase 1: Generate card images
+    setSendPhase("Generating card images...");
+    let templateAssets: Awaited<ReturnType<typeof getTemplateAssets>>;
+    try {
+      templateAssets = await getTemplateAssets(selectedTemplateId);
+      if (!templateAssets) throw new Error("Template not found or has no background image");
+    } catch (err: any) {
+      setSending(false);
+      setSendPhase("");
+      return toast.error(err.message || "Failed to load template");
+    }
+
+    const { bgImg, canvas, ctx, placeholders } = templateAssets;
+    const imageUrls: (string | null)[] = [];
+
+    for (let i = 0; i < targets.length; i++) {
+      const r = targets[i];
+      const mobile = (r.mobile_number || "").replace(/\D/g, "");
+      const normalizedMobile = mobile.length > 10 ? mobile.slice(-10) : mobile;
+
+      // Check if card image already exists
+      const { data: existingCard } = await supabase
+        .from("loyalty_cards")
+        .select("image_url")
+        .eq("mobile", normalizedMobile)
+        .not("image_url", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existingCard?.image_url) {
+        imageUrls.push(existingCard.image_url);
+      } else {
+        // Generate new card
+        const cardData: CardData = {
+          Name: r.patient_name || "",
+          Mobile: normalizedMobile,
+          UMR: r.umr_number || "",
+          "Discount %": `${r.default_discount_pct ?? 20}%`,
+          "Expiry Date": useStaticExpiry && staticExpiryDate ? staticExpiryDate : "",
+        };
+
+        const imageUrl = await generateAndUploadCard(selectedTemplateId, cardData, bgImg, canvas, ctx, placeholders);
+        imageUrls.push(imageUrl);
+
+        // Also save to loyalty_cards table for future lookups
+        if (imageUrl) {
+          await supabase.from("loyalty_cards").insert({
+            patient_name: cardData.Name,
+            mobile: normalizedMobile,
+            umr: cardData.UMR,
+            discount: cardData["Discount %"],
+            expiry_date: cardData["Expiry Date"],
+            image_url: imageUrl,
+            whatsapp_status: "pending",
+          });
+        }
+      }
+      setProgress(Math.round(((i + 1) / targets.length) * 50)); // 0-50% for generation
+    }
+
+    // Phase 2: Send WhatsApp
+    setSendPhase("Sending WhatsApp messages...");
     let sent = 0;
     let failed = 0;
 
@@ -202,7 +278,6 @@ const CRMImportReview = () => {
 
       const components: Record<string, unknown> = {};
 
-      // Only add body params if mapping is explicitly set
       if (Object.keys(mapping).length > 0) {
         const sortedKeys = Object.keys(mapping).sort((a, b) => Number(a) - Number(b));
         const params: string[] = sortedKeys.map((key) => {
@@ -219,20 +294,9 @@ const CRMImportReview = () => {
         components.body = { params };
       }
 
-      // Find loyalty card image for this record if available
-      if (includeMediaHeader) {
-        const { data: cardData } = await supabase
-          .from("loyalty_cards")
-          .select("image_url")
-          .eq("mobile", r.mobile_number)
-          .not("image_url", "is", null)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (cardData?.image_url) {
-          components.header = { type: "image", image: { link: cardData.image_url } };
-        }
+      const imgUrl = imageUrls[i];
+      if (imgUrl) {
+        components.header = { type: "image", image: { link: imgUrl } };
       }
 
       const payload: Record<string, unknown> = {
@@ -242,23 +306,17 @@ const CRMImportReview = () => {
         campaignName,
         type: "template",
       };
-      // Only include components if there's something in it
       if (Object.keys(components).length > 0) {
         payload.components = components;
       }
 
       try {
         const proxyRes = await supabase.functions.invoke("whatsapp-proxy", {
-          body: {
-            apiBaseUrl,
-            apiKey,
-            authHeaderName,
-            authHeaderPrefix,
-            payload,
-          },
+          body: { apiBaseUrl, apiKey, authHeaderName, authHeaderPrefix, payload },
         });
 
         if (proxyRes.error || proxyRes.data?.status >= 400) {
+          console.error("WA proxy error:", proxyRes.data);
           failed++;
         } else {
           sent++;
@@ -269,11 +327,20 @@ const CRMImportReview = () => {
               last_sent_date: new Date().toISOString(),
             }).eq("primary_key", pk);
           }
+          // Update loyalty_cards whatsapp_status
+          if (normalizedMobile) {
+            await supabase.from("loyalty_cards")
+              .update({ whatsapp_status: "sent", sent_at: new Date().toISOString() })
+              .eq("mobile", normalizedMobile)
+              .eq("whatsapp_status", "pending")
+              .order("created_at", { ascending: false })
+              .limit(1);
+          }
         }
       } catch {
         failed++;
       }
-      setProgress(Math.round(((i + 1) / targets.length) * 100));
+      setProgress(50 + Math.round(((i + 1) / targets.length) * 50)); // 50-100% for sending
 
       if (queueEnabled && delayMs > 0 && i < targets.length - 1) {
         await new Promise((resolve) => setTimeout(resolve, delayMs));
@@ -281,6 +348,7 @@ const CRMImportReview = () => {
     }
 
     setSending(false);
+    setSendPhase("");
     qc.invalidateQueries({ queryKey: ["crm-contacts"] });
     toast.success(`WhatsApp sent: ${sent} success, ${failed} failed`);
   };
@@ -295,14 +363,27 @@ const CRMImportReview = () => {
         <CardHeader>
           <CardTitle className="flex items-center justify-between flex-wrap gap-2">
             <span>Review Staged Import ({staged.length} records)</span>
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex gap-2 flex-wrap items-center">
+              <div className="flex items-center gap-2">
+                <Label className="text-xs whitespace-nowrap">Card Template:</Label>
+                <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
+                  <SelectTrigger className="h-8 w-[180px]">
+                    <SelectValue placeholder="Select template" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {templates.map((t: any) => (
+                      <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <Button variant="destructive" size="sm" onClick={handleRemoveBlacklisted} disabled={blacklistedCount === 0}>
                 <Trash2 className="h-4 w-4 mr-1" />Remove Blacklisted ({blacklistedCount})
               </Button>
               <Button variant="destructive" size="sm" onClick={handleRemoveSelected} disabled={selected.size === 0}>
                 <Trash2 className="h-4 w-4 mr-1" />Remove Selected ({selected.size})
               </Button>
-              <Button size="sm" onClick={handleSendLoyaltyCards} disabled={sending || staged.length === 0}>
+              <Button size="sm" onClick={handleSendLoyaltyCards} disabled={sending || staged.length === 0 || !selectedTemplateId}>
                 <Send className="h-4 w-4 mr-1" />{sending ? "Sending..." : `Send Loyalty Card (${selected.size > 0 ? selected.size : staged.filter((r: any) => !r.is_blacklisted).length})`}
               </Button>
               <Button size="sm" onClick={handleApprove} disabled={approving || staged.length === 0}>
@@ -312,7 +393,12 @@ const CRMImportReview = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {(approving || sending) && <Progress value={progress} />}
+          {(approving || sending) && (
+            <div className="space-y-1">
+              <Progress value={progress} />
+              {sendPhase && <p className="text-xs text-muted-foreground">{sendPhase}</p>}
+            </div>
+          )}
 
           <div className="flex gap-2 items-center flex-wrap">
             <div className="relative flex-1 min-w-[200px]">
