@@ -95,9 +95,26 @@ const CRMImport = () => {
     const { data: blData } = await supabase.from("crm_blacklist").select("mobile_number");
     const blacklist = new Set((blData || []).map((b: any) => b.mobile_number));
 
-    // Fetch existing contacts to detect updates
-    const { data: existingData } = await supabase.from("crm_contacts").select("primary_key");
-    const existingPks = new Set((existingData || []).map((c: any) => c.primary_key));
+    // Fetch ALL existing contacts (batched to bypass 1000 row limit)
+    const existingMap = new Map<string, { bill_number: string | null }>();
+    {
+      const FETCH_BATCH = 900;
+      let from = 0;
+      let keepFetching = true;
+      while (keepFetching) {
+        const { data: chunk } = await supabase
+          .from("crm_contacts")
+          .select("primary_key, bill_number")
+          .order("created_at", { ascending: true })
+          .range(from, from + FETCH_BATCH - 1);
+        if (!chunk || chunk.length === 0) break;
+        for (const c of chunk) {
+          existingMap.set(c.primary_key, { bill_number: c.bill_number });
+        }
+        if (chunk.length < FETCH_BATCH) keepFetching = false;
+        else from += FETCH_BATCH;
+      }
+    }
 
     // Clear old staging data first
     await supabase.from("crm_import_staging").delete().neq("id", "00000000-0000-0000-0000-000000000000");
@@ -119,7 +136,18 @@ const CRMImport = () => {
 
         const mobile = String(mapped.mobile_number);
         const isBlacklisted = blacklist.has(mobile);
-        const isUpdate = existingPks.has(pk);
+        const existingRecord = existingMap.get(pk);
+        const isUpdate = !!existingRecord;
+
+        // Skip if record exists and new bill_number is not greater
+        if (isUpdate) {
+          const existingBill = existingRecord.bill_number || "";
+          const newBill = mapped.bill_number ? String(mapped.bill_number) : "";
+          if (newBill <= existingBill) {
+            s.skippedDuplicate++;
+            continue;
+          }
+        }
 
         if (isBlacklisted) s.blacklisted++;
         if (isUpdate) s.updates++;
