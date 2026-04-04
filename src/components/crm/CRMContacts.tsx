@@ -24,7 +24,7 @@ const CRMContacts = () => {
   // Edit dialog state
   const [editOpen, setEditOpen] = useState(false);
   const [editContact, setEditContact] = useState<any>(null);
-  const [editName, setEditName] = useState("");
+  const [editFields, setEditFields] = useState<Record<string, string>>({});
   const [editSaving, setEditSaving] = useState(false);
 
   // Bulk update state
@@ -98,21 +98,54 @@ const CRMContacts = () => {
     toast.success("Exported!");
   };
 
+  const EDITABLE_FIELDS = [
+    { key: "patient_name", label: "Patient Name", uppercase: true },
+    { key: "mobile_number", label: "Mobile Number" },
+    { key: "umr_number", label: "UMR Number" },
+    { key: "location", label: "Location" },
+    { key: "visit_date", label: "Visit Date" },
+    { key: "bill_number", label: "Bill Number" },
+    { key: "visit_type", label: "Visit Type" },
+    { key: "doctor_name", label: "Doctor Name", uppercase: true },
+    { key: "gross_amount", label: "Gross Amount" },
+    { key: "discount_amount", label: "Discount Amount" },
+    { key: "net_amount", label: "Net Amount" },
+    { key: "paid_amount", label: "Paid Amount" },
+    { key: "due_amount", label: "Due Amount" },
+    { key: "payment_type", label: "Payment Type" },
+    { key: "remarks", label: "Remarks" },
+    { key: "created_by", label: "Created By" },
+    { key: "record_tag", label: "Tag" },
+    { key: "default_discount_pct", label: "Default Discount %" },
+  ];
+
   const openEdit = (contact: any) => {
     setEditContact(contact);
-    setEditName(contact.patient_name || "");
+    const fields: Record<string, string> = {};
+    EDITABLE_FIELDS.forEach(f => { fields[f.key] = String(contact[f.key] ?? ""); });
+    setEditFields(fields);
     setEditOpen(true);
   };
 
   const saveEdit = async () => {
     if (!editContact) return;
     setEditSaving(true);
-    const { error } = await supabase.from("crm_contacts").update({ patient_name: editName.trim().toUpperCase() }).eq("id", editContact.id);
+    const updates: Record<string, any> = {};
+    EDITABLE_FIELDS.forEach(f => {
+      let val = editFields[f.key] ?? "";
+      if (f.uppercase) val = val.toUpperCase();
+      if (["gross_amount", "discount_amount", "net_amount", "paid_amount", "due_amount", "default_discount_pct"].includes(f.key)) {
+        updates[f.key] = parseFloat(val) || 0;
+      } else {
+        updates[f.key] = val || null;
+      }
+    });
+    const { error } = await supabase.from("crm_contacts").update(updates).eq("id", editContact.id);
     setEditSaving(false);
     if (error) {
-      toast.error("Failed to update name");
+      toast.error("Failed to update contact");
     } else {
-      toast.success("Name updated");
+      toast.success("Contact updated");
       setEditOpen(false);
       qc.invalidateQueries({ queryKey: ["crm-contacts"] });
     }
@@ -258,18 +291,22 @@ const CRMContacts = () => {
         <Button variant="outline" size="sm" disabled={contacts.length < PAGE_SIZE} onClick={() => setPage(p => p + 1)}>Next</Button>
       </div>
 
-      {/* Edit Name Dialog */}
+      {/* Edit Contact Dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Edit Patient Name</DialogTitle></DialogHeader>
+        <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader><DialogTitle>Edit Contact</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div><Label className="text-xs text-muted-foreground">Primary Key</Label><p className="text-sm font-mono">{editContact?.primary_key}</p></div>
-            <div><Label className="text-xs text-muted-foreground">Mobile</Label><p className="text-sm">{editContact?.mobile_number || "—"}</p></div>
-            <div><Label className="text-xs text-muted-foreground">Location</Label><p className="text-sm">{editContact?.location || "—"}</p></div>
-            <div>
-              <Label>Patient Name</Label>
-              <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Enter patient name" className="uppercase" />
-            </div>
+            {EDITABLE_FIELDS.map(f => (
+              <div key={f.key}>
+                <Label className="text-xs">{f.label}</Label>
+                <Input
+                  value={editFields[f.key] || ""}
+                  onChange={(e) => setEditFields(prev => ({ ...prev, [f.key]: e.target.value }))}
+                  className={f.uppercase ? "uppercase" : ""}
+                />
+              </div>
+            ))}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
