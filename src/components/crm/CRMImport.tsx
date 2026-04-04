@@ -53,7 +53,18 @@ function mapRow(row: Record<string, unknown>): Record<string, unknown> | null {
     const field = COLUMN_MAP[idx];
     if (field) mapped[field] = row[key];
   });
-  if (!mapped.primary_key || !String(mapped.primary_key).trim()) return null;
+  
+  // If primary_key wasn't mapped or is empty, try to build it from umr_number + mobile_number
+  if (!mapped.primary_key || !String(mapped.primary_key).trim()) {
+    const umr = String(mapped.umr_number || "").trim();
+    const mob = normalizeMobile(mapped.mobile_number);
+    if (umr && mob.length === 10) {
+      mapped.primary_key = `${umr}|${mob}`;
+    } else {
+      return null;
+    }
+  }
+  
   mapped.mobile_number = normalizeMobile(mapped.mobile_number);
   if (mapped.mobile_number && String(mapped.mobile_number).length !== 10) return null;
   // numeric fields
