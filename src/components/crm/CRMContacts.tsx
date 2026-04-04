@@ -569,6 +569,7 @@ const CRMContacts = () => {
                 <TableCell>{c.bill_number || "—"}</TableCell>
                 
                 <TableCell>{c.net_amount ?? "—"}</TableCell>
+                <TableCell>{c.default_discount_pct ?? "—"}</TableCell>
                 <TableCell>{c.record_tag || "—"}</TableCell>
                 <TableCell>{c.created_at ? format(new Date(c.created_at), "dd-MM-yyyy") : "—"}</TableCell>
                 <TableCell>{c.last_sent_type || "—"}</TableCell>
