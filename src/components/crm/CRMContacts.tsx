@@ -644,7 +644,16 @@ const CRMContacts = () => {
     if (selected.size === 0) return toast.error("Select contacts first");
     if (!selectedTemplateId) return toast.error("Select a card template first");
 
-    const selectedContacts = contacts.filter((c: any) => selected.has(c.id) && c.mobile_number);
+    // Fetch full data for all selected IDs (may span multiple pages)
+    const selectedIds = Array.from(selected);
+    let selectedContacts: any[] = [];
+    const FETCH_CHUNK = 200;
+    for (let i = 0; i < selectedIds.length; i += FETCH_CHUNK) {
+      const chunk = selectedIds.slice(i, i + FETCH_CHUNK);
+      const { data } = await supabase.from("crm_contacts").select("*").in("id", chunk);
+      if (data) selectedContacts = selectedContacts.concat(data);
+    }
+    selectedContacts = selectedContacts.filter((c: any) => c.mobile_number);
     if (selectedContacts.length === 0) return toast.error("No selected contacts with mobile numbers");
 
     // Fetch WhatsApp settings
@@ -794,8 +803,9 @@ const CRMContacts = () => {
         } else {
           sent++;
           await supabase.from("crm_contacts").update({
-            last_sent_type: "ABC Card",
+            last_sent_type: "ABC",
             last_sent_date: new Date().toISOString(),
+            record_tag: null,
           }).eq("id", r.id);
 
           if (normalizedMobile) {
@@ -893,6 +903,24 @@ const CRMContacts = () => {
             </Button>
           </>
         )}
+        <Button size="sm" variant="secondary" onClick={async () => {
+          toast.info("Fetching all DAILY contacts...");
+          const BATCH = 1000;
+          let allIds: string[] = [];
+          let from = 0;
+          while (true) {
+            const { data } = await supabase.from("crm_contacts").select("id").eq("record_tag", "DAILY").range(from, from + BATCH - 1);
+            if (!data || data.length === 0) break;
+            allIds = allIds.concat(data.map((r: any) => r.id));
+            if (data.length < BATCH) break;
+            from += BATCH;
+          }
+          if (allIds.length === 0) return toast.error("No DAILY tagged contacts found");
+          setSelected(new Set(allIds));
+          toast.success(`Selected ${allIds.length} DAILY contacts`);
+        }}>
+          <Send className="h-4 w-4 mr-1" />Select All DAILY
+        </Button>
         <Button variant="destructive" size="sm" onClick={() => { setDeleteMode("all"); setDeleteOpen(true); }}>
           <Trash2 className="h-4 w-4 mr-1" />Delete All
         </Button>
