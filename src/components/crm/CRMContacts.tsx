@@ -227,6 +227,39 @@ const CRMContacts = () => {
     }
   };
 
+  const handleDelete = async () => {
+    if (deletePassword !== "9819111107") return toast.error("Incorrect password");
+    setDeleting(true);
+    try {
+      if (deleteMode === "all") {
+        // Delete all in batches
+        let hasMore = true;
+        while (hasMore) {
+          const { data } = await supabase.from("crm_contacts").select("id").limit(500);
+          if (!data || data.length === 0) { hasMore = false; break; }
+          const ids = data.map((r: any) => r.id);
+          await supabase.from("crm_contacts").delete().in("id", ids);
+        }
+        toast.success("All contacts deleted");
+      } else {
+        if (selected.size === 0) { setDeleting(false); return toast.error("No contacts selected"); }
+        const ids = Array.from(selected);
+        for (let i = 0; i < ids.length; i += 100) {
+          await supabase.from("crm_contacts").delete().in("id", ids.slice(i, i + 100));
+        }
+        toast.success(`${ids.length} contacts deleted`);
+        setSelected(new Set());
+      }
+      qc.invalidateQueries({ queryKey: ["crm-contacts"] });
+      qc.invalidateQueries({ queryKey: ["crm-contacts-count"] });
+      setDeleteOpen(false);
+      setDeletePassword("");
+    } catch {
+      toast.error("Delete failed");
+    }
+    setDeleting(false);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2 items-center">
