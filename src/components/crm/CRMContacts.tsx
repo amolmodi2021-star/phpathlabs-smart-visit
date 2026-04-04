@@ -10,7 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { exportToExcel, parseExcelFile } from "@/lib/excel";
-import { Download, Search, Pencil, Upload } from "lucide-react";
+import { Download, Search, Pencil, Upload, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 const CRMContacts = () => {
