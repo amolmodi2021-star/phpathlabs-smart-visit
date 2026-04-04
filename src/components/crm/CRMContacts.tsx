@@ -58,18 +58,53 @@ const CRMContacts = () => {
         else from += BATCH;
       }
       
-      // Sort: PH VESU first (by visit_date desc), then NON PHPL (by created_at desc)
-      const parseDate = (d: string | null) => {
-        if (!d) return 0;
-        const parts = d.split("-");
-        if (parts.length === 3) return new Date(`${parts[2]}-${parts[1]}-${parts[0]}`).getTime() || 0;
+      // Sort: PH VESU first, then by visit date desc, then visit time desc if available,
+      // then bill number desc as a fallback tie-breaker for same-day records.
+      const normalizeLocation = (value: unknown) => String(value || "").trim().toUpperCase();
+      const parseVisitDate = (value: unknown) => {
+        const raw = String(value || "").trim();
+        const match = raw.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+        if (!match) return 0;
+        const [, dd, mm, yyyy] = match;
+        return Date.UTC(Number(yyyy), Number(mm) - 1, Number(dd));
+      };
+      const parseVisitTime = (value: unknown) => {
+        const raw = String(value || "").trim().toUpperCase();
+        if (!raw) return 0;
+        const ampmMatch = raw.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/);
+        if (ampmMatch) {
+          let [, hh, mm, meridian] = ampmMatch;
+          let hours = Number(hh) % 12;
+          if (meridian === "PM") hours += 12;
+          return hours * 60 + Number(mm);
+        }
+        const twentyFourHourMatch = raw.match(/^(\d{1,2}):(\d{2})$/);
+        if (twentyFourHourMatch) {
+          const [, hh, mm] = twentyFourHourMatch;
+          return Number(hh) * 60 + Number(mm);
+        }
         return 0;
       };
+      const parseBillNumber = (value: unknown) => {
+        const digits = String(value || "").replace(/\D/g, "");
+        return digits ? Number(digits) : 0;
+      };
       const sorted = allData.sort((a: any, b: any) => {
-        const locA = a.location === "PH VESU" ? 0 : 1;
-        const locB = b.location === "PH VESU" ? 0 : 1;
+        const locA = normalizeLocation(a.location) === "PH VESU" ? 0 : 1;
+        const locB = normalizeLocation(b.location) === "PH VESU" ? 0 : 1;
         if (locA !== locB) return locA - locB;
-        if (a.location === "PH VESU") return parseDate(b.visit_date) - parseDate(a.visit_date);
+
+        if (locA === 0) {
+          const dateDiff = parseVisitDate(b.visit_date) - parseVisitDate(a.visit_date);
+          if (dateDiff !== 0) return dateDiff;
+
+          const timeDiff = parseVisitTime(b.visit_time) - parseVisitTime(a.visit_time);
+          if (timeDiff !== 0) return timeDiff;
+
+          const billDiff = parseBillNumber(b.bill_number) - parseBillNumber(a.bill_number);
+          if (billDiff !== 0) return billDiff;
+        }
+
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       });
       
