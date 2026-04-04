@@ -690,6 +690,7 @@ const CRMContacts = () => {
         <a href="/samples/Sample_Bulk_Update_Names.xlsx" download className="text-primary underline text-xs">📥 Sample Names</a>
         <a href="/samples/Sample_Bulk_Update_Discount.xlsx" download className="text-primary underline text-xs">📥 Sample Discount</a>
         <a href="/samples/Sample_Bulk_Update_LastSent.xlsx" download className="text-primary underline text-xs">📥 Sample Last Sent</a>
+        <a href="/samples/Sample_NonPHPL_Upload.xlsx" download className="text-primary underline text-xs">📥 Sample NON PHPL</a>
       </p>
 
       <div className="border rounded-lg overflow-auto max-h-[60vh]">
