@@ -248,16 +248,19 @@ const CRMImportReview = () => {
       };
 
       try {
-        const res = await fetch(apiBaseUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            [authHeaderName]: authHeaderValue,
+        const proxyRes = await supabase.functions.invoke("whatsapp-proxy", {
+          body: {
+            apiBaseUrl,
+            apiKey,
+            authHeaderName,
+            authHeaderPrefix,
+            payload,
           },
-          body: JSON.stringify(payload),
         });
 
-        if (res.ok) {
+        if (proxyRes.error || proxyRes.data?.status >= 400) {
+          failed++;
+        } else {
           sent++;
           const pk = r.primary_key;
           if (pk) {
@@ -266,8 +269,6 @@ const CRMImportReview = () => {
               last_sent_date: new Date().toISOString(),
             }).eq("primary_key", pk);
           }
-        } else {
-          failed++;
         }
       } catch {
         failed++;
