@@ -494,7 +494,7 @@ const CRMContacts = () => {
                 <TableCell>{c.location || "—"}</TableCell>
                 <TableCell>{c.visit_date || "—"}</TableCell>
                 <TableCell>{c.bill_number || "—"}</TableCell>
-                <TableCell>{c.doctor_name || "—"}</TableCell>
+                
                 <TableCell>{c.net_amount ?? "—"}</TableCell>
                 <TableCell>{c.record_tag || "—"}</TableCell>
                 <TableCell>{c.created_at ? format(new Date(c.created_at), "dd-MM-yyyy") : "—"}</TableCell>
