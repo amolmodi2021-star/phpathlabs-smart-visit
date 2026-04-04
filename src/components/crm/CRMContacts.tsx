@@ -664,6 +664,12 @@ const CRMContacts = () => {
           </Button>
           <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleBulkLastSentUpdate} disabled={bulkUpdating} />
         </label>
+        <label className="cursor-pointer">
+          <Button variant="secondary" size="sm" asChild disabled={bulkUpdating}>
+            <span><Upload className="h-4 w-4 mr-1" />{bulkUpdating ? "Uploading..." : "Upload NON PHPL"}</span>
+          </Button>
+          <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleNonPhplUpload} disabled={bulkUpdating} />
+        </label>
         {selected.size > 0 && (
           <>
             <Button variant="outline" size="sm" onClick={handleClearTags}>
