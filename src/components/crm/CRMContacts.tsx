@@ -31,6 +31,12 @@ const CRMContacts = () => {
   // Bulk update state
   const [bulkUpdating, setBulkUpdating] = useState(false);
 
+  // Delete state
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteMode, setDeleteMode] = useState<"selected" | "all">("selected");
+  const [deleting, setDeleting] = useState(false);
+
   const { data: contacts = [], isLoading } = useQuery({
     queryKey: ["crm-contacts", locationFilter, tagFilter, search, page],
     queryFn: async () => {
