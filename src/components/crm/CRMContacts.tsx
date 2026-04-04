@@ -1014,6 +1014,39 @@ const CRMContacts = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Send Loyalty Card Dialog */}
+      <Dialog open={sendOpen} onOpenChange={setSendOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Send Loyalty Card to {selected.size} contacts</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Card Template</Label>
+              <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select template" />
+                </SelectTrigger>
+                <SelectContent>
+                  {cardTemplates.map((t: any) => (
+                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Cards will be generated (or looked up if existing) and sent via WhatsApp using Loyalty Cards settings.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSendOpen(false)}>Cancel</Button>
+            <Button onClick={handleSendLoyaltyCards} disabled={!selectedTemplateId}>
+              <Send className="h-4 w-4 mr-1" />Generate & Send
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
