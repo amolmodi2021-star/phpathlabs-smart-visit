@@ -21,7 +21,17 @@ const CRMImportReview = () => {
   const [sending, setSending] = useState(false);
   const [progress, setProgress] = useState(0);
   const [filterType, setFilterType] = useState<"all" | "blacklisted" | "new" | "update">("all");
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [sendPhase, setSendPhase] = useState<string>("");
   const qc = useQueryClient();
+
+  const { data: templates = [] } = useQuery({
+    queryKey: ["loyalty_card_templates"],
+    queryFn: async () => {
+      const { data } = await supabase.from("loyalty_card_templates").select("*").order("created_at", { ascending: false });
+      return data || [];
+    },
+  });
 
   const { data: staged = [], isLoading } = useQuery({
     queryKey: ["crm-staging"],
