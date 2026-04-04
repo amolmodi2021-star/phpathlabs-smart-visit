@@ -355,8 +355,10 @@ const CRMContacts = () => {
         </Button>
         <span className="text-sm text-muted-foreground">Total: {totalCount}</span>
       </div>
-      <p className="text-xs text-muted-foreground">
-        💡 <strong>Bulk Update:</strong> Upload Excel with "primary_key" (or "mobile") + "patient_name" for names, or "primary_key" (or "mobile") + "discount" for discount %.
+      <p className="text-xs text-muted-foreground flex flex-wrap items-center gap-2">
+        💡 <strong>Bulk Update:</strong> Upload Excel with "primary_key" (or "mobile"/"umr") + "patient_name" for names, or + "discount" for discount %.
+        <a href="/samples/Sample_Bulk_Update_Names.xlsx" download className="text-primary underline text-xs">📥 Sample Names</a>
+        <a href="/samples/Sample_Bulk_Update_Discount.xlsx" download className="text-primary underline text-xs">📥 Sample Discount</a>
       </p>
 
       <div className="border rounded-lg overflow-auto max-h-[60vh]">
