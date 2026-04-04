@@ -39,6 +39,21 @@ const CRMContacts = () => {
   const [deleteMode, setDeleteMode] = useState<"selected" | "all">("selected");
   const [deleting, setDeleting] = useState(false);
 
+  // Send loyalty card state
+  const [sendOpen, setSendOpen] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sendProgress, setSendProgress] = useState(0);
+  const [sendPhase, setSendPhase] = useState("");
+
+  const { data: cardTemplates = [] } = useQuery({
+    queryKey: ["loyalty_card_templates"],
+    queryFn: async () => {
+      const { data } = await supabase.from("loyalty_card_templates").select("*").order("created_at", { ascending: false });
+      return data || [];
+    },
+  });
+
   const { data: contacts = [], isLoading } = useQuery({
     queryKey: ["crm-contacts", locationFilter, tagFilter, search, page],
     queryFn: async () => {
