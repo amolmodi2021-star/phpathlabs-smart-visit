@@ -2,6 +2,7 @@ import PasswordGate from "@/components/PasswordGate";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import CRMContacts from "@/components/crm/CRMContacts";
 import CRMImport from "@/components/crm/CRMImport";
+import CRMImportReview from "@/components/crm/CRMImportReview";
 import CRMAbnormalTests from "@/components/crm/CRMAbnormalTests";
 import CRMBlacklist from "@/components/crm/CRMBlacklist";
 import CRMSequences from "@/components/crm/CRMSequences";
@@ -15,6 +16,7 @@ const CRM = () => (
         <TabsList className="flex flex-wrap h-auto gap-1">
           <TabsTrigger value="contacts">Contacts</TabsTrigger>
           <TabsTrigger value="import">Import Data</TabsTrigger>
+          <TabsTrigger value="review">Review & Approve</TabsTrigger>
           <TabsTrigger value="abnormal">Abnormal Tests</TabsTrigger>
           <TabsTrigger value="blacklist">Blacklist</TabsTrigger>
           <TabsTrigger value="sequences">Sequences</TabsTrigger>
@@ -22,6 +24,7 @@ const CRM = () => (
         </TabsList>
         <TabsContent value="contacts"><CRMContacts /></TabsContent>
         <TabsContent value="import"><CRMImport /></TabsContent>
+        <TabsContent value="review"><CRMImportReview /></TabsContent>
         <TabsContent value="abnormal"><CRMAbnormalTests /></TabsContent>
         <TabsContent value="blacklist"><CRMBlacklist /></TabsContent>
         <TabsContent value="sequences"><CRMSequences /></TabsContent>
