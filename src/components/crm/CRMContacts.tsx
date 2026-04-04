@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { format } from "date-fns";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -33,7 +34,11 @@ const CRMContacts = () => {
   const { data: contacts = [], isLoading } = useQuery({
     queryKey: ["crm-contacts", locationFilter, tagFilter, search, page],
     queryFn: async () => {
-      let q = supabase.from("crm_contacts").select("*").order("updated_at", { ascending: false }).range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+      let q = supabase.from("crm_contacts").select("*")
+        .order("location", { ascending: false, nullsFirst: false }) // PH VESU before NON PHPL
+        .order("visit_date", { ascending: false, nullsFirst: true })
+        .order("created_at", { ascending: false })
+        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
       if (locationFilter !== "ALL") q = q.eq("location", locationFilter);
       if (tagFilter !== "ALL") q = q.eq("record_tag", tagFilter);
       if (search) q = q.or(`patient_name.ilike.%${search}%,mobile_number.ilike.%${search}%,umr_number.ilike.%${search}%`);
@@ -257,15 +262,16 @@ const CRMContacts = () => {
               <TableHead>Doctor</TableHead>
               <TableHead>Net Amt</TableHead>
               <TableHead>Tag</TableHead>
+              <TableHead>Created Date</TableHead>
               <TableHead>Last Sent</TableHead>
               <TableHead>Days Since</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={13} className="text-center py-8">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={14} className="text-center py-8">Loading...</TableCell></TableRow>
             ) : contacts.length === 0 ? (
-              <TableRow><TableCell colSpan={13} className="text-center py-8">No contacts found. Import data to get started.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={14} className="text-center py-8">No contacts found. Import data to get started.</TableCell></TableRow>
             ) : contacts.map((c: any) => (
               <TableRow key={c.id}>
                 <TableCell><Checkbox checked={selected.has(c.id)} onCheckedChange={() => toggleSelect(c.id)} /></TableCell>
@@ -283,6 +289,7 @@ const CRMContacts = () => {
                 <TableCell>{c.doctor_name || "—"}</TableCell>
                 <TableCell>{c.net_amount ?? "—"}</TableCell>
                 <TableCell>{c.record_tag || "—"}</TableCell>
+                <TableCell>{c.created_at ? format(new Date(c.created_at), "dd-MM-yyyy") : "—"}</TableCell>
                 <TableCell>{c.last_sent_type || "—"}</TableCell>
                 <TableCell>{daysSince(c.last_sent_date)}</TableCell>
               </TableRow>
