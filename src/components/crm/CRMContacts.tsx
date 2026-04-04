@@ -804,11 +804,14 @@ const CRMContacts = () => {
           failed++;
         } else {
           sent++;
-          await supabase.from("crm_contacts").update({
+          const updateRes = await supabase.from("crm_contacts").update({
             last_sent_type: "ABC",
             last_sent_date: new Date().toISOString(),
             record_tag: null,
           }).eq("id", r.id);
+          if (updateRes.error) {
+            console.error("Failed to update sent type for", r.id, updateRes.error);
+          }
 
           if (normalizedMobile) {
             await supabase.from("loyalty_cards")
