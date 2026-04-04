@@ -200,6 +200,87 @@ export type Database = {
         }
         Relationships: []
       }
+      crm_import_staging: {
+        Row: {
+          batch_id: string
+          bill_number: string | null
+          created_at: string
+          created_by: string | null
+          default_discount_pct: number | null
+          discount_amount: number | null
+          doctor_name: string | null
+          due_amount: number | null
+          gross_amount: number | null
+          id: string
+          is_blacklisted: boolean | null
+          is_update: boolean | null
+          location: string | null
+          mobile_number: string | null
+          net_amount: number | null
+          paid_amount: number | null
+          patient_name: string | null
+          payment_type: string | null
+          primary_key: string
+          record_tag: string | null
+          remarks: string | null
+          umr_number: string | null
+          visit_date: string | null
+          visit_type: string | null
+        }
+        Insert: {
+          batch_id?: string
+          bill_number?: string | null
+          created_at?: string
+          created_by?: string | null
+          default_discount_pct?: number | null
+          discount_amount?: number | null
+          doctor_name?: string | null
+          due_amount?: number | null
+          gross_amount?: number | null
+          id?: string
+          is_blacklisted?: boolean | null
+          is_update?: boolean | null
+          location?: string | null
+          mobile_number?: string | null
+          net_amount?: number | null
+          paid_amount?: number | null
+          patient_name?: string | null
+          payment_type?: string | null
+          primary_key: string
+          record_tag?: string | null
+          remarks?: string | null
+          umr_number?: string | null
+          visit_date?: string | null
+          visit_type?: string | null
+        }
+        Update: {
+          batch_id?: string
+          bill_number?: string | null
+          created_at?: string
+          created_by?: string | null
+          default_discount_pct?: number | null
+          discount_amount?: number | null
+          doctor_name?: string | null
+          due_amount?: number | null
+          gross_amount?: number | null
+          id?: string
+          is_blacklisted?: boolean | null
+          is_update?: boolean | null
+          location?: string | null
+          mobile_number?: string | null
+          net_amount?: number | null
+          paid_amount?: number | null
+          patient_name?: string | null
+          payment_type?: string | null
+          primary_key?: string
+          record_tag?: string | null
+          remarks?: string | null
+          umr_number?: string | null
+          visit_date?: string | null
+          visit_type?: string | null
+        }
+        Relationships: []
+      }
       crm_sequence_rules: {
         Row: {
           action_type: string
