@@ -19,27 +19,24 @@ interface ImportStats {
 }
 
 const COLUMN_MAP: Record<number, string> = {
-  0: "location",       // A - LOCATION_NAME
-  1: "umr_number",     // B - UMR_NO
-  2: "bill_number",    // C - BILL_NO
-  3: "visit_date",     // D - TRANSACTION_DT
-  4: "patient_name",   // E - PATIENT_NAME
-  5: "mobile_number",  // F - MOBILE_PHONE
-  6: "visit_type",     // G - A (visit type)
-  7: "doctor_name",    // H - REFRL_CUSTOMER_NAME
-  // 8 skipped (I - REFERAL_NAME)
-  // 9 skipped (J - empty/unused column)
-  10: "gross_amount",  // K - GROSS_AMOUNT
-  11: "discount_amount", // L - CESSION_AMOUNT
-  12: "net_amount",    // M - NET_AMOUNT
-  13: "paid_amount",   // N - PAID_AMOUNT
-  14: "due_amount",    // O - DUE_AMOUNT
-  15: "payment_type",  // P - PAYMENT_TYPE
-  16: "remarks",       // Q - REMARKS
-  17: "created_by",    // R - CREATE_BY
-  18: "record_tag",    // S - daily
-  19: "default_discount_pct", // T - %
-  20: "primary_key",   // U - B|F (UMR|Mobile)
+  0: "location",         // A - LOCATION_NAME
+  1: "umr_number",       // B - UMR_NO
+  2: "bill_number",      // C - BILL_NO
+  3: "visit_date",       // D - TRANSACTION_DT
+  4: "patient_name",     // E - PATIENT_NAME
+  5: "mobile_number",    // F - MOBILE_PHONE
+  6: "visit_type",       // G - REFERENCE_SOURCE_NAME
+  // 7 skipped (H - COMPANY_NAME)
+  8: "doctor_name",      // I - REFRL_CUSTOMER_NAME
+  // 9 skipped (J - REFERAL_NAME)
+  10: "gross_amount",    // K - GROSS_AMOUNT
+  11: "discount_amount", // L - CONCESSION_AMOUNT
+  12: "net_amount",      // M - NET_AMOUNT
+  13: "paid_amount",     // N - PAID_AMOUNT
+  14: "due_amount",      // O - DUE_AMOUNT
+  15: "payment_type",    // P - PAYMENT_TYPE
+  16: "remarks",         // Q - REMARKS
+  17: "created_by",      // R - CREATE_BY
 };
 
 function normalizeMobile(val: unknown): string {
@@ -55,25 +52,23 @@ function mapRow(row: Record<string, unknown>): Record<string, unknown> | null {
     if (field) mapped[field] = row[key];
   });
   
-  // If primary_key wasn't mapped or is empty, try to build it from umr_number + mobile_number
-  if (!mapped.primary_key || !String(mapped.primary_key).trim()) {
-    const umr = String(mapped.umr_number || "").trim();
-    const mob = normalizeMobile(mapped.mobile_number);
-    if (mob.length === 10) {
-      mapped.primary_key = umr ? `${umr}|${mob}` : `NOPHPL|${mob}`;
-    } else {
-      return null;
-    }
+  // Always generate primary_key from umr_number + mobile_number
+  const umr = String(mapped.umr_number || "").trim();
+  const mob = normalizeMobile(mapped.mobile_number);
+  if (mob.length === 10) {
+    mapped.primary_key = umr ? `${umr}|${mob}` : `NOPHPL|${mob}`;
+  } else {
+    return null;
   }
   
-  mapped.mobile_number = normalizeMobile(mapped.mobile_number);
-  if (mapped.mobile_number && String(mapped.mobile_number).length !== 10) return null;
+  mapped.mobile_number = mob;
   // numeric fields
-  for (const f of ["gross_amount", "discount_amount", "net_amount", "paid_amount", "due_amount", "default_discount_pct"]) {
+  for (const f of ["gross_amount", "discount_amount", "net_amount", "paid_amount", "due_amount"]) {
     mapped[f] = parseFloat(String(mapped[f] || "0")) || 0;
   }
-  // default discount
-  if (!mapped.default_discount_pct) mapped.default_discount_pct = 20;
+  // defaults
+  mapped.default_discount_pct = 20;
+  mapped.record_tag = "DAILY";
   return mapped;
 }
 
