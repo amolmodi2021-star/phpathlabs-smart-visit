@@ -443,6 +443,7 @@ const CRMImportReview = () => {
                     <TableHead>Visit Date</TableHead>
                     <TableHead>Discount %</TableHead>
                     <TableHead>Net Amt</TableHead>
+                    <TableHead>Remarks</TableHead>
                     <TableHead>Tag</TableHead>
                   </TableRow>
                 </TableHeader>
