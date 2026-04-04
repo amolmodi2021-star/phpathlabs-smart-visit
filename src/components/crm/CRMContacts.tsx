@@ -291,18 +291,22 @@ const CRMContacts = () => {
         <Button variant="outline" size="sm" disabled={contacts.length < PAGE_SIZE} onClick={() => setPage(p => p + 1)}>Next</Button>
       </div>
 
-      {/* Edit Name Dialog */}
+      {/* Edit Contact Dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Edit Patient Name</DialogTitle></DialogHeader>
+        <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader><DialogTitle>Edit Contact</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div><Label className="text-xs text-muted-foreground">Primary Key</Label><p className="text-sm font-mono">{editContact?.primary_key}</p></div>
-            <div><Label className="text-xs text-muted-foreground">Mobile</Label><p className="text-sm">{editContact?.mobile_number || "—"}</p></div>
-            <div><Label className="text-xs text-muted-foreground">Location</Label><p className="text-sm">{editContact?.location || "—"}</p></div>
-            <div>
-              <Label>Patient Name</Label>
-              <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Enter patient name" className="uppercase" />
-            </div>
+            {EDITABLE_FIELDS.map(f => (
+              <div key={f.key}>
+                <Label className="text-xs">{f.label}</Label>
+                <Input
+                  value={editFields[f.key] || ""}
+                  onChange={(e) => setEditFields(prev => ({ ...prev, [f.key]: e.target.value }))}
+                  className={f.uppercase ? "uppercase" : ""}
+                />
+              </div>
+            ))}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
