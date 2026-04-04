@@ -328,6 +328,10 @@ const CRMImportReview = () => {
               record_tag: null,
             }).eq("primary_key", pk);
           }
+          // Also clear DAILY tag on the staging record
+          await supabase.from("crm_import_staging").update({
+            record_tag: null,
+          }).eq("id", r.id);
           // Update loyalty_cards whatsapp_status
           if (normalizedMobile) {
             await supabase.from("loyalty_cards")
