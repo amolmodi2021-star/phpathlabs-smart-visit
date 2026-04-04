@@ -140,6 +140,12 @@ const CRMContacts = () => {
         updates[f.key] = val || null;
       }
     });
+    // Recalculate primary_key from UMR + mobile
+    const umr = String(updates.umr_number || "").trim();
+    const mob = String(updates.mobile_number || "").replace(/\D/g, "").slice(-10);
+    if (mob.length === 10) {
+      updates.primary_key = umr ? `${umr}|${mob}` : `NOPHPL|${mob}`;
+    }
     const { error } = await supabase.from("crm_contacts").update(updates).eq("id", editContact.id);
     setEditSaving(false);
     if (error) {
