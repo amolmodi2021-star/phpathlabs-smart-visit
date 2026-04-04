@@ -262,6 +262,7 @@ const CRMContacts = () => {
               <TableHead>Doctor</TableHead>
               <TableHead>Net Amt</TableHead>
               <TableHead>Tag</TableHead>
+              <TableHead>Created Date</TableHead>
               <TableHead>Last Sent</TableHead>
               <TableHead>Days Since</TableHead>
             </TableRow>
