@@ -467,7 +467,7 @@ const CRMContacts = () => {
               <TableHead>Location</TableHead>
               <TableHead>Visit Date</TableHead>
               <TableHead>Bill #</TableHead>
-              <TableHead>Doctor</TableHead>
+              
               <TableHead>Net Amt</TableHead>
               <TableHead>Tag</TableHead>
               <TableHead>Created Date</TableHead>
