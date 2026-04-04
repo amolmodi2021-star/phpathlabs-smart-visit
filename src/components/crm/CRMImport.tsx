@@ -211,9 +211,10 @@ const CRMImport = () => {
           </div>
           {importing && <Progress value={progress} />}
           {stats && (
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-2 text-sm">
               <div className="p-2 bg-muted rounded"><span className="font-medium">Added:</span> {stats.added}</div>
               <div className="p-2 bg-muted rounded"><span className="font-medium">Updated:</span> {stats.updated}</div>
+              <div className="p-2 bg-muted rounded"><span className="font-medium">Skipped (Invalid):</span> {stats.skippedInvalid}</div>
               <div className="p-2 bg-muted rounded"><span className="font-medium">Skipped (Dup):</span> {stats.skippedDuplicate}</div>
               <div className="p-2 bg-muted rounded"><span className="font-medium">Skipped (Blacklist):</span> {stats.skippedBlacklist}</div>
               <div className="p-2 bg-muted rounded"><span className="font-medium">Upgraded:</span> {stats.upgradedFromNonPhpl}</div>
