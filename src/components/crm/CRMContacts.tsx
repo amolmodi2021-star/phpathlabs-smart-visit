@@ -24,7 +24,7 @@ const CRMContacts = () => {
   // Edit dialog state
   const [editOpen, setEditOpen] = useState(false);
   const [editContact, setEditContact] = useState<any>(null);
-  const [editName, setEditName] = useState("");
+  const [editFields, setEditFields] = useState<Record<string, string>>({});
   const [editSaving, setEditSaving] = useState(false);
 
   // Bulk update state
