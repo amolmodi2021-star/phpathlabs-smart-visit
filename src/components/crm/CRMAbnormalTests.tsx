@@ -357,8 +357,29 @@ const CRMAbnormalTests = () => {
         ctx.fillText(`Date: ${new Date().toLocaleDateString("en-GB")}`, padding, 116);
       }
 
+      // Draw bands helper
+      const drawBandOnCanvas = (ctx: CanvasRenderingContext2D, band: any, y: number, canvasW: number) => {
+        ctx.fillStyle = band.color || "#2E3192";
+        ctx.fillRect(0, y, canvasW, band.height || 40);
+        if (band.text) {
+          ctx.fillStyle = band.textColor || "#FFFFFF";
+          ctx.font = `${band.bold ? "bold " : ""}${band.fontSize || 14}px Arial, sans-serif`;
+          ctx.textBaseline = "middle";
+          ctx.textAlign = band.align === "center" ? "center" : band.align === "right" ? "right" : "left";
+          const tx = band.align === "center" ? canvasW / 2 : band.align === "right" ? canvasW - padding : padding;
+          ctx.fillText(band.text, tx, y + (band.height || 40) / 2);
+        }
+      };
+
+      // Bands above table
+      let cursorY = hdrH;
+      bandsArr.filter((b: any) => b.position === "above-table").forEach((b: any) => {
+        drawBandOnCanvas(ctx, b, cursorY, cw);
+        cursorY += b.height || 40;
+      });
+
       // Table
-      const tableY = hdrH + 10;
+      const tableY = cursorY + 10;
       const tableW = cw - padding * 2;
       const colStarts = [0, colWidths[0], colWidths[0] + colWidths[1], colWidths[0] + colWidths[1] + colWidths[2]].map(
         (f) => padding + f * tableW + 10
