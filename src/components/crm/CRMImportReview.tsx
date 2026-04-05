@@ -263,7 +263,7 @@ const CRMImportReview = () => {
           Mobile: normalizedMobile,
           UMR: r.umr_number || "",
           "Discount %": `${r.default_discount_pct ?? 20}%`,
-          "Expiry Date": useStaticExpiry && staticExpiryDate ? staticExpiryDate : "",
+          "Expiry Date": staticExpiryDate,
         };
 
         const imageUrl = await generateAndUploadCard(selectedTemplateId, cardData, bgImg, canvas, ctx, placeholders);
