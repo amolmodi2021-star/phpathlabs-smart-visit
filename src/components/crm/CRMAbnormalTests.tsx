@@ -592,7 +592,11 @@ const CRMAbnormalTests = () => {
 
       const toNumber = `+91${normalizedMobile}`;
       const components: Record<string, unknown> = {};
-      components.header = { type: "image", image: { link: imageUrl } };
+      if (includeMediaHeader) {
+        components.header = { type: "image", image: { link: imageUrl } };
+      }
+      // Send patient name as {{1}} body variable
+      components.body = { parameters: [{ type: "text", text: group.patientName.toUpperCase() }] };
 
       const payload: Record<string, unknown> = {
         from: fromNumber,
@@ -600,10 +604,8 @@ const CRMAbnormalTests = () => {
         templateName,
         campaignName,
         type: "template",
+        components,
       };
-      if (Object.keys(components).length > 0) {
-        payload.components = components;
-      }
 
       try {
         const proxyRes = await supabase.functions.invoke("whatsapp-proxy", {
