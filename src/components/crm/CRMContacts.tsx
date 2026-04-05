@@ -804,6 +804,13 @@ const CRMContacts = () => {
       }
     }
 
+    // Deferred cleanup: wait 30s for WhatsApp to download images, then delete
+    setSendPhase("Cleaning up...");
+    if (filesToDelete.length > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 30000));
+      try { await supabase.storage.from("loyalty-cards").remove(filesToDelete); } catch {}
+    }
+
     setSending(false);
     setSendPhase("");
     setSelected(new Set());
