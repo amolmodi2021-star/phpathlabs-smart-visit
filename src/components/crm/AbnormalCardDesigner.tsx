@@ -316,7 +316,7 @@ const AbnormalCardDesigner = () => {
       const rowFont = `${tc.rowFontSize}px Arial, sans-serif`;
       const rowMid = y + tc.rowHeight / 2;
       fillTextFit(ctx, t.test_name, colStarts[0], rowMid, colMaxWidths[0], rowFont);
-      fillTextFit(ctx, t.test_date, colStarts[1], rowMid, colMaxWidths[1], rowFont);
+      fillTextFit(ctx, t.test_date, colStarts[1], rowMid, colMaxWidths[1], rowFont, 0.6, "center");
 
       ctx.fillStyle = tc.resultColor;
       const boldRowFont = `bold ${tc.rowFontSize}px Arial, sans-serif`;
