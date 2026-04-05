@@ -10,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Upload, Search, Send, ChevronDown, ChevronRight, Trash2, Download } from "lucide-react";
 import { toast } from "sonner";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
