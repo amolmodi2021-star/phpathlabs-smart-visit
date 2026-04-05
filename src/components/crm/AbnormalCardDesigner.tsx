@@ -63,7 +63,7 @@ interface Band {
 const FIELD_OPTIONS = ["Name", "Mobile", "UMR", "Barcode", "Expiry Date"];
 
 /** Draw text that auto-shrinks to fit within maxWidth */
-function fillTextFit(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, baseFont: string, minScale = 0.6, align: "left" | "right" = "left") {
+function fillTextFit(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, baseFont: string, minScale = 0.6, align: "left" | "right" | "center" = "left") {
   ctx.save();
   ctx.font = baseFont;
   const measured = ctx.measureText(text).width;
@@ -78,6 +78,9 @@ function fillTextFit(ctx: CanvasRenderingContext2D, text: string, x: number, y: 
   if (align === "right") {
     const tw = ctx.measureText(text).width;
     ctx.fillText(text, x + maxWidth - tw, y);
+  } else if (align === "center") {
+    const tw = ctx.measureText(text).width;
+    ctx.fillText(text, x + (maxWidth - tw) / 2, y);
   } else {
     ctx.fillText(text, x, y);
   }
@@ -278,19 +281,20 @@ const AbnormalCardDesigner = () => {
       (f) => padding + f * tableW + 10
     );
     const colEnds = [...colStarts.slice(1), padding + tableW];
-    const colMaxWidths = colStarts.map((s, i) => colEnds[i] - s - 6);
+    const colMaxWidths = colStarts.map((s, i) => colEnds[i] - s - (i === 2 ? 14 : 6));
 
     // Table header
     ctx.fillStyle = tc.headerBg;
     ctx.fillRect(padding, tableY, tableW, tableHeaderH);
     ctx.fillStyle = tc.headerFontColor;
-    ctx.textBaseline = "top";
+    ctx.textBaseline = "middle";
     ctx.textAlign = "left";
     const hdrFont = `bold ${tc.headerFontSize}px ${tc.headerFont}, sans-serif`;
-    fillTextFit(ctx, "Test Name", colStarts[0], tableY + 12, colMaxWidths[0], hdrFont);
-    fillTextFit(ctx, "Date", colStarts[1], tableY + 12, colMaxWidths[1], hdrFont);
-    fillTextFit(ctx, "Result", colStarts[2], tableY + 12, colMaxWidths[2], hdrFont, 0.6, "right");
-    fillTextFit(ctx, "Normal Range", colStarts[3], tableY + 12, colMaxWidths[3], hdrFont);
+    const hdrMid = tableY + tableHeaderH / 2;
+    fillTextFit(ctx, "Test Name", colStarts[0], hdrMid, colMaxWidths[0], hdrFont, 0.6, "center");
+    fillTextFit(ctx, "Date", colStarts[1], hdrMid, colMaxWidths[1], hdrFont, 0.6, "center");
+    fillTextFit(ctx, "Result", colStarts[2], hdrMid, colMaxWidths[2], hdrFont, 0.6, "center");
+    fillTextFit(ctx, "Normal Range", colStarts[3], hdrMid, colMaxWidths[3], hdrFont, 0.6, "center");
 
     // Table rows
     SAMPLE_TESTS.forEach((t, i) => {
