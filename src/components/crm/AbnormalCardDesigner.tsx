@@ -143,6 +143,8 @@ const AbnormalCardDesigner = () => {
   const [bgColor, setBgColor] = useState("#FFFFFF");
   const [headerBgColor, setHeaderBgColor] = useState("#2E3192");
   const [headerFontColor, setHeaderFontColor] = useState("#FFFFFF");
+  const [headerBandHeight, setHeaderBandHeight] = useState(160);
+  const [showHeaderBand, setShowHeaderBand] = useState(true);
 
   // Logo
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
