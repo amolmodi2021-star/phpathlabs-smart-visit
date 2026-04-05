@@ -63,7 +63,7 @@ interface Band {
 const FIELD_OPTIONS = ["Name", "Mobile", "UMR", "Barcode", "Expiry Date"];
 
 /** Draw text that auto-shrinks to fit within maxWidth */
-function fillTextFit(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, baseFont: string, minScale = 0.6) {
+function fillTextFit(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, baseFont: string, minScale = 0.6, align: "left" | "right" = "left") {
   ctx.save();
   ctx.font = baseFont;
   const measured = ctx.measureText(text).width;
@@ -75,7 +75,12 @@ function fillTextFit(ctx: CanvasRenderingContext2D, text: string, x: number, y: 
       ctx.font = baseFont.replace(/\d+(?:\.\d+)?px/, `${newSize}px`);
     }
   }
-  ctx.fillText(text, x, y);
+  if (align === "right") {
+    const tw = ctx.measureText(text).width;
+    ctx.fillText(text, x + maxWidth - tw, y);
+  } else {
+    ctx.fillText(text, x, y);
+  }
   ctx.restore();
 }
 
@@ -104,7 +109,7 @@ const DEFAULT_TABLE: TableConfig = {
   borderColor: "#E0E0E8",
   altRowColor: "#F9F9FC",
   rowHeight: 36,
-  colWidths: [0.38, 0.18, 0.18, 0.26],
+  colWidths: [0.44, 0.18, 0.12, 0.26],
 };
 
 /* ───── Barcode Code128C (from cardRenderer.ts) ───── */
@@ -284,7 +289,7 @@ const AbnormalCardDesigner = () => {
     const hdrFont = `bold ${tc.headerFontSize}px ${tc.headerFont}, sans-serif`;
     fillTextFit(ctx, "Test Name", colStarts[0], tableY + 12, colMaxWidths[0], hdrFont);
     fillTextFit(ctx, "Date", colStarts[1], tableY + 12, colMaxWidths[1], hdrFont);
-    fillTextFit(ctx, "Result", colStarts[2], tableY + 12, colMaxWidths[2], hdrFont);
+    fillTextFit(ctx, "Result", colStarts[2], tableY + 12, colMaxWidths[2], hdrFont, 0.6, "right");
     fillTextFit(ctx, "Normal Range", colStarts[3], tableY + 12, colMaxWidths[3], hdrFont);
 
     // Table rows
@@ -311,7 +316,7 @@ const AbnormalCardDesigner = () => {
 
       ctx.fillStyle = tc.resultColor;
       const boldRowFont = `bold ${tc.rowFontSize}px Arial, sans-serif`;
-      fillTextFit(ctx, t.result_value, colStarts[2], rowMid, colMaxWidths[2], boldRowFont);
+      fillTextFit(ctx, t.result_value, colStarts[2], rowMid, colMaxWidths[2], boldRowFont, 0.6, "right");
 
       ctx.fillStyle = tc.rowFontColor;
       fillTextFit(ctx, t.normal_range, colStarts[3], rowMid, colMaxWidths[3], rowFont);

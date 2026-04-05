@@ -338,7 +338,7 @@ const CRMAbnormalTests = () => {
 
   // Generate abnormal history image card on canvas — template-driven
   /** Draw text that auto-shrinks to fit within maxWidth */
-  const fillTextFit = (ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, baseFont: string, minScale = 0.6) => {
+  const fillTextFit = (ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, baseFont: string, minScale = 0.6, align: "left" | "right" = "left") => {
     ctx.save();
     ctx.font = baseFont;
     const measured = ctx.measureText(text).width;
@@ -350,7 +350,12 @@ const CRMAbnormalTests = () => {
         ctx.font = baseFont.replace(/\d+(?:\.\d+)?px/, `${newSize}px`);
       }
     }
-    ctx.fillText(text, x, y);
+    if (align === "right") {
+      const tw = ctx.measureText(text).width;
+      ctx.fillText(text, x + maxWidth - tw, y);
+    } else {
+      ctx.fillText(text, x, y);
+    }
     ctx.restore();
   };
 
@@ -379,7 +384,7 @@ const CRMAbnormalTests = () => {
       const tBorderColor = tc.borderColor || "#E0E0E8";
       const tAltRowColor = tc.altRowColor || "#F9F9FC";
       const tRowHeight = tc.rowHeight || 36;
-      const colWidths: number[] = tc.colWidths || [0.38, 0.18, 0.18, 0.26];
+      const colWidths: number[] = tc.colWidths || [0.44, 0.18, 0.12, 0.26];
 
       const footerLinesArr: any[] = tmpl?.footer_lines ? (typeof tmpl.footer_lines === "string" ? JSON.parse(tmpl.footer_lines) : tmpl.footer_lines) : [];
       const footerH = footerLinesArr.reduce((s: number, l: any) => s + (l.fontSize || 12) + 8, 0) + 20;
@@ -463,7 +468,7 @@ const CRMAbnormalTests = () => {
       const hdrFont = `bold ${tHeaderFontSize}px Arial, sans-serif`;
       fillTextFit(ctx, "Test Name", colStarts[0], tableY + 12, colMaxWidths[0], hdrFont);
       fillTextFit(ctx, "Date", colStarts[1], tableY + 12, colMaxWidths[1], hdrFont);
-      fillTextFit(ctx, "Result", colStarts[2], tableY + 12, colMaxWidths[2], hdrFont);
+      fillTextFit(ctx, "Result", colStarts[2], tableY + 12, colMaxWidths[2], hdrFont, 0.6, "right");
       fillTextFit(ctx, "Normal Range", colStarts[3], tableY + 12, colMaxWidths[3], hdrFont);
 
       // Table rows
@@ -490,7 +495,7 @@ const CRMAbnormalTests = () => {
 
         ctx.fillStyle = tResultColor;
         const boldRowFont = `bold ${tRowFontSize}px Arial, sans-serif`;
-        fillTextFit(ctx, t.result_value || "", colStarts[2], rowMid, colMaxWidths[2], boldRowFont);
+        fillTextFit(ctx, t.result_value || "", colStarts[2], rowMid, colMaxWidths[2], boldRowFont, 0.6, "right");
 
         ctx.fillStyle = tRowFontColor;
         fillTextFit(ctx, t.normal_range || "", colStarts[3], rowMid, colMaxWidths[3], rowFont);
