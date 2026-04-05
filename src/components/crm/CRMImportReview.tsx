@@ -238,6 +238,7 @@ const CRMImportReview = () => {
 
     const { bgImg, canvas, ctx, placeholders } = templateAssets;
     const imageUrls: (string | null)[] = [];
+    const filesToDelete: string[] = [];
 
     for (let i = 0; i < targets.length; i++) {
       const r = targets[i];
@@ -328,15 +329,13 @@ const CRMImportReview = () => {
         failed++;
       }
 
-      // Always delete the generated card image after sending
+      // Collect file path for deferred deletion
       if (imgUrl) {
         try {
           const urlPath = new URL(imgUrl).pathname;
-          const filePath = urlPath.split("/loyalty-cards/").pop();
-          if (filePath) {
-            await supabase.storage.from("loyalty-cards").remove([filePath]);
-          }
-        } catch (e) { console.warn("Failed to delete card image:", e); }
+          const fp = urlPath.split("/loyalty-cards/").pop();
+          if (fp) filesToDelete.push(fp);
+        } catch {}
       }
 
       setProgress(50 + Math.round(((i + 1) / targets.length) * 50));
@@ -346,9 +345,15 @@ const CRMImportReview = () => {
       }
     }
 
+    // Deferred cleanup: wait 30s for WhatsApp to download images, then delete
+    setSendPhase("Cleaning up...");
+    if (filesToDelete.length > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 30000));
+      try { await supabase.storage.from("loyalty-cards").remove(filesToDelete); } catch {}
+    }
+
     setSending(false);
     setSendPhase("");
-    // Re-fetch staging so Approve & Transfer uses updated record_tag values
     await qc.invalidateQueries({ queryKey: ["crm-staging"] });
     await qc.refetchQueries({ queryKey: ["crm-staging"] });
     qc.invalidateQueries({ queryKey: ["crm-contacts"] });

@@ -598,6 +598,7 @@ const CRMAbnormalTests = () => {
     const fromNumber = cfg["abnormal_wa_fromNumber"] || "";
     const campaignName = cfg["abnormal_wa_campaignName"] || "";
     const includeMediaHeader = cfg["abnormal_wa_mediaHeader"] !== "false";
+    const filesToDelete: string[] = [];
     const queueEnabled = cfg["abnormal_wa_queueEnabled"] !== "false";
     const delayMs = Number(cfg["abnormal_wa_delayMs"]) || 3000;
 
@@ -672,18 +673,21 @@ const CRMAbnormalTests = () => {
         failed++;
       }
 
-      // Always delete the generated card image from storage after sending
-      try {
-        await supabase.storage.from("loyalty-cards").remove([cardResult.filePath]);
-      } catch (e) {
-        console.warn("Failed to delete card image:", e);
-      }
+      // Collect file path for deferred deletion
+      filesToDelete.push(cardResult.filePath);
 
       setSendProgress(Math.round(((i + 1) / selectedGroups.length) * 100));
 
       if (queueEnabled && delayMs > 0 && i < selectedGroups.length - 1) {
         await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
+    }
+
+    // Deferred cleanup: wait 30s for WhatsApp to download images, then delete
+    setSendPhase("Cleaning up...");
+    if (filesToDelete.length > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 30000));
+      try { await supabase.storage.from("loyalty-cards").remove(filesToDelete); } catch {}
     }
 
     setSending(false);
