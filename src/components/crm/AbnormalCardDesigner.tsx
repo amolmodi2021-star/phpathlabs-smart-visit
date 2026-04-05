@@ -334,7 +334,7 @@ const AbnormalCardDesigner = () => {
         ctx.fillStyle = p.fontColor;
         ctx.textBaseline = "top";
         ctx.textAlign = "left";
-        const label = p.field === "Name" ? SAMPLE_DATA.Name : p.field === "Mobile" ? `Mobile: ${SAMPLE_DATA.Mobile}` : `UMR: ${SAMPLE_DATA.UMR}`;
+        const label = p.field === "Name" ? SAMPLE_DATA.Name : p.field === "Mobile" ? `Mobile: ${SAMPLE_DATA.Mobile}` : p.field === "Expiry Date" ? `Expiry: ${SAMPLE_DATA["Expiry Date"]}` : `UMR: ${SAMPLE_DATA.UMR}`;
         ctx.fillText(label, px, py);
       }
 
