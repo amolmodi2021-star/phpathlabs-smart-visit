@@ -482,16 +482,18 @@ const CRMAbnormalTests = () => {
 
         ctx.fillStyle = tRowFontColor;
         ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
         const rowFont = `${tRowFontSize}px Arial, sans-serif`;
-        fillTextFit(ctx, t.test_name || "", colStarts[0], y + 10, colMaxWidths[0], rowFont);
-        fillTextFit(ctx, t.test_date || "", colStarts[1], y + 10, colMaxWidths[1], rowFont);
+        const rowMid = y + tRowHeight / 2;
+        fillTextFit(ctx, t.test_name || "", colStarts[0], rowMid, colMaxWidths[0], rowFont);
+        fillTextFit(ctx, t.test_date || "", colStarts[1], rowMid, colMaxWidths[1], rowFont);
 
         ctx.fillStyle = tResultColor;
         const boldRowFont = `bold ${tRowFontSize}px Arial, sans-serif`;
-        fillTextFit(ctx, t.result_value || "", colStarts[2], y + 10, colMaxWidths[2], boldRowFont);
+        fillTextFit(ctx, t.result_value || "", colStarts[2], rowMid, colMaxWidths[2], boldRowFont);
 
         ctx.fillStyle = tRowFontColor;
-        fillTextFit(ctx, t.normal_range || "", colStarts[3], y + 10, colMaxWidths[3], rowFont);
+        fillTextFit(ctx, t.normal_range || "", colStarts[3], rowMid, colMaxWidths[3], rowFont);
       });
 
       // Table border
