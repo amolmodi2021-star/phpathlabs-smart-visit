@@ -14,6 +14,63 @@ export type Database = {
   }
   public: {
     Tables: {
+      abnormal_card_templates: {
+        Row: {
+          background_color: string | null
+          canvas_width: number | null
+          created_at: string | null
+          footer_lines: Json | null
+          header_bg_color: string | null
+          header_font_color: string | null
+          id: string
+          logo_height: number | null
+          logo_url: string | null
+          logo_width: number | null
+          logo_x: number | null
+          logo_y: number | null
+          name: string
+          placeholders: Json | null
+          table_config: Json | null
+          updated_at: string | null
+        }
+        Insert: {
+          background_color?: string | null
+          canvas_width?: number | null
+          created_at?: string | null
+          footer_lines?: Json | null
+          header_bg_color?: string | null
+          header_font_color?: string | null
+          id?: string
+          logo_height?: number | null
+          logo_url?: string | null
+          logo_width?: number | null
+          logo_x?: number | null
+          logo_y?: number | null
+          name: string
+          placeholders?: Json | null
+          table_config?: Json | null
+          updated_at?: string | null
+        }
+        Update: {
+          background_color?: string | null
+          canvas_width?: number | null
+          created_at?: string | null
+          footer_lines?: Json | null
+          header_bg_color?: string | null
+          header_font_color?: string | null
+          id?: string
+          logo_height?: number | null
+          logo_url?: string | null
+          logo_width?: number | null
+          logo_x?: number | null
+          logo_y?: number | null
+          name?: string
+          placeholders?: Json | null
+          table_config?: Json | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       abnormal_history: {
         Row: {
           created_at: string

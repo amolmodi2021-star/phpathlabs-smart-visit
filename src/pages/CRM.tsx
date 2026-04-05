@@ -8,6 +8,7 @@ import CRMBlacklist from "@/components/crm/CRMBlacklist";
 import CRMSequences from "@/components/crm/CRMSequences";
 import CRMSettings from "@/components/crm/CRMSettings";
 import CRMSentHistory from "@/components/crm/CRMSentHistory";
+import AbnormalCardDesigner from "@/components/crm/AbnormalCardDesigner";
 
 const CRM = () => (
   <PasswordGate title="CRM Access">
@@ -20,6 +21,7 @@ const CRM = () => (
           <TabsTrigger value="review">Review & Approve</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
           <TabsTrigger value="abnormal">Abnormal Tests</TabsTrigger>
+          <TabsTrigger value="card-designer">Card Designer</TabsTrigger>
           <TabsTrigger value="blacklist">Blacklist</TabsTrigger>
           <TabsTrigger value="sequences">Sequences</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
@@ -29,6 +31,7 @@ const CRM = () => (
         <TabsContent value="review"><CRMImportReview /></TabsContent>
         <TabsContent value="history"><CRMSentHistory /></TabsContent>
         <TabsContent value="abnormal"><CRMAbnormalTests /></TabsContent>
+        <TabsContent value="card-designer"><AbnormalCardDesigner /></TabsContent>
         <TabsContent value="blacklist"><CRMBlacklist /></TabsContent>
         <TabsContent value="sequences"><CRMSequences /></TabsContent>
         <TabsContent value="settings"><CRMSettings /></TabsContent>
