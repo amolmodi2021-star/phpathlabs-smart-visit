@@ -598,7 +598,7 @@ const CRMAbnormalTests = () => {
     const fromNumber = cfg["abnormal_wa_fromNumber"] || "";
     const campaignName = cfg["abnormal_wa_campaignName"] || "";
     const includeMediaHeader = cfg["abnormal_wa_mediaHeader"] !== "false";
-    const filesToDelete: string[] = [];
+    
     const queueEnabled = cfg["abnormal_wa_queueEnabled"] !== "false";
     const delayMs = Number(cfg["abnormal_wa_delayMs"]) || 3000;
 

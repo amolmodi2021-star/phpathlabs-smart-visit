@@ -704,7 +704,7 @@ const CRMContacts = () => {
 
     const { bgImg, canvas, ctx, placeholders } = templateAssets;
     const imageUrls: (string | null)[] = [];
-    const filesToDelete: string[] = [];
+    
 
     for (let i = 0; i < selectedContacts.length; i++) {
       const r = selectedContacts[i];

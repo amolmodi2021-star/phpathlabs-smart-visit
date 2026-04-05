@@ -238,7 +238,7 @@ const CRMImportReview = () => {
 
     const { bgImg, canvas, ctx, placeholders } = templateAssets;
     const imageUrls: (string | null)[] = [];
-    const filesToDelete: string[] = [];
+    
 
     for (let i = 0; i < targets.length; i++) {
       const r = targets[i];
