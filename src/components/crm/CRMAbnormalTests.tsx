@@ -313,8 +313,10 @@ const CRMAbnormalTests = () => {
       ctx.fillRect(0, 0, cw, height);
 
       // Header band
-      ctx.fillStyle = headerBg;
-      ctx.fillRect(0, 0, cw, hdrH);
+      if (showHdr) {
+        ctx.fillStyle = headerBg;
+        ctx.fillRect(0, 0, cw, hdrH);
+      }
 
       // Logo
       if (tmpl?.logo_url) {
