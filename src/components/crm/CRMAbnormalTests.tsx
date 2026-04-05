@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { parseExcelFile } from "@/lib/excel";
@@ -115,6 +115,21 @@ const CRMAbnormalTests = () => {
   const [page, setPage] = useState(0);
   const qc = useQueryClient();
 
+  // One-time cleanup: delete any previously stored abnormal card images
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data: files } = await supabase.storage.from("loyalty-cards").list("generated/abnormal", { limit: 1000 });
+        if (files && files.length > 0) {
+          const paths = files.map((f) => `generated/abnormal/${f.name}`);
+          await supabase.storage.from("loyalty-cards").remove(paths);
+          console.log(`Cleaned up ${paths.length} old abnormal card images`);
+        }
+      } catch (e) {
+        console.warn("Storage cleanup failed:", e);
+      }
+    })();
+  }, []);
   // Debounce search
   const searchTimerRef = useState<ReturnType<typeof setTimeout> | null>(null);
   const handleSearchChange = useCallback((val: string) => {
@@ -318,7 +333,7 @@ const CRMAbnormalTests = () => {
   // Generate abnormal history image card on canvas — template-driven
   const generateAbnormalCard = async (
     group: PatientGroup
-  ): Promise<string | null> => {
+  ): Promise<{ publicUrl: string; filePath: string } | null> => {
     try {
       // Load template if selected
       const tmpl = cardTemplates.find((t: any) => t.id === selectedTemplateId);
@@ -521,7 +536,7 @@ const CRMAbnormalTests = () => {
       if (uploadError) throw uploadError;
 
       const { data: urlData } = supabase.storage.from("loyalty-cards").getPublicUrl(fileName);
-      return urlData.publicUrl;
+      return { publicUrl: urlData.publicUrl, filePath: fileName };
     } catch (err) {
       console.error("Abnormal card generation failed:", err);
       return null;
@@ -589,8 +604,8 @@ const CRMAbnormalTests = () => {
       setSendPhase(`Generating card ${i + 1}/${selectedGroups.length}...`);
 
       // Generate image card
-      const imageUrl = await generateAbnormalCard(group);
-      if (!imageUrl) {
+      const cardResult = await generateAbnormalCard(group);
+      if (!cardResult) {
         failed++;
         setSendProgress(Math.round(((i + 1) / selectedGroups.length) * 100));
         continue;
@@ -601,7 +616,7 @@ const CRMAbnormalTests = () => {
       const toNumber = `+91${normalizedMobile}`;
       const components: Record<string, unknown> = {};
       if (includeMediaHeader) {
-        components.header = { type: "image", image: { link: imageUrl } };
+        components.header = { type: "image", image: { link: cardResult.publicUrl } };
       }
       components.body = { params: [group.patientName.toUpperCase()] };
 
@@ -634,6 +649,13 @@ const CRMAbnormalTests = () => {
         }
       } catch {
         failed++;
+      }
+
+      // Always delete the generated card image from storage after sending
+      try {
+        await supabase.storage.from("loyalty-cards").remove([cardResult.filePath]);
+      } catch (e) {
+        console.warn("Failed to delete card image:", e);
       }
 
       setSendProgress(Math.round(((i + 1) / selectedGroups.length) * 100));
