@@ -521,7 +521,7 @@ const CRMAbnormalTests = () => {
       if (uploadError) throw uploadError;
 
       const { data: urlData } = supabase.storage.from("loyalty-cards").getPublicUrl(fileName);
-      return urlData.publicUrl;
+      return { publicUrl: urlData.publicUrl, filePath: fileName };
     } catch (err) {
       console.error("Abnormal card generation failed:", err);
       return null;
