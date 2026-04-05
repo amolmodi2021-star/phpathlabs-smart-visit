@@ -587,6 +587,17 @@ const CRMAbnormalTests = () => {
 
         {selected.size > 0 && (
           <>
+            <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
+              <SelectTrigger className="w-[180px] h-9">
+                <SelectValue placeholder="Card Template" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">Default (no template)</SelectItem>
+                {cardTemplates.map((t: any) => (
+                  <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button size="sm" onClick={handleSendWhatsApp} disabled={sending}>
               <Send className="h-4 w-4 mr-1" />
               Send Abnormal Card ({selected.size})
