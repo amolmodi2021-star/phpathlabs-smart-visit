@@ -214,8 +214,10 @@ const AbnormalCardDesigner = () => {
     ctx.fillRect(0, 0, canvasWidth, totalHeight);
 
     // Header band
-    ctx.fillStyle = headerBgColor;
-    ctx.fillRect(0, 0, canvasWidth, headerHeight);
+    if (showHeaderBand) {
+      ctx.fillStyle = headerBgColor;
+      ctx.fillRect(0, 0, canvasWidth, headerHeight);
+    }
 
     // Logo
     if (logoImg) {
