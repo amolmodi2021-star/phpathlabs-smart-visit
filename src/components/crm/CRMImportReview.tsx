@@ -170,6 +170,7 @@ const CRMImportReview = () => {
     qc.invalidateQueries({ queryKey: ["crm-staging"] });
     qc.invalidateQueries({ queryKey: ["crm-contacts"] });
     qc.invalidateQueries({ queryKey: ["crm-contacts-count"] });
+    qc.invalidateQueries({ queryKey: ["crm-sent-history"] });
     toast.success(`${toApprove.length} records approved and transferred to Contacts!`);
   };
 
