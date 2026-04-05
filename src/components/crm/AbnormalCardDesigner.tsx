@@ -413,6 +413,11 @@ const AbnormalCardDesigner = () => {
   const updatePH = (id: string, u: Partial<Placeholder>) => setPlaceholders((prev) => prev.map((p) => (p.id === id ? { ...p, ...u } : p)));
   const removePH = (id: string) => { setPlaceholders((p) => p.filter((x) => x.id !== id)); if (selectedId === id) setSelectedId(null); };
 
+  /* ─── Band CRUD ─── */
+  const addBand = () => setBands((prev) => [...prev, { id: crypto.randomUUID(), label: `Band ${prev.length + 1}`, height: 40, color: "#2E3192", textColor: "#FFFFFF", text: "", fontSize: 14, bold: false, align: "center", position: "above-table" }]);
+  const updateBand = (id: string, u: Partial<Band>) => setBands((prev) => prev.map((b) => (b.id === id ? { ...b, ...u } : b)));
+  const removeBand = (id: string) => setBands((prev) => prev.filter((b) => b.id !== id));
+
   /* ─── Footer CRUD ─── */
   const addFooterLine = () => setFooterLines((prev) => [...prev, { id: crypto.randomUUID(), text: "New line", fontSize: 12, fontColor: "#666666", bold: false, align: "center" }]);
   const updateFL = (id: string, u: Partial<FooterLine>) => setFooterLines((prev) => prev.map((f) => (f.id === id ? { ...f, ...u } : f)));
