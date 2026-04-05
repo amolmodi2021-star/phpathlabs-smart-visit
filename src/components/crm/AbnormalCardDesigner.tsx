@@ -389,7 +389,7 @@ const AbnormalCardDesigner = () => {
     setPlaceholders((prev) =>
       prev.map((p) =>
         p.id === dragging
-          ? { ...p, x: Math.max(0, Math.min(100, (mx / canvasWidth) * 100)), y: Math.max(0, Math.min(100, (my / totalHeight) * 100)) }
+          ? { ...p, x: Math.max(0, Math.min(100, (mx / canvasWidth) * 100)), y: Math.max(0, Math.min(totalHeight, my)) }
           : p
       )
     );
