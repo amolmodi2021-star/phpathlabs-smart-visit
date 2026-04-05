@@ -365,6 +365,9 @@ const CRMImportReview = () => {
 
     setSending(false);
     setSendPhase("");
+    // Re-fetch staging so Approve & Transfer uses updated record_tag values
+    await qc.invalidateQueries({ queryKey: ["crm-staging"] });
+    await qc.refetchQueries({ queryKey: ["crm-staging"] });
     qc.invalidateQueries({ queryKey: ["crm-contacts"] });
     toast.success(`WhatsApp sent: ${sent} success, ${failed} failed`);
   };
