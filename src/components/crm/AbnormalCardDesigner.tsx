@@ -248,8 +248,29 @@ const AbnormalCardDesigner = () => {
       }
     });
 
+    // Helper to draw a band
+    const drawBand = (ctx: CanvasRenderingContext2D, band: Band, y: number) => {
+      ctx.fillStyle = band.color;
+      ctx.fillRect(0, y, canvasWidth, band.height);
+      if (band.text) {
+        ctx.fillStyle = band.textColor;
+        ctx.font = `${band.bold ? "bold " : ""}${band.fontSize}px Arial, sans-serif`;
+        ctx.textBaseline = "middle";
+        ctx.textAlign = band.align === "center" ? "center" : band.align === "right" ? "right" : "left";
+        const tx = band.align === "center" ? canvasWidth / 2 : band.align === "right" ? canvasWidth - padding : padding;
+        ctx.fillText(band.text, tx, y + band.height / 2);
+      }
+    };
+
+    // Bands above table
+    let cursorY = headerHeight;
+    bands.filter(b => b.position === "above-table").forEach((b) => {
+      drawBand(ctx, b, cursorY);
+      cursorY += b.height;
+    });
+
     // Table
-    const tableY = headerHeight + 10;
+    const tableY = cursorY + 10;
     const tableW = canvasWidth - padding * 2;
     const tc = tableConfig;
     const colStarts = [0, tc.colWidths[0], tc.colWidths[0] + tc.colWidths[1], tc.colWidths[0] + tc.colWidths[1] + tc.colWidths[2]].map(
@@ -262,6 +283,7 @@ const AbnormalCardDesigner = () => {
     ctx.fillStyle = tc.headerFontColor;
     ctx.font = `bold ${tc.headerFontSize}px ${tc.headerFont}, sans-serif`;
     ctx.textBaseline = "top";
+    ctx.textAlign = "left";
     ctx.fillText("Test Name", colStarts[0], tableY + 12);
     ctx.fillText("Date", colStarts[1], tableY + 12);
     ctx.fillText("Result", colStarts[2], tableY + 12);
@@ -274,7 +296,6 @@ const AbnormalCardDesigner = () => {
         ctx.fillStyle = tc.altRowColor;
         ctx.fillRect(padding, y, tableW, tc.rowHeight);
       }
-      // border
       ctx.strokeStyle = tc.borderColor;
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -284,6 +305,7 @@ const AbnormalCardDesigner = () => {
 
       ctx.fillStyle = tc.rowFontColor;
       ctx.font = `${tc.rowFontSize}px Arial, sans-serif`;
+      ctx.textAlign = "left";
       ctx.fillText(t.test_name, colStarts[0], y + 10);
       ctx.fillText(t.test_date, colStarts[1], y + 10);
 
@@ -301,8 +323,15 @@ const AbnormalCardDesigner = () => {
     ctx.lineWidth = 2;
     ctx.strokeRect(padding, tableY, tableW, tableHeaderH + tableRowsH);
 
+    // Bands below table
+    let belowY = tableY + tableHeaderH + tableRowsH + 10;
+    bands.filter(b => b.position === "below-table").forEach((b) => {
+      drawBand(ctx, b, belowY);
+      belowY += b.height;
+    });
+
     // Footer
-    let fy = tableY + tableHeaderH + tableRowsH + 20;
+    let fy = belowY + 10;
     footerLines.forEach((fl) => {
       ctx.fillStyle = fl.fontColor;
       ctx.font = `${fl.bold ? "bold " : ""}${fl.fontSize}px Arial, sans-serif`;
@@ -312,7 +341,7 @@ const AbnormalCardDesigner = () => {
       fy += fl.fontSize + 8;
     });
     ctx.textAlign = "left";
-  }, [canvasWidth, bgColor, headerBgColor, headerFontColor, logoImg, logoW, logoH, logoX, logoY, placeholders, selectedId, tableConfig, footerLines, totalHeight]);
+  }, [canvasWidth, bgColor, headerBgColor, headerFontColor, logoImg, logoW, logoH, logoX, logoY, placeholders, selectedId, tableConfig, footerLines, bands, totalHeight]);
 
   useEffect(() => { drawCanvas(); }, [drawCanvas]);
 
