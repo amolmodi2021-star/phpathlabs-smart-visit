@@ -29,6 +29,7 @@ import LoyaltyCards from "./pages/LoyaltyCards";
 import WhatsAppWebhook from "./pages/WhatsAppWebhook";
 import Marketing from "./pages/Marketing";
 import CRM from "./pages/CRM";
+import LimsDemo from "./pages/LimsDemo";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -57,7 +58,9 @@ const App = () => (
           <Route path="/loyalty-cards" element={<ProtectedRoute><LoyaltyCards /></ProtectedRoute>} />
           <Route path="/marketing" element={<ProtectedRoute><Marketing /></ProtectedRoute>} />
           <Route path="/crm" element={<ProtectedRoute><CRM /></ProtectedRoute>} />
+          <Route path="/lims-demo" element={<ProtectedRoute><LimsDemo /></ProtectedRoute>} />
           <Route path="/whatsapp-webhook" element={<ProtectedRoute><WhatsAppWebhook /></ProtectedRoute>} />
+          <Route path="*" element={<NotFound />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

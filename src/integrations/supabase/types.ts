@@ -741,6 +741,113 @@ export type Database = {
           },
         ]
       }
+      lims_interface_logs: {
+        Row: {
+          created_at: string
+          direction: string
+          event_type: string
+          id: string
+          request_body: Json | null
+          response_body: Json | null
+          sample_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          direction?: string
+          event_type: string
+          id?: string
+          request_body?: Json | null
+          response_body?: Json | null
+          sample_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          direction?: string
+          event_type?: string
+          id?: string
+          request_body?: Json | null
+          response_body?: Json | null
+          sample_id?: string | null
+        }
+        Relationships: []
+      }
+      lims_test_orders: {
+        Row: {
+          created_at: string
+          id: string
+          patient_name: string | null
+          sample_id: string
+          status: string
+          tests: Json
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          patient_name?: string | null
+          sample_id: string
+          status?: string
+          tests?: Json
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          patient_name?: string | null
+          sample_id?: string
+          status?: string
+          tests?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      lims_test_results: {
+        Row: {
+          flag: string | null
+          id: string
+          order_id: string | null
+          received_at: string
+          reference_range: string | null
+          result_value: string | null
+          sample_id: string
+          test_code: string | null
+          test_name: string | null
+          unit: string | null
+        }
+        Insert: {
+          flag?: string | null
+          id?: string
+          order_id?: string | null
+          received_at?: string
+          reference_range?: string | null
+          result_value?: string | null
+          sample_id: string
+          test_code?: string | null
+          test_name?: string | null
+          unit?: string | null
+        }
+        Update: {
+          flag?: string | null
+          id?: string
+          order_id?: string | null
+          received_at?: string
+          reference_range?: string | null
+          result_value?: string | null
+          sample_id?: string
+          test_code?: string | null
+          test_name?: string | null
+          unit?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lims_test_results_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "lims_test_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       loyalty_card_jobs: {
         Row: {
           created_at: string

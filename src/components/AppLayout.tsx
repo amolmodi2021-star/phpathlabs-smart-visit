@@ -4,7 +4,7 @@ import { logout } from "@/lib/auth";
 import {
   FileText, LayoutDashboard, Home, Users, TestTubes, MessageSquare,
   Menu, X, LogOut, FlaskConical, AlertTriangle, BarChart3, CreditCard,
-  FileUp, ClipboardList, Building2, Layers, Microscope, PenTool, BookOpen, Zap, Webhook, Megaphone, Contact,
+  FileUp, ClipboardList, Building2, Layers, Microscope, PenTool, BookOpen, Zap, Webhook, Megaphone, Contact, Activity,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -23,6 +23,7 @@ const navItems = [
   { to: "/loyalty-cards", label: "Loyalty Cards", icon: CreditCard },
   { to: "/marketing", label: "Marketing", icon: Megaphone },
   { to: "/crm", label: "CRM", icon: Contact },
+  { to: "/lims-demo", label: "LIMS Interface", icon: Activity },
   { to: "/whatsapp-webhook", label: "WhatsApp Webhook", icon: Webhook },
 ];
 
