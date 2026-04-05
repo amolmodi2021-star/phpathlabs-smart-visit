@@ -272,18 +272,20 @@ const AbnormalCardDesigner = () => {
     const colStarts = [0, tc.colWidths[0], tc.colWidths[0] + tc.colWidths[1], tc.colWidths[0] + tc.colWidths[1] + tc.colWidths[2]].map(
       (f) => padding + f * tableW + 10
     );
+    const colEnds = [...colStarts.slice(1), padding + tableW];
+    const colMaxWidths = colStarts.map((s, i) => colEnds[i] - s - 6);
 
     // Table header
     ctx.fillStyle = tc.headerBg;
     ctx.fillRect(padding, tableY, tableW, tableHeaderH);
     ctx.fillStyle = tc.headerFontColor;
-    ctx.font = `bold ${tc.headerFontSize}px ${tc.headerFont}, sans-serif`;
     ctx.textBaseline = "top";
     ctx.textAlign = "left";
-    ctx.fillText("Test Name", colStarts[0], tableY + 12);
-    ctx.fillText("Date", colStarts[1], tableY + 12);
-    ctx.fillText("Result", colStarts[2], tableY + 12);
-    ctx.fillText("Normal Range", colStarts[3], tableY + 12);
+    const hdrFont = `bold ${tc.headerFontSize}px ${tc.headerFont}, sans-serif`;
+    fillTextFit(ctx, "Test Name", colStarts[0], tableY + 12, colMaxWidths[0], hdrFont);
+    fillTextFit(ctx, "Date", colStarts[1], tableY + 12, colMaxWidths[1], hdrFont);
+    fillTextFit(ctx, "Result", colStarts[2], tableY + 12, colMaxWidths[2], hdrFont);
+    fillTextFit(ctx, "Normal Range", colStarts[3], tableY + 12, colMaxWidths[3], hdrFont);
 
     // Table rows
     SAMPLE_TESTS.forEach((t, i) => {
@@ -300,18 +302,17 @@ const AbnormalCardDesigner = () => {
       ctx.stroke();
 
       ctx.fillStyle = tc.rowFontColor;
-      ctx.font = `${tc.rowFontSize}px Arial, sans-serif`;
       ctx.textAlign = "left";
-      ctx.fillText(t.test_name, colStarts[0], y + 10);
-      ctx.fillText(t.test_date, colStarts[1], y + 10);
+      const rowFont = `${tc.rowFontSize}px Arial, sans-serif`;
+      fillTextFit(ctx, t.test_name, colStarts[0], y + 10, colMaxWidths[0], rowFont);
+      fillTextFit(ctx, t.test_date, colStarts[1], y + 10, colMaxWidths[1], rowFont);
 
       ctx.fillStyle = tc.resultColor;
-      ctx.font = `bold ${tc.rowFontSize}px Arial, sans-serif`;
-      ctx.fillText(t.result_value, colStarts[2], y + 10);
+      const boldRowFont = `bold ${tc.rowFontSize}px Arial, sans-serif`;
+      fillTextFit(ctx, t.result_value, colStarts[2], y + 10, colMaxWidths[2], boldRowFont);
 
       ctx.fillStyle = tc.rowFontColor;
-      ctx.font = `${tc.rowFontSize}px Arial, sans-serif`;
-      ctx.fillText(t.normal_range, colStarts[3], y + 10);
+      fillTextFit(ctx, t.normal_range, colStarts[3], y + 10, colMaxWidths[3], rowFont);
     });
 
     // Table border
