@@ -17,6 +17,7 @@ export type Database = {
       abnormal_card_templates: {
         Row: {
           background_color: string | null
+          bands: Json | null
           canvas_width: number | null
           created_at: string | null
           footer_lines: Json | null
@@ -35,6 +36,7 @@ export type Database = {
         }
         Insert: {
           background_color?: string | null
+          bands?: Json | null
           canvas_width?: number | null
           created_at?: string | null
           footer_lines?: Json | null
@@ -53,6 +55,7 @@ export type Database = {
         }
         Update: {
           background_color?: string | null
+          bands?: Json | null
           canvas_width?: number | null
           created_at?: string | null
           footer_lines?: Json | null

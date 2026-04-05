@@ -47,6 +47,19 @@ interface FooterLine {
   align: "left" | "center" | "right";
 }
 
+interface Band {
+  id: string;
+  label: string;
+  height: number;
+  color: string;
+  textColor: string;
+  text: string;
+  fontSize: number;
+  bold: boolean;
+  align: "left" | "center" | "right";
+  position: "above-table" | "below-table";
+}
+
 const FIELD_OPTIONS = ["Name", "Mobile", "UMR", "Barcode"];
 
 const SAMPLE_DATA: Record<string, string> = {
@@ -145,6 +158,9 @@ const AbnormalCardDesigner = () => {
     { id: crypto.randomUUID(), field: "Mobile", x: 4.5, y: 52, fontSize: 16, fontColor: "#FFFFFF", bold: false },
     { id: crypto.randomUUID(), field: "UMR", x: 50, y: 52, fontSize: 16, fontColor: "#FFFFFF", bold: false },
   ]);
+
+  // Bands
+  const [bands, setBands] = useState<Band[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // Table
@@ -166,8 +182,10 @@ const AbnormalCardDesigner = () => {
   const padding = 40;
   const tableHeaderH = 40;
   const tableRowsH = SAMPLE_TESTS.length * tableConfig.rowHeight;
+  const bandsAboveH = bands.filter(b => b.position === "above-table").reduce((s, b) => s + b.height, 0);
+  const bandsBelowH = bands.filter(b => b.position === "below-table").reduce((s, b) => s + b.height, 0);
   const footerH = footerLines.reduce((s, l) => s + l.fontSize + 8, 0) + 20;
-  const totalHeight = headerHeight + tableHeaderH + tableRowsH + footerH + padding * 2;
+  const totalHeight = headerHeight + bandsAboveH + tableHeaderH + tableRowsH + bandsBelowH + footerH + padding * 2;
 
   // Logo image element
   const [logoImg, setLogoImg] = useState<HTMLImageElement | null>(null);
@@ -230,8 +248,29 @@ const AbnormalCardDesigner = () => {
       }
     });
 
+    // Helper to draw a band
+    const drawBand = (ctx: CanvasRenderingContext2D, band: Band, y: number) => {
+      ctx.fillStyle = band.color;
+      ctx.fillRect(0, y, canvasWidth, band.height);
+      if (band.text) {
+        ctx.fillStyle = band.textColor;
+        ctx.font = `${band.bold ? "bold " : ""}${band.fontSize}px Arial, sans-serif`;
+        ctx.textBaseline = "middle";
+        ctx.textAlign = band.align === "center" ? "center" : band.align === "right" ? "right" : "left";
+        const tx = band.align === "center" ? canvasWidth / 2 : band.align === "right" ? canvasWidth - padding : padding;
+        ctx.fillText(band.text, tx, y + band.height / 2);
+      }
+    };
+
+    // Bands above table
+    let cursorY = headerHeight;
+    bands.filter(b => b.position === "above-table").forEach((b) => {
+      drawBand(ctx, b, cursorY);
+      cursorY += b.height;
+    });
+
     // Table
-    const tableY = headerHeight + 10;
+    const tableY = cursorY + 10;
     const tableW = canvasWidth - padding * 2;
     const tc = tableConfig;
     const colStarts = [0, tc.colWidths[0], tc.colWidths[0] + tc.colWidths[1], tc.colWidths[0] + tc.colWidths[1] + tc.colWidths[2]].map(
@@ -244,6 +283,7 @@ const AbnormalCardDesigner = () => {
     ctx.fillStyle = tc.headerFontColor;
     ctx.font = `bold ${tc.headerFontSize}px ${tc.headerFont}, sans-serif`;
     ctx.textBaseline = "top";
+    ctx.textAlign = "left";
     ctx.fillText("Test Name", colStarts[0], tableY + 12);
     ctx.fillText("Date", colStarts[1], tableY + 12);
     ctx.fillText("Result", colStarts[2], tableY + 12);
@@ -256,7 +296,6 @@ const AbnormalCardDesigner = () => {
         ctx.fillStyle = tc.altRowColor;
         ctx.fillRect(padding, y, tableW, tc.rowHeight);
       }
-      // border
       ctx.strokeStyle = tc.borderColor;
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -266,6 +305,7 @@ const AbnormalCardDesigner = () => {
 
       ctx.fillStyle = tc.rowFontColor;
       ctx.font = `${tc.rowFontSize}px Arial, sans-serif`;
+      ctx.textAlign = "left";
       ctx.fillText(t.test_name, colStarts[0], y + 10);
       ctx.fillText(t.test_date, colStarts[1], y + 10);
 
@@ -283,8 +323,15 @@ const AbnormalCardDesigner = () => {
     ctx.lineWidth = 2;
     ctx.strokeRect(padding, tableY, tableW, tableHeaderH + tableRowsH);
 
+    // Bands below table
+    let belowY = tableY + tableHeaderH + tableRowsH + 10;
+    bands.filter(b => b.position === "below-table").forEach((b) => {
+      drawBand(ctx, b, belowY);
+      belowY += b.height;
+    });
+
     // Footer
-    let fy = tableY + tableHeaderH + tableRowsH + 20;
+    let fy = belowY + 10;
     footerLines.forEach((fl) => {
       ctx.fillStyle = fl.fontColor;
       ctx.font = `${fl.bold ? "bold " : ""}${fl.fontSize}px Arial, sans-serif`;
@@ -294,7 +341,7 @@ const AbnormalCardDesigner = () => {
       fy += fl.fontSize + 8;
     });
     ctx.textAlign = "left";
-  }, [canvasWidth, bgColor, headerBgColor, headerFontColor, logoImg, logoW, logoH, logoX, logoY, placeholders, selectedId, tableConfig, footerLines, totalHeight]);
+  }, [canvasWidth, bgColor, headerBgColor, headerFontColor, logoImg, logoW, logoH, logoX, logoY, placeholders, selectedId, tableConfig, footerLines, bands, totalHeight]);
 
   useEffect(() => { drawCanvas(); }, [drawCanvas]);
 
@@ -366,6 +413,11 @@ const AbnormalCardDesigner = () => {
   const updatePH = (id: string, u: Partial<Placeholder>) => setPlaceholders((prev) => prev.map((p) => (p.id === id ? { ...p, ...u } : p)));
   const removePH = (id: string) => { setPlaceholders((p) => p.filter((x) => x.id !== id)); if (selectedId === id) setSelectedId(null); };
 
+  /* ─── Band CRUD ─── */
+  const addBand = () => setBands((prev) => [...prev, { id: crypto.randomUUID(), label: `Band ${prev.length + 1}`, height: 40, color: "#2E3192", textColor: "#FFFFFF", text: "", fontSize: 14, bold: false, align: "center", position: "above-table" }]);
+  const updateBand = (id: string, u: Partial<Band>) => setBands((prev) => prev.map((b) => (b.id === id ? { ...b, ...u } : b)));
+  const removeBand = (id: string) => setBands((prev) => prev.filter((b) => b.id !== id));
+
   /* ─── Footer CRUD ─── */
   const addFooterLine = () => setFooterLines((prev) => [...prev, { id: crypto.randomUUID(), text: "New line", fontSize: 12, fontColor: "#666666", bold: false, align: "center" }]);
   const updateFL = (id: string, u: Partial<FooterLine>) => setFooterLines((prev) => prev.map((f) => (f.id === id ? { ...f, ...u } : f)));
@@ -407,6 +459,7 @@ const AbnormalCardDesigner = () => {
         placeholders: JSON.parse(JSON.stringify(placeholders.map(({ id, ...rest }) => rest))),
         table_config: JSON.parse(JSON.stringify(tableConfig)),
         footer_lines: JSON.parse(JSON.stringify(footerLines.map(({ id, ...rest }) => rest))),
+        bands: JSON.parse(JSON.stringify(bands.map(({ id, ...rest }) => rest))),
       };
 
       if (editingId) {
@@ -444,6 +497,8 @@ const AbnormalCardDesigner = () => {
     setTableConfig({ ...DEFAULT_TABLE, ...tc });
     const fls = (t.footer_lines as any[]) || [];
     setFooterLines(fls.map((f: any) => ({ ...f, id: crypto.randomUUID() })));
+    const bds = (t.bands as any[]) || [];
+    setBands(bds.map((b: any) => ({ ...b, id: crypto.randomUUID() })));
   };
 
   const deleteTemplate = async (id: string) => {
@@ -492,6 +547,7 @@ const AbnormalCardDesigner = () => {
           <TabsList className="flex flex-wrap h-auto gap-1">
             <TabsTrigger value="global">Global</TabsTrigger>
             <TabsTrigger value="fields">Fields</TabsTrigger>
+            <TabsTrigger value="bands">Bands</TabsTrigger>
             <TabsTrigger value="table">Table</TabsTrigger>
             <TabsTrigger value="footer">Footer</TabsTrigger>
             <TabsTrigger value="templates">Saved</TabsTrigger>
@@ -594,6 +650,78 @@ const AbnormalCardDesigner = () => {
                     <GripVertical className="h-3 w-3 text-muted-foreground" />
                     <span className="flex-1" style={{ color: p.fontColor, fontWeight: p.bold ? "bold" : "normal" }}>{p.field}</span>
                     <span className="text-xs text-muted-foreground">{p.fontSize}px</span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Bands */}
+          <TabsContent value="bands" className="space-y-3">
+            <Card>
+              <CardHeader className="py-3 flex flex-row items-center justify-between">
+                <CardTitle className="text-sm">Bands</CardTitle>
+                <Button size="sm" variant="outline" onClick={addBand}><Plus className="h-3 w-3 mr-1" />Add Band</Button>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {bands.length === 0 && <p className="text-xs text-muted-foreground">No bands added. Bands are colored horizontal strips above or below the table.</p>}
+                {bands.map((band, i) => (
+                  <div key={band.id} className="border rounded p-2 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-muted-foreground">Band {i + 1}</span>
+                      <Button variant="ghost" size="icon" className="h-6 w-6 ml-auto" onClick={() => removeBand(band.id)}><Trash2 className="h-3 w-3" /></Button>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Position</Label>
+                      <Select value={band.position} onValueChange={(v) => updateBand(band.id, { position: v as Band["position"] })}>
+                        <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="above-table">Above Table</SelectItem>
+                          <SelectItem value="below-table">Below Table</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Height (px)</Label>
+                      <Input type="number" min={10} max={200} value={band.height} onChange={(e) => updateBand(band.id, { height: Number(e.target.value) })} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label className="text-xs">Band Color</Label>
+                        <div className="flex gap-1 items-center">
+                          <input type="color" value={band.color} onChange={(e) => updateBand(band.id, { color: e.target.value })} className="h-8 w-10 rounded border cursor-pointer" />
+                          <Input value={band.color} onChange={(e) => updateBand(band.id, { color: e.target.value })} className="flex-1" />
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Text Color</Label>
+                        <div className="flex gap-1 items-center">
+                          <input type="color" value={band.textColor} onChange={(e) => updateBand(band.id, { textColor: e.target.value })} className="h-8 w-10 rounded border cursor-pointer" />
+                          <Input value={band.textColor} onChange={(e) => updateBand(band.id, { textColor: e.target.value })} className="flex-1" />
+                        </div>
+                      </div>
+                    </div>
+                    <Input value={band.text} onChange={(e) => updateBand(band.id, { text: e.target.value })} placeholder="Band text (optional)" />
+                    <div className="grid grid-cols-3 gap-2">
+                      <div><Label className="text-xs">Font Size</Label><Input type="number" min={8} max={30} value={band.fontSize} onChange={(e) => updateBand(band.id, { fontSize: Number(e.target.value) })} /></div>
+                      <div>
+                        <Label className="text-xs">Align</Label>
+                        <Select value={band.align} onValueChange={(v) => updateBand(band.id, { align: v as "left" | "center" | "right" })}>
+                          <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="left">Left</SelectItem>
+                            <SelectItem value="center">Center</SelectItem>
+                            <SelectItem value="right">Right</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex items-end pb-1">
+                        <div className="flex items-center gap-1">
+                          <Switch checked={band.bold} onCheckedChange={(v) => updateBand(band.id, { bold: v })} />
+                          <Label className="text-xs">Bold</Label>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 ))}
               </CardContent>

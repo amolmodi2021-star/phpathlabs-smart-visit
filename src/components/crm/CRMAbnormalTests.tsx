@@ -295,7 +295,11 @@ const CRMAbnormalTests = () => {
       const footerLinesArr: any[] = tmpl?.footer_lines ? (typeof tmpl.footer_lines === "string" ? JSON.parse(tmpl.footer_lines) : tmpl.footer_lines) : [];
       const footerH = footerLinesArr.reduce((s: number, l: any) => s + (l.fontSize || 12) + 8, 0) + 20;
 
-      const height = hdrH + tableHeaderH + group.tests.length * tRowHeight + footerH + padding * 2;
+      const bandsArr: any[] = tmpl?.bands ? (typeof tmpl.bands === "string" ? JSON.parse(tmpl.bands) : tmpl.bands) : [];
+      const bandsAboveH = bandsArr.filter((b: any) => b.position === "above-table").reduce((s: number, b: any) => s + (b.height || 40), 0);
+      const bandsBelowH = bandsArr.filter((b: any) => b.position === "below-table").reduce((s: number, b: any) => s + (b.height || 40), 0);
+
+      const height = hdrH + bandsAboveH + tableHeaderH + group.tests.length * tRowHeight + bandsBelowH + footerH + padding * 2;
 
       const canvas = document.createElement("canvas");
       canvas.width = cw;
@@ -353,8 +357,29 @@ const CRMAbnormalTests = () => {
         ctx.fillText(`Date: ${new Date().toLocaleDateString("en-GB")}`, padding, 116);
       }
 
+      // Draw bands helper
+      const drawBandOnCanvas = (ctx: CanvasRenderingContext2D, band: any, y: number, canvasW: number) => {
+        ctx.fillStyle = band.color || "#2E3192";
+        ctx.fillRect(0, y, canvasW, band.height || 40);
+        if (band.text) {
+          ctx.fillStyle = band.textColor || "#FFFFFF";
+          ctx.font = `${band.bold ? "bold " : ""}${band.fontSize || 14}px Arial, sans-serif`;
+          ctx.textBaseline = "middle";
+          ctx.textAlign = band.align === "center" ? "center" : band.align === "right" ? "right" : "left";
+          const tx = band.align === "center" ? canvasW / 2 : band.align === "right" ? canvasW - padding : padding;
+          ctx.fillText(band.text, tx, y + (band.height || 40) / 2);
+        }
+      };
+
+      // Bands above table
+      let cursorY = hdrH;
+      bandsArr.filter((b: any) => b.position === "above-table").forEach((b: any) => {
+        drawBandOnCanvas(ctx, b, cursorY, cw);
+        cursorY += b.height || 40;
+      });
+
       // Table
-      const tableY = hdrH + 10;
+      const tableY = cursorY + 10;
       const tableW = cw - padding * 2;
       const colStarts = [0, colWidths[0], colWidths[0] + colWidths[1], colWidths[0] + colWidths[1] + colWidths[2]].map(
         (f) => padding + f * tableW + 10
@@ -405,8 +430,15 @@ const CRMAbnormalTests = () => {
       ctx.lineWidth = 2;
       ctx.strokeRect(padding, tableY, tableW, tableHeaderH + group.tests.length * tRowHeight);
 
+      // Bands below table
+      let belowY = tableY + tableHeaderH + group.tests.length * tRowHeight + 10;
+      bandsArr.filter((b: any) => b.position === "below-table").forEach((b: any) => {
+        drawBandOnCanvas(ctx, b, belowY, cw);
+        belowY += b.height || 40;
+      });
+
       // Footer lines
-      let fy = tableY + tableHeaderH + group.tests.length * tRowHeight + 20;
+      let fy = belowY + 10;
       footerLinesArr.forEach((fl: any) => {
         ctx.fillStyle = fl.fontColor || "#666666";
         ctx.font = `${fl.bold ? "bold " : ""}${fl.fontSize || 12}px Arial, sans-serif`;

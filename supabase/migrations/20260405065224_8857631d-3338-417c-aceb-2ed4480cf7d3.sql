@@ -1,0 +1,1 @@
+ALTER TABLE public.abnormal_card_templates ADD COLUMN bands JSONB DEFAULT '[]'::jsonb;
