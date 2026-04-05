@@ -26,3 +26,6 @@ verify_jwt = false
 
 [functions.abnormal-tests-import]
 verify_jwt = false
+
+[functions.lims-interface]
+verify_jwt = false
