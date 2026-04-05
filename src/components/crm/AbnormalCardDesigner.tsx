@@ -63,7 +63,7 @@ interface Band {
 const FIELD_OPTIONS = ["Name", "Mobile", "UMR", "Barcode", "Expiry Date"];
 
 /** Draw text that auto-shrinks to fit within maxWidth */
-function fillTextFit(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, baseFont: string, minScale = 0.6, align: "left" | "right" = "left") {
+function fillTextFit(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, baseFont: string, minScale = 0.6, align: "left" | "right" | "center" = "left") {
   ctx.save();
   ctx.font = baseFont;
   const measured = ctx.measureText(text).width;
@@ -78,6 +78,9 @@ function fillTextFit(ctx: CanvasRenderingContext2D, text: string, x: number, y: 
   if (align === "right") {
     const tw = ctx.measureText(text).width;
     ctx.fillText(text, x + maxWidth - tw, y);
+  } else if (align === "center") {
+    const tw = ctx.measureText(text).width;
+    ctx.fillText(text, x + (maxWidth - tw) / 2, y);
   } else {
     ctx.fillText(text, x, y);
   }
