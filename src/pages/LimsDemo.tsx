@@ -106,12 +106,12 @@ const LimsDemo = () => {
     mutationFn: async () => {
       if (!sampleId.trim()) throw new Error("Sample ID is required");
       if (selectedTests.length === 0) throw new Error("Select at least one test");
-      const { error } = await supabase.from("lims_test_orders").insert({
+      const { error } = await supabase.from("lims_test_orders").insert([{
         sample_id: sampleId.trim(),
         patient_name: patientName.trim() || null,
-        tests: selectedTests,
+        tests: selectedTests as any,
         status: "pending",
-      });
+      }]);
       if (error) throw error;
     },
     onSuccess: () => {
