@@ -380,12 +380,13 @@ const CRMAbnormalTests = () => {
         }
       }
 
-      // Header placeholders
+      // Header placeholders — Y is absolute pixels (migrate old %-based values ≤100)
       const phs: any[] = tmpl?.placeholders ? (typeof tmpl.placeholders === "string" ? JSON.parse(tmpl.placeholders) : tmpl.placeholders) : [];
+      const estimatedOldH = hdrH + 40 + 3 * 36 + 20 + 80;
       if (phs.length > 0) {
       for (const p of phs) {
           const px = (p.x / 100) * cw;
-          const py = p.y; // absolute pixel Y — stable across different test counts
+          const py = p.y <= 100 ? Math.round((p.y / 100) * estimatedOldH) : p.y;
           if (p.field === "Barcode") {
             drawBarcodeOnCanvas(ctx, group.mobile, px, py, p.fontSize || 20, p.fontColor || headerFontCol);
           } else {
