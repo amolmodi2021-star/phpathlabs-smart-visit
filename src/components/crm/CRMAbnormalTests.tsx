@@ -265,93 +265,157 @@ const CRMAbnormalTests = () => {
     toast.success(`Deleted tests for ${pks.length} patients`);
   };
 
-  // Generate abnormal history image card on canvas
+  // Generate abnormal history image card on canvas — template-driven
   const generateAbnormalCard = async (
     group: PatientGroup
   ): Promise<string | null> => {
     try {
+      // Load template if selected
+      const tmpl = cardTemplates.find((t: any) => t.id === selectedTemplateId);
       const padding = 40;
-      const headerHeight = 160;
-      const rowHeight = 36;
-      const tableHeaderHeight = 40;
-      const width = 900;
-      const height = headerHeight + tableHeaderHeight + group.tests.length * rowHeight + padding * 2 + 20;
+      const hdrH = 160;
+      const tableHeaderH = 40;
+      const cw = tmpl?.canvas_width || 900;
+      const bgColor = tmpl?.background_color || "#FFFFFF";
+      const headerBg = tmpl?.header_bg_color || "#2E3192";
+      const headerFontCol = tmpl?.header_font_color || "#FFFFFF";
+
+      const tc = tmpl?.table_config ? (typeof tmpl.table_config === "string" ? JSON.parse(tmpl.table_config) : tmpl.table_config) : {};
+      const tHeaderBg = tc.headerBg || "#2E3192";
+      const tHeaderFontSize = tc.headerFontSize || 15;
+      const tHeaderFontColor = tc.headerFontColor || "#FFFFFF";
+      const tRowFontSize = tc.rowFontSize || 14;
+      const tRowFontColor = tc.rowFontColor || "#333333";
+      const tResultColor = tc.resultColor || "#CC0000";
+      const tBorderColor = tc.borderColor || "#E0E0E8";
+      const tAltRowColor = tc.altRowColor || "#F9F9FC";
+      const tRowHeight = tc.rowHeight || 36;
+      const colWidths: number[] = tc.colWidths || [0.38, 0.18, 0.18, 0.26];
+
+      const footerLinesArr: any[] = tmpl?.footer_lines ? (typeof tmpl.footer_lines === "string" ? JSON.parse(tmpl.footer_lines) : tmpl.footer_lines) : [];
+      const footerH = footerLinesArr.reduce((s: number, l: any) => s + (l.fontSize || 12) + 8, 0) + 20;
+
+      const height = hdrH + tableHeaderH + group.tests.length * tRowHeight + footerH + padding * 2;
 
       const canvas = document.createElement("canvas");
-      canvas.width = width;
+      canvas.width = cw;
       canvas.height = height;
       const ctx = canvas.getContext("2d");
       if (!ctx) return null;
 
       // Background
-      ctx.fillStyle = "#FFFFFF";
-      ctx.fillRect(0, 0, width, height);
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(0, 0, cw, height);
 
-      // Header bar
-      ctx.fillStyle = "#2E3192";
-      ctx.fillRect(0, 0, width, headerHeight);
+      // Header band
+      ctx.fillStyle = headerBg;
+      ctx.fillRect(0, 0, cw, hdrH);
 
-      // Title
-      ctx.fillStyle = "#FFFFFF";
-      ctx.font = "bold 28px Arial, Helvetica, sans-serif";
-      ctx.textBaseline = "top";
-      ctx.fillText("Abnormal Test History", padding, 20);
+      // Logo
+      if (tmpl?.logo_url) {
+        try {
+          const logoImg = await loadImageCORS(tmpl.logo_url);
+          const lx = ((tmpl.logo_x ?? 2) / 100) * cw;
+          const ly = ((tmpl.logo_y ?? 2) / 100) * hdrH;
+          ctx.drawImage(logoImg, lx, ly, tmpl.logo_width || 120, tmpl.logo_height || 60);
+        } catch (e) {
+          console.warn("Logo load failed:", e);
+        }
+      }
 
-      // Patient info
-      ctx.font = "18px Arial, Helvetica, sans-serif";
-      ctx.fillText(`Name: ${group.patientName.toUpperCase()}`, padding, 60);
-      ctx.fillText(`Mobile: ${group.mobile}`, padding, 88);
-      ctx.fillText(`UMR: ${group.umr}`, padding + 400, 88);
-      ctx.fillText(`Date: ${new Date().toLocaleDateString("en-GB")}`, padding, 116);
+      // Header placeholders
+      const phs: any[] = tmpl?.placeholders ? (typeof tmpl.placeholders === "string" ? JSON.parse(tmpl.placeholders) : tmpl.placeholders) : [];
+      if (phs.length > 0) {
+        for (const p of phs) {
+          const px = (p.x / 100) * cw;
+          const py = (p.y / 100) * hdrH;
+          if (p.field === "Barcode") {
+            drawBarcodeOnCanvas(ctx, group.mobile, px, py, p.fontSize || 20, p.fontColor || headerFontCol);
+          } else {
+            ctx.font = `${p.bold ? "bold " : ""}${p.fontSize || 18}px Arial, Helvetica, sans-serif`;
+            ctx.fillStyle = p.fontColor || headerFontCol;
+            ctx.textBaseline = "top";
+            ctx.textAlign = "left";
+            const val = p.field === "Name" ? group.patientName.toUpperCase() : p.field === "Mobile" ? `Mobile: ${group.mobile}` : `UMR: ${group.umr}`;
+            ctx.fillText(val, px, py);
+          }
+        }
+      } else {
+        // Fallback: no template placeholders
+        ctx.fillStyle = headerFontCol;
+        ctx.font = "bold 28px Arial, Helvetica, sans-serif";
+        ctx.textBaseline = "top";
+        ctx.fillText("Abnormal Test History", padding, 20);
+        ctx.font = "18px Arial, Helvetica, sans-serif";
+        ctx.fillText(`Name: ${group.patientName.toUpperCase()}`, padding, 60);
+        ctx.fillText(`Mobile: ${group.mobile}`, padding, 88);
+        ctx.fillText(`UMR: ${group.umr}`, padding + 400, 88);
+        ctx.fillText(`Date: ${new Date().toLocaleDateString("en-GB")}`, padding, 116);
+      }
+
+      // Table
+      const tableY = hdrH + 10;
+      const tableW = cw - padding * 2;
+      const colStarts = [0, colWidths[0], colWidths[0] + colWidths[1], colWidths[0] + colWidths[1] + colWidths[2]].map(
+        (f) => padding + f * tableW + 10
+      );
 
       // Table header
-      const tableY = headerHeight + 10;
-      ctx.fillStyle = "#F0F0F5";
-      ctx.fillRect(padding, tableY, width - padding * 2, tableHeaderHeight);
-
-      ctx.fillStyle = "#2E3192";
-      ctx.font = "bold 15px Arial, Helvetica, sans-serif";
-      const cols = [padding + 10, padding + 320, padding + 470, padding + 620];
-      ctx.fillText("Test Name", cols[0], tableY + 12);
-      ctx.fillText("Date", cols[1], tableY + 12);
-      ctx.fillText("Result", cols[2], tableY + 12);
-      ctx.fillText("Normal Range", cols[3], tableY + 12);
+      ctx.fillStyle = tHeaderBg;
+      ctx.fillRect(padding, tableY, tableW, tableHeaderH);
+      ctx.fillStyle = tHeaderFontColor;
+      ctx.font = `bold ${tHeaderFontSize}px Arial, sans-serif`;
+      ctx.textBaseline = "top";
+      ctx.textAlign = "left";
+      ctx.fillText("Test Name", colStarts[0], tableY + 12);
+      ctx.fillText("Date", colStarts[1], tableY + 12);
+      ctx.fillText("Result", colStarts[2], tableY + 12);
+      ctx.fillText("Normal Range", colStarts[3], tableY + 12);
 
       // Table rows
-      ctx.font = "14px Arial, Helvetica, sans-serif";
       group.tests.forEach((t, i) => {
-        const y = tableY + tableHeaderHeight + i * rowHeight;
-
+        const y = tableY + tableHeaderH + i * tRowHeight;
         if (i % 2 === 1) {
-          ctx.fillStyle = "#F9F9FC";
-          ctx.fillRect(padding, y, width - padding * 2, rowHeight);
+          ctx.fillStyle = tAltRowColor;
+          ctx.fillRect(padding, y, tableW, tRowHeight);
         }
-
-        // Row border
-        ctx.strokeStyle = "#E0E0E8";
+        ctx.strokeStyle = tBorderColor;
+        ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.moveTo(padding, y + rowHeight);
-        ctx.lineTo(width - padding, y + rowHeight);
+        ctx.moveTo(padding, y + tRowHeight);
+        ctx.lineTo(padding + tableW, y + tRowHeight);
         ctx.stroke();
 
-        ctx.fillStyle = "#333333";
-        ctx.fillText(t.test_name || "", cols[0], y + 10);
-        ctx.fillText(t.test_date || "", cols[1], y + 10);
+        ctx.fillStyle = tRowFontColor;
+        ctx.font = `${tRowFontSize}px Arial, sans-serif`;
+        ctx.fillText(t.test_name || "", colStarts[0], y + 10);
+        ctx.fillText(t.test_date || "", colStarts[1], y + 10);
 
-        // Highlight abnormal result in red
-        ctx.fillStyle = "#CC0000";
-        ctx.font = "bold 14px Arial, Helvetica, sans-serif";
-        ctx.fillText(t.result_value || "", cols[2], y + 10);
+        ctx.fillStyle = tResultColor;
+        ctx.font = `bold ${tRowFontSize}px Arial, sans-serif`;
+        ctx.fillText(t.result_value || "", colStarts[2], y + 10);
 
-        ctx.fillStyle = "#666666";
-        ctx.font = "14px Arial, Helvetica, sans-serif";
-        ctx.fillText(t.normal_range || "", cols[3], y + 10);
+        ctx.fillStyle = tRowFontColor;
+        ctx.font = `${tRowFontSize}px Arial, sans-serif`;
+        ctx.fillText(t.normal_range || "", colStarts[3], y + 10);
       });
 
-      // Bottom border
-      ctx.strokeStyle = "#2E3192";
+      // Table border
+      ctx.strokeStyle = tHeaderBg;
       ctx.lineWidth = 2;
-      ctx.strokeRect(padding, tableY, width - padding * 2, tableHeaderHeight + group.tests.length * rowHeight);
+      ctx.strokeRect(padding, tableY, tableW, tableHeaderH + group.tests.length * tRowHeight);
+
+      // Footer lines
+      let fy = tableY + tableHeaderH + group.tests.length * tRowHeight + 20;
+      footerLinesArr.forEach((fl: any) => {
+        ctx.fillStyle = fl.fontColor || "#666666";
+        ctx.font = `${fl.bold ? "bold " : ""}${fl.fontSize || 12}px Arial, sans-serif`;
+        ctx.textAlign = fl.align === "center" ? "center" : fl.align === "right" ? "right" : "left";
+        const fx = fl.align === "center" ? cw / 2 : fl.align === "right" ? cw - padding : padding;
+        ctx.fillText(fl.text || "", fx, fy);
+        fy += (fl.fontSize || 12) + 8;
+      });
+      ctx.textAlign = "left";
 
       const blob = await new Promise<Blob>((resolve, reject) => {
         canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/png");
