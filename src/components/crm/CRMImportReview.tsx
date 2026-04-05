@@ -212,8 +212,7 @@ const CRMImportReview = () => {
     const bodyMapping = cfg["loyalty_wa_bodyMapping"];
     const queueEnabled = cfg["loyalty_wa_queueEnabled"] !== "false";
     const delayMs = Number(cfg["loyalty_wa_delayMs"]) || 3000;
-    const useStaticExpiry = cfg["loyalty_static_expiry_enabled"] === "true";
-    const staticExpiryDate = cfg["loyalty_static_expiry_date"] || "";
+    const staticExpiryDate = cfg["crm_abc_static_expiry_date"] || "";
 
     if (!apiBaseUrl || !apiKey || !templateName) {
       return toast.error("WhatsApp API not configured. Set up in Loyalty Cards → WhatsApp Settings.");
@@ -264,7 +263,7 @@ const CRMImportReview = () => {
           Mobile: normalizedMobile,
           UMR: r.umr_number || "",
           "Discount %": `${r.default_discount_pct ?? 20}%`,
-          "Expiry Date": useStaticExpiry && staticExpiryDate ? staticExpiryDate : "",
+          "Expiry Date": staticExpiryDate,
         };
 
         const imageUrl = await generateAndUploadCard(selectedTemplateId, cardData, bgImg, canvas, ctx, placeholders);
