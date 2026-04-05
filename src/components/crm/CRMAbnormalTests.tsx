@@ -712,42 +712,42 @@ const CRMAbnormalTests = () => {
               </TableRow>
             ) : (
               groups.map((g) => (
-                <Collapsible key={g.primaryKey} asChild>
-                  <>
-                    <TableRow className="cursor-pointer hover:bg-muted/50">
-                      <TableCell>
-                        <Checkbox
-                          checked={selected.has(g.primaryKey)}
-                          onCheckedChange={() => toggleSelect(g.primaryKey)}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <CollapsibleTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            onClick={() => toggleExpand(g.primaryKey)}
-                          >
-                            {expanded.has(g.primaryKey) ? (
-                              <ChevronDown className="h-4 w-4" />
-                            ) : (
-                              <ChevronRight className="h-4 w-4" />
-                            )}
-                          </Button>
-                        </CollapsibleTrigger>
-                      </TableCell>
-                      <TableCell className="font-medium">{g.patientName}</TableCell>
-                      <TableCell>{g.mobile}</TableCell>
-                      <TableCell className="font-mono text-xs">{g.umr}</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">{g.tests.length} tests</Badge>
-                      </TableCell>
-                    </TableRow>
-                    {expanded.has(g.primaryKey) && (
-                      <TableRow>
-                        <TableCell colSpan={6} className="p-0">
-                          <div className="bg-muted/30 px-8 py-2">
+                <>
+                  <TableRow key={g.primaryKey} className="cursor-pointer hover:bg-muted/50">
+                    <TableCell>
+                      <Checkbox
+                        checked={selected.has(g.primaryKey)}
+                        onCheckedChange={() => toggleSelect(g.primaryKey)}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={() => toggleExpand(g.primaryKey)}
+                      >
+                        {expanded.has(g.primaryKey) ? (
+                          <ChevronDown className="h-4 w-4" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </TableCell>
+                    <TableCell className="font-medium">{g.patientName}</TableCell>
+                    <TableCell>{g.mobile}</TableCell>
+                    <TableCell className="font-mono text-xs">{g.umr}</TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">{g.testCount} tests</Badge>
+                    </TableCell>
+                  </TableRow>
+                  {expanded.has(g.primaryKey) && (
+                    <TableRow key={`${g.primaryKey}-detail`}>
+                      <TableCell colSpan={6} className="p-0">
+                        <div className="bg-muted/30 px-8 py-2">
+                          {g.tests.length === 0 ? (
+                            <p className="text-sm text-muted-foreground py-2">Loading tests...</p>
+                          ) : (
                             <Table>
                               <TableHeader>
                                 <TableRow>
@@ -770,17 +770,44 @@ const CRMAbnormalTests = () => {
                                 ))}
                               </TableBody>
                             </Table>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </>
-                </Collapsible>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </>
               ))
             )}
           </TableBody>
         </Table>
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={page === 0}
+            onClick={() => setPage((p) => p - 1)}
+          >
+            <ChevronLeft className="h-4 w-4 mr-1" />
+            Previous
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            Page {page + 1} of {totalPages}
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={page >= totalPages - 1}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            Next
+            <ChevronRight className="h-4 w-4 ml-1" />
+          </Button>
+        </div>
+      )}
 
       <DeletePasswordDialog
         open={deleteOpen}
