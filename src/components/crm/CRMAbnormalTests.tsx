@@ -535,29 +535,30 @@ const CRMAbnormalTests = () => {
     }
     if (selectedGroups.length === 0) return toast.error("No patients selected");
 
-    // Fetch WhatsApp settings (same as loyalty cards)
+    // Fetch WhatsApp settings (abnormal-specific)
     const { data: settings } = await supabase
       .from("app_settings")
       .select("setting_key, setting_value")
-      .like("setting_key", "loyalty_%");
+      .like("setting_key", "abnormal_wa_%");
 
     const cfg: Record<string, string> = {};
     (settings || []).forEach((s: any) => {
       cfg[s.setting_key] = s.setting_value;
     });
 
-    const apiBaseUrl = cfg["loyalty_wa_baseUrl"];
-    const apiKey = cfg["loyalty_wa_apiKey"];
-    const templateName = cfg["loyalty_wa_templateName"];
-    const authHeaderName = cfg["loyalty_wa_authHeaderName"] || "apikey";
-    const authHeaderPrefix = cfg["loyalty_wa_authHeaderPrefix"] || "";
-    const fromNumber = cfg["loyalty_wa_fromNumber"] || "";
-    const campaignName = cfg["loyalty_wa_campaignName"] || "";
-    const queueEnabled = cfg["loyalty_wa_queueEnabled"] !== "false";
-    const delayMs = Number(cfg["loyalty_wa_delayMs"]) || 3000;
+    const apiBaseUrl = cfg["abnormal_wa_baseUrl"];
+    const apiKey = cfg["abnormal_wa_apiKey"];
+    const templateName = cfg["abnormal_wa_templateName"];
+    const authHeaderName = cfg["abnormal_wa_authHeaderName"] || "apikey";
+    const authHeaderPrefix = cfg["abnormal_wa_authHeaderPrefix"] || "";
+    const fromNumber = cfg["abnormal_wa_fromNumber"] || "";
+    const campaignName = cfg["abnormal_wa_campaignName"] || "";
+    const includeMediaHeader = cfg["abnormal_wa_mediaHeader"] !== "false";
+    const queueEnabled = cfg["abnormal_wa_queueEnabled"] !== "false";
+    const delayMs = Number(cfg["abnormal_wa_delayMs"]) || 3000;
 
     if (!apiBaseUrl || !apiKey || !templateName) {
-      return toast.error("WhatsApp API not configured. Set up in Loyalty Cards → WhatsApp Settings.");
+      return toast.error("WhatsApp API not configured. Set up in CRM → Abnormal WA Settings tab.");
     }
 
     setSending(true);
@@ -591,7 +592,11 @@ const CRMAbnormalTests = () => {
 
       const toNumber = `+91${normalizedMobile}`;
       const components: Record<string, unknown> = {};
-      components.header = { type: "image", image: { link: imageUrl } };
+      if (includeMediaHeader) {
+        components.header = { type: "image", image: { link: imageUrl } };
+      }
+      // Send patient name as {{1}} body variable
+      components.body = { parameters: [{ type: "text", text: group.patientName.toUpperCase() }] };
 
       const payload: Record<string, unknown> = {
         from: fromNumber,
@@ -599,10 +604,8 @@ const CRMAbnormalTests = () => {
         templateName,
         campaignName,
         type: "template",
+        components,
       };
-      if (Object.keys(components).length > 0) {
-        payload.components = components;
-      }
 
       try {
         const proxyRes = await supabase.functions.invoke("whatsapp-proxy", {
