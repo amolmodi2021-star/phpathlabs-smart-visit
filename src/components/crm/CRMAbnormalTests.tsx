@@ -380,44 +380,11 @@ const CRMAbnormalTests = () => {
         }
       }
 
-      // Header placeholders — Y is absolute pixels
-      // Fields in the header stay fixed; fields below the table shift based on actual row count
+      // Placeholder data (drawn last, after everything else)
       const phs: any[] = tmpl?.placeholders ? (typeof tmpl.placeholders === "string" ? JSON.parse(tmpl.placeholders) : tmpl.placeholders) : [];
       const designerSampleRows = 3; // designer uses 3 sample tests
       const rowDiff = (group.tests.length - designerSampleRows) * tRowHeight;
       const designerTableEndY = hdrH + bandsAboveH + tableHeaderH + designerSampleRows * tRowHeight;
-
-      if (phs.length > 0) {
-      for (const p of phs) {
-          const px = (p.x / 100) * cw;
-          // If placeholder was below the table in the designer, shift it by the extra rows
-          let py = p.y;
-          if (py > designerTableEndY) {
-            py += rowDiff;
-          }
-          if (p.field === "Barcode") {
-            drawBarcodeOnCanvas(ctx, group.mobile, px, py, p.fontSize || 20, p.fontColor || headerFontCol);
-          } else {
-            ctx.font = `${p.bold ? "bold " : ""}${p.fontSize || 18}px Arial, Helvetica, sans-serif`;
-            ctx.fillStyle = p.fontColor || headerFontCol;
-            ctx.textBaseline = "top";
-            ctx.textAlign = "left";
-            const val = p.field === "Name" ? group.patientName.toUpperCase() : p.field === "Mobile" ? `Mobile: ${group.mobile}` : `UMR: ${group.umr}`;
-            ctx.fillText(val, px, py);
-          }
-        }
-      } else {
-        // Fallback: no template placeholders
-        ctx.fillStyle = headerFontCol;
-        ctx.font = "bold 28px Arial, Helvetica, sans-serif";
-        ctx.textBaseline = "top";
-        ctx.fillText("Abnormal Test History", padding, 20);
-        ctx.font = "18px Arial, Helvetica, sans-serif";
-        ctx.fillText(`Name: ${group.patientName.toUpperCase()}`, padding, 60);
-        ctx.fillText(`Mobile: ${group.mobile}`, padding, 88);
-        ctx.fillText(`UMR: ${group.umr}`, padding + 400, 88);
-        ctx.fillText(`Date: ${new Date().toLocaleDateString("en-GB")}`, padding, 116);
-      }
 
       // Draw bands helper
       const drawBandOnCanvas = (ctx: CanvasRenderingContext2D, band: any, y: number, canvasW: number) => {
@@ -510,6 +477,38 @@ const CRMAbnormalTests = () => {
         fy += (fl.fontSize || 12) + 8;
       });
       ctx.textAlign = "left";
+
+      // Placeholders drawn LAST so they appear on top of all bands
+      if (phs.length > 0) {
+        for (const p of phs) {
+          const px = (p.x / 100) * cw;
+          let py = p.y;
+          if (py > designerTableEndY) {
+            py += rowDiff;
+          }
+          if (p.field === "Barcode") {
+            drawBarcodeOnCanvas(ctx, group.mobile, px, py, p.fontSize || 20, p.fontColor || headerFontCol);
+          } else {
+            ctx.font = `${p.bold ? "bold " : ""}${p.fontSize || 18}px Arial, Helvetica, sans-serif`;
+            ctx.fillStyle = p.fontColor || headerFontCol;
+            ctx.textBaseline = "top";
+            ctx.textAlign = "left";
+            const val = p.field === "Name" ? group.patientName.toUpperCase() : p.field === "Mobile" ? `Mobile: ${group.mobile}` : `UMR: ${group.umr}`;
+            ctx.fillText(val, px, py);
+          }
+        }
+      } else {
+        // Fallback: no template placeholders
+        ctx.fillStyle = headerFontCol;
+        ctx.font = "bold 28px Arial, Helvetica, sans-serif";
+        ctx.textBaseline = "top";
+        ctx.fillText("Abnormal Test History", padding, 20);
+        ctx.font = "18px Arial, Helvetica, sans-serif";
+        ctx.fillText(`Name: ${group.patientName.toUpperCase()}`, padding, 60);
+        ctx.fillText(`Mobile: ${group.mobile}`, padding, 88);
+        ctx.fillText(`UMR: ${group.umr}`, padding + 400, 88);
+        ctx.fillText(`Date: ${new Date().toLocaleDateString("en-GB")}`, padding, 116);
+      }
 
       const blob = await new Promise<Blob>((resolve, reject) => {
         canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/png");
