@@ -380,13 +380,21 @@ const CRMAbnormalTests = () => {
         }
       }
 
-      // Header placeholders — Y is absolute pixels (migrate old %-based values ≤100)
+      // Header placeholders — Y is absolute pixels
+      // Fields in the header stay fixed; fields below the table shift based on actual row count
       const phs: any[] = tmpl?.placeholders ? (typeof tmpl.placeholders === "string" ? JSON.parse(tmpl.placeholders) : tmpl.placeholders) : [];
-      const estimatedOldH = hdrH + 40 + 3 * 36 + 20 + 80;
+      const designerSampleRows = 3; // designer uses 3 sample tests
+      const rowDiff = (group.tests.length - designerSampleRows) * tRowHeight;
+      const designerTableEndY = hdrH + bandsAboveH + tableHeaderH + designerSampleRows * tRowHeight;
+
       if (phs.length > 0) {
       for (const p of phs) {
           const px = (p.x / 100) * cw;
-          const py = p.y <= 100 ? Math.round((p.y / 100) * estimatedOldH) : p.y;
+          // If placeholder was below the table in the designer, shift it by the extra rows
+          let py = p.y;
+          if (py > designerTableEndY) {
+            py += rowDiff;
+          }
           if (p.field === "Barcode") {
             drawBarcodeOnCanvas(ctx, group.mobile, px, py, p.fontSize || 20, p.fontColor || headerFontCol);
           } else {
