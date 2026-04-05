@@ -318,7 +318,7 @@ const CRMAbnormalTests = () => {
   // Generate abnormal history image card on canvas — template-driven
   const generateAbnormalCard = async (
     group: PatientGroup
-  ): Promise<string | null> => {
+  ): Promise<{ publicUrl: string; filePath: string } | null> => {
     try {
       // Load template if selected
       const tmpl = cardTemplates.find((t: any) => t.id === selectedTemplateId);
