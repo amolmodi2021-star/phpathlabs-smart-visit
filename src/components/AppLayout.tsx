@@ -23,6 +23,7 @@ const navItems = [
   { to: "/loyalty-cards", label: "Loyalty Cards", icon: CreditCard },
   { to: "/marketing", label: "Marketing", icon: Megaphone },
   { to: "/crm", label: "CRM", icon: Contact },
+  { to: "/lims-demo", label: "LIMS Interface", icon: Activity },
   { to: "/whatsapp-webhook", label: "WhatsApp Webhook", icon: Webhook },
 ];
 
