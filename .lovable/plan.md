@@ -1,83 +1,103 @@
 
 
-# Abnormal Test Card Designer
+# Bidirectional Interface Demo Page — Plan
 
 ## Overview
-Build a visual card designer (similar to the Loyalty Card Designer) specifically for abnormal test report images. The designer will let you customize every visual element and generate mobile-friendly PNG cards with a dynamic-height table.
 
-## Database
-Create a new table `abnormal_card_templates` to store designer templates, mirroring `loyalty_card_templates` but with additional fields for table styling, footer content, and logo.
+Build a demo/testing page and supporting backend to simulate the bidirectional communication between your web app and lab middleware. The middleware will:
+1. **Query** your endpoint with a barcode/sample ID to get the list of tests to process
+2. **Post results** back after processing, which get stored automatically
 
-```sql
-CREATE TABLE public.abnormal_card_templates (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
-  logo_url TEXT,
-  logo_width INT DEFAULT 120,
-  logo_height INT DEFAULT 60,
-  logo_x REAL DEFAULT 2,
-  logo_y REAL DEFAULT 2,
-  background_color TEXT DEFAULT '#FFFFFF',
-  header_bg_color TEXT DEFAULT '#2E3192',
-  header_font_color TEXT DEFAULT '#FFFFFF',
-  canvas_width INT DEFAULT 900,
-  placeholders JSONB DEFAULT '[]',
-  table_config JSONB DEFAULT '{}',
-  footer_lines JSONB DEFAULT '[]',
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE public.abnormal_card_templates ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow all for authenticated" ON public.abnormal_card_templates FOR ALL TO authenticated USING (true) WITH CHECK (true);
-```
+The UI page will let you create test orders, monitor incoming requests, and view result logs in real-time.
 
-**`placeholders`** — array of draggable fields (Name, Mobile, UMR, Barcode) with x, y, fontSize, fontColor, bold properties.
+## Database Tables
 
-**`table_config`** — JSON object storing: header font/size/color, row font/size/color, result color (red), border color, alternate row color, column widths.
+### `lims_test_orders`
+Stores sample orders with their assigned tests.
 
-**`footer_lines`** — array of text blocks (e.g. LabLine number, timings, address) each with text, fontSize, fontColor, bold, alignment.
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid PK | |
+| sample_id | text NOT NULL | Barcode / sample ID |
+| patient_name | text | |
+| tests | jsonb | Array of test objects `[{code, name, unit, status}]` |
+| status | text | `pending` / `in_progress` / `completed` |
+| created_at | timestamptz | |
+| updated_at | timestamptz | |
 
-## New Component: `AbnormalCardDesigner.tsx`
+### `lims_interface_logs`
+Logs every request and response for debugging.
 
-A full visual designer component with:
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid PK | |
+| sample_id | text | |
+| direction | text | `incoming` (middleware→app) or `outgoing` (app→middleware) |
+| event_type | text | `query_tests` / `submit_results` |
+| request_body | jsonb | Raw request payload |
+| response_body | jsonb | Raw response payload |
+| created_at | timestamptz | |
 
-### Canvas Preview (left panel)
-- Live preview of the card with sample data (3 sample test rows)
-- Mobile-friendly fixed width (900px canvas, ~4:3+ aspect ratio, dynamic height)
-- Sections rendered top-to-bottom:
-  1. **Logo** — uploadable, resizable, draggable
-  2. **Header fields** — Name, Mobile, UMR, Barcode (draggable, customizable font/size/color/bold)
-  3. **Table** — 4 columns (Test Name, Date, Result in red, Normal Range) with sample rows
-  4. **Footer** — multiple text lines (lab number, timings, address)
+### `lims_test_results`
+Stores individual test results received from middleware.
 
-### Properties Panel (right sidebar)
-- **Logo settings**: upload, width/height sliders, position
-- **Field properties**: when a header field is selected — font size, color, bold, x/y position
-- **Table settings**: header bg color, header font, row font, result highlight color, border color, alternate row color
-- **Footer lines**: add/remove lines, each with text, font size, color, bold, alignment (left/center/right)
-- **Global**: canvas width, background color, header band color
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid PK | |
+| order_id | uuid FK → lims_test_orders | |
+| sample_id | text | |
+| test_code | text | |
+| test_name | text | |
+| result_value | text | |
+| unit | text | |
+| reference_range | text | |
+| flag | text | Normal/Abnormal |
+| received_at | timestamptz | |
 
-### Template Management
-- Save/load/delete templates (stored in `abnormal_card_templates`)
-- Upload logo to `loyalty-cards` storage bucket
+## Edge Function: `lims-interface`
 
-## Integration with CRMAbnormalTests
+A single edge function with two endpoints your middleware will call:
 
-- Replace the hardcoded `generateAbnormalCard()` function with a template-driven renderer
-- Add a template selector dropdown before sending
-- When generating cards, load the selected template's config and render accordingly
-- Dynamic canvas height calculated from: header + fields + (rowHeight × test count) + footer lines
+**GET `/lims-interface?action=query&sample_id=BARCODE123`**
+- Looks up the sample_id in `lims_test_orders`
+- Returns the list of tests to be processed
+- Logs the interaction
 
-## CRM Page Update
+**POST `/lims-interface` with body `{action: "results", sample_id, results: [...]}`**
+- Receives result values from middleware
+- Inserts into `lims_test_results`
+- Updates the order status and individual test statuses
+- Logs the interaction
 
-- Add a new tab "Card Designer" in the CRM page between "Abnormal Tests" and "Blacklist"
-- This tab renders the `AbnormalCardDesigner` component
+Both endpoints are unauthenticated (verify_jwt = false) since middleware calls them directly.
+
+## UI Page: `/lims-demo`
+
+### Sections
+
+1. **Create Test Order** — Form with sample_id, patient_name, and a multi-select of tests (code, name, unit). Saves to `lims_test_orders`.
+
+2. **Active Orders** — Table showing all orders with status badges. Expandable rows showing individual test results as they come in. Real-time updates via Supabase Realtime.
+
+3. **Interface Logs** — Chronological log of all middleware interactions (direction, event type, payloads, timestamps). Auto-refreshes.
+
+4. **API Reference Panel** — Collapsible section showing the exact endpoint URLs and expected request/response formats for your middleware to use.
 
 ## Technical Details
 
-- Canvas rendering approach identical to `LoyaltyCardDesigner` — percentage-based positioning, drag-to-reposition
-- Barcode uses the existing `drawBarcode()` from `cardRenderer.ts` (Code128C encoding)
-- Logo loaded via blob URL (same CORS-safe approach as loyalty card backgrounds)
-- Table height is dynamically calculated: `headerArea + tableHeaderHeight + (tests.length × rowHeight) + footerHeight`
-- Image width fixed at template's `canvas_width` (default 900px, mobile-optimized)
+- Enable Realtime on `lims_test_orders` and `lims_test_results` for live updates
+- Permissive RLS policies (consistent with existing app pattern)
+- Add route `/lims-demo` to App.tsx with the new page
+- Add navigation link in AppLayout
+
+## Files to Create/Modify
+
+| File | Action |
+|------|--------|
+| Migration SQL | Create 3 new tables, enable realtime |
+| `supabase/functions/lims-interface/index.ts` | New edge function |
+| `supabase/config.toml` | Add verify_jwt = false for lims-interface |
+| `src/pages/LimsDemo.tsx` | New demo page |
+| `src/App.tsx` | Add route |
+| `src/components/AppLayout.tsx` | Add nav link |
 
