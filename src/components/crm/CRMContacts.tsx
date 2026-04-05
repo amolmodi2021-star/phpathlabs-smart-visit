@@ -777,27 +777,28 @@ const CRMContacts = () => {
           failed++;
         } else {
           sent++;
-          const updateRes = await supabase.from("crm_contacts").update({
+          await supabase.from("crm_contacts").update({
             last_sent_type: "ABC",
             last_sent_date: new Date().toISOString(),
             record_tag: null,
           }).eq("id", r.id);
-          if (updateRes.error) {
-            console.error("Failed to update sent type for", r.id, updateRes.error);
-          }
-
-          if (normalizedMobile) {
-            await supabase.from("loyalty_cards")
-              .update({ whatsapp_status: "sent", sent_at: new Date().toISOString() })
-              .eq("mobile", normalizedMobile)
-              .eq("whatsapp_status", "pending")
-              .order("created_at", { ascending: false })
-              .limit(1);
-          }
         }
       } catch {
         failed++;
       }
+
+      // Always delete the generated card image after sending
+      const imgUrl = imageUrls[i];
+      if (imgUrl) {
+        try {
+          const urlPath = new URL(imgUrl).pathname;
+          const filePath = urlPath.split("/loyalty-cards/").pop();
+          if (filePath) {
+            await supabase.storage.from("loyalty-cards").remove([filePath]);
+          }
+        } catch (e) { console.warn("Failed to delete card image:", e); }
+      }
+
       setSendProgress(50 + Math.round(((i + 1) / selectedContacts.length) * 50));
 
       if (queueEnabled && delayMs > 0 && i < selectedContacts.length - 1) {

@@ -320,26 +320,27 @@ const CRMImportReview = () => {
               record_tag: null,
             }).eq("primary_key", pk);
           }
-          // Mark staging record as ABC sent (so Approve & Transfer carries it over)
           await supabase.from("crm_import_staging").update({
             record_tag: null,
           }).eq("id", r.id);
-          // Also update crm_contacts if it already exists (for update records)
-          // For new records, the sent info will be carried via staging → approve
-          // Update loyalty_cards whatsapp_status
-          if (normalizedMobile) {
-            await supabase.from("loyalty_cards")
-              .update({ whatsapp_status: "sent", sent_at: new Date().toISOString() })
-              .eq("mobile", normalizedMobile)
-              .eq("whatsapp_status", "pending")
-              .order("created_at", { ascending: false })
-              .limit(1);
-          }
         }
       } catch {
         failed++;
       }
-      setProgress(50 + Math.round(((i + 1) / targets.length) * 50)); // 50-100% for sending
+
+      // Always delete the generated card image after sending
+      const imgUrl = imageUrls[i];
+      if (imgUrl) {
+        try {
+          const urlPath = new URL(imgUrl).pathname;
+          const filePath = urlPath.split("/loyalty-cards/").pop();
+          if (filePath) {
+            await supabase.storage.from("loyalty-cards").remove([filePath]);
+          }
+        } catch (e) { console.warn("Failed to delete card image:", e); }
+      }
+
+      setProgress(50 + Math.round(((i + 1) / targets.length) * 50));
 
       if (queueEnabled && delayMs > 0 && i < targets.length - 1) {
         await new Promise((resolve) => setTimeout(resolve, delayMs));
