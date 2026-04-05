@@ -71,6 +71,11 @@ Deno.serve(async (req) => {
 
       for (const row of data || []) {
         const key = `${row.contact_primary_key}||${row.test_name}||${row.test_date || ""}`;
+        // If we already saw this key, it's a DB duplicate — mark older one for deletion
+        if (existingMap.has(key)) {
+          // Keep the one already in the map, delete this older one
+          // Actually we don't know which is newer, so just keep first seen
+        }
         existingMap.set(key, { id: row.id, result_value: row.result_value, normal_range: row.normal_range });
       }
     }
@@ -95,7 +100,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Insert — use individual inserts to handle potential constraint conflicts gracefully
+    // Insert — handle unique constraint conflicts gracefully
     let insertedCount = 0;
     if (toInsert.length > 0) {
       for (let i = 0; i < toInsert.length; i += 50) {
@@ -122,10 +127,43 @@ Deno.serve(async (req) => {
         .eq("id", u.id);
     }
 
+    // Post-import cleanup: remove any remaining duplicates for affected primary keys
+    // Keep only the newest record (by created_at) for each (contact_primary_key, test_name, test_date)
+    let cleanedDup = 0;
+    for (let i = 0; i < primaryKeys.length; i += 20) {
+      const pkBatch = primaryKeys.slice(i, i + 20);
+      for (const pk of pkBatch) {
+        const { data: allTests } = await supabase
+          .from("crm_abnormal_tests")
+          .select("id, test_name, test_date, created_at")
+          .eq("contact_primary_key", pk)
+          .order("created_at", { ascending: false });
+
+        if (!allTests || allTests.length === 0) continue;
+
+        const seen = new Set<string>();
+        const toDelete: string[] = [];
+        for (const t of allTests) {
+          const dupKey = `${t.test_name}||${t.test_date || ""}`;
+          if (seen.has(dupKey)) {
+            toDelete.push(t.id);
+          } else {
+            seen.add(dupKey);
+          }
+        }
+
+        if (toDelete.length > 0) {
+          await supabase.from("crm_abnormal_tests").delete().in("id", toDelete);
+          cleanedDup += toDelete.length;
+        }
+      }
+    }
+
     return json({
       inserted: insertedCount,
       updated: toUpdate.length,
       skippedDup,
+      cleanedDup,
     });
   } catch (err) {
     return json({ error: err instanceof Error ? err.message : "Internal error" }, 500);
