@@ -289,7 +289,7 @@ const AbnormalCardDesigner = () => {
     const hdrFont = `bold ${tc.headerFontSize}px ${tc.headerFont}, sans-serif`;
     fillTextFit(ctx, "Test Name", colStarts[0], tableY + 12, colMaxWidths[0], hdrFont);
     fillTextFit(ctx, "Date", colStarts[1], tableY + 12, colMaxWidths[1], hdrFont);
-    fillTextFit(ctx, "Result", colStarts[2], tableY + 12, colMaxWidths[2], hdrFont);
+    fillTextFit(ctx, "Result", colStarts[2], tableY + 12, colMaxWidths[2], hdrFont, 0.6, "right");
     fillTextFit(ctx, "Normal Range", colStarts[3], tableY + 12, colMaxWidths[3], hdrFont);
 
     // Table rows
