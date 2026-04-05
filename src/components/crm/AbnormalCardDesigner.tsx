@@ -156,9 +156,9 @@ const AbnormalCardDesigner = () => {
 
   // Header placeholders
   const [placeholders, setPlaceholders] = useState<Placeholder[]>([
-    { id: crypto.randomUUID(), field: "Name", x: 4.5, y: 38, fontSize: 20, fontColor: "#FFFFFF", bold: true },
-    { id: crypto.randomUUID(), field: "Mobile", x: 4.5, y: 52, fontSize: 16, fontColor: "#FFFFFF", bold: false },
-    { id: crypto.randomUUID(), field: "UMR", x: 50, y: 52, fontSize: 16, fontColor: "#FFFFFF", bold: false },
+    { id: crypto.randomUUID(), field: "Name", x: 4.5, y: 60, fontSize: 20, fontColor: "#FFFFFF", bold: true },
+    { id: crypto.randomUUID(), field: "Mobile", x: 4.5, y: 90, fontSize: 16, fontColor: "#FFFFFF", bold: false },
+    { id: crypto.randomUUID(), field: "UMR", x: 50, y: 90, fontSize: 16, fontColor: "#FFFFFF", bold: false },
   ]);
 
   // Bands
