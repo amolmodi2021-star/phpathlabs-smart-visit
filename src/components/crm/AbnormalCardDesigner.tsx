@@ -411,7 +411,7 @@ const AbnormalCardDesigner = () => {
     const next = FIELD_OPTIONS.find((f) => !used.includes(f)) || FIELD_OPTIONS[0];
     setPlaceholders((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), field: next, x: 4.5, y: 70 + prev.length * 8, fontSize: 16, fontColor: "#FFFFFF", bold: false },
+      { id: crypto.randomUUID(), field: next, x: 4.5, y: 60 + prev.length * 28, fontSize: 16, fontColor: "#FFFFFF", bold: false },
     ]);
   };
 
