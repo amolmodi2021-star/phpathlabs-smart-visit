@@ -337,6 +337,23 @@ const CRMAbnormalTests = () => {
   };
 
   // Generate abnormal history image card on canvas — template-driven
+  /** Draw text that auto-shrinks to fit within maxWidth */
+  const fillTextFit = (ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, baseFont: string, minScale = 0.6) => {
+    ctx.save();
+    ctx.font = baseFont;
+    const measured = ctx.measureText(text).width;
+    if (measured > maxWidth && maxWidth > 0) {
+      const scale = Math.max(minScale, maxWidth / measured);
+      const sizeMatch = baseFont.match(/(\d+(?:\.\d+)?)px/);
+      if (sizeMatch) {
+        const newSize = Math.floor(parseFloat(sizeMatch[1]) * scale);
+        ctx.font = baseFont.replace(/\d+(?:\.\d+)?px/, `${newSize}px`);
+      }
+    }
+    ctx.fillText(text, x, y);
+    ctx.restore();
+  };
+
   const generateAbnormalCard = async (
     group: PatientGroup
   ): Promise<{ publicUrl: string; filePath: string } | null> => {
