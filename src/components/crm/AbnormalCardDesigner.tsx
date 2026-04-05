@@ -496,6 +496,8 @@ const AbnormalCardDesigner = () => {
     setBgColor(t.background_color || "#FFFFFF");
     setHeaderBgColor(t.header_bg_color || "#2E3192");
     setHeaderFontColor(t.header_font_color || "#FFFFFF");
+    setHeaderBandHeight(t.header_band_height ?? 160);
+    setShowHeaderBand(t.show_header_band !== false);
     setCanvasWidth(t.canvas_width || 900);
     const phs = (t.placeholders as any[]) || [];
     setPlaceholders(phs.map((p: any) => ({ ...p, id: crypto.randomUUID() })));
