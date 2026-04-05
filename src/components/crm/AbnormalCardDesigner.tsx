@@ -182,8 +182,10 @@ const AbnormalCardDesigner = () => {
   const padding = 40;
   const tableHeaderH = 40;
   const tableRowsH = SAMPLE_TESTS.length * tableConfig.rowHeight;
+  const bandsAboveH = bands.filter(b => b.position === "above-table").reduce((s, b) => s + b.height, 0);
+  const bandsBelowH = bands.filter(b => b.position === "below-table").reduce((s, b) => s + b.height, 0);
   const footerH = footerLines.reduce((s, l) => s + l.fontSize + 8, 0) + 20;
-  const totalHeight = headerHeight + tableHeaderH + tableRowsH + footerH + padding * 2;
+  const totalHeight = headerHeight + bandsAboveH + tableHeaderH + tableRowsH + bandsBelowH + footerH + padding * 2;
 
   // Logo image element
   const [logoImg, setLogoImg] = useState<HTMLImageElement | null>(null);
