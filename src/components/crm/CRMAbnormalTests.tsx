@@ -295,7 +295,11 @@ const CRMAbnormalTests = () => {
       const footerLinesArr: any[] = tmpl?.footer_lines ? (typeof tmpl.footer_lines === "string" ? JSON.parse(tmpl.footer_lines) : tmpl.footer_lines) : [];
       const footerH = footerLinesArr.reduce((s: number, l: any) => s + (l.fontSize || 12) + 8, 0) + 20;
 
-      const height = hdrH + tableHeaderH + group.tests.length * tRowHeight + footerH + padding * 2;
+      const bandsArr: any[] = tmpl?.bands ? (typeof tmpl.bands === "string" ? JSON.parse(tmpl.bands) : tmpl.bands) : [];
+      const bandsAboveH = bandsArr.filter((b: any) => b.position === "above-table").reduce((s: number, b: any) => s + (b.height || 40), 0);
+      const bandsBelowH = bandsArr.filter((b: any) => b.position === "below-table").reduce((s: number, b: any) => s + (b.height || 40), 0);
+
+      const height = hdrH + bandsAboveH + tableHeaderH + group.tests.length * tRowHeight + bandsBelowH + footerH + padding * 2;
 
       const canvas = document.createElement("canvas");
       canvas.width = cw;
