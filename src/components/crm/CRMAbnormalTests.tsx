@@ -136,21 +136,6 @@ const CRMAbnormalTests = () => {
     );
   };
 
-  // One-time cleanup: delete any previously stored abnormal card images
-  useEffect(() => {
-    (async () => {
-      try {
-        const { data: files } = await supabase.storage.from("loyalty-cards").list("generated/abnormal", { limit: 1000 });
-        if (files && files.length > 0) {
-          const paths = files.map((f) => `generated/abnormal/${f.name}`);
-          await supabase.storage.from("loyalty-cards").remove(paths);
-          console.log(`Cleaned up ${paths.length} old abnormal card images`);
-        }
-      } catch (e) {
-        console.warn("Storage cleanup failed:", e);
-      }
-    })();
-  }, []);
   // Debounce search
   const searchTimerRef = useState<ReturnType<typeof setTimeout> | null>(null);
   const handleSearchChange = useCallback((val: string) => {
@@ -598,7 +583,7 @@ const CRMAbnormalTests = () => {
     const fromNumber = cfg["abnormal_wa_fromNumber"] || "";
     const campaignName = cfg["abnormal_wa_campaignName"] || "";
     const includeMediaHeader = cfg["abnormal_wa_mediaHeader"] !== "false";
-    const filesToDelete: string[] = [];
+    
     const queueEnabled = cfg["abnormal_wa_queueEnabled"] !== "false";
     const delayMs = Number(cfg["abnormal_wa_delayMs"]) || 3000;
 
@@ -673,21 +658,12 @@ const CRMAbnormalTests = () => {
         failed++;
       }
 
-      // Collect file path for deferred deletion
-      filesToDelete.push(cardResult.filePath);
 
       setSendProgress(Math.round(((i + 1) / selectedGroups.length) * 100));
 
       if (queueEnabled && delayMs > 0 && i < selectedGroups.length - 1) {
         await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
-    }
-
-    // Deferred cleanup: wait 30s for WhatsApp to download images, then delete
-    setSendPhase("Cleaning up...");
-    if (filesToDelete.length > 0) {
-      await new Promise((resolve) => setTimeout(resolve, 30000));
-      try { await supabase.storage.from("loyalty-cards").remove(filesToDelete); } catch {}
     }
 
     setSending(false);
