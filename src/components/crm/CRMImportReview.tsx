@@ -369,6 +369,7 @@ const CRMImportReview = () => {
     await qc.invalidateQueries({ queryKey: ["crm-staging"] });
     await qc.refetchQueries({ queryKey: ["crm-staging"] });
     qc.invalidateQueries({ queryKey: ["crm-contacts"] });
+    qc.invalidateQueries({ queryKey: ["crm-sent-history"] });
     toast.success(`WhatsApp sent: ${sent} success, ${failed} failed`);
   };
 
