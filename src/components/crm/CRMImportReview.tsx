@@ -332,6 +332,11 @@ const CRMImportReview = () => {
 
       setProgress(50 + Math.round(((i + 1) / targets.length) * 50));
 
+      if (queueEnabled && delayMs > 0 && i < targets.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+
     setSending(false);
     setSendPhase("");
     await qc.invalidateQueries({ queryKey: ["crm-staging"] });

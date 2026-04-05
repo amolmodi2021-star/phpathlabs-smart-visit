@@ -791,6 +791,11 @@ const CRMContacts = () => {
 
       setSendProgress(50 + Math.round(((i + 1) / selectedContacts.length) * 50));
 
+      if (queueEnabled && delayMs > 0 && i < selectedContacts.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+
     setSending(false);
     setSendPhase("");
     setSelected(new Set());

@@ -676,6 +676,11 @@ const CRMAbnormalTests = () => {
 
       setSendProgress(Math.round(((i + 1) / selectedGroups.length) * 100));
 
+      if (queueEnabled && delayMs > 0 && i < selectedGroups.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+
     setSending(false);
     setSendPhase("");
     setSelected(new Set());
