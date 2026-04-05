@@ -529,7 +529,7 @@ const CRMAbnormalTests = () => {
             ctx.fillStyle = p.fontColor || headerFontCol;
             ctx.textBaseline = "top";
             ctx.textAlign = "left";
-            const val = p.field === "Name" ? group.patientName.toUpperCase() : p.field === "Mobile" ? `Mobile: ${group.mobile}` : `UMR: ${group.umr}`;
+            const val = p.field === "Name" ? group.patientName.toUpperCase() : p.field === "Mobile" ? `Mobile: ${group.mobile}` : p.field === "Expiry Date" ? (staticExpiryDate || "") : `UMR: ${group.umr}`;
             ctx.fillText(val, px, py);
           }
         }
