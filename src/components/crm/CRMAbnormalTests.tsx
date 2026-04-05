@@ -589,8 +589,8 @@ const CRMAbnormalTests = () => {
       setSendPhase(`Generating card ${i + 1}/${selectedGroups.length}...`);
 
       // Generate image card
-      const imageUrl = await generateAbnormalCard(group);
-      if (!imageUrl) {
+      const cardResult = await generateAbnormalCard(group);
+      if (!cardResult) {
         failed++;
         setSendProgress(Math.round(((i + 1) / selectedGroups.length) * 100));
         continue;
@@ -601,7 +601,7 @@ const CRMAbnormalTests = () => {
       const toNumber = `+91${normalizedMobile}`;
       const components: Record<string, unknown> = {};
       if (includeMediaHeader) {
-        components.header = { type: "image", image: { link: imageUrl } };
+        components.header = { type: "image", image: { link: cardResult.publicUrl } };
       }
       components.body = { params: [group.patientName.toUpperCase()] };
 
@@ -634,6 +634,13 @@ const CRMAbnormalTests = () => {
         }
       } catch {
         failed++;
+      }
+
+      // Always delete the generated card image from storage after sending
+      try {
+        await supabase.storage.from("loyalty-cards").remove([cardResult.filePath]);
+      } catch (e) {
+        console.warn("Failed to delete card image:", e);
       }
 
       setSendProgress(Math.round(((i + 1) / selectedGroups.length) * 100));
