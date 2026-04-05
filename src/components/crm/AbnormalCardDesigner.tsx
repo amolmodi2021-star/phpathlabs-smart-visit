@@ -60,13 +60,14 @@ interface Band {
   position: "above-table" | "below-table";
 }
 
-const FIELD_OPTIONS = ["Name", "Mobile", "UMR", "Barcode"];
+const FIELD_OPTIONS = ["Name", "Mobile", "UMR", "Barcode", "Expiry Date"];
 
 const SAMPLE_DATA: Record<string, string> = {
   Name: "JOHN DOE",
   Mobile: "9876543210",
   UMR: "UMR001234",
   Barcode: "9876543210",
+  "Expiry Date": "31-12-2026",
 };
 
 const SAMPLE_TESTS = [
