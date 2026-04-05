@@ -129,11 +129,6 @@ Deno.serve(async (req) => {
         results.push({ id: card.id, status: "failed", error: message });
       }
 
-      // Always queue image for deletion (whether sent or failed)
-      if (card.image_url) {
-        const filePath = extractFilePath(card.image_url);
-        if (filePath) filesToDelete.push(filePath);
-      }
 
       if (queueEnabled && delayMs > 0) {
         await new Promise((r) => setTimeout(r, delayMs));
