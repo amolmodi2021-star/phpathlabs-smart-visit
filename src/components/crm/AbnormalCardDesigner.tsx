@@ -404,9 +404,9 @@ const AbnormalCardDesigner = () => {
         header_bg_color: headerBgColor,
         header_font_color: headerFontColor,
         canvas_width: canvasWidth,
-        placeholders: placeholders.map(({ id, ...rest }) => rest) as unknown as Record<string, unknown>,
-        table_config: tableConfig as unknown as Record<string, unknown>,
-        footer_lines: footerLines.map(({ id, ...rest }) => rest) as unknown as Record<string, unknown>,
+        placeholders: JSON.parse(JSON.stringify(placeholders.map(({ id, ...rest }) => rest))),
+        table_config: JSON.parse(JSON.stringify(tableConfig)),
+        footer_lines: JSON.parse(JSON.stringify(footerLines.map(({ id, ...rest }) => rest))),
       };
 
       if (editingId) {
