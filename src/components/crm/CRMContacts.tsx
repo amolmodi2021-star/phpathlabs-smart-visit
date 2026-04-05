@@ -787,15 +787,13 @@ const CRMContacts = () => {
         failed++;
       }
 
-      // Always delete the generated card image after sending
+      // Collect file path for deferred deletion
       if (imgUrl) {
         try {
           const urlPath = new URL(imgUrl).pathname;
-          const filePath = urlPath.split("/loyalty-cards/").pop();
-          if (filePath) {
-            await supabase.storage.from("loyalty-cards").remove([filePath]);
-          }
-        } catch (e) { console.warn("Failed to delete card image:", e); }
+          const fp = urlPath.split("/loyalty-cards/").pop();
+          if (fp) filesToDelete.push(fp);
+        } catch {}
       }
 
       setSendProgress(50 + Math.round(((i + 1) / selectedContacts.length) * 50));
