@@ -576,21 +576,40 @@ const AbnormalCardDesigner = () => {
                     <Input value={bgColor} onChange={(e) => setBgColor(e.target.value)} className="flex-1" />
                   </div>
                 </div>
-                <div>
-                  <Label className="text-xs">Header Band Color</Label>
-                  <div className="flex gap-2 items-center">
-                    <input type="color" value={headerBgColor} onChange={(e) => setHeaderBgColor(e.target.value)} className="h-8 w-12 rounded border cursor-pointer" />
-                    <Input value={headerBgColor} onChange={(e) => setHeaderBgColor(e.target.value)} className="flex-1" />
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-xs">Header Font Color</Label>
-                  <div className="flex gap-2 items-center">
-                    <input type="color" value={headerFontColor} onChange={(e) => setHeaderFontColor(e.target.value)} className="h-8 w-12 rounded border cursor-pointer" />
-                    <Input value={headerFontColor} onChange={(e) => setHeaderFontColor(e.target.value)} className="flex-1" />
-                  </div>
-                </div>
               </CardContent>
+            </Card>
+
+            {/* Header Band Settings */}
+            <Card>
+              <CardHeader className="py-3 flex flex-row items-center justify-between">
+                <CardTitle className="text-sm">Header Band</CardTitle>
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs">Show</Label>
+                  <Switch checked={showHeaderBand} onCheckedChange={setShowHeaderBand} />
+                </div>
+              </CardHeader>
+              {showHeaderBand && (
+                <CardContent className="space-y-3">
+                  <div>
+                    <Label className="text-xs">Height (px)</Label>
+                    <Input type="number" min={40} max={400} value={headerBandHeight} onChange={(e) => setHeaderBandHeight(Number(e.target.value))} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Band Color</Label>
+                    <div className="flex gap-2 items-center">
+                      <input type="color" value={headerBgColor} onChange={(e) => setHeaderBgColor(e.target.value)} className="h-8 w-12 rounded border cursor-pointer" />
+                      <Input value={headerBgColor} onChange={(e) => setHeaderBgColor(e.target.value)} className="flex-1" />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Font Color</Label>
+                    <div className="flex gap-2 items-center">
+                      <input type="color" value={headerFontColor} onChange={(e) => setHeaderFontColor(e.target.value)} className="h-8 w-12 rounded border cursor-pointer" />
+                      <Input value={headerFontColor} onChange={(e) => setHeaderFontColor(e.target.value)} className="flex-1" />
+                    </div>
+                  </div>
+                </CardContent>
+              )}
             </Card>
 
             {/* Logo settings */}
