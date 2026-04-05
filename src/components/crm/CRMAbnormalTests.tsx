@@ -170,9 +170,21 @@ const CRMAbnormalTests = () => {
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
-  const toggleExpand = (pk: string) => {
+  const toggleExpand = async (pk: string) => {
     const s = new Set(expanded);
-    s.has(pk) ? s.delete(pk) : s.add(pk);
+    if (s.has(pk)) {
+      s.delete(pk);
+    } else {
+      s.add(pk);
+      if (!expandedTests[pk]) {
+        const { data } = await supabase
+          .from("crm_abnormal_tests")
+          .select("id, contact_primary_key, test_name, test_date, result_value, normal_range, created_at")
+          .eq("contact_primary_key", pk)
+          .order("test_name");
+        setExpandedTests((prev) => ({ ...prev, [pk]: (data as AbnormalTest[]) || [] }));
+      }
+    }
     setExpanded(s);
   };
 
