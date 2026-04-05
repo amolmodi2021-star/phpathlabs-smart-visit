@@ -335,7 +335,7 @@ const CRMAbnormalTests = () => {
       if (phs.length > 0) {
         for (const p of phs) {
           const px = (p.x / 100) * cw;
-          const py = (p.y / 100) * hdrH;
+          const py = (p.y / 100) * height;
           if (p.field === "Barcode") {
             drawBarcodeOnCanvas(ctx, group.mobile, px, py, p.fontSize || 20, p.fontColor || headerFontCol);
           } else {
