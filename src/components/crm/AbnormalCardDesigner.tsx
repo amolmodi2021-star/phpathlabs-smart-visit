@@ -547,6 +547,7 @@ const AbnormalCardDesigner = () => {
           <TabsList className="flex flex-wrap h-auto gap-1">
             <TabsTrigger value="global">Global</TabsTrigger>
             <TabsTrigger value="fields">Fields</TabsTrigger>
+            <TabsTrigger value="bands">Bands</TabsTrigger>
             <TabsTrigger value="table">Table</TabsTrigger>
             <TabsTrigger value="footer">Footer</TabsTrigger>
             <TabsTrigger value="templates">Saved</TabsTrigger>
