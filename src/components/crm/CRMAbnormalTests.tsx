@@ -493,7 +493,21 @@ const CRMAbnormalTests = () => {
   const handleSendWhatsApp = async () => {
     if (selected.size === 0) return toast.error("Select patients first");
 
-    const selectedGroups = groups.filter((g) => selected.has(g.primaryKey));
+    // Build full groups with tests loaded on demand
+    const selectedGroups: PatientGroup[] = [];
+    for (const g of groups) {
+      if (!selected.has(g.primaryKey)) continue;
+      let tests = expandedTests[g.primaryKey];
+      if (!tests) {
+        const { data } = await supabase
+          .from("crm_abnormal_tests")
+          .select("id, contact_primary_key, test_name, test_date, result_value, normal_range, created_at")
+          .eq("contact_primary_key", g.primaryKey)
+          .order("test_name");
+        tests = (data as AbnormalTest[]) || [];
+      }
+      selectedGroups.push({ ...g, tests });
+    }
     if (selectedGroups.length === 0) return toast.error("No patients selected");
 
     // Fetch WhatsApp settings (same as loyalty cards)
