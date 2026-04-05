@@ -8,17 +8,6 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-/** Extract storage file path from a public URL */
-function extractFilePath(publicUrl: string): string | null {
-  try {
-    const marker = "/object/public/loyalty-cards/";
-    const idx = publicUrl.indexOf(marker);
-    if (idx === -1) return null;
-    return publicUrl.substring(idx + marker.length);
-  } catch {
-    return null;
-  }
-}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -68,7 +57,7 @@ Deno.serve(async (req) => {
 
     let sentCount = 0;
     const results: { id: string; status: string; error?: string }[] = [];
-    const filesToDelete: string[] = [];
+    
 
     for (const card of cards) {
       try {
@@ -140,29 +129,12 @@ Deno.serve(async (req) => {
         results.push({ id: card.id, status: "failed", error: message });
       }
 
-      // Always queue image for deletion (whether sent or failed)
-      if (card.image_url) {
-        const filePath = extractFilePath(card.image_url);
-        if (filePath) filesToDelete.push(filePath);
-      }
 
       if (queueEnabled && delayMs > 0) {
         await new Promise((r) => setTimeout(r, delayMs));
       }
     }
 
-    // Delete all card images from storage after processing
-    if (filesToDelete.length > 0) {
-      try {
-        await supabase.storage.from("loyalty-cards").remove(filesToDelete);
-        console.log(`Deleted ${filesToDelete.length} card images from storage`);
-      } catch (e) {
-        console.warn("Failed to delete card images:", e);
-      }
-    }
-
-    // Clear image_url from DB records since files are deleted
-    await supabase.from("loyalty_cards").update({ image_url: null }).eq("job_id", jobId);
 
     await supabase.from("loyalty_card_jobs").update({ sent_count: sentCount, status: "completed" }).eq("id", jobId);
 
