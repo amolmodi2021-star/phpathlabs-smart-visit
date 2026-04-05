@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { parseExcelFile } from "@/lib/excel";
@@ -9,9 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, Search, Send, ChevronDown, ChevronRight, Trash2, Download } from "lucide-react";
+import { Upload, Search, Send, ChevronDown, ChevronRight, Trash2, Download, ChevronLeft } from "lucide-react";
 import { toast } from "sonner";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 
@@ -31,6 +30,7 @@ interface PatientGroup {
   mobile: string;
   umr: string;
   tests: AbnormalTest[];
+  testCount: number;
 }
 
 const CODE128_PATTERNS = [
@@ -96,60 +96,58 @@ interface ImportStats {
   skippedInvalid: number;
 }
 
+const PAGE_SIZE = 50;
+
 const CRMAbnormalTests = () => {
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
   const [importStats, setImportStats] = useState<ImportStats | null>(null);
-  const [dataViewEnabled, setDataViewEnabled] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [expandedTests, setExpandedTests] = useState<Record<string, AbnormalTest[]>>({});
   const [sending, setSending] = useState(false);
   const [sendProgress, setSendProgress] = useState(0);
   const [sendPhase, setSendPhase] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [page, setPage] = useState(0);
   const qc = useQueryClient();
 
-  const { data: tests = [], isLoading } = useQuery({
-    queryKey: ["crm-abnormal-tests"],
-    enabled: dataViewEnabled,
+  // Debounce search
+  const searchTimerRef = useState<ReturnType<typeof setTimeout> | null>(null);
+  const handleSearchChange = useCallback((val: string) => {
+    setSearch(val);
+    if (searchTimerRef[0]) clearTimeout(searchTimerRef[0]);
+    searchTimerRef[0] = setTimeout(() => {
+      setDebouncedSearch(val);
+      setPage(0);
+    }, 400);
+  }, []);
+
+  // Server-side paginated patient list
+  const { data: patientsData, isLoading } = useQuery({
+    queryKey: ["crm-abnormal-patients", debouncedSearch, page],
     queryFn: async () => {
-      const BATCH = 900;
-      let all: AbnormalTest[] = [];
-      let from = 0;
-      while (true) {
-        const { data } = await supabase
-          .from("crm_abnormal_tests")
-          .select("id, contact_primary_key, test_name, test_date, result_value, normal_range, created_at")
-          .range(from, from + BATCH - 1);
-        if (!data || data.length === 0) break;
-        all.push(...(data as AbnormalTest[]));
-        if (data.length < BATCH) break;
-        from += BATCH;
-      }
-      return all;
+      const { data, error } = await supabase.rpc("get_abnormal_patients", {
+        p_search: debouncedSearch,
+        p_limit: PAGE_SIZE,
+        p_offset: page * PAGE_SIZE,
+      });
+      if (error) throw error;
+      return (data || []) as { contact_primary_key: string; test_count: number; patient_name: string; mobile_number: string; umr_number: string }[];
     },
   });
 
-  const { data: contacts = [] } = useQuery({
-    queryKey: ["crm-contacts-lookup"],
-    enabled: dataViewEnabled,
+  const { data: totalCount = 0 } = useQuery({
+    queryKey: ["crm-abnormal-patients-count", debouncedSearch],
     queryFn: async () => {
-      const BATCH = 900;
-      let all: any[] = [];
-      let from = 0;
-      while (true) {
-        const { data } = await supabase
-          .from("crm_contacts")
-          .select("primary_key, patient_name, mobile_number, umr_number")
-          .range(from, from + BATCH - 1);
-        if (!data || data.length === 0) break;
-        all.push(...data);
-        if (data.length < BATCH) break;
-        from += BATCH;
-      }
-      return all;
+      const { data, error } = await supabase.rpc("get_abnormal_patients_count", {
+        p_search: debouncedSearch,
+      });
+      if (error) throw error;
+      return (data as number) || 0;
     },
   });
 
@@ -161,50 +159,16 @@ const CRMAbnormalTests = () => {
     },
   });
 
-  const contactMap = useMemo(() => {
-    const map: Record<string, { name: string; mobile: string; umr: string }> = {};
-    contacts.forEach((c: any) => {
-      map[c.primary_key] = {
-        name: c.patient_name || "",
-        mobile: c.mobile_number || "",
-        umr: c.umr_number || "",
-      };
-    });
-    return map;
-  }, [contacts]);
+  const groups: PatientGroup[] = (patientsData || []).map((p) => ({
+    primaryKey: p.contact_primary_key,
+    patientName: p.patient_name || p.contact_primary_key,
+    mobile: p.mobile_number || "",
+    umr: p.umr_number || "",
+    tests: expandedTests[p.contact_primary_key] || [],
+    testCount: Number(p.test_count),
+  }));
 
-  const groups = useMemo(() => {
-    const map = new Map<string, AbnormalTest[]>();
-    tests.forEach((t) => {
-      const existing = map.get(t.contact_primary_key) || [];
-      existing.push(t);
-      map.set(t.contact_primary_key, existing);
-    });
-
-    const result: PatientGroup[] = [];
-    map.forEach((tests, pk) => {
-      const contact = contactMap[pk];
-      result.push({
-        primaryKey: pk,
-        patientName: contact?.name || pk.split("|")[0] || pk,
-        mobile: contact?.mobile || pk.split("|")[1] || "",
-        umr: contact?.umr || pk.split("|")[0] || "",
-        tests: tests.sort((a, b) => (a.test_name || "").localeCompare(b.test_name || "")),
-      });
-    });
-
-    if (search) {
-      const q = search.toLowerCase();
-      return result.filter(
-        (g) =>
-          g.patientName.toLowerCase().includes(q) ||
-          g.mobile.includes(q) ||
-          g.umr.toLowerCase().includes(q) ||
-          g.primaryKey.toLowerCase().includes(q)
-      );
-    }
-    return result.sort((a, b) => a.patientName.localeCompare(b.patientName));
-  }, [tests, contactMap, search]);
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   const toggleExpand = (pk: string) => {
     const s = new Set(expanded);
