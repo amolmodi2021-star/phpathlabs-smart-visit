@@ -113,7 +113,28 @@ const CRMAbnormalTests = () => {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [page, setPage] = useState(0);
+  const [staticExpiryDate, setStaticExpiryDate] = useState("");
   const qc = useQueryClient();
+
+  // Load saved static expiry date
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from("app_settings")
+        .select("setting_value")
+        .eq("setting_key", "abnormal_static_expiry_date")
+        .maybeSingle();
+      if (data?.setting_value) setStaticExpiryDate(data.setting_value);
+    })();
+  }, []);
+
+  const handleExpiryDateChange = (val: string) => {
+    setStaticExpiryDate(val);
+    supabase.from("app_settings").upsert(
+      { setting_key: "abnormal_static_expiry_date", setting_value: val, updated_at: new Date().toISOString() },
+      { onConflict: "setting_key" }
+    );
+  };
 
   // One-time cleanup: delete any previously stored abnormal card images
   useEffect(() => {
@@ -508,7 +529,7 @@ const CRMAbnormalTests = () => {
             ctx.fillStyle = p.fontColor || headerFontCol;
             ctx.textBaseline = "top";
             ctx.textAlign = "left";
-            const val = p.field === "Name" ? group.patientName.toUpperCase() : p.field === "Mobile" ? `Mobile: ${group.mobile}` : `UMR: ${group.umr}`;
+            const val = p.field === "Name" ? group.patientName.toUpperCase() : p.field === "Mobile" ? `Mobile: ${group.mobile}` : p.field === "Expiry Date" ? (staticExpiryDate || "") : `UMR: ${group.umr}`;
             ctx.fillText(val, px, py);
           }
         }
@@ -735,6 +756,12 @@ const CRMAbnormalTests = () => {
                 ))}
               </SelectContent>
             </Select>
+            <Input
+              placeholder="Expiry Date (dd-mm-yyyy)"
+              value={staticExpiryDate}
+              onChange={(e) => handleExpiryDateChange(e.target.value)}
+              className="w-[180px] h-9"
+            />
             <Button size="sm" onClick={handleSendWhatsApp} disabled={sending}>
               <Send className="h-4 w-4 mr-1" />
               Send Abnormal Card ({selected.size})

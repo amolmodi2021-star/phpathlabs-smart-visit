@@ -60,13 +60,14 @@ interface Band {
   position: "above-table" | "below-table";
 }
 
-const FIELD_OPTIONS = ["Name", "Mobile", "UMR", "Barcode"];
+const FIELD_OPTIONS = ["Name", "Mobile", "UMR", "Barcode", "Expiry Date"];
 
 const SAMPLE_DATA: Record<string, string> = {
   Name: "JOHN DOE",
   Mobile: "9876543210",
   UMR: "UMR001234",
   Barcode: "9876543210",
+  "Expiry Date": "31-12-2026",
 };
 
 const SAMPLE_TESTS = [
@@ -333,7 +334,7 @@ const AbnormalCardDesigner = () => {
         ctx.fillStyle = p.fontColor;
         ctx.textBaseline = "top";
         ctx.textAlign = "left";
-        const label = p.field === "Name" ? SAMPLE_DATA.Name : p.field === "Mobile" ? `Mobile: ${SAMPLE_DATA.Mobile}` : `UMR: ${SAMPLE_DATA.UMR}`;
+        const label = p.field === "Name" ? SAMPLE_DATA.Name : p.field === "Mobile" ? `Mobile: ${SAMPLE_DATA.Mobile}` : p.field === "Expiry Date" ? `Expiry: ${SAMPLE_DATA["Expiry Date"]}` : `UMR: ${SAMPLE_DATA.UMR}`;
         ctx.fillText(label, px, py);
       }
 
