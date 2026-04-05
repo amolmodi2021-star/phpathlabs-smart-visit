@@ -159,6 +159,20 @@ const CRMAbnormalTests = () => {
     },
   });
 
+  const fetchTestsForPatient = useCallback(async (pk: string) => {
+    const { data, error } = await supabase
+      .from("crm_abnormal_tests")
+      .select("id, contact_primary_key, test_name, test_date, result_value, normal_range, created_at")
+      .eq("contact_primary_key", pk)
+      .order("test_name");
+
+    if (error) throw error;
+
+    const tests = (data as AbnormalTest[]) || [];
+    setExpandedTests((prev) => ({ ...prev, [pk]: tests }));
+    return tests;
+  }, []);
+
   const groups: PatientGroup[] = (patientsData || []).map((p) => ({
     primaryKey: p.contact_primary_key,
     patientName: p.patient_name || p.contact_primary_key,
@@ -177,12 +191,7 @@ const CRMAbnormalTests = () => {
     } else {
       s.add(pk);
       if (!expandedTests[pk]) {
-        const { data } = await supabase
-          .from("crm_abnormal_tests")
-          .select("id, contact_primary_key, test_name, test_date, result_value, normal_range, created_at")
-          .eq("contact_primary_key", pk)
-          .order("test_name");
-        setExpandedTests((prev) => ({ ...prev, [pk]: (data as AbnormalTest[]) || [] }));
+        await fetchTestsForPatient(pk);
       }
     }
     setExpanded(s);
@@ -277,7 +286,12 @@ const CRMAbnormalTests = () => {
       setImportProgress(100);
       setImportStats(stats);
       toast.success(`Done: ${stats.inserted} new, ${stats.updated} updated, ${stats.skippedDup} unchanged`);
-      qc.invalidateQueries({ queryKey: ["crm-abnormal-tests"] });
+
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["crm-abnormal-patients"] }),
+        qc.invalidateQueries({ queryKey: ["crm-abnormal-patients-count"] }),
+        ...Array.from(expanded).map((pk) => fetchTestsForPatient(pk)),
+      ]);
     } catch (err) {
       console.error(err);
       toast.error("Failed to import file");
@@ -512,12 +526,7 @@ const CRMAbnormalTests = () => {
       if (!selected.has(g.primaryKey)) continue;
       let tests = expandedTests[g.primaryKey];
       if (!tests) {
-        const { data } = await supabase
-          .from("crm_abnormal_tests")
-          .select("id, contact_primary_key, test_name, test_date, result_value, normal_range, created_at")
-          .eq("contact_primary_key", g.primaryKey)
-          .order("test_name");
-        tests = (data as AbnormalTest[]) || [];
+        tests = await fetchTestsForPatient(g.primaryKey);
       }
       selectedGroups.push({ ...g, tests });
     }

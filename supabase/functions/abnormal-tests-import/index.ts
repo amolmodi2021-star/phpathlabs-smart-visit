@@ -120,11 +120,14 @@ Deno.serve(async (req) => {
     }
 
     // Update
+    let updatedCount = 0;
     for (const u of toUpdate) {
-      await supabase
+      const { error } = await supabase
         .from("crm_abnormal_tests")
         .update({ result_value: u.result_value, normal_range: u.normal_range })
         .eq("id", u.id);
+
+      if (!error) updatedCount++;
     }
 
     // Post-import cleanup: remove any remaining duplicates for affected primary keys
@@ -161,7 +164,7 @@ Deno.serve(async (req) => {
 
     return json({
       inserted: insertedCount,
-      updated: toUpdate.length,
+      updated: updatedCount,
       skippedDup,
       cleanedDup,
     });
