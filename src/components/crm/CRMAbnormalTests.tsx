@@ -457,19 +457,20 @@ const CRMAbnormalTests = () => {
         (f) => padding + f * tableW + 10
       );
       const colEnds = [...colStarts.slice(1), padding + tableW];
-      const colMaxWidths = colStarts.map((s, i) => colEnds[i] - s - 6);
+      const colMaxWidths = colStarts.map((s, i) => colEnds[i] - s - (i === 2 ? 14 : 6));
 
       // Table header
       ctx.fillStyle = tHeaderBg;
       ctx.fillRect(padding, tableY, tableW, tableHeaderH);
       ctx.fillStyle = tHeaderFontColor;
-      ctx.textBaseline = "top";
+      ctx.textBaseline = "middle";
       ctx.textAlign = "left";
       const hdrFont = `bold ${tHeaderFontSize}px Arial, sans-serif`;
-      fillTextFit(ctx, "Test Name", colStarts[0], tableY + 12, colMaxWidths[0], hdrFont);
-      fillTextFit(ctx, "Date", colStarts[1], tableY + 12, colMaxWidths[1], hdrFont);
-      fillTextFit(ctx, "Result", colStarts[2], tableY + 12, colMaxWidths[2], hdrFont, 0.6, "right");
-      fillTextFit(ctx, "Normal Range", colStarts[3], tableY + 12, colMaxWidths[3], hdrFont);
+      const hdrMid = tableY + tableHeaderH / 2;
+      fillTextFit(ctx, "Test Name", colStarts[0], hdrMid, colMaxWidths[0], hdrFont, 0.6, "center");
+      fillTextFit(ctx, "Date", colStarts[1], hdrMid, colMaxWidths[1], hdrFont, 0.6, "center");
+      fillTextFit(ctx, "Result", colStarts[2], hdrMid, colMaxWidths[2], hdrFont, 0.6, "center");
+      fillTextFit(ctx, "Normal Range", colStarts[3], hdrMid, colMaxWidths[3], hdrFont, 0.6, "center");
 
       // Table rows
       group.tests.forEach((t, i) => {
