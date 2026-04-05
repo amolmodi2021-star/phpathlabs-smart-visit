@@ -383,9 +383,9 @@ const CRMAbnormalTests = () => {
       // Header placeholders
       const phs: any[] = tmpl?.placeholders ? (typeof tmpl.placeholders === "string" ? JSON.parse(tmpl.placeholders) : tmpl.placeholders) : [];
       if (phs.length > 0) {
-        for (const p of phs) {
+      for (const p of phs) {
           const px = (p.x / 100) * cw;
-          const py = (p.y / 100) * height;
+          const py = p.y; // absolute pixel Y — stable across different test counts
           if (p.field === "Barcode") {
             drawBarcodeOnCanvas(ctx, group.mobile, px, py, p.fontSize || 20, p.fontColor || headerFontCol);
           } else {
