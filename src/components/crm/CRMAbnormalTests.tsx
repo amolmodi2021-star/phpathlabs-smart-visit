@@ -495,7 +495,7 @@ const CRMAbnormalTests = () => {
         const rowFont = `${tRowFontSize}px Arial, sans-serif`;
         const rowMid = y + tRowHeight / 2;
         fillTextFit(ctx, t.test_name || "", colStarts[0], rowMid, colMaxWidths[0], rowFont);
-        fillTextFit(ctx, t.test_date || "", colStarts[1], rowMid, colMaxWidths[1], rowFont);
+        fillTextFit(ctx, t.test_date || "", colStarts[1], rowMid, colMaxWidths[1], rowFont, 0.6, "center");
 
         ctx.fillStyle = tResultColor;
         const boldRowFont = `bold ${tRowFontSize}px Arial, sans-serif`;
