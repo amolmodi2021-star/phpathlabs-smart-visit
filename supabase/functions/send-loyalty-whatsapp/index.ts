@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
 
     let sentCount = 0;
     const results: { id: string; status: string; error?: string }[] = [];
-    const filesToDelete: string[] = [];
+    
 
     for (const card of cards) {
       try {
