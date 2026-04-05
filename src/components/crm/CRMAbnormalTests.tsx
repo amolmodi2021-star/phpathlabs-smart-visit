@@ -595,8 +595,7 @@ const CRMAbnormalTests = () => {
       if (includeMediaHeader) {
         components.header = { type: "image", image: { link: imageUrl } };
       }
-      // Send patient name as {{1}} body variable
-      components.body = { parameters: [{ type: "text", text: group.patientName.toUpperCase() }] };
+      components.body = { params: [group.patientName.toUpperCase()] };
 
       const payload: Record<string, unknown> = {
         from: fromNumber,
