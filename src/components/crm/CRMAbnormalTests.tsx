@@ -88,20 +88,6 @@ async function loadImageCORS(url: string): Promise<HTMLImageElement> {
   });
 }
 
-async function fileToBase64(file: File): Promise<string> {
-  const buffer = await file.arrayBuffer();
-  let binary = "";
-  const bytes = new Uint8Array(buffer);
-  const chunkSize = 0x8000;
-
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize);
-    binary += String.fromCharCode(...chunk);
-  }
-
-  return btoa(binary);
-}
-
 interface ImportStats {
   total: number;
   inserted: number;
@@ -246,27 +232,62 @@ const CRMAbnormalTests = () => {
     setImportStats(null);
 
     try {
-      const fileBase64 = await fileToBase64(file);
-      setImportProgress(20);
+      // Parse Excel on the client side
+      const rows = await parseExcelFile(file);
+      const mapped = rows
+        .map((r) => {
+          const keys = Object.keys(r);
+          return {
+            contact_primary_key: String(r[keys[0]] || "").trim(),
+            test_name: String(r[keys[1]] || "").trim(),
+            test_date: String(r[keys[2]] || "").trim() || null,
+            result_value: String(r[keys[3]] || "").trim() || null,
+            normal_range: String(r[keys[4]] || "").trim() || null,
+          };
+        })
+        .filter((m) => m.contact_primary_key && m.test_name);
 
-      const { data, error } = await supabase.functions.invoke("abnormal-tests-import", {
-        body: {
-          fileBase64,
-          fileName: file.name,
-        },
-      });
-
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-
-      setImportProgress(100);
-      if (data?.stats) {
-        setImportStats(data.stats);
-        toast.success(`Done: ${data.stats.inserted} new, ${data.stats.updated} updated, ${data.stats.skippedDup} unchanged`);
-      } else {
-        toast.success("Abnormal test file imported");
+      if (!mapped.length) {
+        toast.error("No valid rows found");
+        setImporting(false);
+        e.target.value = "";
+        return;
       }
 
+      setImportProgress(15);
+
+      const stats: ImportStats = { total: mapped.length, inserted: 0, updated: 0, skippedDup: 0, skippedInvalid: rows.length - mapped.length };
+
+      // Send parsed rows to backend in small batches
+      const BATCH = 300;
+      for (let i = 0; i < mapped.length; i += BATCH) {
+        const batch = mapped.slice(i, i + BATCH);
+
+        const { data, error } = await supabase.functions.invoke("abnormal-tests-import", {
+          body: { rows: batch },
+        });
+
+        if (error) {
+          console.error("Batch error:", error);
+          toast.error(`Batch ${Math.floor(i / BATCH) + 1} failed`);
+          continue;
+        }
+
+        if (data?.error) {
+          console.error("Batch data error:", data.error);
+          continue;
+        }
+
+        stats.inserted += data?.inserted || 0;
+        stats.updated += data?.updated || 0;
+        stats.skippedDup += data?.skippedDup || 0;
+
+        setImportProgress(15 + Math.round(((i + batch.length) / mapped.length) * 85));
+      }
+
+      setImportProgress(100);
+      setImportStats(stats);
+      toast.success(`Done: ${stats.inserted} new, ${stats.updated} updated, ${stats.skippedDup} unchanged`);
       qc.invalidateQueries({ queryKey: ["crm-abnormal-tests"] });
     } catch (err) {
       console.error(err);
