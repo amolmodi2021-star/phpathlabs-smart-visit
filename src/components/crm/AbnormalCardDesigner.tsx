@@ -112,7 +112,7 @@ const DEFAULT_TABLE: TableConfig = {
   borderColor: "#E0E0E8",
   altRowColor: "#F9F9FC",
   rowHeight: 36,
-  colWidths: [0.44, 0.18, 0.12, 0.26],
+  colWidths: [0.48, 0.18, 0.08, 0.26],
 };
 
 /* ───── Barcode Code128C (from cardRenderer.ts) ───── */
@@ -320,7 +320,7 @@ const AbnormalCardDesigner = () => {
 
       ctx.fillStyle = tc.resultColor;
       const boldRowFont = `bold ${tc.rowFontSize}px Arial, sans-serif`;
-      fillTextFit(ctx, t.result_value, colStarts[2], rowMid, colMaxWidths[2], boldRowFont, 0.6, "right");
+      fillTextFit(ctx, t.result_value, colStarts[2], rowMid, colMaxWidths[2], boldRowFont, 0.6, "center");
 
       ctx.fillStyle = tc.rowFontColor;
       fillTextFit(ctx, t.normal_range, colStarts[3], rowMid, colMaxWidths[3], rowFont);

@@ -387,7 +387,7 @@ const CRMAbnormalTests = () => {
       const tBorderColor = tc.borderColor || "#E0E0E8";
       const tAltRowColor = tc.altRowColor || "#F9F9FC";
       const tRowHeight = tc.rowHeight || 36;
-      const colWidths: number[] = tc.colWidths || [0.44, 0.18, 0.12, 0.26];
+      const colWidths: number[] = tc.colWidths || [0.48, 0.18, 0.08, 0.26];
 
       const footerLinesArr: any[] = tmpl?.footer_lines ? (typeof tmpl.footer_lines === "string" ? JSON.parse(tmpl.footer_lines) : tmpl.footer_lines) : [];
       const footerH = footerLinesArr.reduce((s: number, l: any) => s + (l.fontSize || 12) + 8, 0) + 20;
@@ -499,7 +499,7 @@ const CRMAbnormalTests = () => {
 
         ctx.fillStyle = tResultColor;
         const boldRowFont = `bold ${tRowFontSize}px Arial, sans-serif`;
-        fillTextFit(ctx, t.result_value || "", colStarts[2], rowMid, colMaxWidths[2], boldRowFont, 0.6, "right");
+        fillTextFit(ctx, t.result_value || "", colStarts[2], rowMid, colMaxWidths[2], boldRowFont, 0.6, "center");
 
         ctx.fillStyle = tRowFontColor;
         fillTextFit(ctx, t.normal_range || "", colStarts[3], rowMid, colMaxWidths[3], rowFont);
