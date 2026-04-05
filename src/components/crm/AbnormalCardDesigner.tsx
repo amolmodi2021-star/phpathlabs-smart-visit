@@ -143,6 +143,8 @@ const AbnormalCardDesigner = () => {
   const [bgColor, setBgColor] = useState("#FFFFFF");
   const [headerBgColor, setHeaderBgColor] = useState("#2E3192");
   const [headerFontColor, setHeaderFontColor] = useState("#FFFFFF");
+  const [headerBandHeight, setHeaderBandHeight] = useState(160);
+  const [showHeaderBand, setShowHeaderBand] = useState(true);
 
   // Logo
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
@@ -178,7 +180,7 @@ const AbnormalCardDesigner = () => {
   const [dragOff, setDragOff] = useState({ x: 0, y: 0 });
 
   // Computed canvas height
-  const headerHeight = 160;
+  const headerHeight = showHeaderBand ? headerBandHeight : 0;
   const padding = 40;
   const tableHeaderH = 40;
   const tableRowsH = SAMPLE_TESTS.length * tableConfig.rowHeight;
@@ -212,8 +214,10 @@ const AbnormalCardDesigner = () => {
     ctx.fillRect(0, 0, canvasWidth, totalHeight);
 
     // Header band
-    ctx.fillStyle = headerBgColor;
-    ctx.fillRect(0, 0, canvasWidth, headerHeight);
+    if (showHeaderBand) {
+      ctx.fillStyle = headerBgColor;
+      ctx.fillRect(0, 0, canvasWidth, headerHeight);
+    }
 
     // Logo
     if (logoImg) {
@@ -341,7 +345,7 @@ const AbnormalCardDesigner = () => {
       fy += fl.fontSize + 8;
     });
     ctx.textAlign = "left";
-  }, [canvasWidth, bgColor, headerBgColor, headerFontColor, logoImg, logoW, logoH, logoX, logoY, placeholders, selectedId, tableConfig, footerLines, bands, totalHeight]);
+  }, [canvasWidth, bgColor, headerBgColor, headerFontColor, showHeaderBand, headerBandHeight, logoImg, logoW, logoH, logoX, logoY, placeholders, selectedId, tableConfig, footerLines, bands, totalHeight]);
 
   useEffect(() => { drawCanvas(); }, [drawCanvas]);
 
@@ -455,6 +459,8 @@ const AbnormalCardDesigner = () => {
         background_color: bgColor,
         header_bg_color: headerBgColor,
         header_font_color: headerFontColor,
+        header_band_height: headerBandHeight,
+        show_header_band: showHeaderBand,
         canvas_width: canvasWidth,
         placeholders: JSON.parse(JSON.stringify(placeholders.map(({ id, ...rest }) => rest))),
         table_config: JSON.parse(JSON.stringify(tableConfig)),
@@ -490,6 +496,8 @@ const AbnormalCardDesigner = () => {
     setBgColor(t.background_color || "#FFFFFF");
     setHeaderBgColor(t.header_bg_color || "#2E3192");
     setHeaderFontColor(t.header_font_color || "#FFFFFF");
+    setHeaderBandHeight(t.header_band_height ?? 160);
+    setShowHeaderBand(t.show_header_band !== false);
     setCanvasWidth(t.canvas_width || 900);
     const phs = (t.placeholders as any[]) || [];
     setPlaceholders(phs.map((p: any) => ({ ...p, id: crypto.randomUUID() })));
@@ -568,21 +576,40 @@ const AbnormalCardDesigner = () => {
                     <Input value={bgColor} onChange={(e) => setBgColor(e.target.value)} className="flex-1" />
                   </div>
                 </div>
-                <div>
-                  <Label className="text-xs">Header Band Color</Label>
-                  <div className="flex gap-2 items-center">
-                    <input type="color" value={headerBgColor} onChange={(e) => setHeaderBgColor(e.target.value)} className="h-8 w-12 rounded border cursor-pointer" />
-                    <Input value={headerBgColor} onChange={(e) => setHeaderBgColor(e.target.value)} className="flex-1" />
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-xs">Header Font Color</Label>
-                  <div className="flex gap-2 items-center">
-                    <input type="color" value={headerFontColor} onChange={(e) => setHeaderFontColor(e.target.value)} className="h-8 w-12 rounded border cursor-pointer" />
-                    <Input value={headerFontColor} onChange={(e) => setHeaderFontColor(e.target.value)} className="flex-1" />
-                  </div>
-                </div>
               </CardContent>
+            </Card>
+
+            {/* Header Band Settings */}
+            <Card>
+              <CardHeader className="py-3 flex flex-row items-center justify-between">
+                <CardTitle className="text-sm">Header Band</CardTitle>
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs">Show</Label>
+                  <Switch checked={showHeaderBand} onCheckedChange={setShowHeaderBand} />
+                </div>
+              </CardHeader>
+              {showHeaderBand && (
+                <CardContent className="space-y-3">
+                  <div>
+                    <Label className="text-xs">Height (px)</Label>
+                    <Input type="number" min={40} max={400} value={headerBandHeight} onChange={(e) => setHeaderBandHeight(Number(e.target.value))} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Band Color</Label>
+                    <div className="flex gap-2 items-center">
+                      <input type="color" value={headerBgColor} onChange={(e) => setHeaderBgColor(e.target.value)} className="h-8 w-12 rounded border cursor-pointer" />
+                      <Input value={headerBgColor} onChange={(e) => setHeaderBgColor(e.target.value)} className="flex-1" />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Font Color</Label>
+                    <div className="flex gap-2 items-center">
+                      <input type="color" value={headerFontColor} onChange={(e) => setHeaderFontColor(e.target.value)} className="h-8 w-12 rounded border cursor-pointer" />
+                      <Input value={headerFontColor} onChange={(e) => setHeaderFontColor(e.target.value)} className="flex-1" />
+                    </div>
+                  </div>
+                </CardContent>
+              )}
             </Card>
 
             {/* Logo settings */}

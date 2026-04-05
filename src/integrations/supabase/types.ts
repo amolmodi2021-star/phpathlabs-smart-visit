@@ -21,6 +21,7 @@ export type Database = {
           canvas_width: number | null
           created_at: string | null
           footer_lines: Json | null
+          header_band_height: number | null
           header_bg_color: string | null
           header_font_color: string | null
           id: string
@@ -31,6 +32,7 @@ export type Database = {
           logo_y: number | null
           name: string
           placeholders: Json | null
+          show_header_band: boolean | null
           table_config: Json | null
           updated_at: string | null
         }
@@ -40,6 +42,7 @@ export type Database = {
           canvas_width?: number | null
           created_at?: string | null
           footer_lines?: Json | null
+          header_band_height?: number | null
           header_bg_color?: string | null
           header_font_color?: string | null
           id?: string
@@ -50,6 +53,7 @@ export type Database = {
           logo_y?: number | null
           name: string
           placeholders?: Json | null
+          show_header_band?: boolean | null
           table_config?: Json | null
           updated_at?: string | null
         }
@@ -59,6 +63,7 @@ export type Database = {
           canvas_width?: number | null
           created_at?: string | null
           footer_lines?: Json | null
+          header_band_height?: number | null
           header_bg_color?: string | null
           header_font_color?: string | null
           id?: string
@@ -69,6 +74,7 @@ export type Database = {
           logo_y?: number | null
           name?: string
           placeholders?: Json | null
+          show_header_band?: boolean | null
           table_config?: Json | null
           updated_at?: string | null
         }

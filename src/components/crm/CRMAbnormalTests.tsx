@@ -273,7 +273,8 @@ const CRMAbnormalTests = () => {
       // Load template if selected
       const tmpl = cardTemplates.find((t: any) => t.id === selectedTemplateId);
       const padding = 40;
-      const hdrH = 160;
+      const showHdr = tmpl?.show_header_band !== false;
+      const hdrH = showHdr ? (tmpl?.header_band_height ?? 160) : 0;
       const tableHeaderH = 40;
       const cw = tmpl?.canvas_width || 900;
       const bgColor = tmpl?.background_color || "#FFFFFF";
@@ -312,8 +313,10 @@ const CRMAbnormalTests = () => {
       ctx.fillRect(0, 0, cw, height);
 
       // Header band
-      ctx.fillStyle = headerBg;
-      ctx.fillRect(0, 0, cw, hdrH);
+      if (showHdr) {
+        ctx.fillStyle = headerBg;
+        ctx.fillRect(0, 0, cw, hdrH);
+      }
 
       // Logo
       if (tmpl?.logo_url) {
