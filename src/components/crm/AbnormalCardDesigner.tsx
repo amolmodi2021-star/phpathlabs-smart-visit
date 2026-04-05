@@ -226,32 +226,6 @@ const AbnormalCardDesigner = () => {
       ctx.drawImage(logoImg, lx, ly, logoW, logoH);
     }
 
-    // Placeholders
-    placeholders.forEach((p) => {
-      const px = (p.x / 100) * canvasWidth;
-      const py = (p.y / 100) * totalHeight;
-
-      if (p.field === "Barcode") {
-        drawBarcode(ctx, SAMPLE_DATA.Mobile, px, py, p.fontSize, p.fontColor);
-      } else {
-        ctx.font = `${p.bold ? "bold " : ""}${p.fontSize}px Arial, Helvetica, sans-serif`;
-        ctx.fillStyle = p.fontColor;
-        ctx.textBaseline = "top";
-        ctx.textAlign = "left";
-        const label = p.field === "Name" ? SAMPLE_DATA.Name : p.field === "Mobile" ? `Mobile: ${SAMPLE_DATA.Mobile}` : `UMR: ${SAMPLE_DATA.UMR}`;
-        ctx.fillText(label, px, py);
-      }
-
-      if (p.id === selectedId) {
-        const metrics = ctx.measureText(SAMPLE_DATA[p.field] || p.field);
-        ctx.strokeStyle = "#3b82f6";
-        ctx.lineWidth = 2;
-        ctx.setLineDash([4, 4]);
-        ctx.strokeRect(px - 2, py - 2, metrics.width + 4, p.fontSize + 4);
-        ctx.setLineDash([]);
-      }
-    });
-
     // Helper to draw a band
     const drawBand = (ctx: CanvasRenderingContext2D, band: Band, y: number) => {
       ctx.fillStyle = band.color;
@@ -345,6 +319,32 @@ const AbnormalCardDesigner = () => {
       fy += fl.fontSize + 8;
     });
     ctx.textAlign = "left";
+
+    // Placeholders (drawn last so they appear on top of bands)
+    placeholders.forEach((p) => {
+      const px = (p.x / 100) * canvasWidth;
+      const py = (p.y / 100) * totalHeight;
+
+      if (p.field === "Barcode") {
+        drawBarcode(ctx, SAMPLE_DATA.Mobile, px, py, p.fontSize, p.fontColor);
+      } else {
+        ctx.font = `${p.bold ? "bold " : ""}${p.fontSize}px Arial, Helvetica, sans-serif`;
+        ctx.fillStyle = p.fontColor;
+        ctx.textBaseline = "top";
+        ctx.textAlign = "left";
+        const label = p.field === "Name" ? SAMPLE_DATA.Name : p.field === "Mobile" ? `Mobile: ${SAMPLE_DATA.Mobile}` : `UMR: ${SAMPLE_DATA.UMR}`;
+        ctx.fillText(label, px, py);
+      }
+
+      if (p.id === selectedId) {
+        const metrics = ctx.measureText(SAMPLE_DATA[p.field] || p.field);
+        ctx.strokeStyle = "#3b82f6";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]);
+        ctx.strokeRect(px - 2, py - 2, metrics.width + 4, p.fontSize + 4);
+        ctx.setLineDash([]);
+      }
+    });
   }, [canvasWidth, bgColor, headerBgColor, headerFontColor, showHeaderBand, headerBandHeight, logoImg, logoW, logoH, logoX, logoY, placeholders, selectedId, tableConfig, footerLines, bands, totalHeight]);
 
   useEffect(() => { drawCanvas(); }, [drawCanvas]);
