@@ -459,6 +459,8 @@ const AbnormalCardDesigner = () => {
         background_color: bgColor,
         header_bg_color: headerBgColor,
         header_font_color: headerFontColor,
+        header_band_height: headerBandHeight,
+        show_header_band: showHeaderBand,
         canvas_width: canvasWidth,
         placeholders: JSON.parse(JSON.stringify(placeholders.map(({ id, ...rest }) => rest))),
         table_config: JSON.parse(JSON.stringify(tableConfig)),
