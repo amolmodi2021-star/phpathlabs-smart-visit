@@ -430,8 +430,15 @@ const CRMAbnormalTests = () => {
       ctx.lineWidth = 2;
       ctx.strokeRect(padding, tableY, tableW, tableHeaderH + group.tests.length * tRowHeight);
 
+      // Bands below table
+      let belowY = tableY + tableHeaderH + group.tests.length * tRowHeight + 10;
+      bandsArr.filter((b: any) => b.position === "below-table").forEach((b: any) => {
+        drawBandOnCanvas(ctx, b, belowY, cw);
+        belowY += b.height || 40;
+      });
+
       // Footer lines
-      let fy = tableY + tableHeaderH + group.tests.length * tRowHeight + 20;
+      let fy = belowY + 10;
       footerLinesArr.forEach((fl: any) => {
         ctx.fillStyle = fl.fontColor || "#666666";
         ctx.font = `${fl.bold ? "bold " : ""}${fl.fontSize || 12}px Arial, sans-serif`;
