@@ -88,9 +88,19 @@ async function loadImageCORS(url: string): Promise<HTMLImageElement> {
   });
 }
 
+interface ImportStats {
+  total: number;
+  inserted: number;
+  updated: number;
+  skippedDup: number;
+  skippedInvalid: number;
+}
+
 const CRMAbnormalTests = () => {
   const [search, setSearch] = useState("");
   const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
+  const [importStats, setImportStats] = useState<ImportStats | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [sending, setSending] = useState(false);
