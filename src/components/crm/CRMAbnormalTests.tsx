@@ -213,10 +213,23 @@ const CRMAbnormalTests = () => {
       const mapped = rows
         .map((r) => {
           const keys = Object.keys(r);
+          let dateVal = String(r[keys[2]] || "").trim();
+          // Convert Excel serial number to dd-mm-yyyy
+          if (dateVal && /^\d{4,6}(\.\d+)?$/.test(dateVal)) {
+            const serial = parseFloat(dateVal);
+            if (serial > 1 && serial < 200000) {
+              const epoch = new Date(Date.UTC(1899, 11, 30));
+              epoch.setUTCDate(epoch.getUTCDate() + Math.floor(serial));
+              const dd = String(epoch.getUTCDate()).padStart(2, "0");
+              const mm = String(epoch.getUTCMonth() + 1).padStart(2, "0");
+              const yyyy = epoch.getUTCFullYear();
+              dateVal = `${dd}-${mm}-${yyyy}`;
+            }
+          }
           return {
             contact_primary_key: String(r[keys[0]] || "").trim(),
             test_name: String(r[keys[1]] || "").trim(),
-            test_date: String(r[keys[2]] || "").trim() || null,
+            test_date: dateVal || null,
             result_value: String(r[keys[3]] || "").trim() || null,
             normal_range: String(r[keys[4]] || "").trim() || null,
           };

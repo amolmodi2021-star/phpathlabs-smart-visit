@@ -95,10 +95,23 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Insert
+    // Insert — use individual inserts to handle potential constraint conflicts gracefully
+    let insertedCount = 0;
     if (toInsert.length > 0) {
-      const { error } = await supabase.from("crm_abnormal_tests").insert(toInsert);
-      if (error) return json({ error: error.message }, 400);
+      for (let i = 0; i < toInsert.length; i += 50) {
+        const batch = toInsert.slice(i, i + 50);
+        const { error, data } = await supabase.from("crm_abnormal_tests").insert(batch).select("id");
+        if (error) {
+          // If batch fails due to unique constraint, insert one by one
+          for (const row of batch) {
+            const { error: singleErr } = await supabase.from("crm_abnormal_tests").insert(row);
+            if (!singleErr) insertedCount++;
+            else skippedDup++;
+          }
+        } else {
+          insertedCount += (data?.length || batch.length);
+        }
+      }
     }
 
     // Update
@@ -110,7 +123,7 @@ Deno.serve(async (req) => {
     }
 
     return json({
-      inserted: toInsert.length,
+      inserted: insertedCount,
       updated: toUpdate.length,
       skippedDup,
     });
