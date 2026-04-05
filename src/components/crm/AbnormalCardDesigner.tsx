@@ -459,6 +459,7 @@ const AbnormalCardDesigner = () => {
         placeholders: JSON.parse(JSON.stringify(placeholders.map(({ id, ...rest }) => rest))),
         table_config: JSON.parse(JSON.stringify(tableConfig)),
         footer_lines: JSON.parse(JSON.stringify(footerLines.map(({ id, ...rest }) => rest))),
+        bands: JSON.parse(JSON.stringify(bands.map(({ id, ...rest }) => rest))),
       };
 
       if (editingId) {
