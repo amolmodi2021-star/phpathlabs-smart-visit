@@ -435,7 +435,12 @@ const CRMAbnormalTests = () => {
           <p className="text-sm text-muted-foreground">
             Excel columns: Primary Key (UMR|Mobile), Test Name, Date, Result Value, Normal Range
           </p>
-          <Input type="file" accept=".xlsx,.xls" onChange={handleFile} disabled={importing} />
+          <div className="flex gap-2 items-center">
+            <Button size="sm" variant="outline" asChild>
+              <a href="/samples/Sample_Abnormal_Tests.xlsx" download><Download className="h-4 w-4 mr-1" />Sample File</a>
+            </Button>
+            <Input type="file" accept=".xlsx,.xls" onChange={handleFile} disabled={importing} className="flex-1" />
+          </div>
         </CardContent>
       </Card>
 
