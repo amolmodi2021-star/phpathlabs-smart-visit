@@ -33,6 +33,61 @@ interface PatientGroup {
   tests: AbnormalTest[];
 }
 
+const CODE128_PATTERNS = [
+  "212222","222122","222221","121223","121322","131222","122213","122312","132212","221213","221312","231212",
+  "112232","122132","122231","113222","123122","123221","223211","221132","221231","213212","223112","312131",
+  "311222","321122","321221","312212","322112","322211","212123","212321","232121","111323","131123","131321",
+  "112313","132113","132311","211313","231113","231311","112133","112331","132131","113123","113321","133121",
+  "313121","211331","231131","213113","213311","213131","311123","311321","331121","312113","312311","332111",
+  "314111","221411","431111","111224","111422","121124","121421","141122","141221","112214","112412","122114",
+  "122411","142112","142211","241211","221114","413111","241112","134111","111242","121142","121241","114212",
+  "124112","124211","411212","421112","421211","212141","214121","412121","111143","111341","131141","114113",
+  "114311","411113","411311","113141","114131","311141","411131","211412","211214","211232","2331112",
+];
+
+function drawBarcodeOnCanvas(ctx: CanvasRenderingContext2D, value: string, x: number, y: number, height: number, color: string) {
+  const digits = value.replace(/\D/g, "");
+  if (!digits) return;
+  const evenDigits = digits.length % 2 === 0 ? digits : `0${digits}`;
+  const codes = [105 as number];
+  for (let i = 0; i < evenDigits.length; i += 2) codes.push(Number(evenDigits.slice(i, i + 2)));
+  let checksum = 105;
+  for (let i = 1; i < codes.length; i++) checksum += codes[i] * i;
+  codes.push(checksum % 103);
+  codes.push(106);
+  const patterns = codes.map((code) => CODE128_PATTERNS[code]).filter(Boolean);
+  const totalModules = patterns.reduce((sum, p) => sum + p.split("").reduce((acc, w) => acc + Number(w), 0), 0);
+  const targetWidth = Math.max(evenDigits.length * height * 0.38, height * 2.8);
+  const moduleWidth = targetWidth / totalModules;
+  ctx.save();
+  ctx.fillStyle = color;
+  let cursorX = x;
+  for (const pattern of patterns) {
+    pattern.split("").forEach((seg, idx) => {
+      const width = Number(seg) * moduleWidth;
+      if (idx % 2 === 0) ctx.fillRect(cursorX, y, width, height);
+      cursorX += width;
+    });
+  }
+  ctx.restore();
+}
+
+async function loadImageCORS(url: string): Promise<HTMLImageElement> {
+  const response = await fetch(url);
+  const blob = await response.blob();
+  const dataUrl = await new Promise<string>((resolve) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.readAsDataURL(blob);
+  });
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Failed to load image"));
+    img.src = dataUrl;
+  });
+}
+
 const CRMAbnormalTests = () => {
   const [search, setSearch] = useState("");
   const [importing, setImporting] = useState(false);
@@ -42,6 +97,7 @@ const CRMAbnormalTests = () => {
   const [sendProgress, setSendProgress] = useState(0);
   const [sendPhase, setSendPhase] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const qc = useQueryClient();
 
   // Fetch all abnormal tests
