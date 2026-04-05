@@ -345,7 +345,7 @@ const AbnormalCardDesigner = () => {
       fy += fl.fontSize + 8;
     });
     ctx.textAlign = "left";
-  }, [canvasWidth, bgColor, headerBgColor, headerFontColor, logoImg, logoW, logoH, logoX, logoY, placeholders, selectedId, tableConfig, footerLines, bands, totalHeight]);
+  }, [canvasWidth, bgColor, headerBgColor, headerFontColor, showHeaderBand, headerBandHeight, logoImg, logoW, logoH, logoX, logoY, placeholders, selectedId, tableConfig, footerLines, bands, totalHeight]);
 
   useEffect(() => { drawCanvas(); }, [drawCanvas]);
 
