@@ -321,9 +321,10 @@ const AbnormalCardDesigner = () => {
     ctx.textAlign = "left";
 
     // Placeholders (drawn last so they appear on top of bands)
+    // Y is stored as absolute pixels to remain stable across different test counts
     placeholders.forEach((p) => {
       const px = (p.x / 100) * canvasWidth;
-      const py = (p.y / 100) * totalHeight;
+      const py = p.y;
 
       if (p.field === "Barcode") {
         drawBarcode(ctx, SAMPLE_DATA.Mobile, px, py, p.fontSize, p.fontColor);
