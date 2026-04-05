@@ -8,17 +8,6 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-/** Extract storage file path from a public URL */
-function extractFilePath(publicUrl: string): string | null {
-  try {
-    const marker = "/object/public/loyalty-cards/";
-    const idx = publicUrl.indexOf(marker);
-    if (idx === -1) return null;
-    return publicUrl.substring(idx + marker.length);
-  } catch {
-    return null;
-  }
-}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
