@@ -676,7 +676,7 @@ const CRMAbnormalTests = () => {
         )}
 
         <span className="text-sm text-muted-foreground ml-auto">
-          {groups.length} patients, {tests.length} tests
+          {totalCount} patients (page {page + 1}/{totalPages || 1})
         </span>
       </div>
 
