@@ -836,6 +836,7 @@ const CRMContacts = () => {
     setSendPhase("");
     setSelected(new Set());
     qc.invalidateQueries({ queryKey: ["crm-contacts"] });
+    qc.invalidateQueries({ queryKey: ["crm-sent-history"] });
     toast.success(`Loyalty cards sent: ${sent} success, ${failed} failed`);
   };
 
