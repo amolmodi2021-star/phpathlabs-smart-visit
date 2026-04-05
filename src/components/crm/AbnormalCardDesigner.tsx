@@ -656,6 +656,78 @@ const AbnormalCardDesigner = () => {
             </Card>
           </TabsContent>
 
+          {/* Bands */}
+          <TabsContent value="bands" className="space-y-3">
+            <Card>
+              <CardHeader className="py-3 flex flex-row items-center justify-between">
+                <CardTitle className="text-sm">Bands</CardTitle>
+                <Button size="sm" variant="outline" onClick={addBand}><Plus className="h-3 w-3 mr-1" />Add Band</Button>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {bands.length === 0 && <p className="text-xs text-muted-foreground">No bands added. Bands are colored horizontal strips above or below the table.</p>}
+                {bands.map((band, i) => (
+                  <div key={band.id} className="border rounded p-2 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-muted-foreground">Band {i + 1}</span>
+                      <Button variant="ghost" size="icon" className="h-6 w-6 ml-auto" onClick={() => removeBand(band.id)}><Trash2 className="h-3 w-3" /></Button>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Position</Label>
+                      <Select value={band.position} onValueChange={(v) => updateBand(band.id, { position: v as Band["position"] })}>
+                        <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="above-table">Above Table</SelectItem>
+                          <SelectItem value="below-table">Below Table</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Height (px)</Label>
+                      <Input type="number" min={10} max={200} value={band.height} onChange={(e) => updateBand(band.id, { height: Number(e.target.value) })} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label className="text-xs">Band Color</Label>
+                        <div className="flex gap-1 items-center">
+                          <input type="color" value={band.color} onChange={(e) => updateBand(band.id, { color: e.target.value })} className="h-8 w-10 rounded border cursor-pointer" />
+                          <Input value={band.color} onChange={(e) => updateBand(band.id, { color: e.target.value })} className="flex-1" />
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Text Color</Label>
+                        <div className="flex gap-1 items-center">
+                          <input type="color" value={band.textColor} onChange={(e) => updateBand(band.id, { textColor: e.target.value })} className="h-8 w-10 rounded border cursor-pointer" />
+                          <Input value={band.textColor} onChange={(e) => updateBand(band.id, { textColor: e.target.value })} className="flex-1" />
+                        </div>
+                      </div>
+                    </div>
+                    <Input value={band.text} onChange={(e) => updateBand(band.id, { text: e.target.value })} placeholder="Band text (optional)" />
+                    <div className="grid grid-cols-3 gap-2">
+                      <div><Label className="text-xs">Font Size</Label><Input type="number" min={8} max={30} value={band.fontSize} onChange={(e) => updateBand(band.id, { fontSize: Number(e.target.value) })} /></div>
+                      <div>
+                        <Label className="text-xs">Align</Label>
+                        <Select value={band.align} onValueChange={(v) => updateBand(band.id, { align: v as "left" | "center" | "right" })}>
+                          <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="left">Left</SelectItem>
+                            <SelectItem value="center">Center</SelectItem>
+                            <SelectItem value="right">Right</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex items-end pb-1">
+                        <div className="flex items-center gap-1">
+                          <Switch checked={band.bold} onCheckedChange={(v) => updateBand(band.id, { bold: v })} />
+                          <Label className="text-xs">Bold</Label>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
           {/* Table */}
           <TabsContent value="table" className="space-y-3">
             <Card>
