@@ -1623,6 +1623,20 @@ export type Database = {
           unsent_records: number
         }[]
       }
+      get_abnormal_patients: {
+        Args: { p_limit?: number; p_offset?: number; p_search?: string }
+        Returns: {
+          contact_primary_key: string
+          mobile_number: string
+          patient_name: string
+          test_count: number
+          umr_number: string
+        }[]
+      }
+      get_abnormal_patients_count: {
+        Args: { p_search?: string }
+        Returns: number
+      }
     }
     Enums: {
       [_ in never]: never
