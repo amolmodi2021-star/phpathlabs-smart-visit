@@ -345,9 +345,15 @@ const CRMImportReview = () => {
       }
     }
 
+    // Deferred cleanup: wait 30s for WhatsApp to download images, then delete
+    setSendPhase("Cleaning up...");
+    if (filesToDelete.length > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 30000));
+      try { await supabase.storage.from("loyalty-cards").remove(filesToDelete); } catch {}
+    }
+
     setSending(false);
     setSendPhase("");
-    // Re-fetch staging so Approve & Transfer uses updated record_tag values
     await qc.invalidateQueries({ queryKey: ["crm-staging"] });
     await qc.refetchQueries({ queryKey: ["crm-staging"] });
     qc.invalidateQueries({ queryKey: ["crm-contacts"] });
