@@ -29,6 +29,7 @@ import LoyaltyCards from "./pages/LoyaltyCards";
 import WhatsAppWebhook from "./pages/WhatsAppWebhook";
 import Marketing from "./pages/Marketing";
 import CRM from "./pages/CRM";
+import LimsDemo from "./pages/LimsDemo";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
