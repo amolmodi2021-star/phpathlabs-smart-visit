@@ -135,18 +135,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Delete all card images from storage after processing
-    if (filesToDelete.length > 0) {
-      try {
-        await supabase.storage.from("loyalty-cards").remove(filesToDelete);
-        console.log(`Deleted ${filesToDelete.length} card images from storage`);
-      } catch (e) {
-        console.warn("Failed to delete card images:", e);
-      }
-    }
-
-    // Clear image_url from DB records since files are deleted
-    await supabase.from("loyalty_cards").update({ image_url: null }).eq("job_id", jobId);
 
     await supabase.from("loyalty_card_jobs").update({ sent_count: sentCount, status: "completed" }).eq("id", jobId);
 
