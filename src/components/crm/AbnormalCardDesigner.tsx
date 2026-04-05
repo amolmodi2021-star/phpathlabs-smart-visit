@@ -229,7 +229,7 @@ const AbnormalCardDesigner = () => {
     // Placeholders
     placeholders.forEach((p) => {
       const px = (p.x / 100) * canvasWidth;
-      const py = (p.y / 100) * headerHeight;
+      const py = (p.y / 100) * totalHeight;
 
       if (p.field === "Barcode") {
         drawBarcode(ctx, SAMPLE_DATA.Mobile, px, py, p.fontSize, p.fontColor);
@@ -362,7 +362,7 @@ const AbnormalCardDesigner = () => {
     for (let i = placeholders.length - 1; i >= 0; i--) {
       const p = placeholders[i];
       const px = (p.x / 100) * canvasWidth;
-      const py = (p.y / 100) * headerHeight;
+      const py = (p.y / 100) * totalHeight;
       const w = p.fontSize * 12;
       const h = p.fontSize + 6;
       if (mx >= px - 5 && mx <= px + w && my >= py - 5 && my <= py + h) {
@@ -388,7 +388,7 @@ const AbnormalCardDesigner = () => {
     setPlaceholders((prev) =>
       prev.map((p) =>
         p.id === dragging
-          ? { ...p, x: Math.max(0, Math.min(100, (mx / canvasWidth) * 100)), y: Math.max(0, Math.min(100, (my / headerHeight) * 100)) }
+          ? { ...p, x: Math.max(0, Math.min(100, (mx / canvasWidth) * 100)), y: Math.max(0, Math.min(100, (my / totalHeight) * 100)) }
           : p
       )
     );
