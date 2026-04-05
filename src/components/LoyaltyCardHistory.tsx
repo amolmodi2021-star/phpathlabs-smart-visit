@@ -22,25 +22,6 @@ const LoyaltyCardHistory = () => {
   const [sendingJobId, setSendingJobId] = useState<string | null>(null);
   const [retryingJobId, setRetryingJobId] = useState<string | null>(null);
 
-  // One-time cleanup: delete any previously stored generated card images
-  useEffect(() => {
-    (async () => {
-      for (const folder of ["generated", "generated/crm"]) {
-        try {
-          const { data: files } = await supabase.storage.from("loyalty-cards").list(folder, { limit: 1000 });
-          if (files && files.length > 0) {
-            const paths = files.filter(f => f.name.endsWith(".png")).map(f => `${folder}/${f.name}`);
-            if (paths.length > 0) {
-              await supabase.storage.from("loyalty-cards").remove(paths);
-              console.log(`Cleaned up ${paths.length} old card images from ${folder}`);
-            }
-          }
-        } catch (e) {
-          console.warn(`Storage cleanup for ${folder} failed:`, e);
-        }
-      }
-    })();
-  }, []);
 
   const loadWaSettings = async () => {
     const { data: settingsData } = await supabase.from("app_settings").select("setting_key, setting_value").like("setting_key", "loyalty_wa_%");

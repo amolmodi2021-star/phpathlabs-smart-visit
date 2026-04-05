@@ -136,21 +136,6 @@ const CRMAbnormalTests = () => {
     );
   };
 
-  // One-time cleanup: delete any previously stored abnormal card images
-  useEffect(() => {
-    (async () => {
-      try {
-        const { data: files } = await supabase.storage.from("loyalty-cards").list("generated/abnormal", { limit: 1000 });
-        if (files && files.length > 0) {
-          const paths = files.map((f) => `generated/abnormal/${f.name}`);
-          await supabase.storage.from("loyalty-cards").remove(paths);
-          console.log(`Cleaned up ${paths.length} old abnormal card images`);
-        }
-      } catch (e) {
-        console.warn("Storage cleanup failed:", e);
-      }
-    })();
-  }, []);
   // Debounce search
   const searchTimerRef = useState<ReturnType<typeof setTimeout> | null>(null);
   const handleSearchChange = useCallback((val: string) => {
