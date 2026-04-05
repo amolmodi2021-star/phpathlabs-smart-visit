@@ -788,7 +788,6 @@ const CRMContacts = () => {
       }
 
       // Always delete the generated card image after sending
-      const imgUrl = imageUrls[i];
       if (imgUrl) {
         try {
           const urlPath = new URL(imgUrl).pathname;
