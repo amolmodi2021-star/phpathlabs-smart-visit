@@ -682,9 +682,10 @@ const CRMAbnormalTests = () => {
         <CardHeader>
           <CardTitle>Upload Abnormal Test Data</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-2">
+        <CardContent className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            Excel columns: Primary Key (UMR|Mobile), Test Name, Date, Result Value, Normal Range
+            Excel columns: Primary Key (UMR|Mobile), Test Name, Date, Result Value, Normal Range.
+            Duplicates are auto-detected. Changed results are updated automatically.
           </p>
           <div className="flex gap-2 items-center">
             <Button size="sm" variant="outline" asChild>
@@ -692,6 +693,16 @@ const CRMAbnormalTests = () => {
             </Button>
             <Input type="file" accept=".xlsx,.xls" onChange={handleFile} disabled={importing} className="flex-1" />
           </div>
+          {importing && <Progress value={importProgress} />}
+          {importStats && (
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm">
+              <div className="p-2 bg-muted rounded"><span className="font-medium">Total Rows:</span> {importStats.total}</div>
+              <div className="p-2 bg-muted rounded"><span className="font-medium">New:</span> {importStats.inserted}</div>
+              <div className="p-2 bg-muted rounded"><span className="font-medium">Updated:</span> {importStats.updated}</div>
+              <div className="p-2 bg-muted rounded"><span className="font-medium">Unchanged:</span> {importStats.skippedDup}</div>
+              <div className="p-2 bg-muted rounded"><span className="font-medium">Invalid:</span> {importStats.skippedInvalid}</div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
