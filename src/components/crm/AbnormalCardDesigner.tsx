@@ -156,9 +156,9 @@ const AbnormalCardDesigner = () => {
 
   // Header placeholders
   const [placeholders, setPlaceholders] = useState<Placeholder[]>([
-    { id: crypto.randomUUID(), field: "Name", x: 4.5, y: 38, fontSize: 20, fontColor: "#FFFFFF", bold: true },
-    { id: crypto.randomUUID(), field: "Mobile", x: 4.5, y: 52, fontSize: 16, fontColor: "#FFFFFF", bold: false },
-    { id: crypto.randomUUID(), field: "UMR", x: 50, y: 52, fontSize: 16, fontColor: "#FFFFFF", bold: false },
+    { id: crypto.randomUUID(), field: "Name", x: 4.5, y: 60, fontSize: 20, fontColor: "#FFFFFF", bold: true },
+    { id: crypto.randomUUID(), field: "Mobile", x: 4.5, y: 90, fontSize: 16, fontColor: "#FFFFFF", bold: false },
+    { id: crypto.randomUUID(), field: "UMR", x: 50, y: 90, fontSize: 16, fontColor: "#FFFFFF", bold: false },
   ]);
 
   // Bands
@@ -321,9 +321,10 @@ const AbnormalCardDesigner = () => {
     ctx.textAlign = "left";
 
     // Placeholders (drawn last so they appear on top of bands)
+    // Y is stored as absolute pixels to remain stable across different test counts
     placeholders.forEach((p) => {
       const px = (p.x / 100) * canvasWidth;
-      const py = (p.y / 100) * totalHeight;
+      const py = p.y;
 
       if (p.field === "Barcode") {
         drawBarcode(ctx, SAMPLE_DATA.Mobile, px, py, p.fontSize, p.fontColor);
@@ -362,7 +363,7 @@ const AbnormalCardDesigner = () => {
     for (let i = placeholders.length - 1; i >= 0; i--) {
       const p = placeholders[i];
       const px = (p.x / 100) * canvasWidth;
-      const py = (p.y / 100) * totalHeight;
+      const py = p.y;
       const w = p.fontSize * 12;
       const h = p.fontSize + 6;
       if (mx >= px - 5 && mx <= px + w && my >= py - 5 && my <= py + h) {
@@ -388,7 +389,7 @@ const AbnormalCardDesigner = () => {
     setPlaceholders((prev) =>
       prev.map((p) =>
         p.id === dragging
-          ? { ...p, x: Math.max(0, Math.min(100, (mx / canvasWidth) * 100)), y: Math.max(0, Math.min(100, (my / totalHeight) * 100)) }
+          ? { ...p, x: Math.max(0, Math.min(100, (mx / canvasWidth) * 100)), y: Math.max(0, Math.min(totalHeight, my)) }
           : p
       )
     );
@@ -410,7 +411,7 @@ const AbnormalCardDesigner = () => {
     const next = FIELD_OPTIONS.find((f) => !used.includes(f)) || FIELD_OPTIONS[0];
     setPlaceholders((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), field: next, x: 4.5, y: 70 + prev.length * 8, fontSize: 16, fontColor: "#FFFFFF", bold: false },
+      { id: crypto.randomUUID(), field: next, x: 4.5, y: 60 + prev.length * 28, fontSize: 16, fontColor: "#FFFFFF", bold: false },
     ]);
   };
 
@@ -500,7 +501,15 @@ const AbnormalCardDesigner = () => {
     setShowHeaderBand(t.show_header_band !== false);
     setCanvasWidth(t.canvas_width || 900);
     const phs = (t.placeholders as any[]) || [];
-    setPlaceholders(phs.map((p: any) => ({ ...p, id: crypto.randomUUID() })));
+    // Migrate old percentage-based Y values (0-100) to absolute pixels
+    // Old values were percentages of total height (~500px), so values ≤ 100 are likely old format
+    const hdrH = t.header_band_height ?? 160;
+    const estimatedOldHeight = hdrH + 40 + 3 * 36 + 20 + 80; // approximate old designer height with 3 sample rows
+    setPlaceholders(phs.map((p: any) => ({
+      ...p,
+      id: crypto.randomUUID(),
+      y: p.y <= 100 ? Math.round((p.y / 100) * estimatedOldHeight) : p.y,
+    })));
     const tc = (t.table_config as any) || {};
     setTableConfig({ ...DEFAULT_TABLE, ...tc });
     const fls = (t.footer_lines as any[]) || [];
