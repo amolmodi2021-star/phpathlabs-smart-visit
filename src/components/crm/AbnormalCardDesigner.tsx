@@ -180,7 +180,7 @@ const AbnormalCardDesigner = () => {
   const [dragOff, setDragOff] = useState({ x: 0, y: 0 });
 
   // Computed canvas height
-  const headerHeight = 160;
+  const headerHeight = showHeaderBand ? headerBandHeight : 0;
   const padding = 40;
   const tableHeaderH = 40;
   const tableRowsH = SAMPLE_TESTS.length * tableConfig.rowHeight;
