@@ -646,7 +646,7 @@ const CRMAbnormalTests = () => {
           <Input
             placeholder="Search by name, mobile, UMR, primary key..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-8"
           />
         </div>
