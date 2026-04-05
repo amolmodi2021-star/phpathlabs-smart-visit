@@ -229,6 +229,8 @@ const CRMAbnormalTests = () => {
     const file = e.target.files?.[0];
     if (!file) return;
     setImporting(true);
+    setImportProgress(0);
+    setImportStats(null);
     try {
       const rows = await parseExcelFile(file);
       const mapped = rows
@@ -237,9 +239,9 @@ const CRMAbnormalTests = () => {
           return {
             contact_primary_key: String(r[keys[0]] || "").trim(),
             test_name: String(r[keys[1]] || "").trim(),
-            test_date: String(r[keys[2]] || "").trim(),
-            result_value: String(r[keys[3]] || "").trim(),
-            normal_range: String(r[keys[4]] || "").trim(),
+            test_date: String(r[keys[2]] || "").trim() || null,
+            result_value: String(r[keys[3]] || "").trim() || null,
+            normal_range: String(r[keys[4]] || "").trim() || null,
           };
         })
         .filter((m) => m.contact_primary_key && m.test_name);
@@ -249,15 +251,89 @@ const CRMAbnormalTests = () => {
         return;
       }
 
-      const BATCH = 100;
-      for (let i = 0; i < mapped.length; i += BATCH) {
-        const { error } = await supabase.from("crm_abnormal_tests").insert(mapped.slice(i, i + BATCH));
-        if (error) console.error(error);
+      // Fetch ALL existing abnormal test records (batched to bypass 1000 limit)
+      const existingMap = new Map<string, { id: string; result_value: string | null; normal_range: string | null }>();
+      {
+        const FETCH_BATCH = 900;
+        let from = 0;
+        let keepFetching = true;
+        while (keepFetching) {
+          const { data: chunk } = await supabase
+            .from("crm_abnormal_tests")
+            .select("id, contact_primary_key, test_name, test_date, result_value, normal_range")
+            .order("created_at", { ascending: true })
+            .range(from, from + FETCH_BATCH - 1);
+          if (!chunk || chunk.length === 0) break;
+          for (const c of chunk) {
+            const key = `${c.contact_primary_key}||${c.test_name}||${c.test_date || ""}`;
+            existingMap.set(key, { id: c.id, result_value: c.result_value, normal_range: c.normal_range });
+          }
+          if (chunk.length < FETCH_BATCH) keepFetching = false;
+          else from += FETCH_BATCH;
+        }
       }
-      toast.success(`Imported ${mapped.length} abnormal test records`);
+      setImportProgress(10);
+
+      const stats: ImportStats = { total: mapped.length, inserted: 0, updated: 0, skippedDup: 0, skippedInvalid: 0 };
+      const toInsert: typeof mapped = [];
+      const toUpdate: { id: string; result_value: string | null; normal_range: string | null }[] = [];
+      const seenKeys = new Set<string>();
+
+      for (const row of mapped) {
+        const dedupKey = `${row.contact_primary_key}||${row.test_name}||${row.test_date || ""}`;
+        
+        // Skip duplicates within the same file
+        if (seenKeys.has(dedupKey)) {
+          stats.skippedDup++;
+          continue;
+        }
+        seenKeys.add(dedupKey);
+
+        const existing = existingMap.get(dedupKey);
+        if (existing) {
+          // Check if result_value or normal_range changed
+          if (existing.result_value !== row.result_value || existing.normal_range !== row.normal_range) {
+            toUpdate.push({ id: existing.id, result_value: row.result_value, normal_range: row.normal_range });
+            stats.updated++;
+          } else {
+            stats.skippedDup++;
+          }
+        } else {
+          toInsert.push(row);
+          stats.inserted++;
+        }
+      }
+
+      // Batch insert new records
+      const INSERT_BATCH = 200;
+      for (let i = 0; i < toInsert.length; i += INSERT_BATCH) {
+        const { error } = await supabase.from("crm_abnormal_tests").insert(toInsert.slice(i, i + INSERT_BATCH));
+        if (error) console.error("Insert error:", error);
+        setImportProgress(10 + Math.round(((i + INSERT_BATCH) / (toInsert.length + toUpdate.length || 1)) * 80));
+      }
+
+      // Batch update changed records
+      const UPDATE_BATCH = 50;
+      for (let i = 0; i < toUpdate.length; i += UPDATE_BATCH) {
+        const batch = toUpdate.slice(i, i + UPDATE_BATCH);
+        await Promise.all(
+          batch.map((u) =>
+            supabase
+              .from("crm_abnormal_tests")
+              .update({ result_value: u.result_value, normal_range: u.normal_range })
+              .eq("id", u.id)
+          )
+        );
+        setImportProgress(10 + Math.round(((toInsert.length + i + UPDATE_BATCH) / (toInsert.length + toUpdate.length || 1)) * 80));
+      }
+
+      setImportProgress(100);
+      setImportStats(stats);
+      toast.success(`Done: ${stats.inserted} new, ${stats.updated} updated, ${stats.skippedDup} unchanged`);
       qc.invalidateQueries({ queryKey: ["crm-abnormal-tests"] });
-    } catch {
-      toast.error("Failed to parse file");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to parse/import file");
     } finally {
       setImporting(false);
       e.target.value = "";
