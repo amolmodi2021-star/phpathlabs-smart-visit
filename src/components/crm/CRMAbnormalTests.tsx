@@ -143,6 +143,15 @@ const CRMAbnormalTests = () => {
     },
   });
 
+  // Fetch abnormal card templates
+  const { data: cardTemplates = [] } = useQuery({
+    queryKey: ["abnormal-card-templates"],
+    queryFn: async () => {
+      const { data } = await supabase.from("abnormal_card_templates").select("*").order("created_at", { ascending: false });
+      return (data as any[]) || [];
+    },
+  });
+
   const contactMap = useMemo(() => {
     const map: Record<string, { name: string; mobile: string; umr: string }> = {};
     contacts.forEach((c: any) => {
