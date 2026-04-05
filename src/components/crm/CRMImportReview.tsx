@@ -329,28 +329,8 @@ const CRMImportReview = () => {
         failed++;
       }
 
-      // Collect file path for deferred deletion
-      if (imgUrl) {
-        try {
-          const urlPath = new URL(imgUrl).pathname;
-          const fp = urlPath.split("/loyalty-cards/").pop();
-          if (fp) filesToDelete.push(fp);
-        } catch {}
-      }
 
       setProgress(50 + Math.round(((i + 1) / targets.length) * 50));
-
-      if (queueEnabled && delayMs > 0 && i < targets.length - 1) {
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
-      }
-    }
-
-    // Deferred cleanup: wait 30s for WhatsApp to download images, then delete
-    setSendPhase("Cleaning up...");
-    if (filesToDelete.length > 0) {
-      await new Promise((resolve) => setTimeout(resolve, 30000));
-      try { await supabase.storage.from("loyalty-cards").remove(filesToDelete); } catch {}
-    }
 
     setSending(false);
     setSendPhase("");
