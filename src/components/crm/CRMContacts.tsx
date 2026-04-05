@@ -662,7 +662,7 @@ const CRMContacts = () => {
     const { data: settings } = await supabase
       .from("app_settings")
       .select("setting_key, setting_value")
-      .like("setting_key", "loyalty_%");
+      .or("setting_key.like.loyalty_%,setting_key.eq.crm_abc_static_expiry_date");
 
     const cfg: Record<string, string> = {};
     (settings || []).forEach((s: any) => { cfg[s.setting_key] = s.setting_value; });
