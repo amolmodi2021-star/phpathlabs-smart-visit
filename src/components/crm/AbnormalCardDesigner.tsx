@@ -47,6 +47,19 @@ interface FooterLine {
   align: "left" | "center" | "right";
 }
 
+interface Band {
+  id: string;
+  label: string;
+  height: number;
+  color: string;
+  textColor: string;
+  text: string;
+  fontSize: number;
+  bold: boolean;
+  align: "left" | "center" | "right";
+  position: "above-table" | "below-table";
+}
+
 const FIELD_OPTIONS = ["Name", "Mobile", "UMR", "Barcode"];
 
 const SAMPLE_DATA: Record<string, string> = {
