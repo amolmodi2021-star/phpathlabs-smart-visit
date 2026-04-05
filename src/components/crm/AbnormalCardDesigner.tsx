@@ -229,7 +229,7 @@ const AbnormalCardDesigner = () => {
     // Placeholders
     placeholders.forEach((p) => {
       const px = (p.x / 100) * canvasWidth;
-      const py = (p.y / 100) * headerHeight;
+      const py = (p.y / 100) * totalHeight;
 
       if (p.field === "Barcode") {
         drawBarcode(ctx, SAMPLE_DATA.Mobile, px, py, p.fontSize, p.fontColor);
