@@ -384,7 +384,7 @@ const CRMAbnormalTests = () => {
       const tBorderColor = tc.borderColor || "#E0E0E8";
       const tAltRowColor = tc.altRowColor || "#F9F9FC";
       const tRowHeight = tc.rowHeight || 36;
-      const colWidths: number[] = tc.colWidths || [0.38, 0.18, 0.18, 0.26];
+      const colWidths: number[] = tc.colWidths || [0.44, 0.18, 0.12, 0.26];
 
       const footerLinesArr: any[] = tmpl?.footer_lines ? (typeof tmpl.footer_lines === "string" ? JSON.parse(tmpl.footer_lines) : tmpl.footer_lines) : [];
       const footerH = footerLinesArr.reduce((s: number, l: any) => s + (l.fontSize || 12) + 8, 0) + 20;

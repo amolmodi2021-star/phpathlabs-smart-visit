@@ -109,7 +109,7 @@ const DEFAULT_TABLE: TableConfig = {
   borderColor: "#E0E0E8",
   altRowColor: "#F9F9FC",
   rowHeight: 36,
-  colWidths: [0.38, 0.18, 0.18, 0.26],
+  colWidths: [0.44, 0.18, 0.12, 0.26],
 };
 
 /* ───── Barcode Code128C (from cardRenderer.ts) ───── */
