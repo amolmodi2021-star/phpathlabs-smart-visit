@@ -362,7 +362,7 @@ const AbnormalCardDesigner = () => {
     for (let i = placeholders.length - 1; i >= 0; i--) {
       const p = placeholders[i];
       const px = (p.x / 100) * canvasWidth;
-      const py = (p.y / 100) * headerHeight;
+      const py = (p.y / 100) * totalHeight;
       const w = p.fontSize * 12;
       const h = p.fontSize + 6;
       if (mx >= px - 5 && mx <= px + w && my >= py - 5 && my <= py + h) {
