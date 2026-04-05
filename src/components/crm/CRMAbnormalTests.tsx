@@ -338,7 +338,7 @@ const CRMAbnormalTests = () => {
 
   // Generate abnormal history image card on canvas — template-driven
   /** Draw text that auto-shrinks to fit within maxWidth */
-  const fillTextFit = (ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, baseFont: string, minScale = 0.6) => {
+  const fillTextFit = (ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, baseFont: string, minScale = 0.6, align: "left" | "right" = "left") => {
     ctx.save();
     ctx.font = baseFont;
     const measured = ctx.measureText(text).width;
@@ -350,7 +350,12 @@ const CRMAbnormalTests = () => {
         ctx.font = baseFont.replace(/\d+(?:\.\d+)?px/, `${newSize}px`);
       }
     }
-    ctx.fillText(text, x, y);
+    if (align === "right") {
+      const tw = ctx.measureText(text).width;
+      ctx.fillText(text, x + maxWidth - tw, y);
+    } else {
+      ctx.fillText(text, x, y);
+    }
     ctx.restore();
   };
 
