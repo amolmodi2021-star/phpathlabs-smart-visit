@@ -756,6 +756,12 @@ const CRMAbnormalTests = () => {
                 ))}
               </SelectContent>
             </Select>
+            <Input
+              placeholder="Expiry Date (dd-mm-yyyy)"
+              value={staticExpiryDate}
+              onChange={(e) => handleExpiryDateChange(e.target.value)}
+              className="w-[180px] h-9"
+            />
             <Button size="sm" onClick={handleSendWhatsApp} disabled={sending}>
               <Send className="h-4 w-4 mr-1" />
               Send Abnormal Card ({selected.size})
