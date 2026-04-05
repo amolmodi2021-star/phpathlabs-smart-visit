@@ -710,42 +710,16 @@ const CRMContacts = () => {
       const mobile = (r.mobile_number || "").replace(/\D/g, "");
       const normalizedMobile = mobile.length > 10 ? mobile.slice(-10) : mobile;
 
-      // Check existing card
-      const { data: existingCard } = await supabase
-        .from("loyalty_cards")
-        .select("image_url")
-        .eq("mobile", normalizedMobile)
-        .not("image_url", "is", null)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const cardData: CardData = {
+        Name: r.patient_name || "",
+        Mobile: normalizedMobile,
+        UMR: r.umr_number || "",
+        "Discount %": `${r.default_discount_pct ?? 20}%`,
+        "Expiry Date": staticExpiryDate,
+      };
 
-      if (existingCard?.image_url) {
-        imageUrls.push(existingCard.image_url);
-      } else {
-        const cardData: CardData = {
-          Name: r.patient_name || "",
-          Mobile: normalizedMobile,
-          UMR: r.umr_number || "",
-          "Discount %": `${r.default_discount_pct ?? 20}%`,
-          "Expiry Date": staticExpiryDate,
-        };
-
-        const imageUrl = await generateAndUploadCard(selectedTemplateId, cardData, bgImg, canvas, ctx, placeholders);
-        imageUrls.push(imageUrl);
-
-        if (imageUrl) {
-          await supabase.from("loyalty_cards").insert({
-            patient_name: cardData.Name,
-            mobile: normalizedMobile,
-            umr: cardData.UMR,
-            discount: cardData["Discount %"],
-            expiry_date: cardData["Expiry Date"],
-            image_url: imageUrl,
-            whatsapp_status: "pending",
-          });
-        }
-      }
+      const imageUrl = await generateAndUploadCard(selectedTemplateId, cardData, bgImg, canvas, ctx, placeholders);
+      imageUrls.push(imageUrl);
       setSendProgress(Math.round(((i + 1) / selectedContacts.length) * 50));
     }
 
