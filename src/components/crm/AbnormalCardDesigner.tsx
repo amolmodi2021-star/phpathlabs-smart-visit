@@ -520,14 +520,9 @@ const AbnormalCardDesigner = () => {
     setShowHeaderBand(t.show_header_band !== false);
     setCanvasWidth(t.canvas_width || 900);
     const phs = (t.placeholders as any[]) || [];
-    // Migrate old percentage-based Y values (0-100) to absolute pixels
-    // Old values were percentages of total height (~500px), so values ≤ 100 are likely old format
-    const hdrH = t.header_band_height ?? 160;
-    const estimatedOldHeight = hdrH + 40 + 3 * 36 + 20 + 80; // approximate old designer height with 3 sample rows
     setPlaceholders(phs.map((p: any) => ({
       ...p,
       id: crypto.randomUUID(),
-      y: p.y <= 100 ? Math.round((p.y / 100) * estimatedOldHeight) : p.y,
     })));
     const tc = (t.table_config as any) || {};
     setTableConfig({ ...DEFAULT_TABLE, ...tc });
