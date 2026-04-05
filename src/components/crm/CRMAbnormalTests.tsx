@@ -287,10 +287,13 @@ const CRMAbnormalTests = () => {
       setImportStats(stats);
       toast.success(`Done: ${stats.inserted} new, ${stats.updated} updated, ${stats.skippedDup} unchanged`);
 
+      // Clear cached expanded test data so it reloads fresh
+      setExpandedTests({});
+      setExpanded(new Set());
+
       await Promise.all([
-        qc.invalidateQueries({ queryKey: ["crm-abnormal-patients"] }),
-        qc.invalidateQueries({ queryKey: ["crm-abnormal-patients-count"] }),
-        ...Array.from(expanded).map((pk) => fetchTestsForPatient(pk)),
+        qc.refetchQueries({ queryKey: ["crm-abnormal-patients"] }),
+        qc.refetchQueries({ queryKey: ["crm-abnormal-patients-count"] }),
       ]);
     } catch (err) {
       console.error(err);
