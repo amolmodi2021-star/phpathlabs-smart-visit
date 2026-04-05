@@ -497,6 +497,8 @@ const AbnormalCardDesigner = () => {
     setTableConfig({ ...DEFAULT_TABLE, ...tc });
     const fls = (t.footer_lines as any[]) || [];
     setFooterLines(fls.map((f: any) => ({ ...f, id: crypto.randomUUID() })));
+    const bds = (t.bands as any[]) || [];
+    setBands(bds.map((b: any) => ({ ...b, id: crypto.randomUUID() })));
   };
 
   const deleteTemplate = async (id: string) => {
