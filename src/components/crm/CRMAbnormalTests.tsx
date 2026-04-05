@@ -114,6 +114,7 @@ const CRMAbnormalTests = () => {
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
   const [importStats, setImportStats] = useState<ImportStats | null>(null);
+  const [dataViewEnabled, setDataViewEnabled] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [sending, setSending] = useState(false);
@@ -125,6 +126,7 @@ const CRMAbnormalTests = () => {
 
   const { data: tests = [], isLoading } = useQuery({
     queryKey: ["crm-abnormal-tests"],
+    enabled: dataViewEnabled,
     queryFn: async () => {
       const BATCH = 900;
       let all: AbnormalTest[] = [];
@@ -145,6 +147,7 @@ const CRMAbnormalTests = () => {
 
   const { data: contacts = [] } = useQuery({
     queryKey: ["crm-contacts-lookup"],
+    enabled: dataViewEnabled,
     queryFn: async () => {
       const BATCH = 900;
       let all: any[] = [];
