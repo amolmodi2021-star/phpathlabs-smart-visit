@@ -158,6 +158,9 @@ const AbnormalCardDesigner = () => {
     { id: crypto.randomUUID(), field: "Mobile", x: 4.5, y: 52, fontSize: 16, fontColor: "#FFFFFF", bold: false },
     { id: crypto.randomUUID(), field: "UMR", x: 50, y: 52, fontSize: 16, fontColor: "#FFFFFF", bold: false },
   ]);
+
+  // Bands
+  const [bands, setBands] = useState<Band[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // Table
