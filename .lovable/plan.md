@@ -1,133 +1,37 @@
 
 
-# Automated Marketing / Drip Campaign Module — Revised Plan
+# Add "Once Per Mobile" Flag for Promotional Filters
 
-## Overview
+## Problem
 
-Build an **Automated Marketing** tab in the Marketing section that lets you create saved "campaign filters" against CRM contacts data, with built-in deduplication by mobile number, minimum send intervals, daily message limits, sequencing, and **data completeness validation** before claiming a mobile number for any filter.
+Promotional messages are generic — the same message for all patients. If a mobile number has 5 patients registered, the promo goes out 5 times to the same number, which is wasteful and annoying.
 
-## How It Works (User Perspective)
+## Solution
 
-```text
-┌─────────────────────────────────────────────────────┐
-│  AUTOMATED MARKETING                                │
-├─────────────────────────────────────────────────────┤
-│  Global Settings:                                   │
-│  ┌──────────────────────────────────────────┐       │
-│  │ Max Messages/Day: [200]                  │       │
-│  │ Min Interval (days): [3]                 │       │
-│  │ Exclude Blacklist: [✓ ON by default]     │       │
-│  └──────────────────────────────────────────┘       │
-│                                                     │
-│  Saved Campaign Filters:                            │
-│  ┌──────────────────────────────────────────────┐   │
-│  │ Name │ Type     │ Priority │ Enabled │ Action│   │
-│  │──────┼──────────┼──────────┼─────────┼───────│   │
-│  │ F1   │ ABC Card │ 1        │ ✓       │ ✎ ✕  │   │
-│  │ F2   │ Abnormal │ 2        │ ✓       │ ✎ ✕  │   │
-│  │ F3   │ Promo    │ 3        │ ✓       │ ✎ ✕  │   │
-│  └──────────────────────────────────────────────┘   │
-│                                                     │
-│  [+ Add Filter]                                     │
-│  [Preview Eligible Records]  [Send Messages]        │
-│                                                     │
-│  Execution Log (with skip reasons):                 │
-│  ┌──────────────────────────────────────────────┐   │
-│  │ Date │ Filter │ Sent │ Skipped │ Reason      │   │
-│  └──────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────┘
-```
+Add a toggle field **"Send once per mobile"** to each filter. When enabled, the system deduplicates by mobile number within that filter — only one message per unique mobile, regardless of how many patient records share it.
 
-## Core Logic — Deduplication, Sequencing & Data Validation
+- Default: **ON** for promotion filters, **OFF** for ABC/Abnormal filters
+- When creating a new filter, auto-set based on message type
+- User can override manually
 
-1. **Each filter** defines: message type (ABC/Abnormal/Promotion), location filter, last_sent_type filter (sequencing), record limit, priority order
-2. **On "Send"**: collect eligible contacts per filter, then **deduplicate by mobile across all filters** — a mobile claimed by Filter 1 is excluded from Filter 2/3
-3. **Min interval check**: any mobile that received ANY message within last N days is skipped
-4. **Daily limit**: total messages capped, divided equally among active filters
-5. **Priority**: filters processed in priority order; higher priority claims the mobile first
+## Database Change
 
-### Data Completeness Validation (New)
+Add column to `drip_campaign_filters`:
+- `once_per_mobile` (boolean, default false)
 
-Before claiming a mobile number for a filter, validate that the record has the data needed to generate a non-blank card:
+## Code Changes
 
-- **ABC Card filters**: Skip records where `umr_number` is blank/null. Log skip reason as `missing_umr`.
-- **Abnormal History Card filters**: Query `crm_abnormal_tests` for that contact's `primary_key`. Skip if zero test records exist. Log skip reason as `no_abnormal_history`.
-- **Promotion filters**: No additional validation (text-only template).
+### `AutomatedMarketing.tsx`
 
-This prevents sending blank or incomplete cards to patients.
+1. **Interface**: Add `once_per_mobile: boolean` to `DripFilter`
+2. **Filter form**: Add a Switch toggle "Send once per mobile" — auto-set to true when message_type is `promotion`
+3. **Collection logic** (`collectEligibleRecords`): When `once_per_mobile` is true for a filter, after gathering candidates, deduplicate by mobile number (keep first occurrence only) before claiming. Skip duplicates with reason `once_per_mobile_dedup`.
+4. **CRUD operations**: Include `once_per_mobile` in insert/update queries
 
-## Database Changes
-
-### New table: `drip_campaign_filters`
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid PK | |
-| name | text | Filter name |
-| message_type | text | 'abc_card', 'abnormal_card', 'promotion' |
-| priority | integer | Lower = higher priority |
-| location_filter | text | 'ALL', 'PH VESU', 'NON PHPL' |
-| last_sent_type_filter | text | Sequencing: pick contacts whose last_sent_type matches |
-| last_sent_days_ago | integer | Only contacts not sent in X+ days |
-| record_limit | integer | Max records this filter can pick |
-| template_id | uuid | Marketing template for promotions |
-| enabled | boolean | default true |
-| created_at | timestamptz | |
-
-### New table: `drip_campaign_log`
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid PK | |
-| filter_id | uuid FK | Which filter |
-| filter_name | text | Snapshot |
-| message_type | text | What was sent |
-| mobile_number | text | 10-digit |
-| patient_name | text | |
-| contact_primary_key | text | |
-| status | text | 'sent', 'failed', 'skipped' |
-| skip_reason | text | 'blacklisted', 'interval', 'duplicate', 'missing_umr', 'no_abnormal_history' |
-| created_at | timestamptz | |
-
-### Global settings in `app_settings`
-- `drip_max_messages_per_day` (default 200)
-- `drip_min_interval_days` (default 3)
-- `drip_exclude_blacklist` (default 'true')
-
-## Implementation Steps
-
-### 1. Database migration
-Create the two new tables with permissive RLS policies.
-
-### 2. New component: `AutomatedMarketing.tsx`
-- **Global Settings**: max messages/day, min interval, exclude blacklist toggle
-- **Filter CRUD**: add/edit/delete with all fields
-- **Preview**: runs dedup + validation logic, shows eligible count per filter with skip breakdown
-- **Send execution**:
-  1. Fetch enabled filters by priority
-  2. For each filter, query `crm_contacts` matching criteria
-  3. Exclude blacklisted mobiles
-  4. Exclude mobiles sent within min_interval_days
-  5. **ABC cards**: skip records with blank `umr_number`
-  6. **Abnormal cards**: skip records with zero entries in `crm_abnormal_tests`
-  7. Deduplicate: "claimed mobiles" set across filters
-  8. Cap at `daily_limit / active_filter_count`
-  9. Generate and send cards via existing renderers + WhatsApp proxy
-  10. Log every action to `drip_campaign_log` with skip reasons
-  11. Update `crm_contacts.last_sent_type` and `last_sent_date`
-- **Execution log**: recent entries grouped by date with skip reason breakdown
-
-### 3. Add tab to Marketing page
-Add "Automated" tab in `Marketing.tsx`.
-
-### 4. Reuse existing card generation
-- ABC cards: `cardRenderer.ts` + WhatsApp proxy
-- Abnormal cards: `CRMAbnormalTests.tsx` generation logic
-- Promotions: `send-marketing-message` edge function
-
-## Files to Create/Modify
+## Files to Modify
 
 | File | Action |
 |------|--------|
-| Migration SQL | Create 2 new tables |
-| `src/components/marketing/AutomatedMarketing.tsx` | New component |
-| `src/pages/Marketing.tsx` | Add new tab |
+| Migration SQL | Add `once_per_mobile` column |
+| `src/components/marketing/AutomatedMarketing.tsx` | Add toggle + dedup logic |
 
