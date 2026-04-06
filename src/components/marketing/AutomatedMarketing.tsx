@@ -237,7 +237,7 @@ const AutomatedMarketing = () => {
     qc.invalidateQueries({ queryKey: ["drip-filters"] });
   };
 
-  // Core dedup logic: collect eligible records per filter
+  // Core dedup logic: collect eligible records per filter with completion lock + cycle reset
   const collectEligibleRecords = async () => {
     const enabledFilters = filters.filter((f) => f.enabled).sort((a, b) => a.priority - b.priority);
     if (enabledFilters.length === 0) return [];
@@ -278,9 +278,95 @@ const AutomatedMarketing = () => {
       .select("contact_primary_key");
     const abnormalPkSet = new Set((abnormalPks || []).map((a: any) => a.contact_primary_key));
 
-    // Claimed mobiles set across all filters
+    // Fetch mobile cycles
+    const { data: cyclesData } = await supabase.from("drip_mobile_cycles").select("*");
+    const mobileCycles: Record<string, number> = {};
+    (cyclesData || []).forEach((c: any) => { mobileCycles[c.mobile_number] = c.current_cycle; });
+
+    // Fetch ALL sent drip logs (for completion lock checking)
+    let allLogs: any[] = [];
+    let logFrom = 0;
+    let logMore = true;
+    while (logMore) {
+      const { data: logData } = await supabase
+        .from("drip_campaign_log")
+        .select("filter_id, mobile_number, contact_primary_key, status, cycle_number")
+        .eq("status", "sent")
+        .range(logFrom, logFrom + BATCH - 1);
+      if (!logData || logData.length === 0) { logMore = false; break; }
+      allLogs = allLogs.concat(logData);
+      if (logData.length < BATCH) logMore = false;
+      else logFrom += BATCH;
+    }
+
+    // Group contacts by mobile number
+    const contactsByMobile: Record<string, any[]> = {};
+    for (const c of allContacts) {
+      const mob = (c.mobile_number || "").replace(/\D/g, "").slice(-10);
+      if (mob && mob.length === 10) {
+        if (!contactsByMobile[mob]) contactsByMobile[mob] = [];
+        contactsByMobile[mob].push(c);
+      }
+    }
+
+    // Build sent-log lookup: { mobile -> { filterId -> Set<primary_key> } } for current cycle
+    const sentByMobileFilter: Record<string, Record<string, Set<string>>> = {};
+    for (const log of allLogs) {
+      const mob = log.mobile_number;
+      const cycle = log.cycle_number || 1;
+      const mobileCycle = mobileCycles[mob] || 1;
+      if (cycle !== mobileCycle) continue; // only count current cycle
+      if (!sentByMobileFilter[mob]) sentByMobileFilter[mob] = {};
+      if (!sentByMobileFilter[mob][log.filter_id]) sentByMobileFilter[mob][log.filter_id] = new Set();
+      if (log.contact_primary_key) sentByMobileFilter[mob][log.filter_id].add(log.contact_primary_key);
+    }
+
+    // Helper: count how many eligible records a filter has for a mobile
+    const getEligibleCount = (filter: DripFilter, mob: string): number => {
+      const contacts = contactsByMobile[mob] || [];
+      if (filter.once_per_mobile) return 1; // only 1 needed
+      // For abc_card: only count contacts with UMR
+      if (filter.message_type === "abc_card") {
+        return contacts.filter(c => c.umr_number && c.umr_number.trim()).length;
+      }
+      // For abnormal_card: only count contacts with abnormal history
+      if (filter.message_type === "abnormal_card") {
+        return contacts.filter(c => abnormalPkSet.has(c.primary_key)).length;
+      }
+      return contacts.length;
+    };
+
+    // Helper: count how many have been sent for a filter+mobile in current cycle
+    const getSentCount = (filterId: string, mob: string): number => {
+      return sentByMobileFilter[mob]?.[filterId]?.size || 0;
+    };
+
+    // Check if a higher-priority filter still has unsent records for this mobile
+    const isLockedByHigherPriority = (currentFilter: DripFilter, mob: string): boolean => {
+      for (const f of enabledFilters) {
+        if (f.priority >= currentFilter.priority) break; // only check higher priority (lower number)
+        const eligible = getEligibleCount(f, mob);
+        const sent = getSentCount(f.id, mob);
+        if (sent < eligible) return true; // higher priority filter not done
+      }
+      return false;
+    };
+
+    // Check if ALL filters are complete for a mobile (for cycle reset)
+    const allFiltersComplete = (mob: string): boolean => {
+      for (const f of enabledFilters) {
+        const eligible = getEligibleCount(f, mob);
+        const sent = getSentCount(f.id, mob);
+        if (sent < eligible) return false;
+      }
+      return true;
+    };
+
+    // Mobiles that need cycle reset
+    const mobilesToResetCycle: string[] = [];
+
+    // Claimed mobiles set across all filters (for daily dedup)
     const claimedMobiles = new Set<string>();
-    // Auto-calculate per-filter limit from global max/day divided by active filters
     const perFilterLimit = Math.floor(maxPerDay / enabledFilters.length);
 
     const results: PreviewResult[] = [];
@@ -313,15 +399,12 @@ const AutomatedMarketing = () => {
         const cutoff = new Date();
         cutoff.setDate(cutoff.getDate() - minInterval);
         candidates = candidates.filter((c) => {
-          if (!c.last_sent_date) return true; // never sent = eligible
+          if (!c.last_sent_date) return true;
           return new Date(c.last_sent_date) < cutoff;
         });
       }
 
-      // Limit is auto-calculated from global max/day
       const limit = perFilterLimit;
-
-      // Track mobiles seen within this filter for once_per_mobile dedup
       const filterSeenMobiles = new Set<string>();
 
       for (const c of candidates) {
@@ -336,7 +419,7 @@ const AutomatedMarketing = () => {
         // Global interval check (drip log)
         if (recentMobiles.has(mob)) { addSkip("interval"); continue; }
 
-        // Also check contact's own last_sent_date against global min interval
+        // Contact's own last_sent_date against global min interval
         if (c.last_sent_date) {
           const lastSent = new Date(c.last_sent_date);
           const intervalCutoff = new Date();
@@ -344,11 +427,36 @@ const AutomatedMarketing = () => {
           if (lastSent >= intervalCutoff) { addSkip("interval"); continue; }
         }
 
-        // Dedup across filters
+        // Dedup across filters (same day)
         if (claimedMobiles.has(mob)) { addSkip("duplicate"); continue; }
 
         // Once per mobile dedup within this filter
         if (filter.once_per_mobile && filterSeenMobiles.has(mob)) { addSkip("once_per_mobile_dedup"); continue; }
+
+        // --- COMPLETION LOCK: check if higher priority filter still has unsent records ---
+        // First check if all filters complete → need cycle reset
+        if (allFiltersComplete(mob) && enabledFilters.length > 0) {
+          // Mark for cycle reset (will be processed after preview)
+          if (!mobilesToResetCycle.includes(mob)) mobilesToResetCycle.push(mob);
+          // After reset, allow priority 1 to claim again — but don't block
+        }
+
+        // Check completion lock (only if NOT needing reset, i.e. cycle is in progress)
+        if (!allFiltersComplete(mob) && isLockedByHigherPriority(filter, mob)) {
+          addSkip("completion_lock"); continue;
+        }
+
+        // Check if this filter already completed for this mobile in current cycle
+        const sentForThisFilter = getSentCount(filter.id, mob);
+        const eligibleForThisFilter = getEligibleCount(filter, mob);
+        if (sentForThisFilter >= eligibleForThisFilter && !allFiltersComplete(mob)) {
+          addSkip("already_complete"); continue;
+        }
+
+        // Also skip if already sent for THIS specific contact in current cycle
+        const currentCycle = mobileCycles[mob] || 1;
+        const sentPks = sentByMobileFilter[mob]?.[filter.id];
+        if (sentPks && sentPks.has(c.primary_key)) { addSkip("already_sent_this_cycle"); continue; }
 
         // Data completeness validation
         if (filter.message_type === "abc_card") {
@@ -360,7 +468,7 @@ const AutomatedMarketing = () => {
 
         filterSeenMobiles.add(mob);
         claimedMobiles.add(mob);
-        eligible.push(c);
+        eligible.push({ ...c, _cycle: currentCycle });
       }
 
       results.push({
@@ -370,6 +478,16 @@ const AutomatedMarketing = () => {
         skipped: Object.entries(skips).map(([reason, count]) => ({ reason, count })),
         records: eligible,
       });
+    }
+
+    // Process cycle resets
+    for (const mob of mobilesToResetCycle) {
+      const currentCycle = mobileCycles[mob] || 1;
+      const newCycle = currentCycle + 1;
+      await supabase.from("drip_mobile_cycles").upsert(
+        { mobile_number: mob, current_cycle: newCycle, updated_at: new Date().toISOString() },
+        { onConflict: "mobile_number" }
+      );
     }
 
     return results;
