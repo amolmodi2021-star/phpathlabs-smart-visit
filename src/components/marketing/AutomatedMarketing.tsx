@@ -871,6 +871,7 @@ const AutomatedMarketing = () => {
 
   const logDripAction = async (filter: DripFilter, contact: any, status: string, skipReason?: string) => {
     const mob = (contact.mobile_number || "").replace(/\D/g, "").slice(-10);
+    const cycleNum = contact._cycle || 1;
     await supabase.from("drip_campaign_log").insert({
       filter_id: filter.id,
       filter_name: filter.name,
@@ -880,6 +881,7 @@ const AutomatedMarketing = () => {
       contact_primary_key: contact.primary_key || "",
       status,
       skip_reason: skipReason || null,
+      cycle_number: cycleNum,
     });
   };
 
