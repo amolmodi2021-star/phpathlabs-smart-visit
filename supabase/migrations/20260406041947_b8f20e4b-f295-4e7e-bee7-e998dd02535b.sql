@@ -1,0 +1,1 @@
+ALTER TABLE public.drip_campaign_filters DROP CONSTRAINT IF EXISTS drip_campaign_filters_template_id_fkey;
