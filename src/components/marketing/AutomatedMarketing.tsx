@@ -242,62 +242,41 @@ const AutomatedMarketing = () => {
     const enabledFilters = filters.filter((f) => f.enabled).sort((a, b) => a.priority - b.priority);
     if (enabledFilters.length === 0) return [];
 
-    // Fetch all contacts
-    let allContacts: any[] = [];
-    let from = 0;
     const BATCH = 1000;
-    let hasMore = true;
-    while (hasMore) {
-      const { data } = await supabase.from("crm_contacts").select("*").range(from, from + BATCH - 1);
-      if (!data || data.length === 0) { hasMore = false; break; }
-      allContacts = allContacts.concat(data);
-      if (data.length < BATCH) hasMore = false;
-      else from += BATCH;
-    }
-
-    // Fetch blacklist
-    let blacklistSet = new Set<string>();
-    if (excludeBlacklist) {
-      const { data: bl } = await supabase.from("crm_blacklist").select("mobile_number");
-      blacklistSet = new Set((bl || []).map((b: any) => b.mobile_number));
-    }
-
-    // Fetch recent drip logs for global interval check
     const intervalDate = new Date();
     intervalDate.setDate(intervalDate.getDate() - minInterval);
-    const { data: recentSends } = await supabase
-      .from("drip_campaign_log")
-      .select("mobile_number")
-      .eq("status", "sent")
-      .gte("created_at", intervalDate.toISOString());
-    const recentMobiles = new Set((recentSends || []).map((r: any) => r.mobile_number));
 
-    // Fetch abnormal test primary keys for validation
-    const { data: abnormalPks } = await supabase
-      .from("crm_abnormal_tests")
-      .select("contact_primary_key");
-    const abnormalPkSet = new Set((abnormalPks || []).map((a: any) => a.contact_primary_key));
+    // Helper to fetch all rows in paginated batches
+    const fetchAll = async (query: any) => {
+      let all: any[] = [];
+      let from = 0;
+      while (true) {
+        const { data } = await query.range(from, from + BATCH - 1);
+        if (!data || data.length === 0) break;
+        all = all.concat(data);
+        if (data.length < BATCH) break;
+        from += BATCH;
+      }
+      return all;
+    };
 
-    // Fetch mobile cycles
-    const { data: cyclesData } = await supabase.from("drip_mobile_cycles").select("*");
+    // Run ALL queries in parallel for speed
+    const [allContacts, blacklistData, recentSends, abnormalPks, cyclesData, allLogs] = await Promise.all([
+      fetchAll(supabase.from("crm_contacts").select("primary_key,mobile_number,patient_name,umr_number,location,last_sent_date,last_sent_type,record_tag,default_discount_pct,visit_date")),
+      excludeBlacklist
+        ? supabase.from("crm_blacklist").select("mobile_number").then(r => r.data || [])
+        : Promise.resolve([]),
+      supabase.from("drip_campaign_log").select("mobile_number").eq("status", "sent").gte("created_at", intervalDate.toISOString()).then(r => r.data || []),
+      supabase.from("crm_abnormal_tests").select("contact_primary_key").then(r => r.data || []),
+      supabase.from("drip_mobile_cycles").select("mobile_number,current_cycle").then(r => r.data || []),
+      fetchAll(supabase.from("drip_campaign_log").select("filter_id,mobile_number,contact_primary_key,cycle_number").eq("status", "sent")),
+    ]);
+
+    const blacklistSet = new Set(blacklistData.map((b: any) => b.mobile_number));
+    const recentMobiles = new Set(recentSends.map((r: any) => r.mobile_number));
+    const abnormalPkSet = new Set(abnormalPks.map((a: any) => a.contact_primary_key));
     const mobileCycles: Record<string, number> = {};
     (cyclesData || []).forEach((c: any) => { mobileCycles[c.mobile_number] = c.current_cycle; });
-
-    // Fetch ALL sent drip logs (for completion lock checking)
-    let allLogs: any[] = [];
-    let logFrom = 0;
-    let logMore = true;
-    while (logMore) {
-      const { data: logData } = await supabase
-        .from("drip_campaign_log")
-        .select("filter_id, mobile_number, contact_primary_key, status, cycle_number")
-        .eq("status", "sent")
-        .range(logFrom, logFrom + BATCH - 1);
-      if (!logData || logData.length === 0) { logMore = false; break; }
-      allLogs = allLogs.concat(logData);
-      if (logData.length < BATCH) logMore = false;
-      else logFrom += BATCH;
-    }
 
     // Group contacts by mobile number
     const contactsByMobile: Record<string, any[]> = {};
