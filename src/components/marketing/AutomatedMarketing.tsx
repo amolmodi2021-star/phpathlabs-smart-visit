@@ -321,12 +321,14 @@ const AutomatedMarketing = () => {
     };
 
     // Check if a higher-priority filter still has unsent records for this mobile
+    // Only locks if the higher-priority filter has STARTED sending (sent > 0) but not finished.
+    // If sent == 0, that filter hasn't claimed this mobile yet, so no lock.
     const isLockedByHigherPriority = (currentFilter: DripFilter, mob: string): boolean => {
       for (const f of enabledFilters) {
-        if (f.priority >= currentFilter.priority) break; // only check higher priority (lower number)
+        if (f.priority >= currentFilter.priority) break;
         const eligible = getEligibleCount(f, mob);
         const sent = getSentCount(f.id, mob);
-        if (sent < eligible) return true; // higher priority filter not done
+        if (sent > 0 && sent < eligible) return true; // started but not finished
       }
       return false;
     };
