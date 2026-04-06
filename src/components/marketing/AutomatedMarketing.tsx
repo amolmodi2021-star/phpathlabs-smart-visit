@@ -1437,6 +1437,14 @@ const AutomatedMarketing = () => {
             )}
             <div className="flex items-center gap-3">
               <Switch
+                checked={filterForm.once_per_mobile}
+                onCheckedChange={(v) => setFilterForm({ ...filterForm, once_per_mobile: v })}
+              />
+              <Label>Send once per mobile</Label>
+              <span className="text-xs text-muted-foreground">(skip duplicate mobiles within this filter)</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <Switch
                 checked={filterForm.enabled}
                 onCheckedChange={(v) => setFilterForm({ ...filterForm, enabled: v })}
               />
