@@ -4,6 +4,7 @@ import PasswordGate from "@/components/PasswordGate";
 import MarketingTemplates from "@/components/marketing/MarketingTemplates";
 import MarketingSender from "@/components/marketing/MarketingSender";
 import MarketingHistory from "@/components/marketing/MarketingHistory";
+import AutomatedMarketing from "@/components/marketing/AutomatedMarketing";
 
 const Marketing = () => {
   return (
@@ -13,11 +14,15 @@ const Marketing = () => {
         <Tabs defaultValue="send" className="w-full">
           <TabsList>
             <TabsTrigger value="send">Send Messages</TabsTrigger>
+            <TabsTrigger value="automated">Automated</TabsTrigger>
             <TabsTrigger value="history">History</TabsTrigger>
             <TabsTrigger value="templates">Templates</TabsTrigger>
           </TabsList>
           <TabsContent value="send">
             <MarketingSender />
+          </TabsContent>
+          <TabsContent value="automated">
+            <AutomatedMarketing />
           </TabsContent>
           <TabsContent value="history">
             <MarketingHistory />
