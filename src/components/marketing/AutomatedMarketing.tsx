@@ -347,16 +347,16 @@ const AutomatedMarketing = () => {
 
     // Claimed mobiles set across all filters (for daily dedup)
     const claimedMobiles = new Set<string>();
-    const perFilterLimit = Math.floor(maxPerDay / enabledFilters.length);
+    const initialPerFilter = Math.floor(maxPerDay / enabledFilters.length);
 
-    const results: PreviewResult[] = [];
+    // --- PASS 1: Collect eligible records per filter with initial equal limits ---
+    const filterEligibleAll: Map<string, { filter: DripFilter; eligible: any[]; allCandidates: any[]; skips: Record<string, number> }> = new Map();
 
-    for (const filter of enabledFilters) {
+    const collectForFilter = (filter: DripFilter, limit: number, sharedClaimed: Set<string>) => {
       const eligible: any[] = [];
       const skips: Record<string, number> = {};
       const addSkip = (reason: string) => { skips[reason] = (skips[reason] || 0) + 1; };
 
-      // Filter contacts by location
       let candidates = allContacts;
       if (filter.location_filter !== "ALL") {
         candidates = candidates.filter((c) => {
@@ -365,7 +365,6 @@ const AutomatedMarketing = () => {
         });
       }
 
-      // Filter by last_sent_type (sequencing)
       if (filter.last_sent_type_filter) {
         if (filter.last_sent_type_filter === "__null__") {
           candidates = candidates.filter((c) => !c.last_sent_type);
@@ -374,7 +373,6 @@ const AutomatedMarketing = () => {
         }
       }
 
-      // Use global min interval for last_sent_date filtering
       if (minInterval > 0) {
         const cutoff = new Date();
         cutoff.setDate(cutoff.getDate() - minInterval);
@@ -384,14 +382,12 @@ const AutomatedMarketing = () => {
         });
       }
 
-      // Sort candidates: patients who never received anything come first
       candidates.sort((a, b) => {
         const aHas = a.last_sent_type ? 1 : 0;
         const bHas = b.last_sent_type ? 1 : 0;
-        return aHas - bHas; // null/never-sent first
+        return aHas - bHas;
       });
 
-      const limit = perFilterLimit;
       const filterSeenMobiles = new Set<string>();
 
       for (const c of candidates) {
@@ -400,13 +396,9 @@ const AutomatedMarketing = () => {
         const mob = (c.mobile_number || "").replace(/\D/g, "").slice(-10);
         if (!mob || mob.length !== 10) { addSkip("invalid_mobile"); continue; }
 
-        // Blacklist check
         if (excludeBlacklist && blacklistSet.has(mob)) { addSkip("blacklisted"); continue; }
-
-        // Global interval check (drip log)
         if (recentMobiles.has(mob)) { addSkip("interval"); continue; }
 
-        // Contact's own last_sent_date against global min interval
         if (c.last_sent_date) {
           const lastSent = new Date(c.last_sent_date);
           const intervalCutoff = new Date();
@@ -414,38 +406,27 @@ const AutomatedMarketing = () => {
           if (lastSent >= intervalCutoff) { addSkip("interval"); continue; }
         }
 
-        // Dedup across filters (same day)
-        if (claimedMobiles.has(mob)) { addSkip("duplicate"); continue; }
-
-        // Once per mobile dedup within this filter
+        if (sharedClaimed.has(mob)) { addSkip("duplicate"); continue; }
         if (filter.once_per_mobile && filterSeenMobiles.has(mob)) { addSkip("once_per_mobile_dedup"); continue; }
 
-        // --- COMPLETION LOCK: check if higher priority filter still has unsent records ---
-        // First check if all filters complete → need cycle reset
         if (allFiltersComplete(mob) && enabledFilters.length > 0) {
-          // Mark for cycle reset (will be processed after preview)
           if (!mobilesToResetCycle.includes(mob)) mobilesToResetCycle.push(mob);
-          // After reset, allow priority 1 to claim again — but don't block
         }
 
-        // Check completion lock (only if NOT needing reset, i.e. cycle is in progress)
         if (!allFiltersComplete(mob) && isLockedByHigherPriority(filter, mob)) {
           addSkip("completion_lock"); continue;
         }
 
-        // Check if this filter already completed for this mobile in current cycle
         const sentForThisFilter = getSentCount(filter.id, mob);
         const eligibleForThisFilter = getEligibleCount(filter, mob);
         if (sentForThisFilter >= eligibleForThisFilter && !allFiltersComplete(mob)) {
           addSkip("already_complete"); continue;
         }
 
-        // Also skip if already sent for THIS specific contact in current cycle
         const currentCycle = mobileCycles[mob] || 1;
         const sentPks = sentByMobileFilter[mob]?.[filter.id];
         if (sentPks && sentPks.has(c.primary_key)) { addSkip("already_sent_this_cycle"); continue; }
 
-        // Data completeness validation
         if (filter.message_type === "abc_card") {
           if (!c.umr_number || !c.umr_number.trim()) { addSkip("missing_umr"); continue; }
         }
@@ -454,16 +435,53 @@ const AutomatedMarketing = () => {
         }
 
         filterSeenMobiles.add(mob);
-        claimedMobiles.add(mob);
+        sharedClaimed.add(mob);
         eligible.push({ ...c, _cycle: currentCycle });
       }
 
+      return { eligible, candidates, skips };
+    };
+
+    // Pass 1: equal distribution
+    for (const filter of enabledFilters) {
+      const { eligible, candidates, skips } = collectForFilter(filter, initialPerFilter, claimedMobiles);
+      filterEligibleAll.set(filter.id, { filter, eligible, allCandidates: candidates, skips });
+    }
+
+    // Pass 2: redistribute unused quota to higher-priority filters that need more
+    let totalUsed = 0;
+    for (const v of filterEligibleAll.values()) totalUsed += v.eligible.length;
+    let remaining = maxPerDay - totalUsed;
+
+    if (remaining > 0) {
+      for (const filter of enabledFilters) {
+        if (remaining <= 0) break;
+        const entry = filterEligibleAll.get(filter.id)!;
+        // Try to collect more with the remaining quota
+        const extra = collectForFilter(filter, entry.eligible.length + remaining, claimedMobiles);
+        const newRecords = extra.eligible.filter(
+          (r) => !entry.eligible.some((e) => e.primary_key === r.primary_key)
+        );
+        if (newRecords.length > 0) {
+          entry.eligible.push(...newRecords);
+          // Merge skip counts
+          for (const [reason, count] of Object.entries(extra.skips)) {
+            entry.skips[reason] = (entry.skips[reason] || 0) + count;
+          }
+          remaining -= newRecords.length;
+        }
+      }
+    }
+
+    const results: PreviewResult[] = [];
+    for (const filter of enabledFilters) {
+      const entry = filterEligibleAll.get(filter.id)!;
       results.push({
         filterId: filter.id,
         filterName: filter.name,
-        eligible: eligible.length,
-        skipped: Object.entries(skips).map(([reason, count]) => ({ reason, count })),
-        records: eligible,
+        eligible: entry.eligible.length,
+        skipped: Object.entries(entry.skips).map(([reason, count]) => ({ reason, count })),
+        records: entry.eligible,
       });
     }
 
