@@ -292,7 +292,7 @@ const AutomatedMarketing = () => {
 
     // Run ALL queries in parallel for speed
     const [allContacts, blacklistData, abnormalPks, cyclesData, allLogs] = await Promise.all([
-      fetchAll(supabase.from("crm_contacts").select("primary_key,mobile_number,patient_name,umr_number,location,last_sent_date,last_sent_type,record_tag,default_discount_pct,visit_date")),
+      fetchAll(supabase.from("crm_contacts").select("id,primary_key,mobile_number,patient_name,umr_number,location,last_sent_date,last_sent_type,record_tag,default_discount_pct,visit_date")),
       excludeBlacklist
         ? supabase.from("crm_blacklist").select("mobile_number").then(r => r.data || [])
         : Promise.resolve([]),
