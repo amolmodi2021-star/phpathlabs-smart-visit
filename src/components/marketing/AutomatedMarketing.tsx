@@ -1095,7 +1095,7 @@ const AutomatedMarketing = () => {
               />
             </div>
             <div className="space-y-1">
-              <Label>Min Interval (days)</Label>
+              <Label>Min Gap Between Messages (days)</Label>
               <Input
                 type="number"
                 value={minInterval}
