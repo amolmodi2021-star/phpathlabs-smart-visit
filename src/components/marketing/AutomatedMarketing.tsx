@@ -192,6 +192,7 @@ const AutomatedMarketing = () => {
       record_limit: f.record_limit,
       template_id: f.template_id || "",
       enabled: f.enabled,
+      once_per_mobile: f.once_per_mobile ?? false,
     });
     setFilterOpen(true);
   };
