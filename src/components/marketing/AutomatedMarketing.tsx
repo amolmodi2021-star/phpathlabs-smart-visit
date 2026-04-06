@@ -344,15 +344,29 @@ const AutomatedMarketing = () => {
       return contacts.length;
     };
 
-    const getSentCount = (filterId: string, mob: string): number => {
-      return sentByMobileFilter[mob]?.[filterId]?.size || 0;
+    // Hybrid sent detection: for ABC cards, also count CRM-sent cards (last_sent_type = "ABC")
+    const getSentCount = (filter: DripFilter, mob: string): number => {
+      const dripSent = sentByMobileFilter[mob]?.[filter.id] || new Set();
+      if (filter.message_type === "abc_card") {
+        const contacts = contactsByMobile[mob] || [];
+        const crmSentPks = new Set(
+          contacts
+            .filter(c => c.last_sent_type === "ABC" && c.umr_number && c.umr_number.trim())
+            .map(c => c.primary_key)
+        );
+        // Merge: unique PKs sent via either drip or CRM
+        const merged = new Set([...dripSent, ...crmSentPks]);
+        return merged.size;
+      }
+      return dripSent.size;
     };
 
     const isLockedByHigherPriority = (currentFilter: DripFilter, mob: string): boolean => {
       for (const f of enabledFilters) {
         if (f.priority >= currentFilter.priority) break;
         const eligible = getEligibleCount(f, mob);
-        const sent = getSentCount(f.id, mob);
+        if (eligible === 0) continue; // No data for this filter = not blocking
+        const sent = getSentCount(f, mob);
         if (sent < eligible) return true;
       }
       return false;
@@ -361,7 +375,8 @@ const AutomatedMarketing = () => {
     const allFiltersComplete = (mob: string): boolean => {
       for (const f of enabledFilters) {
         const eligible = getEligibleCount(f, mob);
-        const sent = getSentCount(f.id, mob);
+        if (eligible === 0) continue; // No data = treat as complete
+        const sent = getSentCount(f, mob);
         if (sent < eligible) return false;
       }
       return true;
@@ -450,7 +465,7 @@ const AutomatedMarketing = () => {
         }
 
         // Check if this filter is already complete for this mobile in current cycle
-        const sentForThisFilter = getSentCount(filter.id, mob);
+        const sentForThisFilter = getSentCount(filter, mob);
         const eligibleForThisFilter = getEligibleCount(filter, mob);
         if (sentForThisFilter >= eligibleForThisFilter && !allFiltersComplete(mob)) {
           addSkip("already_complete"); continue;
