@@ -908,10 +908,10 @@ const AutomatedMarketing = () => {
           try {
             const proxyRes = await supabase.functions.invoke("send-marketing-message", {
               body: {
-                apiUrl: tmpl.api_base_url,
-                apiKey: tmpl.api_key,
-                headerName: tmpl.auth_header_name,
-                headerPrefix: tmpl.auth_header_prefix,
+                apiUrl: cfg["wa_global_baseUrl"],
+                apiKey: cfg["wa_global_apiKey"],
+                headerName: cfg["wa_global_authHeaderName"] || "apikey",
+                headerPrefix: cfg["wa_global_authHeaderPrefix"] || "",
                 payload,
               },
             });
