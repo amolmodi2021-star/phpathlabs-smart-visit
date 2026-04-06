@@ -382,17 +382,37 @@ const AutomatedMarketing = () => {
       return true;
     };
 
-    const mobilesToResetCycle: string[] = [];
+    // Pre-compute per-mobile: eligible & sent counts for each filter (avoids recalculating per-contact)
+    const allMobiles = Object.keys(contactsByMobile);
+    const mobileFilterStatus: Record<string, Record<string, { eligible: number; sent: number }>> = {};
+    const mobileAllComplete: Record<string, boolean> = {};
+    const mobileLockedBy: Record<string, number> = {}; // mobile -> lowest incomplete priority
 
-    // TWO-PASS quota distribution: fair share per filter, unused flows to higher priority
-    // Pass 1: collect eligible candidates per filter (capped at fair share)
-    // Pass 2: redistribute unused quota to filters that need more
+    for (const mob of allMobiles) {
+      mobileFilterStatus[mob] = {};
+      let lowestIncomplete = Infinity;
+      let hasAnyData = false;
+      for (const f of enabledFilters) {
+        const eligible = getEligibleCount(f, mob);
+        const sent = getSentCount(f, mob);
+        mobileFilterStatus[mob][f.id] = { eligible, sent };
+        if (eligible > 0) {
+          hasAnyData = true;
+          if (sent < eligible && f.priority < lowestIncomplete) {
+            lowestIncomplete = f.priority;
+          }
+        }
+      }
+      mobileAllComplete[mob] = hasAnyData && lowestIncomplete === Infinity;
+      mobileLockedBy[mob] = lowestIncomplete;
+    }
+
+    // Single-pass collection: process filters in priority order, then redistribute unused quota
     const claimedMobiles = new Set<string>();
     const results: PreviewResult[] = [];
-    const filterQuota = Math.ceil(maxPerDay / enabledFilters.length);
 
-    // Collect all eligible per filter with initial quota cap
-    const filterCollections: { filter: DripFilter; eligible: any[]; skips: Record<string, number>; hasMore: boolean }[] = [];
+    // Collect ALL eligible candidates per filter (no cap yet)
+    const filterCollections: { filter: DripFilter; eligible: any[]; skips: Record<string, number> }[] = [];
 
     for (const filter of enabledFilters) {
       const skips: Record<string, number> = {};
@@ -435,11 +455,8 @@ const AutomatedMarketing = () => {
       });
 
       const filterSeenMobiles = new Set<string>();
-      let hasMore = false;
 
       for (const c of candidates) {
-        if (eligible.length >= filterQuota) { hasMore = true; break; }
-
         const mob = (c.mobile_number || "").replace(/\D/g, "").slice(-10);
         if (!mob || mob.length !== 10) { addSkip("invalid_mobile"); continue; }
 
@@ -448,26 +465,18 @@ const AutomatedMarketing = () => {
         // Only 1 message per mobile per day across ALL filters
         if (claimedMobiles.has(mob)) { addSkip("duplicate"); continue; }
 
-        // Only 1 record per mobile per filter per day (even for multi-patient mobiles)
+        // Only 1 record per mobile per filter per day
         if (filterSeenMobiles.has(mob)) { addSkip("duplicate"); continue; }
 
-        // Once per mobile dedup for promotions
-        if (filter.once_per_mobile && filterSeenMobiles.has(mob)) { addSkip("once_per_mobile_dedup"); continue; }
-
-        // Cycle reset check
-        if (allFiltersComplete(mob) && enabledFilters.length > 0) {
-          if (!mobilesToResetCycle.includes(mob)) mobilesToResetCycle.push(mob);
-        }
-
-        // Completion lock: higher priority filter must finish first
-        if (!allFiltersComplete(mob) && isLockedByHigherPriority(filter, mob)) {
+        // Completion lock: use precomputed status
+        const isComplete = mobileAllComplete[mob];
+        if (!isComplete && mobileLockedBy[mob] < filter.priority) {
           addSkip("completion_lock"); continue;
         }
 
         // Check if this filter is already complete for this mobile in current cycle
-        const sentForThisFilter = getSentCount(filter, mob);
-        const eligibleForThisFilter = getEligibleCount(filter, mob);
-        if (sentForThisFilter >= eligibleForThisFilter && !allFiltersComplete(mob)) {
+        const status = mobileFilterStatus[mob]?.[filter.id];
+        if (status && status.sent >= status.eligible && !isComplete) {
           addSkip("already_complete"); continue;
         }
 
@@ -488,43 +497,50 @@ const AutomatedMarketing = () => {
         eligible.push({ ...c, _cycle: mobileCycles[mob] || 1 });
       }
 
-      filterCollections.push({ filter, eligible, skips, hasMore });
+      filterCollections.push({ filter, eligible, skips });
     }
 
-    // Pass 2: redistribute unused quota to higher-priority filters that need more
-    let totalUsed = filterCollections.reduce((sum, fc) => sum + fc.eligible.length, 0);
-    let totalUnused = maxPerDay - totalUsed;
+    // Quota enforcement: distribute maxPerDay across filters, unused flows UP to higher priority
+    let remaining = maxPerDay;
+    // First pass: cap each filter at fair share, track who needs more
+    const fairShare = Math.ceil(maxPerDay / enabledFilters.length);
+    const filterCapped: { fc: typeof filterCollections[0]; kept: any[]; wantsMore: number }[] = [];
 
-    if (totalUnused > 0) {
-      // Give unused quota to filters in priority order that have more candidates
-      for (const fc of filterCollections) {
-        if (totalUnused <= 0) break;
-        if (!fc.hasMore) continue;
-        // This filter had more candidates — re-run with expanded quota
-        // For simplicity, we note the unused is available but don't re-collect 
-        // (the initial fair share should be sufficient for most cases)
-      }
-    }
-
-    // Build results
     for (const fc of filterCollections) {
-      results.push({
-        filterId: fc.filter.id,
-        filterName: fc.filter.name,
-        eligible: fc.eligible.length,
-        skipped: Object.entries(fc.skips).map(([reason, count]) => ({ reason, count })),
-        records: fc.eligible,
+      const cap = Math.min(fc.eligible.length, fairShare);
+      filterCapped.push({
+        fc,
+        kept: fc.eligible.slice(0, cap),
+        wantsMore: Math.max(0, fc.eligible.length - cap),
       });
     }
 
-    // Process cycle resets
-    for (const mob of mobilesToResetCycle) {
-      const currentCycle = mobileCycles[mob] || 1;
-      const newCycle = currentCycle + 1;
-      await supabase.from("drip_mobile_cycles").upsert(
-        { mobile_number: mob, current_cycle: newCycle, updated_at: new Date().toISOString() },
-        { onConflict: "mobile_number" }
-      );
+    // Calculate unused quota from filters that didn't use their full share
+    let totalKept = filterCapped.reduce((s, f) => s + f.kept.length, 0);
+    let unused = maxPerDay - totalKept;
+
+    // Second pass: distribute unused to filters in priority order (highest priority = lowest number)
+    if (unused > 0) {
+      for (const entry of filterCapped) {
+        if (unused <= 0) break;
+        if (entry.wantsMore <= 0) continue;
+        const extra = Math.min(entry.wantsMore, unused);
+        const startIdx = entry.kept.length;
+        entry.kept = entry.fc.eligible.slice(0, startIdx + extra);
+        unused -= extra;
+        entry.wantsMore -= extra;
+      }
+    }
+
+    // Build results from capped collections
+    for (const entry of filterCapped) {
+      results.push({
+        filterId: entry.fc.filter.id,
+        filterName: entry.fc.filter.name,
+        eligible: entry.kept.length,
+        skipped: Object.entries(entry.fc.skips).map(([reason, count]) => ({ reason, count })),
+        records: entry.kept,
+      });
     }
 
     return results;
