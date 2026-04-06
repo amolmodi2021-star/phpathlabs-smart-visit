@@ -1142,8 +1142,6 @@ const AutomatedMarketing = () => {
                   <TableHead>Priority</TableHead>
                   <TableHead>Location</TableHead>
                   <TableHead>Sequencing</TableHead>
-                  <TableHead>Days Ago</TableHead>
-                  <TableHead>Limit</TableHead>
                   <TableHead>Enabled</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
@@ -1164,8 +1162,6 @@ const AutomatedMarketing = () => {
                         ? SEQUENCE_OPTIONS.find((s) => s.value === f.last_sent_type_filter)?.label || f.last_sent_type_filter
                         : "Any"}
                     </TableCell>
-                    <TableCell>{f.last_sent_days_ago}</TableCell>
-                    <TableCell>{f.record_limit}</TableCell>
                     <TableCell>
                       <Switch checked={f.enabled} onCheckedChange={(v) => toggleFilter(f.id, v)} />
                     </TableCell>
