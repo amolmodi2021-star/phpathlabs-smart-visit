@@ -118,7 +118,15 @@ Deno.serve(async (req) => {
         if (whatsappRes.ok) {
           await supabase.from("loyalty_cards").update({ whatsapp_status: "sent", sent_at: new Date().toISOString() }).eq("id", card.id);
           sentCount++;
-          results.push({ id: card.id, status: "sent" });
+          results.push({ id: card.id, status: "sent", mobile: normalizedLocalMobile });
+
+          // Update CRM contacts with last sent info
+          if (normalizedLocalMobile) {
+            await supabase.from("crm_contacts").update({
+              last_sent_type: "ABC",
+              last_sent_date: new Date().toISOString(),
+            }).eq("mobile_number", normalizedLocalMobile);
+          }
         } else {
           await supabase.from("loyalty_cards").update({ whatsapp_status: "failed" }).eq("id", card.id);
           results.push({ id: card.id, status: "failed", error: responseText });

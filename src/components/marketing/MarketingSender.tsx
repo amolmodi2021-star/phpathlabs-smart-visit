@@ -154,6 +154,13 @@ const MarketingSender = () => {
           failedCount++;
         } else {
           sentCount++;
+          // Update CRM with last sent info
+          if (mobile10) {
+            await supabase.from("crm_contacts").update({
+              last_sent_type: "Marketing",
+              last_sent_date: new Date().toISOString(),
+            }).eq("mobile_number", mobile10);
+          }
         }
       } catch {
         failedCount++;
