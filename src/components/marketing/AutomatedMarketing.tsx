@@ -27,6 +27,7 @@ interface DripFilter {
   record_limit: number;
   template_id: string | null;
   enabled: boolean;
+  once_per_mobile: boolean;
   created_at: string;
 }
 
@@ -75,6 +76,7 @@ const AutomatedMarketing = () => {
     record_limit: 100,
     template_id: "",
     enabled: true,
+    once_per_mobile: false,
   });
 
   // Execution state
@@ -173,6 +175,7 @@ const AutomatedMarketing = () => {
       record_limit: 100,
       template_id: "",
       enabled: true,
+      once_per_mobile: false,
     });
     setFilterOpen(true);
   };
@@ -189,6 +192,7 @@ const AutomatedMarketing = () => {
       record_limit: f.record_limit,
       template_id: f.template_id || "",
       enabled: f.enabled,
+      once_per_mobile: f.once_per_mobile ?? false,
     });
     setFilterOpen(true);
   };
@@ -205,6 +209,7 @@ const AutomatedMarketing = () => {
       record_limit: filterForm.record_limit,
       template_id: filterForm.template_id || null,
       enabled: filterForm.enabled,
+      once_per_mobile: filterForm.once_per_mobile,
     };
 
     if (editingFilter) {
@@ -316,6 +321,9 @@ const AutomatedMarketing = () => {
       // Limit is auto-calculated from global max/day
       const limit = perFilterLimit;
 
+      // Track mobiles seen within this filter for once_per_mobile dedup
+      const filterSeenMobiles = new Set<string>();
+
       for (const c of candidates) {
         if (eligible.length >= limit) break;
 
@@ -339,6 +347,9 @@ const AutomatedMarketing = () => {
         // Dedup across filters
         if (claimedMobiles.has(mob)) { addSkip("duplicate"); continue; }
 
+        // Once per mobile dedup within this filter
+        if (filter.once_per_mobile && filterSeenMobiles.has(mob)) { addSkip("once_per_mobile_dedup"); continue; }
+
         // Data completeness validation
         if (filter.message_type === "abc_card") {
           if (!c.umr_number || !c.umr_number.trim()) { addSkip("missing_umr"); continue; }
@@ -347,6 +358,7 @@ const AutomatedMarketing = () => {
           if (!abnormalPkSet.has(c.primary_key)) { addSkip("no_abnormal_history"); continue; }
         }
 
+        filterSeenMobiles.add(mob);
         claimedMobiles.add(mob);
         eligible.push(c);
       }
@@ -1049,6 +1061,7 @@ const AutomatedMarketing = () => {
       blacklisted: "Blacklisted",
       interval: "Min Interval",
       duplicate: "Duplicate Mobile",
+      once_per_mobile_dedup: "Once Per Mobile",
       missing_umr: "Missing UMR",
       no_abnormal_history: "No Abnormal History",
       invalid_mobile: "Invalid Mobile",
@@ -1332,7 +1345,7 @@ const AutomatedMarketing = () => {
             </div>
             <div className="space-y-1">
               <Label>Message Type</Label>
-              <Select value={filterForm.message_type} onValueChange={(v) => setFilterForm({ ...filterForm, message_type: v })}>
+              <Select value={filterForm.message_type} onValueChange={(v) => setFilterForm({ ...filterForm, message_type: v, once_per_mobile: v === "promotion" ? true : filterForm.once_per_mobile })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -1422,6 +1435,14 @@ const AutomatedMarketing = () => {
                 </Select>
               </div>
             )}
+            <div className="flex items-center gap-3">
+              <Switch
+                checked={filterForm.once_per_mobile}
+                onCheckedChange={(v) => setFilterForm({ ...filterForm, once_per_mobile: v })}
+              />
+              <Label>Send once per mobile</Label>
+              <span className="text-xs text-muted-foreground">(skip duplicate mobiles within this filter)</span>
+            </div>
             <div className="flex items-center gap-3">
               <Switch
                 checked={filterForm.enabled}

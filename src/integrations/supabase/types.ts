@@ -401,6 +401,7 @@ export type Database = {
           location_filter: string
           message_type: string
           name: string
+          once_per_mobile: boolean
           priority: number
           record_limit: number
           template_id: string | null
@@ -415,6 +416,7 @@ export type Database = {
           location_filter?: string
           message_type?: string
           name: string
+          once_per_mobile?: boolean
           priority?: number
           record_limit?: number
           template_id?: string | null
@@ -429,6 +431,7 @@ export type Database = {
           location_filter?: string
           message_type?: string
           name?: string
+          once_per_mobile?: boolean
           priority?: number
           record_limit?: number
           template_id?: string | null
