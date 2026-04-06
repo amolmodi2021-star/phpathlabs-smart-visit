@@ -321,28 +321,25 @@ const AutomatedMarketing = () => {
     };
 
     // Check if a higher-priority filter still has unsent records for this mobile
-    // Only locks if the higher-priority filter has STARTED sending (sent > 0) but not finished.
-    // If sent == 0, that filter hasn't claimed this mobile yet, so no lock.
+    // ABC must finish ALL patients before abnormal can start for that mobile
     const isLockedByHigherPriority = (currentFilter: DripFilter, mob: string): boolean => {
       for (const f of enabledFilters) {
         if (f.priority >= currentFilter.priority) break;
         const eligible = getEligibleCount(f, mob);
         const sent = getSentCount(f.id, mob);
-        if (sent > 0 && sent < eligible) return true; // started but not finished
+        if (sent < eligible) return true; // higher priority not done yet
       }
       return false;
     };
 
     // Check if ALL filters are complete for a mobile (for cycle reset)
     const allFiltersComplete = (mob: string): boolean => {
-      let anyStarted = false;
       for (const f of enabledFilters) {
         const eligible = getEligibleCount(f, mob);
         const sent = getSentCount(f.id, mob);
-        if (sent > 0) anyStarted = true;
         if (sent < eligible) return false;
       }
-      return anyStarted;
+      return true;
     };
 
     // Mobiles that need cycle reset
