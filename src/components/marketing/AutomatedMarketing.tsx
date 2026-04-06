@@ -292,8 +292,8 @@ const AutomatedMarketing = () => {
       excludeBlacklist
         ? supabase.from("crm_blacklist").select("mobile_number").then(r => r.data || [])
         : Promise.resolve([]),
-      supabase.from("crm_abnormal_tests").select("contact_primary_key").then(r => r.data || []),
-      supabase.from("drip_mobile_cycles").select("mobile_number,current_cycle").then(r => r.data || []),
+      fetchAll(supabase.from("crm_abnormal_tests").select("contact_primary_key")),
+      fetchAll(supabase.from("drip_mobile_cycles").select("mobile_number,current_cycle")),
       fetchAll(supabase.from("drip_campaign_log").select("filter_id,mobile_number,contact_primary_key,cycle_number").eq("status", "sent")),
     ]);
 
