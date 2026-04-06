@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Pencil, Trash2, Eye, Send, Settings, MessageCircle, Download } from "lucide-react";
+import { Plus, Pencil, Trash2, Eye, Send, Settings, MessageCircle, Download, AlertTriangle, FlaskConical } from "lucide-react";
 import { exportToExcel } from "@/lib/excel";
 import { toast } from "sonner";
 
@@ -89,6 +89,10 @@ const AutomatedMarketing = () => {
   const [sending, setSending] = useState(false);
   const [sendProgress, setSendProgress] = useState(0);
   const [sendPhase, setSendPhase] = useState("");
+
+  // Test mode
+  const [testMobile, setTestMobile] = useState("");
+  const isTrialMode = /^\d{10}$/.test(testMobile.replace(/\D/g, ""));
 
   // Load global settings
   useEffect(() => {
@@ -564,6 +568,10 @@ const AutomatedMarketing = () => {
       return toast.error("Run preview first and ensure there are eligible records");
     }
 
+    const trialMax = 3;
+    const trial = isTrialMode;
+    const trialMob = testMobile.replace(/\D/g, "").slice(-10);
+
     const enabledFilters = filters.filter((f) => f.enabled).sort((a, b) => a.priority - b.priority);
     
     // Fetch all WA settings
@@ -577,11 +585,13 @@ const AutomatedMarketing = () => {
     setSending(true);
     setSendProgress(0);
 
-    const totalMessages = previewResults.reduce((sum, r) => sum + r.eligible, 0);
+    let totalMessages = previewResults.reduce((sum, r) => sum + r.eligible, 0);
+    if (trial) totalMessages = Math.min(totalMessages, trialMax);
     let processedCount = 0;
     let totalSent = 0;
     let totalFailed = 0;
     let totalSkipped = 0;
+    let trialSentCount = 0;
 
     for (const preview of previewResults) {
       if (preview.eligible === 0) continue;
@@ -648,9 +658,11 @@ const AutomatedMarketing = () => {
         const { bgImg, canvas, ctx, placeholders } = templateAssets;
 
         for (let i = 0; i < preview.records.length; i++) {
+          if (trial && trialSentCount >= trialMax) break;
           const r = preview.records[i];
           const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
-          setSendPhase(`[${filter.name}] Generating & sending ${i + 1}/${preview.eligible}...`);
+          const destMob = trial ? trialMob : mob;
+          setSendPhase(`${trial ? "🧪 TRIAL " : ""}[${filter.name}] Generating & sending ${i + 1}/${preview.eligible}...`);
 
           const cardData: CardData = {
             Name: r.patient_name || "",
@@ -689,7 +701,7 @@ const AutomatedMarketing = () => {
 
           const payload: Record<string, unknown> = {
             from: loyaltyFromNumber,
-            to: `+91${mob}`,
+            to: `+91${destMob}`,
             templateName: loyaltyTemplateName,
             campaignName: loyaltyCampaignName,
             type: "template",
@@ -701,19 +713,22 @@ const AutomatedMarketing = () => {
               body: { apiBaseUrl: loyaltyApiBaseUrl, apiKey: loyaltyApiKey, authHeaderName: loyaltyAuthHeaderName, authHeaderPrefix: loyaltyAuthHeaderPrefix, payload },
             });
             if (proxyRes.error || proxyRes.data?.status >= 400) {
-              await logDripAction(filter, r, "failed", "wa_api_error");
+              if (!trial) await logDripAction(filter, r, "failed", "wa_api_error");
               totalFailed++;
             } else {
-              await logDripAction(filter, r, "sent");
-              await supabase.from("crm_contacts").update({
-                last_sent_type: "ABC",
-                last_sent_date: new Date().toISOString(),
-                record_tag: null,
-              }).eq("id", r.id);
+              if (!trial) {
+                await logDripAction(filter, r, "sent");
+                await supabase.from("crm_contacts").update({
+                  last_sent_type: "ABC",
+                  last_sent_date: new Date().toISOString(),
+                  record_tag: null,
+                }).eq("id", r.id);
+              }
               totalSent++;
+              if (trial) trialSentCount++;
             }
           } catch {
-            await logDripAction(filter, r, "failed", "wa_exception");
+            if (!trial) await logDripAction(filter, r, "failed", "wa_exception");
             totalFailed++;
           }
 
@@ -757,9 +772,11 @@ const AutomatedMarketing = () => {
         }
 
         for (let i = 0; i < preview.records.length; i++) {
+          if (trial && trialSentCount >= trialMax) break;
           const r = preview.records[i];
           const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
-          setSendPhase(`[${filter.name}] Processing ${i + 1}/${preview.eligible}...`);
+          const destMob = trial ? trialMob : mob;
+          setSendPhase(`${trial ? "🧪 TRIAL " : ""}[${filter.name}] Processing ${i + 1}/${preview.eligible}...`);
 
           // Fetch abnormal tests for this contact
           const { data: tests } = await supabase
@@ -769,7 +786,7 @@ const AutomatedMarketing = () => {
             .order("test_name");
 
           if (!tests || tests.length === 0) {
-            await logDripAction(filter, r, "skipped", "no_abnormal_history");
+            if (!trial) await logDripAction(filter, r, "skipped", "no_abnormal_history");
             totalSkipped++;
             processedCount++;
             setSendProgress(Math.round((processedCount / totalMessages) * 100));
@@ -779,7 +796,7 @@ const AutomatedMarketing = () => {
           // Generate abnormal card image (simplified - use template if available)
           const imageResult = await generateAbnormalCardForDrip(r, tests, abnTemplate, staticExpiryDate);
           if (!imageResult) {
-            await logDripAction(filter, r, "failed", "card_generation_error");
+            if (!trial) await logDripAction(filter, r, "failed", "card_generation_error");
             totalFailed++;
             processedCount++;
             setSendProgress(Math.round((processedCount / totalMessages) * 100));
@@ -794,7 +811,7 @@ const AutomatedMarketing = () => {
 
           const payload: Record<string, unknown> = {
             from: abnormalFromNumber,
-            to: `+91${mob}`,
+            to: `+91${destMob}`,
             templateName: abnormalTemplateName,
             campaignName: abnormalCampaignName,
             type: "template",
@@ -806,18 +823,21 @@ const AutomatedMarketing = () => {
               body: { apiBaseUrl: abnormalApiBaseUrl, apiKey: abnormalApiKey, authHeaderName: abnormalAuthHeaderName, authHeaderPrefix: abnormalAuthHeaderPrefix, payload },
             });
             if (proxyRes.error || proxyRes.data?.status >= 400) {
-              await logDripAction(filter, r, "failed", "wa_api_error");
+              if (!trial) await logDripAction(filter, r, "failed", "wa_api_error");
               totalFailed++;
             } else {
-              await logDripAction(filter, r, "sent");
-              await supabase.from("crm_contacts").update({
-                last_sent_type: "Abnormal History",
-                last_sent_date: new Date().toISOString(),
-              }).eq("id", r.id);
+              if (!trial) {
+                await logDripAction(filter, r, "sent");
+                await supabase.from("crm_contacts").update({
+                  last_sent_type: "Abnormal History",
+                  last_sent_date: new Date().toISOString(),
+                }).eq("id", r.id);
+              }
               totalSent++;
+              if (trial) trialSentCount++;
             }
           } catch {
-            await logDripAction(filter, r, "failed", "wa_exception");
+            if (!trial) await logDripAction(filter, r, "failed", "wa_exception");
             totalFailed++;
           }
 
@@ -850,11 +870,13 @@ const AutomatedMarketing = () => {
         const delayMs = 3000;
 
         for (let i = 0; i < preview.records.length; i++) {
+          if (trial && trialSentCount >= trialMax) break;
           const r = preview.records[i];
           const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
-          setSendPhase(`[${filter.name}] Sending promo ${i + 1}/${preview.eligible}...`);
+          const destMob = trial ? trialMob : mob;
+          setSendPhase(`${trial ? "🧪 TRIAL " : ""}[${filter.name}] Sending promo ${i + 1}/${preview.eligible}...`);
 
-          const toNumber = `+91${mob}`;
+          const toNumber = `+91${destMob}`;
           const payload: Record<string, unknown> = {
             from: tmpl.from_number || "",
             to: toNumber,
@@ -890,18 +912,21 @@ const AutomatedMarketing = () => {
               },
             });
             if (proxyRes.error || proxyRes.data?.status >= 400) {
-              await logDripAction(filter, r, "failed", "wa_api_error");
+              if (!trial) await logDripAction(filter, r, "failed", "wa_api_error");
               totalFailed++;
             } else {
-              await logDripAction(filter, r, "sent");
-              await supabase.from("crm_contacts").update({
-                last_sent_type: "Promotion",
-                last_sent_date: new Date().toISOString(),
-              }).eq("id", r.id);
+              if (!trial) {
+                await logDripAction(filter, r, "sent");
+                await supabase.from("crm_contacts").update({
+                  last_sent_type: "Promotion",
+                  last_sent_date: new Date().toISOString(),
+                }).eq("id", r.id);
+              }
               totalSent++;
+              if (trial) trialSentCount++;
             }
           } catch {
-            await logDripAction(filter, r, "failed", "wa_exception");
+            if (!trial) await logDripAction(filter, r, "failed", "wa_exception");
             totalFailed++;
           }
 
@@ -917,9 +942,12 @@ const AutomatedMarketing = () => {
     setSending(false);
     setSendPhase("");
     setPreviewResults(null);
-    qc.invalidateQueries({ queryKey: ["drip-campaign-logs"] });
-    qc.invalidateQueries({ queryKey: ["crm-contacts"] });
-    toast.success(`Campaign complete! Sent: ${totalSent}, Failed: ${totalFailed}, Skipped: ${totalSkipped}`);
+    if (!trial) {
+      qc.invalidateQueries({ queryKey: ["drip-campaign-logs"] });
+      qc.invalidateQueries({ queryKey: ["crm-contacts"] });
+    }
+    const modeLabel = trial ? "Trial complete!" : "Campaign complete!";
+    toast.success(`${modeLabel} Sent: ${totalSent}, Failed: ${totalFailed}, Skipped: ${totalSkipped}`);
   };
 
   const logDripAction = async (filter: DripFilter, contact: any, status: string, skipReason?: string) => {
@@ -1420,15 +1448,44 @@ const AutomatedMarketing = () => {
           )}
 
           {filters.some((f) => f.enabled) && (
-            <div className="flex gap-2 mt-4">
-              <Button variant="outline" onClick={handlePreview} disabled={previewing || sending}>
-                <Eye className="h-4 w-4 mr-1" />
-                {previewing ? "Previewing..." : "Preview Eligible Records"}
-              </Button>
-              <Button onClick={handleSend} disabled={sending || !previewResults}>
-                <Send className="h-4 w-4 mr-1" />
-                Send Messages
-              </Button>
+            <div className="space-y-3 mt-4">
+              {/* Test Mode */}
+              <div className="flex items-center gap-3">
+                <FlaskConical className="h-4 w-4 text-muted-foreground" />
+                <Label className="text-sm whitespace-nowrap">Test Mobile (Trial Mode):</Label>
+                <Input
+                  placeholder="Enter your 10-digit mobile"
+                  value={testMobile}
+                  onChange={(e) => setTestMobile(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                  className="w-48 h-8"
+                />
+                {isTrialMode && (
+                  <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 text-xs">
+                    Max 3 trial messages
+                  </Badge>
+                )}
+              </div>
+              {isTrialMode && (
+                <div className="flex items-center gap-2 p-2 rounded-md bg-amber-50 border border-amber-300 text-amber-800 text-sm">
+                  <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                  <span>⚠️ TRIAL MODE — All messages will be sent to <strong>+91{testMobile}</strong>. No database logs will be written. Max 3 messages.</span>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={handlePreview} disabled={previewing || sending}>
+                  <Eye className="h-4 w-4 mr-1" />
+                  {previewing ? "Previewing..." : "Preview Eligible Records"}
+                </Button>
+                <Button
+                  onClick={handleSend}
+                  disabled={sending || !previewResults}
+                  variant={isTrialMode ? "outline" : "default"}
+                  className={isTrialMode ? "border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100" : ""}
+                >
+                  {isTrialMode ? <FlaskConical className="h-4 w-4 mr-1" /> : <Send className="h-4 w-4 mr-1" />}
+                  {isTrialMode ? "Send Trial" : "Send Messages"}
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>
