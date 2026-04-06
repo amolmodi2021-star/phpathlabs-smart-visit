@@ -321,6 +321,9 @@ const AutomatedMarketing = () => {
       // Limit is auto-calculated from global max/day
       const limit = perFilterLimit;
 
+      // Track mobiles seen within this filter for once_per_mobile dedup
+      const filterSeenMobiles = new Set<string>();
+
       for (const c of candidates) {
         if (eligible.length >= limit) break;
 
@@ -344,6 +347,9 @@ const AutomatedMarketing = () => {
         // Dedup across filters
         if (claimedMobiles.has(mob)) { addSkip("duplicate"); continue; }
 
+        // Once per mobile dedup within this filter
+        if (filter.once_per_mobile && filterSeenMobiles.has(mob)) { addSkip("once_per_mobile_dedup"); continue; }
+
         // Data completeness validation
         if (filter.message_type === "abc_card") {
           if (!c.umr_number || !c.umr_number.trim()) { addSkip("missing_umr"); continue; }
@@ -352,6 +358,7 @@ const AutomatedMarketing = () => {
           if (!abnormalPkSet.has(c.primary_key)) { addSkip("no_abnormal_history"); continue; }
         }
 
+        filterSeenMobiles.add(mob);
         claimedMobiles.add(mob);
         eligible.push(c);
       }
