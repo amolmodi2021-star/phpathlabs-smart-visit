@@ -63,7 +63,6 @@ const App = () => (
           <Route path="/whatsapp-webhook" element={<ProtectedRoute><WhatsAppWebhook /></ProtectedRoute>} />
           <Route path="/whatsapp-settings" element={<ProtectedRoute><WhatsAppSettingsPage /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
-          <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
     </TooltipProvider>
