@@ -1200,25 +1200,53 @@ const AutomatedMarketing = () => {
       {previewResults && (
         <Card>
           <CardHeader>
-            <CardTitle>Preview Results</CardTitle>
+            <CardTitle>Preview Results (Limit: {Math.floor(maxPerDay / Math.max(filters.filter(f => f.enabled).length, 1))} per filter)</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
+            <div className="space-y-4">
               {previewResults.map((pr) => (
-                <div key={pr.filterId} className="p-3 border rounded-lg">
-                  <div className="flex items-center justify-between">
+                <div key={pr.filterId} className="border rounded-lg">
+                  <div className="flex items-center justify-between p-3 bg-muted/30">
                     <span className="font-medium">{pr.filterName}</span>
-                    <Badge variant={pr.eligible > 0 ? "default" : "secondary"}>
-                      {pr.eligible} eligible
-                    </Badge>
-                  </div>
-                  {pr.skipped.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {pr.skipped.map((s) => (
+                    <div className="flex gap-2">
+                      <Badge variant={pr.eligible > 0 ? "default" : "secondary"}>
+                        {pr.eligible} eligible
+                      </Badge>
+                      {pr.skipped.length > 0 && pr.skipped.map((s) => (
                         <Badge key={s.reason} variant="outline" className="text-xs">
                           {skipReasonLabel(s.reason)}: {s.count}
                         </Badge>
                       ))}
+                    </div>
+                  </div>
+                  {pr.records.length > 0 && (
+                    <div className="max-h-60 overflow-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-xs">#</TableHead>
+                            <TableHead className="text-xs">Patient Name</TableHead>
+                            <TableHead className="text-xs">Mobile</TableHead>
+                            <TableHead className="text-xs">UMR</TableHead>
+                            <TableHead className="text-xs">Location</TableHead>
+                            <TableHead className="text-xs">Last Sent</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {pr.records.map((r: any, idx: number) => (
+                            <TableRow key={r.id || idx}>
+                              <TableCell className="text-xs">{idx + 1}</TableCell>
+                              <TableCell className="text-xs">{r.patient_name || "-"}</TableCell>
+                              <TableCell className="text-xs">{r.mobile_number || "-"}</TableCell>
+                              <TableCell className="text-xs">{r.umr_number || "-"}</TableCell>
+                              <TableCell className="text-xs">{r.location || "-"}</TableCell>
+                              <TableCell className="text-xs">
+                                {r.last_sent_type ? `${r.last_sent_type} (${r.last_sent_date ? new Date(r.last_sent_date).toLocaleDateString("en-GB") : "-"})` : "Never"}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
                     </div>
                   )}
                 </div>
