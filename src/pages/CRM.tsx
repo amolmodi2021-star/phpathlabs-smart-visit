@@ -8,9 +8,7 @@ import CRMAbnormalTests from "@/components/crm/CRMAbnormalTests";
 import CRMBlacklist from "@/components/crm/CRMBlacklist";
 import CRMSequences from "@/components/crm/CRMSequences";
 import CRMSettings from "@/components/crm/CRMSettings";
-import CRMSentHistory from "@/components/crm/CRMSentHistory";
 import AbnormalCardDesigner from "@/components/crm/AbnormalCardDesigner";
-import CRMAbnormalWhatsAppSettings from "@/components/crm/CRMAbnormalWhatsAppSettings";
 
 const CRM = () => {
   const [activeTab, setActiveTab] = useState("contacts");
@@ -24,10 +22,8 @@ const CRM = () => {
             <TabsTrigger value="contacts">Contacts</TabsTrigger>
             <TabsTrigger value="import">Import Data</TabsTrigger>
             <TabsTrigger value="review">Review & Approve</TabsTrigger>
-            <TabsTrigger value="history">History</TabsTrigger>
             <TabsTrigger value="abnormal">Abnormal Tests</TabsTrigger>
             <TabsTrigger value="card-designer">Card Designer</TabsTrigger>
-            <TabsTrigger value="abnormal-wa">Abnormal WA Settings</TabsTrigger>
             <TabsTrigger value="blacklist">Blacklist</TabsTrigger>
             <TabsTrigger value="sequences">Sequences</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
@@ -35,10 +31,8 @@ const CRM = () => {
           <TabsContent value="contacts">{activeTab === "contacts" && <CRMContacts />}</TabsContent>
           <TabsContent value="import">{activeTab === "import" && <CRMImport />}</TabsContent>
           <TabsContent value="review">{activeTab === "review" && <CRMImportReview />}</TabsContent>
-          <TabsContent value="history">{activeTab === "history" && <CRMSentHistory />}</TabsContent>
           <TabsContent value="abnormal">{activeTab === "abnormal" && <CRMAbnormalTests />}</TabsContent>
           <TabsContent value="card-designer">{activeTab === "card-designer" && <AbnormalCardDesigner />}</TabsContent>
-          <TabsContent value="abnormal-wa">{activeTab === "abnormal-wa" && <CRMAbnormalWhatsAppSettings />}</TabsContent>
           <TabsContent value="blacklist">{activeTab === "blacklist" && <CRMBlacklist />}</TabsContent>
           <TabsContent value="sequences">{activeTab === "sequences" && <CRMSequences />}</TabsContent>
           <TabsContent value="settings">{activeTab === "settings" && <CRMSettings />}</TabsContent>
