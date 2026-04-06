@@ -1061,6 +1061,7 @@ const AutomatedMarketing = () => {
       blacklisted: "Blacklisted",
       interval: "Min Interval",
       duplicate: "Duplicate Mobile",
+      once_per_mobile_dedup: "Once Per Mobile",
       missing_umr: "Missing UMR",
       no_abnormal_history: "No Abnormal History",
       invalid_mobile: "Invalid Mobile",
