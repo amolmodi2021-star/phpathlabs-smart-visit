@@ -209,6 +209,7 @@ const AutomatedMarketing = () => {
       record_limit: filterForm.record_limit,
       template_id: filterForm.template_id || null,
       enabled: filterForm.enabled,
+      once_per_mobile: filterForm.once_per_mobile,
     };
 
     if (editingFilter) {
