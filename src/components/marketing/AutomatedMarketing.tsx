@@ -257,7 +257,7 @@ const AutomatedMarketing = () => {
       blacklistSet = new Set((bl || []).map((b: any) => b.mobile_number));
     }
 
-    // Fetch recent drip logs for interval check
+    // Fetch recent drip logs for global interval check
     const intervalDate = new Date();
     intervalDate.setDate(intervalDate.getDate() - minInterval);
     const { data: recentSends } = await supabase
@@ -267,15 +267,6 @@ const AutomatedMarketing = () => {
       .gte("created_at", intervalDate.toISOString());
     const recentMobiles = new Set((recentSends || []).map((r: any) => r.mobile_number));
 
-    // Also check crm_contacts last_sent_date for interval
-    const contactsByMobile = new Map<string, any[]>();
-    for (const c of allContacts) {
-      const mob = (c.mobile_number || "").replace(/\D/g, "").slice(-10);
-      if (!mob || mob.length !== 10) continue;
-      if (!contactsByMobile.has(mob)) contactsByMobile.set(mob, []);
-      contactsByMobile.get(mob)!.push(c);
-    }
-
     // Fetch abnormal test primary keys for validation
     const { data: abnormalPks } = await supabase
       .from("crm_abnormal_tests")
@@ -284,6 +275,7 @@ const AutomatedMarketing = () => {
 
     // Claimed mobiles set across all filters
     const claimedMobiles = new Set<string>();
+    // Auto-calculate per-filter limit from global max/day divided by active filters
     const perFilterLimit = Math.floor(maxPerDay / enabledFilters.length);
 
     const results: PreviewResult[] = [];
@@ -311,17 +303,18 @@ const AutomatedMarketing = () => {
         }
       }
 
-      // Filter by last_sent_days_ago
-      if (filter.last_sent_days_ago > 0) {
+      // Use global min interval for last_sent_date filtering
+      if (minInterval > 0) {
         const cutoff = new Date();
-        cutoff.setDate(cutoff.getDate() - filter.last_sent_days_ago);
+        cutoff.setDate(cutoff.getDate() - minInterval);
         candidates = candidates.filter((c) => {
           if (!c.last_sent_date) return true; // never sent = eligible
           return new Date(c.last_sent_date) < cutoff;
         });
       }
 
-      const limit = Math.min(filter.record_limit, perFilterLimit);
+      // Limit is auto-calculated from global max/day
+      const limit = perFilterLimit;
 
       for (const c of candidates) {
         if (eligible.length >= limit) break;
@@ -332,10 +325,10 @@ const AutomatedMarketing = () => {
         // Blacklist check
         if (excludeBlacklist && blacklistSet.has(mob)) { addSkip("blacklisted"); continue; }
 
-        // Interval check (drip log)
+        // Global interval check (drip log)
         if (recentMobiles.has(mob)) { addSkip("interval"); continue; }
 
-        // Also check contact's own last_sent_date against min interval
+        // Also check contact's own last_sent_date against global min interval
         if (c.last_sent_date) {
           const lastSent = new Date(c.last_sent_date);
           const intervalCutoff = new Date();
@@ -1102,7 +1095,7 @@ const AutomatedMarketing = () => {
               />
             </div>
             <div className="space-y-1">
-              <Label>Min Interval (days)</Label>
+              <Label>Min Gap Between Messages (days)</Label>
               <Input
                 type="number"
                 value={minInterval}
@@ -1149,8 +1142,6 @@ const AutomatedMarketing = () => {
                   <TableHead>Priority</TableHead>
                   <TableHead>Location</TableHead>
                   <TableHead>Sequencing</TableHead>
-                  <TableHead>Days Ago</TableHead>
-                  <TableHead>Limit</TableHead>
                   <TableHead>Enabled</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
@@ -1171,8 +1162,6 @@ const AutomatedMarketing = () => {
                         ? SEQUENCE_OPTIONS.find((s) => s.value === f.last_sent_type_filter)?.label || f.last_sent_type_filter
                         : "Any"}
                     </TableCell>
-                    <TableCell>{f.last_sent_days_ago}</TableCell>
-                    <TableCell>{f.record_limit}</TableCell>
                     <TableCell>
                       <Switch checked={f.enabled} onCheckedChange={(v) => toggleFilter(f.id, v)} />
                     </TableCell>
@@ -1211,25 +1200,53 @@ const AutomatedMarketing = () => {
       {previewResults && (
         <Card>
           <CardHeader>
-            <CardTitle>Preview Results</CardTitle>
+            <CardTitle>Preview Results (Limit: {Math.floor(maxPerDay / Math.max(filters.filter(f => f.enabled).length, 1))} per filter)</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
+            <div className="space-y-4">
               {previewResults.map((pr) => (
-                <div key={pr.filterId} className="p-3 border rounded-lg">
-                  <div className="flex items-center justify-between">
+                <div key={pr.filterId} className="border rounded-lg">
+                  <div className="flex items-center justify-between p-3 bg-muted/30">
                     <span className="font-medium">{pr.filterName}</span>
-                    <Badge variant={pr.eligible > 0 ? "default" : "secondary"}>
-                      {pr.eligible} eligible
-                    </Badge>
-                  </div>
-                  {pr.skipped.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {pr.skipped.map((s) => (
+                    <div className="flex gap-2">
+                      <Badge variant={pr.eligible > 0 ? "default" : "secondary"}>
+                        {pr.eligible} eligible
+                      </Badge>
+                      {pr.skipped.length > 0 && pr.skipped.map((s) => (
                         <Badge key={s.reason} variant="outline" className="text-xs">
                           {skipReasonLabel(s.reason)}: {s.count}
                         </Badge>
                       ))}
+                    </div>
+                  </div>
+                  {pr.records.length > 0 && (
+                    <div className="max-h-60 overflow-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-xs">#</TableHead>
+                            <TableHead className="text-xs">Patient Name</TableHead>
+                            <TableHead className="text-xs">Mobile</TableHead>
+                            <TableHead className="text-xs">UMR</TableHead>
+                            <TableHead className="text-xs">Location</TableHead>
+                            <TableHead className="text-xs">Last Sent</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {pr.records.map((r: any, idx: number) => (
+                            <TableRow key={r.id || idx}>
+                              <TableCell className="text-xs">{idx + 1}</TableCell>
+                              <TableCell className="text-xs">{r.patient_name || "-"}</TableCell>
+                              <TableCell className="text-xs">{r.mobile_number || "-"}</TableCell>
+                              <TableCell className="text-xs">{r.umr_number || "-"}</TableCell>
+                              <TableCell className="text-xs">{r.location || "-"}</TableCell>
+                              <TableCell className="text-xs">
+                                {r.last_sent_type ? `${r.last_sent_type} (${r.last_sent_date ? new Date(r.last_sent_date).toLocaleDateString("en-GB") : "-"})` : "Never"}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
                     </div>
                   )}
                 </div>
@@ -1326,23 +1343,13 @@ const AutomatedMarketing = () => {
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label>Priority (lower = first)</Label>
-                <Input
-                  type="number"
-                  value={filterForm.priority}
-                  onChange={(e) => setFilterForm({ ...filterForm, priority: Number(e.target.value) || 1 })}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Record Limit</Label>
-                <Input
-                  type="number"
-                  value={filterForm.record_limit}
-                  onChange={(e) => setFilterForm({ ...filterForm, record_limit: Number(e.target.value) || 100 })}
-                />
-              </div>
+            <div className="space-y-1">
+              <Label>Priority (lower = first)</Label>
+              <Input
+                type="number"
+                value={filterForm.priority}
+                onChange={(e) => setFilterForm({ ...filterForm, priority: Number(e.target.value) || 1 })}
+              />
             </div>
             <div className="space-y-1">
               <Label>Location Filter</Label>
@@ -1369,14 +1376,6 @@ const AutomatedMarketing = () => {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>Last Sent Days Ago (min)</Label>
-              <Input
-                type="number"
-                value={filterForm.last_sent_days_ago}
-                onChange={(e) => setFilterForm({ ...filterForm, last_sent_days_ago: Number(e.target.value) || 0 })}
-              />
             </div>
             {filterForm.message_type === "abc_card" && (
               <div className="space-y-1">
