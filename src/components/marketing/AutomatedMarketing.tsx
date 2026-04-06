@@ -335,10 +335,14 @@ const AutomatedMarketing = () => {
 
     // Check if ALL filters are complete for a mobile (for cycle reset)
     const allFiltersComplete = (mob: string): boolean => {
+      let anyStarted = false;
       for (const f of enabledFilters) {
         const eligible = getEligibleCount(f, mob);
         const sent = getSentCount(f.id, mob);
+        if (sent > 0) anyStarted = true;
         if (sent < eligible) return false;
+      }
+      return anyStarted; // only "complete" if at least one filter has started
       }
       return true;
     };
