@@ -1345,7 +1345,7 @@ const AutomatedMarketing = () => {
             </div>
             <div className="space-y-1">
               <Label>Message Type</Label>
-              <Select value={filterForm.message_type} onValueChange={(v) => setFilterForm({ ...filterForm, message_type: v })}>
+              <Select value={filterForm.message_type} onValueChange={(v) => setFilterForm({ ...filterForm, message_type: v, once_per_mobile: v === "promotion" ? true : filterForm.once_per_mobile })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
