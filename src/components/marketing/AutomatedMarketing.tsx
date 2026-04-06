@@ -568,6 +568,10 @@ const AutomatedMarketing = () => {
       return toast.error("Run preview first and ensure there are eligible records");
     }
 
+    const trialMax = 3;
+    const trial = isTrialMode;
+    const trialMob = testMobile.replace(/\D/g, "").slice(-10);
+
     const enabledFilters = filters.filter((f) => f.enabled).sort((a, b) => a.priority - b.priority);
     
     // Fetch all WA settings
@@ -581,11 +585,13 @@ const AutomatedMarketing = () => {
     setSending(true);
     setSendProgress(0);
 
-    const totalMessages = previewResults.reduce((sum, r) => sum + r.eligible, 0);
+    let totalMessages = previewResults.reduce((sum, r) => sum + r.eligible, 0);
+    if (trial) totalMessages = Math.min(totalMessages, trialMax);
     let processedCount = 0;
     let totalSent = 0;
     let totalFailed = 0;
     let totalSkipped = 0;
+    let trialSentCount = 0;
 
     for (const preview of previewResults) {
       if (preview.eligible === 0) continue;
