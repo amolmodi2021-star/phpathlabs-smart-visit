@@ -882,7 +882,7 @@ const AutomatedMarketing = () => {
 
           const toNumber = `+91${destMob}`;
           const payload: Record<string, unknown> = {
-            from: tmpl.from_number || "",
+            from: cfg["wa_global_fromNumber"] || "",
             to: toNumber,
             templateName: tmpl.whatsapp_template_name,
             type: "template",
