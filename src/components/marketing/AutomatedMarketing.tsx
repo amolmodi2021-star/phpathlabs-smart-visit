@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Pencil, Trash2, Eye, Send, Settings } from "lucide-react";
+import { Plus, Pencil, Trash2, Eye, Send, Settings, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 
 interface DripFilter {
@@ -62,6 +62,9 @@ const AutomatedMarketing = () => {
   const [minInterval, setMinInterval] = useState(3);
   const [excludeBlacklist, setExcludeBlacklist] = useState(true);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [waLimit, setWaLimit] = useState(250);
+  const [sentLast24h, setSentLast24h] = useState(0);
+  const [countLoading, setCountLoading] = useState(true);
 
   // Filter dialog
   const [filterOpen, setFilterOpen] = useState(false);
@@ -92,15 +95,39 @@ const AutomatedMarketing = () => {
       const { data } = await supabase
         .from("app_settings")
         .select("setting_key, setting_value")
-        .in("setting_key", ["drip_max_messages_per_day", "drip_min_interval_days", "drip_exclude_blacklist"]);
+        .in("setting_key", ["drip_max_messages_per_day", "drip_min_interval_days", "drip_exclude_blacklist", "wa_daily_limit"]);
       const map: Record<string, string> = {};
       (data || []).forEach((s) => { map[s.setting_key] = s.setting_value; });
       if (map["drip_max_messages_per_day"]) setMaxPerDay(Number(map["drip_max_messages_per_day"]));
       if (map["drip_min_interval_days"]) setMinInterval(Number(map["drip_min_interval_days"]));
       if (map["drip_exclude_blacklist"] === "false") setExcludeBlacklist(false);
+      if (map["wa_daily_limit"]) setWaLimit(Number(map["wa_daily_limit"]));
       setSettingsLoaded(true);
     })();
   }, []);
+
+  // Count messages sent in last 24 hours across all modules
+  const fetchSentCount = useCallback(async () => {
+    setCountLoading(true);
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    
+    const [loyaltyRes, dripRes, crmRes, abnormalRes] = await Promise.all([
+      supabase.from("loyalty_cards").select("id", { count: "exact", head: true }).gte("sent_at", since).not("sent_at", "is", null),
+      supabase.from("drip_campaign_log").select("id", { count: "exact", head: true }).gte("created_at", since).eq("status", "sent"),
+      supabase.from("crm_contacts").select("id", { count: "exact", head: true }).gte("last_sent_date", since).not("last_sent_type", "is", null),
+      supabase.from("abnormal_history").select("id", { count: "exact", head: true }).gte("sent_at", since).not("sent_at", "is", null),
+    ]);
+    
+    const total = (loyaltyRes.count || 0) + (dripRes.count || 0) + (crmRes.count || 0) + (abnormalRes.count || 0);
+    setSentLast24h(total);
+    setCountLoading(false);
+  }, []);
+
+  useEffect(() => {
+    fetchSentCount();
+    const interval = setInterval(fetchSentCount, 60000); // refresh every minute
+    return () => clearInterval(interval);
+  }, [fetchSentCount]);
 
   const saveGlobalSetting = async (key: string, value: string) => {
     await supabase.from("app_settings").upsert(
@@ -1203,8 +1230,57 @@ const AutomatedMarketing = () => {
     return labels[r] || r;
   };
 
+  const usagePct = waLimit > 0 ? Math.min(100, Math.round((sentLast24h / waLimit) * 100)) : 0;
+  const remaining24h = Math.max(0, waLimit - sentLast24h);
+
   return (
     <div className="space-y-6">
+      {/* 24h WhatsApp Usage Counter */}
+      <Card className={sentLast24h >= waLimit ? "border-destructive" : ""}>
+        <CardContent className="py-4">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <MessageCircle className={`h-8 w-8 ${sentLast24h >= waLimit ? "text-destructive" : "text-primary"}`} />
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-bold">{countLoading ? "..." : sentLast24h}</span>
+                  <span className="text-muted-foreground text-sm">/ {waLimit}</span>
+                  <span className="text-muted-foreground text-xs">messages in last 24h</span>
+                </div>
+                <div className="flex items-center gap-2 mt-1">
+                  <Progress value={usagePct} className="w-48 h-2" />
+                  <span className="text-xs text-muted-foreground">{usagePct}%</span>
+                  {remaining24h > 0 && (
+                    <Badge variant="secondary" className="text-xs">{remaining24h} remaining</Badge>
+                  )}
+                  {sentLast24h >= waLimit && (
+                    <Badge variant="destructive" className="text-xs">Limit Reached</Badge>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Label className="text-xs whitespace-nowrap">WA Daily Limit:</Label>
+              <Input
+                type="number"
+                value={waLimit}
+                onChange={(e) => {
+                  const v = Number(e.target.value) || 250;
+                  setWaLimit(v);
+                  saveGlobalSetting("wa_daily_limit", String(v));
+                }}
+                className="w-24 h-8"
+                min={1}
+              />
+              <Button variant="ghost" size="sm" onClick={fetchSentCount} className="text-xs h-8">
+                Refresh
+              </Button>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">Counts all WhatsApp messages sent from Marketing, CRM, Loyalty Cards & Drip campaigns in last 24 hours. Auto-refreshes every minute.</p>
+        </CardContent>
+      </Card>
+
       {/* Progress */}
       {sending && (
         <div className="space-y-2 p-3 border rounded-lg bg-muted/50">
