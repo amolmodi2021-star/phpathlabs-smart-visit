@@ -942,9 +942,12 @@ const AutomatedMarketing = () => {
     setSending(false);
     setSendPhase("");
     setPreviewResults(null);
-    qc.invalidateQueries({ queryKey: ["drip-campaign-logs"] });
-    qc.invalidateQueries({ queryKey: ["crm-contacts"] });
-    toast.success(`Campaign complete! Sent: ${totalSent}, Failed: ${totalFailed}, Skipped: ${totalSkipped}`);
+    if (!trial) {
+      qc.invalidateQueries({ queryKey: ["drip-campaign-logs"] });
+      qc.invalidateQueries({ queryKey: ["crm-contacts"] });
+    }
+    const modeLabel = trial ? "Trial complete!" : "Campaign complete!";
+    toast.success(`${modeLabel} Sent: ${totalSent}, Failed: ${totalFailed}, Skipped: ${totalSkipped}`);
   };
 
   const logDripAction = async (filter: DripFilter, contact: any, status: string, skipReason?: string) => {
