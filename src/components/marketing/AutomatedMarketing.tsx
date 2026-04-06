@@ -95,15 +95,39 @@ const AutomatedMarketing = () => {
       const { data } = await supabase
         .from("app_settings")
         .select("setting_key, setting_value")
-        .in("setting_key", ["drip_max_messages_per_day", "drip_min_interval_days", "drip_exclude_blacklist"]);
+        .in("setting_key", ["drip_max_messages_per_day", "drip_min_interval_days", "drip_exclude_blacklist", "wa_daily_limit"]);
       const map: Record<string, string> = {};
       (data || []).forEach((s) => { map[s.setting_key] = s.setting_value; });
       if (map["drip_max_messages_per_day"]) setMaxPerDay(Number(map["drip_max_messages_per_day"]));
       if (map["drip_min_interval_days"]) setMinInterval(Number(map["drip_min_interval_days"]));
       if (map["drip_exclude_blacklist"] === "false") setExcludeBlacklist(false);
+      if (map["wa_daily_limit"]) setWaLimit(Number(map["wa_daily_limit"]));
       setSettingsLoaded(true);
     })();
   }, []);
+
+  // Count messages sent in last 24 hours across all modules
+  const fetchSentCount = useCallback(async () => {
+    setCountLoading(true);
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    
+    const [loyaltyRes, dripRes, crmRes, abnormalRes] = await Promise.all([
+      supabase.from("loyalty_cards").select("id", { count: "exact", head: true }).gte("sent_at", since).not("sent_at", "is", null),
+      supabase.from("drip_campaign_log").select("id", { count: "exact", head: true }).gte("created_at", since).eq("status", "sent"),
+      supabase.from("crm_contacts").select("id", { count: "exact", head: true }).gte("last_sent_date", since).not("last_sent_type", "is", null),
+      supabase.from("abnormal_history").select("id", { count: "exact", head: true }).gte("sent_at", since).not("sent_at", "is", null),
+    ]);
+    
+    const total = (loyaltyRes.count || 0) + (dripRes.count || 0) + (crmRes.count || 0) + (abnormalRes.count || 0);
+    setSentLast24h(total);
+    setCountLoading(false);
+  }, []);
+
+  useEffect(() => {
+    fetchSentCount();
+    const interval = setInterval(fetchSentCount, 60000); // refresh every minute
+    return () => clearInterval(interval);
+  }, [fetchSentCount]);
 
   const saveGlobalSetting = async (key: string, value: string) => {
     await supabase.from("app_settings").upsert(
