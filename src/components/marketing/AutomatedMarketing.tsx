@@ -1448,15 +1448,44 @@ const AutomatedMarketing = () => {
           )}
 
           {filters.some((f) => f.enabled) && (
-            <div className="flex gap-2 mt-4">
-              <Button variant="outline" onClick={handlePreview} disabled={previewing || sending}>
-                <Eye className="h-4 w-4 mr-1" />
-                {previewing ? "Previewing..." : "Preview Eligible Records"}
-              </Button>
-              <Button onClick={handleSend} disabled={sending || !previewResults}>
-                <Send className="h-4 w-4 mr-1" />
-                Send Messages
-              </Button>
+            <div className="space-y-3 mt-4">
+              {/* Test Mode */}
+              <div className="flex items-center gap-3">
+                <FlaskConical className="h-4 w-4 text-muted-foreground" />
+                <Label className="text-sm whitespace-nowrap">Test Mobile (Trial Mode):</Label>
+                <Input
+                  placeholder="Enter your 10-digit mobile"
+                  value={testMobile}
+                  onChange={(e) => setTestMobile(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                  className="w-48 h-8"
+                />
+                {isTrialMode && (
+                  <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 text-xs">
+                    Max 3 trial messages
+                  </Badge>
+                )}
+              </div>
+              {isTrialMode && (
+                <div className="flex items-center gap-2 p-2 rounded-md bg-amber-50 border border-amber-300 text-amber-800 text-sm">
+                  <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                  <span>⚠️ TRIAL MODE — All messages will be sent to <strong>+91{testMobile}</strong>. No database logs will be written. Max 3 messages.</span>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={handlePreview} disabled={previewing || sending}>
+                  <Eye className="h-4 w-4 mr-1" />
+                  {previewing ? "Previewing..." : "Preview Eligible Records"}
+                </Button>
+                <Button
+                  onClick={handleSend}
+                  disabled={sending || !previewResults}
+                  variant={isTrialMode ? "outline" : "default"}
+                  className={isTrialMode ? "border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100" : ""}
+                >
+                  {isTrialMode ? <FlaskConical className="h-4 w-4 mr-1" /> : <Send className="h-4 w-4 mr-1" />}
+                  {isTrialMode ? "Send Trial" : "Send Messages"}
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>
