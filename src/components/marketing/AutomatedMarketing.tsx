@@ -76,6 +76,7 @@ const AutomatedMarketing = () => {
     record_limit: 100,
     template_id: "",
     enabled: true,
+    once_per_mobile: false,
   });
 
   // Execution state
