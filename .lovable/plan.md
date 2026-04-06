@@ -1,52 +1,51 @@
 
 
-# Mobile Number Completion Lock + Cycle Reset
+# Fix: Abnormal Cards Blocked Despite ABC Already Sent
 
-## How It Works (Simple Terms)
+## Problem
 
-Mobile 9552000200 has 5 patients. Priority 1 filter is ABC Cards, Priority 2 is Abnormal Cards, Priority 3 is Promotions.
+ABC loyalty cards were sent from CRM (not the drip system), but the drip system only checks its own `drip_campaign_log` to determine if ABC is "complete" for a mobile number. Since the drip log is empty, the system thinks ABC was never sent and locks abnormal cards behind the completion lock.
 
-- **Days 1–5**: Only ABC filter can claim this mobile. One card per day (respecting min gap). After all 5 ABC cards sent → mobile unlocked for Priority 2.
-- **Days 6–10**: Only Abnormal filter can claim this mobile. After all abnormal cards sent → mobile unlocked for Priority 3.
-- **Day 11**: Promotion filter claims mobile (once per mobile = 1 message only).
-- **After all done**: Cycle resets. ABC cards start again from Day 12.
+Additionally, the cycle counter has inflated (some mobiles at cycle 8-10) without any actual drip sends, caused by edge cases in the `allFiltersComplete` check.
 
-## Database Changes
+## Solution
 
-### New table: `drip_mobile_cycles`
-Tracks where each mobile is in its send cycle.
+**Make the completion lock aware of ABC sends from ANY source** — not just the drip system.
 
-| Column | Type | Purpose |
-|--------|------|---------|
-| mobile_number | text (PK) | 10-digit mobile |
-| current_cycle | integer | Which round (starts 1) |
-| updated_at | timestamptz | Last update |
+### Changes to `AutomatedMarketing.tsx`
 
-### Add column to `drip_campaign_log`
-- `cycle_number` (integer, default 1) — distinguishes sends across cycles
+1. **Hybrid sent detection for ABC cards**: When checking if ABC is "complete" for a mobile, also check `crm_contacts.last_sent_type === "ABC"` for each patient on that mobile. If a patient's `last_sent_type` is "ABC", count it as sent even if no drip log exists.
 
-## Code Changes — `AutomatedMarketing.tsx`
+2. **Update `getSentCount`**: For ABC-type filters, merge drip log data with CRM contact data. A patient counts as "ABC sent" if either:
+   - Their `primary_key` appears in `drip_campaign_log` for the ABC filter, OR
+   - Their `last_sent_type` is "ABC" in `crm_contacts`
 
-### Updated `collectEligibleRecords()` logic:
+3. **Reset inflated cycles**: Add a one-time cleanup — reset `drip_mobile_cycles` entries where cycle > 1 but no matching drip logs exist. This prevents ghost cycles from blocking the flow.
 
-1. **Group contacts by mobile number** — know how many patients each mobile has
-2. **Fetch drip_mobile_cycles** — know current cycle per mobile
-3. **For each enabled filter (sorted by priority)**, when evaluating a mobile:
-   - Check all **higher-priority** filters: count total eligible records vs. sent records (in current cycle) for this mobile
-   - If any higher-priority filter has unsent records → skip with `completion_lock`
-   - If THIS filter still has unsent records for this mobile → allow claim
-   - If THIS filter is fully done for this mobile → skip (already complete)
-4. **Cycle reset**: When checking and ALL filters are complete for a mobile → increment `current_cycle` in `drip_mobile_cycles`, allowing ABC to start again
-5. **once_per_mobile** filters: count 1 record as "total eligible" regardless of patient count
+4. **Fix cycle inflation edge case**: In `allFiltersComplete`, if `getEligibleCount` is 0 for a filter (no data), treat it as complete instead of returning false (which would prevent cycle reset) or being ambiguous.
 
-### After sending:
-- Log with `cycle_number` from `drip_mobile_cycles`
-- System naturally progresses through priorities as records complete
+### Technical Detail
 
-## Files to Create/Modify
+```text
+Current flow (broken):
+  getSentCount(ABC_filter, mob) → checks drip_campaign_log only → 0
+  getEligibleCount(ABC_filter, mob) → 1 (patient has UMR)
+  isLockedByHigherPriority(abnormal, mob) → 0 < 1 → LOCKED ❌
+
+Fixed flow:
+  getSentCount(ABC_filter, mob) → checks drip_log + crm_contacts.last_sent_type → 1
+  getEligibleCount(ABC_filter, mob) → 1
+  isLockedByHigherPriority(abnormal, mob) → 1 >= 1 → NOT LOCKED ✅
+```
+
+### Database Cleanup
+
+Run a one-time reset of `drip_mobile_cycles` to clear inflated cycles since no actual drip sends happened (drip_campaign_log is empty).
+
+## Files to Modify
 
 | File | Action |
 |------|--------|
-| Migration SQL | Create `drip_mobile_cycles` table, add `cycle_number` to `drip_campaign_log` |
-| `src/components/marketing/AutomatedMarketing.tsx` | Add completion lock + cycle logic in `collectEligibleRecords()` and send handlers |
+| `src/components/marketing/AutomatedMarketing.tsx` | Update `getSentCount` to merge CRM send data; fix cycle inflation edge case |
+| Migration SQL | Reset `drip_mobile_cycles` where no drip logs exist |
 
