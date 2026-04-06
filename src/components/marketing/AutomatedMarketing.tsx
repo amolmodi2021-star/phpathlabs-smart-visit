@@ -62,6 +62,9 @@ const AutomatedMarketing = () => {
   const [minInterval, setMinInterval] = useState(3);
   const [excludeBlacklist, setExcludeBlacklist] = useState(true);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [waLimit, setWaLimit] = useState(250);
+  const [sentLast24h, setSentLast24h] = useState(0);
+  const [countLoading, setCountLoading] = useState(true);
 
   // Filter dialog
   const [filterOpen, setFilterOpen] = useState(false);
