@@ -1,0 +1,1 @@
+UPDATE drip_mobile_cycles SET current_cycle = 1, updated_at = now() WHERE current_cycle > 1;
