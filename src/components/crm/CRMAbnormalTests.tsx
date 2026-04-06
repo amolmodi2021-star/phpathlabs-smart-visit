@@ -113,28 +113,7 @@ const CRMAbnormalTests = () => {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [page, setPage] = useState(0);
-  const [staticExpiryDate, setStaticExpiryDate] = useState("");
   const qc = useQueryClient();
-
-  // Load saved static expiry date
-  useEffect(() => {
-    (async () => {
-      const { data } = await supabase
-        .from("app_settings")
-        .select("setting_value")
-        .eq("setting_key", "abnormal_static_expiry_date")
-        .maybeSingle();
-      if (data?.setting_value) setStaticExpiryDate(data.setting_value);
-    })();
-  }, []);
-
-  const handleExpiryDateChange = (val: string) => {
-    setStaticExpiryDate(val);
-    supabase.from("app_settings").upsert(
-      { setting_key: "abnormal_static_expiry_date", setting_value: val, updated_at: new Date().toISOString() },
-      { onConflict: "setting_key" }
-    );
-  };
 
   // Debounce search
   const searchTimerRef = useState<ReturnType<typeof setTimeout> | null>(null);
