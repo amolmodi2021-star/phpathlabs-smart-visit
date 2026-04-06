@@ -701,7 +701,7 @@ const AutomatedMarketing = () => {
 
           const payload: Record<string, unknown> = {
             from: loyaltyFromNumber,
-            to: `+91${mob}`,
+            to: `+91${destMob}`,
             templateName: loyaltyTemplateName,
             campaignName: loyaltyCampaignName,
             type: "template",
@@ -713,19 +713,22 @@ const AutomatedMarketing = () => {
               body: { apiBaseUrl: loyaltyApiBaseUrl, apiKey: loyaltyApiKey, authHeaderName: loyaltyAuthHeaderName, authHeaderPrefix: loyaltyAuthHeaderPrefix, payload },
             });
             if (proxyRes.error || proxyRes.data?.status >= 400) {
-              await logDripAction(filter, r, "failed", "wa_api_error");
+              if (!trial) await logDripAction(filter, r, "failed", "wa_api_error");
               totalFailed++;
             } else {
-              await logDripAction(filter, r, "sent");
-              await supabase.from("crm_contacts").update({
-                last_sent_type: "ABC",
-                last_sent_date: new Date().toISOString(),
-                record_tag: null,
-              }).eq("id", r.id);
+              if (!trial) {
+                await logDripAction(filter, r, "sent");
+                await supabase.from("crm_contacts").update({
+                  last_sent_type: "ABC",
+                  last_sent_date: new Date().toISOString(),
+                  record_tag: null,
+                }).eq("id", r.id);
+              }
               totalSent++;
+              if (trial) trialSentCount++;
             }
           } catch {
-            await logDripAction(filter, r, "failed", "wa_exception");
+            if (!trial) await logDripAction(filter, r, "failed", "wa_exception");
             totalFailed++;
           }
 
