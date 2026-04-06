@@ -1274,7 +1274,7 @@ const AutomatedMarketing = () => {
                       </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                      {Object.entries(byFilter).map(([filterName, filterLogs]) => (
+                      {Object.entries(byFilter).map(([filterName, filterLogs]: [string, any[]]) => (
                         <div key={filterName} className="text-xs p-2 bg-muted/50 rounded">
                           <span className="font-medium">{filterName}:</span>{" "}
                           {filterLogs.filter((l: any) => l.status === "sent").length} sent,{" "}
