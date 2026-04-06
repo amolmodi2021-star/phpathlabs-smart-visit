@@ -1,30 +1,44 @@
 
+# Consolidate WhatsApp Settings, Templates & History
 
-# Add Test Mode: Trial Send to Your Mobile Number
+## Problem
+WhatsApp API settings and templates are scattered across Loyalty Cards, CRM, Marketing, and Abnormal Tests tabs. History is also duplicated. The abnormal card flow incorrectly asks for an expiry date.
 
-## What This Does
+## Changes
 
-Adds a **"Test Mobile Number"** input field in the Automated Marketing section. When a mobile number is entered, all messages during that send session go to YOUR number instead of the actual patients. This lets you verify the message format, template, and card image before doing a real send.
+### 1. New Unified Page: `/whatsapp-settings`
+- **WhatsApp API Settings** (single config): Base URL, API Key, Auth Header, From Number — stored once in `app_settings` with a unified prefix
+- **Template Manager**: List all templates (ABC Card, Abnormal PNG, Promo, etc.) with their WhatsApp template name, body variable mapping, media header toggle, campaign name
+- **Unified History**: All sent messages from every module (CRM, Loyalty, Marketing, Automated) shown in one searchable, filterable table
 
-- The patient's **name, UMR, card image** etc. remain unchanged — only the **destination number** is swapped.
-- When test mode is active, the send button changes to **"Send Trial"** with a distinct color.
-- **No logs are written** to `drip_campaign_log` or `crm_contacts` during trial mode, so it doesn't affect your priority/cycle system.
-- A clear warning banner appears confirming trial mode is active.
+### 2. Simplify Existing Pages
+- **Loyalty Cards**: Remove WhatsApp Settings tab → Replace with a template selector dropdown (pick from templates created in the unified page)
+- **CRM Abnormal Tests**: Remove "Abnormal WA Settings" tab → Replace with template selector
+- **Marketing**: Templates already exist in `marketing_templates` table — link them to the unified page; remove duplicate API config fields from each template
+- **Automated Marketing**: Filters already reference `template_id` — no change needed
 
-## Changes to `AutomatedMarketing.tsx`
+### 3. Remove Duplicate History Tabs
+- Remove History tab from Loyalty Cards page
+- Remove History tab from CRM page  
+- Remove History tab from Marketing page
+- Keep unified history on the new WhatsApp Settings page
 
-1. **Add state**: `testMobile` (string) — the override mobile number for trial sends.
+### 4. Fix: Remove Expiry Date from Abnormal Card Flow
+- In CRM Abnormal Tests, remove the expiry date prompt when selecting patients for abnormal card sending
 
-2. **Add UI field** near the Send button area:
-   - Input field labeled "Test Mobile (Trial Mode)" with placeholder "Enter your 10-digit mobile"
-   - When filled, show a yellow warning: "⚠️ TRIAL MODE — All messages will be sent to {testMobile}"
-   - Send button text changes to "Send Trial" with amber styling
+### 5. Data Migration
+- Migrate existing `loyalty_wa_*` and `abnormal_wa_*` settings from `app_settings` into a unified format
+- Existing `marketing_templates` table already has per-template API config — consolidate to use shared API settings + template-specific fields only
 
-3. **Modify `handleSend`**:
-   - If `testMobile` is set (10 digits), replace `to: +91${mob}` with `to: +91${testMobile}` in all payload constructions (ABC cards, Abnormal cards, Promo messages)
-   - Skip all database updates: no `logDripAction`, no `crm_contacts` update, no `drip_mobile_cycles` changes
-   - Still show progress and success/failure counts for visibility
-   - Limit trial sends to **max 3 messages** to avoid wasting quota — show confirmation if more records exist
-
-4. **No changes to preview logic** — preview works exactly the same regardless of test mode.
-
+## Files to Modify
+| File | Action |
+|------|--------|
+| New: `src/pages/WhatsAppSettings.tsx` | Unified settings + templates + history page |
+| `src/App.tsx` | Add route for `/whatsapp-settings` |
+| `src/components/AppLayout.tsx` | Add nav link |
+| `src/pages/LoyaltyCards.tsx` | Remove WA Settings & History tabs, add template selector |
+| `src/pages/CRM.tsx` | Remove Abnormal WA Settings & History tabs, add template selector |
+| `src/pages/Marketing.tsx` | Remove duplicate settings, add template selector |
+| `src/components/crm/CRMAbnormalTests.tsx` | Remove expiry date field |
+| `src/components/WhatsAppSettings.tsx` | Delete (replaced by new page) |
+| `src/components/crm/CRMAbnormalWhatsAppSettings.tsx` | Delete (replaced by new page) |

@@ -4,7 +4,7 @@ import { logout } from "@/lib/auth";
 import {
   FileText, LayoutDashboard, Home, Users, TestTubes, MessageSquare,
   Menu, X, LogOut, FlaskConical, AlertTriangle, BarChart3, CreditCard,
-  FileUp, ClipboardList, Building2, Layers, Microscope, PenTool, BookOpen, Zap, Webhook, Megaphone, Contact, Activity,
+  FileUp, ClipboardList, Building2, Layers, Microscope, PenTool, BookOpen, Zap, Webhook, Megaphone, Contact, Activity, Settings,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -25,6 +25,7 @@ const navItems = [
   { to: "/crm", label: "CRM", icon: Contact },
   { to: "/lims-demo", label: "LIMS Interface", icon: Activity },
   { to: "/whatsapp-webhook", label: "WhatsApp Webhook", icon: Webhook },
+  { to: "/whatsapp-settings", label: "WhatsApp Settings", icon: Settings },
 ];
 
 // Report System modules archived — uncomment to restore
