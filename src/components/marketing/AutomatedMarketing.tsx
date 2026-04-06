@@ -270,8 +270,6 @@ const AutomatedMarketing = () => {
     if (enabledFilters.length === 0) return [];
 
     const BATCH = 1000;
-    const intervalDate = new Date();
-    intervalDate.setDate(intervalDate.getDate() - minInterval);
 
     // Helper to fetch all rows in paginated batches
     const fetchAll = async (query: any) => {
@@ -288,19 +286,17 @@ const AutomatedMarketing = () => {
     };
 
     // Run ALL queries in parallel for speed
-    const [allContacts, blacklistData, recentSends, abnormalPks, cyclesData, allLogs] = await Promise.all([
+    const [allContacts, blacklistData, abnormalPks, cyclesData, allLogs] = await Promise.all([
       fetchAll(supabase.from("crm_contacts").select("primary_key,mobile_number,patient_name,umr_number,location,last_sent_date,last_sent_type,record_tag,default_discount_pct,visit_date")),
       excludeBlacklist
         ? supabase.from("crm_blacklist").select("mobile_number").then(r => r.data || [])
         : Promise.resolve([]),
-      supabase.from("drip_campaign_log").select("mobile_number").eq("status", "sent").gte("created_at", intervalDate.toISOString()).then(r => r.data || []),
       supabase.from("crm_abnormal_tests").select("contact_primary_key").then(r => r.data || []),
       supabase.from("drip_mobile_cycles").select("mobile_number,current_cycle").then(r => r.data || []),
       fetchAll(supabase.from("drip_campaign_log").select("filter_id,mobile_number,contact_primary_key,cycle_number").eq("status", "sent")),
     ]);
 
     const blacklistSet = new Set(blacklistData.map((b: any) => b.mobile_number));
-    const recentMobiles = new Set(recentSends.map((r: any) => r.mobile_number));
     const abnormalPkSet = new Set(abnormalPks.map((a: any) => a.contact_primary_key));
     const mobileCycles: Record<string, number> = {};
     (cyclesData || []).forEach((c: any) => { mobileCycles[c.mobile_number] = c.current_cycle; });
@@ -321,45 +317,46 @@ const AutomatedMarketing = () => {
       const mob = log.mobile_number;
       const cycle = log.cycle_number || 1;
       const mobileCycle = mobileCycles[mob] || 1;
-      if (cycle !== mobileCycle) continue; // only count current cycle
+      if (cycle !== mobileCycle) continue;
       if (!sentByMobileFilter[mob]) sentByMobileFilter[mob] = {};
       if (!sentByMobileFilter[mob][log.filter_id]) sentByMobileFilter[mob][log.filter_id] = new Set();
       if (log.contact_primary_key) sentByMobileFilter[mob][log.filter_id].add(log.contact_primary_key);
     }
 
-    // Helper: count how many eligible records a filter has for a mobile
+    // Build set of mobiles that were sent ANY message within minInterval days (from drip log)
+    const intervalDate = new Date();
+    intervalDate.setDate(intervalDate.getDate() - minInterval);
+    const recentSentMobiles = new Set<string>();
+    for (const log of allLogs) {
+      // allLogs doesn't have created_at, so we check crm_contacts last_sent_date instead
+    }
+
     const getEligibleCount = (filter: DripFilter, mob: string): number => {
       const contacts = contactsByMobile[mob] || [];
-      if (filter.once_per_mobile) return 1; // only 1 needed
-      // For abc_card: only count contacts with UMR
+      if (filter.once_per_mobile) return 1;
       if (filter.message_type === "abc_card") {
         return contacts.filter(c => c.umr_number && c.umr_number.trim()).length;
       }
-      // For abnormal_card: only count contacts with abnormal history
       if (filter.message_type === "abnormal_card") {
         return contacts.filter(c => abnormalPkSet.has(c.primary_key)).length;
       }
       return contacts.length;
     };
 
-    // Helper: count how many have been sent for a filter+mobile in current cycle
     const getSentCount = (filterId: string, mob: string): number => {
       return sentByMobileFilter[mob]?.[filterId]?.size || 0;
     };
 
-    // Check if a higher-priority filter still has unsent records for this mobile
-    // ABC must finish ALL patients before abnormal can start for that mobile
     const isLockedByHigherPriority = (currentFilter: DripFilter, mob: string): boolean => {
       for (const f of enabledFilters) {
         if (f.priority >= currentFilter.priority) break;
         const eligible = getEligibleCount(f, mob);
         const sent = getSentCount(f.id, mob);
-        if (sent < eligible) return true; // higher priority not done yet
+        if (sent < eligible) return true;
       }
       return false;
     };
 
-    // Check if ALL filters are complete for a mobile (for cycle reset)
     const allFiltersComplete = (mob: string): boolean => {
       for (const f of enabledFilters) {
         const eligible = getEligibleCount(f, mob);
@@ -369,21 +366,25 @@ const AutomatedMarketing = () => {
       return true;
     };
 
-    // Mobiles that need cycle reset
     const mobilesToResetCycle: string[] = [];
 
-    // Claimed mobiles set across all filters (for daily dedup)
+    // SINGLE PASS: process filters in priority order, each gets up to remaining global quota
+    // Only 1 message per mobile per day across ALL filters
     const claimedMobiles = new Set<string>();
-    const initialPerFilter = Math.floor(maxPerDay / enabledFilters.length);
+    let globalRemaining = maxPerDay;
+    const results: PreviewResult[] = [];
 
-    // --- PASS 1: Collect eligible records per filter with initial equal limits ---
-    const filterEligibleAll: Map<string, { filter: DripFilter; eligible: any[]; allCandidates: any[]; skips: Record<string, number> }> = new Map();
-
-    const collectForFilter = (filter: DripFilter, limit: number, sharedClaimed: Set<string>) => {
-      const eligible: any[] = [];
+    for (const filter of enabledFilters) {
       const skips: Record<string, number> = {};
       const addSkip = (reason: string) => { skips[reason] = (skips[reason] || 0) + 1; };
+      const eligible: any[] = [];
 
+      if (globalRemaining <= 0) {
+        results.push({ filterId: filter.id, filterName: filter.name, eligible: 0, skipped: [], records: [] });
+        continue;
+      }
+
+      // Apply location filter
       let candidates = allContacts;
       if (filter.location_filter !== "ALL") {
         candidates = candidates.filter((c) => {
@@ -392,6 +393,7 @@ const AutomatedMarketing = () => {
         });
       }
 
+      // Apply sequence filter
       if (filter.last_sent_type_filter) {
         if (filter.last_sent_type_filter === "__null__") {
           candidates = candidates.filter((c) => !c.last_sent_type);
@@ -400,6 +402,7 @@ const AutomatedMarketing = () => {
         }
       }
 
+      // Apply min interval: skip contacts sent within minInterval days
       if (minInterval > 0) {
         const cutoff = new Date();
         cutoff.setDate(cutoff.getDate() - minInterval);
@@ -409,6 +412,7 @@ const AutomatedMarketing = () => {
         });
       }
 
+      // Sort: never-sent patients first
       candidates.sort((a, b) => {
         const aHas = a.last_sent_type ? 1 : 0;
         const bHas = b.last_sent_type ? 1 : 0;
@@ -418,42 +422,44 @@ const AutomatedMarketing = () => {
       const filterSeenMobiles = new Set<string>();
 
       for (const c of candidates) {
-        if (eligible.length >= limit) break;
+        if (eligible.length >= globalRemaining) break;
 
         const mob = (c.mobile_number || "").replace(/\D/g, "").slice(-10);
         if (!mob || mob.length !== 10) { addSkip("invalid_mobile"); continue; }
 
         if (excludeBlacklist && blacklistSet.has(mob)) { addSkip("blacklisted"); continue; }
-        if (recentMobiles.has(mob)) { addSkip("interval"); continue; }
 
-        if (c.last_sent_date) {
-          const lastSent = new Date(c.last_sent_date);
-          const intervalCutoff = new Date();
-          intervalCutoff.setDate(intervalCutoff.getDate() - minInterval);
-          if (lastSent >= intervalCutoff) { addSkip("interval"); continue; }
-        }
+        // Only 1 message per mobile per day across ALL filters
+        if (claimedMobiles.has(mob)) { addSkip("duplicate"); continue; }
 
-        if (sharedClaimed.has(mob)) { addSkip("duplicate"); continue; }
+        // Only 1 record per mobile per filter per day (even for multi-patient mobiles)
+        if (filterSeenMobiles.has(mob)) { addSkip("duplicate"); continue; }
+
+        // Once per mobile dedup for promotions
         if (filter.once_per_mobile && filterSeenMobiles.has(mob)) { addSkip("once_per_mobile_dedup"); continue; }
 
+        // Cycle reset check
         if (allFiltersComplete(mob) && enabledFilters.length > 0) {
           if (!mobilesToResetCycle.includes(mob)) mobilesToResetCycle.push(mob);
         }
 
+        // Completion lock: higher priority filter must finish first
         if (!allFiltersComplete(mob) && isLockedByHigherPriority(filter, mob)) {
           addSkip("completion_lock"); continue;
         }
 
+        // Check if this filter is already complete for this mobile in current cycle
         const sentForThisFilter = getSentCount(filter.id, mob);
         const eligibleForThisFilter = getEligibleCount(filter, mob);
         if (sentForThisFilter >= eligibleForThisFilter && !allFiltersComplete(mob)) {
           addSkip("already_complete"); continue;
         }
 
-        const currentCycle = mobileCycles[mob] || 1;
+        // Check if this specific record was already sent in this cycle
         const sentPks = sentByMobileFilter[mob]?.[filter.id];
         if (sentPks && sentPks.has(c.primary_key)) { addSkip("already_sent_this_cycle"); continue; }
 
+        // Data validation
         if (filter.message_type === "abc_card") {
           if (!c.umr_number || !c.umr_number.trim()) { addSkip("missing_umr"); continue; }
         }
@@ -462,53 +468,18 @@ const AutomatedMarketing = () => {
         }
 
         filterSeenMobiles.add(mob);
-        sharedClaimed.add(mob);
-        eligible.push({ ...c, _cycle: currentCycle });
+        claimedMobiles.add(mob);
+        eligible.push({ ...c, _cycle: mobileCycles[mob] || 1 });
       }
 
-      return { eligible, candidates, skips };
-    };
+      globalRemaining -= eligible.length;
 
-    // Pass 1: equal distribution
-    for (const filter of enabledFilters) {
-      const { eligible, candidates, skips } = collectForFilter(filter, initialPerFilter, claimedMobiles);
-      filterEligibleAll.set(filter.id, { filter, eligible, allCandidates: candidates, skips });
-    }
-
-    // Pass 2: redistribute unused quota to higher-priority filters that need more
-    let totalUsed = 0;
-    for (const v of filterEligibleAll.values()) totalUsed += v.eligible.length;
-    let remaining = maxPerDay - totalUsed;
-
-    if (remaining > 0) {
-      for (const filter of enabledFilters) {
-        if (remaining <= 0) break;
-        const entry = filterEligibleAll.get(filter.id)!;
-        // Try to collect more with the remaining quota
-        const extra = collectForFilter(filter, entry.eligible.length + remaining, claimedMobiles);
-        const newRecords = extra.eligible.filter(
-          (r) => !entry.eligible.some((e) => e.primary_key === r.primary_key)
-        );
-        if (newRecords.length > 0) {
-          entry.eligible.push(...newRecords);
-          // Merge skip counts
-          for (const [reason, count] of Object.entries(extra.skips)) {
-            entry.skips[reason] = (entry.skips[reason] || 0) + count;
-          }
-          remaining -= newRecords.length;
-        }
-      }
-    }
-
-    const results: PreviewResult[] = [];
-    for (const filter of enabledFilters) {
-      const entry = filterEligibleAll.get(filter.id)!;
       results.push({
         filterId: filter.id,
         filterName: filter.name,
-        eligible: entry.eligible.length,
-        skipped: Object.entries(entry.skips).map(([reason, count]) => ({ reason, count })),
-        records: entry.eligible,
+        eligible: eligible.length,
+        skipped: Object.entries(skips).map(([reason, count]) => ({ reason, count })),
+        records: eligible,
       });
     }
 
