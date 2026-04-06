@@ -206,11 +206,7 @@ const MarketingSender = () => {
           {selectedTemplate && (
             <div className="bg-muted p-3 rounded-lg text-sm space-y-1">
               <p className="font-medium">WhatsApp API Template: <span className="font-mono text-primary">{selectedTemplate.whatsapp_template_name}</span></p>
-              {selectedTemplate.api_base_url ? (
-                <p className="text-xs text-muted-foreground">Using custom API settings (From: {selectedTemplate.from_number || "not set"})</p>
-              ) : (
-                <p className="text-xs text-muted-foreground">Using global API settings</p>
-              )}
+              <p className="text-xs text-muted-foreground">Using global API settings from WhatsApp Settings page</p>
               {templateVariables.length > 0 ? (
                 <>
                   <p className="font-medium mt-2">Body Variables Required ({templateVariables.length}):</p>
