@@ -342,9 +342,7 @@ const AutomatedMarketing = () => {
         if (sent > 0) anyStarted = true;
         if (sent < eligible) return false;
       }
-      return anyStarted; // only "complete" if at least one filter has started
-      }
-      return true;
+      return anyStarted;
     };
 
     // Mobiles that need cycle reset
