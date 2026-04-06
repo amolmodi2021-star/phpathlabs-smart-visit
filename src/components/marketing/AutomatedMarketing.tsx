@@ -90,6 +90,10 @@ const AutomatedMarketing = () => {
   const [sendProgress, setSendProgress] = useState(0);
   const [sendPhase, setSendPhase] = useState("");
 
+  // Test mode
+  const [testMobile, setTestMobile] = useState("");
+  const isTrialMode = /^\d{10}$/.test(testMobile.replace(/\D/g, ""));
+
   // Load global settings
   useEffect(() => {
     (async () => {
