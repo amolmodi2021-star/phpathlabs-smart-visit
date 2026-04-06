@@ -384,6 +384,13 @@ const AutomatedMarketing = () => {
         });
       }
 
+      // Sort candidates: patients who never received anything come first
+      candidates.sort((a, b) => {
+        const aHas = a.last_sent_type ? 1 : 0;
+        const bHas = b.last_sent_type ? 1 : 0;
+        return aHas - bHas; // null/never-sent first
+      });
+
       const limit = perFilterLimit;
       const filterSeenMobiles = new Set<string>();
 
