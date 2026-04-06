@@ -1377,14 +1377,6 @@ const AutomatedMarketing = () => {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1">
-              <Label>Last Sent Days Ago (min)</Label>
-              <Input
-                type="number"
-                value={filterForm.last_sent_days_ago}
-                onChange={(e) => setFilterForm({ ...filterForm, last_sent_days_ago: Number(e.target.value) || 0 })}
-              />
-            </div>
             {filterForm.message_type === "abc_card" && (
               <div className="space-y-1">
                 <Label>Loyalty Card Template</Label>
