@@ -465,7 +465,7 @@ const AutomatedMarketing = () => {
         }
 
         // Check if this filter is already complete for this mobile in current cycle
-        const sentForThisFilter = getSentCount(filter.id, mob);
+        const sentForThisFilter = getSentCount(filter, mob);
         const eligibleForThisFilter = getEligibleCount(filter, mob);
         if (sentForThisFilter >= eligibleForThisFilter && !allFiltersComplete(mob)) {
           addSkip("already_complete"); continue;
