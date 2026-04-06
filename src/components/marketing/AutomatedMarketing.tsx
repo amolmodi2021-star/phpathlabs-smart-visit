@@ -1191,6 +1191,9 @@ const AutomatedMarketing = () => {
       card_generation_error: "Card Generation Error",
       no_template: "No Template",
       template_load_error: "Template Load Error",
+      completion_lock: "Locked by Higher Priority",
+      already_complete: "Already Complete (this cycle)",
+      already_sent_this_cycle: "Already Sent (this cycle)",
     };
     return labels[r] || r;
   };
