@@ -772,9 +772,11 @@ const AutomatedMarketing = () => {
         }
 
         for (let i = 0; i < preview.records.length; i++) {
+          if (trial && trialSentCount >= trialMax) break;
           const r = preview.records[i];
           const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
-          setSendPhase(`[${filter.name}] Processing ${i + 1}/${preview.eligible}...`);
+          const destMob = trial ? trialMob : mob;
+          setSendPhase(`${trial ? "🧪 TRIAL " : ""}[${filter.name}] Processing ${i + 1}/${preview.eligible}...`);
 
           // Fetch abnormal tests for this contact
           const { data: tests } = await supabase
@@ -784,7 +786,7 @@ const AutomatedMarketing = () => {
             .order("test_name");
 
           if (!tests || tests.length === 0) {
-            await logDripAction(filter, r, "skipped", "no_abnormal_history");
+            if (!trial) await logDripAction(filter, r, "skipped", "no_abnormal_history");
             totalSkipped++;
             processedCount++;
             setSendProgress(Math.round((processedCount / totalMessages) * 100));
@@ -794,7 +796,7 @@ const AutomatedMarketing = () => {
           // Generate abnormal card image (simplified - use template if available)
           const imageResult = await generateAbnormalCardForDrip(r, tests, abnTemplate, staticExpiryDate);
           if (!imageResult) {
-            await logDripAction(filter, r, "failed", "card_generation_error");
+            if (!trial) await logDripAction(filter, r, "failed", "card_generation_error");
             totalFailed++;
             processedCount++;
             setSendProgress(Math.round((processedCount / totalMessages) * 100));
@@ -809,7 +811,7 @@ const AutomatedMarketing = () => {
 
           const payload: Record<string, unknown> = {
             from: abnormalFromNumber,
-            to: `+91${mob}`,
+            to: `+91${destMob}`,
             templateName: abnormalTemplateName,
             campaignName: abnormalCampaignName,
             type: "template",
@@ -821,18 +823,21 @@ const AutomatedMarketing = () => {
               body: { apiBaseUrl: abnormalApiBaseUrl, apiKey: abnormalApiKey, authHeaderName: abnormalAuthHeaderName, authHeaderPrefix: abnormalAuthHeaderPrefix, payload },
             });
             if (proxyRes.error || proxyRes.data?.status >= 400) {
-              await logDripAction(filter, r, "failed", "wa_api_error");
+              if (!trial) await logDripAction(filter, r, "failed", "wa_api_error");
               totalFailed++;
             } else {
-              await logDripAction(filter, r, "sent");
-              await supabase.from("crm_contacts").update({
-                last_sent_type: "Abnormal History",
-                last_sent_date: new Date().toISOString(),
-              }).eq("id", r.id);
+              if (!trial) {
+                await logDripAction(filter, r, "sent");
+                await supabase.from("crm_contacts").update({
+                  last_sent_type: "Abnormal History",
+                  last_sent_date: new Date().toISOString(),
+                }).eq("id", r.id);
+              }
               totalSent++;
+              if (trial) trialSentCount++;
             }
           } catch {
-            await logDripAction(filter, r, "failed", "wa_exception");
+            if (!trial) await logDripAction(filter, r, "failed", "wa_exception");
             totalFailed++;
           }
 
