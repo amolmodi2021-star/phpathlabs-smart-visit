@@ -1,0 +1,1 @@
+ALTER TABLE public.drip_campaign_filters ADD COLUMN once_per_mobile boolean NOT NULL DEFAULT false;
