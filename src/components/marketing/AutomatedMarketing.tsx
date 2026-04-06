@@ -13,7 +13,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Pencil, Trash2, Eye, Send, Settings, MessageCircle } from "lucide-react";
+import { Plus, Pencil, Trash2, Eye, Send, Settings, MessageCircle, Download } from "lucide-react";
+import { exportToExcel } from "@/lib/excel";
 import { toast } from "sonner";
 
 interface DripFilter {
@@ -1388,7 +1389,36 @@ const AutomatedMarketing = () => {
       {previewResults && (
         <Card>
           <CardHeader>
-            <CardTitle>Preview Results (Daily Limit: {maxPerDay})</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle>Preview Results (Daily Limit: {maxPerDay})</CardTitle>
+              <Button variant="outline" size="sm" onClick={() => {
+                if (!previewResults) return;
+                const rows: Record<string, unknown>[] = [];
+                previewResults.forEach((pr) => {
+                  pr.records.forEach((r: any, idx: number) => {
+                    rows.push({
+                      "Filter": pr.filterName,
+                      "#": idx + 1,
+                      "Patient Name": r.patient_name || "",
+                      "Mobile": r.mobile_number || "",
+                      "UMR": r.umr_number || "",
+                      "Location": r.location || "",
+                      "Last Sent Type": r.last_sent_type || "Never",
+                      "Last Sent Date": r.last_sent_date ? new Date(r.last_sent_date).toLocaleDateString("en-GB") : "",
+                    });
+                  });
+                  pr.skipped.forEach((s) => {
+                    for (let i = 0; i < s.count; i++) {
+                      rows.push({ "Filter": pr.filterName, "Skip Reason": skipReasonLabel(s.reason) });
+                    }
+                  });
+                });
+                exportToExcel(rows, `drip_preview_${new Date().toISOString().slice(0, 10)}`);
+                toast.success("Preview exported");
+              }}>
+                <Download className="h-4 w-4 mr-1" /> Export Preview
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -1450,7 +1480,26 @@ const AutomatedMarketing = () => {
       {/* Execution Log */}
       <Card>
         <CardHeader>
-          <CardTitle>Execution Log</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle>Execution Log</CardTitle>
+            <Button variant="outline" size="sm" disabled={recentLogs.length === 0} onClick={() => {
+              const rows = recentLogs.map((l: any) => ({
+                "Date": new Date(l.created_at).toLocaleDateString("en-GB"),
+                "Time": new Date(l.created_at).toLocaleTimeString("en-GB"),
+                "Filter": l.filter_name || "",
+                "Type": l.message_type || "",
+                "Patient Name": l.patient_name || "",
+                "Mobile": l.mobile_number || "",
+                "Status": l.status || "",
+                "Skip Reason": l.skip_reason ? skipReasonLabel(l.skip_reason) : "",
+                "Cycle": l.cycle_number || 1,
+              }));
+              exportToExcel(rows, `drip_execution_log_${new Date().toISOString().slice(0, 10)}`);
+              toast.success("Execution log exported");
+            }}>
+              <Download className="h-4 w-4 mr-1" /> Export Log
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {Object.keys(logsByDate).length === 0 ? (
