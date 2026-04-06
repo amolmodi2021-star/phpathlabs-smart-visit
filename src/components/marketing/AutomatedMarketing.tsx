@@ -27,6 +27,7 @@ interface DripFilter {
   record_limit: number;
   template_id: string | null;
   enabled: boolean;
+  once_per_mobile: boolean;
   created_at: string;
 }
 
