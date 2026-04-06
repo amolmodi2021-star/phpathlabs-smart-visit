@@ -443,6 +443,7 @@ export type Database = {
         Row: {
           contact_primary_key: string | null
           created_at: string
+          cycle_number: number
           filter_id: string | null
           filter_name: string | null
           id: string
@@ -455,6 +456,7 @@ export type Database = {
         Insert: {
           contact_primary_key?: string | null
           created_at?: string
+          cycle_number?: number
           filter_id?: string | null
           filter_name?: string | null
           id?: string
@@ -467,6 +469,7 @@ export type Database = {
         Update: {
           contact_primary_key?: string | null
           created_at?: string
+          cycle_number?: number
           filter_id?: string | null
           filter_name?: string | null
           id?: string
@@ -485,6 +488,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      drip_mobile_cycles: {
+        Row: {
+          current_cycle: number
+          mobile_number: string
+          updated_at: string
+        }
+        Insert: {
+          current_cycle?: number
+          mobile_number: string
+          updated_at?: string
+        }
+        Update: {
+          current_cycle?: number
+          mobile_number?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       estimate_tests: {
         Row: {
