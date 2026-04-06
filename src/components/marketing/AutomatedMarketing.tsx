@@ -1389,7 +1389,36 @@ const AutomatedMarketing = () => {
       {previewResults && (
         <Card>
           <CardHeader>
-            <CardTitle>Preview Results (Daily Limit: {maxPerDay})</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle>Preview Results (Daily Limit: {maxPerDay})</CardTitle>
+              <Button variant="outline" size="sm" onClick={() => {
+                if (!previewResults) return;
+                const rows: Record<string, unknown>[] = [];
+                previewResults.forEach((pr) => {
+                  pr.records.forEach((r: any, idx: number) => {
+                    rows.push({
+                      "Filter": pr.filterName,
+                      "#": idx + 1,
+                      "Patient Name": r.patient_name || "",
+                      "Mobile": r.mobile_number || "",
+                      "UMR": r.umr_number || "",
+                      "Location": r.location || "",
+                      "Last Sent Type": r.last_sent_type || "Never",
+                      "Last Sent Date": r.last_sent_date ? new Date(r.last_sent_date).toLocaleDateString("en-GB") : "",
+                    });
+                  });
+                  pr.skipped.forEach((s) => {
+                    for (let i = 0; i < s.count; i++) {
+                      rows.push({ "Filter": pr.filterName, "Skip Reason": skipReasonLabel(s.reason) });
+                    }
+                  });
+                });
+                exportToExcel(rows, `drip_preview_${new Date().toISOString().slice(0, 10)}`);
+                toast.success("Preview exported");
+              }}>
+                <Download className="h-4 w-4 mr-1" /> Export Preview
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
