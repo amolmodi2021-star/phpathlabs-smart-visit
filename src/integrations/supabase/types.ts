@@ -434,15 +434,7 @@ export type Database = {
           template_id?: string | null
           updated_at?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "drip_campaign_filters_template_id_fkey"
-            columns: ["template_id"]
-            isOneToOne: false
-            referencedRelation: "marketing_templates"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       drip_campaign_log: {
         Row: {
