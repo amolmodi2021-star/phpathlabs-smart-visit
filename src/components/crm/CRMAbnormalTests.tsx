@@ -573,31 +573,34 @@ const CRMAbnormalTests = () => {
     }
     if (selectedGroups.length === 0) return toast.error("No patients selected");
 
-    // Fetch WhatsApp settings (abnormal-specific)
+    // Fetch global WhatsApp settings
     const { data: settings } = await supabase
       .from("app_settings")
       .select("setting_key, setting_value")
-      .like("setting_key", "abnormal_wa_%");
+      .like("setting_key", "wa_global_%");
 
     const cfg: Record<string, string> = {};
     (settings || []).forEach((s: any) => {
       cfg[s.setting_key] = s.setting_value;
     });
 
-    const apiBaseUrl = cfg["abnormal_wa_baseUrl"];
-    const apiKey = cfg["abnormal_wa_apiKey"];
-    const templateName = cfg["abnormal_wa_templateName"];
-    const authHeaderName = cfg["abnormal_wa_authHeaderName"] || "apikey";
-    const authHeaderPrefix = cfg["abnormal_wa_authHeaderPrefix"] || "";
-    const fromNumber = cfg["abnormal_wa_fromNumber"] || "";
-    const campaignName = cfg["abnormal_wa_campaignName"] || "";
-    const includeMediaHeader = cfg["abnormal_wa_mediaHeader"] !== "false";
+    // Fetch Abnormal PNG template
+    const { data: tmpl } = await supabase.from("marketing_templates").select("whatsapp_template_name, body_mapping, api_base_url, from_number").eq("template_name", "Abnormal PNG").maybeSingle();
+
+    const apiBaseUrl = cfg["wa_global_baseUrl"];
+    const apiKey = cfg["wa_global_apiKey"];
+    const templateName = tmpl?.whatsapp_template_name || "";
+    const authHeaderName = cfg["wa_global_authHeaderName"] || "apikey";
+    const authHeaderPrefix = cfg["wa_global_authHeaderPrefix"] || "";
+    const fromNumber = cfg["wa_global_fromNumber"] || "";
+    const campaignName = tmpl?.api_base_url || "";
+    const includeMediaHeader = tmpl?.from_number === "media_header_enabled";
     
-    const queueEnabled = cfg["abnormal_wa_queueEnabled"] !== "false";
-    const delayMs = Number(cfg["abnormal_wa_delayMs"]) || 3000;
+    const queueEnabled = cfg["wa_global_queueEnabled"] !== "false";
+    const delayMs = Number(cfg["wa_global_delayMs"]) || 3000;
 
     if (!apiBaseUrl || !apiKey || !templateName) {
-      return toast.error("WhatsApp API not configured. Set up in CRM → Abnormal WA Settings tab.");
+      return toast.error("WhatsApp API not configured. Set up in WhatsApp Settings page.");
     }
 
     setSending(true);

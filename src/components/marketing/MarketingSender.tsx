@@ -55,24 +55,20 @@ const MarketingSender = () => {
   };
 
   const getApiSettings = async () => {
-    // Use per-template settings if available, fallback to global
-    if (selectedTemplate?.api_base_url && selectedTemplate?.api_key) {
-      return {
-        whatsapp_api_url: selectedTemplate.api_base_url,
-        whatsapp_api_key: selectedTemplate.api_key,
-        whatsapp_auth_header_name: selectedTemplate.auth_header_name || "apikey",
-        whatsapp_auth_prefix: selectedTemplate.auth_header_prefix || "",
-        whatsapp_from_number: selectedTemplate.from_number || "",
-      };
-    }
-    // Fallback to global settings
+    // Always use global WhatsApp settings
     const { data } = await supabase
       .from("app_settings")
       .select("setting_key, setting_value")
-      .in("setting_key", ["whatsapp_api_url", "whatsapp_api_key", "whatsapp_auth_header_name", "whatsapp_auth_prefix", "whatsapp_from_number"]);
+      .like("setting_key", "wa_global_%");
     const map: Record<string, string> = {};
     data?.forEach((r: any) => { map[r.setting_key] = r.setting_value; });
-    return map;
+    return {
+      whatsapp_api_url: map["wa_global_baseUrl"] || "",
+      whatsapp_api_key: map["wa_global_apiKey"] || "",
+      whatsapp_auth_header_name: map["wa_global_authHeaderName"] || "apikey",
+      whatsapp_auth_prefix: map["wa_global_authHeaderPrefix"] || "",
+      whatsapp_from_number: map["wa_global_fromNumber"] || "",
+    };
   };
 
   const sendMessages = async () => {
@@ -210,11 +206,7 @@ const MarketingSender = () => {
           {selectedTemplate && (
             <div className="bg-muted p-3 rounded-lg text-sm space-y-1">
               <p className="font-medium">WhatsApp API Template: <span className="font-mono text-primary">{selectedTemplate.whatsapp_template_name}</span></p>
-              {selectedTemplate.api_base_url ? (
-                <p className="text-xs text-muted-foreground">Using custom API settings (From: {selectedTemplate.from_number || "not set"})</p>
-              ) : (
-                <p className="text-xs text-muted-foreground">Using global API settings</p>
-              )}
+              <p className="text-xs text-muted-foreground">Using global API settings from WhatsApp Settings page</p>
               {templateVariables.length > 0 ? (
                 <>
                   <p className="font-medium mt-2">Body Variables Required ({templateVariables.length}):</p>

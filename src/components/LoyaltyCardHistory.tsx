@@ -24,30 +24,38 @@ const LoyaltyCardHistory = () => {
 
 
   const loadWaSettings = async () => {
-    const { data: settingsData } = await supabase.from("app_settings").select("setting_key, setting_value").like("setting_key", "loyalty_wa_%");
+    const { data: settingsData } = await supabase.from("app_settings").select("setting_key, setting_value").like("setting_key", "wa_global_%");
     const map: Record<string, string> = {};
     settingsData?.forEach((r: any) => { map[r.setting_key] = r.setting_value; });
+    // Also load template name from marketing_templates for ABC Card
+    const { data: tmpl } = await supabase.from("marketing_templates").select("whatsapp_template_name, body_mapping, api_base_url, from_number").eq("template_name", "ABC Card").maybeSingle();
+    if (tmpl) {
+      map["_templateName"] = tmpl.whatsapp_template_name || "";
+      map["_bodyMapping"] = tmpl.body_mapping || "";
+      map["_campaignName"] = tmpl.api_base_url || "";
+      map["_mediaHeader"] = tmpl.from_number === "media_header_enabled" ? "true" : "false";
+    }
     return map;
   };
 
   const buildPayload = (map: Record<string, string>, jobId: string) => {
-    const waBaseUrl = map["loyalty_wa_baseUrl"] || "";
-    const waApiKey = map["loyalty_wa_apiKey"] || "";
-    const waTemplateName = map["loyalty_wa_templateName"] || "";
+    const waBaseUrl = map["wa_global_baseUrl"] || "";
+    const waApiKey = map["wa_global_apiKey"] || "";
+    const waTemplateName = map["_templateName"] || "";
     if (!waBaseUrl || !waApiKey || !waTemplateName) return null;
     return {
       jobId,
       apiBaseUrl: waBaseUrl,
       apiKey: waApiKey,
-      authHeaderName: map["loyalty_wa_authHeaderName"] || "apikey",
-      authHeaderPrefix: map["loyalty_wa_authHeaderPrefix"] || "",
-      fromNumber: map["loyalty_wa_fromNumber"] || "",
-      campaignName: map["loyalty_wa_campaignName"] || "",
+      authHeaderName: map["wa_global_authHeaderName"] || "apikey",
+      authHeaderPrefix: map["wa_global_authHeaderPrefix"] || "",
+      fromNumber: map["wa_global_fromNumber"] || "",
+      campaignName: map["_campaignName"] || "",
       templateName: waTemplateName,
-      variablesMapping: map["loyalty_wa_bodyMapping"] ? JSON.parse(map["loyalty_wa_bodyMapping"]) : {},
-      includeMediaHeader: map["loyalty_wa_mediaHeader"] !== "false",
-      queueEnabled: map["loyalty_wa_queueEnabled"] !== "false",
-      delayMs: Number(map["loyalty_wa_delayMs"] || 3000),
+      variablesMapping: map["_bodyMapping"] ? JSON.parse(map["_bodyMapping"]) : {},
+      includeMediaHeader: map["_mediaHeader"] !== "false",
+      queueEnabled: map["wa_global_queueEnabled"] !== "false",
+      delayMs: Number(map["wa_global_delayMs"] || 3000),
     };
   };
 

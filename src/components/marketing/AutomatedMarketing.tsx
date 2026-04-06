@@ -574,13 +574,17 @@ const AutomatedMarketing = () => {
 
     const enabledFilters = filters.filter((f) => f.enabled).sort((a, b) => a.priority - b.priority);
     
-    // Fetch all WA settings
+    // Fetch global WA settings + template-specific data
     const { data: allSettings } = await supabase
       .from("app_settings")
       .select("setting_key, setting_value")
-      .or("setting_key.like.loyalty_wa_%,setting_key.like.abnormal_wa_%,setting_key.eq.crm_abc_static_expiry_date,setting_key.eq.abnormal_static_expiry_date");
+      .or("setting_key.like.wa_global_%,setting_key.eq.crm_abc_static_expiry_date,setting_key.eq.abnormal_static_expiry_date");
     const cfg: Record<string, string> = {};
     (allSettings || []).forEach((s) => { cfg[s.setting_key] = s.setting_value; });
+
+    // Fetch ABC Card and Abnormal PNG templates
+    const { data: abcTmpl } = await supabase.from("marketing_templates").select("whatsapp_template_name, body_mapping, api_base_url, from_number").eq("template_name", "ABC Card").maybeSingle();
+    const { data: abnTmpl } = await supabase.from("marketing_templates").select("whatsapp_template_name, body_mapping, api_base_url, from_number").eq("template_name", "Abnormal PNG").maybeSingle();
 
     setSending(true);
     setSendProgress(0);
@@ -602,16 +606,16 @@ const AutomatedMarketing = () => {
 
       if (filter.message_type === "abc_card") {
         // Send ABC loyalty cards
-        const loyaltyApiBaseUrl = cfg["loyalty_wa_baseUrl"];
-        const loyaltyApiKey = cfg["loyalty_wa_apiKey"];
-        const loyaltyTemplateName = cfg["loyalty_wa_templateName"];
-        const loyaltyAuthHeaderName = cfg["loyalty_wa_authHeaderName"] || "apikey";
-        const loyaltyAuthHeaderPrefix = cfg["loyalty_wa_authHeaderPrefix"] || "";
-        const loyaltyFromNumber = cfg["loyalty_wa_fromNumber"] || "";
-        const loyaltyCampaignName = cfg["loyalty_wa_campaignName"] || "";
-        const bodyMappingStr = cfg["loyalty_wa_bodyMapping"];
+        const loyaltyApiBaseUrl = cfg["wa_global_baseUrl"];
+        const loyaltyApiKey = cfg["wa_global_apiKey"];
+        const loyaltyTemplateName = abcTmpl?.whatsapp_template_name || "";
+        const loyaltyAuthHeaderName = cfg["wa_global_authHeaderName"] || "apikey";
+        const loyaltyAuthHeaderPrefix = cfg["wa_global_authHeaderPrefix"] || "";
+        const loyaltyFromNumber = cfg["wa_global_fromNumber"] || "";
+        const loyaltyCampaignName = abcTmpl?.api_base_url || "";
+        const bodyMappingStr = abcTmpl?.body_mapping || "";
         const staticExpiryDate = cfg["crm_abc_static_expiry_date"] || "";
-        const delayMs = Number(cfg["loyalty_wa_delayMs"]) || 3000;
+        const delayMs = Number(cfg["wa_global_delayMs"]) || 3000;
 
         if (!loyaltyApiBaseUrl || !loyaltyApiKey || !loyaltyTemplateName) {
           toast.error("Loyalty WhatsApp API not configured");
@@ -741,15 +745,15 @@ const AutomatedMarketing = () => {
 
       } else if (filter.message_type === "abnormal_card") {
         // Send Abnormal History cards
-        const abnormalApiBaseUrl = cfg["abnormal_wa_baseUrl"];
-        const abnormalApiKey = cfg["abnormal_wa_apiKey"];
-        const abnormalTemplateName = cfg["abnormal_wa_templateName"];
-        const abnormalAuthHeaderName = cfg["abnormal_wa_authHeaderName"] || "apikey";
-        const abnormalAuthHeaderPrefix = cfg["abnormal_wa_authHeaderPrefix"] || "";
-        const abnormalFromNumber = cfg["abnormal_wa_fromNumber"] || "";
-        const abnormalCampaignName = cfg["abnormal_wa_campaignName"] || "";
-        const includeMediaHeader = cfg["abnormal_wa_mediaHeader"] !== "false";
-        const delayMs = Number(cfg["abnormal_wa_delayMs"]) || 3000;
+        const abnormalApiBaseUrl = cfg["wa_global_baseUrl"];
+        const abnormalApiKey = cfg["wa_global_apiKey"];
+        const abnormalTemplateName = abnTmpl?.whatsapp_template_name || "";
+        const abnormalAuthHeaderName = cfg["wa_global_authHeaderName"] || "apikey";
+        const abnormalAuthHeaderPrefix = cfg["wa_global_authHeaderPrefix"] || "";
+        const abnormalFromNumber = cfg["wa_global_fromNumber"] || "";
+        const abnormalCampaignName = abnTmpl?.api_base_url || "";
+        const includeMediaHeader = abnTmpl?.from_number === "media_header_enabled";
+        const delayMs = Number(cfg["wa_global_delayMs"]) || 3000;
         const staticExpiryDate = cfg["abnormal_static_expiry_date"] || "";
 
         if (!abnormalApiBaseUrl || !abnormalApiKey || !abnormalTemplateName) {
@@ -878,7 +882,7 @@ const AutomatedMarketing = () => {
 
           const toNumber = `+91${destMob}`;
           const payload: Record<string, unknown> = {
-            from: tmpl.from_number || "",
+            from: cfg["wa_global_fromNumber"] || "",
             to: toNumber,
             templateName: tmpl.whatsapp_template_name,
             type: "template",
@@ -904,10 +908,10 @@ const AutomatedMarketing = () => {
           try {
             const proxyRes = await supabase.functions.invoke("send-marketing-message", {
               body: {
-                apiUrl: tmpl.api_base_url,
-                apiKey: tmpl.api_key,
-                headerName: tmpl.auth_header_name,
-                headerPrefix: tmpl.auth_header_prefix,
+                apiUrl: cfg["wa_global_baseUrl"],
+                apiKey: cfg["wa_global_apiKey"],
+                headerName: cfg["wa_global_authHeaderName"] || "apikey",
+                headerPrefix: cfg["wa_global_authHeaderPrefix"] || "",
                 payload,
               },
             });
