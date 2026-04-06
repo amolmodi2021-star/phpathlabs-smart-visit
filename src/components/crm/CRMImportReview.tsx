@@ -125,19 +125,11 @@ const CRMImportReview = () => {
 
     for (let i = 0; i < toApprove.length; i += BATCH) {
       const batch = toApprove.slice(i, i + BATCH);
-      // Check which primary_keys already have ABC sent in crm_contacts
-      const pks = batch.map((r: any) => r.primary_key);
-      const { data: existingABC } = await supabase
-        .from("crm_contacts")
-        .select("primary_key")
-        .in("primary_key", pks)
-        .eq("last_sent_type", "ABC");
-      const abcSet = new Set((existingABC || []).map((e: any) => e.primary_key));
 
       const upsertData = batch.map((r: any) => {
+        // Only mark as ABC if the card was actually sent during this review session
+        // (sending clears record_tag to null/empty in staging)
         const abcSentInReview = r.record_tag === null || r.record_tag === "";
-        const abcAlreadyInContacts = abcSet.has(r.primary_key);
-        const hasABC = abcSentInReview || abcAlreadyInContacts;
 
         const base: any = {
           primary_key: r.primary_key,
@@ -158,9 +150,9 @@ const CRMImportReview = () => {
           created_by: r.created_by,
           doctor_name: r.doctor_name,
           default_discount_pct: r.default_discount_pct,
-          record_tag: hasABC ? null : (r.record_tag || "DAILY"),
+          record_tag: abcSentInReview ? null : (r.record_tag || "DAILY"),
         };
-        if (hasABC) {
+        if (abcSentInReview) {
           base.last_sent_type = "ABC";
           base.last_sent_date = new Date().toISOString();
         }
