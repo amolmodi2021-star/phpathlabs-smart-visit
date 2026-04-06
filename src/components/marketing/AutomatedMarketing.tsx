@@ -1343,23 +1343,13 @@ const AutomatedMarketing = () => {
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label>Priority (lower = first)</Label>
-                <Input
-                  type="number"
-                  value={filterForm.priority}
-                  onChange={(e) => setFilterForm({ ...filterForm, priority: Number(e.target.value) || 1 })}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>Record Limit</Label>
-                <Input
-                  type="number"
-                  value={filterForm.record_limit}
-                  onChange={(e) => setFilterForm({ ...filterForm, record_limit: Number(e.target.value) || 100 })}
-                />
-              </div>
+            <div className="space-y-1">
+              <Label>Priority (lower = first)</Label>
+              <Input
+                type="number"
+                value={filterForm.priority}
+                onChange={(e) => setFilterForm({ ...filterForm, priority: Number(e.target.value) || 1 })}
+              />
             </div>
             <div className="space-y-1">
               <Label>Location Filter</Label>
