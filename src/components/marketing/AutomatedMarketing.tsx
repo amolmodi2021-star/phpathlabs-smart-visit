@@ -1388,7 +1388,7 @@ const AutomatedMarketing = () => {
       {previewResults && (
         <Card>
           <CardHeader>
-            <CardTitle>Preview Results (Limit: {Math.floor(maxPerDay / Math.max(filters.filter(f => f.enabled).length, 1))} per filter)</CardTitle>
+            <CardTitle>Preview Results (Daily Limit: {maxPerDay})</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
