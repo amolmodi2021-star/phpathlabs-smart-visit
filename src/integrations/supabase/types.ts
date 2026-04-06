@@ -391,6 +391,106 @@ export type Database = {
           },
         ]
       }
+      drip_campaign_filters: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          id: string
+          last_sent_days_ago: number
+          last_sent_type_filter: string | null
+          location_filter: string
+          message_type: string
+          name: string
+          priority: number
+          record_limit: number
+          template_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          last_sent_days_ago?: number
+          last_sent_type_filter?: string | null
+          location_filter?: string
+          message_type?: string
+          name: string
+          priority?: number
+          record_limit?: number
+          template_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          last_sent_days_ago?: number
+          last_sent_type_filter?: string | null
+          location_filter?: string
+          message_type?: string
+          name?: string
+          priority?: number
+          record_limit?: number
+          template_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "drip_campaign_filters_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "marketing_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      drip_campaign_log: {
+        Row: {
+          contact_primary_key: string | null
+          created_at: string
+          filter_id: string | null
+          filter_name: string | null
+          id: string
+          message_type: string | null
+          mobile_number: string | null
+          patient_name: string | null
+          skip_reason: string | null
+          status: string
+        }
+        Insert: {
+          contact_primary_key?: string | null
+          created_at?: string
+          filter_id?: string | null
+          filter_name?: string | null
+          id?: string
+          message_type?: string | null
+          mobile_number?: string | null
+          patient_name?: string | null
+          skip_reason?: string | null
+          status?: string
+        }
+        Update: {
+          contact_primary_key?: string | null
+          created_at?: string
+          filter_id?: string | null
+          filter_name?: string | null
+          id?: string
+          message_type?: string | null
+          mobile_number?: string | null
+          patient_name?: string | null
+          skip_reason?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "drip_campaign_log_filter_id_fkey"
+            columns: ["filter_id"]
+            isOneToOne: false
+            referencedRelation: "drip_campaign_filters"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       estimate_tests: {
         Row: {
           created_at: string
