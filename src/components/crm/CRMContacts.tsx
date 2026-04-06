@@ -658,29 +658,32 @@ const CRMContacts = () => {
     selectedContacts = selectedContacts.filter((c: any) => c.mobile_number);
     if (selectedContacts.length === 0) return toast.error("No selected contacts with mobile numbers");
 
-    // Fetch WhatsApp settings
+    // Fetch global WhatsApp settings
     const { data: settings } = await supabase
       .from("app_settings")
       .select("setting_key, setting_value")
-      .or("setting_key.like.loyalty_%,setting_key.eq.crm_abc_static_expiry_date");
+      .or("setting_key.like.wa_global_%,setting_key.eq.crm_abc_static_expiry_date");
 
     const cfg: Record<string, string> = {};
     (settings || []).forEach((s: any) => { cfg[s.setting_key] = s.setting_value; });
 
-    const apiBaseUrl = cfg["loyalty_wa_baseUrl"];
-    const apiKey = cfg["loyalty_wa_apiKey"];
-    const templateName = cfg["loyalty_wa_templateName"];
-    const authHeaderName = cfg["loyalty_wa_authHeaderName"] || "apikey";
-    const authHeaderPrefix = cfg["loyalty_wa_authHeaderPrefix"] || "";
-    const fromNumber = cfg["loyalty_wa_fromNumber"] || "";
-    const campaignName = cfg["loyalty_wa_campaignName"] || "";
-    const bodyMapping = cfg["loyalty_wa_bodyMapping"];
-    const queueEnabled = cfg["loyalty_wa_queueEnabled"] !== "false";
-    const delayMs = Number(cfg["loyalty_wa_delayMs"]) || 3000;
+    // Fetch ABC Card template
+    const { data: tmpl } = await supabase.from("marketing_templates").select("whatsapp_template_name, body_mapping, api_base_url, from_number").eq("template_name", "ABC Card").maybeSingle();
+
+    const apiBaseUrl = cfg["wa_global_baseUrl"];
+    const apiKey = cfg["wa_global_apiKey"];
+    const templateName = tmpl?.whatsapp_template_name || "";
+    const authHeaderName = cfg["wa_global_authHeaderName"] || "apikey";
+    const authHeaderPrefix = cfg["wa_global_authHeaderPrefix"] || "";
+    const fromNumber = cfg["wa_global_fromNumber"] || "";
+    const campaignName = tmpl?.api_base_url || "";
+    const bodyMapping = tmpl?.body_mapping || "";
+    const queueEnabled = cfg["wa_global_queueEnabled"] !== "false";
+    const delayMs = Number(cfg["wa_global_delayMs"]) || 3000;
     const staticExpiryDate = cfg["crm_abc_static_expiry_date"] || "";
 
     if (!apiBaseUrl || !apiKey || !templateName) {
-      return toast.error("WhatsApp API not configured. Set up in Loyalty Cards → WhatsApp Settings.");
+      return toast.error("WhatsApp API not configured. Set up in WhatsApp Settings page.");
     }
 
     let mapping: Record<string, string> = {};

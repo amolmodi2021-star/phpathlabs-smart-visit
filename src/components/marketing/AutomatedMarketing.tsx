@@ -745,15 +745,15 @@ const AutomatedMarketing = () => {
 
       } else if (filter.message_type === "abnormal_card") {
         // Send Abnormal History cards
-        const abnormalApiBaseUrl = cfg["abnormal_wa_baseUrl"];
-        const abnormalApiKey = cfg["abnormal_wa_apiKey"];
-        const abnormalTemplateName = cfg["abnormal_wa_templateName"];
-        const abnormalAuthHeaderName = cfg["abnormal_wa_authHeaderName"] || "apikey";
-        const abnormalAuthHeaderPrefix = cfg["abnormal_wa_authHeaderPrefix"] || "";
-        const abnormalFromNumber = cfg["abnormal_wa_fromNumber"] || "";
-        const abnormalCampaignName = cfg["abnormal_wa_campaignName"] || "";
-        const includeMediaHeader = cfg["abnormal_wa_mediaHeader"] !== "false";
-        const delayMs = Number(cfg["abnormal_wa_delayMs"]) || 3000;
+        const abnormalApiBaseUrl = cfg["wa_global_baseUrl"];
+        const abnormalApiKey = cfg["wa_global_apiKey"];
+        const abnormalTemplateName = abnTmpl?.whatsapp_template_name || "";
+        const abnormalAuthHeaderName = cfg["wa_global_authHeaderName"] || "apikey";
+        const abnormalAuthHeaderPrefix = cfg["wa_global_authHeaderPrefix"] || "";
+        const abnormalFromNumber = cfg["wa_global_fromNumber"] || "";
+        const abnormalCampaignName = abnTmpl?.api_base_url || "";
+        const includeMediaHeader = abnTmpl?.from_number === "media_header_enabled";
+        const delayMs = Number(cfg["wa_global_delayMs"]) || 3000;
         const staticExpiryDate = cfg["abnormal_static_expiry_date"] || "";
 
         if (!abnormalApiBaseUrl || !abnormalApiKey || !abnormalTemplateName) {
