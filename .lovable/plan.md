@@ -1,51 +1,30 @@
 
 
-# Fix: Abnormal Cards Blocked Despite ABC Already Sent
+# Add Test Mode: Trial Send to Your Mobile Number
 
-## Problem
+## What This Does
 
-ABC loyalty cards were sent from CRM (not the drip system), but the drip system only checks its own `drip_campaign_log` to determine if ABC is "complete" for a mobile number. Since the drip log is empty, the system thinks ABC was never sent and locks abnormal cards behind the completion lock.
+Adds a **"Test Mobile Number"** input field in the Automated Marketing section. When a mobile number is entered, all messages during that send session go to YOUR number instead of the actual patients. This lets you verify the message format, template, and card image before doing a real send.
 
-Additionally, the cycle counter has inflated (some mobiles at cycle 8-10) without any actual drip sends, caused by edge cases in the `allFiltersComplete` check.
+- The patient's **name, UMR, card image** etc. remain unchanged — only the **destination number** is swapped.
+- When test mode is active, the send button changes to **"Send Trial"** with a distinct color.
+- **No logs are written** to `drip_campaign_log` or `crm_contacts` during trial mode, so it doesn't affect your priority/cycle system.
+- A clear warning banner appears confirming trial mode is active.
 
-## Solution
+## Changes to `AutomatedMarketing.tsx`
 
-**Make the completion lock aware of ABC sends from ANY source** — not just the drip system.
+1. **Add state**: `testMobile` (string) — the override mobile number for trial sends.
 
-### Changes to `AutomatedMarketing.tsx`
+2. **Add UI field** near the Send button area:
+   - Input field labeled "Test Mobile (Trial Mode)" with placeholder "Enter your 10-digit mobile"
+   - When filled, show a yellow warning: "⚠️ TRIAL MODE — All messages will be sent to {testMobile}"
+   - Send button text changes to "Send Trial" with amber styling
 
-1. **Hybrid sent detection for ABC cards**: When checking if ABC is "complete" for a mobile, also check `crm_contacts.last_sent_type === "ABC"` for each patient on that mobile. If a patient's `last_sent_type` is "ABC", count it as sent even if no drip log exists.
+3. **Modify `handleSend`**:
+   - If `testMobile` is set (10 digits), replace `to: +91${mob}` with `to: +91${testMobile}` in all payload constructions (ABC cards, Abnormal cards, Promo messages)
+   - Skip all database updates: no `logDripAction`, no `crm_contacts` update, no `drip_mobile_cycles` changes
+   - Still show progress and success/failure counts for visibility
+   - Limit trial sends to **max 3 messages** to avoid wasting quota — show confirmation if more records exist
 
-2. **Update `getSentCount`**: For ABC-type filters, merge drip log data with CRM contact data. A patient counts as "ABC sent" if either:
-   - Their `primary_key` appears in `drip_campaign_log` for the ABC filter, OR
-   - Their `last_sent_type` is "ABC" in `crm_contacts`
-
-3. **Reset inflated cycles**: Add a one-time cleanup — reset `drip_mobile_cycles` entries where cycle > 1 but no matching drip logs exist. This prevents ghost cycles from blocking the flow.
-
-4. **Fix cycle inflation edge case**: In `allFiltersComplete`, if `getEligibleCount` is 0 for a filter (no data), treat it as complete instead of returning false (which would prevent cycle reset) or being ambiguous.
-
-### Technical Detail
-
-```text
-Current flow (broken):
-  getSentCount(ABC_filter, mob) → checks drip_campaign_log only → 0
-  getEligibleCount(ABC_filter, mob) → 1 (patient has UMR)
-  isLockedByHigherPriority(abnormal, mob) → 0 < 1 → LOCKED ❌
-
-Fixed flow:
-  getSentCount(ABC_filter, mob) → checks drip_log + crm_contacts.last_sent_type → 1
-  getEligibleCount(ABC_filter, mob) → 1
-  isLockedByHigherPriority(abnormal, mob) → 1 >= 1 → NOT LOCKED ✅
-```
-
-### Database Cleanup
-
-Run a one-time reset of `drip_mobile_cycles` to clear inflated cycles since no actual drip sends happened (drip_campaign_log is empty).
-
-## Files to Modify
-
-| File | Action |
-|------|--------|
-| `src/components/marketing/AutomatedMarketing.tsx` | Update `getSentCount` to merge CRM send data; fix cycle inflation edge case |
-| Migration SQL | Reset `drip_mobile_cycles` where no drip logs exist |
+4. **No changes to preview logic** — preview works exactly the same regardless of test mode.
 
