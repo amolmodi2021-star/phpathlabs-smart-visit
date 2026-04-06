@@ -658,9 +658,11 @@ const AutomatedMarketing = () => {
         const { bgImg, canvas, ctx, placeholders } = templateAssets;
 
         for (let i = 0; i < preview.records.length; i++) {
+          if (trial && trialSentCount >= trialMax) break;
           const r = preview.records[i];
           const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
-          setSendPhase(`[${filter.name}] Generating & sending ${i + 1}/${preview.eligible}...`);
+          const destMob = trial ? trialMob : mob;
+          setSendPhase(`${trial ? "🧪 TRIAL " : ""}[${filter.name}] Generating & sending ${i + 1}/${preview.eligible}...`);
 
           const cardData: CardData = {
             Name: r.patient_name || "",
