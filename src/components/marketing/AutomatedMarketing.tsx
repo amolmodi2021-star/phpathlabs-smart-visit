@@ -257,7 +257,7 @@ const AutomatedMarketing = () => {
       blacklistSet = new Set((bl || []).map((b: any) => b.mobile_number));
     }
 
-    // Fetch recent drip logs for interval check
+    // Fetch recent drip logs for global interval check
     const intervalDate = new Date();
     intervalDate.setDate(intervalDate.getDate() - minInterval);
     const { data: recentSends } = await supabase
@@ -267,15 +267,6 @@ const AutomatedMarketing = () => {
       .gte("created_at", intervalDate.toISOString());
     const recentMobiles = new Set((recentSends || []).map((r: any) => r.mobile_number));
 
-    // Also check crm_contacts last_sent_date for interval
-    const contactsByMobile = new Map<string, any[]>();
-    for (const c of allContacts) {
-      const mob = (c.mobile_number || "").replace(/\D/g, "").slice(-10);
-      if (!mob || mob.length !== 10) continue;
-      if (!contactsByMobile.has(mob)) contactsByMobile.set(mob, []);
-      contactsByMobile.get(mob)!.push(c);
-    }
-
     // Fetch abnormal test primary keys for validation
     const { data: abnormalPks } = await supabase
       .from("crm_abnormal_tests")
@@ -284,6 +275,7 @@ const AutomatedMarketing = () => {
 
     // Claimed mobiles set across all filters
     const claimedMobiles = new Set<string>();
+    // Auto-calculate per-filter limit from global max/day divided by active filters
     const perFilterLimit = Math.floor(maxPerDay / enabledFilters.length);
 
     const results: PreviewResult[] = [];
@@ -311,17 +303,18 @@ const AutomatedMarketing = () => {
         }
       }
 
-      // Filter by last_sent_days_ago
-      if (filter.last_sent_days_ago > 0) {
+      // Use global min interval for last_sent_date filtering
+      if (minInterval > 0) {
         const cutoff = new Date();
-        cutoff.setDate(cutoff.getDate() - filter.last_sent_days_ago);
+        cutoff.setDate(cutoff.getDate() - minInterval);
         candidates = candidates.filter((c) => {
           if (!c.last_sent_date) return true; // never sent = eligible
           return new Date(c.last_sent_date) < cutoff;
         });
       }
 
-      const limit = Math.min(filter.record_limit, perFilterLimit);
+      // Limit is auto-calculated from global max/day
+      const limit = perFilterLimit;
 
       for (const c of candidates) {
         if (eligible.length >= limit) break;
@@ -332,10 +325,10 @@ const AutomatedMarketing = () => {
         // Blacklist check
         if (excludeBlacklist && blacklistSet.has(mob)) { addSkip("blacklisted"); continue; }
 
-        // Interval check (drip log)
+        // Global interval check (drip log)
         if (recentMobiles.has(mob)) { addSkip("interval"); continue; }
 
-        // Also check contact's own last_sent_date against min interval
+        // Also check contact's own last_sent_date against global min interval
         if (c.last_sent_date) {
           const lastSent = new Date(c.last_sent_date);
           const intervalCutoff = new Date();
