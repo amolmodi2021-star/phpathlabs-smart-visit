@@ -1866,77 +1866,41 @@ export type Database = {
         Args: { p_location?: string; p_search?: string; p_tag?: string }
         Returns: number
       }
-      get_crm_contacts_paginated:
-        | {
-            Args: {
-              p_location?: string
-              p_page?: number
-              p_page_size?: number
-              p_search?: string
-              p_tag?: string
-            }
-            Returns: {
-              bill_number: string
-              created_at: string
-              created_by: string
-              default_discount_pct: number
-              discount_amount: number
-              doctor_name: string
-              due_amount: number
-              gross_amount: number
-              id: string
-              last_sent_date: string
-              last_sent_type: string
-              location: string
-              mobile_number: string
-              net_amount: number
-              paid_amount: number
-              patient_name: string
-              payment_type: string
-              primary_key: string
-              record_tag: string
-              remarks: string
-              umr_number: string
-              updated_at: string
-              visit_date: string
-              visit_type: string
-            }[]
-          }
-        | {
-            Args: {
-              p_location?: string
-              p_page?: number
-              p_page_size?: number
-              p_search?: string
-              p_tag?: string
-            }
-            Returns: {
-              bill_number: string
-              created_at: string
-              created_by: string
-              default_discount_pct: number
-              discount_amount: number
-              doctor_name: string
-              due_amount: number
-              gross_amount: number
-              id: string
-              last_sent_date: string
-              last_sent_type: string
-              location: string
-              mobile_number: string
-              net_amount: number
-              paid_amount: number
-              patient_name: string
-              payment_type: string
-              primary_key: string
-              record_tag: string
-              remarks: string
-              umr_number: string
-              updated_at: string
-              visit_date: string
-              visit_type: string
-            }[]
-          }
+      get_crm_contacts_paginated: {
+        Args: {
+          p_location?: string
+          p_page?: number
+          p_page_size?: number
+          p_search?: string
+          p_tag?: string
+        }
+        Returns: {
+          bill_number: string
+          created_at: string
+          created_by: string
+          default_discount_pct: number
+          discount_amount: number
+          doctor_name: string
+          due_amount: number
+          gross_amount: number
+          id: string
+          last_sent_date: string
+          last_sent_type: string
+          location: string
+          mobile_number: string
+          net_amount: number
+          paid_amount: number
+          patient_name: string
+          payment_type: string
+          primary_key: string
+          record_tag: string
+          remarks: string
+          umr_number: string
+          updated_at: string
+          visit_date: string
+          visit_type: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
