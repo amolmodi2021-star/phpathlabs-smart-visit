@@ -12,6 +12,7 @@ import { toast } from "sonner";
 
 const CRMBlacklist = () => {
   const [newNumber, setNewNumber] = useState("");
+  const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleteOpen, setDeleteOpen] = useState(false);
   const qc = useQueryClient();
@@ -85,6 +86,7 @@ const CRMBlacklist = () => {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2 items-center">
+        <Input placeholder="Search blacklist..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-48" />
         <Input placeholder="Enter mobile number" value={newNumber} onChange={(e) => setNewNumber(e.target.value)} className="w-48"
           onKeyDown={(e) => e.key === "Enter" && addNumber()} />
         <Button size="sm" onClick={addNumber}><Plus className="h-4 w-4 mr-1" />Add</Button>
@@ -115,13 +117,20 @@ const CRMBlacklist = () => {
               <TableRow><TableCell colSpan={3} className="text-center py-8">Loading...</TableCell></TableRow>
             ) : items.length === 0 ? (
               <TableRow><TableCell colSpan={3} className="text-center py-8">No blacklisted numbers.</TableCell></TableRow>
-            ) : items.map((item: any) => (
-              <TableRow key={item.id}>
-                <TableCell><Checkbox checked={selected.has(item.id)} onCheckedChange={() => toggleSelect(item.id)} /></TableCell>
-                <TableCell>{item.mobile_number}</TableCell>
-                <TableCell>{new Date(item.created_at).toLocaleDateString("en-GB")}</TableCell>
-              </TableRow>
-            ))}
+            ) : (() => {
+              const filtered = items.filter((item: any) =>
+                !search || item.mobile_number?.includes(search)
+              );
+              return filtered.length === 0 ? (
+                <TableRow><TableCell colSpan={3} className="text-center py-8">No matching numbers found.</TableCell></TableRow>
+              ) : filtered.map((item: any) => (
+                <TableRow key={item.id}>
+                  <TableCell><Checkbox checked={selected.has(item.id)} onCheckedChange={() => toggleSelect(item.id)} /></TableCell>
+                  <TableCell>{item.mobile_number}</TableCell>
+                  <TableCell>{new Date(item.created_at).toLocaleDateString("en-GB")}</TableCell>
+                </TableRow>
+              ));
+            })()}
           </TableBody>
         </Table>
       </div>
