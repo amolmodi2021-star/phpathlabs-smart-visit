@@ -968,6 +968,9 @@ const CRMContacts = () => {
         }}>
           {cleaningUp ? "Cleaning..." : "🧹 Cleanup"}
         </Button>
+        <Button variant="outline" size="sm" onClick={() => setBlacklistCleanupOpen(true)}>
+          🚫 Remove Blacklisted
+        </Button>
         <Button variant="destructive" size="sm" onClick={() => { setDeleteMode("all"); setDeleteOpen(true); }}>
           <Trash2 className="h-4 w-4 mr-1" />Delete All
         </Button>
