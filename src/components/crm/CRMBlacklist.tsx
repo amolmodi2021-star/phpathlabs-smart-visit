@@ -117,13 +117,20 @@ const CRMBlacklist = () => {
               <TableRow><TableCell colSpan={3} className="text-center py-8">Loading...</TableCell></TableRow>
             ) : items.length === 0 ? (
               <TableRow><TableCell colSpan={3} className="text-center py-8">No blacklisted numbers.</TableCell></TableRow>
-            ) : items.map((item: any) => (
-              <TableRow key={item.id}>
-                <TableCell><Checkbox checked={selected.has(item.id)} onCheckedChange={() => toggleSelect(item.id)} /></TableCell>
-                <TableCell>{item.mobile_number}</TableCell>
-                <TableCell>{new Date(item.created_at).toLocaleDateString("en-GB")}</TableCell>
-              </TableRow>
-            ))}
+            ) : (() => {
+              const filtered = items.filter((item: any) =>
+                !search || item.mobile_number?.includes(search)
+              );
+              return filtered.length === 0 ? (
+                <TableRow><TableCell colSpan={3} className="text-center py-8">No matching numbers found.</TableCell></TableRow>
+              ) : filtered.map((item: any) => (
+                <TableRow key={item.id}>
+                  <TableCell><Checkbox checked={selected.has(item.id)} onCheckedChange={() => toggleSelect(item.id)} /></TableCell>
+                  <TableCell>{item.mobile_number}</TableCell>
+                  <TableCell>{new Date(item.created_at).toLocaleDateString("en-GB")}</TableCell>
+                </TableRow>
+              ));
+            })()}
           </TableBody>
         </Table>
       </div>
