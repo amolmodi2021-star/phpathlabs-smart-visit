@@ -22,6 +22,7 @@ const defaultForm = {
   test_name: "", price: "", fasting_required: false, discount_applicable: true,
   description: "", incentive_allowed: false, incentive_amount: "",
   display_name: "", bold_in_report: false, show_in_report: true, is_single_parameter: false,
+  instrument_name: "", method: "", sample_type: "", interpretation: "",
 };
 
 const TestManagement = () => {
@@ -57,6 +58,10 @@ const TestManagement = () => {
         bold_in_report: values.bold_in_report,
         show_in_report: values.show_in_report,
         is_single_parameter: values.is_single_parameter,
+        instrument_name: values.instrument_name || null,
+        method: values.method || null,
+        sample_type: values.sample_type || null,
+        interpretation: values.interpretation || null,
       };
       await saveTest(payload, editing?.id);
     },
@@ -100,6 +105,8 @@ const TestManagement = () => {
       incentive_amount: t.incentive_amount ? String(t.incentive_amount) : "",
       display_name: t.display_name || "", bold_in_report: t.bold_in_report ?? false,
       show_in_report: t.show_in_report ?? true, is_single_parameter: t.is_single_parameter ?? false,
+      instrument_name: t.instrument_name || "", method: t.method || "",
+      sample_type: t.sample_type || "", interpretation: t.interpretation || "",
     });
     setIncentiveLocked(true);
     setIncentivePassword("");
@@ -159,6 +166,17 @@ const TestManagement = () => {
                     <div className="flex items-center gap-3"><Switch checked={form.show_in_report} onCheckedChange={(v) => setForm(p => ({ ...p, show_in_report: v }))} /><Label className="text-sm">Show Display Name in Report</Label></div>
                     <div className="flex items-center gap-3"><Switch checked={form.is_single_parameter} onCheckedChange={(v) => setForm(p => ({ ...p, is_single_parameter: v }))} /><Label className="text-sm">Test = Parameter (Single Parameter Test)</Label></div>
                   </div>
+                </div>
+
+                {/* Lab details */}
+                <div className="border rounded-md p-3 space-y-3 bg-muted/30">
+                  <Label className="font-semibold text-sm">Lab Details</Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><Label className="text-sm">Instrument Name</Label><Input value={form.instrument_name} onChange={(e) => setForm(p => ({ ...p, instrument_name: e.target.value }))} placeholder="e.g. Sysmex XN-1000" /></div>
+                    <div><Label className="text-sm">Method</Label><Input value={form.method} onChange={(e) => setForm(p => ({ ...p, method: e.target.value }))} placeholder="e.g. Immunoturbidimetry" /></div>
+                    <div><Label className="text-sm">Sample Type</Label><Input value={form.sample_type} onChange={(e) => setForm(p => ({ ...p, sample_type: e.target.value }))} placeholder="e.g. Serum, EDTA Blood" /></div>
+                  </div>
+                  <div><Label className="text-sm">Interpretation</Label><Textarea value={form.interpretation} onChange={(e) => setForm(p => ({ ...p, interpretation: e.target.value }))} placeholder="Clinical interpretation notes" rows={3} /></div>
                 </div>
 
                 <div><Label>Description</Label><Textarea value={form.description} onChange={(e) => setForm(p => ({ ...p, description: e.target.value }))} /></div>
