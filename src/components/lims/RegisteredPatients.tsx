@@ -5,12 +5,13 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, ChevronLeft, ChevronRight, Pencil, Download } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, Pencil, Download, Eye, Send } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { exportToExcel } from "@/lib/excel";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 import EditRegistrationDialog from "./EditRegistrationDialog";
+import InvoicePreview from "./InvoicePreview";
 
 const PAGE_SIZE = 20;
 
@@ -19,6 +20,7 @@ const RegisteredPatients = () => {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(0);
   const [editReg, setEditReg] = useState<any>(null);
+  const [viewBillReg, setViewBillReg] = useState<any>(null);
   const [showExportPwd, setShowExportPwd] = useState(false);
 
   const handleSearch = (val: string) => {
@@ -157,9 +159,14 @@ const RegisteredPatients = () => {
                   </TableCell>
                   <TableCell><Badge variant={statusColor(r.status)}>{r.bill_cancelled ? "cancelled" : r.status}</Badge></TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="icon" onClick={() => setEditReg(r)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="icon" className="h-8 w-8" title="View Bill" onClick={() => setViewBillReg(r)}>
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" title="Edit" onClick={() => setEditReg(r)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               );
@@ -184,6 +191,12 @@ const RegisteredPatients = () => {
         open={!!editReg}
         onOpenChange={(o) => !o && setEditReg(null)}
         registration={editReg}
+      />
+
+      <InvoicePreview
+        data={viewBillReg}
+        open={!!viewBillReg}
+        onClose={() => setViewBillReg(null)}
       />
 
       <ExportPasswordDialog
