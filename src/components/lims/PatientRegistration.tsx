@@ -73,6 +73,9 @@ const PatientRegistration = () => {
   const [selectedModes, setSelectedModes] = useState<Set<string>>(new Set());
   const [modeAmounts, setModeAmounts] = useState<Record<string, number>>({});
 
+  // Validation
+  const [triedSave, setTriedSave] = useState(false);
+
   // Invoice preview
   const [invoiceData, setInvoiceData] = useState<any>(null);
 
