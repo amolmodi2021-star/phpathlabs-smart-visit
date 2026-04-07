@@ -227,6 +227,10 @@ const PatientRegistration = () => {
     (testSearch === "" || t.test_name.toLowerCase().includes(testSearch.toLowerCase()))
   );
 
+  // Auto-apply channel discount when channel is selected
+  const effectiveDiscountType = channelId && selectedChannel ? "percent" : globalDiscountType;
+  const effectiveDiscountValue = channelId && selectedChannel ? Number(selectedChannel.default_discount_pct || 0) : globalDiscountValue;
+
   // Calculations (same logic as CreateEstimate)
   const calculations = useMemo(() => {
     let totalAmount = 0;
@@ -238,9 +242,9 @@ const PatientRegistration = () => {
       if (hasIndividual) {
         discount = t.individual_discount_type === "percent"
           ? (t.price * t.individual_discount_value) / 100 : t.individual_discount_value;
-      } else if (t.discount_applicable && globalDiscountValue > 0) {
-        discount = globalDiscountType === "percent"
-          ? (t.price * globalDiscountValue) / 100 : globalDiscountValue;
+      } else if (t.discount_applicable && effectiveDiscountValue > 0) {
+        discount = effectiveDiscountType === "percent"
+          ? (t.price * effectiveDiscountValue) / 100 : effectiveDiscountValue;
       }
       discount = Math.min(discount, t.price);
       totalDiscount += discount;
@@ -249,7 +253,7 @@ const PatientRegistration = () => {
     const hvc = visitType === "home_visit" ? homeVisitCharges : 0;
     const finalAmount = totalAmount - totalDiscount + hvc;
     return { totalAmount, totalDiscount, finalAmount, testDetails, homeVisitCharges: hvc };
-  }, [selectedTests, globalDiscountType, globalDiscountValue, homeVisitCharges, visitType]);
+  }, [selectedTests, effectiveDiscountType, effectiveDiscountValue, homeVisitCharges, visitType]);
 
   // Payment
   const toggleMode = (mode: string) => {
@@ -610,18 +614,32 @@ const PatientRegistration = () => {
           )}
 
           {/* Global Discount */}
-          <div className="flex items-end gap-3">
-            <div className="flex-1">
-              <Label>Global Discount</Label>
-              <div className="flex gap-2">
-                <Select value={globalDiscountType} onValueChange={(v: any) => setGlobalDiscountType(v)}>
-                  <SelectTrigger className="w-20"><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value="percent">%</SelectItem><SelectItem value="amount">₹</SelectItem></SelectContent>
-                </Select>
-                <Input type="number" value={globalDiscountValue || ""} onChange={e => setGlobalDiscountValue(parseFloat(e.target.value) || 0)} />
+          {channelId && selectedChannel ? (
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-1">
+              <Label className="text-sm font-semibold">Channel Discount Applied</Label>
+              <p className="text-xs text-muted-foreground">
+                {selectedChannel.name} — {selectedChannel.default_discount_pct}% discount auto-applied to eligible tests
+              </p>
+              {selectedTests.some(t => !t.discount_applicable) && (
+                <p className="text-xs text-destructive">
+                  * {selectedTests.filter(t => !t.discount_applicable).map(t => t.test_name).join(", ")} — discount not applicable
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-end gap-3">
+              <div className="flex-1">
+                <Label>Global Discount</Label>
+                <div className="flex gap-2">
+                  <Select value={globalDiscountType} onValueChange={(v: any) => setGlobalDiscountType(v)}>
+                    <SelectTrigger className="w-20"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="percent">%</SelectItem><SelectItem value="amount">₹</SelectItem></SelectContent>
+                  </Select>
+                  <Input type="number" value={globalDiscountValue || ""} onChange={e => setGlobalDiscountValue(parseFloat(e.target.value) || 0)} />
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Home Visit Charges */}
           {visitType === "home_visit" && (
