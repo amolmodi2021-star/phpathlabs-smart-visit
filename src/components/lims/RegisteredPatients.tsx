@@ -44,7 +44,14 @@ const RegisteredPatients = () => {
       const { data } = await supabase.rpc("get_patient_registrations_paginated" as any, {
         p_page: page, p_page_size: PAGE_SIZE, p_search: debouncedSearch,
       });
-      return (data || []) as any[];
+      const rows = (data || []) as any[];
+      // STAT (urgent) items that are not dispatched/cancelled appear on top
+      rows.sort((a: any, b: any) => {
+        const aUrgent = a.is_stat && !a.bill_cancelled && a.status !== "dispatched" ? 1 : 0;
+        const bUrgent = b.is_stat && !b.bill_cancelled && b.status !== "dispatched" ? 1 : 0;
+        return bUrgent - aUrgent;
+      });
+      return rows;
     },
   });
 
@@ -146,8 +153,15 @@ const RegisteredPatients = () => {
               const cancelledIds = new Set(cancelledTests.map((ct: any) => ct.test_id));
               const activeTests = testList.filter((t: any) => !cancelledIds.has(t.test_id));
               return (
-                <TableRow key={r.id} className={r.bill_cancelled ? "opacity-60" : ""}>
-                  <TableCell className="font-mono text-xs">{r.invoice_number}</TableCell>
+                <TableRow key={r.id} className={`${r.bill_cancelled ? "opacity-60" : ""} ${r.is_stat && !r.bill_cancelled && r.status !== "dispatched" ? "bg-destructive/5" : ""}`}>
+                  <TableCell className="font-mono text-xs">
+                    <div className="flex items-center gap-1.5">
+                      {r.is_stat && !r.bill_cancelled && r.status !== "dispatched" && (
+                        <span className="relative flex h-2.5 w-2.5 shrink-0"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75"></span><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive"></span></span>
+                      )}
+                      {r.invoice_number}
+                    </div>
+                  </TableCell>
                   <TableCell className="text-xs">{r.created_at ? format(new Date(r.created_at), "dd-MM-yyyy HH:mm") : "—"}</TableCell>
                   <TableCell>
                     <div className="text-sm font-medium">{r.title} {r.patient_name}</div>
