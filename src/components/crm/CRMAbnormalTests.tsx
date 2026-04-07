@@ -375,7 +375,8 @@ const CRMAbnormalTests = () => {
       const bandsAboveH = bandsArr.filter((b: any) => b.position === "above-table").reduce((s: number, b: any) => s + (b.height || 40), 0);
       const bandsBelowH = bandsArr.filter((b: any) => b.position === "below-table").reduce((s: number, b: any) => s + (b.height || 40), 0);
 
-      const height = hdrH + bandsAboveH + tableHeaderH + group.tests.length * tRowHeight + bandsBelowH + footerH + padding * 2;
+      const sortedTestsForHeight = [...group.tests].sort((a, b) => (b.test_date || "").localeCompare(a.test_date || ""));
+      const height = hdrH + bandsAboveH + tableHeaderH + sortedTestsForHeight.length * tRowHeight + bandsBelowH + footerH + padding * 2;
 
       const canvas = document.createElement("canvas");
       canvas.width = cw;
