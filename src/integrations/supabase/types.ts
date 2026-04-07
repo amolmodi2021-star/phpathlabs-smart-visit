@@ -1838,6 +1838,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      cleanup_non_phpl_duplicates: { Args: never; Returns: number }
       get_abnormal_history_counts: {
         Args: never
         Returns: {
