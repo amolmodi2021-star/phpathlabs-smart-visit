@@ -170,10 +170,26 @@ const TestManagement = () => {
                 <div><Label>Display Name</Label><Input value={form.display_name} onChange={(e) => setForm(p => ({ ...p, display_name: e.target.value }))} placeholder="Name shown in reports (optional)" /></div>
                 <div><Label>Price (₹) *</Label><Input type="number" value={form.price} onChange={(e) => setForm(p => ({ ...p, price: e.target.value }))} required /></div>
 
+                <div>
+                  <Label>Department</Label>
+                  <Select value={form.department_id} onValueChange={(v) => setForm(p => ({ ...p, department_id: v }))}>
+                    <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
+                    <SelectContent>
+                      {departments.map((d: any) => (
+                        <SelectItem key={d.id} value={d.id}>{d.department_name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   <div className="flex items-center gap-3"><Switch checked={form.fasting_required} onCheckedChange={(v) => setForm(p => ({ ...p, fasting_required: v }))} /><Label className="text-sm">Fasting Required</Label></div>
                   <div className="flex items-center gap-3"><Switch checked={form.discount_applicable} onCheckedChange={(v) => setForm(p => ({ ...p, discount_applicable: v }))} /><Label className="text-sm">Discount Applicable</Label></div>
+                  <div className="flex items-center gap-3"><Switch checked={form.is_outsourced} onCheckedChange={(v) => setForm(p => ({ ...p, is_outsourced: v, outsourced_caption: v ? p.outsourced_caption : "" }))} /><Label className="text-sm">Mark as Outsourced</Label></div>
                 </div>
+                {form.is_outsourced && (
+                  <div><Label>Outsourced Caption</Label><Input value={form.outsourced_caption} onChange={(e) => setForm(p => ({ ...p, outsourced_caption: e.target.value }))} placeholder="e.g. This test was outsourced to XYZ Lab" /></div>
+                )}
 
                 {/* Report display settings */}
                 <div className="border rounded-md p-3 space-y-3 bg-muted/30">
