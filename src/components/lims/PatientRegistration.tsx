@@ -614,18 +614,32 @@ const PatientRegistration = () => {
           )}
 
           {/* Global Discount */}
-          <div className="flex items-end gap-3">
-            <div className="flex-1">
-              <Label>Global Discount</Label>
-              <div className="flex gap-2">
-                <Select value={globalDiscountType} onValueChange={(v: any) => setGlobalDiscountType(v)}>
-                  <SelectTrigger className="w-20"><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value="percent">%</SelectItem><SelectItem value="amount">₹</SelectItem></SelectContent>
-                </Select>
-                <Input type="number" value={globalDiscountValue || ""} onChange={e => setGlobalDiscountValue(parseFloat(e.target.value) || 0)} />
+          {channelId && selectedChannel ? (
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-1">
+              <Label className="text-sm font-semibold">Channel Discount Applied</Label>
+              <p className="text-xs text-muted-foreground">
+                {selectedChannel.name} — {selectedChannel.default_discount_pct}% discount auto-applied to eligible tests
+              </p>
+              {selectedTests.some(t => !t.discount_applicable) && (
+                <p className="text-xs text-destructive">
+                  * {selectedTests.filter(t => !t.discount_applicable).map(t => t.test_name).join(", ")} — discount not applicable
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-end gap-3">
+              <div className="flex-1">
+                <Label>Global Discount</Label>
+                <div className="flex gap-2">
+                  <Select value={globalDiscountType} onValueChange={(v: any) => setGlobalDiscountType(v)}>
+                    <SelectTrigger className="w-20"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="percent">%</SelectItem><SelectItem value="amount">₹</SelectItem></SelectContent>
+                  </Select>
+                  <Input type="number" value={globalDiscountValue || ""} onChange={e => setGlobalDiscountValue(parseFloat(e.target.value) || 0)} />
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Home Visit Charges */}
           {visitType === "home_visit" && (
