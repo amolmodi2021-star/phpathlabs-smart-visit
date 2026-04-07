@@ -1,63 +1,69 @@
 
 
-# Auto-Delete NON PHPL Records When Patient Gets a Bill Number
+# Deduplicate NON PHPL Records by Mobile Number
 
 ## Problem
-When a patient initially registered as "NON PHPL" (prospect) later visits PH VESU and gets a bill number, the old NON PHPL records with the same mobile number remain in the CRM. This creates duplicate entries — the patient should only exist under their PH VESU record.
+When NON PHPL records are uploaded, duplicate mobile numbers can accumulate. For example, a record with name "AMOL MODI" and mobile 9552000200 exists, and later 9552000200 is uploaded again without a name — both records persist. The user wants automatic deduplication: keep the record with a name, delete the rest.
 
 ## Solution
-Add a cleanup step in **every place** where records are inserted/upserted into `crm_contacts` — after the upsert completes, delete all NON PHPL records where the same mobile number now has at least one record with a bill number (i.e., a PH VESU record exists).
+Create a new database function `cleanup_non_phpl_mobile_duplicates()` that runs after every NON PHPL upload/create, and call it alongside the existing `cleanup_non_phpl_duplicates()`.
 
-### Implementation approach: Database function
+### Database function logic
 
-Create a reusable SQL function `cleanup_non_phpl_duplicates()` that:
-1. Finds all mobile numbers that have **both** a record with a non-empty `bill_number` (PH VESU patient) **and** a record with `location = 'NON PHPL'`
-2. Deletes all `NON PHPL` records for those mobile numbers
-3. Returns the count of deleted records
+For each mobile number that has **more than one** record where `location = 'NON PHPL'`:
+1. If any record has a non-empty `patient_name` → keep the one with the most recent `updated_at` among named records, delete all other NON PHPL records for that mobile
+2. If none have a name → keep the one with the most recent `updated_at`, delete the rest
 
-This function will be called from the client after every data modification that could introduce bill numbers.
-
-### Places to add the cleanup call
-
-| Location | File | When |
-|----------|------|------|
-| Import → Approve & Transfer | `CRMImportReview.tsx` | After upsert completes |
-| NON PHPL Upload | `CRMContacts.tsx` | After upsert completes |
-| Daily Import Staging | `CRMImport.tsx` | No change needed (staging only) |
-| Contact Edit Dialog | `CRMContacts.tsx` | After individual record save (if bill_number changed) |
-
-### Database function SQL
+### SQL Function
 
 ```sql
-CREATE OR REPLACE FUNCTION public.cleanup_non_phpl_duplicates()
+CREATE OR REPLACE FUNCTION public.cleanup_non_phpl_mobile_duplicates()
 RETURNS bigint
 LANGUAGE sql
 SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
-  WITH mobiles_with_bills AS (
-    SELECT DISTINCT mobile_number
+  WITH ranked AS (
+    SELECT id,
+      ROW_NUMBER() OVER (
+        PARTITION BY mobile_number
+        ORDER BY
+          CASE WHEN patient_name IS NOT NULL AND TRIM(patient_name) != '' THEN 0 ELSE 1 END,
+          updated_at DESC
+      ) AS rn
     FROM crm_contacts
-    WHERE bill_number IS NOT NULL 
-      AND bill_number != ''
-      AND UPPER(TRIM(location)) != 'NON PHPL'
+    WHERE UPPER(TRIM(location)) = 'NON PHPL'
+      AND mobile_number IS NOT NULL AND mobile_number != ''
+      AND mobile_number IN (
+        SELECT mobile_number FROM crm_contacts
+        WHERE UPPER(TRIM(location)) = 'NON PHPL'
+          AND mobile_number IS NOT NULL AND mobile_number != ''
+        GROUP BY mobile_number HAVING COUNT(*) > 1
+      )
   ),
   deleted AS (
     DELETE FROM crm_contacts
-    WHERE UPPER(TRIM(location)) = 'NON PHPL'
-      AND mobile_number IN (SELECT mobile_number FROM mobiles_with_bills)
+    WHERE id IN (SELECT id FROM ranked WHERE rn > 1)
     RETURNING 1
   )
   SELECT COUNT(*)::bigint FROM deleted;
 $$;
 ```
 
-### Client-side usage (after each upsert)
+### Client-side integration
+
+Add the call right after the existing `cleanup_non_phpl_duplicates` call in two places:
+
+| File | Location |
+|------|----------|
+| `CRMContacts.tsx` | After NON PHPL upload (line ~550) |
+| `CRMImportReview.tsx` | After approve & transfer (line ~172) |
 
 ```typescript
-const { data: deletedCount } = await supabase.rpc("cleanup_non_phpl_duplicates");
-if (deletedCount && deletedCount > 0) {
-  toast.info(`${deletedCount} NON PHPL duplicate(s) auto-removed`);
+// After existing cleanup call:
+const { data: dedupCount } = await supabase.rpc("cleanup_non_phpl_mobile_duplicates" as any);
+if (dedupCount && Number(dedupCount) > 0) {
+  toast.info(`${dedupCount} NON PHPL duplicate mobile(s) cleaned up`);
 }
 ```
 
@@ -65,7 +71,7 @@ if (deletedCount && deletedCount > 0) {
 
 | File | Change |
 |------|--------|
-| New migration | Create `cleanup_non_phpl_duplicates` function |
-| `src/components/crm/CRMImportReview.tsx` | Call cleanup after approve & transfer |
-| `src/components/crm/CRMContacts.tsx` | Call cleanup after NON PHPL upload and after individual contact edits |
+| New migration | Create `cleanup_non_phpl_mobile_duplicates` function |
+| `src/components/crm/CRMContacts.tsx` | Call new function after NON PHPL upload |
+| `src/components/crm/CRMImportReview.tsx` | Call new function after approve & transfer |
 
