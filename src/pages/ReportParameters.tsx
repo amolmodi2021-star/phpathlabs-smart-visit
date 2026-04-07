@@ -61,15 +61,12 @@ const ReportParameters = () => {
       parameter_name: form.parameter_name,
       test_name: form.test_name || null,
       profile_id: form.profile_id || null,
-      department_id: form.department_id || null,
       unit: form.unit || null,
       analyzer: form.analyzer || null,
       method: form.method || null,
       store_for_analytics: form.store_for_analytics,
       display_order: form.display_order,
       sample_type: form.sample_type || null,
-      is_outsourced: form.is_outsourced,
-      outsourced_caption: form.outsourced_caption || null,
       interpretation: form.interpretation || null,
       normal_range_low: null,
       normal_range_high: null,
@@ -90,12 +87,11 @@ const ReportParameters = () => {
     setEditId(p.id);
     setForm({
       parameter_name: p.parameter_name, test_name: p.test_name || "",
-      profile_id: p.profile_id || "", department_id: p.department_id || "",
+      profile_id: p.profile_id || "",
       unit: p.unit || "",
       analyzer: p.analyzer || "", method: p.method || "",
       store_for_analytics: p.store_for_analytics || false, display_order: p.display_order || 0,
-      sample_type: p.sample_type || "", is_outsourced: p.is_outsourced || false,
-      outsourced_caption: p.outsourced_caption || "", interpretation: p.interpretation || "",
+      sample_type: p.sample_type || "", interpretation: p.interpretation || "",
     });
     setDialogOpen(true);
   };
