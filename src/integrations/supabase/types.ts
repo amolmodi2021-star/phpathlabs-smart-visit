@@ -1306,6 +1306,8 @@ export type Database = {
       patient_registrations: {
         Row: {
           address: string | null
+          bill_cancelled: boolean
+          cancelled_tests: Json
           created_at: string
           discount_amount: number
           dob: string | null
@@ -1326,6 +1328,9 @@ export type Database = {
           patient_name: string
           payments: Json
           pickup_point_id: string | null
+          refund_amount: number
+          refund_date: string | null
+          refund_mode: string | null
           status: string
           tests: Json
           title: string | null
@@ -1335,6 +1340,8 @@ export type Database = {
         }
         Insert: {
           address?: string | null
+          bill_cancelled?: boolean
+          cancelled_tests?: Json
           created_at?: string
           discount_amount?: number
           dob?: string | null
@@ -1355,6 +1362,9 @@ export type Database = {
           patient_name: string
           payments?: Json
           pickup_point_id?: string | null
+          refund_amount?: number
+          refund_date?: string | null
+          refund_mode?: string | null
           status?: string
           tests?: Json
           title?: string | null
@@ -1364,6 +1374,8 @@ export type Database = {
         }
         Update: {
           address?: string | null
+          bill_cancelled?: boolean
+          cancelled_tests?: Json
           created_at?: string
           discount_amount?: number
           dob?: string | null
@@ -1384,6 +1396,9 @@ export type Database = {
           patient_name?: string
           payments?: Json
           pickup_point_id?: string | null
+          refund_amount?: number
+          refund_date?: string | null
+          refund_mode?: string | null
           status?: string
           tests?: Json
           title?: string | null
@@ -2061,6 +2076,39 @@ export type Database = {
         Args: { p_search?: string }
         Returns: number
       }
+      get_all_patient_registrations: {
+        Args: { p_search?: string }
+        Returns: {
+          address: string
+          bill_cancelled: boolean
+          cancelled_tests: Json
+          created_at: string
+          discount_amount: number
+          dob: string
+          doctor_name: string
+          due_amount: number
+          email: string
+          final_amount: number
+          gender: string
+          gross_amount: number
+          home_visit_charges: number
+          id: string
+          invoice_number: string
+          mobile_number: string
+          net_amount: number
+          paid_amount: number
+          patient_name: string
+          payments: Json
+          refund_amount: number
+          refund_date: string
+          refund_mode: string
+          status: string
+          tests: Json
+          title: string
+          umr_number: string
+          visit_type: string
+        }[]
+      }
       get_crm_contacts_count: {
         Args: { p_location?: string; p_search?: string; p_tag?: string }
         Returns: number
@@ -2107,20 +2155,32 @@ export type Database = {
       get_patient_registrations_paginated: {
         Args: { p_page?: number; p_page_size?: number; p_search?: string }
         Returns: {
+          address: string
+          bill_cancelled: boolean
+          cancelled_tests: Json
           created_at: string
           discount_amount: number
           dob: string
           doctor_name: string
           due_amount: number
+          email: string
           final_amount: number
           gender: string
+          global_discount_type: string
+          global_discount_value: number
           gross_amount: number
+          home_visit_charges: number
           id: string
           invoice_number: string
           mobile_number: string
           net_amount: number
           paid_amount: number
           patient_name: string
+          payments: Json
+          pickup_point_id: string
+          refund_amount: number
+          refund_date: string
+          refund_mode: string
           status: string
           tests: Json
           title: string
