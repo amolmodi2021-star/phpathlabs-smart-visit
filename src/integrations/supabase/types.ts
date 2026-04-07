@@ -2046,8 +2046,12 @@ export type Database = {
           id: string
           incentive_allowed: boolean
           incentive_amount: number
+          instrument_name: string | null
+          interpretation: string | null
           is_single_parameter: boolean
+          method: string | null
           price: number
+          sample_type: string | null
           show_in_report: boolean
           test_code: string | null
           test_name: string
@@ -2063,8 +2067,12 @@ export type Database = {
           id?: string
           incentive_allowed?: boolean
           incentive_amount?: number
+          instrument_name?: string | null
+          interpretation?: string | null
           is_single_parameter?: boolean
+          method?: string | null
           price?: number
+          sample_type?: string | null
           show_in_report?: boolean
           test_code?: string | null
           test_name: string
@@ -2080,8 +2088,12 @@ export type Database = {
           id?: string
           incentive_allowed?: boolean
           incentive_amount?: number
+          instrument_name?: string | null
+          interpretation?: string | null
           is_single_parameter?: boolean
+          method?: string | null
           price?: number
+          sample_type?: string | null
           show_in_report?: boolean
           test_code?: string | null
           test_name?: string
