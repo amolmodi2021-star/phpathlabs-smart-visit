@@ -20,7 +20,6 @@ const CRMSettings = () => {
       (data || []).forEach((s: any) => {
         if (s.setting_key === "crm_daily_quota") setQuota(s.setting_value || "100");
         if (s.setting_key === "crm_automation_enabled") setAutomationEnabled(s.setting_value === "true");
-        if (s.setting_key === "crm_abc_static_expiry_date") setStaticExpiryDate(s.setting_value || "");
       });
     })();
   }, []);
