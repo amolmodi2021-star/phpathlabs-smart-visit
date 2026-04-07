@@ -101,11 +101,29 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
     return refundAmount;
   }, [newlyCancelled, tests]);
 
+  const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card", "NEFT"];
+
+  const togglePaymentMode = (mode: string) => {
+    setSelectedModes(prev => {
+      const next = new Set(prev);
+      if (next.has(mode)) { next.delete(mode); setModeAmounts(a => { const n = { ...a }; delete n[mode]; return n; }); }
+      else next.add(mode);
+      return next;
+    });
+  };
+
+  const editPaidAmount = Array.from(selectedModes).reduce((sum, mode) => sum + (modeAmounts[mode] || 0), 0);
+  const editDueAmount = Math.max(0, Number(reg?.final_amount || 0) - editPaidAmount);
+
   if (!reg) return null;
 
   const handleSaveDetails = async () => {
     setSaving(true);
     try {
+      const payments = Array.from(selectedModes)
+        .filter(m => (modeAmounts[m] || 0) > 0)
+        .map(m => ({ mode: m, amount: modeAmounts[m] || 0 }));
+
       const { error } = await supabase.from("patient_registrations").update({
         patient_name: patientName.toUpperCase(),
         title,
@@ -119,6 +137,9 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         status,
         remarks: remarks.trim() || null,
         is_stat: isStat,
+        payments,
+        paid_amount: editPaidAmount,
+        due_amount: editDueAmount,
       } as any).eq("id", reg.id);
       if (error) throw error;
       qc.invalidateQueries({ queryKey: ["patient_registrations"] });
