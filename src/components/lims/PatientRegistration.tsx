@@ -60,6 +60,7 @@ const PatientRegistration = () => {
   const [manualAge, setManualAge] = useState("");
   const [remarks, setRemarks] = useState("");
   const [isStat, setIsStat] = useState(false);
+  const [showHvcConfirm, setShowHvcConfirm] = useState(false);
 
   // Channel
   const [channelId, setChannelId] = useState("");
