@@ -517,6 +517,19 @@ const PatientRegistration = () => {
             </RadioGroup>
           </div>
 
+          {/* Report Language */}
+          <div>
+            <Label>Report Language</Label>
+            <Select value={reportLanguage} onValueChange={setReportLanguage}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="English">English</SelectItem>
+                <SelectItem value="Hindi">Hindi</SelectItem>
+                <SelectItem value="Gujarati">Gujarati</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           {visitType === "pickup_point" && !channelId && (
             <div>
               <Label>Select Pickup Point *</Label>
