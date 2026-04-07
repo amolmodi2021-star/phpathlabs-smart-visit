@@ -947,10 +947,11 @@ const CRMContacts = () => {
         </Table>
       </div>
 
-      <div className="flex gap-2 justify-center">
+      <div className="flex gap-2 justify-center items-center">
         <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(p => p - 1)}>Previous</Button>
-        <span className="text-sm self-center">Page {page + 1}</span>
-        <Button variant="outline" size="sm" disabled={contacts.length < PAGE_SIZE} onClick={() => setPage(p => p + 1)}>Next</Button>
+        <span className="text-sm">Page {page + 1} of {Math.max(1, Math.ceil(totalCount / PAGE_SIZE))}</span>
+        <Button variant="outline" size="sm" disabled={(page + 1) * PAGE_SIZE >= totalCount} onClick={() => setPage(p => p + 1)}>Next</Button>
+        <span className="text-xs text-muted-foreground ml-2">({totalCount} records)</span>
       </div>
 
       {/* Edit Contact Dialog */}
