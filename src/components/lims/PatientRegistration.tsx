@@ -334,7 +334,7 @@ const PatientRegistration = () => {
 
   const resetForm = () => {
     setMobileNumber(""); setPatientName(""); setTitle(""); setGender("");
-    setDob(""); setEmail(""); setDoctorName("SELF"); setUmrNumber("");
+    setDob(""); setEmail(""); setShowEmail(false); setDoctorName("SELF"); setUmrNumber("");
     setAddress(""); setVisitType("lab_visit"); setPickupPointId("");
     setSelectedTests([]); setGlobalDiscountValue(0); setHomeVisitCharges(0);
     setSelectedModes(new Set()); setModeAmounts({}); setInvoiceData(null);
