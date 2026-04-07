@@ -48,6 +48,14 @@ const TestManagement = () => {
     retryDelay: 3000,
   });
 
+  const { data: departments = [] } = useQuery({
+    queryKey: ["departments"],
+    queryFn: async () => {
+      const { data } = await supabase.from("report_departments").select("*").order("display_order");
+      return data || [];
+    },
+  });
+
   const saveMutation = useMutation({
     mutationFn: async (values: typeof form) => {
       const payload = {
