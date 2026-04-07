@@ -142,6 +142,9 @@ const RegisteredPatients = () => {
               <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No registrations found</TableCell></TableRow>
             ) : registrations.map((r: any) => {
               const testList = Array.isArray(r.tests) ? r.tests : [];
+              const cancelledTests = Array.isArray(r.cancelled_tests) ? r.cancelled_tests : [];
+              const cancelledIds = new Set(cancelledTests.map((ct: any) => ct.test_id));
+              const activeTests = testList.filter((t: any) => !cancelledIds.has(t.test_id));
               return (
                 <TableRow key={r.id} className={r.bill_cancelled ? "opacity-60" : ""}>
                   <TableCell className="font-mono text-xs">{r.invoice_number}</TableCell>
@@ -151,7 +154,12 @@ const RegisteredPatients = () => {
                     {r.umr_number && <div className="text-xs text-muted-foreground">{r.umr_number}</div>}
                   </TableCell>
                   <TableCell className="text-sm">{r.mobile_number}</TableCell>
-                  <TableCell className="text-xs max-w-[200px] truncate">{testList.map((t: any) => t.test_name).join(", ") || "—"}</TableCell>
+                  <TableCell className="text-xs max-w-[200px]">
+                    <div className="truncate">{activeTests.map((t: any) => t.test_name).join(", ") || "—"}</div>
+                    {cancelledTests.length > 0 && (
+                      <div className="text-destructive truncate">Cancelled: {cancelledTests.map((ct: any) => ct.test_name || ct.test_id).join(", ")}</div>
+                    )}
+                  </TableCell>
                   <TableCell className="text-right">
                     <div className="text-sm font-medium">₹{r.final_amount}</div>
                     {r.due_amount > 0 && <div className="text-xs text-destructive">Due: ₹{r.due_amount}</div>}
