@@ -18,7 +18,6 @@ import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 
 const ReportParameters = () => {
   const [params, setParams] = useState<any[]>([]);
-  const [departments, setDepartments] = useState<any[]>([]);
   const [profiles, setProfiles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -37,13 +36,11 @@ const ReportParameters = () => {
 
   const load = async () => {
     setLoading(true);
-    const [{ data: p }, { data: d }, { data: pr }] = await Promise.all([
-      supabase.from("report_test_parameters").select("*, report_departments(department_name), report_profiles(profile_name)").order("display_order"),
-      supabase.from("report_departments").select("*").order("display_order"),
+    const [{ data: p }, { data: pr }] = await Promise.all([
+      supabase.from("report_test_parameters").select("*, report_profiles(profile_name)").order("display_order"),
       supabase.from("report_profiles").select("*").order("display_order"),
     ]);
     setParams(p || []);
-    setDepartments(d || []);
     setProfiles(pr || []);
     setLoading(false);
   };
