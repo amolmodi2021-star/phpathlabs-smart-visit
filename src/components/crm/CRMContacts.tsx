@@ -14,6 +14,7 @@ import { exportToExcel, parseExcelFile } from "@/lib/excel";
 import { generateAndUploadCard, getTemplateAssets, type CardData } from "@/lib/cardRenderer";
 import { Download, Search, Pencil, Upload, Trash2, Send } from "lucide-react";
 import { toast } from "sonner";
+import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 
 const normalizePrimaryKeyName = (value: unknown) =>
   String(value || "")
