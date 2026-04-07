@@ -7,12 +7,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 
-const SETTINGS_KEYS = ["crm_daily_quota", "crm_automation_enabled", "crm_abc_static_expiry_date"];
+const SETTINGS_KEYS = ["crm_daily_quota", "crm_automation_enabled"];
 
 const CRMSettings = () => {
   const [quota, setQuota] = useState("100");
   const [automationEnabled, setAutomationEnabled] = useState(false);
-  const [staticExpiryDate, setStaticExpiryDate] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -21,7 +20,6 @@ const CRMSettings = () => {
       (data || []).forEach((s: any) => {
         if (s.setting_key === "crm_daily_quota") setQuota(s.setting_value || "100");
         if (s.setting_key === "crm_automation_enabled") setAutomationEnabled(s.setting_value === "true");
-        if (s.setting_key === "crm_abc_static_expiry_date") setStaticExpiryDate(s.setting_value || "");
       });
     })();
   }, []);
@@ -31,7 +29,6 @@ const CRMSettings = () => {
     for (const [key, val] of [
       ["crm_daily_quota", quota],
       ["crm_automation_enabled", String(automationEnabled)],
-      ["crm_abc_static_expiry_date", staticExpiryDate],
     ]) {
       await supabase.from("app_settings").upsert({ setting_key: key, setting_value: val }, { onConflict: "setting_key" });
     }
@@ -51,16 +48,6 @@ const CRMSettings = () => {
         <div className="flex items-center gap-3">
           <Switch checked={automationEnabled} onCheckedChange={setAutomationEnabled} />
           <Label>Enable Marketing Automation</Label>
-        </div>
-        <div>
-          <Label>ABC Card — Static Expiry Date</Label>
-          <Input
-            placeholder="e.g. 31-12-2026"
-            value={staticExpiryDate}
-            onChange={(e) => setStaticExpiryDate(e.target.value)}
-            className="w-48"
-          />
-          <p className="text-xs text-muted-foreground mt-1">This expiry date will be printed on all ABC cards sent from CRM (Review & Contacts)</p>
         </div>
         <Button onClick={save} disabled={saving}>{saving ? "Saving..." : "Save Settings"}</Button>
       </CardContent>
