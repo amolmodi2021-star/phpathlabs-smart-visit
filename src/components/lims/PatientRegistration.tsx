@@ -408,20 +408,20 @@ const PatientRegistration = () => {
               {age && <p className="text-xs text-muted-foreground mt-1">Age: {age}</p>}
             </div>
             <div>
-              <Label>Email</Label>
-              <Input type="email" value={email} onChange={e => setEmail(e.target.value)} />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
               <Label>Doctor Name</Label>
               <Input value={doctorName} onChange={e => setDoctorName(e.target.value)} placeholder="SELF" />
             </div>
-            <div>
-              <Label>UMR Number</Label>
-              <Input value={umrNumber} onChange={e => setUmrNumber(e.target.value)} placeholder="UMR0000000" />
-            </div>
+          </div>
+
+          {/* Email toggle */}
+          <div>
+            <button type="button" className="text-xs text-primary flex items-center gap-1" onClick={() => setShowEmail(!showEmail)}>
+              {showEmail ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              {showEmail ? "Hide Email" : "Add Email (optional)"}
+            </button>
+            {showEmail && (
+              <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="patient@email.com" className="mt-1" />
+            )}
           </div>
 
           {/* Visit Type */}
