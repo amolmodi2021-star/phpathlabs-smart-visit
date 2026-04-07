@@ -783,11 +783,36 @@ const PatientRegistration = () => {
             <Switch id="stat-toggle" checked={isStat} onCheckedChange={setIsStat} className="data-[state=checked]:bg-destructive" />
           </div>
 
-          <Button className="w-full" onClick={() => { setTriedSave(true); saveMutation.mutate(); }} disabled={saveMutation.isPending || selectedTests.length === 0}>
+          <Button className="w-full" onClick={() => {
+            setTriedSave(true);
+            if (visitType === "home_visit" && (!homeVisitCharges || homeVisitCharges === 0)) {
+              setShowHvcConfirm(true);
+              return;
+            }
+            saveMutation.mutate();
+          }} disabled={saveMutation.isPending || selectedTests.length === 0}>
             <Save className="h-4 w-4 mr-2" />Save & Generate Invoice
           </Button>
         </CardContent>
       </Card>
+
+      {/* Home Visit Charges Confirmation Dialog */}
+      {showHvcConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-background rounded-lg p-6 max-w-sm w-full mx-4 shadow-lg space-y-4">
+            <h3 className="font-semibold text-lg">Confirm Home Visit Charges</h3>
+            <p className="text-sm text-muted-foreground">
+              Home Visit Charges are blank (₹0). Are you sure you want to proceed without adding charges?
+            </p>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setShowHvcConfirm(false)}>Go Back</Button>
+              <Button variant="destructive" onClick={() => { setShowHvcConfirm(false); saveMutation.mutate(); }}>
+                Yes, Save Without Charges
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
