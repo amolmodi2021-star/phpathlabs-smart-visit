@@ -2155,6 +2155,8 @@ export type Database = {
           interpretation: string | null
           is_outsourced: boolean
           is_single_parameter: boolean
+          machine_id: string | null
+          machine_name: string | null
           method: string | null
           outsourced_caption: string | null
           price: number
@@ -2179,6 +2181,8 @@ export type Database = {
           interpretation?: string | null
           is_outsourced?: boolean
           is_single_parameter?: boolean
+          machine_id?: string | null
+          machine_name?: string | null
           method?: string | null
           outsourced_caption?: string | null
           price?: number
@@ -2203,6 +2207,8 @@ export type Database = {
           interpretation?: string | null
           is_outsourced?: boolean
           is_single_parameter?: boolean
+          machine_id?: string | null
+          machine_name?: string | null
           method?: string | null
           outsourced_caption?: string | null
           price?: number
