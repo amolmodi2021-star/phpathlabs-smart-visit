@@ -630,7 +630,7 @@ const PatientRegistration = () => {
                   <span className="text-sm text-muted-foreground">₹{t.price}</span>
                   {t.fasting_required && <span className="text-xs text-destructive">Fasting</span>}
                   <div className="ml-auto flex items-center gap-1.5">
-                    {t.discount_applicable && !isCreditPickup && (
+                    {t.discount_applicable && !isCreditPickup && !(channelId && selectedChannel) && (
                       <>
                         <Select value={t.individual_discount_type || ""} onValueChange={v => updateTestDiscount(t.test_id, "individual_discount_type", v || null)}>
                           <SelectTrigger className="w-16 h-7 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
