@@ -489,7 +489,7 @@ const PatientRegistration = () => {
 
           <div>
             <Label className={triedSave && !patientName.trim() ? "text-destructive" : ""}>Patient Name *</Label>
-            <Input value={patientName} onChange={e => setPatientName(e.target.value)} placeholder="Full name" />
+            <Input value={patientName} onChange={e => setPatientName(e.target.value.toUpperCase())} placeholder="Full name" className="uppercase" />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -508,7 +508,7 @@ const PatientRegistration = () => {
             {!isPickup && (
               <div>
                 <Label>Doctor Name</Label>
-                <Input value={doctorName} onChange={e => setDoctorName(e.target.value)} placeholder="SELF" />
+                <Input value={doctorName} onChange={e => setDoctorName(e.target.value.toUpperCase())} placeholder="SELF" className="uppercase" />
               </div>
             )}
           </div>
@@ -528,7 +528,7 @@ const PatientRegistration = () => {
           {visitType !== "pickup_point" && (
             <div>
               <Label className={triedSave && !address.trim() ? "text-destructive" : ""}>Address *</Label>
-              <Input value={address} onChange={e => setAddress(e.target.value)} placeholder="Patient address" />
+              <Input value={address} onChange={e => setAddress(e.target.value.toUpperCase())} placeholder="Patient address" className="uppercase" />
             </div>
           )}
 
