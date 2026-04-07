@@ -167,14 +167,11 @@ const ReportParameters = () => {
       const rows = await parseExcelFile(file);
       if (!rows.length) { toast({ title: "Empty file", variant: "destructive" }); return; }
 
-      // Build lookup maps for department and profile names → ids
-      const deptMap = new Map(departments.map((d: any) => [d.department_name.toLowerCase(), d.id]));
       const profMap = new Map(profiles.map((p: any) => [p.profile_name.toLowerCase(), p.id]));
 
       const inserts = rows.map((r: any) => ({
         parameter_name: r["Parameter Name"] || "",
         test_name: r["Test Name"] || null,
-        department_id: deptMap.get((r["Department"] || "").toLowerCase()) || null,
         profile_id: profMap.get((r["Profile"] || "").toLowerCase()) || null,
         unit: r["Unit"] || null,
         sample_type: r["Sample Type"] || null,
@@ -182,8 +179,6 @@ const ReportParameters = () => {
         method: r["Method"] || null,
         display_order: Number(r["Display Order"]) || 0,
         store_for_analytics: (r["Store for Analytics"] || "").toString().toLowerCase() === "yes",
-        is_outsourced: (r["Is Outsourced"] || "").toString().toLowerCase() === "yes",
-        outsourced_caption: r["Outsourced Caption"] || null,
         interpretation: r["Interpretation"] || null,
       })).filter((r: any) => r.parameter_name);
 
