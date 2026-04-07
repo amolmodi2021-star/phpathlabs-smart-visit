@@ -32,7 +32,7 @@ const CompletedHomeVisits = () => {
       let query = supabase
         .from("home_visits")
         .select("*, estimates(*)")
-        .eq("status", "Completed")
+        .in("status", ["Completed", "Registered"])
         .order("visit_date", { ascending: false });
 
       const { data, error } = await query;
