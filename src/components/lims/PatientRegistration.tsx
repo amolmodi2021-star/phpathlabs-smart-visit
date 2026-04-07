@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "sonner";
-import { Search, X, Save, Printer, Send } from "lucide-react";
+import { Search, X, Save, Printer, Send, ChevronDown, ChevronUp } from "lucide-react";
 import { getTests, TestItem } from "@/lib/tests";
 import InvoicePreview from "./InvoicePreview";
 
@@ -52,6 +52,7 @@ const PatientRegistration = () => {
   const [gender, setGender] = useState("");
   const [dob, setDob] = useState("");
   const [email, setEmail] = useState("");
+  const [showEmail, setShowEmail] = useState(false);
   const [doctorName, setDoctorName] = useState("SELF");
   const [umrNumber, setUmrNumber] = useState("");
   const [address, setAddress] = useState("");
@@ -158,7 +159,7 @@ const PatientRegistration = () => {
     if (p.title) setTitle(p.title);
     if (p.gender) setGender(p.gender);
     if (p.dob) setDob(p.dob);
-    if (p.email) setEmail(p.email);
+    if (p.email) { setEmail(p.email); setShowEmail(true); }
     if (p.doctor_name) setDoctorName(p.doctor_name);
     if (p.umr_number) setUmrNumber(p.umr_number);
     if (p.address) setAddress(p.address);
@@ -252,6 +253,15 @@ const PatientRegistration = () => {
       const { data: invoiceNum, error: invErr } = await supabase.rpc("generate_invoice_number" as any);
       if (invErr) throw new Error("Failed to generate invoice number");
 
+      // Determine UMR: reuse existing or generate new
+      let finalUmr = umrNumber;
+      if (!finalUmr) {
+        const { data: newUmr, error: umrErr } = await supabase.rpc("generate_umr_number" as any);
+        if (umrErr) throw new Error("Failed to generate UMR number");
+        finalUmr = newUmr as string;
+        setUmrNumber(finalUmr);
+      }
+
       const payments = Array.from(selectedModes)
         .filter(m => (modeAmounts[m] || 0) > 0)
         .map(m => ({ mode: m, amount: modeAmounts[m] || 0 }));
@@ -266,7 +276,7 @@ const PatientRegistration = () => {
         email: email || null,
         address: visitType === "pickup_point" ? (selectedPickup?.address || "") : address.toUpperCase(),
         doctor_name: (doctorName || "SELF").toUpperCase(),
-        umr_number: umrNumber || null,
+        umr_number: finalUmr,
         visit_type: visitType,
         pickup_point_id: visitType === "pickup_point" ? pickupPointId : null,
         tests: calculations.testDetails.map(t => ({
@@ -298,7 +308,7 @@ const PatientRegistration = () => {
         date_of_birth: dob || null,
         email: email || null,
         ref_doctor: (doctorName || "SELF").toUpperCase(),
-        umr_id: umrNumber || `UMR${cleanMobile}`,
+        umr_id: finalUmr,
         last_visit_date: new Date().toISOString(),
       };
       if (existing) {
@@ -324,7 +334,7 @@ const PatientRegistration = () => {
 
   const resetForm = () => {
     setMobileNumber(""); setPatientName(""); setTitle(""); setGender("");
-    setDob(""); setEmail(""); setDoctorName("SELF"); setUmrNumber("");
+    setDob(""); setEmail(""); setShowEmail(false); setDoctorName("SELF"); setUmrNumber("");
     setAddress(""); setVisitType("lab_visit"); setPickupPointId("");
     setSelectedTests([]); setGlobalDiscountValue(0); setHomeVisitCharges(0);
     setSelectedModes(new Set()); setModeAmounts({}); setInvoiceData(null);
@@ -407,20 +417,20 @@ const PatientRegistration = () => {
               {age && <p className="text-xs text-muted-foreground mt-1">Age: {age}</p>}
             </div>
             <div>
-              <Label>Email</Label>
-              <Input type="email" value={email} onChange={e => setEmail(e.target.value)} />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
               <Label>Doctor Name</Label>
               <Input value={doctorName} onChange={e => setDoctorName(e.target.value)} placeholder="SELF" />
             </div>
-            <div>
-              <Label>UMR Number</Label>
-              <Input value={umrNumber} onChange={e => setUmrNumber(e.target.value)} placeholder="UMR0000000" />
-            </div>
+          </div>
+
+          {/* Email toggle */}
+          <div>
+            <button type="button" className="text-xs text-primary flex items-center gap-1" onClick={() => setShowEmail(!showEmail)}>
+              {showEmail ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              {showEmail ? "Hide Email" : "Add Email (optional)"}
+            </button>
+            {showEmail && (
+              <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="patient@email.com" className="mt-1" />
+            )}
           </div>
 
           {/* Visit Type */}

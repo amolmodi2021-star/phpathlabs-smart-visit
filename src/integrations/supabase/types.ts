@@ -1967,6 +1967,21 @@ export type Database = {
         }
         Relationships: []
       }
+      umr_counter: {
+        Row: {
+          counter_key: string
+          last_sequence: number
+        }
+        Insert: {
+          counter_key?: string
+          last_sequence?: number
+        }
+        Update: {
+          counter_key?: string
+          last_sequence?: number
+        }
+        Relationships: []
+      }
       uploaded_reports: {
         Row: {
           created_at: string | null
@@ -2054,6 +2069,7 @@ export type Database = {
       cleanup_non_phpl_duplicates: { Args: never; Returns: number }
       cleanup_non_phpl_mobile_duplicates: { Args: never; Returns: number }
       generate_invoice_number: { Args: never; Returns: string }
+      generate_umr_number: { Args: never; Returns: string }
       get_abnormal_history_counts: {
         Args: never
         Returns: {
