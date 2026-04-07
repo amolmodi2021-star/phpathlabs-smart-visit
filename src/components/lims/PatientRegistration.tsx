@@ -227,6 +227,10 @@ const PatientRegistration = () => {
     (testSearch === "" || t.test_name.toLowerCase().includes(testSearch.toLowerCase()))
   );
 
+  // Auto-apply channel discount when channel is selected
+  const effectiveDiscountType = channelId && selectedChannel ? "percent" : globalDiscountType;
+  const effectiveDiscountValue = channelId && selectedChannel ? Number(selectedChannel.default_discount_pct || 0) : globalDiscountValue;
+
   // Calculations (same logic as CreateEstimate)
   const calculations = useMemo(() => {
     let totalAmount = 0;
@@ -238,9 +242,9 @@ const PatientRegistration = () => {
       if (hasIndividual) {
         discount = t.individual_discount_type === "percent"
           ? (t.price * t.individual_discount_value) / 100 : t.individual_discount_value;
-      } else if (t.discount_applicable && globalDiscountValue > 0) {
-        discount = globalDiscountType === "percent"
-          ? (t.price * globalDiscountValue) / 100 : globalDiscountValue;
+      } else if (t.discount_applicable && effectiveDiscountValue > 0) {
+        discount = effectiveDiscountType === "percent"
+          ? (t.price * effectiveDiscountValue) / 100 : effectiveDiscountValue;
       }
       discount = Math.min(discount, t.price);
       totalDiscount += discount;
@@ -249,7 +253,7 @@ const PatientRegistration = () => {
     const hvc = visitType === "home_visit" ? homeVisitCharges : 0;
     const finalAmount = totalAmount - totalDiscount + hvc;
     return { totalAmount, totalDiscount, finalAmount, testDetails, homeVisitCharges: hvc };
-  }, [selectedTests, globalDiscountType, globalDiscountValue, homeVisitCharges, visitType]);
+  }, [selectedTests, effectiveDiscountType, effectiveDiscountValue, homeVisitCharges, visitType]);
 
   // Payment
   const toggleMode = (mode: string) => {
