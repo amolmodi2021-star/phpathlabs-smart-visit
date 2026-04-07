@@ -310,6 +310,37 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
               <Switch id="edit-stat-toggle" checked={isStat} onCheckedChange={setIsStat} className="data-[state=checked]:bg-destructive" disabled={isBillCancelled} />
             </div>
 
+            {/* Payment Details */}
+            {!isBillCancelled && (
+              <div className="space-y-2">
+                <h3 className="font-semibold text-sm">Payment Details</h3>
+                <div className="flex flex-wrap gap-2">
+                  {PAYMENT_MODES.map(mode => (
+                    <Button key={mode} type="button" size="sm"
+                      variant={selectedModes.has(mode) ? "default" : "outline"}
+                      onClick={() => togglePaymentMode(mode)}
+                    >{mode}</Button>
+                  ))}
+                </div>
+                {Array.from(selectedModes).map(mode => (
+                  <div key={mode} className="flex items-center gap-2">
+                    <Label className="w-28 text-sm">{mode}:</Label>
+                    <Input type="number" min={0} className="w-32"
+                      value={modeAmounts[mode] || ""}
+                      onChange={e => setModeAmounts(prev => ({ ...prev, [mode]: Number(e.target.value) || 0 }))}
+                      placeholder="₹ Amount" />
+                  </div>
+                ))}
+                {selectedModes.size > 0 && (
+                  <div className="text-sm space-y-1 pt-1">
+                    <div className="flex justify-between"><span>Total Paid:</span><span className="font-medium">₹{editPaidAmount}</span></div>
+                    <div className="flex justify-between"><span>Final Amount:</span><span className="font-medium">₹{reg.final_amount}</span></div>
+                    {editDueAmount > 0 && <div className="flex justify-between text-destructive font-medium"><span>Due:</span><span>₹{editDueAmount}</span></div>}
+                  </div>
+                )}
+              </div>
+            )}
+
             {!isBillCancelled && (
               <Button onClick={handleSaveDetails} disabled={saving} className="w-full">
                 <Save className="h-4 w-4 mr-2" />Save Details
