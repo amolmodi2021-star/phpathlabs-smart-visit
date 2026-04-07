@@ -503,6 +503,7 @@ const CRMContacts = () => {
       const umrCol = keys.find(k => k.toLowerCase().includes("umr"));
       const locationCol = keys.find(k => k.toLowerCase().includes("location"));
       const discountCol = keys.find(k => k.toLowerCase().includes("discount") || k.toLowerCase().includes("%"));
+      const tagCol = keys.find(k => k.toLowerCase() === "tag" || k.toLowerCase() === "record_tag");
 
       if (!mobileCol) return toast.error("Excel must have a 'Mobile' column");
 
@@ -528,6 +529,7 @@ const CRMContacts = () => {
         const name = nameCol ? String(row[nameCol] || "").trim() : "";
         const location = locationCol ? String(row[locationCol] || "").trim() || "NON PHPL" : "NON PHPL";
         const discount = discountCol ? (parseFloat(String(row[discountCol] || "20")) || 20) : 20;
+        const tag = tagCol ? String(row[tagCol] || "").trim() || null : null;
 
         toUpsert.push({
           primary_key: pk,
@@ -536,7 +538,7 @@ const CRMContacts = () => {
           patient_name: name || null,
           location,
           default_discount_pct: discount,
-          record_tag: null,
+          record_tag: tag,
           visit_date: null,
         });
       }
