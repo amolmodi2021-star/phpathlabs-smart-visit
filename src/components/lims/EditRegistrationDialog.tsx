@@ -40,6 +40,10 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   const [remarks, setRemarks] = useState("");
   const [isStat, setIsStat] = useState(false);
 
+  // Payment editing
+  const [selectedModes, setSelectedModes] = useState<Set<string>>(new Set());
+  const [modeAmounts, setModeAmounts] = useState<Record<string, number>>({});
+
   // Cancel / Refund
   const [cancelledTestIds, setCancelledTestIds] = useState<Set<string>>(new Set());
   const [refundMode, setRefundMode] = useState<string>("Cash");
