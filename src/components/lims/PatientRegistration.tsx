@@ -59,6 +59,7 @@ const PatientRegistration = () => {
 
   // Channel
   const [channelId, setChannelId] = useState("");
+  const [reportLanguage, setReportLanguage] = useState("English");
 
   // Visit type
   const [visitType, setVisitType] = useState("lab_visit");
@@ -515,6 +516,19 @@ const PatientRegistration = () => {
                 <RadioGroupItem value="pickup_point" id="pickup" disabled={!!channelId} /><Label htmlFor="pickup" className={`cursor-pointer text-sm ${channelId ? "opacity-50" : ""}`}>Pickup Point</Label>
               </div>
             </RadioGroup>
+          </div>
+
+          {/* Report Language */}
+          <div>
+            <Label>Report Language</Label>
+            <Select value={reportLanguage} onValueChange={setReportLanguage}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="English">English</SelectItem>
+                <SelectItem value="Hindi">Hindi</SelectItem>
+                <SelectItem value="Gujarati">Gujarati</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {visitType === "pickup_point" && !channelId && (
