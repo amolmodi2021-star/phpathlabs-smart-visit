@@ -1,141 +1,109 @@
 
 
-# LIMS Patient Registration Module - Build Plan
+## Robust Test-Parameter Architecture for Bi-Directional Interface
 
-## Overview
-Build the first LIMS module — **Patient Registration** — as a tab inside a new `/lims` page. This establishes the foundation for all future LIMS modules (Sample Collection, Processing, Verification, etc.) to be added as additional tabs on the same page.
+### The Problem
 
-## Architecture Decisions
+Currently there are two separate systems:
+1. **`tests` table** — billing/registration tests (HBA1C, CBC, etc.) with test codes (TST0001)
+2. **`report_test_parameters` table** — report parameters (Glycated Hb, eAG, Hemoglobin, etc.) used for report generation
 
-### Database Schema
+These are disconnected. You need a unified structure where:
+- Each test (e.g., HBA1C) has child parameters (Glycated Hb, eAG)
+- Each parameter has its own code for machine mapping (bi-directional interface)
+- Each parameter has normal ranges (age/gender-specific later)
+- Parameters can be shared across tests (e.g., "Hemoglobin" in CBC and Anemia Profile)
 
-**New tables:**
-
-1. **`pickup_points`** — External labs/hospitals that refer samples
-   - `id`, `name`, `phone`, `address`, `contact_person`, `billing_type` (credit/debit), `default_discount_pct`, `billing_cycle` (monthly/weekly), `status` (active/inactive), `created_at`, `updated_at`
-
-2. **`pickup_point_prices`** — Custom test pricing per pickup point
-   - `id`, `pickup_point_id` (FK → pickup_points), `test_id` (FK → tests), `custom_price`, `created_at`
-
-3. **`patient_registrations`** — Core registration/invoice table
-   - `id`, `invoice_number` (unique, format: YYMMDDSSSSS), `mobile_number`, `patient_name`, `title`, `gender`, `dob`, `email`, `address`, `doctor_name`, `umr_number`, `visit_type` (lab_visit / home_visit / pickup_point), `pickup_point_id` (nullable FK), `tests` (JSONB array of selected tests with prices/discounts), `gross_amount`, `discount_amount`, `net_amount`, `home_visit_charges`, `final_amount`, `payments` (JSONB array: [{mode, amount}]), `paid_amount`, `due_amount`, `global_discount_type`, `global_discount_value`, `status` (registered / sample_collected / processing / completed), `created_at`, `updated_at`
-
-4. **`invoice_counter`** — Daily auto-increment for invoice numbers
-   - `date_key` (text, PK, format: YYMMDD), `last_sequence` (integer, default 0)
-
-**Modify existing table:**
-- **`tests`** — Add `test_code` column (text, nullable for now) for future LIMS integration
-
-**Database function:**
-- `generate_invoice_number()` — Atomically increments the counter for today's date and returns formatted invoice number (e.g., 2604070001)
-
-### Navigation
-- Replace the existing "LIMS Interface" nav entry with **"LIMS"** pointing to `/lims`
-- The `/lims` page uses a `<Tabs>` component; first two tabs: **New Registration** and **Registered Patients**
-- Future modules (Sample Collection, Processing, etc.) become additional tabs
-- The existing `/lims-demo` page remains accessible but is no longer in the primary nav
-
-### Patient Search Logic
-When the user types a mobile number, search across:
-1. `patient_master` (by mobile_number)
-2. `crm_contacts` (by mobile_number, prefer PH VESU records)
-3. `estimates` (by whatsapp_number)
-
-Show matching results as a dropdown. On selection, auto-fill: name, title, gender, DOB, UMR, email, address, doctor name. All fields remain editable. Edited demographics update `patient_master` on save.
-
-## UI Structure
-
-### Tab 1: New Registration
+### Proposed Architecture
 
 ```text
-┌─────────────────────────────────────────────┐
-│  MOBILE NUMBER: [__________] 🔍             │
-│  ┌── Dropdown: Existing patients ────┐      │
-│  │  Mr. NARESH JAIN - UMR0012345     │      │
-│  │  Mrs. PRIYA MODI - UMR0067890     │      │
-│  └───────────────────────────────────┘      │
-│                                             │
-│  Title: [Select▾]   Gender: [Select▾]       │
-│  Patient Name: [__________]                 │
-│  DOB: [dd-mm-yyyy]   Age: (auto-calc)       │
-│  Email: [__________]                        │
-│  Doctor Name: [__________ ] (default: SELF) │
-│  UMR: [__________]                          │
-│                                             │
-│  Visit Type: ○ Lab Visit  ○ Home Visit      │
-│              ○ Pickup Point                 │
-│  [If Pickup] → Select Pickup Point: [▾]     │
-│  [If not Pickup] → Address: [__________]    │
-│                                             │
-│  ── Tests ──────────────────────────────    │
-│  Search: [__________] (same as estimates)   │
-│  | Test Name | MRP | Disc | Net |  ✕  |     │
-│  (individual + global discount logic)       │
-│                                             │
-│  Home Visit Charges: [___]                  │
-│  Gross: ₹X  Discount: ₹X  Net: ₹X          │
-│                                             │
-│  ── Payment ────────────────────────────    │
-│  [If pickup=credit → skip payment]          │
-│  ☑ Cash [₹___]  ☑ GPay [₹___]              │
-│  ☐ Paytm  ☐ Credit Card  ☐ NEFT            │
-│  Paid: ₹X   Due: ₹X                        │
-│                                             │
-│  [Save & Generate Invoice]                  │
-│  → Shows invoice preview (image + print)    │
-│  → WhatsApp share + Print buttons           │
-└─────────────────────────────────────────────┘
+┌──────────────────────┐
+│       tests          │  (existing — billing test, TST0001)
+│  id, test_name,      │
+│  test_code, price... │
+└──────┬───────────────┘
+       │ 1:N
+┌──────┴───────────────┐
+│  test_parameters     │  (NEW junction table)
+│  test_id  ──→ tests  │
+│  parameter_id ──→    │
+│    report_test_params │
+│  display_order       │
+│  param_code (auto)   │  ← PRM0001, PRM0002 (for machine mapping)
+└──────┬───────────────┘
+       │ N:1
+┌──────┴───────────────┐
+│ report_test_parameters│ (existing — the actual parameter)
+│  parameter_name,     │
+│  unit, normal ranges,│
+│  sample_type, method │
+└──────────────────────┘
 ```
 
-### Tab 2: Registered Patients
-- Paginated table of all registrations (reuse pagination pattern from CRM)
-- Search by name, mobile, invoice number, UMR
-- Columns: Invoice#, Date, Patient Name, Mobile, Tests, Amount, Status, Actions
-- Actions: View invoice, Reprint, Resend WhatsApp
+### What This Solves
 
-### Tab 3: Pickup Points (sub-section)
-- CRUD for pickup points
-- Per-pickup-point custom test pricing management
-- View monthly billing summary
+1. **Shared parameters**: Hemoglobin can belong to CBC, Anemia Profile, and HBA1C simultaneously via the junction table
+2. **Machine codes**: Each parameter gets an auto-generated `param_code` (PRM0001) for instrument mapping; the test already has `test_code` (TST0001)
+3. **Normal ranges**: Already on `report_test_parameters` (normal_range_low, normal_range_high, normal_range_text) — can be extended for age/gender later
+4. **Single source of truth**: No duplicate parameter definitions
 
-## Invoice Generation
-- **Invoice Number**: Format `YYMMDDSSSSS` — auto-generated via DB function with atomic increment
-- **Image version**: Branded JPEG (similar to home visit receipts) for WhatsApp sharing
-- **Print version**: HTML-based A4/A5 layout rendered in a print dialog
-- Invoice number doubles as the **Sample ID** for the Sample Collection module
+### Implementation Steps
 
-## Technical Details
+#### Step 1 — Database Migration
+- Create `test_parameters` junction table linking `tests.id` → `report_test_parameters.id`
+- Add `param_code` column to `report_test_parameters` with auto-sequence (PRM0001, PRM0002...)
+- Backfill param codes for all 159 existing parameters
+- Create trigger for auto-assigning param codes on new parameters
 
-### Files to create
-| File | Purpose |
-|------|---------|
-| `src/pages/Lims.tsx` | Main LIMS page with tab navigation |
-| `src/components/lims/PatientRegistration.tsx` | New Registration form |
-| `src/components/lims/RegisteredPatients.tsx` | Paginated list of registrations |
-| `src/components/lims/PickupPointManager.tsx` | Pickup point CRUD + pricing |
-| `src/components/lims/InvoicePreview.tsx` | Invoice image + print preview dialog |
-| `src/lib/invoiceRenderer.ts` | Canvas-based invoice image generation |
-| New migration | Create tables, functions, add test_code column |
+#### Step 2 — Test Management UI Enhancement
+- Add a "Parameters" section inside each test's edit dialog (or an expandable row)
+- Show linked parameters with their codes, units, and normal ranges
+- Allow adding existing parameters (search/select from master) or creating new ones inline
+- Allow setting display order of parameters within a test
+- For "Single Parameter" tests, auto-link the single parameter
 
-### Files to modify
-| File | Change |
-|------|---------|
-| `src/App.tsx` | Add `/lims` route, keep `/lims-demo` |
-| `src/components/AppLayout.tsx` | Replace "LIMS Interface" nav with "LIMS" |
-| `src/lib/tests.ts` | Update TestItem interface to include `test_code` |
+#### Step 3 — Parameter Management Updates
+- Show `param_code` (read-only) in the Report Parameters page
+- Add normal range fields if not already visible (low, high, text)
+- Show which tests use each parameter (reverse lookup)
 
-### Database migration
-- Create `pickup_points`, `pickup_point_prices`, `patient_registrations`, `invoice_counter` tables with permissive RLS
-- Create `generate_invoice_number()` function (SECURITY DEFINER)
-- Add `test_code` column to `tests` table
-- Create paginated RPC for registered patients
+#### Step 4 — Bi-Directional Interface Integration
+- Update the LIMS interface edge function to use `test_code` + `param_code` for order/result mapping
+- When sending orders to machine: send test_code with child param_codes
+- When receiving results from machine: match by param_code to populate results
 
-### Key reusable patterns
-- Test selection + discount logic: Reuse from `CreateEstimate.tsx`
-- Multi-mode payment: Reuse from `PaymentDetailsDialog.tsx`
-- Patient demographics (title/gender auto-link): Reuse from `EditHomeVisitDialog.tsx`
-- Pagination: Reuse RPC pattern from CRM contacts
+### Technical Details
 
-## Scope for this build
-**Only the Patient Registration module** (3 sub-tabs: New Registration, Registered Patients, Pickup Points). Future modules will be added as additional tabs on the same `/lims` page.
+**New table: `test_parameters`**
+```sql
+CREATE TABLE public.test_parameters (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  test_id uuid NOT NULL REFERENCES tests(id) ON DELETE CASCADE,
+  parameter_id uuid NOT NULL REFERENCES report_test_parameters(id) ON DELETE CASCADE,
+  display_order integer DEFAULT 0,
+  created_at timestamptz DEFAULT now(),
+  UNIQUE(test_id, parameter_id)
+);
+
+-- Add param_code to existing parameters table
+CREATE SEQUENCE IF NOT EXISTS param_code_seq START 1;
+ALTER TABLE report_test_parameters ADD COLUMN IF NOT EXISTS param_code text;
+
+-- Auto-assign trigger (similar to test_code)
+CREATE OR REPLACE FUNCTION auto_assign_param_code() ...
+-- Backfill: UPDATE report_test_parameters SET param_code = 'PRM' || lpad(...)
+```
+
+**UI in TestManagement.tsx**
+- Each test row gets an expandable section or a "Manage Parameters" button
+- Opens a panel showing linked parameters with code, unit, normal range
+- Search-and-add from the existing `report_test_parameters` master list
+- "Create New Parameter" button for parameters not yet in master data
+
+**Files to modify:**
+- `supabase/migrations/` — new migration for junction table + param codes
+- `src/pages/TestManagement.tsx` — add parameter management UI within test edit
+- `src/pages/ReportParameters.tsx` — show param_code column
+- `src/lib/tests.ts` — add functions for test-parameter CRUD
+- `supabase/functions/lims-interface/index.ts` — use param_codes for mapping
 
