@@ -342,7 +342,7 @@ const PatientRegistration = () => {
     setDob(""); setEmail(""); setShowEmail(false); setDoctorName("SELF"); setUmrNumber("");
     setAddress(""); setVisitType("lab_visit"); setPickupPointId("");
     setSelectedTests([]); setGlobalDiscountValue(0); setHomeVisitCharges(0);
-    setSelectedModes(new Set()); setModeAmounts({}); setInvoiceData(null);
+    setSelectedModes(new Set()); setModeAmounts({}); setInvoiceData(null); setTriedSave(false);
   };
 
   return (
