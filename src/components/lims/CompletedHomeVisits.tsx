@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Search, CheckCircle, Eye, ChevronDown, ChevronUp, Pencil } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import EditHomeVisitDialog from "@/components/EditHomeVisitDialog";
+import EditAndRegisterHomeVisitDialog from "@/components/lims/EditAndRegisterHomeVisitDialog";
 
 const CompletedHomeVisits = () => {
   const qc = useQueryClient();
@@ -353,8 +353,8 @@ const CompletedHomeVisits = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      {/* Edit Home Visit Dialog */}
-      <EditHomeVisitDialog
+      {/* Edit & Register Home Visit Dialog */}
+      <EditAndRegisterHomeVisitDialog
         visit={editVisit}
         open={!!editVisit}
         onClose={() => {
