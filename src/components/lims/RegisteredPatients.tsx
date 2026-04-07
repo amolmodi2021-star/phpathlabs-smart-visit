@@ -170,11 +170,11 @@ const RegisteredPatients = () => {
                   </TableCell>
                   <TableCell className="text-xs">{r.created_at ? format(new Date(r.created_at), "dd-MM-yyyy HH:mm") : "—"}</TableCell>
                   <TableCell>
-                    <div className="text-sm font-medium flex items-center gap-1.5">
-                      {r.is_stat && !r.bill_cancelled && r.status !== "dispatched" && (
-                        <span className="relative flex h-2.5 w-2.5 shrink-0"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75"></span><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive"></span></span>
-                      )}
+                    <div className="text-sm font-medium">
                       {r.title} {r.patient_name}
+                      {r.is_stat && !r.bill_cancelled && r.status !== "dispatched" && (
+                        <span className="relative inline-flex h-2.5 w-2.5 ml-1.5 align-middle"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75"></span><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive"></span></span>
+                      )}
                     </div>
                     {r.umr_number && <div className="text-xs text-muted-foreground">{r.umr_number}</div>}
                   </TableCell>
