@@ -12,6 +12,7 @@ import { toast } from "sonner";
 
 const CRMBlacklist = () => {
   const [newNumber, setNewNumber] = useState("");
+  const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleteOpen, setDeleteOpen] = useState(false);
   const qc = useQueryClient();
