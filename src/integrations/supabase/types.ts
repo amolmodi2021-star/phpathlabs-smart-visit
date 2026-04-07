@@ -1311,34 +1311,40 @@ export type Database = {
           age_max: number | null
           age_min: number | null
           created_at: string
+          expected_value: string | null
           gender: string
           id: string
           normal_range_high: number | null
           normal_range_low: number | null
           normal_range_text: string | null
           parameter_id: string
+          range_type: string
         }
         Insert: {
           age_max?: number | null
           age_min?: number | null
           created_at?: string
+          expected_value?: string | null
           gender?: string
           id?: string
           normal_range_high?: number | null
           normal_range_low?: number | null
           normal_range_text?: string | null
           parameter_id: string
+          range_type?: string
         }
         Update: {
           age_max?: number | null
           age_min?: number | null
           created_at?: string
+          expected_value?: string | null
           gender?: string
           id?: string
           normal_range_high?: number | null
           normal_range_low?: number | null
           normal_range_text?: string | null
           parameter_id?: string
+          range_type?: string
         }
         Relationships: [
           {
