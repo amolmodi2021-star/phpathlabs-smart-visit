@@ -91,6 +91,13 @@ const PatientRegistration = () => {
       return (data || []) as any[];
     },
   });
+  const { data: channels = [] } = useQuery({
+    queryKey: ["channels"],
+    queryFn: async () => {
+      const { data } = await supabase.from("channels").select("*").eq("status", "active").order("name");
+      return (data || []) as any[];
+    },
+  });
   const { data: pickupPrices = [] } = useQuery({
     queryKey: ["pickup_point_prices", pickupPointId],
     queryFn: async () => {
@@ -100,9 +107,20 @@ const PatientRegistration = () => {
     },
     enabled: !!pickupPointId,
   });
+  const { data: channelPrices = [] } = useQuery({
+    queryKey: ["channel_prices", channelId],
+    queryFn: async () => {
+      if (!channelId) return [];
+      const { data } = await supabase.from("channel_prices").select("*").eq("channel_id", channelId);
+      return (data || []) as any[];
+    },
+    enabled: !!channelId,
+  });
 
   const selectedPickup = pickupPoints.find((p: any) => p.id === pickupPointId);
+  const selectedChannel = channels.find((c: any) => c.id === channelId);
   const isCreditPickup = visitType === "pickup_point" && selectedPickup?.billing_type === "credit";
+  const isCreditChannel = !!channelId && selectedChannel?.billing_type === "credit";
 
   // Title → Gender auto-link
   useEffect(() => {
