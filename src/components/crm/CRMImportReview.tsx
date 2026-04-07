@@ -168,6 +168,12 @@ const CRMImportReview = () => {
     // Clear staging
     await supabase.from("crm_import_staging").delete().neq("id", "00000000-0000-0000-0000-000000000000");
 
+    // Auto-cleanup NON PHPL duplicates
+    const { data: deletedCount } = await supabase.rpc("cleanup_non_phpl_duplicates" as any);
+    if (deletedCount && Number(deletedCount) > 0) {
+      toast.info(`${deletedCount} NON PHPL duplicate(s) auto-removed`);
+    }
+
     setApproving(false);
     setProgress(100);
     qc.invalidateQueries({ queryKey: ["crm-staging"] });
