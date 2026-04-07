@@ -213,7 +213,7 @@ const CompletedHomeVisits = () => {
               <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No completed home visits found</TableCell></TableRow>
             ) : completedVisits.map((v: any) => {
               const e = v.estimates;
-              const isRegistered = (registeredIds as Set<string>).has(v.id);
+              const isRegistered = (registeredIds as Set<string>).has(v.id) || v.status === "Registered";
               const isExpanded = expandedRow === v.id;
 
               return (
