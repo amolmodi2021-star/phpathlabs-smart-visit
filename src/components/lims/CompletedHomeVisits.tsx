@@ -162,7 +162,8 @@ const CompletedHomeVisits = () => {
       if (error) throw error;
 
       // Update home_visits status to "Registered"
-      await supabase.from("home_visits").update({ status: "Registered" }).eq("id", visit.id);
+      const { error: statusError } = await supabase.from("home_visits").update({ status: "Registered" }).eq("id", visit.id);
+      if (statusError) console.error("Failed to update home visit status:", statusError);
     },
     onSuccess: () => {
       toast.success("Home visit registered successfully!");
