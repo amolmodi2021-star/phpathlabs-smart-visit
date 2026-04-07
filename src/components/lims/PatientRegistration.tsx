@@ -55,7 +55,6 @@ const PatientRegistration = () => {
   const [showEmail, setShowEmail] = useState(false);
   const [doctorName, setDoctorName] = useState("SELF");
   const [umrNumber, setUmrNumber] = useState("");
-  const [umrNumber, setUmrNumber] = useState("");
   const [address, setAddress] = useState("");
 
   // Visit type
