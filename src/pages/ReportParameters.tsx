@@ -26,13 +26,7 @@ interface NormalRange {
   normal_range_text: string;
 }
 
-const DEFAULT_AGE_GROUPS = [
-  { label: "0–1 yr", min: 0, max: 1 },
-  { label: "1–12 yr", min: 1, max: 12 },
-  { label: "12–18 yr", min: 12, max: 18 },
-  { label: "18–60 yr", min: 18, max: 60 },
-  { label: "60+ yr", min: 60, max: 150 },
-];
+// No default age groups — users set ranges manually
 
 const ReportParameters = () => {
   const [params, setParams] = useState<any[]>([]);
