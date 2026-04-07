@@ -1306,6 +1306,50 @@ export type Database = {
         }
         Relationships: []
       }
+      parameter_normal_ranges: {
+        Row: {
+          age_max: number | null
+          age_min: number | null
+          created_at: string
+          gender: string
+          id: string
+          normal_range_high: number | null
+          normal_range_low: number | null
+          normal_range_text: string | null
+          parameter_id: string
+        }
+        Insert: {
+          age_max?: number | null
+          age_min?: number | null
+          created_at?: string
+          gender?: string
+          id?: string
+          normal_range_high?: number | null
+          normal_range_low?: number | null
+          normal_range_text?: string | null
+          parameter_id: string
+        }
+        Update: {
+          age_max?: number | null
+          age_min?: number | null
+          created_at?: string
+          gender?: string
+          id?: string
+          normal_range_high?: number | null
+          normal_range_low?: number | null
+          normal_range_text?: string | null
+          parameter_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parameter_normal_ranges_parameter_id_fkey"
+            columns: ["parameter_id"]
+            isOneToOne: false
+            referencedRelation: "report_test_parameters"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pathologist_signatures: {
         Row: {
           created_at: string | null
@@ -1903,11 +1947,14 @@ export type Database = {
           param_code: string | null
           parameter_name: string
           profile_id: string | null
+          same_for_all_ages: boolean
+          same_for_gender: boolean
           sample_type: string | null
           store_for_analytics: boolean | null
           test_name: string | null
           unit: string | null
           updated_at: string | null
+          use_global_normal_range: boolean
         }
         Insert: {
           analyzer?: string | null
@@ -1925,11 +1972,14 @@ export type Database = {
           param_code?: string | null
           parameter_name: string
           profile_id?: string | null
+          same_for_all_ages?: boolean
+          same_for_gender?: boolean
           sample_type?: string | null
           store_for_analytics?: boolean | null
           test_name?: string | null
           unit?: string | null
           updated_at?: string | null
+          use_global_normal_range?: boolean
         }
         Update: {
           analyzer?: string | null
@@ -1947,11 +1997,14 @@ export type Database = {
           param_code?: string | null
           parameter_name?: string
           profile_id?: string | null
+          same_for_all_ages?: boolean
+          same_for_gender?: boolean
           sample_type?: string | null
           store_for_analytics?: boolean | null
           test_name?: string | null
           unit?: string | null
           updated_at?: string | null
+          use_global_normal_range?: boolean
         }
         Relationships: [
           {
