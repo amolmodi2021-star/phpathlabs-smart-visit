@@ -936,6 +936,12 @@ const CRMContacts = () => {
         </Button>
         <span className="text-sm text-muted-foreground">Total: {totalCount}</span>
       </div>
+      {cleaningUp && (
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">Running cleanup...</p>
+          <Progress value={cleanupProgress} className="h-2" />
+        </div>
+      )}
       <p className="text-xs text-muted-foreground flex flex-wrap items-center gap-2">
         💡 <strong>Bulk Update:</strong> Upload Excel with "primary_key" (or "mobile"/"umr") + "patient_name" for names, "discount" for discount %, or "last_sent_date" for last sent.
         <a href="/samples/Sample_Bulk_Update_Names.xlsx" download className="text-primary underline text-xs">📥 Sample Names</a>
