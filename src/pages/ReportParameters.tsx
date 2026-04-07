@@ -174,6 +174,7 @@ const ReportParameters = () => {
             normal_range_text: r.normal_range_text || null,
             range_type: r.range_type || "numeric",
             expected_value: r.range_type === "qualitative" ? (r.expected_value || null) : null,
+            descriptive_options: r.range_type === "descriptive" ? (r.descriptive_options?.filter(o => o.trim()) || []) : [],
           }));
           await supabase.from("parameter_normal_ranges").insert(rangeInserts);
         }
