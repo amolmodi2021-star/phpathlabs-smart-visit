@@ -66,6 +66,13 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       setStatus(reg.status || "registered");
       setRemarks(reg.remarks || "");
       setIsStat(reg.is_stat || false);
+      // Populate payments
+      const existingPayments: any[] = Array.isArray(reg.payments) ? reg.payments : [];
+      const modes = new Set<string>(existingPayments.map((p: any) => p.mode));
+      setSelectedModes(modes);
+      const amounts: Record<string, number> = {};
+      existingPayments.forEach((p: any) => { amounts[p.mode] = Number(p.amount) || 0; });
+      setModeAmounts(amounts);
       const existing = Array.isArray(reg.cancelled_tests) ? reg.cancelled_tests : [];
       setCancelledTestIds(new Set(existing.map((t: any) => t.test_id || t)));
       setRefundMode("Cash");
