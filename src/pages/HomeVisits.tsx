@@ -368,7 +368,7 @@ const HomeVisits = () => {
 
     const todayPending = visits.filter((v: any) => v.status === "Pending" && isToday(parseISO(v.visit_date)));
     const otherPending = visits.filter((v: any) => v.status === "Pending" && !isToday(parseISO(v.visit_date)));
-    const completed = visits.filter((v: any) => v.status === "Completed");
+    const completed = visits.filter((v: any) => v.status === "Completed" || v.status === "Registered");
     const cancelled = visits.filter((v: any) => v.status === "Cancelled");
 
     todayPending.sort((a: any, b: any) => toTime(a) - toTime(b));
