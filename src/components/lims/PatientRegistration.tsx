@@ -64,6 +64,7 @@ const PatientRegistration = () => {
   // Tests
   const [testSearch, setTestSearch] = useState("");
   const [selectedTests, setSelectedTests] = useState<SelectedTest[]>([]);
+  const [testHighlightIndex, setTestHighlightIndex] = useState(-1);
   const [globalDiscountType, setGlobalDiscountType] = useState<"percent" | "amount">("percent");
   const [globalDiscountValue, setGlobalDiscountValue] = useState(0);
   const [homeVisitCharges, setHomeVisitCharges] = useState(0);
