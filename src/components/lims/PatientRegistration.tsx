@@ -52,7 +52,9 @@ const PatientRegistration = () => {
   const [gender, setGender] = useState("");
   const [dob, setDob] = useState("");
   const [email, setEmail] = useState("");
+  const [showEmail, setShowEmail] = useState(false);
   const [doctorName, setDoctorName] = useState("SELF");
+  const [umrNumber, setUmrNumber] = useState("");
   const [umrNumber, setUmrNumber] = useState("");
   const [address, setAddress] = useState("");
 
