@@ -26,6 +26,7 @@ const navItems = [
   { to: "/lims", label: "LIMS", icon: Activity },
   { to: "/whatsapp-webhook", label: "WhatsApp Webhook", icon: Webhook },
   { to: "/whatsapp-settings", label: "WhatsApp Settings", icon: Settings },
+  { to: "/lims-demo", label: "LIMS Interface", icon: Webhook },
 ];
 
 // Report System modules archived — uncomment to restore
