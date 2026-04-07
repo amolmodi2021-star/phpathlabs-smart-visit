@@ -6,9 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Search, CheckCircle, Eye, ChevronDown, ChevronUp } from "lucide-react";
+import { Search, CheckCircle, Eye, ChevronDown, ChevronUp, Pencil } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import EditHomeVisitDialog from "@/components/EditHomeVisitDialog";
 
 const CompletedHomeVisits = () => {
   const qc = useQueryClient();
