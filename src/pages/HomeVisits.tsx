@@ -629,8 +629,8 @@ const HomeVisits = () => {
             const prevVisit = idx > 0 ? filteredVisits[idx - 1] : null;
             const currentDate = v.visit_date;
             const prevDate = prevVisit?.visit_date;
-            const currentStatus = v.status === "Completed" || v.status === "Cancelled" ? v.status : "Pending";
-            const prevStatus = prevVisit ? (prevVisit.status === "Completed" || prevVisit.status === "Cancelled" ? prevVisit.status : "Pending") : null;
+            const currentStatus = v.status === "Completed" || v.status === "Cancelled" || v.status === "Registered" ? v.status : "Pending";
+            const prevStatus = prevVisit ? (prevVisit.status === "Completed" || prevVisit.status === "Cancelled" || prevVisit.status === "Registered" ? prevVisit.status : "Pending") : null;
             const showDivider = idx === 0 || currentDate !== prevDate || currentStatus !== prevStatus;
 
             const dateLabel = isToday(parseISO(currentDate))
