@@ -74,6 +74,9 @@ const TestManagement = () => {
         method: values.method || null,
         sample_type: values.sample_type || null,
         interpretation: values.interpretation || null,
+        is_outsourced: values.is_outsourced,
+        outsourced_caption: values.outsourced_caption || null,
+        department_id: values.department_id || null,
       };
       await saveTest(payload, editing?.id);
     },
@@ -119,6 +122,8 @@ const TestManagement = () => {
       show_in_report: t.show_in_report ?? true, is_single_parameter: t.is_single_parameter ?? false,
       instrument_name: t.instrument_name || "", method: t.method || "",
       sample_type: t.sample_type || "", interpretation: t.interpretation || "",
+      is_outsourced: t.is_outsourced ?? false, outsourced_caption: t.outsourced_caption || "",
+      department_id: t.department_id || "",
     });
     setIncentiveLocked(true);
     setIncentivePassword("");
