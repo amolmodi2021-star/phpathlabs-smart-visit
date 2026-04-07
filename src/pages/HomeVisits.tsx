@@ -799,7 +799,9 @@ const HomeVisits = () => {
 
                   {/* Actions row */}
                   <div className="flex flex-wrap gap-2 items-center">
-                    {v.status === "Completed" && !statusUnlockedIds.has(v.id) ? (
+                    {v.status === "Registered" ? (
+                      <Badge className={statusColors["Registered"]}>Registered</Badge>
+                    ) : v.status === "Completed" && !statusUnlockedIds.has(v.id) ? (
                       <div className="flex items-center gap-1">
                         <Badge className={statusColors["Completed"]}>Completed</Badge>
                         <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setPendingStatusVisitId(v.id); setStatusPasswordDialog(true); }}>
