@@ -15,6 +15,7 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Plus, Pencil, Trash2, Eye, Send, Settings, MessageCircle, Download, AlertTriangle, FlaskConical } from "lucide-react";
 import { exportToExcel } from "@/lib/excel";
+import { sortAbnormalTestsByDateDesc } from "@/lib/abnormalTests";
 import { toast } from "sonner";
 
 interface DripFilter {
@@ -1101,7 +1102,7 @@ const AutomatedMarketing = () => {
       fillTextFit(ctx, "Normal Range", colStarts[3], hdrMid, colMaxWidths[3], hdrFont, 0.6, "center");
 
       // Sort tests by date descending (latest first)
-      const sortedTests = [...tests].sort((a, b) => (b.test_date || "").localeCompare(a.test_date || ""));
+      const sortedTests = sortAbnormalTestsByDateDesc(tests);
       // Table rows
       sortedTests.forEach((t, i) => {
         const y = tableY + tableHeaderH + i * tRowHeight;
