@@ -579,7 +579,7 @@ const AutomatedMarketing = () => {
     const { data: allSettings } = await supabase
       .from("app_settings")
       .select("setting_key, setting_value")
-      .or("setting_key.like.wa_global_%,setting_key.eq.crm_abc_static_expiry_date,setting_key.eq.abnormal_static_expiry_date");
+      .or("setting_key.like.wa_global_%,setting_key.eq.loyalty_static_expiry_date,setting_key.eq.abnormal_static_expiry_date");
     const cfg: Record<string, string> = {};
     (allSettings || []).forEach((s) => { cfg[s.setting_key] = s.setting_value; });
 
