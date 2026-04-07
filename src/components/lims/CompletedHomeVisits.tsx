@@ -6,9 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Search, CheckCircle, Eye, ChevronDown, ChevronUp } from "lucide-react";
+import { Search, CheckCircle, Eye, ChevronDown, ChevronUp, Pencil } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import EditHomeVisitDialog from "@/components/EditHomeVisitDialog";
 
 const CompletedHomeVisits = () => {
   const qc = useQueryClient();
@@ -16,6 +17,7 @@ const CompletedHomeVisits = () => {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [reviewVisit, setReviewVisit] = useState<any>(null);
+  const [editVisit, setEditVisit] = useState<any>(null);
 
   const handleSearch = (val: string) => {
     setSearch(val);
@@ -30,7 +32,7 @@ const CompletedHomeVisits = () => {
       let query = supabase
         .from("home_visits")
         .select("*, estimates(*)")
-        .eq("status", "Completed")
+        .in("status", ["Completed", "Registered"])
         .order("visit_date", { ascending: false });
 
       const { data, error } = await query;
@@ -158,10 +160,14 @@ const CompletedHomeVisits = () => {
       } as any);
 
       if (error) throw error;
+
+      // Update home_visits status to "Registered"
+      await supabase.from("home_visits").update({ status: "Registered" }).eq("id", visit.id);
     },
     onSuccess: () => {
       toast.success("Home visit registered successfully!");
       qc.invalidateQueries({ queryKey: ["completed_home_visits"] });
+      qc.invalidateQueries({ queryKey: ["home_visits"] });
       qc.invalidateQueries({ queryKey: ["registered_home_visit_ids"] });
       qc.invalidateQueries({ queryKey: ["patient_registrations"] });
       qc.invalidateQueries({ queryKey: ["patient_registrations_count"] });
@@ -207,7 +213,7 @@ const CompletedHomeVisits = () => {
               <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No completed home visits found</TableCell></TableRow>
             ) : completedVisits.map((v: any) => {
               const e = v.estimates;
-              const isRegistered = (registeredIds as Set<string>).has(v.id);
+              const isRegistered = (registeredIds as Set<string>).has(v.id) || v.status === "Registered";
               const isExpanded = expandedRow === v.id;
 
               return (
@@ -238,6 +244,16 @@ const CompletedHomeVisits = () => {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          title="Edit Visit"
+                          disabled={isRegistered}
+                          onClick={() => setEditVisit(v)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -337,6 +353,15 @@ const CompletedHomeVisits = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Edit Home Visit Dialog */}
+      <EditHomeVisitDialog
+        visit={editVisit}
+        open={!!editVisit}
+        onClose={() => {
+          setEditVisit(null);
+          qc.invalidateQueries({ queryKey: ["completed_home_visits"] });
+        }}
+      />
     </div>
   );
 };

@@ -34,6 +34,7 @@ const statusColors: Record<string, string> = {
   Pending: "bg-warning text-warning-foreground",
   Completed: "bg-success text-success-foreground",
   Cancelled: "bg-destructive text-destructive-foreground",
+  Registered: "bg-primary text-primary-foreground",
 };
 
 const HomeVisits = () => {
@@ -305,6 +306,10 @@ const HomeVisits = () => {
 
 
   const openEditDialog = (v: any) => {
+    if (v.status === "Registered") {
+      toast.error("This visit has been registered. Changes are no longer allowed.");
+      return;
+    }
     if (v.status === "Completed") {
       setPendingEditVisit(v);
       setEditPasswordDialog(true);
@@ -363,7 +368,7 @@ const HomeVisits = () => {
 
     const todayPending = visits.filter((v: any) => v.status === "Pending" && isToday(parseISO(v.visit_date)));
     const otherPending = visits.filter((v: any) => v.status === "Pending" && !isToday(parseISO(v.visit_date)));
-    const completed = visits.filter((v: any) => v.status === "Completed");
+    const completed = visits.filter((v: any) => v.status === "Completed" || v.status === "Registered");
     const cancelled = visits.filter((v: any) => v.status === "Cancelled");
 
     todayPending.sort((a: any, b: any) => toTime(a) - toTime(b));
@@ -624,8 +629,8 @@ const HomeVisits = () => {
             const prevVisit = idx > 0 ? filteredVisits[idx - 1] : null;
             const currentDate = v.visit_date;
             const prevDate = prevVisit?.visit_date;
-            const currentStatus = v.status === "Completed" || v.status === "Cancelled" ? v.status : "Pending";
-            const prevStatus = prevVisit ? (prevVisit.status === "Completed" || prevVisit.status === "Cancelled" ? prevVisit.status : "Pending") : null;
+            const currentStatus = v.status === "Completed" || v.status === "Cancelled" || v.status === "Registered" ? v.status : "Pending";
+            const prevStatus = prevVisit ? (prevVisit.status === "Completed" || prevVisit.status === "Cancelled" || prevVisit.status === "Registered" ? prevVisit.status : "Pending") : null;
             const showDivider = idx === 0 || currentDate !== prevDate || currentStatus !== prevStatus;
 
             const dateLabel = isToday(parseISO(currentDate))
@@ -794,7 +799,9 @@ const HomeVisits = () => {
 
                   {/* Actions row */}
                   <div className="flex flex-wrap gap-2 items-center">
-                    {v.status === "Completed" && !statusUnlockedIds.has(v.id) ? (
+                    {v.status === "Registered" ? (
+                      <Badge className={statusColors["Registered"]}>Registered</Badge>
+                    ) : v.status === "Completed" && !statusUnlockedIds.has(v.id) ? (
                       <div className="flex items-center gap-1">
                         <Badge className={statusColors["Completed"]}>Completed</Badge>
                         <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setPendingStatusVisitId(v.id); setStatusPasswordDialog(true); }}>
