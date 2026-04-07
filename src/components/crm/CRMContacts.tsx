@@ -1132,6 +1132,32 @@ const CRMContacts = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <DeletePasswordDialog
+        open={blacklistCleanupOpen}
+        onOpenChange={setBlacklistCleanupOpen}
+        onSuccess={async () => {
+          setCleaningUp(true);
+          setCleanupProgress(30);
+          try {
+            const { data: removed } = await supabase.rpc("cleanup_blacklisted_contacts" as any);
+            setCleanupProgress(100);
+            const count = Number(removed) || 0;
+            if (count > 0) {
+              toast.success(`Removed ${count} blacklisted contact(s) from CRM`);
+              qc.invalidateQueries({ queryKey: ["crm-contacts"] });
+              qc.invalidateQueries({ queryKey: ["crm-contacts-count"] });
+            } else {
+              toast.info("No blacklisted contacts found in CRM");
+            }
+          } catch {
+            toast.error("Blacklist cleanup failed");
+          }
+          setCleaningUp(false);
+          setCleanupProgress(0);
+        }}
+        description="This will permanently delete all CRM contacts whose mobile numbers are in the Blacklist. Continue?"
+      />
     </div>
   );
 };
