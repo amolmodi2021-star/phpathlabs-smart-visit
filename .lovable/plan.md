@@ -1,44 +1,71 @@
 
-# Consolidate WhatsApp Settings, Templates & History
+
+# Auto-Delete NON PHPL Records When Patient Gets a Bill Number
 
 ## Problem
-WhatsApp API settings and templates are scattered across Loyalty Cards, CRM, Marketing, and Abnormal Tests tabs. History is also duplicated. The abnormal card flow incorrectly asks for an expiry date.
+When a patient initially registered as "NON PHPL" (prospect) later visits PH VESU and gets a bill number, the old NON PHPL records with the same mobile number remain in the CRM. This creates duplicate entries — the patient should only exist under their PH VESU record.
 
-## Changes
+## Solution
+Add a cleanup step in **every place** where records are inserted/upserted into `crm_contacts` — after the upsert completes, delete all NON PHPL records where the same mobile number now has at least one record with a bill number (i.e., a PH VESU record exists).
 
-### 1. New Unified Page: `/whatsapp-settings`
-- **WhatsApp API Settings** (single config): Base URL, API Key, Auth Header, From Number — stored once in `app_settings` with a unified prefix
-- **Template Manager**: List all templates (ABC Card, Abnormal PNG, Promo, etc.) with their WhatsApp template name, body variable mapping, media header toggle, campaign name
-- **Unified History**: All sent messages from every module (CRM, Loyalty, Marketing, Automated) shown in one searchable, filterable table
+### Implementation approach: Database function
 
-### 2. Simplify Existing Pages
-- **Loyalty Cards**: Remove WhatsApp Settings tab → Replace with a template selector dropdown (pick from templates created in the unified page)
-- **CRM Abnormal Tests**: Remove "Abnormal WA Settings" tab → Replace with template selector
-- **Marketing**: Templates already exist in `marketing_templates` table — link them to the unified page; remove duplicate API config fields from each template
-- **Automated Marketing**: Filters already reference `template_id` — no change needed
+Create a reusable SQL function `cleanup_non_phpl_duplicates()` that:
+1. Finds all mobile numbers that have **both** a record with a non-empty `bill_number` (PH VESU patient) **and** a record with `location = 'NON PHPL'`
+2. Deletes all `NON PHPL` records for those mobile numbers
+3. Returns the count of deleted records
 
-### 3. Remove Duplicate History Tabs
-- Remove History tab from Loyalty Cards page
-- Remove History tab from CRM page  
-- Remove History tab from Marketing page
-- Keep unified history on the new WhatsApp Settings page
+This function will be called from the client after every data modification that could introduce bill numbers.
 
-### 4. Fix: Remove Expiry Date from Abnormal Card Flow
-- In CRM Abnormal Tests, remove the expiry date prompt when selecting patients for abnormal card sending
+### Places to add the cleanup call
 
-### 5. Data Migration
-- Migrate existing `loyalty_wa_*` and `abnormal_wa_*` settings from `app_settings` into a unified format
-- Existing `marketing_templates` table already has per-template API config — consolidate to use shared API settings + template-specific fields only
+| Location | File | When |
+|----------|------|------|
+| Import → Approve & Transfer | `CRMImportReview.tsx` | After upsert completes |
+| NON PHPL Upload | `CRMContacts.tsx` | After upsert completes |
+| Daily Import Staging | `CRMImport.tsx` | No change needed (staging only) |
+| Contact Edit Dialog | `CRMContacts.tsx` | After individual record save (if bill_number changed) |
 
-## Files to Modify
-| File | Action |
+### Database function SQL
+
+```sql
+CREATE OR REPLACE FUNCTION public.cleanup_non_phpl_duplicates()
+RETURNS bigint
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  WITH mobiles_with_bills AS (
+    SELECT DISTINCT mobile_number
+    FROM crm_contacts
+    WHERE bill_number IS NOT NULL 
+      AND bill_number != ''
+      AND UPPER(TRIM(location)) != 'NON PHPL'
+  ),
+  deleted AS (
+    DELETE FROM crm_contacts
+    WHERE UPPER(TRIM(location)) = 'NON PHPL'
+      AND mobile_number IN (SELECT mobile_number FROM mobiles_with_bills)
+    RETURNING 1
+  )
+  SELECT COUNT(*)::bigint FROM deleted;
+$$;
+```
+
+### Client-side usage (after each upsert)
+
+```typescript
+const { data: deletedCount } = await supabase.rpc("cleanup_non_phpl_duplicates");
+if (deletedCount && deletedCount > 0) {
+  toast.info(`${deletedCount} NON PHPL duplicate(s) auto-removed`);
+}
+```
+
+## Files to modify
+
+| File | Change |
 |------|--------|
-| New: `src/pages/WhatsAppSettings.tsx` | Unified settings + templates + history page |
-| `src/App.tsx` | Add route for `/whatsapp-settings` |
-| `src/components/AppLayout.tsx` | Add nav link |
-| `src/pages/LoyaltyCards.tsx` | Remove WA Settings & History tabs, add template selector |
-| `src/pages/CRM.tsx` | Remove Abnormal WA Settings & History tabs, add template selector |
-| `src/pages/Marketing.tsx` | Remove duplicate settings, add template selector |
-| `src/components/crm/CRMAbnormalTests.tsx` | Remove expiry date field |
-| `src/components/WhatsAppSettings.tsx` | Delete (replaced by new page) |
-| `src/components/crm/CRMAbnormalWhatsAppSettings.tsx` | Delete (replaced by new page) |
+| New migration | Create `cleanup_non_phpl_duplicates` function |
+| `src/components/crm/CRMImportReview.tsx` | Call cleanup after approve & transfer |
+| `src/components/crm/CRMContacts.tsx` | Call cleanup after NON PHPL upload and after individual contact edits |
+
