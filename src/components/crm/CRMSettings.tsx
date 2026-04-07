@@ -49,16 +49,6 @@ const CRMSettings = () => {
           <Switch checked={automationEnabled} onCheckedChange={setAutomationEnabled} />
           <Label>Enable Marketing Automation</Label>
         </div>
-        <div>
-          <Label>ABC Card — Static Expiry Date</Label>
-          <Input
-            placeholder="e.g. 31-12-2026"
-            value={staticExpiryDate}
-            onChange={(e) => setStaticExpiryDate(e.target.value)}
-            className="w-48"
-          />
-          <p className="text-xs text-muted-foreground mt-1">This expiry date will be printed on all ABC cards sent from CRM (Review & Contacts)</p>
-        </div>
         <Button onClick={save} disabled={saving}>{saving ? "Saving..." : "Save Settings"}</Button>
       </CardContent>
     </Card>
