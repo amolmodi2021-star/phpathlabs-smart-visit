@@ -160,6 +160,9 @@ const CompletedHomeVisits = () => {
       } as any);
 
       if (error) throw error;
+
+      // Update home_visits status to "Registered"
+      await supabase.from("home_visits").update({ status: "Registered" }).eq("id", visit.id);
     },
     onSuccess: () => {
       toast.success("Home visit registered successfully!");
