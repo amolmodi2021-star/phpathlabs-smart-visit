@@ -9,6 +9,7 @@ export interface TestItem {
   description: string | null;
   incentive_allowed: boolean;
   incentive_amount: number;
+  test_code?: string | null;
   created_at?: string;
   updated_at?: string;
 }

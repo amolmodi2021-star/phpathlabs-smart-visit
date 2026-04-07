@@ -30,6 +30,7 @@ import WhatsAppWebhook from "./pages/WhatsAppWebhook";
 import Marketing from "./pages/Marketing";
 import CRM from "./pages/CRM";
 import LimsDemo from "./pages/LimsDemo";
+import Lims from "./pages/Lims";
 import WhatsAppSettingsPage from "./pages/WhatsAppSettingsPage";
 import NotFound from "./pages/NotFound";
 
@@ -59,6 +60,7 @@ const App = () => (
           <Route path="/loyalty-cards" element={<ProtectedRoute><LoyaltyCards /></ProtectedRoute>} />
           <Route path="/marketing" element={<ProtectedRoute><Marketing /></ProtectedRoute>} />
           <Route path="/crm" element={<ProtectedRoute><CRM /></ProtectedRoute>} />
+          <Route path="/lims" element={<ProtectedRoute><Lims /></ProtectedRoute>} />
           <Route path="/lims-demo" element={<ProtectedRoute><LimsDemo /></ProtectedRoute>} />
           <Route path="/whatsapp-webhook" element={<ProtectedRoute><WhatsAppWebhook /></ProtectedRoute>} />
           <Route path="/whatsapp-settings" element={<ProtectedRoute><WhatsAppSettingsPage /></ProtectedRoute>} />

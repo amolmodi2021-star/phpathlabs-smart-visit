@@ -857,6 +857,21 @@ export type Database = {
           },
         ]
       }
+      invoice_counter: {
+        Row: {
+          date_key: string
+          last_sequence: number
+        }
+        Insert: {
+          date_key: string
+          last_sequence?: number
+        }
+        Update: {
+          date_key?: string
+          last_sequence?: number
+        }
+        Relationships: []
+      }
       lims_interface_logs: {
         Row: {
           created_at: string
@@ -1288,6 +1303,104 @@ export type Database = {
         }
         Relationships: []
       }
+      patient_registrations: {
+        Row: {
+          address: string | null
+          created_at: string
+          discount_amount: number
+          dob: string | null
+          doctor_name: string | null
+          due_amount: number
+          email: string | null
+          final_amount: number
+          gender: string | null
+          global_discount_type: string | null
+          global_discount_value: number | null
+          gross_amount: number
+          home_visit_charges: number
+          id: string
+          invoice_number: string
+          mobile_number: string
+          net_amount: number
+          paid_amount: number
+          patient_name: string
+          payments: Json
+          pickup_point_id: string | null
+          status: string
+          tests: Json
+          title: string | null
+          umr_number: string | null
+          updated_at: string
+          visit_type: string
+        }
+        Insert: {
+          address?: string | null
+          created_at?: string
+          discount_amount?: number
+          dob?: string | null
+          doctor_name?: string | null
+          due_amount?: number
+          email?: string | null
+          final_amount?: number
+          gender?: string | null
+          global_discount_type?: string | null
+          global_discount_value?: number | null
+          gross_amount?: number
+          home_visit_charges?: number
+          id?: string
+          invoice_number: string
+          mobile_number: string
+          net_amount?: number
+          paid_amount?: number
+          patient_name: string
+          payments?: Json
+          pickup_point_id?: string | null
+          status?: string
+          tests?: Json
+          title?: string | null
+          umr_number?: string | null
+          updated_at?: string
+          visit_type?: string
+        }
+        Update: {
+          address?: string | null
+          created_at?: string
+          discount_amount?: number
+          dob?: string | null
+          doctor_name?: string | null
+          due_amount?: number
+          email?: string | null
+          final_amount?: number
+          gender?: string | null
+          global_discount_type?: string | null
+          global_discount_value?: number | null
+          gross_amount?: number
+          home_visit_charges?: number
+          id?: string
+          invoice_number?: string
+          mobile_number?: string
+          net_amount?: number
+          paid_amount?: number
+          patient_name?: string
+          payments?: Json
+          pickup_point_id?: string | null
+          status?: string
+          tests?: Json
+          title?: string | null
+          umr_number?: string | null
+          updated_at?: string
+          visit_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "patient_registrations_pickup_point_id_fkey"
+            columns: ["pickup_point_id"]
+            isOneToOne: false
+            referencedRelation: "pickup_points"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       phlebotomist_leaves: {
         Row: {
           created_at: string
@@ -1356,6 +1469,87 @@ export type Database = {
           status?: string
           updated_at?: string
           weekly_off_days?: number[] | null
+        }
+        Relationships: []
+      }
+      pickup_point_prices: {
+        Row: {
+          created_at: string
+          custom_price: number
+          id: string
+          pickup_point_id: string
+          test_id: string
+        }
+        Insert: {
+          created_at?: string
+          custom_price?: number
+          id?: string
+          pickup_point_id: string
+          test_id: string
+        }
+        Update: {
+          created_at?: string
+          custom_price?: number
+          id?: string
+          pickup_point_id?: string
+          test_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pickup_point_prices_pickup_point_id_fkey"
+            columns: ["pickup_point_id"]
+            isOneToOne: false
+            referencedRelation: "pickup_points"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pickup_point_prices_test_id_fkey"
+            columns: ["test_id"]
+            isOneToOne: false
+            referencedRelation: "tests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pickup_points: {
+        Row: {
+          address: string | null
+          billing_cycle: string
+          billing_type: string
+          contact_person: string | null
+          created_at: string
+          default_discount_pct: number
+          id: string
+          name: string
+          phone: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          billing_cycle?: string
+          billing_type?: string
+          contact_person?: string | null
+          created_at?: string
+          default_discount_pct?: number
+          id?: string
+          name: string
+          phone?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          billing_cycle?: string
+          billing_type?: string
+          contact_person?: string | null
+          created_at?: string
+          default_discount_pct?: number
+          id?: string
+          name?: string
+          phone?: string | null
+          status?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -1726,6 +1920,7 @@ export type Database = {
           incentive_allowed: boolean
           incentive_amount: number
           price: number
+          test_code: string | null
           test_name: string
           updated_at: string
         }
@@ -1738,6 +1933,7 @@ export type Database = {
           incentive_allowed?: boolean
           incentive_amount?: number
           price?: number
+          test_code?: string | null
           test_name: string
           updated_at?: string
         }
@@ -1750,6 +1946,7 @@ export type Database = {
           incentive_allowed?: boolean
           incentive_amount?: number
           price?: number
+          test_code?: string | null
           test_name?: string
           updated_at?: string
         }
@@ -1841,6 +2038,7 @@ export type Database = {
       cleanup_blacklisted_contacts: { Args: never; Returns: number }
       cleanup_non_phpl_duplicates: { Args: never; Returns: number }
       cleanup_non_phpl_mobile_duplicates: { Args: never; Returns: number }
+      generate_invoice_number: { Args: never; Returns: string }
       get_abnormal_history_counts: {
         Args: never
         Returns: {
@@ -1899,6 +2097,34 @@ export type Database = {
           umr_number: string
           updated_at: string
           visit_date: string
+          visit_type: string
+        }[]
+      }
+      get_patient_registrations_count: {
+        Args: { p_search?: string }
+        Returns: number
+      }
+      get_patient_registrations_paginated: {
+        Args: { p_page?: number; p_page_size?: number; p_search?: string }
+        Returns: {
+          created_at: string
+          discount_amount: number
+          dob: string
+          doctor_name: string
+          due_amount: number
+          final_amount: number
+          gender: string
+          gross_amount: number
+          id: string
+          invoice_number: string
+          mobile_number: string
+          net_amount: number
+          paid_amount: number
+          patient_name: string
+          status: string
+          tests: Json
+          title: string
+          umr_number: string
           visit_type: string
         }[]
       }
