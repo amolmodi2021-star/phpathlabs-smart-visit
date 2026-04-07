@@ -59,6 +59,18 @@ Deno.serve(async (req) => {
 
       const order = orders[0];
       const tests = (order.tests as any[]) || [];
+      const pendingTests = tests.filter((t: any) => t.status !== "completed");
+
+      if (pendingTests.length === 0) {
+        const responseBody = { sample_id: sampleId, tests: [], message: "All tests already completed" };
+        await supabase.from("lims_interface_logs").insert({
+          sample_id: sampleId, direction: "outgoing", event_type: "query_tests",
+          request_body: { action: "query", sample_id: sampleId }, response_body: responseBody,
+        });
+        return new Response(JSON.stringify(responseBody), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
 
       // Mark order as in_progress
       if (order.status === "pending") {
@@ -72,7 +84,7 @@ Deno.serve(async (req) => {
         order_id: order.id,
         sample_id: order.sample_id,
         patient_name: order.patient_name,
-        tests: tests.map((t: any) => ({
+        tests: pendingTests.map((t: any) => ({
           code: t.code,
           name: t.name,
           unit: t.unit || "",
