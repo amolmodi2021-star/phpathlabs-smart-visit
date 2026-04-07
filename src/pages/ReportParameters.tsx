@@ -280,11 +280,9 @@ const ReportParameters = () => {
                     <TableHead>Code</TableHead>
                     <TableHead>Parameter</TableHead>
                     <TableHead>Test</TableHead>
-                    <TableHead>Department</TableHead>
                     <TableHead>Profile</TableHead>
                     <TableHead>Sample Type</TableHead>
                     <TableHead>Unit</TableHead>
-                    <TableHead>Outsourced</TableHead>
                     <TableHead>Analytics</TableHead>
                     <TableHead className="w-[80px]">Actions</TableHead>
                   </TableRow>
@@ -298,11 +296,9 @@ const ReportParameters = () => {
                       <TableCell className="font-mono text-xs text-muted-foreground">{p.param_code || "-"}</TableCell>
                       <TableCell className="font-medium">{p.parameter_name}</TableCell>
                       <TableCell>{p.test_name || "-"}</TableCell>
-                      <TableCell>{p.report_departments?.department_name || "-"}</TableCell>
                       <TableCell>{p.report_profiles?.profile_name || "-"}</TableCell>
                       <TableCell>{p.sample_type || "-"}</TableCell>
                       <TableCell>{p.unit || "-"}</TableCell>
-                      <TableCell>{p.is_outsourced ? "Yes" : "-"}</TableCell>
                       <TableCell>{p.store_for_analytics ? <Badge className="bg-green-100 text-green-800">YES</Badge> : <Badge variant="secondary">NO</Badge>}</TableCell>
                       <TableCell>
                         <div className="flex gap-1">
@@ -312,7 +308,7 @@ const ReportParameters = () => {
                       </TableCell>
                     </TableRow>
                   ))}
-                  {filtered.length === 0 && <TableRow><TableCell colSpan={11} className="text-center py-8 text-muted-foreground">No parameters found</TableCell></TableRow>}
+                  {filtered.length === 0 && <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No parameters found</TableCell></TableRow>}
                 </TableBody>
               </Table>
             </div>
