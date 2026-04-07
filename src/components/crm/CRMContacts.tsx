@@ -552,6 +552,12 @@ const CRMContacts = () => {
         toast.info(`${deletedNonPhpl} NON PHPL duplicate(s) auto-removed`);
       }
 
+      // Deduplicate NON PHPL records with same mobile number
+      const { data: dedupCount } = await supabase.rpc("cleanup_non_phpl_mobile_duplicates" as any);
+      if (dedupCount && Number(dedupCount) > 0) {
+        toast.info(`${dedupCount} NON PHPL duplicate mobile(s) cleaned up`);
+      }
+
       setBulkUpdating(false);
       qc.invalidateQueries({ queryKey: ["crm-contacts"] });
       qc.invalidateQueries({ queryKey: ["crm-contacts-count"] });
