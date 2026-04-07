@@ -29,7 +29,6 @@ const CRMSettings = () => {
     for (const [key, val] of [
       ["crm_daily_quota", quota],
       ["crm_automation_enabled", String(automationEnabled)],
-      ["crm_abc_static_expiry_date", staticExpiryDate],
     ]) {
       await supabase.from("app_settings").upsert({ setting_key: key, setting_value: val }, { onConflict: "setting_key" });
     }
