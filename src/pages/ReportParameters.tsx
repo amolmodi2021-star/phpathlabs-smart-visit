@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2, Loader2, Search, Download, Upload } from "lucide-react";
@@ -24,6 +25,8 @@ interface NormalRange {
   normal_range_low: number | null;
   normal_range_high: number | null;
   normal_range_text: string;
+  range_type: string;
+  expected_value: string;
 }
 
 // No default age groups — users set ranges manually
@@ -83,6 +86,8 @@ const ReportParameters = () => {
           normal_range_low: existing?.normal_range_low ?? null,
           normal_range_high: existing?.normal_range_high ?? null,
           normal_range_text: existing?.normal_range_text ?? "",
+          range_type: existing?.range_type ?? "numeric",
+          expected_value: existing?.expected_value ?? "",
         });
       }
       setNormalRanges(newRanges);
@@ -95,7 +100,7 @@ const ReportParameters = () => {
           newRanges.push(...existingForGender);
         } else {
           // Seed with one default range
-          newRanges.push({ gender, age_min: 0, age_max: 150, normal_range_low: null, normal_range_high: null, normal_range_text: "" });
+          newRanges.push({ gender, age_min: 0, age_max: 150, normal_range_low: null, normal_range_high: null, normal_range_text: "", range_type: "numeric", expected_value: "" });
         }
       }
       setNormalRanges(newRanges);
@@ -124,6 +129,8 @@ const ReportParameters = () => {
         normal_range_low: r.normal_range_low,
         normal_range_high: r.normal_range_high,
         normal_range_text: r.normal_range_text || "",
+        range_type: r.range_type || "numeric",
+        expected_value: r.expected_value || "",
       })));
     }
   };
@@ -159,9 +166,11 @@ const ReportParameters = () => {
             gender: r.gender,
             age_min: r.age_min,
             age_max: r.age_max,
-            normal_range_low: r.normal_range_low,
-            normal_range_high: r.normal_range_high,
+            normal_range_low: r.range_type === "numeric" ? r.normal_range_low : null,
+            normal_range_high: r.range_type === "numeric" ? r.normal_range_high : null,
             normal_range_text: r.normal_range_text || null,
+            range_type: r.range_type || "numeric",
+            expected_value: r.range_type === "qualitative" ? (r.expected_value || null) : null,
           }));
           await supabase.from("parameter_normal_ranges").insert(rangeInserts);
         }
@@ -295,6 +304,7 @@ const ReportParameters = () => {
     setNormalRanges(prev => [...prev, {
       gender, age_min: 0, age_max: 150,
       normal_range_low: null, normal_range_high: null, normal_range_text: "",
+      range_type: "numeric", expected_value: "",
     }]);
   };
 
@@ -468,20 +478,45 @@ const ReportParameters = () => {
                         {form.same_for_all_ages && (
                           <div className="text-xs text-muted-foreground">All Ages</div>
                         )}
-                        <div className="grid grid-cols-3 gap-2">
-                          <div>
-                            <Label className="text-xs">Low</Label>
-                            <Input type="number" step="any" value={r.normal_range_low ?? ""} onChange={(e) => updateRange(r._idx, "normal_range_low", e.target.value ? Number(e.target.value) : null)} placeholder="Low" />
-                          </div>
-                          <div>
-                            <Label className="text-xs">High</Label>
-                            <Input type="number" step="any" value={r.normal_range_high ?? ""} onChange={(e) => updateRange(r._idx, "normal_range_high", e.target.value ? Number(e.target.value) : null)} placeholder="High" />
-                          </div>
-                          <div>
-                            <Label className="text-xs">Display Text</Label>
-                            <Input value={r.normal_range_text} onChange={(e) => updateRange(r._idx, "normal_range_text", e.target.value)} placeholder="e.g. 4.0-11.0" />
-                          </div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <Label className="text-xs whitespace-nowrap">Range Type</Label>
+                          <Select value={r.range_type || "numeric"} onValueChange={(v) => updateRange(r._idx, "range_type", v)}>
+                            <SelectTrigger className="h-7 w-36">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="numeric">Numeric</SelectItem>
+                              <SelectItem value="qualitative">Qualitative</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
+                        {(r.range_type || "numeric") === "numeric" ? (
+                          <div className="grid grid-cols-3 gap-2">
+                            <div>
+                              <Label className="text-xs">Low</Label>
+                              <Input type="number" step="any" value={r.normal_range_low ?? ""} onChange={(e) => updateRange(r._idx, "normal_range_low", e.target.value ? Number(e.target.value) : null)} placeholder="Low" />
+                            </div>
+                            <div>
+                              <Label className="text-xs">High</Label>
+                              <Input type="number" step="any" value={r.normal_range_high ?? ""} onChange={(e) => updateRange(r._idx, "normal_range_high", e.target.value ? Number(e.target.value) : null)} placeholder="High" />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Display Text</Label>
+                              <Input value={r.normal_range_text} onChange={(e) => updateRange(r._idx, "normal_range_text", e.target.value)} placeholder="e.g. 4.0-11.0" />
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <Label className="text-xs">Expected Normal Value</Label>
+                              <Input value={r.expected_value || ""} onChange={(e) => updateRange(r._idx, "expected_value", e.target.value)} placeholder="e.g. Absent, Negative" />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Display Text</Label>
+                              <Input value={r.normal_range_text} onChange={(e) => updateRange(r._idx, "normal_range_text", e.target.value)} placeholder="e.g. Absent" />
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
