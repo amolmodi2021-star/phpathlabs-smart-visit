@@ -225,9 +225,9 @@ const ReportParameters = () => {
   const openNew = () => {
     setEditId(null);
     setForm({
-      parameter_name: "", test_name: "", profile_id: "", department_id: "", unit: "",
+      parameter_name: "", test_name: "", profile_id: "", unit: "",
       analyzer: "", method: "", store_for_analytics: false, display_order: 0,
-      sample_type: "", is_outsourced: false, outsourced_caption: "", interpretation: "",
+      sample_type: "", interpretation: "",
     });
     setDialogOpen(true);
   };
@@ -326,21 +326,12 @@ const ReportParameters = () => {
           <div className="space-y-4">
             <div><Label>Parameter Name *</Label><Input value={form.parameter_name} onChange={(e) => setForm({ ...form, parameter_name: e.target.value })} /></div>
             <div><Label>Test Name</Label><Input value={form.test_name} onChange={(e) => setForm({ ...form, test_name: e.target.value })} /></div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Department</Label>
-                <Select value={form.department_id} onValueChange={(v) => setForm({ ...form, department_id: v })}>
-                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent>{departments.map((d) => <SelectItem key={d.id} value={d.id}>{d.department_name}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Profile</Label>
-                <Select value={form.profile_id} onValueChange={(v) => setForm({ ...form, profile_id: v })}>
-                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent>{profiles.map((p) => <SelectItem key={p.id} value={p.id}>{p.profile_name}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
+            <div>
+              <Label>Profile</Label>
+              <Select value={form.profile_id} onValueChange={(v) => setForm({ ...form, profile_id: v })}>
+                <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                <SelectContent>{profiles.map((p) => <SelectItem key={p.id} value={p.id}>{p.profile_name}</SelectItem>)}</SelectContent>
+              </Select>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div><Label>Unit</Label><Input value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} /></div>
@@ -356,13 +347,6 @@ const ReportParameters = () => {
               <Label>Store for Analytics (include in historical trends)</Label>
             </div>
 
-            <div className="flex items-center gap-2">
-              <Checkbox checked={form.is_outsourced} onCheckedChange={(c) => setForm({ ...form, is_outsourced: !!c })} />
-              <Label>Mark as Outsourced</Label>
-            </div>
-            {form.is_outsourced && (
-              <div><Label>Outsourced Caption</Label><Input value={form.outsourced_caption} onChange={(e) => setForm({ ...form, outsourced_caption: e.target.value })} placeholder="e.g. This test was outsourced to XYZ Lab" /></div>
-            )}
 
             <div>
               <Label>Interpretation</Label>
