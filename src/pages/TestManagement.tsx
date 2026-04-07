@@ -9,8 +9,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Search, Download, Upload, Trash2, Pencil, Loader2, Lock, Unlock } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import { exportToExcel, parseExcelFile, downloadTemplate } from "@/lib/excel";
 import { getTests, saveTest, deleteTest, bulkInsertTests } from "@/lib/tests";
 import TestParameterManager from "@/components/TestParameterManager";
@@ -24,6 +26,7 @@ const defaultForm = {
   description: "", incentive_allowed: false, incentive_amount: "",
   display_name: "", bold_in_report: false, show_in_report: true, is_single_parameter: false,
   instrument_name: "", method: "", sample_type: "", interpretation: "",
+  is_outsourced: false, outsourced_caption: "", department_id: "",
 };
 
 const TestManagement = () => {
