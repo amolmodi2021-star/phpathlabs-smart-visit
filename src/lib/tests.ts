@@ -14,6 +14,10 @@ export interface TestItem {
   bold_in_report?: boolean;
   show_in_report?: boolean;
   is_single_parameter?: boolean;
+  instrument_name?: string | null;
+  method?: string | null;
+  sample_type?: string | null;
+  interpretation?: string | null;
   created_at?: string;
   updated_at?: string;
 }
