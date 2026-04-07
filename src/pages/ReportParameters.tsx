@@ -26,13 +26,7 @@ interface NormalRange {
   normal_range_text: string;
 }
 
-const DEFAULT_AGE_GROUPS = [
-  { label: "0–1 yr", min: 0, max: 1 },
-  { label: "1–12 yr", min: 1, max: 12 },
-  { label: "12–18 yr", min: 12, max: 18 },
-  { label: "18–60 yr", min: 18, max: 60 },
-  { label: "60+ yr", min: 60, max: 150 },
-];
+// No default age groups — users set ranges manually
 
 const ReportParameters = () => {
   const [params, setParams] = useState<any[]>([]);
@@ -78,31 +72,34 @@ const ReportParameters = () => {
   const buildRangesFromToggles = useCallback(() => {
     const { same_for_gender, same_for_all_ages } = form;
     const genders = same_for_gender ? ["all"] : ["male", "female"];
-    const ageGroups = same_for_all_ages
-      ? [{ label: "All Ages", min: null as number | null, max: null as number | null }]
-      : DEFAULT_AGE_GROUPS.map(a => ({ ...a, min: a.min as number | null, max: a.max as number | null }));
 
-    const newRanges: NormalRange[] = [];
-    for (const gender of genders) {
-      for (const age of ageGroups) {
-        // Preserve existing values if they match
-        const existing = normalRanges.find(r =>
-          r.gender === gender &&
-          r.age_min === age.min &&
-          r.age_max === age.max
-        );
+    if (same_for_all_ages) {
+      // Collapse to single "all ages" per gender
+      const newRanges: NormalRange[] = [];
+      for (const gender of genders) {
+        const existing = normalRanges.find(r => r.gender === gender && r.age_min === null && r.age_max === null);
         newRanges.push({
-          id: existing?.id,
-          gender,
-          age_min: age.min,
-          age_max: age.max,
+          id: existing?.id, gender, age_min: null, age_max: null,
           normal_range_low: existing?.normal_range_low ?? null,
           normal_range_high: existing?.normal_range_high ?? null,
           normal_range_text: existing?.normal_range_text ?? "",
         });
       }
+      setNormalRanges(newRanges);
+    } else {
+      // When switching to age-specific, keep existing age ranges per gender or seed defaults
+      const newRanges: NormalRange[] = [];
+      for (const gender of genders) {
+        const existingForGender = normalRanges.filter(r => r.gender === gender && r.age_min !== null);
+        if (existingForGender.length > 0) {
+          newRanges.push(...existingForGender);
+        } else {
+          // Seed with one default range
+          newRanges.push({ gender, age_min: 0, age_max: 150, normal_range_low: null, normal_range_high: null, normal_range_text: "" });
+        }
+      }
+      setNormalRanges(newRanges);
     }
-    setNormalRanges(newRanges);
   }, [form.same_for_gender, form.same_for_all_ages]);
 
   useEffect(() => {
@@ -294,13 +291,18 @@ const ReportParameters = () => {
     setNormalRanges(prev => prev.map((r, i) => i === index ? { ...r, [field]: value } : r));
   };
 
-  const getRangeLabel = (r: NormalRange) => {
-    const genderLabel = r.gender === "all" ? "All" : r.gender === "male" ? "Male" : "Female";
-    const ageLabel = r.age_min === null && r.age_max === null
-      ? "All Ages"
-      : `${r.age_min ?? 0}–${r.age_max ?? "∞"} yr`;
-    return `${genderLabel} / ${ageLabel}`;
+  const addAgeRange = (gender: string) => {
+    setNormalRanges(prev => [...prev, {
+      gender, age_min: 0, age_max: 150,
+      normal_range_low: null, normal_range_high: null, normal_range_text: "",
+    }]);
   };
+
+  const removeAgeRange = (index: number) => {
+    setNormalRanges(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const getGenderLabel = (g: string) => g === "all" ? "All" : g === "male" ? "Male" : "Female";
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -432,43 +434,59 @@ const ReportParameters = () => {
                 <Switch checked={form.same_for_all_ages} onCheckedChange={(v) => setForm({ ...form, same_for_all_ages: v })} />
               </div>
 
-              <div className="space-y-3 mt-2">
-                {normalRanges.map((r, idx) => (
-                  <div key={idx} className="border rounded-lg p-3 space-y-2 bg-muted/30">
-                    <div className="text-sm font-medium text-primary">{getRangeLabel(r)}</div>
-                    <div className="grid grid-cols-3 gap-2">
-                      <div>
-                        <Label className="text-xs">Low</Label>
-                        <Input
-                          type="number"
-                          step="any"
-                          value={r.normal_range_low ?? ""}
-                          onChange={(e) => updateRange(idx, "normal_range_low", e.target.value ? Number(e.target.value) : null)}
-                          placeholder="Low"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs">High</Label>
-                        <Input
-                          type="number"
-                          step="any"
-                          value={r.normal_range_high ?? ""}
-                          onChange={(e) => updateRange(idx, "normal_range_high", e.target.value ? Number(e.target.value) : null)}
-                          placeholder="High"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs">Display Text</Label>
-                        <Input
-                          value={r.normal_range_text}
-                          onChange={(e) => updateRange(idx, "normal_range_text", e.target.value)}
-                          placeholder="e.g. 4.0-11.0"
-                        />
-                      </div>
+              {/* Group ranges by gender */}
+              {(form.same_for_gender ? ["all"] : ["male", "female"]).map(gender => {
+                const genderRanges = normalRanges.map((r, idx) => ({ ...r, _idx: idx })).filter(r => r.gender === gender);
+                return (
+                  <div key={gender} className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <h5 className="text-sm font-semibold text-primary">{getGenderLabel(gender)}</h5>
+                      {!form.same_for_all_ages && (
+                        <Button type="button" variant="outline" size="sm" onClick={() => addAgeRange(gender)}>
+                          <Plus className="h-3 w-3 mr-1" />Add Age Range
+                        </Button>
+                      )}
                     </div>
+                    {genderRanges.map((r) => (
+                      <div key={r._idx} className="border rounded-lg p-3 space-y-2 bg-muted/30">
+                        {!form.same_for_all_ages && (
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1 flex-1">
+                              <Label className="text-xs whitespace-nowrap">Age From</Label>
+                              <Input type="number" className="h-7 w-20" value={r.age_min ?? ""} onChange={(e) => updateRange(r._idx, "age_min", e.target.value ? Number(e.target.value) : null)} />
+                              <Label className="text-xs whitespace-nowrap">to</Label>
+                              <Input type="number" className="h-7 w-20" value={r.age_max ?? ""} onChange={(e) => updateRange(r._idx, "age_max", e.target.value ? Number(e.target.value) : null)} />
+                              <span className="text-xs text-muted-foreground">yr</span>
+                            </div>
+                            {genderRanges.length > 1 && (
+                              <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => removeAgeRange(r._idx)}>
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                        {form.same_for_all_ages && (
+                          <div className="text-xs text-muted-foreground">All Ages</div>
+                        )}
+                        <div className="grid grid-cols-3 gap-2">
+                          <div>
+                            <Label className="text-xs">Low</Label>
+                            <Input type="number" step="any" value={r.normal_range_low ?? ""} onChange={(e) => updateRange(r._idx, "normal_range_low", e.target.value ? Number(e.target.value) : null)} placeholder="Low" />
+                          </div>
+                          <div>
+                            <Label className="text-xs">High</Label>
+                            <Input type="number" step="any" value={r.normal_range_high ?? ""} onChange={(e) => updateRange(r._idx, "normal_range_high", e.target.value ? Number(e.target.value) : null)} placeholder="High" />
+                          </div>
+                          <div>
+                            <Label className="text-xs">Display Text</Label>
+                            <Input value={r.normal_range_text} onChange={(e) => updateRange(r._idx, "normal_range_text", e.target.value)} placeholder="e.g. 4.0-11.0" />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                );
+              })}
             </div>
           </div>
           <DialogFooter>
