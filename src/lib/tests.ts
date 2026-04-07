@@ -82,3 +82,72 @@ export const bulkInsertTests = async (tests: SaveTestPayload[]) => {
     if (error) throw new Error(error.message);
   });
 };
+
+// ── Test-Parameter junction helpers ──
+
+export interface TestParameterLink {
+  id: string;
+  test_id: string;
+  parameter_id: string;
+  display_order: number;
+  parameter_name?: string;
+  param_code?: string;
+  unit?: string;
+  normal_range_low?: number | null;
+  normal_range_high?: number | null;
+  normal_range_text?: string | null;
+}
+
+export const getTestParameters = async (testId: string): Promise<TestParameterLink[]> => {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from("test_parameters")
+      .select("id, test_id, parameter_id, display_order, report_test_parameters(parameter_name, param_code, unit, normal_range_low, normal_range_high, normal_range_text)")
+      .eq("test_id", testId)
+      .order("display_order");
+    if (error) throw new Error(error.message);
+    return (data || []).map((d: any) => ({
+      id: d.id,
+      test_id: d.test_id,
+      parameter_id: d.parameter_id,
+      display_order: d.display_order,
+      parameter_name: d.report_test_parameters?.parameter_name,
+      param_code: d.report_test_parameters?.param_code,
+      unit: d.report_test_parameters?.unit,
+      normal_range_low: d.report_test_parameters?.normal_range_low,
+      normal_range_high: d.report_test_parameters?.normal_range_high,
+      normal_range_text: d.report_test_parameters?.normal_range_text,
+    }));
+  });
+};
+
+export const linkParameterToTest = async (testId: string, parameterId: string, displayOrder: number) => {
+  return withRetry(async () => {
+    const { error } = await supabase.from("test_parameters").insert({
+      test_id: testId,
+      parameter_id: parameterId,
+      display_order: displayOrder,
+    } as any);
+    if (error) throw new Error(error.message);
+  });
+};
+
+export const unlinkParameterFromTest = async (id: string) => {
+  return withRetry(async () => {
+    const { error } = await supabase.from("test_parameters").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+  });
+};
+
+export const searchParameters = async (query: string) => {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from("report_test_parameters")
+      .select("id, parameter_name, param_code, unit, normal_range_low, normal_range_high, normal_range_text")
+      .ilike("parameter_name", `%${query}%`)
+      .order("parameter_name")
+      .limit(20);
+    if (error) throw new Error(error.message);
+    return data || [];
+  });
+};
