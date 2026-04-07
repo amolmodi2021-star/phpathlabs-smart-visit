@@ -777,7 +777,7 @@ const CRMContacts = () => {
       <div className="flex flex-wrap gap-2 items-center">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search name, mobile, UMR..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="pl-8" />
+          <Input placeholder="Search name, mobile, UMR..." value={searchInput} onChange={(e) => setSearchInput(e.target.value)} className="pl-8" />
         </div>
         <Select value={locationFilter} onValueChange={(v) => { setLocationFilter(v); setPage(0); }}>
           <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
