@@ -52,6 +52,8 @@ const CRMContacts = () => {
   const [deletePassword, setDeletePassword] = useState("");
   const [deleteMode, setDeleteMode] = useState<"selected" | "all">("selected");
   const [deleting, setDeleting] = useState(false);
+  const [cleaningUp, setCleaningUp] = useState(false);
+  const [cleanupProgress, setCleanupProgress] = useState(0);
 
   // Send loyalty card state
   const [sendOpen, setSendOpen] = useState(false);
