@@ -14,6 +14,7 @@ import { exportToExcel, parseExcelFile } from "@/lib/excel";
 import { generateAndUploadCard, getTemplateAssets, type CardData } from "@/lib/cardRenderer";
 import { Download, Search, Pencil, Upload, Trash2, Send } from "lucide-react";
 import { toast } from "sonner";
+import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 
 const normalizePrimaryKeyName = (value: unknown) =>
   String(value || "")
@@ -83,6 +84,7 @@ const CRMContacts = () => {
   const [deleting, setDeleting] = useState(false);
   const [cleaningUp, setCleaningUp] = useState(false);
   const [cleanupProgress, setCleanupProgress] = useState(0);
+  const [blacklistCleanupOpen, setBlacklistCleanupOpen] = useState(false);
 
   // Send loyalty card state
   const [sendOpen, setSendOpen] = useState(false);
@@ -967,6 +969,9 @@ const CRMContacts = () => {
         }}>
           {cleaningUp ? "Cleaning..." : "🧹 Cleanup"}
         </Button>
+        <Button variant="outline" size="sm" onClick={() => setBlacklistCleanupOpen(true)}>
+          🚫 Remove Blacklisted
+        </Button>
         <Button variant="destructive" size="sm" onClick={() => { setDeleteMode("all"); setDeleteOpen(true); }}>
           <Trash2 className="h-4 w-4 mr-1" />Delete All
         </Button>
@@ -1128,6 +1133,32 @@ const CRMContacts = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <DeletePasswordDialog
+        open={blacklistCleanupOpen}
+        onOpenChange={setBlacklistCleanupOpen}
+        onSuccess={async () => {
+          setCleaningUp(true);
+          setCleanupProgress(30);
+          try {
+            const { data: removed } = await supabase.rpc("cleanup_blacklisted_contacts" as any);
+            setCleanupProgress(100);
+            const count = Number(removed) || 0;
+            if (count > 0) {
+              toast.success(`Removed ${count} blacklisted contact(s) from CRM`);
+              qc.invalidateQueries({ queryKey: ["crm-contacts"] });
+              qc.invalidateQueries({ queryKey: ["crm-contacts-count"] });
+            } else {
+              toast.info("No blacklisted contacts found in CRM");
+            }
+          } catch {
+            toast.error("Blacklist cleanup failed");
+          }
+          setCleaningUp(false);
+          setCleanupProgress(0);
+        }}
+        description="This will permanently delete all CRM contacts whose mobile numbers are in the Blacklist. Continue?"
+      />
     </div>
   );
 };
