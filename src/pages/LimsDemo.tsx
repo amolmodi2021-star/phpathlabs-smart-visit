@@ -16,29 +16,31 @@ interface TestItem {
   name: string;
   unit: string;
   status: string;
+  machine_id: string;
+  machine_name: string;
 }
 
 const COMMON_TESTS: TestItem[] = [
-  { code: "CBC", name: "Complete Blood Count", unit: "", status: "pending" },
-  { code: "HB", name: "Hemoglobin", unit: "g/dL", status: "pending" },
-  { code: "WBC", name: "White Blood Cell Count", unit: "cells/mcL", status: "pending" },
-  { code: "PLT", name: "Platelet Count", unit: "cells/mcL", status: "pending" },
-  { code: "RBC", name: "Red Blood Cell Count", unit: "million/mcL", status: "pending" },
-  { code: "ESR", name: "Erythrocyte Sedimentation Rate", unit: "mm/hr", status: "pending" },
-  { code: "FBS", name: "Fasting Blood Sugar", unit: "mg/dL", status: "pending" },
-  { code: "PPBS", name: "Post Prandial Blood Sugar", unit: "mg/dL", status: "pending" },
-  { code: "HBA1C", name: "Glycosylated Hemoglobin", unit: "%", status: "pending" },
-  { code: "UREA", name: "Blood Urea", unit: "mg/dL", status: "pending" },
-  { code: "CREAT", name: "Serum Creatinine", unit: "mg/dL", status: "pending" },
-  { code: "URIC", name: "Uric Acid", unit: "mg/dL", status: "pending" },
-  { code: "CHOL", name: "Total Cholesterol", unit: "mg/dL", status: "pending" },
-  { code: "TG", name: "Triglycerides", unit: "mg/dL", status: "pending" },
-  { code: "HDL", name: "HDL Cholesterol", unit: "mg/dL", status: "pending" },
-  { code: "LDL", name: "LDL Cholesterol", unit: "mg/dL", status: "pending" },
-  { code: "SGOT", name: "SGOT (AST)", unit: "U/L", status: "pending" },
-  { code: "SGPT", name: "SGPT (ALT)", unit: "U/L", status: "pending" },
-  { code: "TBIL", name: "Total Bilirubin", unit: "mg/dL", status: "pending" },
-  { code: "TSH", name: "Thyroid Stimulating Hormone", unit: "mIU/L", status: "pending" },
+  { code: "CBC", name: "Complete Blood Count", unit: "", status: "pending", machine_id: "", machine_name: "" },
+  { code: "HB", name: "Hemoglobin", unit: "g/dL", status: "pending", machine_id: "", machine_name: "" },
+  { code: "WBC", name: "White Blood Cell Count", unit: "cells/mcL", status: "pending", machine_id: "", machine_name: "" },
+  { code: "PLT", name: "Platelet Count", unit: "cells/mcL", status: "pending", machine_id: "", machine_name: "" },
+  { code: "RBC", name: "Red Blood Cell Count", unit: "million/mcL", status: "pending", machine_id: "", machine_name: "" },
+  { code: "ESR", name: "Erythrocyte Sedimentation Rate", unit: "mm/hr", status: "pending", machine_id: "", machine_name: "" },
+  { code: "FBS", name: "Fasting Blood Sugar", unit: "mg/dL", status: "pending", machine_id: "", machine_name: "" },
+  { code: "PPBS", name: "Post Prandial Blood Sugar", unit: "mg/dL", status: "pending", machine_id: "", machine_name: "" },
+  { code: "HBA1C", name: "Glycosylated Hemoglobin", unit: "%", status: "pending", machine_id: "", machine_name: "" },
+  { code: "UREA", name: "Blood Urea", unit: "mg/dL", status: "pending", machine_id: "", machine_name: "" },
+  { code: "CREAT", name: "Serum Creatinine", unit: "mg/dL", status: "pending", machine_id: "", machine_name: "" },
+  { code: "URIC", name: "Uric Acid", unit: "mg/dL", status: "pending", machine_id: "", machine_name: "" },
+  { code: "CHOL", name: "Total Cholesterol", unit: "mg/dL", status: "pending", machine_id: "", machine_name: "" },
+  { code: "TG", name: "Triglycerides", unit: "mg/dL", status: "pending", machine_id: "", machine_name: "" },
+  { code: "HDL", name: "HDL Cholesterol", unit: "mg/dL", status: "pending", machine_id: "", machine_name: "" },
+  { code: "LDL", name: "LDL Cholesterol", unit: "mg/dL", status: "pending", machine_id: "", machine_name: "" },
+  { code: "SGOT", name: "SGOT (AST)", unit: "U/L", status: "pending", machine_id: "", machine_name: "" },
+  { code: "SGPT", name: "SGPT (ALT)", unit: "U/L", status: "pending", machine_id: "", machine_name: "" },
+  { code: "TBIL", name: "Total Bilirubin", unit: "mg/dL", status: "pending", machine_id: "", machine_name: "" },
+  { code: "TSH", name: "Thyroid Stimulating Hormone", unit: "mIU/L", status: "pending", machine_id: "", machine_name: "" },
 ];
 
 const statusColor = (s: string) => {
@@ -55,6 +57,8 @@ const LimsDemo = () => {
   const [customCode, setCustomCode] = useState("");
   const [customName, setCustomName] = useState("");
   const [customUnit, setCustomUnit] = useState("");
+  const [customMachineId, setCustomMachineId] = useState("");
+  const [customMachineName, setCustomMachineName] = useState("");
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
 
   const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID || "rpbkilhzulaugzrlatts";
@@ -156,11 +160,13 @@ const LimsDemo = () => {
     if (!customCode.trim() || !customName.trim()) return;
     setSelectedTests((prev) => [
       ...prev,
-      { code: customCode.trim(), name: customName.trim(), unit: customUnit.trim(), status: "pending" },
+      { code: customCode.trim(), name: customName.trim(), unit: customUnit.trim(), status: "pending", machine_id: customMachineId.trim(), machine_name: customMachineName.trim() },
     ]);
     setCustomCode("");
     setCustomName("");
     setCustomUnit("");
+    setCustomMachineId("");
+    setCustomMachineName("");
   };
 
   const copyToClipboard = (text: string) => {
@@ -211,10 +217,12 @@ const LimsDemo = () => {
                 </div>
               </div>
 
-              <div className="flex gap-2 items-end">
+              <div className="flex gap-2 items-end flex-wrap">
                 <Input placeholder="Code" value={customCode} onChange={(e) => setCustomCode(e.target.value)} className="w-24" />
-                <Input placeholder="Test Name" value={customName} onChange={(e) => setCustomName(e.target.value)} className="flex-1" />
+                <Input placeholder="Test Name" value={customName} onChange={(e) => setCustomName(e.target.value)} className="flex-1 min-w-[120px]" />
                 <Input placeholder="Unit" value={customUnit} onChange={(e) => setCustomUnit(e.target.value)} className="w-24" />
+                <Input placeholder="Machine ID" value={customMachineId} onChange={(e) => setCustomMachineId(e.target.value)} className="w-28" />
+                <Input placeholder="Machine Name" value={customMachineName} onChange={(e) => setCustomMachineName(e.target.value)} className="w-36" />
                 <Button size="sm" variant="outline" onClick={addCustomTest}><Plus className="h-4 w-4" /></Button>
               </div>
 
@@ -269,6 +277,8 @@ const LimsDemo = () => {
                                   <TableHead>Code</TableHead>
                                   <TableHead>Test Name</TableHead>
                                   <TableHead>Unit</TableHead>
+                                  <TableHead>Machine ID</TableHead>
+                                  <TableHead>Machine Name</TableHead>
                                   <TableHead>Status</TableHead>
                                   <TableHead>Result</TableHead>
                                   <TableHead>Flag</TableHead>
@@ -282,6 +292,8 @@ const LimsDemo = () => {
                                       <TableCell className="font-mono">{t.code}</TableCell>
                                       <TableCell>{t.name}</TableCell>
                                       <TableCell>{res?.unit || t.unit}</TableCell>
+                                      <TableCell className="font-mono text-xs">{t.machine_id || "—"}</TableCell>
+                                      <TableCell className="text-xs">{t.machine_name || "—"}</TableCell>
                                       <TableCell><Badge variant={statusColor(t.status)} className="text-xs">{t.status}</Badge></TableCell>
                                       <TableCell className="font-mono">{res?.result_value || "—"}</TableCell>
                                       <TableCell>{res?.flag && <Badge variant={res.flag === "Abnormal" ? "destructive" : "outline"} className="text-xs">{res.flag}</Badge>}</TableCell>
@@ -364,7 +376,10 @@ const LimsDemo = () => {
                     order_id: "uuid",
                     sample_id: "BARCODE123",
                     patient_name: "John Doe",
-                    tests: [{ code: "CBC", name: "Complete Blood Count", unit: "" }, { code: "FBS", name: "Fasting Blood Sugar", unit: "mg/dL" }],
+                    tests: [
+                      { code: "CBC", name: "Complete Blood Count", unit: "", machine_id: "MACH001", machine_name: "Sysmex XN-1000" },
+                      { code: "FBS", name: "Fasting Blood Sugar", unit: "mg/dL", machine_id: "MACH002", machine_name: "Vitros 5600" },
+                    ],
                   }, null, 2)}</pre>
                 </div>
               </div>
