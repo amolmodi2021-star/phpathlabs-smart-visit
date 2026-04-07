@@ -167,6 +167,7 @@ const CompletedHomeVisits = () => {
     onSuccess: () => {
       toast.success("Home visit registered successfully!");
       qc.invalidateQueries({ queryKey: ["completed_home_visits"] });
+      qc.invalidateQueries({ queryKey: ["home_visits"] });
       qc.invalidateQueries({ queryKey: ["registered_home_visit_ids"] });
       qc.invalidateQueries({ queryKey: ["patient_registrations"] });
       qc.invalidateQueries({ queryKey: ["patient_registrations_count"] });
