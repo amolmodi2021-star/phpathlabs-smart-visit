@@ -17,6 +17,7 @@ const CompletedHomeVisits = () => {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [reviewVisit, setReviewVisit] = useState<any>(null);
+  const [editVisit, setEditVisit] = useState<any>(null);
 
   const handleSearch = (val: string) => {
     setSearch(val);
