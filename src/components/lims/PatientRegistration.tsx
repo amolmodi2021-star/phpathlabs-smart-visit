@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toast } from "sonner";
-import { Search, X, Save, Printer, Send } from "lucide-react";
+import { Search, X, Save, Printer, Send, ChevronDown, ChevronUp } from "lucide-react";
 import { getTests, TestItem } from "@/lib/tests";
 import InvoicePreview from "./InvoicePreview";
 
