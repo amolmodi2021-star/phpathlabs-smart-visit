@@ -155,16 +155,16 @@ const RegisteredPatients = () => {
               return (
                 <TableRow key={r.id} className={`${r.bill_cancelled ? "opacity-60" : ""} ${r.is_stat && !r.bill_cancelled && r.status !== "dispatched" ? "bg-destructive/5" : ""}`}>
                   <TableCell className="font-mono text-xs">
-                    <div className="flex items-center gap-1.5">
-                      {r.is_stat && !r.bill_cancelled && r.status !== "dispatched" && (
-                        <span className="relative flex h-2.5 w-2.5 shrink-0"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75"></span><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive"></span></span>
-                      )}
-                      {r.invoice_number}
-                    </div>
+                    {r.invoice_number}
                   </TableCell>
                   <TableCell className="text-xs">{r.created_at ? format(new Date(r.created_at), "dd-MM-yyyy HH:mm") : "—"}</TableCell>
                   <TableCell>
-                    <div className="text-sm font-medium">{r.title} {r.patient_name}</div>
+                    <div className="text-sm font-medium flex items-center gap-1.5">
+                      {r.is_stat && !r.bill_cancelled && r.status !== "dispatched" && (
+                        <span className="relative flex h-2.5 w-2.5 shrink-0"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75"></span><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive"></span></span>
+                      )}
+                      {r.title} {r.patient_name}
+                    </div>
                     {r.umr_number && <div className="text-xs text-muted-foreground">{r.umr_number}</div>}
                   </TableCell>
                   <TableCell className="text-sm">{r.mobile_number}</TableCell>
