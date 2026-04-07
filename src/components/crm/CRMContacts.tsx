@@ -15,6 +15,35 @@ import { generateAndUploadCard, getTemplateAssets, type CardData } from "@/lib/c
 import { Download, Search, Pencil, Upload, Trash2, Send } from "lucide-react";
 import { toast } from "sonner";
 
+const normalizePrimaryKeyName = (value: unknown) =>
+  String(value || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/\|/g, " ")
+    .toUpperCase();
+
+const buildContactPrimaryKey = ({
+  umr,
+  mobile,
+  location,
+  patientName,
+}: {
+  umr?: unknown;
+  mobile: string;
+  location?: unknown;
+  patientName?: unknown;
+}) => {
+  const normalizedUmr = String(umr || "").trim();
+  const normalizedLocation = String(location || "").trim().toUpperCase();
+  const normalizedName = normalizePrimaryKeyName(patientName);
+
+  if (!normalizedUmr && normalizedLocation === "NON PHPL" && normalizedName) {
+    return `|${mobile}|${normalizedName}`;
+  }
+
+  return `${normalizedUmr}|${mobile}`;
+};
+
 const CRMContacts = () => {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
@@ -215,7 +244,12 @@ const CRMContacts = () => {
     const umr = String(updates.umr_number || "").trim();
     const mob = String(updates.mobile_number || "").replace(/\D/g, "").slice(-10);
     if (mob.length === 10) {
-      updates.primary_key = `${umr}|${mob}`;
+      updates.primary_key = buildContactPrimaryKey({
+        umr,
+        mobile: mob,
+        location: updates.location,
+        patientName: updates.patient_name,
+      });
     }
     const { error } = await supabase.from("crm_contacts").update(updates).eq("id", editContact.id);
     setEditSaving(false);
@@ -522,12 +556,12 @@ const CRMContacts = () => {
         if (blacklist.has(rawMob)) { skipped++; continue; }
 
         const umr = umrCol ? String(row[umrCol] || "").trim() : "";
-        const pk = `${umr}|${rawMob}`;
+        const name = nameCol ? String(row[nameCol] || "").trim() : "";
+        const location = locationCol ? String(row[locationCol] || "").trim() || "NON PHPL" : "NON PHPL";
+        const pk = buildContactPrimaryKey({ umr, mobile: rawMob, location, patientName: name });
         if (seenPks.has(pk)) { skipped++; continue; }
         seenPks.add(pk);
 
-        const name = nameCol ? String(row[nameCol] || "").trim() : "";
-        const location = locationCol ? String(row[locationCol] || "").trim() || "NON PHPL" : "NON PHPL";
         const discount = discountCol ? (parseFloat(String(row[discountCol] || "20")) || 20) : 20;
         const tag = tagCol ? String(row[tagCol] || "").trim() || null : null;
 

@@ -35,6 +35,36 @@ const COLUMN_MAP: Record<number, string> = {
   17: "created_by",
 };
 
+function normalizePrimaryKeyName(val: unknown): string {
+  return String(val || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/\|/g, " ")
+    .toUpperCase();
+}
+
+function buildContactPrimaryKey({
+  umr,
+  mobile,
+  location,
+  patientName,
+}: {
+  umr?: unknown;
+  mobile: string;
+  location?: unknown;
+  patientName?: unknown;
+}) {
+  const normalizedUmr = String(umr || "").trim();
+  const normalizedLocation = String(location || "").trim().toUpperCase();
+  const normalizedName = normalizePrimaryKeyName(patientName);
+
+  if (!normalizedUmr && normalizedLocation === "NON PHPL" && normalizedName) {
+    return `|${mobile}|${normalizedName}`;
+  }
+
+  return `${normalizedUmr}|${mobile}`;
+}
+
 function normalizeMobile(val: unknown): string {
   const s = String(val || "").replace(/\D/g, "");
   return s.slice(-10);
@@ -52,7 +82,12 @@ function mapRow(row: Record<string, unknown>): Record<string, unknown> | null {
   const mob = normalizeMobile(mapped.mobile_number);
   if (mob.length !== 10) return null;
 
-  mapped.primary_key = `${umr}|${mob}`;
+  mapped.primary_key = buildContactPrimaryKey({
+    umr,
+    mobile: mob,
+    location: mapped.location,
+    patientName: mapped.patient_name,
+  });
   mapped.mobile_number = mob;
   for (const f of ["gross_amount", "discount_amount", "net_amount", "paid_amount", "due_amount"]) {
     mapped[f] = parseFloat(String(mapped[f] || "0")) || 0;
