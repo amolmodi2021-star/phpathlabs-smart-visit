@@ -571,7 +571,120 @@ const CRMAbnormalTests = () => {
     }
   };
 
-  const handleSendWhatsApp = async () => {
+  // Preview card for single selection
+  const handlePreviewCard = async () => {
+    if (selected.size !== 1) return;
+    const pk = Array.from(selected)[0];
+    const g = groups.find((gr) => gr.primaryKey === pk);
+    if (!g) return;
+
+    let tests = expandedTests[g.primaryKey];
+    if (!tests) {
+      tests = await fetchTestsForPatient(g.primaryKey);
+    }
+    const fullGroup = { ...g, tests };
+
+    setPreviewGenerating(true);
+    setPreviewOpen(true);
+    setPreviewMobile(fullGroup.mobile.replace(/\D/g, "").slice(-10));
+    setPreviewGroup(fullGroup);
+
+    const result = await generateAbnormalCard(fullGroup);
+    setPreviewGenerating(false);
+    if (result) {
+      setPreviewImageUrl(result.publicUrl);
+      setPreviewFilePath(result.filePath);
+    } else {
+      toast.error("Failed to generate card preview");
+      setPreviewOpen(false);
+    }
+  };
+
+  // Send from preview dialog (uses previewMobile which may be overridden)
+  const handleSendFromPreview = async () => {
+    if (!previewGroup || !previewImageUrl) return;
+
+    const normalizedMobile = previewMobile.replace(/\D/g, "").slice(-10);
+    if (!normalizedMobile || normalizedMobile.length !== 10) {
+      return toast.error("Enter a valid 10-digit mobile number");
+    }
+
+    // Fetch settings
+    const { data: settings } = await supabase
+      .from("app_settings")
+      .select("setting_key, setting_value")
+      .like("setting_key", "wa_global_%");
+
+    const cfg: Record<string, string> = {};
+    (settings || []).forEach((s: any) => { cfg[s.setting_key] = s.setting_value; });
+
+    const { data: tmpl } = await supabase.from("marketing_templates").select("whatsapp_template_name, body_mapping, api_base_url, from_number").eq("template_name", "Abnormal PNG").maybeSingle();
+
+    const apiBaseUrl = cfg["wa_global_baseUrl"];
+    const apiKey = cfg["wa_global_apiKey"];
+    const templateName = tmpl?.whatsapp_template_name || "";
+    const authHeaderName = cfg["wa_global_authHeaderName"] || "apikey";
+    const authHeaderPrefix = cfg["wa_global_authHeaderPrefix"] || "";
+    const fromNumber = cfg["wa_global_fromNumber"] || "";
+    const campaignName = tmpl?.api_base_url || "";
+    const includeMediaHeader = tmpl?.from_number === "media_header_enabled";
+
+    if (!apiBaseUrl || !apiKey || !templateName) {
+      return toast.error("WhatsApp API not configured.");
+    }
+
+    setSending(true);
+    setSendPhase("Sending WhatsApp...");
+
+    const toNumber = `+91${normalizedMobile}`;
+    const components: Record<string, unknown> = {};
+    if (includeMediaHeader) {
+      components.header = { type: "image", image: { link: previewImageUrl } };
+    }
+    components.body = { params: [previewGroup.patientName.toUpperCase()] };
+
+    const payload: Record<string, unknown> = {
+      from: fromNumber,
+      to: toNumber,
+      templateName,
+      campaignName,
+      type: "template",
+      components,
+    };
+
+    try {
+      const proxyRes = await supabase.functions.invoke("whatsapp-proxy", {
+        body: { apiBaseUrl, apiKey, authHeaderName, authHeaderPrefix, payload },
+      });
+
+      if (proxyRes.error || proxyRes.data?.status >= 400) {
+        toast.error("Failed to send WhatsApp");
+      } else {
+        // Only update CRM if sent to original mobile (not a trial override)
+        const originalMobile = previewGroup.mobile.replace(/\D/g, "").slice(-10);
+        if (normalizedMobile === originalMobile) {
+          await supabase
+            .from("crm_contacts")
+            .update({
+              last_sent_type: "Abnormal History",
+              last_sent_date: new Date().toISOString(),
+            })
+            .eq("primary_key", previewGroup.primaryKey);
+          qc.invalidateQueries({ queryKey: ["crm-contacts"] });
+        }
+        toast.success("Abnormal card sent successfully!");
+      }
+    } catch {
+      toast.error("Failed to send WhatsApp");
+    }
+
+    setSending(false);
+    setSendPhase("");
+    setPreviewOpen(false);
+    setSelected(new Set());
+    qc.invalidateQueries({ queryKey: ["crm-sent-history"] });
+  };
+
     if (selected.size === 0) return toast.error("Select patients first");
 
     // Build full groups with tests loaded on demand
