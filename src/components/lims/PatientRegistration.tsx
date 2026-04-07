@@ -634,7 +634,7 @@ const PatientRegistration = () => {
                     </div>
                     <Button size="icon" variant="ghost" onClick={() => removeTest(t.test_id)}><X className="h-3.5 w-3.5" /></Button>
                   </div>
-                  {t.discount_applicable && (
+                  {t.discount_applicable && !isCreditPickup && (
                     <div className="flex items-center gap-2 text-sm">
                       <Label className="text-xs">Individual Discount:</Label>
                       <Select value={t.individual_discount_type || ""} onValueChange={v => updateTestDiscount(t.test_id, "individual_discount_type", v || null)}>
@@ -652,8 +652,12 @@ const PatientRegistration = () => {
             </div>
           )}
 
-          {/* Global Discount */}
-          {channelId && selectedChannel ? (
+          {/* Global Discount - hidden for credit pickup points */}
+          {isCreditPickup ? (
+            <div className="rounded-lg border border-muted bg-muted/30 p-3">
+              <p className="text-xs text-muted-foreground">Credit pickup point — discount not applicable</p>
+            </div>
+          ) : channelId && selectedChannel ? (
             <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-1">
               <Label className="text-sm font-semibold">Channel Discount Applied</Label>
               <p className="text-xs text-muted-foreground">
