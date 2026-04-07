@@ -375,7 +375,8 @@ const CRMAbnormalTests = () => {
       const bandsAboveH = bandsArr.filter((b: any) => b.position === "above-table").reduce((s: number, b: any) => s + (b.height || 40), 0);
       const bandsBelowH = bandsArr.filter((b: any) => b.position === "below-table").reduce((s: number, b: any) => s + (b.height || 40), 0);
 
-      const height = hdrH + bandsAboveH + tableHeaderH + group.tests.length * tRowHeight + bandsBelowH + footerH + padding * 2;
+      const sortedTestsForHeight = [...group.tests].sort((a, b) => (b.test_date || "").localeCompare(a.test_date || ""));
+      const height = hdrH + bandsAboveH + tableHeaderH + sortedTestsForHeight.length * tRowHeight + bandsBelowH + footerH + padding * 2;
 
       const canvas = document.createElement("canvas");
       canvas.width = cw;
@@ -455,7 +456,12 @@ const CRMAbnormalTests = () => {
       fillTextFit(ctx, "Normal Range", colStarts[3], hdrMid, colMaxWidths[3], hdrFont, 0.6, "center");
 
       // Table rows
-      group.tests.forEach((t, i) => {
+      const sortedTests = [...group.tests].sort((a, b) => {
+        const da = a.test_date || "";
+        const db = b.test_date || "";
+        return db.localeCompare(da);
+      });
+      sortedTests.forEach((t, i) => {
         const y = tableY + tableHeaderH + i * tRowHeight;
         if (i % 2 === 1) {
           ctx.fillStyle = tAltRowColor;
