@@ -14,6 +14,7 @@ import { Upload, Search, Send, ChevronDown, ChevronRight, Trash2, Download, Chev
 import { toast } from "sonner";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { sortAbnormalTestsByDateDesc } from "@/lib/abnormalTests";
 
 interface AbnormalTest {
   id: string;
@@ -175,7 +176,7 @@ const CRMAbnormalTests = () => {
 
     if (error) throw error;
 
-    const tests = (data as AbnormalTest[]) || [];
+    const tests = sortAbnormalTestsByDateDesc((data as AbnormalTest[]) || []);
     setExpandedTests((prev) => ({ ...prev, [pk]: tests }));
     return tests;
   }, []);
@@ -382,7 +383,7 @@ const CRMAbnormalTests = () => {
       const bandsAboveH = bandsArr.filter((b: any) => b.position === "above-table").reduce((s: number, b: any) => s + (b.height || 40), 0);
       const bandsBelowH = bandsArr.filter((b: any) => b.position === "below-table").reduce((s: number, b: any) => s + (b.height || 40), 0);
 
-      const sortedTestsForHeight = [...group.tests].sort((a, b) => (b.test_date || "").localeCompare(a.test_date || ""));
+      const sortedTestsForHeight = sortAbnormalTestsByDateDesc(group.tests);
       const height = hdrH + bandsAboveH + tableHeaderH + sortedTestsForHeight.length * tRowHeight + bandsBelowH + footerH + padding * 2;
 
       const canvas = document.createElement("canvas");
@@ -463,11 +464,7 @@ const CRMAbnormalTests = () => {
       fillTextFit(ctx, "Normal Range", colStarts[3], hdrMid, colMaxWidths[3], hdrFont, 0.6, "center");
 
       // Table rows
-      const sortedTests = [...group.tests].sort((a, b) => {
-        const da = a.test_date || "";
-        const db = b.test_date || "";
-        return db.localeCompare(da);
-      });
+      const sortedTests = sortAbnormalTestsByDateDesc(group.tests);
       sortedTests.forEach((t, i) => {
         const y = tableY + tableHeaderH + i * tRowHeight;
         if (i % 2 === 1) {
