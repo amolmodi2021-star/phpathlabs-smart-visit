@@ -19,9 +19,18 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
 
   if (!data) return null;
 
-  const tests = data.tests || [];
+  const allTests = data.tests || [];
+  const cancelledTests = Array.isArray(data.cancelled_tests) ? data.cancelled_tests : [];
+  const cancelledTestIds = new Set(cancelledTests.map((ct: any) => ct.test_id));
+  const tests = allTests.filter((t: any) => !cancelledTestIds.has(t.test_id));
   const createdAt = data.created_at ? new Date(data.created_at) : new Date();
   const payments = Array.isArray(data.payments) ? data.payments : [];
+
+  // Recalculate amounts based on active tests only
+  const activeGross = tests.reduce((sum: number, t: any) => sum + Number(t.price || 0), 0);
+  const activeNet = tests.reduce((sum: number, t: any) => sum + Number(t.discounted_price || t.discountedPrice || t.price || 0), 0);
+  const activeDiscount = activeGross - activeNet;
+  const activeFinal = activeNet + Number(data.home_visit_charges || 0);
 
   const handlePrint = () => {
     const printWindow = window.open("", "_blank");
@@ -132,11 +141,11 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
           </table>
 
           <div style={{ fontSize: 13, marginTop: 8 }}>
-            <div style={{ display: "flex", justifyContent: "space-between" }}><span>Gross Amount:</span><span>₹{data.gross_amount}</span></div>
-            {data.discount_amount > 0 && <div style={{ display: "flex", justifyContent: "space-between", color: "green" }}><span>Discount:</span><span>-₹{data.discount_amount}</span></div>}
+            <div style={{ display: "flex", justifyContent: "space-between" }}><span>Gross Amount:</span><span>₹{activeGross}</span></div>
+            {activeDiscount > 0 && <div style={{ display: "flex", justifyContent: "space-between", color: "green" }}><span>Discount:</span><span>-₹{activeDiscount}</span></div>}
             {data.home_visit_charges > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}><span>Home Visit Charges:</span><span>+₹{data.home_visit_charges}</span></div>}
             <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", borderTop: "1px solid #ddd", paddingTop: 4, marginTop: 4 }}>
-              <span>Final Amount:</span><span>₹{data.final_amount}</span>
+              <span>Final Amount:</span><span>₹{activeFinal}</span>
             </div>
             {payments.length > 0 && (
               <div style={{ marginTop: 4 }}>
@@ -153,6 +162,26 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
             {data.due_amount > 0 && (
               <div style={{ display: "flex", justifyContent: "space-between", color: "red", fontWeight: "bold" }}>
                 <span>Due:</span><span>₹{data.due_amount}</span>
+              </div>
+            )}
+            {data.refund_amount > 0 && (
+              <div style={{ marginTop: 8, borderTop: "1px solid #ddd", paddingTop: 6 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", color: "#ea580c", fontWeight: "bold" }}>
+                  <span>Refund Amount:</span><span>₹{data.refund_amount}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                  <span>Refund Mode:</span><span>{data.refund_mode || "—"}</span>
+                </div>
+                {data.refund_date && (
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                    <span>Refund Date:</span><span>{format(new Date(data.refund_date), "dd-MM-yyyy hh:mm a")}</span>
+                  </div>
+                )}
+                {cancelledTests.length > 0 && (
+                  <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>
+                    <span>Cancelled Tests: {cancelledTests.map((ct: any) => ct.test_name || ct.test_id).join(", ")}</span>
+                  </div>
+                )}
               </div>
             )}
           </div>
