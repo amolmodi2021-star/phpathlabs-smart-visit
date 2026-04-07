@@ -307,7 +307,7 @@ const ReportParameters = () => {
     setNormalRanges(prev => [...prev, {
       gender, age_min: 0, age_max: 150,
       normal_range_low: null, normal_range_high: null, normal_range_text: "",
-      range_type: "numeric", expected_value: "",
+      range_type: "numeric", expected_value: "", descriptive_options: [],
     }]);
   };
 
