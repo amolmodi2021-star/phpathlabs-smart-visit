@@ -538,6 +538,12 @@ const CRMContacts = () => {
         if (error) { console.error(error); failed += chunk.length; } else { added += chunk.length; }
       }
 
+      // Auto-cleanup NON PHPL duplicates
+      const { data: deletedNonPhpl } = await supabase.rpc("cleanup_non_phpl_duplicates" as any);
+      if (deletedNonPhpl && Number(deletedNonPhpl) > 0) {
+        toast.info(`${deletedNonPhpl} NON PHPL duplicate(s) auto-removed`);
+      }
+
       setBulkUpdating(false);
       qc.invalidateQueries({ queryKey: ["crm-contacts"] });
       qc.invalidateQueries({ queryKey: ["crm-contacts-count"] });
