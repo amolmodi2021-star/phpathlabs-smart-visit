@@ -1306,6 +1306,8 @@ export type Database = {
       patient_registrations: {
         Row: {
           address: string | null
+          bill_cancelled: boolean
+          cancelled_tests: Json
           created_at: string
           discount_amount: number
           dob: string | null
@@ -1326,6 +1328,9 @@ export type Database = {
           patient_name: string
           payments: Json
           pickup_point_id: string | null
+          refund_amount: number
+          refund_date: string | null
+          refund_mode: string | null
           status: string
           tests: Json
           title: string | null
@@ -1335,6 +1340,8 @@ export type Database = {
         }
         Insert: {
           address?: string | null
+          bill_cancelled?: boolean
+          cancelled_tests?: Json
           created_at?: string
           discount_amount?: number
           dob?: string | null
@@ -1355,6 +1362,9 @@ export type Database = {
           patient_name: string
           payments?: Json
           pickup_point_id?: string | null
+          refund_amount?: number
+          refund_date?: string | null
+          refund_mode?: string | null
           status?: string
           tests?: Json
           title?: string | null
@@ -1364,6 +1374,8 @@ export type Database = {
         }
         Update: {
           address?: string | null
+          bill_cancelled?: boolean
+          cancelled_tests?: Json
           created_at?: string
           discount_amount?: number
           dob?: string | null
@@ -1384,6 +1396,9 @@ export type Database = {
           patient_name?: string
           payments?: Json
           pickup_point_id?: string | null
+          refund_amount?: number
+          refund_date?: string | null
+          refund_mode?: string | null
           status?: string
           tests?: Json
           title?: string | null
