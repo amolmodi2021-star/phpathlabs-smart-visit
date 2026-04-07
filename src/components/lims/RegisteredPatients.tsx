@@ -44,7 +44,14 @@ const RegisteredPatients = () => {
       const { data } = await supabase.rpc("get_patient_registrations_paginated" as any, {
         p_page: page, p_page_size: PAGE_SIZE, p_search: debouncedSearch,
       });
-      return (data || []) as any[];
+      const rows = (data || []) as any[];
+      // STAT (urgent) items that are not dispatched/cancelled appear on top
+      rows.sort((a: any, b: any) => {
+        const aUrgent = a.is_stat && !a.bill_cancelled && a.status !== "dispatched" ? 1 : 0;
+        const bUrgent = b.is_stat && !b.bill_cancelled && b.status !== "dispatched" ? 1 : 0;
+        return bUrgent - aUrgent;
+      });
+      return rows;
     },
   });
 
