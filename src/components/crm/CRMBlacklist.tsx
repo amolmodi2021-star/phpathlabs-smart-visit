@@ -86,6 +86,7 @@ const CRMBlacklist = () => {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2 items-center">
+        <Input placeholder="Search blacklist..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-48" />
         <Input placeholder="Enter mobile number" value={newNumber} onChange={(e) => setNewNumber(e.target.value)} className="w-48"
           onKeyDown={(e) => e.key === "Enter" && addNumber()} />
         <Button size="sm" onClick={addNumber}><Plus className="h-4 w-4 mr-1" />Add</Button>
