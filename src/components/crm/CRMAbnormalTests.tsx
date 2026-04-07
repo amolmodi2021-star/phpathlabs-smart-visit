@@ -685,6 +685,7 @@ const CRMAbnormalTests = () => {
     qc.invalidateQueries({ queryKey: ["crm-sent-history"] });
   };
 
+  const handleSendWhatsApp = async () => {
     if (selected.size === 0) return toast.error("Select patients first");
 
     // Build full groups with tests loaded on demand
