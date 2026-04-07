@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
@@ -36,6 +37,8 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   const [address, setAddress] = useState("");
   const [mobileNumber, setMobileNumber] = useState("");
   const [status, setStatus] = useState("");
+  const [remarks, setRemarks] = useState("");
+  const [isStat, setIsStat] = useState(false);
 
   // Cancel / Refund
   const [cancelledTestIds, setCancelledTestIds] = useState<Set<string>>(new Set());
@@ -57,6 +60,8 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       setAddress(reg.address || "");
       setMobileNumber(reg.mobile_number || "");
       setStatus(reg.status || "registered");
+      setRemarks(reg.remarks || "");
+      setIsStat(reg.is_stat || false);
       const existing = Array.isArray(reg.cancelled_tests) ? reg.cancelled_tests : [];
       setCancelledTestIds(new Set(existing.map((t: any) => t.test_id || t)));
       setRefundMode("Cash");
@@ -101,6 +106,8 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         address: address.toUpperCase(),
         mobile_number: mobileNumber.replace(/\D/g, "").slice(-10),
         status,
+        remarks: remarks.trim() || null,
+        is_stat: isStat,
       } as any).eq("id", reg.id);
       if (error) throw error;
       qc.invalidateQueries({ queryKey: ["patient_registrations"] });
