@@ -779,7 +779,7 @@ const CRMContacts = () => {
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Search name, mobile, UMR..." value={searchInput} onChange={(e) => setSearchInput(e.target.value)} className="pl-8" />
         </div>
-        <Select value={locationFilter} onValueChange={(v) => { setLocationFilter(v); setPage(0); }}>
+        <Select value={locationFilter} onValueChange={handleLocationChange}>
           <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">All Locations</SelectItem>
@@ -787,7 +787,7 @@ const CRMContacts = () => {
             <SelectItem value="NON PHPL">NON PHPL</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={tagFilter} onValueChange={(v) => { setTagFilter(v); setPage(0); }}>
+        <Select value={tagFilter} onValueChange={handleTagChange}>
           <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">All Tags</SelectItem>
