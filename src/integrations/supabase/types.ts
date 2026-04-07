@@ -2081,6 +2081,7 @@ export type Database = {
         Row: {
           bold_in_report: boolean
           created_at: string
+          department_id: string | null
           description: string | null
           discount_applicable: boolean
           display_name: string | null
@@ -2090,8 +2091,10 @@ export type Database = {
           incentive_amount: number
           instrument_name: string | null
           interpretation: string | null
+          is_outsourced: boolean
           is_single_parameter: boolean
           method: string | null
+          outsourced_caption: string | null
           price: number
           sample_type: string | null
           show_in_report: boolean
@@ -2102,6 +2105,7 @@ export type Database = {
         Insert: {
           bold_in_report?: boolean
           created_at?: string
+          department_id?: string | null
           description?: string | null
           discount_applicable?: boolean
           display_name?: string | null
@@ -2111,8 +2115,10 @@ export type Database = {
           incentive_amount?: number
           instrument_name?: string | null
           interpretation?: string | null
+          is_outsourced?: boolean
           is_single_parameter?: boolean
           method?: string | null
+          outsourced_caption?: string | null
           price?: number
           sample_type?: string | null
           show_in_report?: boolean
@@ -2123,6 +2129,7 @@ export type Database = {
         Update: {
           bold_in_report?: boolean
           created_at?: string
+          department_id?: string | null
           description?: string | null
           discount_applicable?: boolean
           display_name?: string | null
@@ -2132,8 +2139,10 @@ export type Database = {
           incentive_amount?: number
           instrument_name?: string | null
           interpretation?: string | null
+          is_outsourced?: boolean
           is_single_parameter?: boolean
           method?: string | null
+          outsourced_caption?: string | null
           price?: number
           sample_type?: string | null
           show_in_report?: boolean
@@ -2141,7 +2150,15 @@ export type Database = {
           test_name?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "tests_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "report_departments"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       umr_counter: {
         Row: {

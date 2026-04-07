@@ -9,8 +9,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Search, Download, Upload, Trash2, Pencil, Loader2, Lock, Unlock } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import { exportToExcel, parseExcelFile, downloadTemplate } from "@/lib/excel";
 import { getTests, saveTest, deleteTest, bulkInsertTests } from "@/lib/tests";
 import TestParameterManager from "@/components/TestParameterManager";
@@ -24,6 +26,7 @@ const defaultForm = {
   description: "", incentive_allowed: false, incentive_amount: "",
   display_name: "", bold_in_report: false, show_in_report: true, is_single_parameter: false,
   instrument_name: "", method: "", sample_type: "", interpretation: "",
+  is_outsourced: false, outsourced_caption: "", department_id: "",
 };
 
 const TestManagement = () => {
@@ -45,6 +48,14 @@ const TestManagement = () => {
     retryDelay: 3000,
   });
 
+  const { data: departments = [] } = useQuery({
+    queryKey: ["departments"],
+    queryFn: async () => {
+      const { data } = await supabase.from("report_departments").select("*").order("display_order");
+      return data || [];
+    },
+  });
+
   const saveMutation = useMutation({
     mutationFn: async (values: typeof form) => {
       const payload = {
@@ -63,6 +74,9 @@ const TestManagement = () => {
         method: values.method || null,
         sample_type: values.sample_type || null,
         interpretation: values.interpretation || null,
+        is_outsourced: values.is_outsourced,
+        outsourced_caption: values.outsourced_caption || null,
+        department_id: values.department_id || null,
       };
       await saveTest(payload, editing?.id);
     },
@@ -108,6 +122,8 @@ const TestManagement = () => {
       show_in_report: t.show_in_report ?? true, is_single_parameter: t.is_single_parameter ?? false,
       instrument_name: t.instrument_name || "", method: t.method || "",
       sample_type: t.sample_type || "", interpretation: t.interpretation || "",
+      is_outsourced: t.is_outsourced ?? false, outsourced_caption: t.outsourced_caption || "",
+      department_id: t.department_id || "",
     });
     setIncentiveLocked(true);
     setIncentivePassword("");
@@ -154,10 +170,26 @@ const TestManagement = () => {
                 <div><Label>Display Name</Label><Input value={form.display_name} onChange={(e) => setForm(p => ({ ...p, display_name: e.target.value }))} placeholder="Name shown in reports (optional)" /></div>
                 <div><Label>Price (₹) *</Label><Input type="number" value={form.price} onChange={(e) => setForm(p => ({ ...p, price: e.target.value }))} required /></div>
 
+                <div>
+                  <Label>Department</Label>
+                  <Select value={form.department_id} onValueChange={(v) => setForm(p => ({ ...p, department_id: v }))}>
+                    <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
+                    <SelectContent>
+                      {departments.map((d: any) => (
+                        <SelectItem key={d.id} value={d.id}>{d.department_name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   <div className="flex items-center gap-3"><Switch checked={form.fasting_required} onCheckedChange={(v) => setForm(p => ({ ...p, fasting_required: v }))} /><Label className="text-sm">Fasting Required</Label></div>
                   <div className="flex items-center gap-3"><Switch checked={form.discount_applicable} onCheckedChange={(v) => setForm(p => ({ ...p, discount_applicable: v }))} /><Label className="text-sm">Discount Applicable</Label></div>
+                  <div className="flex items-center gap-3"><Switch checked={form.is_outsourced} onCheckedChange={(v) => setForm(p => ({ ...p, is_outsourced: v, outsourced_caption: v ? p.outsourced_caption : "" }))} /><Label className="text-sm">Mark as Outsourced</Label></div>
                 </div>
+                {form.is_outsourced && (
+                  <div><Label>Outsourced Caption</Label><Input value={form.outsourced_caption} onChange={(e) => setForm(p => ({ ...p, outsourced_caption: e.target.value }))} placeholder="e.g. This test was outsourced to XYZ Lab" /></div>
+                )}
 
                 {/* Report display settings */}
                 <div className="border rounded-md p-3 space-y-3 bg-muted/30">
