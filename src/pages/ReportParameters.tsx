@@ -85,6 +85,8 @@ const ReportParameters = () => {
           normal_range_low: existing?.normal_range_low ?? null,
           normal_range_high: existing?.normal_range_high ?? null,
           normal_range_text: existing?.normal_range_text ?? "",
+          range_type: existing?.range_type ?? "numeric",
+          expected_value: existing?.expected_value ?? "",
         });
       }
       setNormalRanges(newRanges);
