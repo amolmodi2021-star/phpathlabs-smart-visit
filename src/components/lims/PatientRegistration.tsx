@@ -56,6 +56,7 @@ const PatientRegistration = () => {
   const [doctorName, setDoctorName] = useState("SELF");
   const [umrNumber, setUmrNumber] = useState("");
   const [address, setAddress] = useState("");
+  const [manualAge, setManualAge] = useState("");
 
   // Channel
   const [channelId, setChannelId] = useState("");
@@ -122,6 +123,15 @@ const PatientRegistration = () => {
   const selectedChannel = channels.find((c: any) => c.id === channelId);
   const isCreditPickup = visitType === "pickup_point" && selectedPickup?.billing_type === "credit";
   const isCreditChannel = !!channelId && selectedChannel?.billing_type === "credit";
+  const isPickup = visitType === "pickup_point";
+
+  // Auto-populate mobile from pickup point phone
+  useEffect(() => {
+    if (isPickup && pickupPointId && selectedPickup?.phone) {
+      const cleanPhone = selectedPickup.phone.replace(/\D/g, "").slice(-10);
+      if (cleanPhone.length === 10) setMobileNumber(cleanPhone);
+    }
+  }, [pickupPointId, isPickup, selectedPickup]);
 
   // Title → Gender auto-link
   useEffect(() => {
@@ -129,12 +139,13 @@ const PatientRegistration = () => {
     else if (["Mrs.", "Ms.", "Miss"].includes(title)) setGender("Female");
   }, [title]);
 
-  // Age calc
+  // Age calc - from DOB for non-pickup, manual for pickup
   const age = useMemo(() => {
+    if (isPickup) return manualAge;
     if (!dob) return "";
     const diff = Date.now() - new Date(dob).getTime();
     return `${Math.floor(diff / (365.25 * 24 * 60 * 60 * 1000))} Years`;
-  }, [dob]);
+  }, [dob, isPickup, manualAge]);
 
   // Patient search
   const searchPatients = async (mobile: string) => {
@@ -280,7 +291,7 @@ const PatientRegistration = () => {
       if (!patientName.trim()) throw new Error("Patient name is required");
       if (!title) throw new Error("Title is required");
       if (!gender) throw new Error("Gender is required");
-      if (!dob) throw new Error("Date of birth is required");
+      if (!isPickup && !dob) throw new Error("Date of birth is required");
       if (selectedTests.length === 0) throw new Error("Select at least one test");
       if (visitType !== "pickup_point" && !address.trim()) throw new Error("Address is required");
 
@@ -374,6 +385,7 @@ const PatientRegistration = () => {
     setAddress(""); setChannelId(""); setVisitType("lab_visit"); setPickupPointId("");
     setSelectedTests([]); setGlobalDiscountValue(0); setHomeVisitCharges(0);
     setSelectedModes(new Set()); setModeAmounts({}); setInvoiceData(null); setTriedSave(false);
+    setManualAge("");
   };
 
   return (
@@ -453,15 +465,24 @@ const PatientRegistration = () => {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className={triedSave && !dob ? "text-destructive" : ""}>DOB *</Label>
-              <Input type="date" value={dob} onChange={e => setDob(e.target.value)} />
-              {age && <p className="text-xs text-muted-foreground mt-1">Age: {age}</p>}
-            </div>
-            <div>
-              <Label>Doctor Name</Label>
-              <Input value={doctorName} onChange={e => setDoctorName(e.target.value)} placeholder="SELF" />
-            </div>
+            {isPickup ? (
+              <div>
+                <Label>Age</Label>
+                <Input value={manualAge} onChange={e => setManualAge(e.target.value)} placeholder="e.g. 35 Years" />
+              </div>
+            ) : (
+              <div>
+                <Label className={triedSave && !dob ? "text-destructive" : ""}>DOB *</Label>
+                <Input type="date" value={dob} onChange={e => setDob(e.target.value)} />
+                {age && <p className="text-xs text-muted-foreground mt-1">Age: {age}</p>}
+              </div>
+            )}
+            {!isPickup && (
+              <div>
+                <Label>Doctor Name</Label>
+                <Input value={doctorName} onChange={e => setDoctorName(e.target.value)} placeholder="SELF" />
+              </div>
+            )}
           </div>
 
           {/* Email toggle */}
@@ -483,24 +504,26 @@ const PatientRegistration = () => {
             </div>
           )}
 
-          {/* Channel */}
-          <div>
-            <Label>Channel (optional)</Label>
-            <Select value={channelId} onValueChange={(v) => { setChannelId(v === "__none__" ? "" : v); }}>
-              <SelectTrigger><SelectValue placeholder="No channel selected" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">None</SelectItem>
-                {channels.map((ch: any) => (
-                  <SelectItem key={ch.id} value={ch.id}>{ch.name} ({ch.billing_type})</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {selectedChannel && (
-              <p className="text-xs text-muted-foreground mt-1">
-                {selectedChannel.billing_type === "credit" ? "Credit channel — no payment required now" : `Debit channel • Default discount: ${selectedChannel.default_discount_pct}%`}
-              </p>
-            )}
-          </div>
+          {/* Channel - hidden for pickup point */}
+          {!isPickup && (
+            <div>
+              <Label>Channel (optional)</Label>
+              <Select value={channelId} onValueChange={(v) => { setChannelId(v === "__none__" ? "" : v); }}>
+                <SelectTrigger><SelectValue placeholder="No channel selected" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">None</SelectItem>
+                  {channels.map((ch: any) => (
+                    <SelectItem key={ch.id} value={ch.id}>{ch.name} ({ch.billing_type})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedChannel && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  {selectedChannel.billing_type === "credit" ? "Credit channel — no payment required now" : `Debit channel • Default discount: ${selectedChannel.default_discount_pct}%`}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Visit Type */}
           <div>
