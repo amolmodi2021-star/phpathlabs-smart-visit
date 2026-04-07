@@ -34,6 +34,7 @@ const statusColors: Record<string, string> = {
   Pending: "bg-warning text-warning-foreground",
   Completed: "bg-success text-success-foreground",
   Cancelled: "bg-destructive text-destructive-foreground",
+  Registered: "bg-primary text-primary-foreground",
 };
 
 const HomeVisits = () => {
