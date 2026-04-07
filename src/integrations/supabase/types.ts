@@ -1839,6 +1839,7 @@ export type Database = {
     }
     Functions: {
       cleanup_non_phpl_duplicates: { Args: never; Returns: number }
+      cleanup_non_phpl_mobile_duplicates: { Args: never; Returns: number }
       get_abnormal_history_counts: {
         Args: never
         Returns: {
