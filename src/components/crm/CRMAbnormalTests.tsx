@@ -10,9 +10,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, Search, Send, ChevronDown, ChevronRight, Trash2, Download, ChevronLeft } from "lucide-react";
+import { Upload, Search, Send, ChevronDown, ChevronRight, Trash2, Download, ChevronLeft, Eye } from "lucide-react";
 import { toast } from "sonner";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 
 interface AbnormalTest {
   id: string;
@@ -113,6 +114,12 @@ const CRMAbnormalTests = () => {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [page, setPage] = useState(0);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string>("");
+  const [previewFilePath, setPreviewFilePath] = useState<string>("");
+  const [previewMobile, setPreviewMobile] = useState<string>("");
+  const [previewGroup, setPreviewGroup] = useState<PatientGroup | null>(null);
+  const [previewGenerating, setPreviewGenerating] = useState(false);
   const qc = useQueryClient();
 
   // Debounce search
@@ -564,6 +571,120 @@ const CRMAbnormalTests = () => {
     }
   };
 
+  // Preview card for single selection
+  const handlePreviewCard = async () => {
+    if (selected.size !== 1) return;
+    const pk = Array.from(selected)[0];
+    const g = groups.find((gr) => gr.primaryKey === pk);
+    if (!g) return;
+
+    let tests = expandedTests[g.primaryKey];
+    if (!tests) {
+      tests = await fetchTestsForPatient(g.primaryKey);
+    }
+    const fullGroup = { ...g, tests };
+
+    setPreviewGenerating(true);
+    setPreviewOpen(true);
+    setPreviewMobile(fullGroup.mobile.replace(/\D/g, "").slice(-10));
+    setPreviewGroup(fullGroup);
+
+    const result = await generateAbnormalCard(fullGroup);
+    setPreviewGenerating(false);
+    if (result) {
+      setPreviewImageUrl(result.publicUrl);
+      setPreviewFilePath(result.filePath);
+    } else {
+      toast.error("Failed to generate card preview");
+      setPreviewOpen(false);
+    }
+  };
+
+  // Send from preview dialog (uses previewMobile which may be overridden)
+  const handleSendFromPreview = async () => {
+    if (!previewGroup || !previewImageUrl) return;
+
+    const normalizedMobile = previewMobile.replace(/\D/g, "").slice(-10);
+    if (!normalizedMobile || normalizedMobile.length !== 10) {
+      return toast.error("Enter a valid 10-digit mobile number");
+    }
+
+    // Fetch settings
+    const { data: settings } = await supabase
+      .from("app_settings")
+      .select("setting_key, setting_value")
+      .like("setting_key", "wa_global_%");
+
+    const cfg: Record<string, string> = {};
+    (settings || []).forEach((s: any) => { cfg[s.setting_key] = s.setting_value; });
+
+    const { data: tmpl } = await supabase.from("marketing_templates").select("whatsapp_template_name, body_mapping, api_base_url, from_number").eq("template_name", "Abnormal PNG").maybeSingle();
+
+    const apiBaseUrl = cfg["wa_global_baseUrl"];
+    const apiKey = cfg["wa_global_apiKey"];
+    const templateName = tmpl?.whatsapp_template_name || "";
+    const authHeaderName = cfg["wa_global_authHeaderName"] || "apikey";
+    const authHeaderPrefix = cfg["wa_global_authHeaderPrefix"] || "";
+    const fromNumber = cfg["wa_global_fromNumber"] || "";
+    const campaignName = tmpl?.api_base_url || "";
+    const includeMediaHeader = tmpl?.from_number === "media_header_enabled";
+
+    if (!apiBaseUrl || !apiKey || !templateName) {
+      return toast.error("WhatsApp API not configured.");
+    }
+
+    setSending(true);
+    setSendPhase("Sending WhatsApp...");
+
+    const toNumber = `+91${normalizedMobile}`;
+    const components: Record<string, unknown> = {};
+    if (includeMediaHeader) {
+      components.header = { type: "image", image: { link: previewImageUrl } };
+    }
+    components.body = { params: [previewGroup.patientName.toUpperCase()] };
+
+    const payload: Record<string, unknown> = {
+      from: fromNumber,
+      to: toNumber,
+      templateName,
+      campaignName,
+      type: "template",
+      components,
+    };
+
+    try {
+      const proxyRes = await supabase.functions.invoke("whatsapp-proxy", {
+        body: { apiBaseUrl, apiKey, authHeaderName, authHeaderPrefix, payload },
+      });
+
+      if (proxyRes.error || proxyRes.data?.status >= 400) {
+        toast.error("Failed to send WhatsApp");
+      } else {
+        // Only update CRM if sent to original mobile (not a trial override)
+        const originalMobile = previewGroup.mobile.replace(/\D/g, "").slice(-10);
+        if (normalizedMobile === originalMobile) {
+          await supabase
+            .from("crm_contacts")
+            .update({
+              last_sent_type: "Abnormal History",
+              last_sent_date: new Date().toISOString(),
+            })
+            .eq("primary_key", previewGroup.primaryKey);
+          qc.invalidateQueries({ queryKey: ["crm-contacts"] });
+        }
+        toast.success("Abnormal card sent successfully!");
+      }
+    } catch {
+      toast.error("Failed to send WhatsApp");
+    }
+
+    setSending(false);
+    setSendPhase("");
+    setPreviewOpen(false);
+    setSelected(new Set());
+    qc.invalidateQueries({ queryKey: ["crm-sent-history"] });
+  };
+
   const handleSendWhatsApp = async () => {
     if (selected.size === 0) return toast.error("Select patients first");
 
@@ -754,6 +875,12 @@ const CRMAbnormalTests = () => {
                 ))}
               </SelectContent>
             </Select>
+            {selected.size === 1 && (
+              <Button size="sm" variant="outline" onClick={handlePreviewCard} disabled={sending || previewGenerating}>
+                <Eye className="h-4 w-4 mr-1" />
+                Preview & Send
+              </Button>
+            )}
             <Button size="sm" onClick={handleSendWhatsApp} disabled={sending}>
               <Send className="h-4 w-4 mr-1" />
               Send Abnormal Card ({selected.size})
@@ -898,6 +1025,43 @@ const CRMAbnormalTests = () => {
           </Button>
         </div>
       )}
+
+      {/* Preview Card Dialog */}
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-auto">
+          <DialogHeader>
+            <DialogTitle>Abnormal Card Preview</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {previewGenerating ? (
+              <div className="flex items-center justify-center py-12">
+                <p className="text-muted-foreground">Generating card...</p>
+              </div>
+            ) : previewImageUrl ? (
+              <img src={previewImageUrl} alt="Abnormal Card Preview" className="w-full rounded border" />
+            ) : null}
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Send to Mobile Number</label>
+              <Input
+                value={previewMobile}
+                onChange={(e) => setPreviewMobile(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                placeholder="10-digit mobile number"
+                maxLength={10}
+              />
+              <p className="text-xs text-muted-foreground">
+                Change this number to send a trial to yourself. Database will NOT be updated for overridden numbers.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPreviewOpen(false)}>Cancel</Button>
+            <Button onClick={handleSendFromPreview} disabled={sending || !previewImageUrl}>
+              <Send className="h-4 w-4 mr-1" />
+              {sending ? "Sending..." : "Send WhatsApp"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <DeletePasswordDialog
         open={deleteOpen}
