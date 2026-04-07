@@ -1402,6 +1402,7 @@ export type Database = {
           global_discount_value: number | null
           gross_amount: number
           home_visit_charges: number
+          home_visit_id: string | null
           id: string
           invoice_number: string
           is_stat: boolean
@@ -1440,6 +1441,7 @@ export type Database = {
           global_discount_value?: number | null
           gross_amount?: number
           home_visit_charges?: number
+          home_visit_id?: string | null
           id?: string
           invoice_number: string
           is_stat?: boolean
@@ -1478,6 +1480,7 @@ export type Database = {
           global_discount_value?: number | null
           gross_amount?: number
           home_visit_charges?: number
+          home_visit_id?: string | null
           id?: string
           invoice_number?: string
           is_stat?: boolean
@@ -1505,6 +1508,13 @@ export type Database = {
             columns: ["channel_id"]
             isOneToOne: false
             referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "patient_registrations_home_visit_id_fkey"
+            columns: ["home_visit_id"]
+            isOneToOne: false
+            referencedRelation: "home_visits"
             referencedColumns: ["id"]
           },
           {
