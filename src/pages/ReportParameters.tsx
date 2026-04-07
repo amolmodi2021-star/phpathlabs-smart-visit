@@ -478,20 +478,45 @@ const ReportParameters = () => {
                         {form.same_for_all_ages && (
                           <div className="text-xs text-muted-foreground">All Ages</div>
                         )}
-                        <div className="grid grid-cols-3 gap-2">
-                          <div>
-                            <Label className="text-xs">Low</Label>
-                            <Input type="number" step="any" value={r.normal_range_low ?? ""} onChange={(e) => updateRange(r._idx, "normal_range_low", e.target.value ? Number(e.target.value) : null)} placeholder="Low" />
-                          </div>
-                          <div>
-                            <Label className="text-xs">High</Label>
-                            <Input type="number" step="any" value={r.normal_range_high ?? ""} onChange={(e) => updateRange(r._idx, "normal_range_high", e.target.value ? Number(e.target.value) : null)} placeholder="High" />
-                          </div>
-                          <div>
-                            <Label className="text-xs">Display Text</Label>
-                            <Input value={r.normal_range_text} onChange={(e) => updateRange(r._idx, "normal_range_text", e.target.value)} placeholder="e.g. 4.0-11.0" />
-                          </div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <Label className="text-xs whitespace-nowrap">Range Type</Label>
+                          <Select value={r.range_type || "numeric"} onValueChange={(v) => updateRange(r._idx, "range_type", v)}>
+                            <SelectTrigger className="h-7 w-36">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="numeric">Numeric</SelectItem>
+                              <SelectItem value="qualitative">Qualitative</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
+                        {(r.range_type || "numeric") === "numeric" ? (
+                          <div className="grid grid-cols-3 gap-2">
+                            <div>
+                              <Label className="text-xs">Low</Label>
+                              <Input type="number" step="any" value={r.normal_range_low ?? ""} onChange={(e) => updateRange(r._idx, "normal_range_low", e.target.value ? Number(e.target.value) : null)} placeholder="Low" />
+                            </div>
+                            <div>
+                              <Label className="text-xs">High</Label>
+                              <Input type="number" step="any" value={r.normal_range_high ?? ""} onChange={(e) => updateRange(r._idx, "normal_range_high", e.target.value ? Number(e.target.value) : null)} placeholder="High" />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Display Text</Label>
+                              <Input value={r.normal_range_text} onChange={(e) => updateRange(r._idx, "normal_range_text", e.target.value)} placeholder="e.g. 4.0-11.0" />
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <Label className="text-xs">Expected Normal Value</Label>
+                              <Input value={r.expected_value || ""} onChange={(e) => updateRange(r._idx, "expected_value", e.target.value)} placeholder="e.g. Absent, Negative" />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Display Text</Label>
+                              <Input value={r.normal_range_text} onChange={(e) => updateRange(r._idx, "normal_range_text", e.target.value)} placeholder="e.g. Absent" />
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
