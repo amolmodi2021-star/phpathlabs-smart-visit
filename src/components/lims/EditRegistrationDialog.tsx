@@ -69,13 +69,10 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
     else if (["Mrs.", "Ms.", "Miss"].includes(title)) setGender("Female");
   }, [title]);
 
-  if (!reg) return null;
+  const tests: any[] = reg ? (Array.isArray(reg.tests) ? reg.tests : []) : [];
+  const alreadyCancelled = reg ? new Set((Array.isArray(reg.cancelled_tests) ? reg.cancelled_tests : []).map((t: any) => t.test_id || t)) : new Set<string>();
+  const isBillCancelled = reg?.bill_cancelled;
 
-  const tests: any[] = Array.isArray(reg.tests) ? reg.tests : [];
-  const alreadyCancelled = new Set((Array.isArray(reg.cancelled_tests) ? reg.cancelled_tests : []).map((t: any) => t.test_id || t));
-  const isBillCancelled = reg.bill_cancelled;
-
-  // Calculate refund for newly cancelled tests
   const newlyCancelled = [...cancelledTestIds].filter(id => !alreadyCancelled.has(id));
   const refundCalc = useMemo(() => {
     let refundAmount = 0;
@@ -87,6 +84,8 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
     });
     return refundAmount;
   }, [newlyCancelled, tests]);
+
+  if (!reg) return null;
 
   const handleSaveDetails = async () => {
     setSaving(true);
