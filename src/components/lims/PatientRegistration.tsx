@@ -57,6 +57,9 @@ const PatientRegistration = () => {
   const [umrNumber, setUmrNumber] = useState("");
   const [address, setAddress] = useState("");
 
+  // Channel
+  const [channelId, setChannelId] = useState("");
+
   // Visit type
   const [visitType, setVisitType] = useState("lab_visit");
   const [pickupPointId, setPickupPointId] = useState("");

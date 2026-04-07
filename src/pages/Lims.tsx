@@ -2,6 +2,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import PatientRegistration from "@/components/lims/PatientRegistration";
 import RegisteredPatients from "@/components/lims/RegisteredPatients";
 import PickupPointManager from "@/components/lims/PickupPointManager";
+import ChannelManager from "@/components/lims/ChannelManager";
 
 const Lims = () => {
   return (
@@ -12,6 +13,7 @@ const Lims = () => {
           <TabsTrigger value="register">New Registration</TabsTrigger>
           <TabsTrigger value="patients">Registered Patients</TabsTrigger>
           <TabsTrigger value="pickup">Pickup Points</TabsTrigger>
+          <TabsTrigger value="channels">Channels</TabsTrigger>
         </TabsList>
         <TabsContent value="register">
           <PatientRegistration />
@@ -21,6 +23,9 @@ const Lims = () => {
         </TabsContent>
         <TabsContent value="pickup">
           <PickupPointManager />
+        </TabsContent>
+        <TabsContent value="channels">
+          <ChannelManager />
         </TabsContent>
       </Tabs>
     </div>
