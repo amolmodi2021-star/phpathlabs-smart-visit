@@ -27,6 +27,7 @@ interface NormalRange {
   normal_range_text: string;
   range_type: string;
   expected_value: string;
+  descriptive_options: string[];
 }
 
 // No default age groups — users set ranges manually
@@ -88,6 +89,7 @@ const ReportParameters = () => {
           normal_range_text: existing?.normal_range_text ?? "",
           range_type: existing?.range_type ?? "numeric",
           expected_value: existing?.expected_value ?? "",
+          descriptive_options: existing?.descriptive_options ?? [],
         });
       }
       setNormalRanges(newRanges);
@@ -100,7 +102,7 @@ const ReportParameters = () => {
           newRanges.push(...existingForGender);
         } else {
           // Seed with one default range
-          newRanges.push({ gender, age_min: 0, age_max: 150, normal_range_low: null, normal_range_high: null, normal_range_text: "", range_type: "numeric", expected_value: "" });
+          newRanges.push({ gender, age_min: 0, age_max: 150, normal_range_low: null, normal_range_high: null, normal_range_text: "", range_type: "numeric", expected_value: "", descriptive_options: [] });
         }
       }
       setNormalRanges(newRanges);
@@ -131,6 +133,7 @@ const ReportParameters = () => {
         normal_range_text: r.normal_range_text || "",
         range_type: r.range_type || "numeric",
         expected_value: r.expected_value || "",
+        descriptive_options: Array.isArray(r.descriptive_options) ? r.descriptive_options : [],
       })));
     }
   };
@@ -171,6 +174,7 @@ const ReportParameters = () => {
             normal_range_text: r.normal_range_text || null,
             range_type: r.range_type || "numeric",
             expected_value: r.range_type === "qualitative" ? (r.expected_value || null) : null,
+            descriptive_options: r.range_type === "descriptive" ? (r.descriptive_options?.filter(o => o.trim()) || []) : [],
           }));
           await supabase.from("parameter_normal_ranges").insert(rangeInserts);
         }
@@ -304,7 +308,7 @@ const ReportParameters = () => {
     setNormalRanges(prev => [...prev, {
       gender, age_min: 0, age_max: 150,
       normal_range_low: null, normal_range_high: null, normal_range_text: "",
-      range_type: "numeric", expected_value: "",
+      range_type: "numeric", expected_value: "", descriptive_options: [],
     }]);
   };
 
@@ -487,6 +491,7 @@ const ReportParameters = () => {
                             <SelectContent>
                               <SelectItem value="numeric">Numeric</SelectItem>
                               <SelectItem value="qualitative">Qualitative</SelectItem>
+                              <SelectItem value="descriptive">Descriptive</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -505,7 +510,7 @@ const ReportParameters = () => {
                               <Input value={r.normal_range_text} onChange={(e) => updateRange(r._idx, "normal_range_text", e.target.value)} placeholder="e.g. 4.0-11.0" />
                             </div>
                           </div>
-                        ) : (
+                        ) : r.range_type === "qualitative" ? (
                           <div className="grid grid-cols-2 gap-2">
                             <div>
                               <Label className="text-xs">Expected Normal Value</Label>
@@ -514,6 +519,45 @@ const ReportParameters = () => {
                             <div>
                               <Label className="text-xs">Display Text</Label>
                               <Input value={r.normal_range_text} onChange={(e) => updateRange(r._idx, "normal_range_text", e.target.value)} placeholder="e.g. Absent" />
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-xs font-medium">Dropdown Options (for result selection)</Label>
+                              <Button type="button" variant="outline" size="sm" className="h-6 text-xs" onClick={() => {
+                                const opts = [...(r.descriptive_options || []), ""];
+                                updateRange(r._idx, "descriptive_options", opts);
+                              }}>
+                                <Plus className="h-3 w-3 mr-1" />Add Option
+                              </Button>
+                            </div>
+                            {(r.descriptive_options || []).map((opt, optIdx) => (
+                              <div key={optIdx} className="flex items-center gap-2">
+                                <Input
+                                  className="h-7"
+                                  value={opt}
+                                  onChange={(e) => {
+                                    const opts = [...(r.descriptive_options || [])];
+                                    opts[optIdx] = e.target.value;
+                                    updateRange(r._idx, "descriptive_options", opts);
+                                  }}
+                                  placeholder={`Option ${optIdx + 1}`}
+                                />
+                                <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive shrink-0" onClick={() => {
+                                  const opts = (r.descriptive_options || []).filter((_, i) => i !== optIdx);
+                                  updateRange(r._idx, "descriptive_options", opts);
+                                }}>
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ))}
+                            {(!r.descriptive_options || r.descriptive_options.length === 0) && (
+                              <p className="text-xs text-muted-foreground">No options added yet. Click "Add Option" to add descriptive text choices.</p>
+                            )}
+                            <div>
+                              <Label className="text-xs">Display Text</Label>
+                              <Input value={r.normal_range_text} onChange={(e) => updateRange(r._idx, "normal_range_text", e.target.value)} placeholder="e.g. Normal findings" />
                             </div>
                           </div>
                         )}
