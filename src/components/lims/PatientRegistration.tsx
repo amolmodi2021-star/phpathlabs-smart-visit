@@ -57,6 +57,8 @@ const PatientRegistration = () => {
   const [umrNumber, setUmrNumber] = useState("");
   const [address, setAddress] = useState("");
   const [manualAge, setManualAge] = useState("");
+  const [remarks, setRemarks] = useState("");
+  const [isStat, setIsStat] = useState(false);
 
   // Channel
   const [channelId, setChannelId] = useState("");
@@ -369,6 +371,8 @@ const PatientRegistration = () => {
         due_amount: (isCreditPickup || isCreditChannel) ? calculations.finalAmount : dueAmount,
         global_discount_type: globalDiscountValue > 0 ? globalDiscountType : null,
         global_discount_value: globalDiscountValue,
+        remarks: remarks.trim() || null,
+        is_stat: isStat,
       };
 
       const { data: reg, error } = await supabase.from("patient_registrations").insert(regData as any).select().single();
@@ -413,7 +417,7 @@ const PatientRegistration = () => {
     setAddress(""); setChannelId(""); setVisitType("lab_visit"); setPickupPointId("");
     setSelectedTests([]); setGlobalDiscountValue(0); setHomeVisitCharges(0);
     setSelectedModes(new Set()); setModeAmounts({}); setInvoiceData(null); setTriedSave(false);
-    setManualAge("");
+    setManualAge(""); setRemarks(""); setIsStat(false);
   };
 
   return (
@@ -761,6 +765,21 @@ const PatientRegistration = () => {
               Credit billing — Payment will be collected in monthly billing cycle from <strong>{selectedPickup?.name}</strong>
             </div>
           )}
+
+          {/* Remarks */}
+          <div>
+            <Label>Remarks</Label>
+            <Input value={remarks} onChange={e => setRemarks(e.target.value.toUpperCase())} placeholder="Optional remarks" className="uppercase" />
+          </div>
+
+          {/* STAT Toggle */}
+          <div className="flex items-center justify-between rounded-lg border border-destructive/30 p-3">
+            <div className="flex items-center gap-2">
+              {isStat && <span className="relative flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-destructive"></span></span>}
+              <Label className="text-destructive font-semibold cursor-pointer" htmlFor="stat-toggle">STAT (Urgent)</Label>
+            </div>
+            <Switch id="stat-toggle" checked={isStat} onCheckedChange={setIsStat} className="data-[state=checked]:bg-destructive" />
+          </div>
 
           <Button className="w-full" onClick={() => { setTriedSave(true); saveMutation.mutate(); }} disabled={saveMutation.isPending || selectedTests.length === 0}>
             <Save className="h-4 w-4 mr-2" />Save & Generate Invoice
