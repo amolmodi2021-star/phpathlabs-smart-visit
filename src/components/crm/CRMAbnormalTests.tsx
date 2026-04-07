@@ -1026,6 +1026,43 @@ const CRMAbnormalTests = () => {
         </div>
       )}
 
+      {/* Preview Card Dialog */}
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-auto">
+          <DialogHeader>
+            <DialogTitle>Abnormal Card Preview</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {previewGenerating ? (
+              <div className="flex items-center justify-center py-12">
+                <p className="text-muted-foreground">Generating card...</p>
+              </div>
+            ) : previewImageUrl ? (
+              <img src={previewImageUrl} alt="Abnormal Card Preview" className="w-full rounded border" />
+            ) : null}
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Send to Mobile Number</label>
+              <Input
+                value={previewMobile}
+                onChange={(e) => setPreviewMobile(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                placeholder="10-digit mobile number"
+                maxLength={10}
+              />
+              <p className="text-xs text-muted-foreground">
+                Change this number to send a trial to yourself. Database will NOT be updated for overridden numbers.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPreviewOpen(false)}>Cancel</Button>
+            <Button onClick={handleSendFromPreview} disabled={sending || !previewImageUrl}>
+              <Send className="h-4 w-4 mr-1" />
+              {sending ? "Sending..." : "Send WhatsApp"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <DeletePasswordDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
