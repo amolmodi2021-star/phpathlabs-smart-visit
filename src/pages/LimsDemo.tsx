@@ -278,7 +278,6 @@ const LimsDemo = () => {
                                   <TableHead>Test Name</TableHead>
                                   <TableHead>Unit</TableHead>
                                   <TableHead>Machine ID</TableHead>
-                                  <TableHead>Machine Name</TableHead>
                                   <TableHead>Status</TableHead>
                                   <TableHead>Result</TableHead>
                                   <TableHead>Flag</TableHead>
@@ -293,7 +292,6 @@ const LimsDemo = () => {
                                       <TableCell>{t.name}</TableCell>
                                       <TableCell>{res?.unit || t.unit}</TableCell>
                                       <TableCell className="font-mono text-xs">{t.machine_id || "—"}</TableCell>
-                                      <TableCell className="text-xs">{t.machine_name || "—"}</TableCell>
                                       <TableCell><Badge variant={statusColor(t.status)} className="text-xs">{t.status}</Badge></TableCell>
                                       <TableCell className="font-mono">{res?.result_value || "—"}</TableCell>
                                       <TableCell>{res?.flag && <Badge variant={res.flag === "Abnormal" ? "destructive" : "outline"} className="text-xs">{res.flag}</Badge>}</TableCell>
@@ -377,8 +375,8 @@ const LimsDemo = () => {
                     sample_id: "BARCODE123",
                     patient_name: "John Doe",
                     tests: [
-                      { code: "CBC", name: "Complete Blood Count", unit: "", machine_id: "MACH001", machine_name: "Sysmex XN-1000" },
-                      { code: "FBS", name: "Fasting Blood Sugar", unit: "mg/dL", machine_id: "MACH002", machine_name: "Vitros 5600" },
+                      { code: "CBC", name: "Complete Blood Count", unit: "", machine_id: "MACH001" },
+                      { code: "FBS", name: "Fasting Blood Sugar", unit: "mg/dL", machine_id: "MACH002" },
                     ],
                   }, null, 2)}</pre>
                 </div>
