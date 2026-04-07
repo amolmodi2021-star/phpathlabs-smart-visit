@@ -308,7 +308,7 @@ const PatientRegistration = () => {
         date_of_birth: dob || null,
         email: email || null,
         ref_doctor: (doctorName || "SELF").toUpperCase(),
-        umr_id: umrNumber || `UMR${cleanMobile}`,
+        umr_id: finalUmr,
         last_visit_date: new Date().toISOString(),
       };
       if (existing) {
