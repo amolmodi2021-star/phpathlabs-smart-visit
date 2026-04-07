@@ -1900,6 +1900,7 @@ export type Database = {
           normal_range_low: number | null
           normal_range_text: string | null
           outsourced_caption: string | null
+          param_code: string | null
           parameter_name: string
           profile_id: string | null
           sample_type: string | null
@@ -1921,6 +1922,7 @@ export type Database = {
           normal_range_low?: number | null
           normal_range_text?: string | null
           outsourced_caption?: string | null
+          param_code?: string | null
           parameter_name: string
           profile_id?: string | null
           sample_type?: string | null
@@ -1942,6 +1944,7 @@ export type Database = {
           normal_range_low?: number | null
           normal_range_text?: string | null
           outsourced_caption?: string | null
+          param_code?: string | null
           parameter_name?: string
           profile_id?: string | null
           sample_type?: string | null
@@ -1963,6 +1966,45 @@ export type Database = {
             columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "report_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      test_parameters: {
+        Row: {
+          created_at: string | null
+          display_order: number | null
+          id: string
+          parameter_id: string
+          test_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          display_order?: number | null
+          id?: string
+          parameter_id: string
+          test_id: string
+        }
+        Update: {
+          created_at?: string | null
+          display_order?: number | null
+          id?: string
+          parameter_id?: string
+          test_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "test_parameters_parameter_id_fkey"
+            columns: ["parameter_id"]
+            isOneToOne: false
+            referencedRelation: "report_test_parameters"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "test_parameters_test_id_fkey"
+            columns: ["test_id"]
+            isOneToOne: false
+            referencedRelation: "tests"
             referencedColumns: ["id"]
           },
         ]

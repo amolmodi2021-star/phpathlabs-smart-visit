@@ -13,6 +13,7 @@ import { Plus, Search, Download, Upload, Trash2, Pencil, Loader2, Lock, Unlock }
 import { toast } from "sonner";
 import { exportToExcel, parseExcelFile, downloadTemplate } from "@/lib/excel";
 import { getTests, saveTest, deleteTest, bulkInsertTests } from "@/lib/tests";
+import TestParameterManager from "@/components/TestParameterManager";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 
@@ -206,6 +207,11 @@ const TestManagement = () => {
                     </>
                   )}
                 </div>
+
+                {/* Parameters section - only for saved tests */}
+                {editing?.id && (
+                  <TestParameterManager testId={editing.id} testName={editing.test_name} />
+                )}
 
                 <Button type="submit" className="w-full" disabled={saveMutation.isPending}>
                   {saveMutation.isPending ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" />Saving...</> : "Save"}
