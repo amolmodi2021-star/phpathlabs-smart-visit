@@ -1100,8 +1100,10 @@ const AutomatedMarketing = () => {
       fillTextFit(ctx, "Result", colStarts[2], hdrMid, colMaxWidths[2], hdrFont, 0.6, "center");
       fillTextFit(ctx, "Normal Range", colStarts[3], hdrMid, colMaxWidths[3], hdrFont, 0.6, "center");
 
+      // Sort tests by date descending (latest first)
+      const sortedTests = [...tests].sort((a, b) => (b.test_date || "").localeCompare(a.test_date || ""));
       // Table rows
-      tests.forEach((t, i) => {
+      sortedTests.forEach((t, i) => {
         const y = tableY + tableHeaderH + i * tRowHeight;
         if (i % 2 === 1) {
           ctx.fillStyle = tAltRowColor;
