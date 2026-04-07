@@ -623,30 +623,27 @@ const PatientRegistration = () => {
           </div>
 
           {selectedTests.length > 0 && (
-            <div className="space-y-2">
+            <div className="space-y-1">
               {selectedTests.map(t => (
-                <div key={t.test_id} className="rounded-lg border p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-sm font-medium">{t.test_name}</span>
-                      <span className="text-sm text-muted-foreground ml-2">₹{t.price}</span>
-                      {t.fasting_required && <span className="text-xs text-destructive ml-2">Fasting</span>}
-                    </div>
-                    <Button size="icon" variant="ghost" onClick={() => removeTest(t.test_id)}><X className="h-3.5 w-3.5" /></Button>
+                <div key={t.test_id} className="flex items-center gap-2 rounded-lg border px-3 py-1.5">
+                  <span className="text-sm font-medium whitespace-nowrap">{t.test_name}</span>
+                  <span className="text-sm text-muted-foreground">₹{t.price}</span>
+                  {t.fasting_required && <span className="text-xs text-destructive">Fasting</span>}
+                  <div className="ml-auto flex items-center gap-1.5">
+                    {t.discount_applicable && !isCreditPickup && (
+                      <>
+                        <Select value={t.individual_discount_type || ""} onValueChange={v => updateTestDiscount(t.test_id, "individual_discount_type", v || null)}>
+                          <SelectTrigger className="w-16 h-7 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
+                          <SelectContent><SelectItem value="percent">%</SelectItem><SelectItem value="amount">₹</SelectItem></SelectContent>
+                        </Select>
+                        {t.individual_discount_type && (
+                          <Input type="number" className="w-16 h-7 text-xs" value={t.individual_discount_value || ""}
+                            onChange={e => updateTestDiscount(t.test_id, "individual_discount_value", parseFloat(e.target.value) || 0)} />
+                        )}
+                      </>
+                    )}
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => removeTest(t.test_id)}><X className="h-3.5 w-3.5" /></Button>
                   </div>
-                  {t.discount_applicable && !isCreditPickup && (
-                    <div className="flex items-center gap-2 text-sm">
-                      <Label className="text-xs">Individual Discount:</Label>
-                      <Select value={t.individual_discount_type || ""} onValueChange={v => updateTestDiscount(t.test_id, "individual_discount_type", v || null)}>
-                        <SelectTrigger className="w-20 h-8 text-xs"><SelectValue placeholder="None" /></SelectTrigger>
-                        <SelectContent><SelectItem value="percent">%</SelectItem><SelectItem value="amount">₹</SelectItem></SelectContent>
-                      </Select>
-                      {t.individual_discount_type && (
-                        <Input type="number" className="w-20 h-8 text-xs" value={t.individual_discount_value || ""}
-                          onChange={e => updateTestDiscount(t.test_id, "individual_discount_value", parseFloat(e.target.value) || 0)} />
-                      )}
-                    </div>
-                  )}
                 </div>
               ))}
             </div>
