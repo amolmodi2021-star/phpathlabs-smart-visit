@@ -165,9 +165,11 @@ const ReportParameters = () => {
             gender: r.gender,
             age_min: r.age_min,
             age_max: r.age_max,
-            normal_range_low: r.normal_range_low,
-            normal_range_high: r.normal_range_high,
+            normal_range_low: r.range_type === "numeric" ? r.normal_range_low : null,
+            normal_range_high: r.range_type === "numeric" ? r.normal_range_high : null,
             normal_range_text: r.normal_range_text || null,
+            range_type: r.range_type || "numeric",
+            expected_value: r.range_type === "qualitative" ? (r.expected_value || null) : null,
           }));
           await supabase.from("parameter_normal_ranges").insert(rangeInserts);
         }
