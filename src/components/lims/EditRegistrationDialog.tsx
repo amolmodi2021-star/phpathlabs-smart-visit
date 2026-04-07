@@ -40,6 +40,10 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   const [remarks, setRemarks] = useState("");
   const [isStat, setIsStat] = useState(false);
 
+  // Payment editing
+  const [selectedModes, setSelectedModes] = useState<Set<string>>(new Set());
+  const [modeAmounts, setModeAmounts] = useState<Record<string, number>>({});
+
   // Cancel / Refund
   const [cancelledTestIds, setCancelledTestIds] = useState<Set<string>>(new Set());
   const [refundMode, setRefundMode] = useState<string>("Cash");
@@ -62,6 +66,13 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       setStatus(reg.status || "registered");
       setRemarks(reg.remarks || "");
       setIsStat(reg.is_stat || false);
+      // Populate payments
+      const existingPayments: any[] = Array.isArray(reg.payments) ? reg.payments : [];
+      const modes = new Set<string>(existingPayments.map((p: any) => p.mode));
+      setSelectedModes(modes);
+      const amounts: Record<string, number> = {};
+      existingPayments.forEach((p: any) => { amounts[p.mode] = Number(p.amount) || 0; });
+      setModeAmounts(amounts);
       const existing = Array.isArray(reg.cancelled_tests) ? reg.cancelled_tests : [];
       setCancelledTestIds(new Set(existing.map((t: any) => t.test_id || t)));
       setRefundMode("Cash");
@@ -90,11 +101,29 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
     return refundAmount;
   }, [newlyCancelled, tests]);
 
+  const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card", "NEFT"];
+
+  const togglePaymentMode = (mode: string) => {
+    setSelectedModes(prev => {
+      const next = new Set(prev);
+      if (next.has(mode)) { next.delete(mode); setModeAmounts(a => { const n = { ...a }; delete n[mode]; return n; }); }
+      else next.add(mode);
+      return next;
+    });
+  };
+
+  const editPaidAmount = Array.from(selectedModes).reduce((sum, mode) => sum + (modeAmounts[mode] || 0), 0);
+  const editDueAmount = Math.max(0, Number(reg?.final_amount || 0) - editPaidAmount);
+
   if (!reg) return null;
 
   const handleSaveDetails = async () => {
     setSaving(true);
     try {
+      const payments = Array.from(selectedModes)
+        .filter(m => (modeAmounts[m] || 0) > 0)
+        .map(m => ({ mode: m, amount: modeAmounts[m] || 0 }));
+
       const { error } = await supabase.from("patient_registrations").update({
         patient_name: patientName.toUpperCase(),
         title,
@@ -108,6 +137,9 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         status,
         remarks: remarks.trim() || null,
         is_stat: isStat,
+        payments,
+        paid_amount: editPaidAmount,
+        due_amount: editDueAmount,
       } as any).eq("id", reg.id);
       if (error) throw error;
       qc.invalidateQueries({ queryKey: ["patient_registrations"] });
@@ -277,6 +309,37 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
               </div>
               <Switch id="edit-stat-toggle" checked={isStat} onCheckedChange={setIsStat} className="data-[state=checked]:bg-destructive" disabled={isBillCancelled} />
             </div>
+
+            {/* Payment Details */}
+            {!isBillCancelled && (
+              <div className="space-y-2">
+                <h3 className="font-semibold text-sm">Payment Details</h3>
+                <div className="flex flex-wrap gap-2">
+                  {PAYMENT_MODES.map(mode => (
+                    <Button key={mode} type="button" size="sm"
+                      variant={selectedModes.has(mode) ? "default" : "outline"}
+                      onClick={() => togglePaymentMode(mode)}
+                    >{mode}</Button>
+                  ))}
+                </div>
+                {Array.from(selectedModes).map(mode => (
+                  <div key={mode} className="flex items-center gap-2">
+                    <Label className="w-28 text-sm">{mode}:</Label>
+                    <Input type="number" min={0} className="w-32"
+                      value={modeAmounts[mode] || ""}
+                      onChange={e => setModeAmounts(prev => ({ ...prev, [mode]: Number(e.target.value) || 0 }))}
+                      placeholder="₹ Amount" />
+                  </div>
+                ))}
+                {selectedModes.size > 0 && (
+                  <div className="text-sm space-y-1 pt-1">
+                    <div className="flex justify-between"><span>Total Paid:</span><span className="font-medium">₹{editPaidAmount}</span></div>
+                    <div className="flex justify-between"><span>Final Amount:</span><span className="font-medium">₹{reg.final_amount}</span></div>
+                    {editDueAmount > 0 && <div className="flex justify-between text-destructive font-medium"><span>Due:</span><span>₹{editDueAmount}</span></div>}
+                  </div>
+                )}
+              </div>
+            )}
 
             {!isBillCancelled && (
               <Button onClick={handleSaveDetails} disabled={saving} className="w-full">
