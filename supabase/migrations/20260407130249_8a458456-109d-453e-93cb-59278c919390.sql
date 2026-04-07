@@ -1,0 +1,2 @@
+ALTER TABLE public.patient_registrations ADD COLUMN IF NOT EXISTS home_visit_id uuid REFERENCES public.home_visits(id);
+CREATE INDEX IF NOT EXISTS idx_patient_registrations_home_visit_id ON public.patient_registrations(home_visit_id);
