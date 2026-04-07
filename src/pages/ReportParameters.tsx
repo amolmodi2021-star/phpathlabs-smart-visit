@@ -27,6 +27,7 @@ interface NormalRange {
   normal_range_text: string;
   range_type: string;
   expected_value: string;
+  descriptive_options: string[];
 }
 
 // No default age groups — users set ranges manually
