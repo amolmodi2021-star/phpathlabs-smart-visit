@@ -29,9 +29,9 @@ const ReportParameters = () => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState({
-    parameter_name: "", test_name: "", profile_id: "", department_id: "",
+    parameter_name: "", test_name: "", profile_id: "",
     unit: "", analyzer: "", method: "", store_for_analytics: false, display_order: 0,
-    sample_type: "", is_outsourced: false, outsourced_caption: "", interpretation: "",
+    sample_type: "", interpretation: "",
   });
   const { toast } = useToast();
 
