@@ -80,6 +80,21 @@ Deno.serve(async (req) => {
           .eq("id", order.id);
       }
 
+      // Enrich tests with machine_id from the tests table
+      const testCodes = pendingTests.map((t: any) => t.code).filter(Boolean);
+      let machineMap: Record<string, { machine_id: string; machine_name: string }> = {};
+      if (testCodes.length > 0) {
+        const { data: testRows } = await supabase
+          .from("tests")
+          .select("test_code, machine_id, machine_name")
+          .in("test_code", testCodes);
+        if (testRows) {
+          for (const row of testRows) {
+            if (row.test_code) machineMap[row.test_code] = { machine_id: row.machine_id || "", machine_name: row.machine_name || "" };
+          }
+        }
+      }
+
       const responseBody = {
         order_id: order.id,
         sample_id: order.sample_id,
@@ -88,6 +103,8 @@ Deno.serve(async (req) => {
           code: t.code,
           name: t.name,
           unit: t.unit || "",
+          machine_id: machineMap[t.code]?.machine_id || "",
+          machine_name: machineMap[t.code]?.machine_name || "",
         })),
       };
 
