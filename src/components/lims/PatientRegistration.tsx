@@ -59,6 +59,7 @@ const PatientRegistration = () => {
 
   // Channel
   const [channelId, setChannelId] = useState("");
+  const [reportLanguage, setReportLanguage] = useState("English");
 
   // Visit type
   const [visitType, setVisitType] = useState("lab_visit");
