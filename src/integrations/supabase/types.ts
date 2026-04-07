@@ -2037,40 +2037,52 @@ export type Database = {
       }
       tests: {
         Row: {
+          bold_in_report: boolean
           created_at: string
           description: string | null
           discount_applicable: boolean
+          display_name: string | null
           fasting_required: boolean
           id: string
           incentive_allowed: boolean
           incentive_amount: number
+          is_single_parameter: boolean
           price: number
+          show_in_report: boolean
           test_code: string | null
           test_name: string
           updated_at: string
         }
         Insert: {
+          bold_in_report?: boolean
           created_at?: string
           description?: string | null
           discount_applicable?: boolean
+          display_name?: string | null
           fasting_required?: boolean
           id?: string
           incentive_allowed?: boolean
           incentive_amount?: number
+          is_single_parameter?: boolean
           price?: number
+          show_in_report?: boolean
           test_code?: string | null
           test_name: string
           updated_at?: string
         }
         Update: {
+          bold_in_report?: boolean
           created_at?: string
           description?: string | null
           discount_applicable?: boolean
+          display_name?: string | null
           fasting_required?: boolean
           id?: string
           incentive_allowed?: boolean
           incentive_amount?: number
+          is_single_parameter?: boolean
           price?: number
+          show_in_report?: boolean
           test_code?: string | null
           test_name?: string
           updated_at?: string

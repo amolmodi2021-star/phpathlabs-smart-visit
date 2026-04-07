@@ -10,6 +10,10 @@ export interface TestItem {
   incentive_allowed: boolean;
   incentive_amount: number;
   test_code?: string | null;
+  display_name?: string | null;
+  bold_in_report?: boolean;
+  show_in_report?: boolean;
+  is_single_parameter?: boolean;
   created_at?: string;
   updated_at?: string;
 }
