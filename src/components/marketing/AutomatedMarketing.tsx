@@ -615,7 +615,7 @@ const AutomatedMarketing = () => {
         const loyaltyFromNumber = cfg["wa_global_fromNumber"] || "";
         const loyaltyCampaignName = abcTmpl?.api_base_url || "";
         const bodyMappingStr = abcTmpl?.body_mapping || "";
-        const staticExpiryDate = cfg["crm_abc_static_expiry_date"] || "";
+        const staticExpiryDate = cfg["loyalty_static_expiry_date"] || "";
         const delayMs = Number(cfg["wa_global_delayMs"]) || 3000;
 
         if (!loyaltyApiBaseUrl || !loyaltyApiKey || !loyaltyTemplateName) {

@@ -695,7 +695,7 @@ const CRMContacts = () => {
     const bodyMapping = tmpl?.body_mapping || "";
     const queueEnabled = cfg["wa_global_queueEnabled"] !== "false";
     const delayMs = Number(cfg["wa_global_delayMs"]) || 3000;
-    const staticExpiryDate = cfg["crm_abc_static_expiry_date"] || "";
+    const staticExpiryDate = cfg["loyalty_static_expiry_date"] || "";
 
     if (!apiBaseUrl || !apiKey || !templateName) {
       return toast.error("WhatsApp API not configured. Set up in WhatsApp Settings page.");
