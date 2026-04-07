@@ -147,26 +147,51 @@ const PatientRegistration = () => {
     return `${Math.floor(diff / (365.25 * 24 * 60 * 60 * 1000))} Years`;
   }, [dob, isPickup, manualAge]);
 
-  // Patient search
+  // Patient search — registered patients appear first
   const searchPatients = async (mobile: string) => {
     const digits = mobile.replace(/\D/g, "");
     if (digits.length < 4) { setPatientMatches([]); setShowDropdown(false); return; }
 
-    const results: PatientMatch[] = [];
+    const priority: PatientMatch[] = [];
+    const others: PatientMatch[] = [];
+    const seen = new Set<string>();
+    const key = (name: string, mob: string) => `${(name || "").toUpperCase()}|${mob}`;
 
-    // Search patient_master
+    // 1. Search patient_registrations (highest priority)
+    const { data: regs } = await supabase.from("patient_registrations").select("*").ilike("mobile_number", `%${digits}%`).eq("bill_cancelled", false).order("created_at", { ascending: false }).limit(10);
+    (regs || []).forEach((r: any) => {
+      const k = key(r.patient_name, r.mobile_number);
+      if (!seen.has(k)) {
+        seen.add(k);
+        priority.push({
+          source: "Registered", patient_name: r.patient_name, title: r.title,
+          gender: r.gender, dob: r.dob, email: r.email, doctor_name: r.doctor_name,
+          umr_number: r.umr_number, mobile_number: r.mobile_number, address: r.address,
+        });
+      }
+    });
+
+    // 2. Search patient_master
     const { data: pm } = await supabase.from("patient_master").select("*").ilike("mobile_number", `%${digits}%`).limit(10);
-    (pm || []).forEach((p: any) => results.push({
-      source: "Patient Master", patient_name: p.patient_name, gender: p.gender,
-      dob: p.date_of_birth, email: p.email, doctor_name: p.ref_doctor,
-      umr_number: p.umr_id, mobile_number: p.mobile_number,
-    }));
+    (pm || []).forEach((p: any) => {
+      const k = key(p.patient_name, p.mobile_number);
+      if (!seen.has(k)) {
+        seen.add(k);
+        others.push({
+          source: "Patient Master", patient_name: p.patient_name, gender: p.gender,
+          dob: p.date_of_birth, email: p.email, doctor_name: p.ref_doctor,
+          umr_number: p.umr_id, mobile_number: p.mobile_number,
+        });
+      }
+    });
 
-    // Search crm_contacts (prefer PH VESU)
+    // 3. Search crm_contacts
     const { data: crm } = await supabase.from("crm_contacts").select("*").ilike("mobile_number", `%${digits}%`).order("location").limit(10);
     (crm || []).forEach((c: any) => {
-      if (!results.find(r => r.mobile_number === c.mobile_number && r.patient_name === c.patient_name)) {
-        results.push({
+      const k = key(c.patient_name, c.mobile_number);
+      if (!seen.has(k)) {
+        seen.add(k);
+        others.push({
           source: `CRM (${c.location || "—"})`, patient_name: c.patient_name || "",
           umr_number: c.umr_number, mobile_number: c.mobile_number || "",
           doctor_name: c.doctor_name,
@@ -174,11 +199,13 @@ const PatientRegistration = () => {
       }
     });
 
-    // Search estimates
+    // 4. Search estimates
     const { data: est } = await supabase.from("estimates").select("*").ilike("whatsapp_number", `%${digits}%`).limit(10);
     (est || []).forEach((e: any) => {
-      if (!results.find(r => r.patient_name === e.patient_name && r.mobile_number === e.whatsapp_number)) {
-        results.push({
+      const k = key(e.patient_name, e.whatsapp_number);
+      if (!seen.has(k)) {
+        seen.add(k);
+        others.push({
           source: "Estimates", patient_name: e.patient_name || "", title: e.title,
           gender: e.gender, dob: e.dob, email: e.email, doctor_name: e.doctor_name,
           umr_number: e.umr_number, mobile_number: e.whatsapp_number,
@@ -186,6 +213,7 @@ const PatientRegistration = () => {
       }
     });
 
+    const results = [...priority, ...others];
     setPatientMatches(results);
     setShowDropdown(results.length > 0);
   };
