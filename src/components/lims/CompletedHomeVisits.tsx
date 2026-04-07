@@ -353,6 +353,15 @@ const CompletedHomeVisits = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Edit Home Visit Dialog */}
+      <EditHomeVisitDialog
+        visit={editVisit}
+        open={!!editVisit}
+        onClose={() => {
+          setEditVisit(null);
+          qc.invalidateQueries({ queryKey: ["completed_home_visits"] });
+        }}
+      />
     </div>
   );
 };
