@@ -52,6 +52,8 @@ const CRMContacts = () => {
   const [deletePassword, setDeletePassword] = useState("");
   const [deleteMode, setDeleteMode] = useState<"selected" | "all">("selected");
   const [deleting, setDeleting] = useState(false);
+  const [cleaningUp, setCleaningUp] = useState(false);
+  const [cleanupProgress, setCleanupProgress] = useState(0);
 
   // Send loyalty card state
   const [sendOpen, setSendOpen] = useState(false);
@@ -899,11 +901,47 @@ const CRMContacts = () => {
         }}>
           Clear All DAILY Tags
         </Button>
+        <Button variant="outline" size="sm" disabled={cleaningUp} onClick={async () => {
+          setCleaningUp(true);
+          setCleanupProgress(20);
+          try {
+            // Step 1: Remove NON PHPL records where patient now has a bill number
+            const { data: billCleanup } = await supabase.rpc("cleanup_non_phpl_duplicates" as any);
+            const billCount = Number(billCleanup) || 0;
+            setCleanupProgress(60);
+
+            // Step 2: Deduplicate NON PHPL records with same mobile number
+            const { data: mobileDedup } = await supabase.rpc("cleanup_non_phpl_mobile_duplicates" as any);
+            const dedupCount = Number(mobileDedup) || 0;
+            setCleanupProgress(100);
+
+            const total = billCount + dedupCount;
+            if (total > 0) {
+              toast.success(`Cleanup complete: ${billCount} bill duplicates + ${dedupCount} mobile duplicates removed (${total} total)`);
+              qc.invalidateQueries({ queryKey: ["crm-contacts"] });
+              qc.invalidateQueries({ queryKey: ["crm-contacts-count"] });
+            } else {
+              toast.info("No duplicates found — database is clean!");
+            }
+          } catch {
+            toast.error("Cleanup failed");
+          }
+          setCleaningUp(false);
+          setCleanupProgress(0);
+        }}>
+          {cleaningUp ? "Cleaning..." : "🧹 Cleanup"}
+        </Button>
         <Button variant="destructive" size="sm" onClick={() => { setDeleteMode("all"); setDeleteOpen(true); }}>
           <Trash2 className="h-4 w-4 mr-1" />Delete All
         </Button>
         <span className="text-sm text-muted-foreground">Total: {totalCount}</span>
       </div>
+      {cleaningUp && (
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">Running cleanup...</p>
+          <Progress value={cleanupProgress} className="h-2" />
+        </div>
+      )}
       <p className="text-xs text-muted-foreground flex flex-wrap items-center gap-2">
         💡 <strong>Bulk Update:</strong> Upload Excel with "primary_key" (or "mobile"/"umr") + "patient_name" for names, "discount" for discount %, or "last_sent_date" for last sent.
         <a href="/samples/Sample_Bulk_Update_Names.xlsx" download className="text-primary underline text-xs">📥 Sample Names</a>
