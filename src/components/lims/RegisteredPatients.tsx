@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, ChevronLeft, ChevronRight, Pencil, Download, Eye, Send } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, Pencil, Download, Eye } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { exportToExcel } from "@/lib/excel";
@@ -23,6 +23,10 @@ const RegisteredPatients = () => {
   const [viewBillReg, setViewBillReg] = useState<any>(null);
   const [showExportPwd, setShowExportPwd] = useState(false);
 
+  const registrationSearchFilter = debouncedSearch
+    ? `patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%,umr_number.ilike.%${debouncedSearch}%`
+    : "";
+
   const handleSearch = (val: string) => {
     setSearch(val);
     setPage(0);
@@ -33,19 +37,26 @@ const RegisteredPatients = () => {
   const { data: count = 0 } = useQuery({
     queryKey: ["patient_registrations_count", debouncedSearch],
     queryFn: async () => {
-      const { data } = await supabase.rpc("get_patient_registrations_count" as any, { p_search: debouncedSearch });
-      return Number(data) || 0;
+      let query = supabase.from("patient_registrations").select("id", { count: "exact", head: true });
+      if (registrationSearchFilter) query = query.or(registrationSearchFilter);
+      const { count, error } = await query;
+      if (error) throw error;
+      return count || 0;
     },
   });
 
   const { data: registrations = [], isLoading } = useQuery({
     queryKey: ["patient_registrations", page, debouncedSearch],
     queryFn: async () => {
-      const { data } = await supabase.rpc("get_patient_registrations_paginated" as any, {
-        p_page: page, p_page_size: PAGE_SIZE, p_search: debouncedSearch,
-      });
+      let query = supabase
+        .from("patient_registrations")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
+      if (registrationSearchFilter) query = query.or(registrationSearchFilter);
+      const { data, error } = await query;
+      if (error) throw error;
       const rows = (data || []) as any[];
-      // STAT (urgent) items that are not dispatched/cancelled appear on top
       rows.sort((a: any, b: any) => {
         const aUrgent = a.is_stat && !a.bill_cancelled && a.status !== "dispatched" ? 1 : 0;
         const bUrgent = b.is_stat && !b.bill_cancelled && b.status !== "dispatched" ? 1 : 0;
