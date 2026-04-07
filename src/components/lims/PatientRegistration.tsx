@@ -159,7 +159,7 @@ const PatientRegistration = () => {
     if (p.title) setTitle(p.title);
     if (p.gender) setGender(p.gender);
     if (p.dob) setDob(p.dob);
-    if (p.email) setEmail(p.email);
+    if (p.email) { setEmail(p.email); setShowEmail(true); }
     if (p.doctor_name) setDoctorName(p.doctor_name);
     if (p.umr_number) setUmrNumber(p.umr_number);
     if (p.address) setAddress(p.address);
