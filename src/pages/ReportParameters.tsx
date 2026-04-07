@@ -128,6 +128,8 @@ const ReportParameters = () => {
         normal_range_low: r.normal_range_low,
         normal_range_high: r.normal_range_high,
         normal_range_text: r.normal_range_text || "",
+        range_type: r.range_type || "numeric",
+        expected_value: r.expected_value || "",
       })));
     }
   };
