@@ -455,7 +455,12 @@ const CRMAbnormalTests = () => {
       fillTextFit(ctx, "Normal Range", colStarts[3], hdrMid, colMaxWidths[3], hdrFont, 0.6, "center");
 
       // Table rows
-      group.tests.forEach((t, i) => {
+      const sortedTests = [...group.tests].sort((a, b) => {
+        const da = a.test_date || "";
+        const db = b.test_date || "";
+        return db.localeCompare(da);
+      });
+      sortedTests.forEach((t, i) => {
         const y = tableY + tableHeaderH + i * tRowHeight;
         if (i % 2 === 1) {
           ctx.fillStyle = tAltRowColor;
