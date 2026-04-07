@@ -1311,6 +1311,7 @@ export type Database = {
           age_max: number | null
           age_min: number | null
           created_at: string
+          descriptive_options: Json | null
           expected_value: string | null
           gender: string
           id: string
@@ -1324,6 +1325,7 @@ export type Database = {
           age_max?: number | null
           age_min?: number | null
           created_at?: string
+          descriptive_options?: Json | null
           expected_value?: string | null
           gender?: string
           id?: string
@@ -1337,6 +1339,7 @@ export type Database = {
           age_max?: number | null
           age_min?: number | null
           created_at?: string
+          descriptive_options?: Json | null
           expected_value?: string | null
           gender?: string
           id?: string
