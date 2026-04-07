@@ -359,7 +359,7 @@ const PatientRegistration = () => {
         <CardContent className="p-4 space-y-4">
           {/* Mobile Number + Patient Search */}
           <div className="relative">
-            <Label className={!mobileNumber || mobileNumber.replace(/\D/g, "").slice(-10).length < 10 ? "text-destructive" : ""}>Mobile Number *</Label>
+            <Label className={triedSave && (!mobileNumber || mobileNumber.replace(/\D/g, "").slice(-10).length < 10) ? "text-destructive" : ""}>Mobile Number *</Label>
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
@@ -397,14 +397,14 @@ const PatientRegistration = () => {
           {/* Demographics */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className={!title ? "text-destructive" : ""}>Title *</Label>
+              <Label className={triedSave && !title ? "text-destructive" : ""}>Title *</Label>
               <Select value={title} onValueChange={setTitle}>
                 <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>{TITLES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div>
-              <Label className={!gender ? "text-destructive" : ""}>Gender *</Label>
+              <Label className={triedSave && !gender ? "text-destructive" : ""}>Gender *</Label>
               <Select value={gender} onValueChange={setGender}>
                 <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
@@ -417,13 +417,13 @@ const PatientRegistration = () => {
           </div>
 
           <div>
-            <Label className={!patientName.trim() ? "text-destructive" : ""}>Patient Name *</Label>
+            <Label className={triedSave && !patientName.trim() ? "text-destructive" : ""}>Patient Name *</Label>
             <Input value={patientName} onChange={e => setPatientName(e.target.value)} placeholder="Full name" />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className={!dob ? "text-destructive" : ""}>DOB *</Label>
+              <Label className={triedSave && !dob ? "text-destructive" : ""}>DOB *</Label>
               <Input type="date" value={dob} onChange={e => setDob(e.target.value)} />
               {age && <p className="text-xs text-muted-foreground mt-1">Age: {age}</p>}
             </div>
@@ -447,7 +447,7 @@ const PatientRegistration = () => {
           {/* Address (above visit type, hidden for pickup point) */}
           {visitType !== "pickup_point" && (
             <div>
-              <Label className={!address.trim() ? "text-destructive" : ""}>Address *</Label>
+              <Label className={triedSave && !address.trim() ? "text-destructive" : ""}>Address *</Label>
               <Input value={address} onChange={e => setAddress(e.target.value)} placeholder="Patient address" />
             </div>
           )}
@@ -630,7 +630,7 @@ const PatientRegistration = () => {
             </div>
           )}
 
-          <Button className="w-full" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || selectedTests.length === 0}>
+          <Button className="w-full" onClick={() => { setTriedSave(true); saveMutation.mutate(); }} disabled={saveMutation.isPending || selectedTests.length === 0}>
             <Save className="h-4 w-4 mr-2" />Save & Generate Invoice
           </Button>
         </CardContent>
