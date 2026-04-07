@@ -491,7 +491,7 @@ const PatientRegistration = () => {
                     <div>
                       <span className="text-sm font-medium">{t.test_name}</span>
                       <span className="text-sm text-muted-foreground ml-2">₹{t.price}</span>
-                      {t.fasting_required && <span className="text-xs text-orange-600 ml-2">Fasting</span>}
+                      {t.fasting_required && <span className="text-xs text-destructive ml-2">Fasting</span>}
                     </div>
                     <Button size="icon" variant="ghost" onClick={() => removeTest(t.test_id)}><X className="h-3.5 w-3.5" /></Button>
                   </div>
@@ -539,7 +539,7 @@ const PatientRegistration = () => {
           {selectedTests.length > 0 && (
             <div className="rounded-lg bg-muted p-4 space-y-1 text-sm">
               <div className="flex justify-between"><span>Gross Amount</span><span className="font-medium">₹{calculations.totalAmount}</span></div>
-              {calculations.totalDiscount > 0 && <div className="flex justify-between text-green-600"><span>Discount</span><span>-₹{calculations.totalDiscount}</span></div>}
+              {calculations.totalDiscount > 0 && <div className="flex justify-between text-primary"><span>Discount</span><span>-₹{calculations.totalDiscount}</span></div>}
               {calculations.homeVisitCharges > 0 && <div className="flex justify-between"><span>Home Visit</span><span>+₹{calculations.homeVisitCharges}</span></div>}
               <div className="flex justify-between border-t pt-1 font-bold"><span>Final Amount</span><span>₹{calculations.finalAmount}</span></div>
             </div>
