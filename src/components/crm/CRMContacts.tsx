@@ -16,12 +16,26 @@ import { Download, Search, Pencil, Upload, Trash2, Send } from "lucide-react";
 import { toast } from "sonner";
 
 const CRMContacts = () => {
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [locationFilter, setLocationFilter] = useState("ALL");
   const [tagFilter, setTagFilter] = useState("ALL");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchInput);
+      setPage(0);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  // Reset page on filter changes
+  const handleLocationChange = useCallback((val: string) => { setLocationFilter(val); setPage(0); }, []);
+  const handleTagChange = useCallback((val: string) => { setTagFilter(val); setPage(0); }, []);
   const qc = useQueryClient();
 
   // Edit dialog state
