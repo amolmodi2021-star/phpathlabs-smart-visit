@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { format } from "date-fns";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -16,12 +16,26 @@ import { Download, Search, Pencil, Upload, Trash2, Send } from "lucide-react";
 import { toast } from "sonner";
 
 const CRMContacts = () => {
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [locationFilter, setLocationFilter] = useState("ALL");
   const [tagFilter, setTagFilter] = useState("ALL");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchInput);
+      setPage(0);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  // Reset page on filter changes
+  const handleLocationChange = useCallback((val: string) => { setLocationFilter(val); setPage(0); }, []);
+  const handleTagChange = useCallback((val: string) => { setTagFilter(val); setPage(0); }, []);
   const qc = useQueryClient();
 
   // Edit dialog state
@@ -57,85 +71,28 @@ const CRMContacts = () => {
   const { data: contacts = [], isLoading } = useQuery({
     queryKey: ["crm-contacts", locationFilter, tagFilter, search, page],
     queryFn: async () => {
-      // Fetch all matching records in batches (Supabase has 1000 row limit per query)
-      const BATCH = 1000;
-      let allData: any[] = [];
-      let from = 0;
-      let hasMore = true;
-      while (hasMore) {
-        let q = supabase.from("crm_contacts").select("*").range(from, from + BATCH - 1);
-        if (locationFilter !== "ALL") q = q.eq("location", locationFilter);
-        if (tagFilter !== "ALL") q = q.eq("record_tag", tagFilter);
-        if (search) q = q.or(`patient_name.ilike.%${search}%,mobile_number.ilike.%${search}%,umr_number.ilike.%${search}%`);
-        const { data, error } = await q;
-        if (error) throw error;
-        if (!data || data.length === 0) { hasMore = false; break; }
-        allData = allData.concat(data);
-        if (data.length < BATCH) hasMore = false;
-        else from += BATCH;
-      }
-      
-      // Sort: PH VESU first, then by visit date desc, then visit time desc if available,
-      // then bill number desc as a fallback tie-breaker for same-day records.
-      const normalizeLocation = (value: unknown) => String(value || "").trim().toUpperCase();
-      const parseVisitDate = (value: unknown) => {
-        const raw = String(value || "").trim();
-        const match = raw.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
-        if (!match) return 0;
-        const [, dd, mm, yyyy] = match;
-        return Date.UTC(Number(yyyy), Number(mm) - 1, Number(dd));
-      };
-      const parseVisitTime = (value: unknown) => {
-        const raw = String(value || "").trim().toUpperCase();
-        if (!raw) return 0;
-        const ampmMatch = raw.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/);
-        if (ampmMatch) {
-          let [, hh, mm, meridian] = ampmMatch;
-          let hours = Number(hh) % 12;
-          if (meridian === "PM") hours += 12;
-          return hours * 60 + Number(mm);
-        }
-        const twentyFourHourMatch = raw.match(/^(\d{1,2}):(\d{2})$/);
-        if (twentyFourHourMatch) {
-          const [, hh, mm] = twentyFourHourMatch;
-          return Number(hh) * 60 + Number(mm);
-        }
-        return 0;
-      };
-      const parseBillNumber = (value: unknown) => {
-        const digits = String(value || "").replace(/\D/g, "");
-        return digits ? Number(digits) : 0;
-      };
-      const sorted = allData.sort((a: any, b: any) => {
-        const locA = normalizeLocation(a.location) === "PH VESU" ? 0 : 1;
-        const locB = normalizeLocation(b.location) === "PH VESU" ? 0 : 1;
-        if (locA !== locB) return locA - locB;
-
-        if (locA === 0) {
-          const dateDiff = parseVisitDate(b.visit_date) - parseVisitDate(a.visit_date);
-          if (dateDiff !== 0) return dateDiff;
-
-          const timeDiff = parseVisitTime(b.visit_time) - parseVisitTime(a.visit_time);
-          if (timeDiff !== 0) return timeDiff;
-
-          const billDiff = parseBillNumber(b.bill_number) - parseBillNumber(a.bill_number);
-          if (billDiff !== 0) return billDiff;
-        }
-
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      const { data, error } = await supabase.rpc("get_crm_contacts_paginated", {
+        p_location: locationFilter,
+        p_tag: tagFilter,
+        p_search: search,
+        p_page: page,
+        p_page_size: PAGE_SIZE,
       });
-      
-      // Apply pagination client-side
-      return sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+      if (error) throw error;
+      return data || [];
     },
   });
 
   const { data: totalCount = 0 } = useQuery({
-    queryKey: ["crm-contacts-count"],
+    queryKey: ["crm-contacts-count", locationFilter, tagFilter, search],
     queryFn: async () => {
-      const { count, error } = await supabase.from("crm_contacts").select("*", { count: "exact", head: true });
+      const { data, error } = await supabase.rpc("get_crm_contacts_count", {
+        p_location: locationFilter,
+        p_tag: tagFilter,
+        p_search: search,
+      });
       if (error) throw error;
-      return count || 0;
+      return Number(data) || 0;
     },
   });
 
@@ -820,9 +777,9 @@ const CRMContacts = () => {
       <div className="flex flex-wrap gap-2 items-center">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search name, mobile, UMR..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="pl-8" />
+          <Input placeholder="Search name, mobile, UMR..." value={searchInput} onChange={(e) => setSearchInput(e.target.value)} className="pl-8" />
         </div>
-        <Select value={locationFilter} onValueChange={(v) => { setLocationFilter(v); setPage(0); }}>
+        <Select value={locationFilter} onValueChange={handleLocationChange}>
           <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">All Locations</SelectItem>
@@ -830,7 +787,7 @@ const CRMContacts = () => {
             <SelectItem value="NON PHPL">NON PHPL</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={tagFilter} onValueChange={(v) => { setTagFilter(v); setPage(0); }}>
+        <Select value={tagFilter} onValueChange={handleTagChange}>
           <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">All Tags</SelectItem>
@@ -990,10 +947,11 @@ const CRMContacts = () => {
         </Table>
       </div>
 
-      <div className="flex gap-2 justify-center">
+      <div className="flex gap-2 justify-center items-center">
         <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(p => p - 1)}>Previous</Button>
-        <span className="text-sm self-center">Page {page + 1}</span>
-        <Button variant="outline" size="sm" disabled={contacts.length < PAGE_SIZE} onClick={() => setPage(p => p + 1)}>Next</Button>
+        <span className="text-sm">Page {page + 1} of {Math.max(1, Math.ceil(totalCount / PAGE_SIZE))}</span>
+        <Button variant="outline" size="sm" disabled={(page + 1) * PAGE_SIZE >= totalCount} onClick={() => setPage(p => p + 1)}>Next</Button>
+        <span className="text-xs text-muted-foreground ml-2">({totalCount} records)</span>
       </div>
 
       {/* Edit Contact Dialog */}
