@@ -114,6 +114,12 @@ const CRMAbnormalTests = () => {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [page, setPage] = useState(0);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string>("");
+  const [previewFilePath, setPreviewFilePath] = useState<string>("");
+  const [previewMobile, setPreviewMobile] = useState<string>("");
+  const [previewGroup, setPreviewGroup] = useState<PatientGroup | null>(null);
+  const [previewGenerating, setPreviewGenerating] = useState(false);
   const qc = useQueryClient();
 
   // Debounce search
