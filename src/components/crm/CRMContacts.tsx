@@ -220,9 +220,17 @@ const CRMContacts = () => {
     if (error) {
       toast.error("Failed to update contact");
     } else {
+      // Auto-cleanup NON PHPL duplicates if bill_number was set
+      if (updates.bill_number) {
+        const { data: deletedCount } = await supabase.rpc("cleanup_non_phpl_duplicates" as any);
+        if (deletedCount && Number(deletedCount) > 0) {
+          toast.info(`${deletedCount} NON PHPL duplicate(s) auto-removed`);
+        }
+      }
       toast.success("Contact updated");
       setEditOpen(false);
       qc.invalidateQueries({ queryKey: ["crm-contacts"] });
+      qc.invalidateQueries({ queryKey: ["crm-contacts-count"] });
     }
   };
 
@@ -536,6 +544,12 @@ const CRMContacts = () => {
         const chunk = toUpsert.slice(i, i + CHUNK);
         const { error } = await supabase.from("crm_contacts").upsert(chunk, { onConflict: "primary_key" });
         if (error) { console.error(error); failed += chunk.length; } else { added += chunk.length; }
+      }
+
+      // Auto-cleanup NON PHPL duplicates
+      const { data: deletedNonPhpl } = await supabase.rpc("cleanup_non_phpl_duplicates" as any);
+      if (deletedNonPhpl && Number(deletedNonPhpl) > 0) {
+        toast.info(`${deletedNonPhpl} NON PHPL duplicate(s) auto-removed`);
       }
 
       setBulkUpdating(false);
