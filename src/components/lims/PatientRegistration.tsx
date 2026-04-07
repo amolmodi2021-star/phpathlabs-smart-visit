@@ -355,18 +355,24 @@ const PatientRegistration = () => {
         <CardContent className="p-4 space-y-4">
           {/* Mobile Number + Patient Search */}
           <div className="relative">
-            <Label className={!mobileNumber ? "text-destructive" : ""}>Mobile Number *</Label>
+            <Label className={!mobileNumber || mobileNumber.replace(/\D/g, "").slice(-10).length < 10 ? "text-destructive" : ""}>Mobile Number *</Label>
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 value={mobileNumber}
                 onChange={(e) => { setMobileNumber(e.target.value); searchPatients(e.target.value); }}
                 onFocus={() => patientMatches.length > 0 && setShowDropdown(true)}
-                placeholder="Enter mobile number to search..."
+                placeholder="Paste number (any format)"
                 className="pl-8"
                 type="tel"
               />
             </div>
+            {mobileNumber && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Formatted: {mobileNumber.replace(/\D/g, "").slice(-10) || "Need 10+ digits"}
+                {mobileNumber.replace(/\D/g, "").slice(-10).length === 10 && " ✓"}
+              </p>
+            )}
             {showDropdown && patientMatches.length > 0 && (
               <div className="absolute z-50 w-full border rounded-md bg-popover shadow-lg mt-1 max-h-48 overflow-y-auto">
                 {patientMatches.map((p, i) => (
