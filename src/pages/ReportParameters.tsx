@@ -78,31 +78,34 @@ const ReportParameters = () => {
   const buildRangesFromToggles = useCallback(() => {
     const { same_for_gender, same_for_all_ages } = form;
     const genders = same_for_gender ? ["all"] : ["male", "female"];
-    const ageGroups = same_for_all_ages
-      ? [{ label: "All Ages", min: null as number | null, max: null as number | null }]
-      : DEFAULT_AGE_GROUPS.map(a => ({ ...a, min: a.min as number | null, max: a.max as number | null }));
 
-    const newRanges: NormalRange[] = [];
-    for (const gender of genders) {
-      for (const age of ageGroups) {
-        // Preserve existing values if they match
-        const existing = normalRanges.find(r =>
-          r.gender === gender &&
-          r.age_min === age.min &&
-          r.age_max === age.max
-        );
+    if (same_for_all_ages) {
+      // Collapse to single "all ages" per gender
+      const newRanges: NormalRange[] = [];
+      for (const gender of genders) {
+        const existing = normalRanges.find(r => r.gender === gender && r.age_min === null && r.age_max === null);
         newRanges.push({
-          id: existing?.id,
-          gender,
-          age_min: age.min,
-          age_max: age.max,
+          id: existing?.id, gender, age_min: null, age_max: null,
           normal_range_low: existing?.normal_range_low ?? null,
           normal_range_high: existing?.normal_range_high ?? null,
           normal_range_text: existing?.normal_range_text ?? "",
         });
       }
+      setNormalRanges(newRanges);
+    } else {
+      // When switching to age-specific, keep existing age ranges per gender or seed defaults
+      const newRanges: NormalRange[] = [];
+      for (const gender of genders) {
+        const existingForGender = normalRanges.filter(r => r.gender === gender && r.age_min !== null);
+        if (existingForGender.length > 0) {
+          newRanges.push(...existingForGender);
+        } else {
+          // Seed with one default range
+          newRanges.push({ gender, age_min: 0, age_max: 150, normal_range_low: null, normal_range_high: null, normal_range_text: "" });
+        }
+      }
+      setNormalRanges(newRanges);
     }
-    setNormalRanges(newRanges);
   }, [form.same_for_gender, form.same_for_all_ages]);
 
   useEffect(() => {
