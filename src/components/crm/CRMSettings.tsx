@@ -7,12 +7,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 
-const SETTINGS_KEYS = ["crm_daily_quota", "crm_automation_enabled", "crm_abc_static_expiry_date"];
+const SETTINGS_KEYS = ["crm_daily_quota", "crm_automation_enabled"];
 
 const CRMSettings = () => {
   const [quota, setQuota] = useState("100");
   const [automationEnabled, setAutomationEnabled] = useState(false);
-  const [staticExpiryDate, setStaticExpiryDate] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
