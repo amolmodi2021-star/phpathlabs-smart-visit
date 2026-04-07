@@ -137,6 +137,87 @@ export type Database = {
         }
         Relationships: []
       }
+      channel_prices: {
+        Row: {
+          channel_id: string
+          created_at: string
+          custom_price: number
+          id: string
+          test_id: string
+        }
+        Insert: {
+          channel_id: string
+          created_at?: string
+          custom_price?: number
+          id?: string
+          test_id: string
+        }
+        Update: {
+          channel_id?: string
+          created_at?: string
+          custom_price?: number
+          id?: string
+          test_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channel_prices_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "channel_prices_test_id_fkey"
+            columns: ["test_id"]
+            isOneToOne: false
+            referencedRelation: "tests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      channels: {
+        Row: {
+          address: string | null
+          billing_cycle: string
+          billing_type: string
+          contact_person: string | null
+          created_at: string
+          default_discount_pct: number
+          id: string
+          name: string
+          phone: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          billing_cycle?: string
+          billing_type?: string
+          contact_person?: string | null
+          created_at?: string
+          default_discount_pct?: number
+          id?: string
+          name: string
+          phone?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          billing_cycle?: string
+          billing_type?: string
+          contact_person?: string | null
+          created_at?: string
+          default_discount_pct?: number
+          id?: string
+          name?: string
+          phone?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       crm_abnormal_tests: {
         Row: {
           contact_primary_key: string
@@ -1308,6 +1389,7 @@ export type Database = {
           address: string | null
           bill_cancelled: boolean
           cancelled_tests: Json
+          channel_id: string | null
           created_at: string
           discount_amount: number
           dob: string | null
@@ -1342,6 +1424,7 @@ export type Database = {
           address?: string | null
           bill_cancelled?: boolean
           cancelled_tests?: Json
+          channel_id?: string | null
           created_at?: string
           discount_amount?: number
           dob?: string | null
@@ -1376,6 +1459,7 @@ export type Database = {
           address?: string | null
           bill_cancelled?: boolean
           cancelled_tests?: Json
+          channel_id?: string | null
           created_at?: string
           discount_amount?: number
           dob?: string | null
@@ -1407,6 +1491,13 @@ export type Database = {
           visit_type?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "patient_registrations_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "patient_registrations_pickup_point_id_fkey"
             columns: ["pickup_point_id"]

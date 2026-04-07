@@ -57,6 +57,9 @@ const PatientRegistration = () => {
   const [umrNumber, setUmrNumber] = useState("");
   const [address, setAddress] = useState("");
 
+  // Channel
+  const [channelId, setChannelId] = useState("");
+
   // Visit type
   const [visitType, setVisitType] = useState("lab_visit");
   const [pickupPointId, setPickupPointId] = useState("");
@@ -88,6 +91,13 @@ const PatientRegistration = () => {
       return (data || []) as any[];
     },
   });
+  const { data: channels = [] } = useQuery({
+    queryKey: ["channels"],
+    queryFn: async () => {
+      const { data } = await supabase.from("channels").select("*").eq("status", "active").order("name");
+      return (data || []) as any[];
+    },
+  });
   const { data: pickupPrices = [] } = useQuery({
     queryKey: ["pickup_point_prices", pickupPointId],
     queryFn: async () => {
@@ -97,9 +107,20 @@ const PatientRegistration = () => {
     },
     enabled: !!pickupPointId,
   });
+  const { data: channelPrices = [] } = useQuery({
+    queryKey: ["channel_prices", channelId],
+    queryFn: async () => {
+      if (!channelId) return [];
+      const { data } = await supabase.from("channel_prices").select("*").eq("channel_id", channelId);
+      return (data || []) as any[];
+    },
+    enabled: !!channelId,
+  });
 
   const selectedPickup = pickupPoints.find((p: any) => p.id === pickupPointId);
+  const selectedChannel = channels.find((c: any) => c.id === channelId);
   const isCreditPickup = visitType === "pickup_point" && selectedPickup?.billing_type === "credit";
+  const isCreditChannel = !!channelId && selectedChannel?.billing_type === "credit";
 
   // Title → Gender auto-link
   useEffect(() => {
@@ -170,8 +191,12 @@ const PatientRegistration = () => {
     setShowDropdown(false);
   };
 
-  // Get test price (pickup custom price or default)
+  // Get test price (channel/pickup custom price or default)
   const getTestPrice = (test: TestItem): number => {
+    if (channelId) {
+      const custom = channelPrices.find((cp: any) => cp.test_id === test.id);
+      if (custom) return Number(custom.custom_price);
+    }
     if (visitType === "pickup_point" && pickupPointId) {
       const custom = pickupPrices.find((pp: any) => pp.test_id === test.id);
       if (custom) return Number(custom.custom_price);
@@ -284,6 +309,7 @@ const PatientRegistration = () => {
         umr_number: finalUmr,
         visit_type: visitType,
         pickup_point_id: visitType === "pickup_point" ? pickupPointId : null,
+        channel_id: channelId || null,
         tests: calculations.testDetails.map(t => ({
           test_id: t.test_id, test_name: t.test_name, price: t.price,
           discount: t.discount, discounted_price: t.discountedPrice,
@@ -295,8 +321,8 @@ const PatientRegistration = () => {
         home_visit_charges: calculations.homeVisitCharges,
         final_amount: calculations.finalAmount,
         payments,
-        paid_amount: isCreditPickup ? 0 : paidAmount,
-        due_amount: isCreditPickup ? calculations.finalAmount : dueAmount,
+        paid_amount: (isCreditPickup || isCreditChannel) ? 0 : paidAmount,
+        due_amount: (isCreditPickup || isCreditChannel) ? calculations.finalAmount : dueAmount,
         global_discount_type: globalDiscountValue > 0 ? globalDiscountType : null,
         global_discount_value: globalDiscountValue,
       };
@@ -340,7 +366,7 @@ const PatientRegistration = () => {
   const resetForm = () => {
     setMobileNumber(""); setPatientName(""); setTitle(""); setGender("");
     setDob(""); setEmail(""); setShowEmail(false); setDoctorName("SELF"); setUmrNumber("");
-    setAddress(""); setVisitType("lab_visit"); setPickupPointId("");
+    setAddress(""); setChannelId(""); setVisitType("lab_visit"); setPickupPointId("");
     setSelectedTests([]); setGlobalDiscountValue(0); setHomeVisitCharges(0);
     setSelectedModes(new Set()); setModeAmounts({}); setInvoiceData(null); setTriedSave(false);
   };
@@ -452,6 +478,25 @@ const PatientRegistration = () => {
             </div>
           )}
 
+          {/* Channel */}
+          <div>
+            <Label>Channel (optional)</Label>
+            <Select value={channelId} onValueChange={(v) => { setChannelId(v === "__none__" ? "" : v); }}>
+              <SelectTrigger><SelectValue placeholder="No channel selected" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">None</SelectItem>
+                {channels.map((ch: any) => (
+                  <SelectItem key={ch.id} value={ch.id}>{ch.name} ({ch.billing_type})</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedChannel && (
+              <p className="text-xs text-muted-foreground mt-1">
+                {selectedChannel.billing_type === "credit" ? "Credit channel — no payment required now" : `Debit channel • Default discount: ${selectedChannel.default_discount_pct}%`}
+              </p>
+            )}
+          </div>
+
           {/* Visit Type */}
           <div>
             <Label>Visit Type</Label>
@@ -463,12 +508,12 @@ const PatientRegistration = () => {
                 <RadioGroupItem value="home_visit" id="home" /><Label htmlFor="home" className="cursor-pointer text-sm">Home Visit</Label>
               </div>
               <div className="flex items-center gap-1.5">
-                <RadioGroupItem value="pickup_point" id="pickup" /><Label htmlFor="pickup" className="cursor-pointer text-sm">Pickup Point</Label>
+                <RadioGroupItem value="pickup_point" id="pickup" disabled={!!channelId} /><Label htmlFor="pickup" className={`cursor-pointer text-sm ${channelId ? "opacity-50" : ""}`}>Pickup Point</Label>
               </div>
             </RadioGroup>
           </div>
 
-          {visitType === "pickup_point" && (
+          {visitType === "pickup_point" && !channelId && (
             <div>
               <Label>Select Pickup Point *</Label>
               <Select value={pickupPointId} onValueChange={setPickupPointId}>
@@ -486,6 +531,7 @@ const PatientRegistration = () => {
               )}
             </div>
           )}
+
 
           {/* Test Selection */}
           <div>
