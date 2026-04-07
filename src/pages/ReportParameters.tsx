@@ -133,6 +133,7 @@ const ReportParameters = () => {
         normal_range_text: r.normal_range_text || "",
         range_type: r.range_type || "numeric",
         expected_value: r.expected_value || "",
+        descriptive_options: Array.isArray(r.descriptive_options) ? r.descriptive_options : [],
       })));
     }
   };
