@@ -3,6 +3,7 @@ import PatientRegistration from "@/components/lims/PatientRegistration";
 import RegisteredPatients from "@/components/lims/RegisteredPatients";
 import PickupPointManager from "@/components/lims/PickupPointManager";
 import ChannelManager from "@/components/lims/ChannelManager";
+import CompletedHomeVisits from "@/components/lims/CompletedHomeVisits";
 
 const Lims = () => {
   return (
@@ -12,6 +13,7 @@ const Lims = () => {
         <TabsList className="w-full justify-start flex-wrap h-auto gap-1">
           <TabsTrigger value="register">New Registration</TabsTrigger>
           <TabsTrigger value="patients">Registered Patients</TabsTrigger>
+          <TabsTrigger value="completed_hv">Completed Home Visits</TabsTrigger>
           <TabsTrigger value="pickup">Pickup Points</TabsTrigger>
           <TabsTrigger value="channels">Channels</TabsTrigger>
         </TabsList>
@@ -20,6 +22,9 @@ const Lims = () => {
         </TabsContent>
         <TabsContent value="patients">
           <RegisteredPatients />
+        </TabsContent>
+        <TabsContent value="completed_hv">
+          <CompletedHomeVisits />
         </TabsContent>
         <TabsContent value="pickup">
           <PickupPointManager />
