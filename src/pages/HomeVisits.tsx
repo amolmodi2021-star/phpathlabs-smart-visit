@@ -306,6 +306,10 @@ const HomeVisits = () => {
 
 
   const openEditDialog = (v: any) => {
+    if (v.status === "Registered") {
+      toast.error("This visit has been registered. Changes are no longer allowed.");
+      return;
+    }
     if (v.status === "Completed") {
       setPendingEditVisit(v);
       setEditPasswordDialog(true);
