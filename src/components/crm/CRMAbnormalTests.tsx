@@ -875,6 +875,12 @@ const CRMAbnormalTests = () => {
                 ))}
               </SelectContent>
             </Select>
+            {selected.size === 1 && (
+              <Button size="sm" variant="outline" onClick={handlePreviewCard} disabled={sending || previewGenerating}>
+                <Eye className="h-4 w-4 mr-1" />
+                Preview & Send
+              </Button>
+            )}
             <Button size="sm" onClick={handleSendWhatsApp} disabled={sending}>
               <Send className="h-4 w-4 mr-1" />
               Send Abnormal Card ({selected.size})
