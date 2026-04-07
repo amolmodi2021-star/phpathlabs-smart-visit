@@ -18,6 +18,12 @@ import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 
 const INCENTIVE_PASSWORD = "9819111107";
 
+const defaultForm = {
+  test_name: "", price: "", fasting_required: false, discount_applicable: true,
+  description: "", incentive_allowed: false, incentive_amount: "",
+  display_name: "", bold_in_report: false, show_in_report: true, is_single_parameter: false,
+};
+
 const TestManagement = () => {
   useRealtimeSync("tests", ["tests"]);
   const qc = useQueryClient();
@@ -28,7 +34,7 @@ const TestManagement = () => {
   const [deleteDialog, setDeleteDialog] = useState<string | null>(null);
   const [incentiveLocked, setIncentiveLocked] = useState(true);
   const [incentivePassword, setIncentivePassword] = useState("");
-  const [form, setForm] = useState({ test_name: "", price: "", fasting_required: false, discount_applicable: true, description: "", incentive_allowed: false, incentive_amount: "" });
+  const [form, setForm] = useState(defaultForm);
 
   const { data: tests = [], isLoading, isError, error: queryError, refetch } = useQuery({
     queryKey: ["tests"],
@@ -39,7 +45,19 @@ const TestManagement = () => {
 
   const saveMutation = useMutation({
     mutationFn: async (values: typeof form) => {
-      const payload = { ...values, price: parseFloat(values.price) || 0, incentive_amount: parseFloat(values.incentive_amount) || 0 };
+      const payload = {
+        test_name: values.test_name,
+        price: parseFloat(values.price) || 0,
+        fasting_required: values.fasting_required,
+        discount_applicable: values.discount_applicable,
+        description: values.description,
+        incentive_allowed: values.incentive_allowed,
+        incentive_amount: parseFloat(values.incentive_amount) || 0,
+        display_name: values.display_name || null,
+        bold_in_report: values.bold_in_report,
+        show_in_report: values.show_in_report,
+        is_single_parameter: values.is_single_parameter,
+      };
       await saveTest(payload, editing?.id);
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["tests"] }); setDialogOpen(false); resetForm(); toast.success("Test saved"); },
@@ -71,17 +89,29 @@ const TestManagement = () => {
     onError: (e: Error) => toast.error("Upload failed: " + e.message),
   });
 
-  const resetForm = () => { setForm({ test_name: "", price: "", fasting_required: false, discount_applicable: true, description: "", incentive_allowed: false, incentive_amount: "" }); setEditing(null); setIncentiveLocked(true); setIncentivePassword(""); };
+  const resetForm = () => { setForm(defaultForm); setEditing(null); setIncentiveLocked(true); setIncentivePassword(""); };
 
   const openEdit = (t: any) => {
     setEditing(t);
-    setForm({ test_name: t.test_name, price: String(t.price), fasting_required: t.fasting_required, discount_applicable: t.discount_applicable, description: t.description || "", incentive_allowed: t.incentive_allowed || false, incentive_amount: t.incentive_amount ? String(t.incentive_amount) : "" });
+    setForm({
+      test_name: t.test_name, price: String(t.price),
+      fasting_required: t.fasting_required, discount_applicable: t.discount_applicable,
+      description: t.description || "", incentive_allowed: t.incentive_allowed || false,
+      incentive_amount: t.incentive_amount ? String(t.incentive_amount) : "",
+      display_name: t.display_name || "", bold_in_report: t.bold_in_report ?? false,
+      show_in_report: t.show_in_report ?? true, is_single_parameter: t.is_single_parameter ?? false,
+    });
     setIncentiveLocked(true);
     setIncentivePassword("");
     setDialogOpen(true);
   };
 
   const filtered = tests.filter((t: any) => t.test_name.toLowerCase().includes(search.toLowerCase()));
+
+  const unlockIncentive = () => {
+    if (incentivePassword === INCENTIVE_PASSWORD) { setIncentiveLocked(false); setIncentivePassword(""); }
+    else { toast.error("Incorrect password"); setIncentivePassword(""); }
+  };
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -98,51 +128,56 @@ const TestManagement = () => {
           </Button>
           <Dialog open={dialogOpen} onOpenChange={(o) => { setDialogOpen(o); if (!o) resetForm(); }}>
             <DialogTrigger asChild><Button size="sm"><Plus className="h-4 w-4 mr-1" />Add Test</Button></DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>{editing ? "Edit Test" : "Add Test"}</DialogTitle>
                 <DialogDescription>{editing ? "Update the test details below." : "Fill in the test details below."}</DialogDescription>
               </DialogHeader>
               <form onSubmit={(e) => { e.preventDefault(); saveMutation.mutate(form); }} className="space-y-4">
+                {/* Test Code - read only */}
+                {editing?.test_code && (
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Test Code</Label>
+                    <Input value={editing.test_code} disabled className="bg-muted font-mono text-sm" />
+                  </div>
+                )}
+
                 <div><Label>Test Name *</Label><Input value={form.test_name} onChange={(e) => setForm(p => ({ ...p, test_name: e.target.value }))} required /></div>
+                <div><Label>Display Name</Label><Input value={form.display_name} onChange={(e) => setForm(p => ({ ...p, display_name: e.target.value }))} placeholder="Name shown in reports (optional)" /></div>
                 <div><Label>Price (₹) *</Label><Input type="number" value={form.price} onChange={(e) => setForm(p => ({ ...p, price: e.target.value }))} required /></div>
-                <div className="flex items-center gap-3"><Switch checked={form.fasting_required} onCheckedChange={(v) => setForm(p => ({ ...p, fasting_required: v }))} /><Label>Fasting Required</Label></div>
-                <div className="flex items-center gap-3"><Switch checked={form.discount_applicable} onCheckedChange={(v) => setForm(p => ({ ...p, discount_applicable: v }))} /><Label>Discount Applicable</Label></div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex items-center gap-3"><Switch checked={form.fasting_required} onCheckedChange={(v) => setForm(p => ({ ...p, fasting_required: v }))} /><Label className="text-sm">Fasting Required</Label></div>
+                  <div className="flex items-center gap-3"><Switch checked={form.discount_applicable} onCheckedChange={(v) => setForm(p => ({ ...p, discount_applicable: v }))} /><Label className="text-sm">Discount Applicable</Label></div>
+                </div>
+
+                {/* Report display settings */}
+                <div className="border rounded-md p-3 space-y-3 bg-muted/30">
+                  <Label className="font-semibold text-sm">Report Settings</Label>
+                  <div className="grid grid-cols-1 gap-2">
+                    <div className="flex items-center gap-3"><Switch checked={form.bold_in_report} onCheckedChange={(v) => setForm(p => ({ ...p, bold_in_report: v }))} /><Label className="text-sm">Bold in Report</Label></div>
+                    <div className="flex items-center gap-3"><Switch checked={form.show_in_report} onCheckedChange={(v) => setForm(p => ({ ...p, show_in_report: v }))} /><Label className="text-sm">Show Display Name in Report</Label></div>
+                    <div className="flex items-center gap-3"><Switch checked={form.is_single_parameter} onCheckedChange={(v) => setForm(p => ({ ...p, is_single_parameter: v }))} /><Label className="text-sm">Test = Parameter (Single Parameter Test)</Label></div>
+                  </div>
+                </div>
+
                 <div><Label>Description</Label><Textarea value={form.description} onChange={(e) => setForm(p => ({ ...p, description: e.target.value }))} /></div>
-                
+
                 {/* Incentive fields - password protected */}
                 <div className="border rounded-md p-3 space-y-3 bg-muted/30">
                   <div className="flex items-center justify-between">
                     <Label className="font-semibold text-sm">Incentive Settings</Label>
                     {incentiveLocked ? (
-                      <div className="flex items-center gap-2">
-                        <Lock className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-xs text-muted-foreground">Locked</span>
-                      </div>
+                      <div className="flex items-center gap-2"><Lock className="h-4 w-4 text-muted-foreground" /><span className="text-xs text-muted-foreground">Locked</span></div>
                     ) : (
-                      <div className="flex items-center gap-2">
-                        <Unlock className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                        <span className="text-xs text-emerald-600 dark:text-emerald-400">Unlocked</span>
-                      </div>
+                      <div className="flex items-center gap-2"><Unlock className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /><span className="text-xs text-emerald-600 dark:text-emerald-400">Unlocked</span></div>
                     )}
                   </div>
                   {incentiveLocked ? (
                     <div className="flex gap-2">
-                      <Input
-                        type="password"
-                        placeholder="Enter password to unlock"
-                        value={incentivePassword}
-                        onChange={(e) => setIncentivePassword(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            if (incentivePassword === INCENTIVE_PASSWORD) { setIncentiveLocked(false); setIncentivePassword(""); } else { toast.error("Incorrect password"); setIncentivePassword(""); }
-                          }
-                        }}
-                      />
-                      <Button type="button" size="sm" variant="outline" onClick={() => {
-                        if (incentivePassword === INCENTIVE_PASSWORD) { setIncentiveLocked(false); setIncentivePassword(""); } else { toast.error("Incorrect password"); setIncentivePassword(""); }
-                      }}>Unlock</Button>
+                      <Input type="password" placeholder="Enter password to unlock" value={incentivePassword} onChange={(e) => setIncentivePassword(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); unlockIncentive(); } }} />
+                      <Button type="button" size="sm" variant="outline" onClick={unlockIncentive}>Unlock</Button>
                     </div>
                   ) : (
                     <>
@@ -180,10 +215,12 @@ const TestManagement = () => {
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm truncate">{t.test_name}</p>
                   <div className="flex flex-wrap gap-2 mt-1 text-xs text-muted-foreground">
+                    <span className="font-mono">{t.test_code}</span>
                     <span>₹{t.price}</span>
                     {t.fasting_required && <span className="text-warning">Fasting</span>}
                     {!t.discount_applicable && <span className="text-destructive">No Discount</span>}
                     {t.incentive_allowed && <span className="text-primary">Incentive: ₹{t.incentive_amount}</span>}
+                    {t.is_single_parameter && <span className="text-blue-500">Single Param</span>}
                   </div>
                 </div>
                 <div className="flex gap-1">
@@ -196,7 +233,7 @@ const TestManagement = () => {
           {filtered.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">No tests found.</p>}
         </div>
       )}
-      <ExportPasswordDialog open={exportDialog} onOpenChange={setExportDialog} onSuccess={() => exportToExcel(tests.map((t: any) => ({ "Test Name": t.test_name, Price: t.price, "Fasting Required": t.fasting_required ? "Yes" : "No", "Discount Applicable": t.discount_applicable ? "Yes" : "No", Description: t.description, "Incentive Allowed": t.incentive_allowed ? "Yes" : "No", "Incentive Amount": t.incentive_amount || 0 })), "tests_export")} />
+      <ExportPasswordDialog open={exportDialog} onOpenChange={setExportDialog} onSuccess={() => exportToExcel(tests.map((t: any) => ({ "Test Code": t.test_code, "Test Name": t.test_name, "Display Name": t.display_name || "", Price: t.price, "Fasting Required": t.fasting_required ? "Yes" : "No", "Discount Applicable": t.discount_applicable ? "Yes" : "No", Description: t.description, "Bold in Report": t.bold_in_report ? "Yes" : "No", "Show in Report": t.show_in_report ? "Yes" : "No", "Single Parameter": t.is_single_parameter ? "Yes" : "No", "Incentive Allowed": t.incentive_allowed ? "Yes" : "No", "Incentive Amount": t.incentive_amount || 0 })), "tests_export")} />
       <DeletePasswordDialog
         open={!!deleteDialog}
         onOpenChange={(o) => !o && setDeleteDialog(null)}
