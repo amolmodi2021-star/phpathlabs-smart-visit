@@ -142,9 +142,9 @@ const ReportParameters = () => {
 
   const handleExport = () => {
     const rows = params.map((p) => ({
+      "Param Code": p.param_code || "",
       "Parameter Name": p.parameter_name || "",
       "Test Name": p.test_name || "",
-      "Department": p.report_departments?.department_name || "",
       "Profile": p.report_profiles?.profile_name || "",
       "Unit": p.unit || "",
       "Sample Type": p.sample_type || "",
@@ -152,8 +152,6 @@ const ReportParameters = () => {
       "Method": p.method || "",
       "Display Order": p.display_order ?? 0,
       "Store for Analytics": p.store_for_analytics ? "Yes" : "No",
-      "Is Outsourced": p.is_outsourced ? "Yes" : "No",
-      "Outsourced Caption": p.outsourced_caption || "",
       "Interpretation": p.interpretation || "",
     }));
     exportToExcel(rows, "test_parameters_export");
