@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, ChevronLeft, ChevronRight, Pencil, Download, Eye } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, Pencil, Download, Eye, ChevronDown, ChevronUp } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { exportToExcel } from "@/lib/excel";
@@ -22,6 +22,7 @@ const RegisteredPatients = () => {
   const [editReg, setEditReg] = useState<any>(null);
   const [viewBillReg, setViewBillReg] = useState<any>(null);
   const [showExportPwd, setShowExportPwd] = useState(false);
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
   const registrationSearchFilter = debouncedSearch
     ? `patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%,umr_number.ilike.%${debouncedSearch}%`
@@ -33,6 +34,16 @@ const RegisteredPatients = () => {
     clearTimeout((window as any).__regSearchTimeout);
     (window as any).__regSearchTimeout = setTimeout(() => setDebouncedSearch(val), 400);
   };
+
+  const { data: channels = [] } = useQuery({
+    queryKey: ["channels_lookup"],
+    queryFn: async () => {
+      const { data } = await supabase.from("channels").select("id, name");
+      return (data || []) as { id: string; name: string }[];
+    },
+  });
+
+  const channelMap = Object.fromEntries(channels.map(c => [c.id, c.name]));
 
   const { data: count = 0 } = useQuery({
     queryKey: ["patient_registrations_count", debouncedSearch],
@@ -76,6 +87,15 @@ const RegisteredPatients = () => {
       case "completed": return "default";
       case "cancelled": return "destructive";
       default: return "secondary";
+    }
+  };
+
+  const visitTypeLabel = (v: string) => {
+    switch (v) {
+      case "lab_visit": return "Lab";
+      case "home_visit": return "Home";
+      case "pickup_point": return "Pickup";
+      default: return v || "—";
     }
   };
 
@@ -125,6 +145,8 @@ const RegisteredPatients = () => {
     }
   };
 
+  const colCount = 10;
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3 flex-wrap">
@@ -143,11 +165,14 @@ const RegisteredPatients = () => {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-8"></TableHead>
               <TableHead>Invoice #</TableHead>
               <TableHead>Date</TableHead>
               <TableHead>Patient</TableHead>
               <TableHead>Mobile</TableHead>
-              <TableHead>Tests</TableHead>
+              <TableHead>Visit</TableHead>
+              <TableHead>Channel</TableHead>
+              <TableHead>Remarks</TableHead>
               <TableHead className="text-right">Amount</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Actions</TableHead>
@@ -155,53 +180,83 @@ const RegisteredPatients = () => {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={colCount + 1} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
             ) : registrations.length === 0 ? (
-              <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No registrations found</TableCell></TableRow>
+              <TableRow><TableCell colSpan={colCount + 1} className="text-center py-8 text-muted-foreground">No registrations found</TableCell></TableRow>
             ) : registrations.map((r: any) => {
               const testList = Array.isArray(r.tests) ? r.tests : [];
               const cancelledTests = Array.isArray(r.cancelled_tests) ? r.cancelled_tests : [];
               const cancelledIds = new Set(cancelledTests.map((ct: any) => ct.test_id));
               const activeTests = testList.filter((t: any) => !cancelledIds.has(t.test_id));
+              const isExpanded = expandedRow === r.id;
+
               return (
-                <TableRow key={r.id} className={`${r.bill_cancelled ? "opacity-60" : ""} ${r.is_stat && !r.bill_cancelled && r.status !== "dispatched" ? "bg-destructive/5" : ""}`}>
-                  <TableCell className="font-mono text-xs">
-                    {r.invoice_number}
-                  </TableCell>
-                  <TableCell className="text-xs">{r.created_at ? format(new Date(r.created_at), "dd-MM-yyyy HH:mm") : "—"}</TableCell>
-                  <TableCell>
-                    <div className="text-sm font-medium">
-                      {r.title} {r.patient_name}
-                      {r.is_stat && !r.bill_cancelled && r.status !== "dispatched" && (
-                        <span className="relative inline-flex h-2.5 w-2.5 ml-1.5 align-middle"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75"></span><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive"></span></span>
-                      )}
-                    </div>
-                    {r.umr_number && <div className="text-xs text-muted-foreground">{r.umr_number}</div>}
-                  </TableCell>
-                  <TableCell className="text-sm">{r.mobile_number}</TableCell>
-                  <TableCell className="text-xs max-w-[200px]">
-                    <div className="truncate">{activeTests.map((t: any) => t.test_name).join(", ") || "—"}</div>
-                    {cancelledTests.length > 0 && (
-                      <div className="text-destructive truncate">Cancelled: {cancelledTests.map((ct: any) => ct.test_name || ct.test_id).join(", ")}</div>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="text-sm font-medium">₹{r.final_amount}</div>
-                    {r.due_amount > 0 && <div className="text-xs text-destructive">Due: ₹{r.due_amount}</div>}
-                    {r.refund_amount > 0 && <div className="text-xs text-orange-600">Refund: ₹{r.refund_amount}</div>}
-                  </TableCell>
-                  <TableCell><Badge variant={statusColor(r.status)}>{r.bill_cancelled ? "cancelled" : r.status}</Badge></TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="icon" className="h-8 w-8" title="View Bill" onClick={() => setViewBillReg(r)}>
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8" title="Edit" onClick={() => setEditReg(r)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
+                <>
+                  <TableRow
+                    key={r.id}
+                    className={`cursor-pointer ${r.bill_cancelled ? "opacity-60" : ""} ${r.is_stat && !r.bill_cancelled && r.status !== "dispatched" ? "bg-destructive/5" : ""}`}
+                    onClick={() => setExpandedRow(isExpanded ? null : r.id)}
+                  >
+                    <TableCell className="px-2">
+                      {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">{r.invoice_number}</TableCell>
+                    <TableCell className="text-xs">{r.created_at ? format(new Date(r.created_at), "dd-MM-yyyy HH:mm") : "—"}</TableCell>
+                    <TableCell>
+                      <div className="text-sm font-medium">
+                        {r.title} {r.patient_name}
+                        {r.is_stat && !r.bill_cancelled && r.status !== "dispatched" && (
+                          <span className="relative inline-flex h-2.5 w-2.5 ml-1.5 align-middle"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75"></span><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive"></span></span>
+                        )}
+                      </div>
+                      {r.umr_number && <div className="text-xs text-muted-foreground">{r.umr_number}</div>}
+                    </TableCell>
+                    <TableCell className="text-sm">{r.mobile_number}</TableCell>
+                    <TableCell className="text-xs">{visitTypeLabel(r.visit_type)}</TableCell>
+                    <TableCell className="text-xs">{r.channel_id ? (channelMap[r.channel_id] || "—") : "—"}</TableCell>
+                    <TableCell className="text-xs max-w-[120px] truncate">{r.remarks || "—"}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="text-sm font-medium">₹{r.final_amount}</div>
+                      {r.due_amount > 0 && <div className="text-xs text-destructive">Due: ₹{r.due_amount}</div>}
+                      {r.refund_amount > 0 && <div className="text-xs text-orange-600">Refund: ₹{r.refund_amount}</div>}
+                    </TableCell>
+                    <TableCell><Badge variant={statusColor(r.status)}>{r.bill_cancelled ? "cancelled" : r.status}</Badge></TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" title="View Bill" onClick={() => setViewBillReg(r)}>
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" title="Edit" onClick={() => setEditReg(r)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                  {isExpanded && (
+                    <TableRow key={`${r.id}-details`} className="bg-muted/30 hover:bg-muted/30">
+                      <TableCell colSpan={colCount + 1} className="py-3 px-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                          <div>
+                            <span className="font-medium text-muted-foreground">Tests: </span>
+                            <div className="mt-1 space-y-0.5">
+                              {activeTests.map((t: any, i: number) => (
+                                <div key={i} className="text-xs">• {t.test_name} — ₹{t.discounted_price ?? t.price}</div>
+                              ))}
+                              {cancelledTests.length > 0 && cancelledTests.map((ct: any, i: number) => (
+                                <div key={`c-${i}`} className="text-xs text-destructive">• {ct.test_name || ct.test_id} (Cancelled)</div>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="space-y-1 text-xs">
+                            <div><span className="font-medium text-muted-foreground">Doctor:</span> {r.doctor_name || "—"}</div>
+                            <div><span className="font-medium text-muted-foreground">Report Language:</span> {r.report_language || "ENGLISH"}</div>
+                            <div><span className="font-medium text-muted-foreground">Address:</span> {r.address || "—"}</div>
+                          </div>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </>
               );
             })}
           </TableBody>

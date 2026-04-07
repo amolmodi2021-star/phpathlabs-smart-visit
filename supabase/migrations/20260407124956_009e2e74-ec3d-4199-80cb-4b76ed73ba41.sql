@@ -1,0 +1,1 @@
+ALTER TABLE public.patient_registrations ADD COLUMN IF NOT EXISTS report_language text DEFAULT 'ENGLISH';

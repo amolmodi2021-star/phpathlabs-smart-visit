@@ -1415,6 +1415,7 @@ export type Database = {
           refund_date: string | null
           refund_mode: string | null
           remarks: string | null
+          report_language: string | null
           status: string
           tests: Json
           title: string | null
@@ -1452,6 +1453,7 @@ export type Database = {
           refund_date?: string | null
           refund_mode?: string | null
           remarks?: string | null
+          report_language?: string | null
           status?: string
           tests?: Json
           title?: string | null
@@ -1489,6 +1491,7 @@ export type Database = {
           refund_date?: string | null
           refund_mode?: string | null
           remarks?: string | null
+          report_language?: string | null
           status?: string
           tests?: Json
           title?: string | null
