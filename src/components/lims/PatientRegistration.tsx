@@ -246,6 +246,7 @@ const PatientRegistration = () => {
       if (!patientName.trim()) throw new Error("Patient name is required");
       if (!title) throw new Error("Title is required");
       if (!gender) throw new Error("Gender is required");
+      if (!dob) throw new Error("Date of birth is required");
       if (selectedTests.length === 0) throw new Error("Select at least one test");
       if (visitType !== "pickup_point" && !address.trim()) throw new Error("Address is required");
 
@@ -412,7 +413,7 @@ const PatientRegistration = () => {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>DOB</Label>
+              <Label className={!dob ? "text-destructive" : ""}>DOB *</Label>
               <Input type="date" value={dob} onChange={e => setDob(e.target.value)} />
               {age && <p className="text-xs text-muted-foreground mt-1">Age: {age}</p>}
             </div>
@@ -432,6 +433,14 @@ const PatientRegistration = () => {
               <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="patient@email.com" className="mt-1" />
             )}
           </div>
+
+          {/* Address (above visit type, hidden for pickup point) */}
+          {visitType !== "pickup_point" && (
+            <div>
+              <Label className={!address.trim() ? "text-destructive" : ""}>Address *</Label>
+              <Input value={address} onChange={e => setAddress(e.target.value)} placeholder="Patient address" />
+            </div>
+          )}
 
           {/* Visit Type */}
           <div>
@@ -465,13 +474,6 @@ const PatientRegistration = () => {
                   {selectedPickup.billing_type === "credit" ? "Credit billing — no payment required now" : `Debit billing • Default discount: ${selectedPickup.default_discount_pct}%`}
                 </p>
               )}
-            </div>
-          )}
-
-          {visitType !== "pickup_point" && (
-            <div>
-              <Label className={!address.trim() ? "text-destructive" : ""}>Address *</Label>
-              <Input value={address} onChange={e => setAddress(e.target.value)} placeholder="Patient address" />
             </div>
           )}
 
