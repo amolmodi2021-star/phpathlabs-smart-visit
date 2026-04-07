@@ -1404,6 +1404,7 @@ export type Database = {
           home_visit_charges: number
           id: string
           invoice_number: string
+          is_stat: boolean
           mobile_number: string
           net_amount: number
           paid_amount: number
@@ -1413,6 +1414,7 @@ export type Database = {
           refund_amount: number
           refund_date: string | null
           refund_mode: string | null
+          remarks: string | null
           status: string
           tests: Json
           title: string | null
@@ -1439,6 +1441,7 @@ export type Database = {
           home_visit_charges?: number
           id?: string
           invoice_number: string
+          is_stat?: boolean
           mobile_number: string
           net_amount?: number
           paid_amount?: number
@@ -1448,6 +1451,7 @@ export type Database = {
           refund_amount?: number
           refund_date?: string | null
           refund_mode?: string | null
+          remarks?: string | null
           status?: string
           tests?: Json
           title?: string | null
@@ -1474,6 +1478,7 @@ export type Database = {
           home_visit_charges?: number
           id?: string
           invoice_number?: string
+          is_stat?: boolean
           mobile_number?: string
           net_amount?: number
           paid_amount?: number
@@ -1483,6 +1488,7 @@ export type Database = {
           refund_amount?: number
           refund_date?: string | null
           refund_mode?: string | null
+          remarks?: string | null
           status?: string
           tests?: Json
           title?: string | null
