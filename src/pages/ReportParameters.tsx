@@ -291,13 +291,18 @@ const ReportParameters = () => {
     setNormalRanges(prev => prev.map((r, i) => i === index ? { ...r, [field]: value } : r));
   };
 
-  const getRangeLabel = (r: NormalRange) => {
-    const genderLabel = r.gender === "all" ? "All" : r.gender === "male" ? "Male" : "Female";
-    const ageLabel = r.age_min === null && r.age_max === null
-      ? "All Ages"
-      : `${r.age_min ?? 0}–${r.age_max ?? "∞"} yr`;
-    return `${genderLabel} / ${ageLabel}`;
+  const addAgeRange = (gender: string) => {
+    setNormalRanges(prev => [...prev, {
+      gender, age_min: 0, age_max: 150,
+      normal_range_low: null, normal_range_high: null, normal_range_text: "",
+    }]);
   };
+
+  const removeAgeRange = (index: number) => {
+    setNormalRanges(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const getGenderLabel = (g: string) => g === "all" ? "All" : g === "male" ? "Male" : "Female";
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
