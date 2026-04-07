@@ -253,6 +253,15 @@ const PatientRegistration = () => {
       const { data: invoiceNum, error: invErr } = await supabase.rpc("generate_invoice_number" as any);
       if (invErr) throw new Error("Failed to generate invoice number");
 
+      // Determine UMR: reuse existing or generate new
+      let finalUmr = umrNumber;
+      if (!finalUmr) {
+        const { data: newUmr, error: umrErr } = await supabase.rpc("generate_umr_number" as any);
+        if (umrErr) throw new Error("Failed to generate UMR number");
+        finalUmr = newUmr as string;
+        setUmrNumber(finalUmr);
+      }
+
       const payments = Array.from(selectedModes)
         .filter(m => (modeAmounts[m] || 0) > 0)
         .map(m => ({ mode: m, amount: modeAmounts[m] || 0 }));
@@ -267,7 +276,7 @@ const PatientRegistration = () => {
         email: email || null,
         address: visitType === "pickup_point" ? (selectedPickup?.address || "") : address.toUpperCase(),
         doctor_name: (doctorName || "SELF").toUpperCase(),
-        umr_number: umrNumber || null,
+        umr_number: finalUmr,
         visit_type: visitType,
         pickup_point_id: visitType === "pickup_point" ? pickupPointId : null,
         tests: calculations.testDetails.map(t => ({
