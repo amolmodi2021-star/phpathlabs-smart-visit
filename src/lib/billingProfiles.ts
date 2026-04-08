@@ -19,6 +19,7 @@ export interface BillingProfile {
   description: string | null;
   incentive_allowed: boolean;
   incentive_amount: number;
+  is_active: boolean;
   created_at?: string;
   updated_at?: string;
 }

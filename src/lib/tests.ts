@@ -18,6 +18,7 @@ export interface TestItem {
   method?: string | null;
   sample_type?: string | null;
   interpretation?: string | null;
+  is_active?: boolean;
   created_at?: string;
   updated_at?: string;
 }
