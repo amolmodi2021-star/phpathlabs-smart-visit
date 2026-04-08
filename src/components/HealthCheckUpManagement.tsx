@@ -11,9 +11,11 @@ import { toast } from "sonner";
 import {
   getHealthCheckups, saveHealthCheckup, deleteHealthCheckup,
   getHealthCheckupTests, linkTestToCheckup, unlinkTestFromCheckup,
+  getHealthCheckupProfiles, linkProfileToCheckup, unlinkProfileFromCheckup,
   HealthCheckup,
 } from "@/lib/healthCheckups";
 import TestLinker from "@/components/TestLinker";
+import ProfileLinker from "@/components/ProfileLinker";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 
 const INCENTIVE_PASSWORD = "9819111107";
