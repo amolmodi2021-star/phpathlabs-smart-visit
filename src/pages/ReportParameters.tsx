@@ -52,6 +52,11 @@ const ReportParameters = () => {
     same_for_gender: true,
     same_for_all_ages: true,
     normal_range_text: "",
+    machine_name: "",
+    machine_id: "",
+    send_for_interface: true,
+    is_calculated: false,
+    calculation_formula: [] as { parameter_id: string; parameter_name: string; operator: string }[],
   });
 
   const [normalRanges, setNormalRanges] = useState<NormalRange[]>([]);
