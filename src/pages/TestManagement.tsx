@@ -24,6 +24,7 @@ import ProfileManagement from "@/components/ProfileManagement";
 import ReportParameters from "@/pages/ReportParameters";
 import ReportDepartments from "@/pages/ReportDepartments";
 import MasterLookupSettings from "@/components/MasterLookupSettings";
+import MasterLookupSelect from "@/components/MasterLookupSelect";
 
 const INCENTIVE_PASSWORD = "9819111107";
 
@@ -232,9 +233,9 @@ const TestManagement = () => {
                 <div className="border rounded-md p-3 space-y-3 bg-muted/30">
                   <Label className="font-semibold text-sm">Lab Details</Label>
                   <div className="grid grid-cols-2 gap-3">
-                    <div><Label className="text-sm">Instrument Name</Label><Input value={form.instrument_name} onChange={(e) => setForm(p => ({ ...p, instrument_name: e.target.value }))} placeholder="e.g. Sysmex XN-1000" /></div>
-                    <div><Label className="text-sm">Method</Label><Input value={form.method} onChange={(e) => setForm(p => ({ ...p, method: e.target.value }))} placeholder="e.g. Immunoturbidimetry" /></div>
-                    <div><Label className="text-sm">Sample Type</Label><Input value={form.sample_type} onChange={(e) => setForm(p => ({ ...p, sample_type: e.target.value }))} placeholder="e.g. Serum, EDTA Blood" /></div>
+                    <div><Label className="text-sm">Instrument Name</Label><MasterLookupSelect category="machine_name" value={form.instrument_name} onChange={(v) => setForm(p => ({ ...p, instrument_name: v }))} placeholder="Select machine" /></div>
+                    <div><Label className="text-sm">Method</Label><MasterLookupSelect category="method" value={form.method} onChange={(v) => setForm(p => ({ ...p, method: v }))} placeholder="Select method" /></div>
+                    <div><Label className="text-sm">Sample Type</Label><MasterLookupSelect category="sample_tube" value={form.sample_type} onChange={(v) => setForm(p => ({ ...p, sample_type: v }))} onMappedValue={(v) => setForm(p => ({ ...p, sample_type: p.sample_type }))} placeholder="Select sample type" /></div>
                   </div>
                   <div><Label className="text-sm">Interpretation</Label><Textarea value={form.interpretation} onChange={(e) => setForm(p => ({ ...p, interpretation: e.target.value }))} placeholder="Clinical interpretation notes" rows={3} /></div>
                 </div>

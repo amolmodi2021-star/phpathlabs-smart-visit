@@ -16,6 +16,7 @@ import { Plus, Pencil, Trash2, Loader2, Search, Download, Upload } from "lucide-
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import { exportToExcel, parseExcelFile } from "@/lib/excel";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
+import MasterLookupSelect from "@/components/MasterLookupSelect";
 
 interface NormalRange {
   id?: string;
@@ -470,7 +471,7 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
             )}
             <div className="grid grid-cols-2 gap-4">
               <div><Label>Parameter Name *</Label><Input value={form.parameter_name} onChange={(e) => setForm({ ...form, parameter_name: e.target.value })} /></div>
-              <div><Label>Unit</Label><Input value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} /></div>
+              <div><Label>Unit</Label><MasterLookupSelect category="unit" value={form.unit} onChange={(v) => setForm({ ...form, unit: v })} placeholder="Select unit" /></div>
             </div>
 
             <div className="flex items-center gap-2">
@@ -494,8 +495,8 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
               </div>
               {form.send_for_interface && (
                 <div className="grid grid-cols-2 gap-3">
-                  <div><Label className="text-sm">Machine Name</Label><Input value={form.machine_name} onChange={(e) => setForm({ ...form, machine_name: e.target.value })} placeholder="e.g. Sysmex XN-1000" /></div>
-                  <div><Label className="text-sm">Machine ID</Label><Input value={form.machine_id} onChange={(e) => setForm({ ...form, machine_id: e.target.value })} placeholder="e.g. MACH001" /></div>
+                  <div><Label className="text-sm">Machine Name</Label><MasterLookupSelect category="machine_name" value={form.machine_name} onChange={(v) => setForm({ ...form, machine_name: v })} onMappedValue={(v) => setForm(prev => ({ ...prev, machine_id: v }))} placeholder="Select machine" /></div>
+                  <div><Label className="text-sm">Machine ID</Label><Input value={form.machine_id} onChange={(e) => setForm({ ...form, machine_id: e.target.value })} placeholder="Auto-filled or enter manually" /></div>
                 </div>
               )}
 
