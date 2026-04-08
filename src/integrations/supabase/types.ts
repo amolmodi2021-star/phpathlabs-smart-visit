@@ -1530,6 +1530,33 @@ export type Database = {
         }
         Relationships: []
       }
+      master_lookup: {
+        Row: {
+          category: string
+          created_at: string
+          display_order: number
+          id: string
+          is_active: boolean
+          value: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          value: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          value?: string
+        }
+        Relationships: []
+      }
       message_templates: {
         Row: {
           created_at: string
