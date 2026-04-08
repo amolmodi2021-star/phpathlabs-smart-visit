@@ -241,15 +241,16 @@ const TestManagement = () => {
                   )}
                 </div>
 
-                {/* Parameters section - only for saved tests */}
-                {editing?.id && (
-                  <TestParameterManager testId={editing.id} testName={editing.test_name} />
-                )}
-
                 <Button type="submit" className="w-full" disabled={saveMutation.isPending}>
                   {saveMutation.isPending ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" />Saving...</> : "Save"}
                 </Button>
               </form>
+
+                {/* Parameters section - outside form to prevent accidental submit */}
+                {editing?.id && (
+                  <TestParameterManager testId={editing.id} testName={editing.test_name} />
+                )}
+
             </DialogContent>
           </Dialog>
         </div>
