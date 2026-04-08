@@ -550,6 +550,7 @@ const OutsourcedResults = () => {
           <div className="border-t p-3 space-y-3 bg-muted/10">
             <Tabs value={currentMode} onValueChange={(v) => {
               if (v === "manual") setManualMode(regId, test.testId);
+              // For snip, just let the tab switch — no DB update needed until image is pasted
             }}>
               <TabsList className="h-8">
                 {hasParams && (
