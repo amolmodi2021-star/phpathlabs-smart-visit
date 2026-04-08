@@ -50,6 +50,11 @@ const OutsourcedResults = () => {
   const [labName, setLabName] = useState("");
   const [markingSent, setMarkingSent] = useState(false);
 
+  // Edit lab name state
+  const [editLabKey, setEditLabKey] = useState<string | null>(null); // "regId||testId"
+  const [editLabName, setEditLabName] = useState("");
+  const [savingEditLab, setSavingEditLab] = useState(false);
+
   // Debounce search
   const searchTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const handleSearch = useCallback((val: string) => {
