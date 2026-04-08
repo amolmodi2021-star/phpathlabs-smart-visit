@@ -511,7 +511,7 @@ const OutsourcedResults = () => {
     const hasParams = params.some((tp: any) => !tp.is_subheader && tp.report_test_parameters);
     const isUploading = uploadingKey === testKey;
     const isSaving = savingKey === testKey;
-    const currentMode = snip?.result_mode || (hasParams ? "manual" : "snip");
+    const currentMode = hasParams ? (snip?.result_mode || "manual") : "snip";
     const isSelected = selectedTests.has(testKey);
     const canSelect = status === "not_sent";
     const canEnterResults = status === "awaiting_results";
@@ -548,7 +548,7 @@ const OutsourcedResults = () => {
         {/* Expanded: only for sent tests (awaiting or results_entered) */}
         {isExpanded && (canEnterResults || status === "results_entered") && (
           <div className="border-t p-3 space-y-3 bg-muted/10">
-            <Tabs value={currentMode} onValueChange={(v) => {
+            <Tabs defaultValue={currentMode} onValueChange={(v) => {
               if (v === "manual") setManualMode(regId, test.testId);
             }}>
               <TabsList className="h-8">
