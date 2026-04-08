@@ -127,29 +127,29 @@ const SnipOnLetterhead = ({
             </Button>
           </div>
         </div>
-        <div className="relative w-full overflow-hidden" style={{ maxHeight: "500px" }}>
+        <div className="relative w-full" style={{ aspectRatio: "210/297" }}>
           {letterheadDataUrl ? (
             <img
               src={letterheadDataUrl}
               alt="Letterhead"
-              className="w-full h-auto"
+              className="absolute inset-0 w-full h-full object-contain"
               draggable={false}
             />
           ) : (
-            <div className="w-full border-2 border-dashed border-muted flex items-center justify-center" style={{ aspectRatio: "210/297", maxHeight: "500px" }}>
+            <div className="absolute inset-0 border-2 border-dashed border-muted flex items-center justify-center">
               <span className="text-xs text-muted-foreground">No letterhead uploaded</span>
             </div>
           )}
           {/* Snipped image overlay - top aligned after header margin, centered horizontally */}
-          <div className="absolute left-0 right-0 top-0 flex justify-center" style={{ paddingTop: `${topMarginPct}%` }}>
+          <div className="absolute left-0 right-0 top-0 flex justify-center pointer-events-none" style={{ paddingTop: `${topMarginPct}%` }}>
             <div
-              className="relative"
+              className="relative inline-block pointer-events-auto"
               style={{ width: `${scale}%` }}
             >
               <img
                 src={url}
                 alt={`Snip page ${idx + 1}`}
-                className="w-full h-auto"
+                className="w-full h-auto block"
                 draggable={false}
               />
               <div
