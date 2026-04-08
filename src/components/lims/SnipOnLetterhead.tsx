@@ -198,10 +198,16 @@ const SnipOnLetterhead = ({
                 type="text"
                 value={topMarginInput}
                 onChange={(e) => setTopMarginInput(e.target.value)}
-                onBlur={() => {
+                onBlur={async () => {
                   const val = Math.max(0, Math.min(50, Number(topMarginInput) || 0));
                   setTopMarginPct(val);
                   setTopMarginInput(val.toFixed(1));
+                  // Persist margin for this snip record
+                  await supabase
+                    .from("outsourced_test_snips")
+                    .update({ top_margin_pct: val })
+                    .eq("registration_id", regId)
+                    .eq("test_id", testId);
                 }}
                 className="w-16 h-7 text-xs text-center border rounded bg-background"
               />
