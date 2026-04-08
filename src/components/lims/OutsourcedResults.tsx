@@ -1,0 +1,666 @@
+import { useState, useCallback, useMemo, useRef } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Search, ChevronDown, ChevronUp, Save, Loader2, Image, Keyboard,
+  Clipboard, Trash2, ExternalLink, Package
+} from "lucide-react";
+import { toast } from "sonner";
+
+interface OutsourcedTest {
+  testId: string;
+  testName: string;
+  outsourcedCaption: string;
+}
+
+interface OutsourcedPatient {
+  registration: any;
+  outsourcedTests: OutsourcedTest[];
+}
+
+const OutsourcedResults = () => {
+  const qc = useQueryClient();
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
+  const [expandedTest, setExpandedTest] = useState<string | null>(null);
+  const [editedValues, setEditedValues] = useState<Record<string, string>>({});
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [uploadingKey, setUploadingKey] = useState<string | null>(null);
+  const pasteAreaRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  useState(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 400);
+    return () => clearTimeout(t);
+  });
+
+  // Debounce search
+  const handleSearch = useCallback((val: string) => {
+    setSearch(val);
+    const t = setTimeout(() => setDebouncedSearch(val), 400);
+    return () => clearTimeout(t);
+  }, []);
+
+  // Fetch accepted registrations
+  const { data: acceptedRegs = [], isLoading } = useQuery({
+    queryKey: ["outsourced_accepted_regs", debouncedSearch],
+    queryFn: async () => {
+      let query = supabase
+        .from("patient_registrations")
+        .select("*")
+        .eq("status", "sample_accepted")
+        .eq("bill_cancelled", false)
+        .order("is_stat", { ascending: false })
+        .order("updated_at", { ascending: false });
+      if (debouncedSearch) {
+        query = query.or(
+          `patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%`
+        );
+      }
+      const { data, error } = await query;
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+  });
+
+  // Fetch tests master (need is_outsourced)
+  const { data: testsMap = {} } = useQuery({
+    queryKey: ["outsourced_tests_map"],
+    queryFn: async () => {
+      const { data } = await supabase.from("tests").select("id, test_name, is_outsourced, outsourced_caption");
+      const map: Record<string, any> = {};
+      (data || []).forEach((t: any) => { map[t.id] = t; });
+      return map;
+    },
+  });
+
+  // Fetch existing snips
+  const regIds = acceptedRegs.map((r: any) => r.id);
+  const { data: existingSnips = [] } = useQuery({
+    queryKey: ["outsourced_snips", regIds.join(",")],
+    enabled: regIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("outsourced_test_snips")
+        .select("*")
+        .in("registration_id", regIds);
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+  });
+
+  // Fetch existing manual results for outsourced tests
+  const { data: existingResults = [] } = useQuery({
+    queryKey: ["outsourced_manual_results", regIds.join(",")],
+    enabled: regIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("patient_results")
+        .select("*")
+        .in("registration_id", regIds);
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+  });
+
+  // Fetch test_parameters for outsourced tests (for manual entry)
+  const { data: testParamsMap = {} } = useQuery({
+    queryKey: ["outsourced_test_params"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("test_parameters")
+        .select("test_id, parameter_id, display_order, is_subheader, subheader_text, report_test_parameters(id, param_code, parameter_name, unit, normal_range_low, normal_range_high, normal_range_text)")
+        .order("display_order");
+      const map: Record<string, any[]> = {};
+      (data || []).forEach((tp: any) => {
+        if (!tp.test_id) return;
+        if (!map[tp.test_id]) map[tp.test_id] = [];
+        map[tp.test_id].push(tp);
+      });
+      return map;
+    },
+  });
+
+  // Build outsourced patient entries
+  const patientEntries: OutsourcedPatient[] = useMemo(() => {
+    return acceptedRegs.map((reg: any) => {
+      const tests = (reg.tests || []) as any[];
+      const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
+      const outsourcedTests: OutsourcedTest[] = [];
+
+      for (const t of tests) {
+        if (cancelledIds.has(t.test_id)) continue;
+        const testInfo = testsMap[t.test_id];
+        if (testInfo?.is_outsourced) {
+          outsourcedTests.push({
+            testId: t.test_id,
+            testName: t.test_name || testInfo.test_name || "",
+            outsourcedCaption: testInfo.outsourced_caption || "Outsourced Lab",
+          });
+        }
+      }
+      return { registration: reg, outsourcedTests };
+    }).filter(e => e.outsourcedTests.length > 0);
+  }, [acceptedRegs, testsMap]);
+
+  // Get snip record for a reg+test
+  const getSnip = (regId: string, testId: string) => {
+    return existingSnips.find((s: any) => s.registration_id === regId && s.test_id === testId);
+  };
+
+  // Check if manual results exist for a reg+test
+  const hasManualResults = (regId: string, testId: string) => {
+    return existingResults.some((r: any) => r.registration_id === regId && r.test_id === testId && r.result_value);
+  };
+
+  // Handle paste from clipboard (snipping tool)
+  const handlePaste = useCallback(async (regId: string, testId: string, event: React.ClipboardEvent) => {
+    const items = event.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith("image/")) {
+        event.preventDefault();
+        const file = item.getAsFile();
+        if (!file) continue;
+
+        const key = `${regId}||${testId}`;
+        setUploadingKey(key);
+
+        try {
+          const fileName = `${regId}_${testId}_${Date.now()}.png`;
+          const { error: uploadError } = await supabase.storage
+            .from("outsourced-snips")
+            .upload(fileName, file, { contentType: "image/png", upsert: true });
+          if (uploadError) throw uploadError;
+
+          const { data: urlData } = supabase.storage
+            .from("outsourced-snips")
+            .getPublicUrl(fileName);
+
+          // Upsert snip record
+          const { error } = await supabase
+            .from("outsourced_test_snips")
+            .upsert({
+              registration_id: regId,
+              test_id: testId,
+              snip_image_url: urlData.publicUrl,
+              result_mode: "snip",
+            } as any, { onConflict: "registration_id,test_id" });
+          if (error) throw error;
+
+          toast.success("Snip image saved successfully");
+          qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+        } catch (err: any) {
+          toast.error(err.message || "Failed to upload snip");
+        } finally {
+          setUploadingKey(null);
+        }
+        return;
+      }
+    }
+  }, [qc]);
+
+  // Handle file upload
+  const handleFileUpload = useCallback(async (regId: string, testId: string, file: File) => {
+    const key = `${regId}||${testId}`;
+    setUploadingKey(key);
+    try {
+      const fileName = `${regId}_${testId}_${Date.now()}.${file.name.split('.').pop()}`;
+      const { error: uploadError } = await supabase.storage
+        .from("outsourced-snips")
+        .upload(fileName, file, { contentType: file.type, upsert: true });
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage
+        .from("outsourced-snips")
+        .getPublicUrl(fileName);
+
+      const { error } = await supabase
+        .from("outsourced_test_snips")
+        .upsert({
+          registration_id: regId,
+          test_id: testId,
+          snip_image_url: urlData.publicUrl,
+          result_mode: "snip",
+        } as any, { onConflict: "registration_id,test_id" });
+      if (error) throw error;
+
+      toast.success("Image uploaded successfully");
+      qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to upload image");
+    } finally {
+      setUploadingKey(null);
+    }
+  }, [qc]);
+
+  // Delete snip
+  const deleteSnip = useCallback(async (regId: string, testId: string) => {
+    try {
+      await supabase
+        .from("outsourced_test_snips")
+        .delete()
+        .eq("registration_id", regId)
+        .eq("test_id", testId);
+      toast.success("Snip removed");
+      qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+    } catch (err: any) {
+      toast.error("Failed to delete snip");
+    }
+  }, [qc]);
+
+  // Mark test as manual mode
+  const setManualMode = useCallback(async (regId: string, testId: string) => {
+    try {
+      const { error } = await supabase
+        .from("outsourced_test_snips")
+        .upsert({
+          registration_id: regId,
+          test_id: testId,
+          result_mode: "manual",
+          snip_image_url: null,
+        } as any, { onConflict: "registration_id,test_id" });
+      if (error) throw error;
+      qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+    } catch (err: any) {
+      toast.error("Failed to set manual mode");
+    }
+  }, [qc]);
+
+  // Save manual results for an outsourced test
+  const saveManualResults = useCallback(async (regId: string, testId: string, testName: string) => {
+    const key = `${regId}||${testId}`;
+    setSavingKey(key);
+    try {
+      const params = testParamsMap[testId] || [];
+      const upserts: any[] = [];
+
+      for (const tp of params) {
+        if (tp.is_subheader) continue;
+        const p = tp.report_test_parameters;
+        if (!p) continue;
+
+        const valKey = `${regId}||${p.id}`;
+        const value = editedValues[valKey] || "";
+        if (!value) continue;
+
+        const num = parseFloat(value);
+        let flag = "";
+        if (!isNaN(num)) {
+          if (p.normal_range_low != null && num < p.normal_range_low) flag = "L";
+          else if (p.normal_range_high != null && num > p.normal_range_high) flag = "H";
+          else flag = "N";
+        }
+
+        upserts.push({
+          registration_id: regId,
+          test_id: testId,
+          parameter_id: p.id,
+          param_code: p.param_code,
+          parameter_name: p.parameter_name,
+          result_value: value,
+          unit: p.unit,
+          reference_range: p.normal_range_text || (p.normal_range_low != null && p.normal_range_high != null ? `${p.normal_range_low} - ${p.normal_range_high}` : ""),
+          normal_range_low: p.normal_range_low,
+          normal_range_high: p.normal_range_high,
+          flag: flag || null,
+          status: "entered",
+          is_calculated: false,
+          is_from_interface: false,
+        });
+      }
+
+      if (upserts.length > 0) {
+        // Delete existing results for this test
+        await supabase.from("patient_results").delete()
+          .eq("registration_id", regId)
+          .eq("test_id", testId);
+        const { error } = await supabase.from("patient_results").insert(upserts as any);
+        if (error) throw error;
+      }
+
+      // Mark as manual mode
+      await supabase.from("outsourced_test_snips").upsert({
+        registration_id: regId,
+        test_id: testId,
+        result_mode: "manual",
+      } as any, { onConflict: "registration_id,test_id" });
+
+      toast.success(`Results saved for ${testName}`);
+      // Clear edited values for this test
+      setEditedValues(prev => {
+        const next = { ...prev };
+        Object.keys(next).forEach(k => { if (k.startsWith(`${regId}||`)) delete next[k]; });
+        return next;
+      });
+      qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+      qc.invalidateQueries({ queryKey: ["outsourced_manual_results"] });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save results");
+    } finally {
+      setSavingKey(null);
+    }
+  }, [editedValues, testParamsMap, qc]);
+
+  // Get result status label for a test
+  const getTestStatus = (regId: string, testId: string) => {
+    const snip = getSnip(regId, testId);
+    if (snip?.result_mode === "snip" && snip?.snip_image_url) return "snip_done";
+    if (snip?.result_mode === "manual" || hasManualResults(regId, testId)) return "manual_done";
+    return "pending";
+  };
+
+  // Render test card
+  const renderTestCard = (entry: OutsourcedPatient, test: OutsourcedTest) => {
+    const regId = entry.registration.id;
+    const testKey = `${regId}||${test.testId}`;
+    const isExpanded = expandedTest === testKey;
+    const snip = getSnip(regId, test.testId);
+    const status = getTestStatus(regId, test.testId);
+    const params = testParamsMap[test.testId] || [];
+    const hasParams = params.some((tp: any) => !tp.is_subheader && tp.report_test_parameters);
+    const isUploading = uploadingKey === testKey;
+    const isSaving = savingKey === testKey;
+    const currentMode = snip?.result_mode || (hasParams ? "manual" : "snip");
+
+    return (
+      <div key={testKey} className="border rounded-lg overflow-hidden">
+        <div
+          className="flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/30 transition-colors"
+          onClick={() => setExpandedTest(isExpanded ? null : testKey)}
+        >
+          {isExpanded ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
+          <div className="flex-1">
+            <span className="font-medium text-sm">{test.testName}</span>
+            <span className="text-xs text-muted-foreground ml-2">({test.outsourcedCaption})</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {status === "snip_done" && (
+              <Badge className="text-xs bg-green-600 gap-1"><Image className="h-3 w-3" /> Snip Attached</Badge>
+            )}
+            {status === "manual_done" && (
+              <Badge className="text-xs bg-green-600 gap-1"><Keyboard className="h-3 w-3" /> Manual Entry Done</Badge>
+            )}
+            {status === "pending" && (
+              <Badge variant="outline" className="text-xs text-orange-600 border-orange-300">Pending</Badge>
+            )}
+          </div>
+        </div>
+
+        {isExpanded && (
+          <div className="border-t p-3 space-y-3 bg-muted/10">
+            {/* Mode selection */}
+            <Tabs value={currentMode} onValueChange={(v) => {
+              if (v === "manual") setManualMode(regId, test.testId);
+            }}>
+              <TabsList className="h-8">
+                {hasParams && (
+                  <TabsTrigger value="manual" className="text-xs gap-1 h-6">
+                    <Keyboard className="h-3 w-3" /> Manual Entry
+                  </TabsTrigger>
+                )}
+                <TabsTrigger value="snip" className="text-xs gap-1 h-6">
+                  <Image className="h-3 w-3" /> Snip / Image
+                </TabsTrigger>
+              </TabsList>
+
+              {/* Manual Entry */}
+              {hasParams && (
+                <TabsContent value="manual" className="mt-2">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="py-1 text-xs w-[80px]">Code</TableHead>
+                        <TableHead className="py-1 text-xs">Parameter</TableHead>
+                        <TableHead className="py-1 text-xs w-[160px]">Result</TableHead>
+                        <TableHead className="py-1 text-xs w-[60px]">Unit</TableHead>
+                        <TableHead className="py-1 text-xs w-[120px]">Ref. Range</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {params.map((tp: any) => {
+                        if (tp.is_subheader) {
+                          return (
+                            <TableRow key={tp.id || tp.subheader_text}>
+                              <TableCell colSpan={5} className="py-1 text-xs font-semibold text-primary bg-muted/30">
+                                {tp.subheader_text}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        }
+                        const p = tp.report_test_parameters;
+                        if (!p) return null;
+                        const valKey = `${regId}||${p.id}`;
+                        const existing = existingResults.find(
+                          (r: any) => r.registration_id === regId && r.parameter_id === p.id
+                        );
+                        const currentValue = editedValues[valKey] !== undefined ? editedValues[valKey] : (existing?.result_value || "");
+                        const refRange = p.normal_range_text || (p.normal_range_low != null && p.normal_range_high != null ? `${p.normal_range_low} - ${p.normal_range_high}` : "");
+
+                        return (
+                          <TableRow key={valKey}>
+                            <TableCell className="py-1 text-xs font-mono text-muted-foreground">{p.param_code}</TableCell>
+                            <TableCell className="py-1 text-sm">{p.parameter_name}</TableCell>
+                            <TableCell className="py-1">
+                              <Input
+                                value={currentValue}
+                                onChange={e => setEditedValues(prev => ({ ...prev, [valKey]: e.target.value }))}
+                                className="h-7 text-sm"
+                                placeholder="Enter result"
+                              />
+                            </TableCell>
+                            <TableCell className="py-1 text-xs text-muted-foreground">{p.unit}</TableCell>
+                            <TableCell className="py-1 text-xs text-muted-foreground">{refRange}</TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                  <div className="flex justify-end mt-2">
+                    <Button
+                      size="sm"
+                      onClick={() => saveManualResults(regId, test.testId, test.testName)}
+                      disabled={isSaving}
+                    >
+                      {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
+                      Save Results
+                    </Button>
+                  </div>
+                </TabsContent>
+              )}
+
+              {/* Snip / Image mode */}
+              <TabsContent value="snip" className="mt-2">
+                {snip?.snip_image_url ? (
+                  <div className="space-y-2">
+                    <div className="relative border rounded-lg overflow-hidden bg-background">
+                      <img
+                        src={snip.snip_image_url}
+                        alt="Outsourced report snip"
+                        className="w-full max-h-[500px] object-contain"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => window.open(snip.snip_image_url, "_blank")}
+                      >
+                        <ExternalLink className="h-3.5 w-3.5 mr-1" /> View Full
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => deleteSnip(regId, test.testId)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5 mr-1" /> Remove
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {/* Paste area */}
+                    <div
+                      ref={el => { pasteAreaRefs.current[testKey] = el; }}
+                      onPaste={(e) => handlePaste(regId, test.testId, e)}
+                      tabIndex={0}
+                      className={`
+                        border-2 border-dashed rounded-lg p-8 text-center cursor-pointer
+                        hover:border-primary/50 hover:bg-primary/5 transition-colors
+                        focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none
+                        ${isUploading ? "opacity-50 pointer-events-none" : ""}
+                      `}
+                      onClick={() => pasteAreaRefs.current[testKey]?.focus()}
+                    >
+                      {isUploading ? (
+                        <div className="flex flex-col items-center gap-2">
+                          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                          <span className="text-sm text-muted-foreground">Uploading…</span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-2">
+                          <Clipboard className="h-8 w-8 text-muted-foreground" />
+                          <div className="text-sm font-medium">Click here and press Ctrl+V to paste snip</div>
+                          <div className="text-xs text-muted-foreground">
+                            Use Windows Snipping Tool (Win+Shift+S), capture the report, then paste here
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Or upload file */}
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 border-t" />
+                      <span className="text-xs text-muted-foreground">or upload an image file</span>
+                      <div className="flex-1 border-t" />
+                    </div>
+                    <div className="flex justify-center">
+                      <label className="cursor-pointer">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleFileUpload(regId, test.testId, file);
+                          }}
+                        />
+                        <Button variant="outline" size="sm" asChild>
+                          <span><Image className="h-3.5 w-3.5 mr-1" /> Browse Image</span>
+                        </Button>
+                      </label>
+                    </div>
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Card className="p-3">
+          <div className="text-xs text-muted-foreground">Patients</div>
+          <div className="text-xl font-bold">{patientEntries.length}</div>
+        </Card>
+        <Card className="p-3">
+          <div className="text-xs text-muted-foreground">Total Outsourced Tests</div>
+          <div className="text-xl font-bold">{patientEntries.reduce((s, e) => s + e.outsourcedTests.length, 0)}</div>
+        </Card>
+        <Card className="p-3">
+          <div className="text-xs text-muted-foreground">Completed</div>
+          <div className="text-xl font-bold text-green-600">
+            {patientEntries.reduce((s, e) => s + e.outsourcedTests.filter(t => getTestStatus(e.registration.id, t.testId) !== "pending").length, 0)}
+          </div>
+        </Card>
+        <Card className="p-3">
+          <div className="text-xs text-muted-foreground">Pending</div>
+          <div className="text-xl font-bold text-orange-600">
+            {patientEntries.reduce((s, e) => s + e.outsourcedTests.filter(t => getTestStatus(e.registration.id, t.testId) === "pending").length, 0)}
+          </div>
+        </Card>
+      </div>
+
+      {/* Search */}
+      <div className="relative max-w-sm">
+        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search patient, invoice, mobile…"
+          value={search}
+          onChange={e => handleSearch(e.target.value)}
+          className="pl-9"
+        />
+      </div>
+
+      {/* Patient list */}
+      {isLoading ? (
+        <Card><CardContent className="p-8 text-center text-muted-foreground">Loading…</CardContent></Card>
+      ) : patientEntries.length === 0 ? (
+        <Card>
+          <CardContent className="p-8 text-center text-muted-foreground">
+            <Package className="h-8 w-8 mx-auto mb-2 opacity-40" />
+            No outsourced tests pending
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-2">
+          {patientEntries.map(entry => {
+            const reg = entry.registration;
+            const isExpanded = expandedPatient === reg.id;
+            const completedCount = entry.outsourcedTests.filter(t => getTestStatus(reg.id, t.testId) !== "pending").length;
+
+            return (
+              <Card key={reg.id} className={isExpanded ? "ring-1 ring-primary/30" : ""}>
+                <div
+                  className="flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/30 transition-colors"
+                  onClick={() => setExpandedPatient(isExpanded ? null : reg.id)}
+                >
+                  {isExpanded ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{reg.patient_name}</span>
+                      {reg.is_stat && (
+                        <span className="relative inline-flex h-2.5 w-2.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive" />
+                        </span>
+                      )}
+                      <span className="text-sm text-muted-foreground font-mono">{reg.invoice_number}</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {reg.mobile_number} • {entry.outsourcedTests.length} outsourced test{entry.outsourcedTests.length > 1 ? "s" : ""}
+                    </div>
+                  </div>
+                  <Badge variant={completedCount === entry.outsourcedTests.length ? "default" : "outline"} className="text-xs">
+                    {completedCount}/{entry.outsourcedTests.length} Done
+                  </Badge>
+                </div>
+                {isExpanded && (
+                  <CardContent className="pt-0 pb-3 px-3 space-y-2">
+                    {entry.outsourcedTests.map(test => renderTestCard(entry, test))}
+                  </CardContent>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default OutsourcedResults;
