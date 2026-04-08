@@ -327,6 +327,7 @@ const PatientRegistration = () => {
       if (!isPickup && !dob) throw new Error("Date of birth is required");
       if (selectedTests.length === 0) throw new Error("Select at least one test");
       if (visitType !== "pickup_point" && !address.trim()) throw new Error("Address is required");
+      if (paidAmount > calculations.finalAmount) throw new Error("Payment amount cannot exceed the final amount");
 
       // Generate invoice number
       const { data: invoiceNum, error: invErr } = await supabase.rpc("generate_invoice_number" as any);
