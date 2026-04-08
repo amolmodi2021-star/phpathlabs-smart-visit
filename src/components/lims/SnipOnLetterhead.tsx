@@ -197,10 +197,12 @@ const SnipOnLetterhead = ({
                   setTopMarginPct(val);
                   setTopMarginInput(val.toFixed(1));
                   // Persist margin globally in report_layout_settings
-                  await supabase
-                    .from("report_layout_settings")
-                    .update({ top_margin_pct: val } as any)
-                    .limit(1);
+                  if (settingsIdRef) {
+                    await supabase
+                      .from("report_layout_settings")
+                      .update({ top_margin_pct: val } as any)
+                      .eq("id", settingsIdRef);
+                  }
                 }}
                 className="w-16 h-7 text-xs text-center border rounded bg-background"
               />
