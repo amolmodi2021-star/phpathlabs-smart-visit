@@ -4,12 +4,14 @@ import { logout } from "@/lib/auth";
 import {
   FileText, LayoutDashboard, Home, Users, TestTubes, MessageSquare,
   Menu, X, LogOut, FlaskConical, AlertTriangle, BarChart3, CreditCard,
-  FileUp, ClipboardList, Building2, Layers, Microscope, PenTool, BookOpen, Zap, Webhook, Megaphone, Contact, Activity, Settings,
+  FileUp, ClipboardList, Building2, Layers, Microscope, PenTool, BookOpen, Zap, Webhook, Megaphone, Contact, Activity, Settings, Trash2, Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useHomeVisitNotifications } from "@/hooks/useHomeVisitNotifications";
 import { Separator } from "@/components/ui/separator";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 const navItems = [
   { to: "/", label: "Create Estimate", icon: FileText },
@@ -41,6 +43,47 @@ const navItems = [
 //   { to: "/report-admin/corrections", label: "AI Corrections", icon: BookOpen },
 //   { to: "/direct-ai", label: "Direct AI", icon: Zap },
 // ];
+
+const StorageCleanupButton = ({ onClick }: { onClick?: () => void }) => {
+  const [cleaning, setCleaning] = useState(false);
+
+  const runCleanup = async () => {
+    setCleaning(true);
+    onClick?.();
+    try {
+      const [cardRes, snipRes] = await Promise.all([
+        supabase.functions.invoke("cleanup-card-images", { body: { source: "manual" } }),
+        supabase.functions.invoke("cleanup-outsourced-snips", { body: { source: "manual" } }),
+      ]);
+
+      const cardDeleted = cardRes.data?.deleted ?? 0;
+      const snipDeleted = snipRes.data?.deleted ?? snipRes.data?.files_removed ?? 0;
+
+      toast.success("Storage Cleanup Complete", {
+        description: `Card images removed: ${cardDeleted} | Outsourced snips removed: ${snipDeleted}`,
+      });
+    } catch (err: any) {
+      toast.error("Cleanup failed", { description: err.message });
+    } finally {
+      setCleaning(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={runCleanup}
+      disabled={cleaning}
+      className={cn(
+        "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors w-full",
+        "text-muted-foreground hover:bg-destructive/10 hover:text-destructive",
+        cleaning && "opacity-50 cursor-not-allowed"
+      )}
+    >
+      {cleaning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+      Storage Cleanup
+    </button>
+  );
+};
 
 const NavSection = ({ items, onClick }: { items: typeof navItems; onClick?: () => void }) => (
   <>
@@ -97,6 +140,8 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
         <aside className="hidden md:flex w-56 shrink-0 flex-col border-r bg-card h-[calc(100vh-3.5rem)] sticky top-14 overflow-hidden">
           <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
             <NavSection items={navItems} />
+            <Separator className="my-2" />
+            <StorageCleanupButton />
           </nav>
         </aside>
 
@@ -105,6 +150,8 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
             <div className="absolute inset-0 bg-foreground/20" onClick={() => setOpen(false)} />
             <aside className="absolute left-0 top-14 bottom-0 w-64 bg-card border-r p-3 space-y-1 animate-fade-in overflow-y-auto">
               <NavSection items={navItems} onClick={() => setOpen(false)} />
+              <Separator className="my-2" />
+              <StorageCleanupButton onClick={() => setOpen(false)} />
             </aside>
           </div>
         )}
