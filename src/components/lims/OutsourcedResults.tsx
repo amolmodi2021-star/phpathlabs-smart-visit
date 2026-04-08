@@ -445,7 +445,25 @@ const OutsourcedResults = () => {
     }
   }, [editedValues, testParamsMap, qc]);
 
-  // Edit outsourced lab name
+  // Save snip results and move to verification
+  const saveSnipResults = useCallback(async (regId: string, testId: string, testName: string) => {
+    const key = `${regId}||${testId}`;
+    setSavingKey(key);
+    try {
+      await supabase.from("outsourced_test_snips").upsert({
+        registration_id: regId, test_id: testId,
+        result_mode: "snip", outsource_status: "results_entered",
+      } as any, { onConflict: "registration_id,test_id" });
+
+      toast.success(`Snip saved for ${testName} — moved to verification`);
+      qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save");
+    } finally {
+      setSavingKey(null);
+    }
+  }, [qc]);
+
   const saveEditLabName = async () => {
     if (!editLabKey || !editLabName.trim()) return;
     setSavingEditLab(true);
