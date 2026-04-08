@@ -525,6 +525,19 @@ const OutsourcedResults = () => {
             <Badge className="text-xs bg-green-600 text-white gap-1">
               <CheckCircle2 className="h-3 w-3" /> Results Entered
             </Badge>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-6 px-2 text-[10px]"
+              disabled={savingKey === `${regId}||${testId}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                saveSnipResults(regId, testId, testName);
+              }}
+            >
+              {savingKey === `${regId}||${testId}` ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Save className="h-3 w-3 mr-1" />}
+              Send to Verification
+            </Button>
             {labNameVal && (
               <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
                 {labNameVal}
