@@ -237,7 +237,7 @@ const PatientRegistration = () => {
   };
 
   // Get test price (channel/pickup custom price or default)
-  const getTestPrice = (test: TestItem): number => {
+  const getTestPrice = (test: { id: string; price: number }): number => {
     if (channelId) {
       const custom = channelPrices.find((cp: any) => cp.test_id === test.id);
       if (custom) return Number(custom.custom_price);
