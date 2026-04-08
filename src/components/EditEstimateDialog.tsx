@@ -224,7 +224,7 @@ const EditEstimateDialog = ({ estimate, open, onClose }: EditEstimateDialogProps
                     className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors"
                     onClick={() => addTest(t.id)}
                   >
-                    {t.test_name} - ₹{t.price}
+                    {t.test_name} - ₹{t.price}{t.item_type === "package" ? " 📦" : t.item_type === "profile" ? " 📋" : ""}
                   </button>
                 ))}
               </div>
