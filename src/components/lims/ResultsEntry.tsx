@@ -690,7 +690,7 @@ const ResultsEntry = () => {
 
       {/* Outsourced mode */}
       {mode === "outsourced" ? (
-        <OutsourcedResults />
+        <OutsourcedResults externalSearch={search} />
       ) : (
         <>
           {/* Patient list */}
