@@ -511,6 +511,9 @@ const ReportParameters = () => {
 
             <Separator />
 
+            <div className="space-y-3">
+              <h3 className="font-semibold text-base">Normal Range Settings</h3>
+
               <div className="flex items-center justify-between">
                 <Label>Show Global Normal Range in Report</Label>
                 <Switch checked={form.use_global_normal_range} onCheckedChange={(v) => setForm({ ...form, use_global_normal_range: v })} />
