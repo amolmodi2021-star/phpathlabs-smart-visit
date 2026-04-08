@@ -239,12 +239,12 @@ const SampleAcceptance = () => {
     onError: (err: any) => toast.error(err.message || "Failed to accept sample"),
   });
 
-  // Reject (request repeat collection) → back to registered
+  // Reject (request repeat collection) → mark as repeat_collection
   const rejectMutation = useMutation({
     mutationFn: async ({ regId, remarks }: { regId: string; remarks: string }) => {
       const { error } = await supabase
         .from("patient_registrations")
-        .update({ status: "registered", remarks: `Repeat Collection: ${remarks}` })
+        .update({ status: "repeat_collection", remarks: `Repeat Collection: ${remarks}` })
         .eq("id", regId);
       if (error) throw error;
     },
