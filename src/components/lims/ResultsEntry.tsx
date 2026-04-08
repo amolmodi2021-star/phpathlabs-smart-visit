@@ -43,7 +43,7 @@ interface PatientEntry {
 
 const ResultsEntry = () => {
   const qc = useQueryClient();
-  const [mode, setMode] = useState<"patient" | "machine">("patient");
+  const [mode, setMode] = useState<"patient" | "machine" | "outsourced">("patient");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedMachine, setSelectedMachine] = useState<string>("all");
