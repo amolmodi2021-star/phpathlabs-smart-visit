@@ -155,6 +155,11 @@ const ReportParameters = () => {
         same_for_gender: form.same_for_gender,
         same_for_all_ages: form.same_for_all_ages,
         normal_range_text: form.normal_range_text || null,
+        machine_name: form.machine_name || null,
+        machine_id: form.machine_id || null,
+        send_for_interface: form.send_for_interface,
+        is_calculated: form.is_calculated,
+        calculation_formula: form.is_calculated ? form.calculation_formula : [],
       };
 
       let paramId = editId;
@@ -205,6 +210,11 @@ const ReportParameters = () => {
       same_for_gender: p.same_for_gender !== false,
       same_for_all_ages: p.same_for_all_ages !== false,
       normal_range_text: p.normal_range_text || "",
+      machine_name: p.machine_name || "",
+      machine_id: p.machine_id || "",
+      send_for_interface: p.send_for_interface !== false,
+      is_calculated: p.is_calculated || false,
+      calculation_formula: Array.isArray(p.calculation_formula) ? p.calculation_formula : [],
     });
     setNormalRanges([]);
     setDialogOpen(true);
@@ -299,7 +309,8 @@ const ReportParameters = () => {
     setForm({
       parameter_name: "", unit: "", store_for_analytics: false,
       use_global_normal_range: false, same_for_gender: true, same_for_all_ages: true,
-      normal_range_text: "",
+      normal_range_text: "", machine_name: "", machine_id: "",
+      send_for_interface: true, is_calculated: false, calculation_formula: [],
     });
     setNormalRanges([]);
     setDialogOpen(true);
