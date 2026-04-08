@@ -464,7 +464,7 @@ const SampleAcceptance = () => {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
-            <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 p-2 rounded">
+            <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/10 p-2 rounded">
               <AlertTriangle className="h-4 w-4" />
               Sample will be sent back for re-collection. Status will revert to "Registered".
             </div>
