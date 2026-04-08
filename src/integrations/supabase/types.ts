@@ -1598,6 +1598,7 @@ export type Database = {
           result_mode: string
           sent_at: string | null
           snip_image_url: string | null
+          snip_image_urls: Json | null
           test_id: string
           updated_at: string
         }
@@ -1611,6 +1612,7 @@ export type Database = {
           result_mode?: string
           sent_at?: string | null
           snip_image_url?: string | null
+          snip_image_urls?: Json | null
           test_id: string
           updated_at?: string
         }
@@ -1624,6 +1626,7 @@ export type Database = {
           result_mode?: string
           sent_at?: string | null
           snip_image_url?: string | null
+          snip_image_urls?: Json | null
           test_id?: string
           updated_at?: string
         }
