@@ -150,6 +150,8 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
             <div className="absolute inset-0 bg-foreground/20" onClick={() => setOpen(false)} />
             <aside className="absolute left-0 top-14 bottom-0 w-64 bg-card border-r p-3 space-y-1 animate-fade-in overflow-y-auto">
               <NavSection items={navItems} onClick={() => setOpen(false)} />
+              <Separator className="my-2" />
+              <StorageCleanupButton onClick={() => setOpen(false)} />
             </aside>
           </div>
         )}
