@@ -532,7 +532,7 @@ const OutsourcedResults = () => {
               disabled={savingKey === `${regId}||${testId}`}
               onClick={(e) => {
                 e.stopPropagation();
-                saveSnipResults(regId, testId, testName);
+                saveSnipResults(regId, testId, "outsourced test");
               }}
             >
               {savingKey === `${regId}||${testId}` ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Save className="h-3 w-3 mr-1" />}
