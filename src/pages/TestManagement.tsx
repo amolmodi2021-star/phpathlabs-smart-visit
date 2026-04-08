@@ -32,7 +32,7 @@ const defaultForm = {
   test_name: "", price: "", fasting_required: false, discount_applicable: true,
   description: "", incentive_allowed: false, incentive_amount: "",
   display_name: "", bold_in_report: false, show_in_report: true, is_single_parameter: false,
-  instrument_name: "", method: "", sample_type: "", sample_tube: "", interpretation: "",
+  instrument_name: "", method: "", sample_type: "", sample_tube: "", tube_color: "", interpretation: "",
   is_outsourced: false, outsourced_caption: "", department_id: "",
   is_active: true,
 };
@@ -83,6 +83,7 @@ const TestManagement = () => {
         method: values.method || null,
         sample_type: values.sample_type || null,
         sample_tube: values.sample_tube || null,
+        tube_color: values.tube_color || null,
         interpretation: values.interpretation || null,
         is_outsourced: values.is_outsourced,
         outsourced_caption: values.outsourced_caption || null,
@@ -133,6 +134,7 @@ const TestManagement = () => {
       show_in_report: t.show_in_report ?? true, is_single_parameter: t.is_single_parameter ?? false,
       instrument_name: t.instrument_name || "", method: t.method || "",
       sample_type: t.sample_type || "", sample_tube: t.sample_tube || "",
+      tube_color: (t as any).tube_color || "",
       interpretation: t.interpretation || "",
       is_outsourced: t.is_outsourced ?? false, outsourced_caption: t.outsourced_caption || "",
       department_id: t.department_id || "",
@@ -237,8 +239,9 @@ const TestManagement = () => {
                   <div className="grid grid-cols-2 gap-3">
                     <div><Label className="text-sm">Instrument Name</Label><MasterLookupSelect category="machine_name" value={form.instrument_name} onChange={(v) => setForm(p => ({ ...p, instrument_name: v }))} placeholder="Select machine" /></div>
                     <div><Label className="text-sm">Method</Label><MasterLookupSelect category="method" value={form.method} onChange={(v) => setForm(p => ({ ...p, method: v }))} placeholder="Select method" /></div>
-                    <div><Label className="text-sm">Sample Tube</Label><MasterLookupSelect category="sample_tube" value={form.sample_tube} onChange={(v) => setForm(p => ({ ...p, sample_tube: v }))} onMappedValue={(v) => setForm(p => ({ ...p, sample_type: v }))} placeholder="Select sample tube" /></div>
+                    <div><Label className="text-sm">Sample Tube</Label><MasterLookupSelect category="sample_tube" value={form.sample_tube} onChange={(v) => setForm(p => ({ ...p, sample_tube: v }))} onMappedValue={(v) => setForm(p => ({ ...p, sample_type: v }))} onMappedValue2={(v) => setForm(p => ({ ...p, tube_color: v }))} placeholder="Select sample tube" /></div>
                     <div><Label className="text-sm">Sample Type</Label><Input value={form.sample_type} onChange={(e) => setForm(p => ({ ...p, sample_type: e.target.value }))} placeholder="Auto-filled from mapping" /></div>
+                    <div><Label className="text-sm">Tube Color</Label><Input value={form.tube_color} onChange={(e) => setForm(p => ({ ...p, tube_color: e.target.value }))} placeholder="Auto-filled from mapping" /></div>
                   </div>
                   <div><Label className="text-sm">Interpretation</Label><Textarea value={form.interpretation} onChange={(e) => setForm(p => ({ ...p, interpretation: e.target.value }))} placeholder="Clinical interpretation notes" rows={3} /></div>
                 </div>
