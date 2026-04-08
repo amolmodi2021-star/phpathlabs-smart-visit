@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Search, User, Monitor, Save, Calculator, Wifi, WifiOff, ChevronDown, ChevronUp, Check, Loader2, FlaskConical, Package, SendHorizonal } from "lucide-react";
+import { useMasterLookup } from "@/hooks/useMasterLookup";
 import OutsourcedResults from "./OutsourcedResults";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -44,6 +45,7 @@ interface PatientEntry {
 
 const ResultsEntry = () => {
   const qc = useQueryClient();
+  const { data: masterMachines = [] } = useMasterLookup("machine_name");
   const [mode, setMode] = useState<"patient" | "machine" | "outsourced">("patient");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -652,7 +654,9 @@ const ResultsEntry = () => {
               <SelectItem value="all">All Machines</SelectItem>
               {(() => {
                 const machines = new Set<string>();
-                patientEntries.forEach(e => e.parameters.forEach(p => machines.add(p.machineName || "Others")));
+                masterMachines.forEach((m: any) => machines.add(m.value));
+                patientEntries.forEach(e => e.parameters.forEach(p => { if (p.machineName) machines.add(p.machineName); }));
+                machines.add("Others");
                 return Array.from(machines).sort((a, b) => a === "Others" ? 1 : b === "Others" ? -1 : a.localeCompare(b));
               })().map(m => (
                 <SelectItem key={m} value={m === "Others" ? "others" : m}>{m}</SelectItem>
