@@ -281,7 +281,10 @@ const TestManagement = () => {
         </div>
       </div>
 
-      <div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Search tests..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
+      <div className="flex items-center gap-4">
+        <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Search tests..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
+        <div className="flex items-center gap-2"><Switch checked={showInactive} onCheckedChange={setShowInactive} /><Label className="text-sm whitespace-nowrap">Show Inactive</Label></div>
+      </div>
 
       {isLoading ? <p className="text-muted-foreground text-sm">Loading...</p> : isError ? (
         <Card className="glass-card">
@@ -293,7 +296,7 @@ const TestManagement = () => {
       ) : (
         <div className="grid gap-2">
           {filtered.map((t: any) => (
-            <Card key={t.id} className="glass-card">
+            <Card key={t.id} className={`glass-card ${t.is_active === false ? "opacity-60" : ""}`}>
               <CardContent className="flex items-center justify-between p-3 gap-3">
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm truncate">{t.test_name}</p>
@@ -304,6 +307,7 @@ const TestManagement = () => {
                     {!t.discount_applicable && <span className="text-destructive">No Discount</span>}
                     {t.incentive_allowed && <span className="text-primary">Incentive: ₹{t.incentive_amount}</span>}
                     {t.is_single_parameter && <span className="text-blue-500">Single Param</span>}
+                    {t.is_active === false && <span className="text-destructive font-semibold">Inactive</span>}
                   </div>
                 </div>
                 <div className="flex gap-1">
