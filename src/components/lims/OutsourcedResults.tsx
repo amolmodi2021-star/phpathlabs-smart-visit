@@ -556,17 +556,17 @@ const OutsourcedResults = () => {
 
   // Count stats
   const stats = useMemo(() => {
-    let notSent = 0, awaiting = 0, entered = 0, total = 0;
+    let notSent = 0, awaiting = 0, total = 0;
     for (const e of patientEntries) {
       for (const t of e.outsourcedTests) {
-        total++;
         const s = getTestStatus(e.registration.id, t.testId);
+        if (s === "results_entered") continue; // sent to verification, don't count
+        total++;
         if (s === "not_sent") notSent++;
         else if (s === "awaiting_results") awaiting++;
-        else if (s === "results_entered") entered++;
       }
     }
-    return { notSent, awaiting, entered, total };
+    return { notSent, awaiting, total };
   }, [patientEntries, existingSnips, existingResults]);
 
   // Render test card
@@ -741,10 +741,6 @@ const OutsourcedResults = () => {
           <div className="text-xs text-muted-foreground">Awaiting Results</div>
           <div className="text-xl font-bold text-amber-600">{stats.awaiting}</div>
         </Card>
-        <Card className="p-3">
-          <div className="text-xs text-muted-foreground">Results Entered</div>
-          <div className="text-xl font-bold text-green-600">{stats.entered}</div>
-        </Card>
       </div>
 
       {/* Action bar */}
@@ -780,11 +776,13 @@ const OutsourcedResults = () => {
         <div className="space-y-2">
           {patientEntries.map(entry => {
             const reg = entry.registration;
+            // Filter out tests that have been sent for verification
+            const visibleTests = entry.outsourcedTests.filter(t => getTestStatus(reg.id, t.testId) !== "results_entered");
+            if (visibleTests.length === 0) return null;
             const isExpanded = expandedPatient === reg.id;
-            const notSentCount = entry.outsourcedTests.filter(t => getTestStatus(reg.id, t.testId) === "not_sent").length;
-            const awaitingCount = entry.outsourcedTests.filter(t => getTestStatus(reg.id, t.testId) === "awaiting_results").length;
-            const enteredCount = entry.outsourcedTests.filter(t => getTestStatus(reg.id, t.testId) === "results_entered").length;
-            const allNotSentSelected = entry.outsourcedTests
+            const notSentCount = visibleTests.filter(t => getTestStatus(reg.id, t.testId) === "not_sent").length;
+            const awaitingCount = visibleTests.filter(t => getTestStatus(reg.id, t.testId) === "awaiting_results").length;
+            const allNotSentSelected = visibleTests
               .filter(t => getTestStatus(reg.id, t.testId) === "not_sent")
               .every(t => selectedTests.has(`${reg.id}||${t.testId}`));
 
@@ -822,12 +820,12 @@ const OutsourcedResults = () => {
                   <div className="flex items-center gap-1.5">
                     {notSentCount > 0 && <Badge variant="outline" className="text-[10px]">{notSentCount} Not Sent</Badge>}
                     {awaitingCount > 0 && <Badge className="text-[10px] bg-amber-500">{awaitingCount} Awaiting</Badge>}
-                    {enteredCount > 0 && <Badge className="text-[10px] bg-green-600">{enteredCount} Done</Badge>}
+                    
                   </div>
                 </div>
                 {isExpanded && (
                   <CardContent className="pt-0 pb-3 px-3 space-y-2">
-                    {entry.outsourcedTests.map(test => renderTestCard(entry, test))}
+                    {visibleTests.map(test => renderTestCard(entry, test))}
                   </CardContent>
                 )}
               </Card>
