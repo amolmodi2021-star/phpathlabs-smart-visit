@@ -47,6 +47,7 @@ const SnipOnLetterhead = ({
           // Convert cm to percentage of A4 height (29.7cm)
           const marginPct = (Number(settings.top_margin_cm) / 29.7) * 100;
           setTopMarginPct(marginPct);
+          setTopMarginInput(marginPct.toFixed(1));
         }
         if (!settings?.letterhead_pdf_path) {
           setLetterheadDataUrl(null);
@@ -180,12 +181,14 @@ const SnipOnLetterhead = ({
             <div className="flex items-center gap-2">
               <label className="text-xs text-muted-foreground">Top Margin %</label>
               <input
-                type="number"
-                min={0}
-                max={50}
-                step={0.5}
-                value={topMarginPct.toFixed(1)}
-                onChange={(e) => setTopMarginPct(Math.max(0, Math.min(50, Number(e.target.value))))}
+                type="text"
+                value={topMarginInput}
+                onChange={(e) => setTopMarginInput(e.target.value)}
+                onBlur={() => {
+                  const val = Math.max(0, Math.min(50, Number(topMarginInput) || 0));
+                  setTopMarginPct(val);
+                  setTopMarginInput(val.toFixed(1));
+                }}
                 className="w-16 h-7 text-xs text-center border rounded bg-background"
               />
             </div>
