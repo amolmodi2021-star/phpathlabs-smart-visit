@@ -343,6 +343,9 @@ const TestManagement = () => {
         <TabsContent value="departments">
           <ReportDepartments embedded />
         </TabsContent>
+        <TabsContent value="settings">
+          <MasterLookupSettings />
+        </TabsContent>
       </Tabs>
     </div>
   );
