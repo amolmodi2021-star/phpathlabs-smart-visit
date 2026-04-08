@@ -38,24 +38,14 @@ const SnipOnLetterhead = ({
     const loadLetterhead = async () => {
       setLoadingLetterhead(true);
       try {
-        // Load saved margin for this specific snip record
-        const { data: snipRow } = await supabase
-          .from("outsourced_test_snips")
-          .select("top_margin_pct")
-          .eq("registration_id", regId)
-          .eq("test_id", testId)
-          .limit(1)
-          .single();
-
         const { data: settings } = await supabase
           .from("report_layout_settings")
-          .select("letterhead_pdf_path, top_margin_cm")
+          .select("letterhead_pdf_path, top_margin_cm, top_margin_pct")
           .limit(1)
           .single();
 
-        // Use saved per-snip margin if available, otherwise fall back to layout settings
-        if (snipRow?.top_margin_pct != null) {
-          const saved = Number(snipRow.top_margin_pct);
+        if (settings?.top_margin_pct != null) {
+          const saved = Number(settings.top_margin_pct);
           setTopMarginPct(saved);
           setTopMarginInput(saved.toFixed(1));
         } else if (settings?.top_margin_cm) {
