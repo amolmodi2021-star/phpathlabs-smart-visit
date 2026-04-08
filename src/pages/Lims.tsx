@@ -5,6 +5,7 @@ import PickupPointManager from "@/components/lims/PickupPointManager";
 import ChannelManager from "@/components/lims/ChannelManager";
 import CompletedHomeVisits from "@/components/lims/CompletedHomeVisits";
 import SampleCollection from "@/components/lims/SampleCollection";
+import SampleAcceptance from "@/components/lims/SampleAcceptance";
 
 const Lims = () => {
   return (
