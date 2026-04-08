@@ -142,6 +142,15 @@ const TestManagement = () => {
 
   return (
     <div className="space-y-4 animate-fade-in">
+      <h1 className="text-xl font-bold">Test Management</h1>
+      <Tabs defaultValue="tests" className="w-full">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="tests">Tests</TabsTrigger>
+          <TabsTrigger value="health_checkups">Health Check-Ups</TabsTrigger>
+          <TabsTrigger value="profiles">Profiles</TabsTrigger>
+        </TabsList>
+        <TabsContent value="tests">
+    <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-xl font-bold">Test Management</h1>
         <div className="flex gap-2 flex-wrap">
