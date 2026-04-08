@@ -317,7 +317,7 @@ const ResultsEntry = () => {
     setEditedValues(newEdited);
   };
 
-  // ─── Save results for a patient ───
+  // ─── Save & send to verification ───
   const saveMutation = useMutation({
     mutationFn: async ({ entry }: { entry: PatientEntry }) => {
       const reg = entry.registration;
@@ -326,7 +326,6 @@ const ResultsEntry = () => {
       for (const p of entry.parameters) {
         const key = `${reg.id}||${p.parameterId}`;
         const value = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
-        if (!value && !p.isCalculated) continue;
 
         const flag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh);
         upserts.push({
@@ -341,7 +340,7 @@ const ResultsEntry = () => {
           normal_range_low: p.normalRangeLow,
           normal_range_high: p.normalRangeHigh,
           flag: flag || null,
-          status: value ? "entered" : "pending",
+          status: "entered",
           is_calculated: p.isCalculated,
           is_from_interface: p.isFromInterface,
         });
@@ -355,8 +354,7 @@ const ResultsEntry = () => {
       if (error) throw error;
     },
     onSuccess: (_, { entry }) => {
-      toast.success(`Results saved for ${entry.registration.patient_name}`);
-      // Clear edited values for this patient
+      toast.success(`Results saved & sent to verification for ${entry.registration.patient_name}`);
       const regId = entry.registration.id;
       setEditedValues(prev => {
         const next = { ...prev };
@@ -364,13 +362,35 @@ const ResultsEntry = () => {
         return next;
       });
       setSavingPatient(null);
+      setBlankConfirmEntry(null);
       qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
+      qc.invalidateQueries({ queryKey: ["verification_"] });
     },
     onError: (err: any) => {
       toast.error(err.message || "Failed to save results");
       setSavingPatient(null);
     },
   });
+
+  // ─── Handle save & send to verification with blank check ───
+  const handleSaveAndVerify = (entry: PatientEntry) => {
+    const reg = entry.registration;
+    // Count blank parameters
+    let blanks = 0;
+    for (const p of entry.parameters) {
+      if (p.isCalculated) continue;
+      const key = `${reg.id}||${p.parameterId}`;
+      const val = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
+      if (!val || val.trim() === "") blanks++;
+    }
+    if (blanks > 0) {
+      setBlankParamCount(blanks);
+      setBlankConfirmEntry(entry);
+    } else {
+      setSavingPatient(reg.id);
+      saveMutation.mutate({ entry });
+    }
+  };
 
   // ─── Filter entries ───
   const filteredEntries = useMemo(() => {
