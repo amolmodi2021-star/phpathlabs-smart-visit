@@ -82,3 +82,46 @@ export const unlinkTestFromCheckup = async (id: string) => {
   const { error } = await supabase.from("health_checkup_tests").delete().eq("id", id);
   if (error) throw new Error(error.message);
 };
+
+// Profile linking for health check-ups
+export interface HealthCheckupProfileLink {
+  id: string;
+  health_checkup_id: string;
+  profile_id: string;
+  display_order: number;
+  profile_name?: string;
+  profile_code?: string;
+  price?: number;
+}
+
+export const getHealthCheckupProfiles = async (checkupId: string): Promise<HealthCheckupProfileLink[]> => {
+  const { data, error } = await supabase
+    .from("health_checkup_profiles")
+    .select("id, health_checkup_id, profile_id, display_order, billing_profiles(profile_name, profile_code, price)")
+    .eq("health_checkup_id", checkupId)
+    .order("display_order");
+  if (error) throw new Error(error.message);
+  return (data || []).map((d: any) => ({
+    id: d.id,
+    health_checkup_id: d.health_checkup_id,
+    profile_id: d.profile_id,
+    display_order: d.display_order,
+    profile_name: d.billing_profiles?.profile_name,
+    profile_code: d.billing_profiles?.profile_code,
+    price: d.billing_profiles?.price,
+  }));
+};
+
+export const linkProfileToCheckup = async (checkupId: string, profileId: string, displayOrder: number) => {
+  const { error } = await supabase.from("health_checkup_profiles").insert({
+    health_checkup_id: checkupId,
+    profile_id: profileId,
+    display_order: displayOrder,
+  } as any);
+  if (error) throw new Error(error.message);
+};
+
+export const unlinkProfileFromCheckup = async (id: string) => {
+  const { error } = await supabase.from("health_checkup_profiles").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+};
