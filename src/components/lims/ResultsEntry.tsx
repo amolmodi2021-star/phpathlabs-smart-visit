@@ -8,7 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, User, Monitor, Save, Calculator, Wifi, WifiOff, ChevronDown, ChevronUp, Check, Loader2, FlaskConical } from "lucide-react";
+import { Search, User, Monitor, Save, Calculator, Wifi, WifiOff, ChevronDown, ChevronUp, Check, Loader2, FlaskConical, Package } from "lucide-react";
+import OutsourcedResults from "./OutsourcedResults";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
@@ -42,7 +43,7 @@ interface PatientEntry {
 
 const ResultsEntry = () => {
   const qc = useQueryClient();
-  const [mode, setMode] = useState<"patient" | "machine">("patient");
+  const [mode, setMode] = useState<"patient" | "machine" | "outsourced">("patient");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedMachine, setSelectedMachine] = useState<string>("all");
@@ -589,41 +590,19 @@ const ResultsEntry = () => {
 
   return (
     <div className="space-y-4">
-      {/* Stats bar */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <Card className="p-3">
-          <div className="text-xs text-muted-foreground">Patients</div>
-          <div className="text-xl font-bold">{stats.totalPatients}</div>
-        </Card>
-        <Card className="p-3">
-          <div className="text-xs text-muted-foreground">Total Parameters</div>
-          <div className="text-xl font-bold">{stats.totalParams}</div>
-        </Card>
-        <Card className="p-3">
-          <div className="text-xs text-muted-foreground">Entered</div>
-          <div className="text-xl font-bold text-green-600">{stats.enteredParams}</div>
-        </Card>
-        <Card className="p-3">
-          <div className="text-xs text-muted-foreground">Pending</div>
-          <div className="text-xl font-bold text-orange-600">{stats.pendingParams}</div>
-        </Card>
-        <Card className="p-3">
-          <div className="text-xs text-muted-foreground flex items-center gap-1"><Wifi className="h-3 w-3" /> Awaiting Interface</div>
-          <div className="text-xl font-bold text-blue-600">{stats.awaitingInterface}</div>
-        </Card>
-      </div>
-
-      {/* Controls */}
+      {/* Mode tabs */}
       <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search patient, invoice, mobile…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
+        {mode !== "outsourced" && (
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search patient, invoice, mobile…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+        )}
         <Tabs value={mode} onValueChange={v => setMode(v as any)} className="w-auto">
           <TabsList className="h-9">
             <TabsTrigger value="patient" className="text-xs gap-1 h-7">
@@ -631,6 +610,9 @@ const ResultsEntry = () => {
             </TabsTrigger>
             <TabsTrigger value="machine" className="text-xs gap-1 h-7">
               <Monitor className="h-3.5 w-3.5" /> Machine Wise
+            </TabsTrigger>
+            <TabsTrigger value="outsourced" className="text-xs gap-1 h-7">
+              <Package className="h-3.5 w-3.5" /> Outsourced
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -653,85 +635,118 @@ const ResultsEntry = () => {
         )}
       </div>
 
-      {/* Patient list */}
-      {loadingRegs ? (
-        <Card><CardContent className="p-8 text-center text-muted-foreground">Loading…</CardContent></Card>
-      ) : filteredEntries.length === 0 ? (
-        <Card>
-          <CardContent className="p-8 text-center text-muted-foreground">
-            <FlaskConical className="h-8 w-8 mx-auto mb-2 opacity-40" />
-            No accepted samples pending results
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-2">
-          {filteredEntries.map(entry => {
-            const reg = entry.registration;
-            const isExpanded = expandedPatient === reg.id;
-            const completion = getCompletionPct(entry);
-            const pendingCount = entry.parameters.filter(p => {
-              const key = `${reg.id}||${p.parameterId}`;
-              const val = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
-              return !val;
-            }).length;
-            const awaitingCount = entry.parameters.filter(p => {
-              const key = `${reg.id}||${p.parameterId}`;
-              const val = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
-              return p.sendForInterface && !p.isCalculated && !val;
-            }).length;
-
-            return (
-              <Card key={reg.id} className={isExpanded ? "ring-1 ring-primary/30" : ""}>
-                <div
-                  className="flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/30 transition-colors"
-                  onClick={() => setExpandedPatient(isExpanded ? null : reg.id)}
-                >
-                  {isExpanded ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{reg.patient_name}</span>
-                      {reg.is_stat && (
-                        <span className="relative inline-flex h-2.5 w-2.5">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
-                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive" />
-                        </span>
-                      )}
-                      <span className="text-sm text-muted-foreground font-mono">{reg.invoice_number}</span>
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {reg.mobile_number} • {entry.parameters.length} parameters
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {awaitingCount > 0 && (
-                      <Badge variant="outline" className="text-xs text-orange-600 border-orange-300 gap-0.5">
-                        <Wifi className="h-3 w-3" /> {awaitingCount}
-                      </Badge>
-                    )}
-                    {pendingCount > 0 && (
-                      <Badge variant="outline" className="text-xs">{pendingCount} pending</Badge>
-                    )}
-                    <div className="w-16 h-2 bg-muted rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${completion === 100 ? "bg-green-500" : "bg-primary"}`}
-                        style={{ width: `${completion}%` }}
-                      />
-                    </div>
-                    <span className="text-xs text-muted-foreground w-8 text-right">{completion}%</span>
-                    {hasUnsavedChanges(reg.id) && (
-                      <div className="w-2 h-2 rounded-full bg-orange-500" title="Unsaved" />
-                    )}
-                  </div>
-                </div>
-                {isExpanded && (
-                  <CardContent className="pt-0 pb-3 px-3">
-                    {renderPatientExpanded(entry)}
-                  </CardContent>
-                )}
-              </Card>
-            );
-          })}
+      {/* Stats bar - only for in-house modes */}
+      {mode !== "outsourced" && (
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <Card className="p-3">
+            <div className="text-xs text-muted-foreground">Patients</div>
+            <div className="text-xl font-bold">{stats.totalPatients}</div>
+          </Card>
+          <Card className="p-3">
+            <div className="text-xs text-muted-foreground">Total Parameters</div>
+            <div className="text-xl font-bold">{stats.totalParams}</div>
+          </Card>
+          <Card className="p-3">
+            <div className="text-xs text-muted-foreground">Entered</div>
+            <div className="text-xl font-bold text-green-600">{stats.enteredParams}</div>
+          </Card>
+          <Card className="p-3">
+            <div className="text-xs text-muted-foreground">Pending</div>
+            <div className="text-xl font-bold text-orange-600">{stats.pendingParams}</div>
+          </Card>
+          <Card className="p-3">
+            <div className="text-xs text-muted-foreground flex items-center gap-1"><Wifi className="h-3 w-3" /> Awaiting Interface</div>
+            <div className="text-xl font-bold text-blue-600">{stats.awaitingInterface}</div>
+          </Card>
         </div>
+      )}
+
+      {/* Outsourced mode */}
+      {mode === "outsourced" ? (
+        <OutsourcedResults />
+      ) : (
+        <>
+          {/* Patient list */}
+          {loadingRegs ? (
+            <Card><CardContent className="p-8 text-center text-muted-foreground">Loading…</CardContent></Card>
+          ) : filteredEntries.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center text-muted-foreground">
+                <FlaskConical className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                No accepted samples pending results
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-2">
+              {filteredEntries.map(entry => {
+                const reg = entry.registration;
+                const isExpanded = expandedPatient === reg.id;
+                const completion = getCompletionPct(entry);
+                const pendingCount = entry.parameters.filter(p => {
+                  const key = `${reg.id}||${p.parameterId}`;
+                  const val = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
+                  return !val;
+                }).length;
+                const awaitingCount = entry.parameters.filter(p => {
+                  const key = `${reg.id}||${p.parameterId}`;
+                  const val = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
+                  return p.sendForInterface && !p.isCalculated && !val;
+                }).length;
+
+                return (
+                  <Card key={reg.id} className={isExpanded ? "ring-1 ring-primary/30" : ""}>
+                    <div
+                      className="flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/30 transition-colors"
+                      onClick={() => setExpandedPatient(isExpanded ? null : reg.id)}
+                    >
+                      {isExpanded ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{reg.patient_name}</span>
+                          {reg.is_stat && (
+                            <span className="relative inline-flex h-2.5 w-2.5">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
+                              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive" />
+                            </span>
+                          )}
+                          <span className="text-sm text-muted-foreground font-mono">{reg.invoice_number}</span>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {reg.mobile_number} • {entry.parameters.length} parameters
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {awaitingCount > 0 && (
+                          <Badge variant="outline" className="text-xs text-orange-600 border-orange-300 gap-0.5">
+                            <Wifi className="h-3 w-3" /> {awaitingCount}
+                          </Badge>
+                        )}
+                        {pendingCount > 0 && (
+                          <Badge variant="outline" className="text-xs">{pendingCount} pending</Badge>
+                        )}
+                        <div className="w-16 h-2 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${completion === 100 ? "bg-green-500" : "bg-primary"}`}
+                            style={{ width: `${completion}%` }}
+                          />
+                        </div>
+                        <span className="text-xs text-muted-foreground w-8 text-right">{completion}%</span>
+                        {hasUnsavedChanges(reg.id) && (
+                          <div className="w-2 h-2 rounded-full bg-orange-500" title="Unsaved" />
+                        )}
+                      </div>
+                    </div>
+                    {isExpanded && (
+                      <CardContent className="pt-0 pb-3 px-3">
+                        {renderPatientExpanded(entry)}
+                      </CardContent>
+                    )}
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

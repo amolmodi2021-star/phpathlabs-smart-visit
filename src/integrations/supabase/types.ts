@@ -1587,6 +1587,39 @@ export type Database = {
         }
         Relationships: []
       }
+      outsourced_test_snips: {
+        Row: {
+          created_at: string
+          id: string
+          notes: string | null
+          registration_id: string
+          result_mode: string
+          snip_image_url: string | null
+          test_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          registration_id: string
+          result_mode?: string
+          snip_image_url?: string | null
+          test_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          registration_id?: string
+          result_mode?: string
+          snip_image_url?: string | null
+          test_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       parameter_normal_ranges: {
         Row: {
           age_max: number | null
