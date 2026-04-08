@@ -494,14 +494,22 @@ const ReportParameters = () => {
                         </Select>
                       )}
                       <Select value={t} onValueChange={(v) => {
-                        const f = [...form.calculation_formula];
-                        f[idx] = { ...f[idx], type: v, parameter_id: "", parameter_name: "", fixed_value: "" };
-                        setForm({ ...form, calculation_formula: f });
+                        if (v === "bracket_open" || v === "bracket_close") {
+                          const f = [...form.calculation_formula];
+                          f[idx] = { ...f[idx], type: v, parameter_id: "", parameter_name: "", fixed_value: "" };
+                          setForm({ ...form, calculation_formula: f });
+                        } else {
+                          const f = [...form.calculation_formula];
+                          f[idx] = { ...f[idx], type: v, parameter_id: "", parameter_name: "", fixed_value: "" };
+                          setForm({ ...form, calculation_formula: f });
+                        }
                       }}>
                         <SelectTrigger className="w-28 h-8"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="parameter">Parameter</SelectItem>
                           <SelectItem value="fixed">Fixed Value</SelectItem>
+                          <SelectItem value="bracket_open">( Open</SelectItem>
+                          <SelectItem value="bracket_close">) Close</SelectItem>
                         </SelectContent>
                       </Select>
                       {t === "parameter" ? (
@@ -518,7 +526,7 @@ const ReportParameters = () => {
                             ))}
                           </SelectContent>
                         </Select>
-                      ) : (
+                      ) : t === "fixed" ? (
                         <Input
                           type="number"
                           step="any"
@@ -531,7 +539,7 @@ const ReportParameters = () => {
                             setForm({ ...form, calculation_formula: f });
                           }}
                         />
-                      )}
+                      ) : null}
                       <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive shrink-0" onClick={() => {
                         const f = form.calculation_formula.filter((_, i) => i !== idx);
                         setForm({ ...form, calculation_formula: f });
