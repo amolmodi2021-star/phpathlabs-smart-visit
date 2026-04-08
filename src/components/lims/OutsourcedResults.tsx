@@ -170,6 +170,22 @@ const OutsourcedResults = () => {
     return existingSnips.find((s: any) => s.registration_id === regId && s.test_id === testId);
   };
 
+  // Get all image URLs for a snip (multi-page support)
+  const getSnipImageUrls = (regId: string, testId: string): string[] => {
+    const snip = getSnip(regId, testId);
+    if (!snip) return [];
+    const urls: string[] = [];
+    // Check new jsonb array first
+    if (snip.snip_image_urls && Array.isArray(snip.snip_image_urls) && snip.snip_image_urls.length > 0) {
+      urls.push(...(snip.snip_image_urls as string[]));
+    }
+    // Fallback to legacy single URL if urls array is empty
+    if (urls.length === 0 && snip.snip_image_url) {
+      urls.push(snip.snip_image_url);
+    }
+    return urls;
+  };
+
   const hasManualResults = (regId: string, testId: string) => {
     return existingResults.some((r: any) => r.registration_id === regId && r.test_id === testId && r.result_value);
   };
@@ -186,7 +202,8 @@ const OutsourcedResults = () => {
     const outsourceStatus = getOutsourceStatus(regId, testId);
     if (outsourceStatus === "pending") return "not_sent";
     const snip = getSnip(regId, testId);
-    if (snip?.result_mode === "snip" && snip?.snip_image_url) return "results_entered";
+    const imageUrls = getSnipImageUrls(regId, testId);
+    if (snip?.result_mode === "snip" && imageUrls.length > 0) return "results_entered";
     if (snip?.result_mode === "manual" && hasManualResults(regId, testId)) return "results_entered";
     if (outsourceStatus === "results_entered") return "results_entered";
     return "awaiting_results"; // sent but no results yet
