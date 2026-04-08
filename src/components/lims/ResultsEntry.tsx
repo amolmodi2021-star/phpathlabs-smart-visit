@@ -42,10 +42,10 @@ interface PatientEntry {
 
 const ResultsEntry = () => {
   const qc = useQueryClient();
-  const [mode, setMode] = useState<"patient" | "department">("patient");
+  const [mode, setMode] = useState<"patient" | "machine">("patient");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [selectedDept, setSelectedDept] = useState<string>("all");
+  const [selectedMachine, setSelectedMachine] = useState<string>("all");
   const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
   const [savingPatient, setSavingPatient] = useState<string | null>(null);
