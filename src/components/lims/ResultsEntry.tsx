@@ -590,41 +590,19 @@ const ResultsEntry = () => {
 
   return (
     <div className="space-y-4">
-      {/* Stats bar */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <Card className="p-3">
-          <div className="text-xs text-muted-foreground">Patients</div>
-          <div className="text-xl font-bold">{stats.totalPatients}</div>
-        </Card>
-        <Card className="p-3">
-          <div className="text-xs text-muted-foreground">Total Parameters</div>
-          <div className="text-xl font-bold">{stats.totalParams}</div>
-        </Card>
-        <Card className="p-3">
-          <div className="text-xs text-muted-foreground">Entered</div>
-          <div className="text-xl font-bold text-green-600">{stats.enteredParams}</div>
-        </Card>
-        <Card className="p-3">
-          <div className="text-xs text-muted-foreground">Pending</div>
-          <div className="text-xl font-bold text-orange-600">{stats.pendingParams}</div>
-        </Card>
-        <Card className="p-3">
-          <div className="text-xs text-muted-foreground flex items-center gap-1"><Wifi className="h-3 w-3" /> Awaiting Interface</div>
-          <div className="text-xl font-bold text-blue-600">{stats.awaitingInterface}</div>
-        </Card>
-      </div>
-
-      {/* Controls */}
+      {/* Mode tabs */}
       <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search patient, invoice, mobile…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
+        {mode !== "outsourced" && (
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search patient, invoice, mobile…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+        )}
         <Tabs value={mode} onValueChange={v => setMode(v as any)} className="w-auto">
           <TabsList className="h-9">
             <TabsTrigger value="patient" className="text-xs gap-1 h-7">
@@ -656,6 +634,32 @@ const ResultsEntry = () => {
           </Select>
         )}
       </div>
+
+      {/* Stats bar - only for in-house modes */}
+      {mode !== "outsourced" && (
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <Card className="p-3">
+            <div className="text-xs text-muted-foreground">Patients</div>
+            <div className="text-xl font-bold">{stats.totalPatients}</div>
+          </Card>
+          <Card className="p-3">
+            <div className="text-xs text-muted-foreground">Total Parameters</div>
+            <div className="text-xl font-bold">{stats.totalParams}</div>
+          </Card>
+          <Card className="p-3">
+            <div className="text-xs text-muted-foreground">Entered</div>
+            <div className="text-xl font-bold text-green-600">{stats.enteredParams}</div>
+          </Card>
+          <Card className="p-3">
+            <div className="text-xs text-muted-foreground">Pending</div>
+            <div className="text-xl font-bold text-orange-600">{stats.pendingParams}</div>
+          </Card>
+          <Card className="p-3">
+            <div className="text-xs text-muted-foreground flex items-center gap-1"><Wifi className="h-3 w-3" /> Awaiting Interface</div>
+            <div className="text-xl font-bold text-blue-600">{stats.awaitingInterface}</div>
+          </Card>
+        </div>
+      )}
 
       {/* Outsourced mode */}
       {mode === "outsourced" ? (
