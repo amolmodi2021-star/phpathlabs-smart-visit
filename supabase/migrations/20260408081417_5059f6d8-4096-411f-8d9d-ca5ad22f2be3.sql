@@ -1,0 +1,1 @@
+ALTER TABLE public.tests ADD COLUMN sample_tube text;
