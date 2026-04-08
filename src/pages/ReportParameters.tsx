@@ -57,6 +57,9 @@ const ReportParameters = () => {
     send_for_interface: true,
     is_calculated: false,
     calculation_formula: [] as { type: string; parameter_id: string; parameter_name: string; operator: string; fixed_value: string }[],
+    unit_conversion_enabled: false,
+    unit_conversion_operator: "*",
+    unit_conversion_value: "",
   });
 
   const [normalRanges, setNormalRanges] = useState<NormalRange[]>([]);
