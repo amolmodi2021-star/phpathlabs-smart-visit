@@ -291,14 +291,18 @@ const OutsourcedResults = () => {
             .upload(fileName, file, { contentType: "image/png", upsert: true });
           if (uploadError) throw uploadError;
           const { data: urlData } = supabase.storage.from("outsourced-snips").getPublicUrl(fileName);
+          // Append to existing URLs array
+          const existingUrls = getSnipImageUrls(regId, testId);
+          const newUrls = [...existingUrls, urlData.publicUrl];
           await supabase.from("outsourced_test_snips").upsert({
             registration_id: regId,
             test_id: testId,
-            snip_image_url: urlData.publicUrl,
+            snip_image_url: newUrls[0],
+            snip_image_urls: newUrls,
             result_mode: "snip",
             outsource_status: "results_entered",
           } as any, { onConflict: "registration_id,test_id" });
-          toast.success("Snip image saved successfully");
+          toast.success(`Page ${newUrls.length} added successfully`);
           qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
         } catch (err: any) {
           toast.error(err.message || "Failed to upload snip");
@@ -308,7 +312,7 @@ const OutsourcedResults = () => {
         return;
       }
     }
-  }, [qc]);
+  }, [qc, existingSnips]);
 
   // Handle file upload
   const handleFileUpload = useCallback(async (regId: string, testId: string, file: File) => {
@@ -321,21 +325,25 @@ const OutsourcedResults = () => {
         .upload(fileName, file, { contentType: file.type, upsert: true });
       if (uploadError) throw uploadError;
       const { data: urlData } = supabase.storage.from("outsourced-snips").getPublicUrl(fileName);
+      // Append to existing URLs array
+      const existingUrls = getSnipImageUrls(regId, testId);
+      const newUrls = [...existingUrls, urlData.publicUrl];
       await supabase.from("outsourced_test_snips").upsert({
         registration_id: regId,
         test_id: testId,
-        snip_image_url: urlData.publicUrl,
+        snip_image_url: newUrls[0],
+        snip_image_urls: newUrls,
         result_mode: "snip",
         outsource_status: "results_entered",
       } as any, { onConflict: "registration_id,test_id" });
-      toast.success("Image uploaded successfully");
+      toast.success(`Page ${newUrls.length} added successfully`);
       qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
     } catch (err: any) {
       toast.error(err.message || "Failed to upload image");
     } finally {
       setUploadingKey(null);
     }
-  }, [qc]);
+  }, [qc, existingSnips]);
 
   // Delete snip
   const deleteSnip = useCallback(async (regId: string, testId: string) => {
