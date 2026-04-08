@@ -1537,6 +1537,7 @@ export type Database = {
           display_order: number
           id: string
           is_active: boolean
+          mapped_value: string | null
           value: string
         }
         Insert: {
@@ -1545,6 +1546,7 @@ export type Database = {
           display_order?: number
           id?: string
           is_active?: boolean
+          mapped_value?: string | null
           value: string
         }
         Update: {
@@ -1553,6 +1555,7 @@ export type Database = {
           display_order?: number
           id?: string
           is_active?: boolean
+          mapped_value?: string | null
           value?: string
         }
         Relationships: []

@@ -1,0 +1,1 @@
+ALTER TABLE public.master_lookup ADD COLUMN mapped_value text;
