@@ -14,9 +14,10 @@ import {
 } from "@/components/ui/dialog";
 import {
   Search, ChevronDown, ChevronUp, Save, Loader2, Image, Keyboard,
-  Clipboard, Trash2, ExternalLink, Package, Send, Clock, CheckCircle2
+  Clipboard, Trash2, ExternalLink, Package, Send, Clock, CheckCircle2, Pencil
 } from "lucide-react";
 import { toast } from "sonner";
+import { format } from "date-fns";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
@@ -49,6 +50,11 @@ const OutsourcedResults = () => {
   const [showLabDialog, setShowLabDialog] = useState(false);
   const [labName, setLabName] = useState("");
   const [markingSent, setMarkingSent] = useState(false);
+
+  // Edit lab name state
+  const [editLabKey, setEditLabKey] = useState<string | null>(null); // "regId||testId"
+  const [editLabName, setEditLabName] = useState("");
+  const [savingEditLab, setSavingEditLab] = useState(false);
 
   // Debounce search
   const searchTimerRef = useRef<ReturnType<typeof setTimeout>>();
@@ -233,6 +239,7 @@ const OutsourcedResults = () => {
             outsourced_lab_name: labName.trim(),
             outsource_status: "sent",
             result_mode: "manual",
+            sent_at: new Date().toISOString(),
           } as any, { onConflict: "registration_id,test_id" });
       }
 
@@ -400,31 +407,77 @@ const OutsourcedResults = () => {
     }
   }, [editedValues, testParamsMap, qc]);
 
+  // Edit outsourced lab name
+  const saveEditLabName = async () => {
+    if (!editLabKey || !editLabName.trim()) return;
+    setSavingEditLab(true);
+    try {
+      const [regId, testId] = editLabKey.split("||");
+      await supabase.from("outsourced_test_snips").update({
+        outsourced_lab_name: editLabName.trim(),
+      } as any).eq("registration_id", regId).eq("test_id", testId);
+      toast.success("Outsourced lab name updated");
+      setEditLabKey(null);
+      setEditLabName("");
+      qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update");
+    } finally {
+      setSavingEditLab(false);
+    }
+  };
+
+  // Format sent_at date/time
+  const formatSentAt = (sentAt: string | null) => {
+    if (!sentAt) return null;
+    try {
+      const d = new Date(sentAt);
+      return format(d, "dd-MM-yyyy hh:mm a");
+    } catch { return null; }
+  };
+
   // Status badge renderer
   const renderStatusBadge = (regId: string, testId: string) => {
     const status = getTestStatus(regId, testId);
     const snip = getSnip(regId, testId);
     const labNameVal = (snip as any)?.outsourced_lab_name;
+    const sentAt = formatSentAt((snip as any)?.sent_at);
 
     switch (status) {
       case "not_sent":
         return <Badge variant="outline" className="text-xs text-muted-foreground border-muted-foreground/30">Not Sent</Badge>;
       case "awaiting_results":
         return (
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap justify-end">
             <Badge className="text-xs bg-amber-500 text-white gap-1">
               <Clock className="h-3 w-3" /> Awaiting Results
             </Badge>
-            {labNameVal && <span className="text-[10px] text-muted-foreground">({labNameVal})</span>}
+            {labNameVal && (
+              <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                {labNameVal}
+                <button onClick={(e) => { e.stopPropagation(); setEditLabKey(`${regId}||${testId}`); setEditLabName(labNameVal); }} className="hover:text-primary">
+                  <Pencil className="h-3 w-3" />
+                </button>
+              </span>
+            )}
+            {sentAt && <span className="text-[10px] text-muted-foreground">{sentAt}</span>}
           </div>
         );
       case "results_entered":
         return (
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap justify-end">
             <Badge className="text-xs bg-green-600 text-white gap-1">
               <CheckCircle2 className="h-3 w-3" /> Results Entered
             </Badge>
-            {labNameVal && <span className="text-[10px] text-muted-foreground">({labNameVal})</span>}
+            {labNameVal && (
+              <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                {labNameVal}
+                <button onClick={(e) => { e.stopPropagation(); setEditLabKey(`${regId}||${testId}`); setEditLabName(labNameVal); }} className="hover:text-primary">
+                  <Pencil className="h-3 w-3" />
+                </button>
+              </span>
+            )}
+            {sentAt && <span className="text-[10px] text-muted-foreground">{sentAt}</span>}
           </div>
         );
       default:
@@ -777,6 +830,36 @@ const OutsourcedResults = () => {
             <Button onClick={markAsSent} disabled={markingSent || !labName.trim()} className="gap-1.5">
               {markingSent ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               Confirm & Mark Sent
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Lab Name Dialog */}
+      <Dialog open={!!editLabKey} onOpenChange={(open) => { if (!open) { setEditLabKey(null); setEditLabName(""); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Outsourced Lab Name</DialogTitle>
+            <DialogDescription>Select the correct outsourced lab name.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Label>Outsourced Lab</Label>
+            <Select value={editLabName} onValueChange={setEditLabName}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select outsourced lab" />
+              </SelectTrigger>
+              <SelectContent>
+                {outsourceLabs.map(lab => (
+                  <SelectItem key={lab.id} value={lab.value}>{lab.value}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setEditLabKey(null); setEditLabName(""); }}>Cancel</Button>
+            <Button onClick={saveEditLabName} disabled={savingEditLab || !editLabName.trim()} className="gap-1.5">
+              {savingEditLab ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Update Lab Name
             </Button>
           </DialogFooter>
         </DialogContent>

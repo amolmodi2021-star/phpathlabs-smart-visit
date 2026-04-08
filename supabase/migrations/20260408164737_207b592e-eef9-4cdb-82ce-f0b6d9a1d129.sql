@@ -1,0 +1,1 @@
+ALTER TABLE public.outsourced_test_snips ADD COLUMN IF NOT EXISTS sent_at timestamp with time zone DEFAULT NULL;

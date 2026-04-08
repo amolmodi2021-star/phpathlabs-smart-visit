@@ -1596,6 +1596,7 @@ export type Database = {
           outsourced_lab_name: string | null
           registration_id: string
           result_mode: string
+          sent_at: string | null
           snip_image_url: string | null
           test_id: string
           updated_at: string
@@ -1608,6 +1609,7 @@ export type Database = {
           outsourced_lab_name?: string | null
           registration_id: string
           result_mode?: string
+          sent_at?: string | null
           snip_image_url?: string | null
           test_id: string
           updated_at?: string
@@ -1620,6 +1622,7 @@ export type Database = {
           outsourced_lab_name?: string | null
           registration_id?: string
           result_mode?: string
+          sent_at?: string | null
           snip_image_url?: string | null
           test_id?: string
           updated_at?: string
