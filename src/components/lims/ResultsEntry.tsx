@@ -77,14 +77,7 @@ const ResultsEntry = () => {
     },
   });
 
-  // ─── Fetch departments ───
-  const { data: departments = [] } = useQuery({
-    queryKey: ["results_departments"],
-    queryFn: async () => {
-      const { data } = await supabase.from("report_departments").select("id, department_name").order("display_order");
-      return (data || []) as any[];
-    },
-  });
+  // (departments query removed – now using machine-wise grouping)
 
   // ─── Fetch tests master ───
   const { data: testsMap = {} } = useQuery({
