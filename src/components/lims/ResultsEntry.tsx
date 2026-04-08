@@ -55,6 +55,7 @@ const ResultsEntry = () => {
   const [savingPatient, setSavingPatient] = useState<string | null>(null);
   const [blankConfirmEntry, setBlankConfirmEntry] = useState<PatientEntry | null>(null);
   const [blankParamCount, setBlankParamCount] = useState(0);
+  const [highlightBlanksForRegs, setHighlightBlanksForRegs] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 400);
@@ -388,6 +389,7 @@ const ResultsEntry = () => {
     if (blanks > 0) {
       setBlankParamCount(blanks);
       setBlankConfirmEntry(entry);
+      setHighlightBlanksForRegs(prev => new Set(prev).add(reg.id));
     } else {
       setSavingPatient(reg.id);
       saveMutation.mutate({ entry });
@@ -480,7 +482,8 @@ const ResultsEntry = () => {
     const isAwaiting = isInterfaceParameter && !currentValue;
 
     const isBlank = !currentValue || currentValue.trim() === "";
-    const rowBg = (flag === "H" || flag === "L") ? "bg-destructive/5" : (isBlank && !p.isCalculated ? "bg-yellow-50" : "");
+    const shouldHighlightBlanks = highlightBlanksForRegs.has(regId);
+    const rowBg = (flag === "H" || flag === "L") ? "bg-destructive/5" : (isBlank && !p.isCalculated && shouldHighlightBlanks ? "bg-yellow-50" : "");
 
     return (
       <TableRow key={key} className={rowBg}>
