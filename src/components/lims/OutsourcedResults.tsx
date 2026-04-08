@@ -780,11 +780,13 @@ const OutsourcedResults = () => {
         <div className="space-y-2">
           {patientEntries.map(entry => {
             const reg = entry.registration;
+            // Filter out tests that have been sent for verification
+            const visibleTests = entry.outsourcedTests.filter(t => getTestStatus(reg.id, t.testId) !== "results_entered");
+            if (visibleTests.length === 0) return null;
             const isExpanded = expandedPatient === reg.id;
-            const notSentCount = entry.outsourcedTests.filter(t => getTestStatus(reg.id, t.testId) === "not_sent").length;
-            const awaitingCount = entry.outsourcedTests.filter(t => getTestStatus(reg.id, t.testId) === "awaiting_results").length;
-            const enteredCount = entry.outsourcedTests.filter(t => getTestStatus(reg.id, t.testId) === "results_entered").length;
-            const allNotSentSelected = entry.outsourcedTests
+            const notSentCount = visibleTests.filter(t => getTestStatus(reg.id, t.testId) === "not_sent").length;
+            const awaitingCount = visibleTests.filter(t => getTestStatus(reg.id, t.testId) === "awaiting_results").length;
+            const allNotSentSelected = visibleTests
               .filter(t => getTestStatus(reg.id, t.testId) === "not_sent")
               .every(t => selectedTests.has(`${reg.id}||${t.testId}`));
 
