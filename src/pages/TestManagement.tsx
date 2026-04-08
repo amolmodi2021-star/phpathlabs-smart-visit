@@ -37,6 +37,27 @@ const defaultForm = {
   is_active: true,
 };
 
+const TUBE_COLOR_MAP: Record<string, string> = {
+  red: "#e53e3e", purple: "#9f7aea", lavender: "#b794f4", yellow: "#ecc94b",
+  green: "#48bb78", blue: "#4299e1", gray: "#a0aec0", grey: "#a0aec0",
+  gold: "#d69e2e", orange: "#ed8936", pink: "#ed64a6", black: "#1a202c",
+  white: "#ffffff", "light blue": "#63b3ed",
+};
+
+function TubeColorDot({ color }: { color: string }) {
+  const c = color.toLowerCase().trim();
+  const hex = TUBE_COLOR_MAP[c] || c;
+  const isValid = hex.startsWith("#") || hex.startsWith("rgb") || TUBE_COLOR_MAP[c];
+  if (!isValid) return null;
+  return (
+    <span
+      className="inline-block w-6 h-6 rounded-full border-2 border-muted-foreground/30 flex-shrink-0"
+      style={{ backgroundColor: hex }}
+      title={color}
+    />
+  );
+}
+
 const TestManagement = () => {
   useRealtimeSync("tests", ["tests"]);
   const qc = useQueryClient();
@@ -239,9 +260,9 @@ const TestManagement = () => {
                   <div className="grid grid-cols-2 gap-3">
                     <div><Label className="text-sm">Instrument Name</Label><MasterLookupSelect category="machine_name" value={form.instrument_name} onChange={(v) => setForm(p => ({ ...p, instrument_name: v }))} placeholder="Select machine" /></div>
                     <div><Label className="text-sm">Method</Label><MasterLookupSelect category="method" value={form.method} onChange={(v) => setForm(p => ({ ...p, method: v }))} placeholder="Select method" /></div>
-                    <div><Label className="text-sm">Sample Tube</Label><MasterLookupSelect category="sample_tube" value={form.sample_tube} onChange={(v) => setForm(p => ({ ...p, sample_tube: v }))} onMappedValue={(v) => setForm(p => ({ ...p, sample_type: v }))} onMappedValue2={(v) => setForm(p => ({ ...p, tube_color: v }))} placeholder="Select sample tube" /></div>
+                    <div><Label className="text-sm">Sample Tube</Label><div className="flex items-center gap-2"><MasterLookupSelect category="sample_tube" value={form.sample_tube} onChange={(v) => setForm(p => ({ ...p, sample_tube: v }))} onMappedValue={(v) => setForm(p => ({ ...p, sample_type: v }))} onMappedValue2={(v) => setForm(p => ({ ...p, tube_color: v }))} placeholder="Select sample tube" />{form.tube_color && <TubeColorDot color={form.tube_color} />}</div></div>
                     <div><Label className="text-sm">Sample Type</Label><Input value={form.sample_type} onChange={(e) => setForm(p => ({ ...p, sample_type: e.target.value }))} placeholder="Auto-filled from mapping" /></div>
-                    <div><Label className="text-sm">Tube Color</Label><Input value={form.tube_color} onChange={(e) => setForm(p => ({ ...p, tube_color: e.target.value }))} placeholder="Auto-filled from mapping" /></div>
+                    <div><Label className="text-sm">Tube Color</Label><div className="flex items-center gap-2"><Input value={form.tube_color} onChange={(e) => setForm(p => ({ ...p, tube_color: e.target.value }))} placeholder="Auto-filled from mapping" />{form.tube_color && <TubeColorDot color={form.tube_color} />}</div></div>
                   </div>
                   <div><Label className="text-sm">Interpretation</Label><Textarea value={form.interpretation} onChange={(e) => setForm(p => ({ ...p, interpretation: e.target.value }))} placeholder="Clinical interpretation notes" rows={3} /></div>
                 </div>
