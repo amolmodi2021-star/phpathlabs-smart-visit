@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, User, Building2, Save, Calculator, Wifi, WifiOff, ChevronDown, ChevronUp, Check, Loader2, FlaskConical } from "lucide-react";
+import { Search, User, Monitor, Save, Calculator, Wifi, WifiOff, ChevronDown, ChevronUp, Check, Loader2, FlaskConical } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
@@ -31,6 +31,7 @@ interface ParameterResult {
   testId: string;
   testName: string;
   departmentId: string;
+  machineName: string;
   displayOrder: number;
 }
 
@@ -41,10 +42,10 @@ interface PatientEntry {
 
 const ResultsEntry = () => {
   const qc = useQueryClient();
-  const [mode, setMode] = useState<"patient" | "department">("patient");
+  const [mode, setMode] = useState<"patient" | "machine">("patient");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [selectedDept, setSelectedDept] = useState<string>("all");
+  const [selectedMachine, setSelectedMachine] = useState<string>("all");
   const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
   const [savingPatient, setSavingPatient] = useState<string | null>(null);
@@ -76,20 +77,13 @@ const ResultsEntry = () => {
     },
   });
 
-  // ─── Fetch departments ───
-  const { data: departments = [] } = useQuery({
-    queryKey: ["results_departments"],
-    queryFn: async () => {
-      const { data } = await supabase.from("report_departments").select("id, department_name").order("display_order");
-      return (data || []) as any[];
-    },
-  });
+  // (departments query removed – now using machine-wise grouping)
 
   // ─── Fetch tests master ───
   const { data: testsMap = {} } = useQuery({
     queryKey: ["results_tests_map"],
     queryFn: async () => {
-      const { data } = await supabase.from("tests").select("id, test_name, department_id");
+      const { data } = await supabase.from("tests").select("id, test_name, department_id, instrument_name");
       const map: Record<string, any> = {};
       (data || []).forEach((t: any) => { map[t.id] = t; });
       return map;
@@ -166,6 +160,7 @@ const ResultsEntry = () => {
             testId: t.test_id,
             testName: t.test_name || testInfo.test_name || "",
             departmentId: testInfo.department_id || "",
+            machineName: testInfo.instrument_name || "",
             displayOrder: tp.display_order || 0,
           });
         }
@@ -311,15 +306,16 @@ const ResultsEntry = () => {
   // ─── Filter entries ───
   const filteredEntries = useMemo(() => {
     if (mode === "patient") return patientEntries;
-    // Department mode: filter entries that have params in selected department
-    if (selectedDept === "all") return patientEntries;
+    // Machine mode: filter entries that have params for selected machine
+    if (selectedMachine === "all") return patientEntries;
+    const filterMachine = selectedMachine === "others" ? "" : selectedMachine;
     return patientEntries
       .map(e => ({
         ...e,
-        parameters: e.parameters.filter(p => p.departmentId === selectedDept),
+        parameters: e.parameters.filter(p => (p.machineName || "") === filterMachine),
       }))
       .filter(e => e.parameters.length > 0);
-  }, [patientEntries, mode, selectedDept]);
+  }, [patientEntries, mode, selectedMachine]);
 
   // ─── Stats ───
   const stats = useMemo(() => {
@@ -339,16 +335,15 @@ const ResultsEntry = () => {
     return { totalParams, pendingParams, enteredParams, awaitingInterface, totalPatients: patientEntries.length };
   }, [patientEntries, editedValues]);
 
-  // ─── Department-wise grouping inside a patient ───
-  const groupByDepartment = (params: ParameterResult[]) => {
-    const groups: Record<string, { deptName: string; params: ParameterResult[] }> = {};
+  // ─── Machine-wise grouping inside a patient ───
+  const groupByMachine = (params: ParameterResult[]) => {
+    const groups: Record<string, { machineName: string; params: ParameterResult[] }> = {};
     for (const p of params) {
-      const deptId = p.departmentId || "ungrouped";
-      if (!groups[deptId]) {
-        const dept = departments.find((d: any) => d.id === deptId);
-        groups[deptId] = { deptName: dept?.department_name || "Other", params: [] };
+      const machine = p.machineName || "Others";
+      if (!groups[machine]) {
+        groups[machine] = { machineName: machine, params: [] };
       }
-      groups[deptId].params.push(p);
+      groups[machine].params.push(p);
     }
     return Object.values(groups);
   };
@@ -447,7 +442,7 @@ const ResultsEntry = () => {
   // ─── Patient card (expanded) ───
   const renderPatientExpanded = (entry: PatientEntry) => {
     const reg = entry.registration;
-    const deptGroups = groupByDepartment(entry.parameters);
+    const machineGroups = groupByMachine(entry.parameters);
     const completion = getCompletionPct(entry);
     const unsaved = hasUnsavedChanges(reg.id);
 
@@ -489,12 +484,12 @@ const ResultsEntry = () => {
           </div>
         </div>
 
-        {deptGroups.map((dg, di) => (
-          <div key={di} className="space-y-1">
-            <div className="text-xs font-semibold text-primary uppercase tracking-wider px-1 pt-2 border-b border-primary/20 pb-1">
-              {dg.deptName}
+        {machineGroups.map((mg, mi) => (
+          <div key={mi} className="space-y-1">
+            <div className="text-xs font-semibold text-primary uppercase tracking-wider px-1 pt-2 border-b border-primary/20 pb-1 flex items-center gap-1.5">
+              <Monitor className="h-3.5 w-3.5" /> {mg.machineName}
             </div>
-            {groupByTest(dg.params).map((tg, ti) => (
+            {groupByTest(mg.params).map((tg, ti) => (
               <div key={ti} className="ml-1">
                 <div className="text-xs font-medium text-muted-foreground px-1 py-0.5 bg-muted/40 rounded-t">
                   {tg.testName}
@@ -567,20 +562,24 @@ const ResultsEntry = () => {
             <TabsTrigger value="patient" className="text-xs gap-1 h-7">
               <User className="h-3.5 w-3.5" /> Patient Wise
             </TabsTrigger>
-            <TabsTrigger value="department" className="text-xs gap-1 h-7">
-              <Building2 className="h-3.5 w-3.5" /> Department Wise
+            <TabsTrigger value="machine" className="text-xs gap-1 h-7">
+              <Monitor className="h-3.5 w-3.5" /> Machine Wise
             </TabsTrigger>
           </TabsList>
         </Tabs>
-        {mode === "department" && (
-          <Select value={selectedDept} onValueChange={setSelectedDept}>
+        {mode === "machine" && (
+          <Select value={selectedMachine} onValueChange={setSelectedMachine}>
             <SelectTrigger className="w-[200px] h-9">
-              <SelectValue placeholder="All Departments" />
+              <SelectValue placeholder="All Machines" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Departments</SelectItem>
-              {departments.map((d: any) => (
-                <SelectItem key={d.id} value={d.id}>{d.department_name}</SelectItem>
+              <SelectItem value="all">All Machines</SelectItem>
+              {(() => {
+                const machines = new Set<string>();
+                patientEntries.forEach(e => e.parameters.forEach(p => machines.add(p.machineName || "Others")));
+                return Array.from(machines).sort((a, b) => a === "Others" ? 1 : b === "Others" ? -1 : a.localeCompare(b));
+              })().map(m => (
+                <SelectItem key={m} value={m === "Others" ? "others" : m}>{m}</SelectItem>
               ))}
             </SelectContent>
           </Select>
