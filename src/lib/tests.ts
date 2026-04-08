@@ -104,7 +104,7 @@ export const getTestParameters = async (testId: string): Promise<TestParameterLi
   return withRetry(async () => {
     const { data, error } = await supabase
       .from("test_parameters")
-      .select("id, test_id, parameter_id, display_order, report_test_parameters(parameter_name, param_code, unit, normal_range_low, normal_range_high, normal_range_text)")
+      .select("id, test_id, parameter_id, display_order, is_subheader, subheader_text, report_test_parameters(parameter_name, param_code, unit, normal_range_low, normal_range_high, normal_range_text)")
       .eq("test_id", testId)
       .order("display_order");
     if (error) throw new Error(error.message);
@@ -113,6 +113,8 @@ export const getTestParameters = async (testId: string): Promise<TestParameterLi
       test_id: d.test_id,
       parameter_id: d.parameter_id,
       display_order: d.display_order,
+      is_subheader: d.is_subheader ?? false,
+      subheader_text: d.subheader_text ?? null,
       parameter_name: d.report_test_parameters?.parameter_name,
       param_code: d.report_test_parameters?.param_code,
       unit: d.report_test_parameters?.unit,
