@@ -51,6 +51,8 @@ const ResultsEntry = () => {
   const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
   const [savingPatient, setSavingPatient] = useState<string | null>(null);
+  const [blankConfirmEntry, setBlankConfirmEntry] = useState<PatientEntry | null>(null);
+  const [blankParamCount, setBlankParamCount] = useState(0);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 400);
