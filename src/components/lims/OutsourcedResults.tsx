@@ -407,31 +407,77 @@ const OutsourcedResults = () => {
     }
   }, [editedValues, testParamsMap, qc]);
 
+  // Edit outsourced lab name
+  const saveEditLabName = async () => {
+    if (!editLabKey || !editLabName.trim()) return;
+    setSavingEditLab(true);
+    try {
+      const [regId, testId] = editLabKey.split("||");
+      await supabase.from("outsourced_test_snips").update({
+        outsourced_lab_name: editLabName.trim(),
+      } as any).eq("registration_id", regId).eq("test_id", testId);
+      toast.success("Outsourced lab name updated");
+      setEditLabKey(null);
+      setEditLabName("");
+      qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update");
+    } finally {
+      setSavingEditLab(false);
+    }
+  };
+
+  // Format sent_at date/time
+  const formatSentAt = (sentAt: string | null) => {
+    if (!sentAt) return null;
+    try {
+      const d = new Date(sentAt);
+      return format(d, "dd-MM-yyyy hh:mm a");
+    } catch { return null; }
+  };
+
   // Status badge renderer
   const renderStatusBadge = (regId: string, testId: string) => {
     const status = getTestStatus(regId, testId);
     const snip = getSnip(regId, testId);
     const labNameVal = (snip as any)?.outsourced_lab_name;
+    const sentAt = formatSentAt((snip as any)?.sent_at);
 
     switch (status) {
       case "not_sent":
         return <Badge variant="outline" className="text-xs text-muted-foreground border-muted-foreground/30">Not Sent</Badge>;
       case "awaiting_results":
         return (
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap justify-end">
             <Badge className="text-xs bg-amber-500 text-white gap-1">
               <Clock className="h-3 w-3" /> Awaiting Results
             </Badge>
-            {labNameVal && <span className="text-[10px] text-muted-foreground">({labNameVal})</span>}
+            {labNameVal && (
+              <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                {labNameVal}
+                <button onClick={(e) => { e.stopPropagation(); setEditLabKey(`${regId}||${testId}`); setEditLabName(labNameVal); }} className="hover:text-primary">
+                  <Pencil className="h-3 w-3" />
+                </button>
+              </span>
+            )}
+            {sentAt && <span className="text-[10px] text-muted-foreground">{sentAt}</span>}
           </div>
         );
       case "results_entered":
         return (
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap justify-end">
             <Badge className="text-xs bg-green-600 text-white gap-1">
               <CheckCircle2 className="h-3 w-3" /> Results Entered
             </Badge>
-            {labNameVal && <span className="text-[10px] text-muted-foreground">({labNameVal})</span>}
+            {labNameVal && (
+              <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                {labNameVal}
+                <button onClick={(e) => { e.stopPropagation(); setEditLabKey(`${regId}||${testId}`); setEditLabName(labNameVal); }} className="hover:text-primary">
+                  <Pencil className="h-3 w-3" />
+                </button>
+              </span>
+            )}
+            {sentAt && <span className="text-[10px] text-muted-foreground">{sentAt}</span>}
           </div>
         );
       default:
