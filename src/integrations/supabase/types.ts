@@ -137,6 +137,122 @@ export type Database = {
         }
         Relationships: []
       }
+      billing_profile_tests: {
+        Row: {
+          created_at: string
+          display_order: number
+          id: string
+          profile_id: string
+          test_id: string
+        }
+        Insert: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          profile_id: string
+          test_id: string
+        }
+        Update: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          profile_id?: string
+          test_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_profile_tests_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "billing_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "billing_profile_tests_test_id_fkey"
+            columns: ["test_id"]
+            isOneToOne: false
+            referencedRelation: "tests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      billing_profiles: {
+        Row: {
+          bold_in_report: boolean
+          created_at: string
+          department_id: string | null
+          description: string | null
+          discount_applicable: boolean
+          display_name: string | null
+          fasting_required: boolean
+          id: string
+          incentive_allowed: boolean
+          incentive_amount: number
+          instrument_name: string | null
+          interpretation: string | null
+          is_outsourced: boolean
+          method: string | null
+          price: number
+          profile_code: string | null
+          profile_name: string
+          sample_type: string | null
+          show_in_report: boolean
+          updated_at: string
+        }
+        Insert: {
+          bold_in_report?: boolean
+          created_at?: string
+          department_id?: string | null
+          description?: string | null
+          discount_applicable?: boolean
+          display_name?: string | null
+          fasting_required?: boolean
+          id?: string
+          incentive_allowed?: boolean
+          incentive_amount?: number
+          instrument_name?: string | null
+          interpretation?: string | null
+          is_outsourced?: boolean
+          method?: string | null
+          price?: number
+          profile_code?: string | null
+          profile_name: string
+          sample_type?: string | null
+          show_in_report?: boolean
+          updated_at?: string
+        }
+        Update: {
+          bold_in_report?: boolean
+          created_at?: string
+          department_id?: string | null
+          description?: string | null
+          discount_applicable?: boolean
+          display_name?: string | null
+          fasting_required?: boolean
+          id?: string
+          incentive_allowed?: boolean
+          incentive_amount?: number
+          instrument_name?: string | null
+          interpretation?: string | null
+          is_outsourced?: boolean
+          method?: string | null
+          price?: number
+          profile_code?: string | null
+          profile_name?: string
+          sample_type?: string | null
+          show_in_report?: boolean
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_profiles_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "report_departments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       channel_prices: {
         Row: {
           channel_id: string
@@ -868,6 +984,93 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      health_checkup_tests: {
+        Row: {
+          created_at: string
+          display_order: number
+          health_checkup_id: string
+          id: string
+          test_id: string
+        }
+        Insert: {
+          created_at?: string
+          display_order?: number
+          health_checkup_id: string
+          id?: string
+          test_id: string
+        }
+        Update: {
+          created_at?: string
+          display_order?: number
+          health_checkup_id?: string
+          id?: string
+          test_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "health_checkup_tests_health_checkup_id_fkey"
+            columns: ["health_checkup_id"]
+            isOneToOne: false
+            referencedRelation: "health_checkups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "health_checkup_tests_test_id_fkey"
+            columns: ["test_id"]
+            isOneToOne: false
+            referencedRelation: "tests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      health_checkups: {
+        Row: {
+          bold_in_report: boolean
+          created_at: string
+          discount_applicable: boolean
+          display_name: string | null
+          fasting_required: boolean
+          health_checkup_code: string | null
+          health_checkup_name: string
+          id: string
+          incentive_allowed: boolean
+          incentive_amount: number
+          price: number
+          show_in_report: boolean
+          updated_at: string
+        }
+        Insert: {
+          bold_in_report?: boolean
+          created_at?: string
+          discount_applicable?: boolean
+          display_name?: string | null
+          fasting_required?: boolean
+          health_checkup_code?: string | null
+          health_checkup_name: string
+          id?: string
+          incentive_allowed?: boolean
+          incentive_amount?: number
+          price?: number
+          show_in_report?: boolean
+          updated_at?: string
+        }
+        Update: {
+          bold_in_report?: boolean
+          created_at?: string
+          discount_applicable?: boolean
+          display_name?: string | null
+          fasting_required?: boolean
+          health_checkup_code?: string | null
+          health_checkup_name?: string
+          id?: string
+          incentive_allowed?: boolean
+          incentive_amount?: number
+          price?: number
+          show_in_report?: boolean
+          updated_at?: string
+        }
+        Relationships: []
       }
       home_visits: {
         Row: {
