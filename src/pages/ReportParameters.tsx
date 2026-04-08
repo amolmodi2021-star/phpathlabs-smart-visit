@@ -494,15 +494,9 @@ const ReportParameters = () => {
                         </Select>
                       )}
                       <Select value={t} onValueChange={(v) => {
-                        if (v === "bracket_open" || v === "bracket_close") {
-                          const f = [...form.calculation_formula];
-                          f[idx] = { ...f[idx], type: v, parameter_id: "", parameter_name: "", fixed_value: "" };
-                          setForm({ ...form, calculation_formula: f });
-                        } else {
-                          const f = [...form.calculation_formula];
-                          f[idx] = { ...f[idx], type: v, parameter_id: "", parameter_name: "", fixed_value: "" };
-                          setForm({ ...form, calculation_formula: f });
-                        }
+                        const f = [...form.calculation_formula];
+                        f[idx] = { ...f[idx], type: v, parameter_id: "", parameter_name: "", fixed_value: "" };
+                        setForm({ ...form, calculation_formula: f });
                       }}>
                         <SelectTrigger className="w-28 h-8"><SelectValue /></SelectTrigger>
                         <SelectContent>
