@@ -1538,6 +1538,7 @@ export type Database = {
           id: string
           is_active: boolean
           mapped_value: string | null
+          mapped_value_2: string | null
           value: string
         }
         Insert: {
@@ -1547,6 +1548,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           mapped_value?: string | null
+          mapped_value_2?: string | null
           value: string
         }
         Update: {
@@ -1556,6 +1558,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           mapped_value?: string | null
+          mapped_value_2?: string | null
           value?: string
         }
         Relationships: []
@@ -2483,6 +2486,7 @@ export type Database = {
           show_in_report: boolean
           test_code: string | null
           test_name: string
+          tube_color: string | null
           updated_at: string
         }
         Insert: {
@@ -2511,6 +2515,7 @@ export type Database = {
           show_in_report?: boolean
           test_code?: string | null
           test_name: string
+          tube_color?: string | null
           updated_at?: string
         }
         Update: {
@@ -2539,6 +2544,7 @@ export type Database = {
           show_in_report?: boolean
           test_code?: string | null
           test_name?: string
+          tube_color?: string | null
           updated_at?: string
         }
         Relationships: [
