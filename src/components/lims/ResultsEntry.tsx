@@ -90,7 +90,7 @@ const ResultsEntry = () => {
   const { data: testsMap = {} } = useQuery({
     queryKey: ["results_tests_map"],
     queryFn: async () => {
-      const { data } = await supabase.from("tests").select("id, test_name, department_id");
+      const { data } = await supabase.from("tests").select("id, test_name, department_id, instrument_name");
       const map: Record<string, any> = {};
       (data || []).forEach((t: any) => { map[t.id] = t; });
       return map;
