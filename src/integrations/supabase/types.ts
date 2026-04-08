@@ -2192,6 +2192,8 @@ export type Database = {
           analyzer: string | null
           calculation_formula: Json | null
           created_at: string | null
+          custom_sample_suffix: string | null
+          custom_sample_suffix_enabled: boolean
           department_id: string | null
           display_order: number | null
           id: string
@@ -2226,6 +2228,8 @@ export type Database = {
           analyzer?: string | null
           calculation_formula?: Json | null
           created_at?: string | null
+          custom_sample_suffix?: string | null
+          custom_sample_suffix_enabled?: boolean
           department_id?: string | null
           display_order?: number | null
           id?: string
@@ -2260,6 +2264,8 @@ export type Database = {
           analyzer?: string | null
           calculation_formula?: Json | null
           created_at?: string | null
+          custom_sample_suffix?: string | null
+          custom_sample_suffix_enabled?: boolean
           department_id?: string | null
           display_order?: number | null
           id?: string

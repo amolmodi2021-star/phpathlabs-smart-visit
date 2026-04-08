@@ -62,6 +62,8 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
     unit_conversion_operator: "*",
     unit_conversion_value: "",
     is_active: true,
+    custom_sample_suffix_enabled: false,
+    custom_sample_suffix: "",
   });
 
   const [normalRanges, setNormalRanges] = useState<NormalRange[]>([]);
@@ -171,6 +173,8 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
         unit_conversion_operator: form.unit_conversion_operator,
         unit_conversion_value: form.unit_conversion_value ? Number(form.unit_conversion_value) : null,
         is_active: form.is_active,
+        custom_sample_suffix_enabled: form.custom_sample_suffix_enabled,
+        custom_sample_suffix: form.custom_sample_suffix_enabled ? (form.custom_sample_suffix || null) : null,
       };
 
       let paramId = editId;
@@ -230,6 +234,8 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
       unit_conversion_operator: p.unit_conversion_operator || "*",
       unit_conversion_value: p.unit_conversion_value != null ? String(p.unit_conversion_value) : "",
       is_active: p.is_active !== false,
+      custom_sample_suffix_enabled: p.custom_sample_suffix_enabled || false,
+      custom_sample_suffix: p.custom_sample_suffix || "",
     });
     setNormalRanges([]);
     setDialogOpen(true);
@@ -327,7 +333,7 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
       normal_range_text: "", machine_name: "", machine_id: "",
       send_for_interface: true, is_calculated: false, calculation_formula: [],
       unit_conversion_enabled: false, unit_conversion_operator: "*", unit_conversion_value: "",
-      is_active: true,
+      is_active: true, custom_sample_suffix_enabled: false, custom_sample_suffix: "",
     });
     setNormalRanges([]);
     setDialogOpen(true);
@@ -473,6 +479,29 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
                 <div className="grid grid-cols-2 gap-3">
                   <div><Label className="text-sm">Machine Name</Label><Input value={form.machine_name} onChange={(e) => setForm({ ...form, machine_name: e.target.value })} placeholder="e.g. Sysmex XN-1000" /></div>
                   <div><Label className="text-sm">Machine ID</Label><Input value={form.machine_id} onChange={(e) => setForm({ ...form, machine_id: e.target.value })} placeholder="e.g. MACH001" /></div>
+                </div>
+              )}
+
+              {/* Custom Sample ID Suffix */}
+              <div className="flex items-center justify-between">
+                <Label>Custom Sample ID Suffix</Label>
+                <Switch checked={form.custom_sample_suffix_enabled} onCheckedChange={(v) => setForm({ ...form, custom_sample_suffix_enabled: v })} />
+              </div>
+              {form.custom_sample_suffix_enabled && (
+                <div className="flex items-center gap-3 bg-muted/40 rounded-md p-3">
+                  <span className="text-sm text-muted-foreground whitespace-nowrap">Sample ID will be:</span>
+                  <span className="text-sm font-mono font-medium">INV######</span>
+                  <Input
+                    className="w-28"
+                    value={form.custom_sample_suffix}
+                    onChange={(e) => setForm({ ...form, custom_sample_suffix: e.target.value })}
+                    placeholder="e.g. -F, -P"
+                  />
+                  {form.custom_sample_suffix && (
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                      e.g. 2604080001{form.custom_sample_suffix}
+                    </span>
+                  )}
                 </div>
               )}
             </div>
