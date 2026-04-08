@@ -37,6 +37,27 @@ const defaultForm = {
   is_active: true,
 };
 
+const TUBE_COLOR_MAP: Record<string, string> = {
+  red: "#e53e3e", purple: "#9f7aea", lavender: "#b794f4", yellow: "#ecc94b",
+  green: "#48bb78", blue: "#4299e1", gray: "#a0aec0", grey: "#a0aec0",
+  gold: "#d69e2e", orange: "#ed8936", pink: "#ed64a6", black: "#1a202c",
+  white: "#ffffff", "light blue": "#63b3ed",
+};
+
+function TubeColorDot({ color }: { color: string }) {
+  const c = color.toLowerCase().trim();
+  const hex = TUBE_COLOR_MAP[c] || c;
+  const isValid = hex.startsWith("#") || hex.startsWith("rgb") || TUBE_COLOR_MAP[c];
+  if (!isValid) return null;
+  return (
+    <span
+      className="inline-block w-6 h-6 rounded-full border-2 border-muted-foreground/30 flex-shrink-0"
+      style={{ backgroundColor: hex }}
+      title={color}
+    />
+  );
+}
+
 const TestManagement = () => {
   useRealtimeSync("tests", ["tests"]);
   const qc = useQueryClient();
