@@ -392,13 +392,19 @@ const ResultsEntry = () => {
     }
   };
 
-  // ─── Filter entries ───
+  // ─── Filter entries: hide patients whose all results are already "entered" ───
   const filteredEntries = useMemo(() => {
-    if (mode === "patient") return patientEntries;
+    // First filter out patients where ALL parameters already have status "entered" or "verified"
+    const activeEntries = patientEntries.filter(e => {
+      const allEntered = e.parameters.every(p => p.status === "entered" || p.status === "verified");
+      return !allEntered;
+    });
+
+    if (mode === "patient") return activeEntries;
     // Machine mode: filter entries that have params for selected machine
-    if (selectedMachine === "all") return patientEntries;
+    if (selectedMachine === "all") return activeEntries;
     const filterMachine = selectedMachine === "others" ? "" : selectedMachine;
-    return patientEntries
+    return activeEntries
       .map(e => ({
         ...e,
         parameters: e.parameters.filter(p => (p.machineName || "") === filterMachine),
@@ -471,8 +477,11 @@ const ResultsEntry = () => {
     const isInterfaceParameter = p.sendForInterface && !p.isCalculated;
     const isAwaiting = isInterfaceParameter && !currentValue;
 
+    const isBlank = !currentValue || currentValue.trim() === "";
+    const rowBg = (flag === "H" || flag === "L") ? "bg-destructive/5" : (isBlank && !p.isCalculated ? "bg-yellow-50" : "");
+
     return (
-      <TableRow key={key} className={flag === "H" || flag === "L" ? "bg-destructive/5" : ""}>
+      <TableRow key={key} className={rowBg}>
         <TableCell className="py-1.5 text-xs font-mono text-muted-foreground">{p.paramCode}</TableCell>
         <TableCell className="py-1.5 text-sm font-medium">
           {p.parameterName}
@@ -561,18 +570,15 @@ const ResultsEntry = () => {
             {unsaved && <Badge variant="secondary" className="text-xs text-orange-600">Unsaved</Badge>}
             <Button
               size="sm"
-              onClick={() => {
-                setSavingPatient(reg.id);
-                saveMutation.mutate({ entry });
-              }}
+              onClick={() => handleSaveAndVerify(entry)}
               disabled={saveMutation.isPending && savingPatient === reg.id}
             >
               {saveMutation.isPending && savingPatient === reg.id ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-1" />
               ) : (
-                <Save className="h-4 w-4 mr-1" />
+                <SendHorizonal className="h-4 w-4 mr-1" />
               )}
-              Save Results
+              Save & Send to Verification
             </Button>
           </div>
         </div>
