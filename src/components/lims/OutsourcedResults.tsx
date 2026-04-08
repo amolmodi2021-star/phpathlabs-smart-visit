@@ -238,6 +238,7 @@ const OutsourcedResults = () => {
             outsourced_lab_name: labName.trim(),
             outsource_status: "sent",
             result_mode: "manual",
+            sent_at: new Date().toISOString(),
           } as any, { onConflict: "registration_id,test_id" });
       }
 
