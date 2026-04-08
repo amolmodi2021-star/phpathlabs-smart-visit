@@ -444,7 +444,8 @@ const ResultsEntry = () => {
     const key = `${regId}||${p.parameterId}`;
     const currentValue = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
     const flag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh);
-    const isAwaiting = p.sendForInterface && !p.isCalculated && !currentValue;
+    const isInterfaceParameter = p.sendForInterface && !p.isCalculated;
+    const isAwaiting = isInterfaceParameter && !currentValue;
 
     return (
       <TableRow key={key} className={flag === "H" || flag === "L" ? "bg-destructive/5" : ""}>
@@ -454,7 +455,7 @@ const ResultsEntry = () => {
           {p.isCalculated && <Calculator className="inline h-3 w-3 ml-1 text-primary" />}
         </TableCell>
         <TableCell className="py-1.5 w-[180px]">
-          {isAwaiting ? (
+          {isInterfaceParameter ? (
             <div className="flex items-center gap-1">
               <Input
                 value={currentValue}
@@ -462,8 +463,11 @@ const ResultsEntry = () => {
                 className="h-7 text-sm w-[120px]"
                 placeholder="Manual"
               />
-              <Badge variant="outline" className="text-xs text-orange-600 border-orange-300 whitespace-nowrap gap-0.5">
-                <Wifi className="h-3 w-3" /> Awaiting
+              <Badge
+                variant="outline"
+                className="text-xs text-orange-600 border-orange-300 whitespace-nowrap gap-0.5"
+              >
+                <Wifi className="h-3 w-3" /> {isAwaiting ? "Awaiting" : "Manual"}
               </Badge>
             </div>
           ) : p.isCalculated ? (
