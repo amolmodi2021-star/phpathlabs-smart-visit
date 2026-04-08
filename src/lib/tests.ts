@@ -90,6 +90,8 @@ export interface TestParameterLink {
   test_id: string;
   parameter_id: string;
   display_order: number;
+  is_subheader: boolean;
+  subheader_text: string | null;
   parameter_name?: string;
   param_code?: string;
   unit?: string;
