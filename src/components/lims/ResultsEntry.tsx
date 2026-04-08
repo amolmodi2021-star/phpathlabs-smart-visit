@@ -366,6 +366,7 @@ const ResultsEntry = () => {
       });
       setSavingPatient(null);
       setBlankConfirmEntry(null);
+      setHighlightBlanksForRegs(prev => { const next = new Set(prev); next.delete(regId); return next; });
       qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
       qc.invalidateQueries({ queryKey: ["verification_"] });
     },
