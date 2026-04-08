@@ -27,7 +27,6 @@ const SnipOnLetterhead = ({
 }: SnipOnLetterheadProps) => {
   const [letterheadDataUrl, setLetterheadDataUrl] = useState<string | null>(null);
   const [loadingLetterhead, setLoadingLetterhead] = useState(true);
-  const [settingsIdRef, setSettingsIdRef] = useState<string | null>(null);
   const [topMarginPct, setTopMarginPct] = useState(8.4);
   const [topMarginInput, setTopMarginInput] = useState("8.4");
   const [pageScales, setPageScales] = useState<Record<number, number>>({});
@@ -39,24 +38,37 @@ const SnipOnLetterhead = ({
     const loadLetterhead = async () => {
       setLoadingLetterhead(true);
       try {
-        const { data: settings } = await supabase
-          .from("report_layout_settings")
-          .select("id, letterhead_pdf_path, top_margin_cm")
+        // Load saved snip margin from app_settings
+        const { data: marginSetting } = await supabase
+          .from("app_settings")
+          .select("setting_value")
+          .eq("setting_key", "snip_top_margin_pct")
           .limit(1)
-          .single() as { data: any };
+          .single();
 
-        if (settings?.id) setSettingsIdRef(settings.id);
-
-        const savedPct = settings?.top_margin_pct;
-        if (savedPct != null) {
-          const saved = Number(savedPct);
+        if (marginSetting?.setting_value) {
+          const saved = Number(marginSetting.setting_value);
           setTopMarginPct(saved);
           setTopMarginInput(saved.toFixed(1));
-        } else if (settings?.top_margin_cm) {
-          const marginPct = (Number(settings.top_margin_cm) / 29.7) * 100;
-          setTopMarginPct(marginPct);
-          setTopMarginInput(marginPct.toFixed(1));
+        } else {
+          // Fall back to layout settings top_margin_cm
+          const { data: layoutSettings } = await supabase
+            .from("report_layout_settings")
+            .select("top_margin_cm")
+            .limit(1)
+            .single();
+          if (layoutSettings?.top_margin_cm) {
+            const marginPct = (Number(layoutSettings.top_margin_cm) / 29.7) * 100;
+            setTopMarginPct(marginPct);
+            setTopMarginInput(marginPct.toFixed(1));
+          }
         }
+
+        const { data: settings } = await supabase
+          .from("report_layout_settings")
+          .select("letterhead_pdf_path")
+          .limit(1)
+          .single();
         if (!settings?.letterhead_pdf_path) {
           setLetterheadDataUrl(null);
           setLoadingLetterhead(false);
@@ -196,13 +208,13 @@ const SnipOnLetterhead = ({
                   const val = Math.max(0, Math.min(50, Number(topMarginInput) || 0));
                   setTopMarginPct(val);
                   setTopMarginInput(val.toFixed(1));
-                  // Persist margin globally in report_layout_settings
-                  if (settingsIdRef) {
-                    await supabase
-                      .from("report_layout_settings")
-                      .update({ top_margin_pct: val } as any)
-                      .eq("id", settingsIdRef);
-                  }
+                  // Persist margin globally in app_settings
+                  await supabase
+                    .from("app_settings")
+                    .upsert(
+                      { setting_key: "snip_top_margin_pct", setting_value: String(val) },
+                      { onConflict: "setting_key" }
+                    );
                 }}
                 className="w-16 h-7 text-xs text-center border rounded bg-background"
               />
