@@ -461,9 +461,24 @@ const ReportParameters = () => {
               {form.is_calculated && (
                 <div className="space-y-2">
                   <p className="text-xs text-muted-foreground">Build formula: select parameters and operators. The result will be computed automatically.</p>
-                  {form.calculation_formula.map((item, idx) => (
+                  {form.calculation_formula.map((item, idx) => {
+                    const t = item.type || "parameter";
+                    if (t === "bracket_open" || t === "bracket_close") {
+                      return (
+                        <div key={idx} className="flex items-center gap-2">
+                          <span className="text-lg font-bold w-8 text-center">{t === "bracket_open" ? "(" : ")"}</span>
+                          <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive shrink-0" onClick={() => {
+                            const f = form.calculation_formula.filter((_, i) => i !== idx);
+                            setForm({ ...form, calculation_formula: f });
+                          }}>
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      );
+                    }
+                    return (
                     <div key={idx} className="flex items-center gap-2">
-                      {idx > 0 && (
+                      {idx > 0 && form.calculation_formula[idx - 1]?.type !== "bracket_open" && (
                         <Select value={item.operator} onValueChange={(v) => {
                           const f = [...form.calculation_formula];
                           f[idx] = { ...f[idx], operator: v };
@@ -478,7 +493,7 @@ const ReportParameters = () => {
                           </SelectContent>
                         </Select>
                       )}
-                      <Select value={item.type || "parameter"} onValueChange={(v) => {
+                      <Select value={t} onValueChange={(v) => {
                         const f = [...form.calculation_formula];
                         f[idx] = { ...f[idx], type: v, parameter_id: "", parameter_name: "", fixed_value: "" };
                         setForm({ ...form, calculation_formula: f });
@@ -489,7 +504,7 @@ const ReportParameters = () => {
                           <SelectItem value="fixed">Fixed Value</SelectItem>
                         </SelectContent>
                       </Select>
-                      {(item.type || "parameter") === "parameter" ? (
+                      {t === "parameter" ? (
                         <Select value={item.parameter_id} onValueChange={(v) => {
                           const selected = params.find(p => p.id === v);
                           const f = [...form.calculation_formula];
@@ -524,8 +539,9 @@ const ReportParameters = () => {
                         <Trash2 className="h-3 w-3" />
                       </Button>
                     </div>
-                  ))}
-                  <div className="flex gap-2">
+                    );
+                  })}
+                  <div className="flex gap-2 flex-wrap">
                     <Button type="button" variant="outline" size="sm" onClick={() => {
                       setForm({ ...form, calculation_formula: [...form.calculation_formula, { type: "parameter", parameter_id: "", parameter_name: "", operator: "+", fixed_value: "" }] });
                     }}>
@@ -536,12 +552,26 @@ const ReportParameters = () => {
                     }}>
                       <Plus className="h-3 w-3 mr-1" />Add Fixed Value
                     </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => {
+                      setForm({ ...form, calculation_formula: [...form.calculation_formula, { type: "bracket_open", parameter_id: "", parameter_name: "", operator: "", fixed_value: "" }] });
+                    }}>
+                      (
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => {
+                      setForm({ ...form, calculation_formula: [...form.calculation_formula, { type: "bracket_close", parameter_id: "", parameter_name: "", operator: "", fixed_value: "" }] });
+                    }}>
+                      )
+                    </Button>
                   </div>
                   {form.calculation_formula.length > 0 && (
                     <div className="text-xs text-muted-foreground bg-muted p-2 rounded font-mono">
                       Formula: {form.calculation_formula.map((item, i) => {
-                        const label = (item.type || "parameter") === "fixed" ? (item.fixed_value || "?") : (item.parameter_name || "?");
-                        return `${i > 0 ? ` ${item.operator} ` : ""}${label}`;
+                        const t = item.type || "parameter";
+                        if (t === "bracket_open") return "(";
+                        if (t === "bracket_close") return ")";
+                        const label = t === "fixed" ? (item.fixed_value || "?") : (item.parameter_name || "?");
+                        const needsOp = i > 0 && form.calculation_formula[i - 1]?.type !== "bracket_open" && t !== "bracket_close";
+                        return `${needsOp ? ` ${item.operator} ` : " "}${label}`;
                       }).join("")}
                     </div>
                   )}
