@@ -1,0 +1,1 @@
+ALTER TABLE public.outsourced_test_snips ADD COLUMN top_margin_pct numeric DEFAULT NULL;

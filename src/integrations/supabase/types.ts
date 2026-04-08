@@ -1600,6 +1600,7 @@ export type Database = {
           snip_image_url: string | null
           snip_image_urls: Json | null
           test_id: string
+          top_margin_pct: number | null
           updated_at: string
         }
         Insert: {
@@ -1614,6 +1615,7 @@ export type Database = {
           snip_image_url?: string | null
           snip_image_urls?: Json | null
           test_id: string
+          top_margin_pct?: number | null
           updated_at?: string
         }
         Update: {
@@ -1628,6 +1630,7 @@ export type Database = {
           snip_image_url?: string | null
           snip_image_urls?: Json | null
           test_id?: string
+          top_margin_pct?: number | null
           updated_at?: string
         }
         Relationships: []
