@@ -17,6 +17,9 @@ import {
   Clipboard, Trash2, ExternalLink, Package, Send, Clock, CheckCircle2
 } from "lucide-react";
 import { toast } from "sonner";
+import { useMasterLookup } from "@/hooks/useMasterLookup";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 
 interface OutsourcedTest {
   testId: string;
@@ -39,6 +42,7 @@ const OutsourcedResults = () => {
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const pasteAreaRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const { data: outsourceLabs = [] } = useMasterLookup("Outsource Labs");
 
   // Selection & mark-as-sent state
   const [selectedTests, setSelectedTests] = useState<Set<string>>(new Set()); // "regId||testId"
@@ -753,13 +757,20 @@ const OutsourcedResults = () => {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            <Input
-              placeholder="e.g. SRL Diagnostics, Metropolis, etc."
-              value={labName}
-              onChange={e => setLabName(e.target.value)}
-              autoFocus
-              onKeyDown={e => { if (e.key === "Enter" && labName.trim()) markAsSent(); }}
-            />
+            <Label>Outsourced Lab</Label>
+            <Select value={labName} onValueChange={setLabName}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select outsourced lab" />
+              </SelectTrigger>
+              <SelectContent>
+                {outsourceLabs.map(lab => (
+                  <SelectItem key={lab.id} value={lab.value}>{lab.value}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {outsourceLabs.length === 0 && (
+              <p className="text-xs text-muted-foreground">No labs configured. Add them in Test Management → Settings → Outsource Labs.</p>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowLabDialog(false)}>Cancel</Button>
