@@ -30,7 +30,7 @@ const SortableRow = ({ dept, onEdit, onDelete }: { dept: any; onEdit: () => void
   );
 };
 
-const ReportDepartments = () => {
+const ReportDepartments = ({ embedded }: { embedded?: boolean }) => {
   const [departments, setDepartments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -97,9 +97,9 @@ const ReportDepartments = () => {
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <div className={embedded ? "space-y-4" : "max-w-3xl mx-auto space-y-6"}>
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Department Management</h1>
+        {!embedded && <h1 className="text-2xl font-bold">Department Management</h1>}
         <Button onClick={() => { setEditId(null); setName(""); setDialogOpen(true); }}><Plus className="h-4 w-4 mr-2" />Add Department</Button>
       </div>
 

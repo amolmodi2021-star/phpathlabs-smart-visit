@@ -32,7 +32,7 @@ interface NormalRange {
 
 // No default age groups — users set ranges manually
 
-const ReportParameters = () => {
+const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
   const [params, setParams] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -345,9 +345,9 @@ const ReportParameters = () => {
   const getGenderLabel = (g: string) => g === "all" ? "All" : g === "male" ? "Male" : "Female";
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <div className={embedded ? "space-y-4" : "max-w-6xl mx-auto space-y-6"}>
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="text-2xl font-bold">Test Parameter Management</h1>
+        {!embedded && <h1 className="text-2xl font-bold">Test Parameter Management</h1>}
         <div className="flex gap-2 flex-wrap">
           {selectedIds.size > 0 && (
             <Button variant="destructive" onClick={() => setDeletePwdOpen(true)}>
