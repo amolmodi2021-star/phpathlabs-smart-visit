@@ -511,7 +511,7 @@ const OutsourcedResults = () => {
     const hasParams = params.some((tp: any) => !tp.is_subheader && tp.report_test_parameters);
     const isUploading = uploadingKey === testKey;
     const isSaving = savingKey === testKey;
-    const currentMode = snip?.result_mode || (hasParams ? "manual" : "snip");
+    const currentMode = hasParams ? (snip?.result_mode || "manual") : "snip";
     const isSelected = selectedTests.has(testKey);
     const canSelect = status === "not_sent";
     const canEnterResults = status === "awaiting_results";
