@@ -21,6 +21,8 @@ import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import HealthCheckUpManagement from "@/components/HealthCheckUpManagement";
 import ProfileManagement from "@/components/ProfileManagement";
+import ReportParameters from "@/pages/ReportParameters";
+import ReportDepartments from "@/pages/ReportDepartments";
 
 const INCENTIVE_PASSWORD = "9819111107";
 
@@ -144,10 +146,12 @@ const TestManagement = () => {
     <div className="space-y-4 animate-fade-in">
       <h1 className="text-xl font-bold">Test Management</h1>
       <Tabs defaultValue="tests" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="tests">Tests</TabsTrigger>
           <TabsTrigger value="health_checkups">Health Check-Ups</TabsTrigger>
           <TabsTrigger value="profiles">Profiles</TabsTrigger>
+          <TabsTrigger value="parameters">Parameters</TabsTrigger>
+          <TabsTrigger value="departments">Departments</TabsTrigger>
         </TabsList>
         <TabsContent value="tests">
     <div className="space-y-4">
@@ -317,6 +321,12 @@ const TestManagement = () => {
         </TabsContent>
         <TabsContent value="profiles">
           <ProfileManagement />
+        </TabsContent>
+        <TabsContent value="parameters">
+          <ReportParameters embedded />
+        </TabsContent>
+        <TabsContent value="departments">
+          <ReportDepartments embedded />
         </TabsContent>
       </Tabs>
     </div>
