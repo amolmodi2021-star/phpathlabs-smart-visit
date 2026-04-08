@@ -407,6 +407,11 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
                 {reg.refund_date && <div>Date: {format(new Date(reg.refund_date), "dd-MM-yyyy hh:mm a")}</div>}
               </div>
             )}
+            {isRefundBlocked && !isBillCancelled && (
+              <div className="p-3 rounded border border-orange-300 bg-orange-50 text-sm text-orange-700">
+                Refund / cancellation is not allowed after sample has been accepted.
+              </div>
+            )}
           </div>
 
           <Separator />
