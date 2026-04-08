@@ -772,7 +772,6 @@ const OutsourcedResults = () => {
               <p className="text-xs text-muted-foreground">No labs configured. Add them in Test Management → Settings → Outsource Labs.</p>
             )}
           </div>
-          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowLabDialog(false)}>Cancel</Button>
             <Button onClick={markAsSent} disabled={markingSent || !labName.trim()} className="gap-1.5">
