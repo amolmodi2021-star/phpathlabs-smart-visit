@@ -57,6 +57,9 @@ const ReportParameters = () => {
     send_for_interface: true,
     is_calculated: false,
     calculation_formula: [] as { type: string; parameter_id: string; parameter_name: string; operator: string; fixed_value: string }[],
+    unit_conversion_enabled: false,
+    unit_conversion_operator: "*",
+    unit_conversion_value: "",
   });
 
   const [normalRanges, setNormalRanges] = useState<NormalRange[]>([]);
@@ -160,6 +163,9 @@ const ReportParameters = () => {
         send_for_interface: form.send_for_interface,
         is_calculated: form.is_calculated,
         calculation_formula: form.is_calculated ? form.calculation_formula : [],
+        unit_conversion_enabled: form.unit_conversion_enabled,
+        unit_conversion_operator: form.unit_conversion_operator,
+        unit_conversion_value: form.unit_conversion_value ? Number(form.unit_conversion_value) : null,
       };
 
       let paramId = editId;
@@ -215,6 +221,9 @@ const ReportParameters = () => {
       send_for_interface: p.send_for_interface !== false,
       is_calculated: p.is_calculated || false,
       calculation_formula: Array.isArray(p.calculation_formula) ? p.calculation_formula : [],
+      unit_conversion_enabled: p.unit_conversion_enabled || false,
+      unit_conversion_operator: p.unit_conversion_operator || "*",
+      unit_conversion_value: p.unit_conversion_value != null ? String(p.unit_conversion_value) : "",
     });
     setNormalRanges([]);
     setDialogOpen(true);
@@ -311,6 +320,7 @@ const ReportParameters = () => {
       use_global_normal_range: false, same_for_gender: true, same_for_all_ages: true,
       normal_range_text: "", machine_name: "", machine_id: "",
       send_for_interface: true, is_calculated: false, calculation_formula: [],
+      unit_conversion_enabled: false, unit_conversion_operator: "*", unit_conversion_value: "",
     });
     setNormalRanges([]);
     setDialogOpen(true);
@@ -449,6 +459,41 @@ const ReportParameters = () => {
                 </div>
               )}
             </div>
+
+            {/* Unit Conversion */}
+            {form.send_for_interface && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-base">Unit Conversion</h3>
+                  <Switch checked={form.unit_conversion_enabled} onCheckedChange={(v) => setForm({ ...form, unit_conversion_enabled: v })} />
+                </div>
+                <p className="text-xs text-muted-foreground">Convert machine result value to the required unit before storing.</p>
+                {form.unit_conversion_enabled && (
+                  <div className="flex items-center gap-3 bg-muted/40 rounded-md p-3">
+                    <span className="text-sm font-medium whitespace-nowrap">Result Value</span>
+                    <Select value={form.unit_conversion_operator} onValueChange={(v) => setForm({ ...form, unit_conversion_operator: v })}>
+                      <SelectTrigger className="w-20 h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="*">×</SelectItem>
+                        <SelectItem value="/">÷</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      type="number"
+                      className="w-32"
+                      value={form.unit_conversion_value}
+                      onChange={(e) => setForm({ ...form, unit_conversion_value: e.target.value })}
+                      placeholder="e.g. 1000"
+                    />
+                    {form.unit_conversion_value && (
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">
+                        Preview: Result {form.unit_conversion_operator === "*" ? "×" : "÷"} {form.unit_conversion_value}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             <Separator />
 

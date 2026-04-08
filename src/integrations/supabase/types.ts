@@ -1967,6 +1967,9 @@ export type Database = {
           store_for_analytics: boolean | null
           test_name: string | null
           unit: string | null
+          unit_conversion_enabled: boolean
+          unit_conversion_operator: string
+          unit_conversion_value: number | null
           updated_at: string | null
           use_global_normal_range: boolean
         }
@@ -1997,6 +2000,9 @@ export type Database = {
           store_for_analytics?: boolean | null
           test_name?: string | null
           unit?: string | null
+          unit_conversion_enabled?: boolean
+          unit_conversion_operator?: string
+          unit_conversion_value?: number | null
           updated_at?: string | null
           use_global_normal_range?: boolean
         }
@@ -2027,6 +2033,9 @@ export type Database = {
           store_for_analytics?: boolean | null
           test_name?: string | null
           unit?: string | null
+          unit_conversion_enabled?: boolean
+          unit_conversion_operator?: string
+          unit_conversion_value?: number | null
           updated_at?: string | null
           use_global_normal_range?: boolean
         }
