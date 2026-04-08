@@ -42,7 +42,7 @@ const OutsourcedResults = () => {
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const pasteAreaRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const { data: outsourceLabs = [] } = useMasterLookup("Outsource Labs");
+  const { data: outsourceLabs = [] } = useMasterLookup("outsource_lab");
 
   // Selection & mark-as-sent state
   const [selectedTests, setSelectedTests] = useState<Set<string>>(new Set()); // "regId||testId"
