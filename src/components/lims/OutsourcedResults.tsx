@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   Search, ChevronDown, ChevronUp, Save, Loader2, Image, Keyboard,
-  Clipboard, Trash2, ExternalLink, Package, Send, Clock, CheckCircle2, Pencil
+  Clipboard, Trash2, ExternalLink, Package, Send, Clock, CheckCircle2, Pencil, Plus, FileText
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -170,6 +170,22 @@ const OutsourcedResults = () => {
     return existingSnips.find((s: any) => s.registration_id === regId && s.test_id === testId);
   };
 
+  // Get all image URLs for a snip (multi-page support)
+  const getSnipImageUrls = (regId: string, testId: string): string[] => {
+    const snip = getSnip(regId, testId);
+    if (!snip) return [];
+    const urls: string[] = [];
+    // Check new jsonb array first
+    if (snip.snip_image_urls && Array.isArray(snip.snip_image_urls) && snip.snip_image_urls.length > 0) {
+      urls.push(...(snip.snip_image_urls as string[]));
+    }
+    // Fallback to legacy single URL if urls array is empty
+    if (urls.length === 0 && snip.snip_image_url) {
+      urls.push(snip.snip_image_url);
+    }
+    return urls;
+  };
+
   const hasManualResults = (regId: string, testId: string) => {
     return existingResults.some((r: any) => r.registration_id === regId && r.test_id === testId && r.result_value);
   };
@@ -186,7 +202,8 @@ const OutsourcedResults = () => {
     const outsourceStatus = getOutsourceStatus(regId, testId);
     if (outsourceStatus === "pending") return "not_sent";
     const snip = getSnip(regId, testId);
-    if (snip?.result_mode === "snip" && snip?.snip_image_url) return "results_entered";
+    const imageUrls = getSnipImageUrls(regId, testId);
+    if (snip?.result_mode === "snip" && imageUrls.length > 0) return "results_entered";
     if (snip?.result_mode === "manual" && hasManualResults(regId, testId)) return "results_entered";
     if (outsourceStatus === "results_entered") return "results_entered";
     return "awaiting_results"; // sent but no results yet
@@ -274,14 +291,18 @@ const OutsourcedResults = () => {
             .upload(fileName, file, { contentType: "image/png", upsert: true });
           if (uploadError) throw uploadError;
           const { data: urlData } = supabase.storage.from("outsourced-snips").getPublicUrl(fileName);
+          // Append to existing URLs array
+          const existingUrls = getSnipImageUrls(regId, testId);
+          const newUrls = [...existingUrls, urlData.publicUrl];
           await supabase.from("outsourced_test_snips").upsert({
             registration_id: regId,
             test_id: testId,
-            snip_image_url: urlData.publicUrl,
+            snip_image_url: newUrls[0],
+            snip_image_urls: newUrls,
             result_mode: "snip",
             outsource_status: "results_entered",
           } as any, { onConflict: "registration_id,test_id" });
-          toast.success("Snip image saved successfully");
+          toast.success(`Page ${newUrls.length} added successfully`);
           qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
         } catch (err: any) {
           toast.error(err.message || "Failed to upload snip");
@@ -291,7 +312,7 @@ const OutsourcedResults = () => {
         return;
       }
     }
-  }, [qc]);
+  }, [qc, existingSnips]);
 
   // Handle file upload
   const handleFileUpload = useCallback(async (regId: string, testId: string, file: File) => {
@@ -304,37 +325,52 @@ const OutsourcedResults = () => {
         .upload(fileName, file, { contentType: file.type, upsert: true });
       if (uploadError) throw uploadError;
       const { data: urlData } = supabase.storage.from("outsourced-snips").getPublicUrl(fileName);
+      // Append to existing URLs array
+      const existingUrls = getSnipImageUrls(regId, testId);
+      const newUrls = [...existingUrls, urlData.publicUrl];
       await supabase.from("outsourced_test_snips").upsert({
         registration_id: regId,
         test_id: testId,
-        snip_image_url: urlData.publicUrl,
+        snip_image_url: newUrls[0],
+        snip_image_urls: newUrls,
         result_mode: "snip",
         outsource_status: "results_entered",
       } as any, { onConflict: "registration_id,test_id" });
-      toast.success("Image uploaded successfully");
+      toast.success(`Page ${newUrls.length} added successfully`);
       qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
     } catch (err: any) {
       toast.error(err.message || "Failed to upload image");
     } finally {
       setUploadingKey(null);
     }
-  }, [qc]);
+  }, [qc, existingSnips]);
 
-  // Delete snip
-  const deleteSnip = useCallback(async (regId: string, testId: string) => {
+  // Delete a specific snip page
+  const deleteSnipPage = useCallback(async (regId: string, testId: string, pageIndex: number) => {
     try {
-      // Reset back to sent (awaiting results) instead of deleting
-      await supabase.from("outsourced_test_snips").update({
-        snip_image_url: null,
-        result_mode: "manual",
-        outsource_status: "sent",
-      } as any).eq("registration_id", regId).eq("test_id", testId);
-      toast.success("Snip removed — test moved back to awaiting results");
+      const currentUrls = getSnipImageUrls(regId, testId);
+      const newUrls = currentUrls.filter((_, i) => i !== pageIndex);
+      if (newUrls.length === 0) {
+        // No more images — reset back to awaiting results
+        await supabase.from("outsourced_test_snips").update({
+          snip_image_url: null,
+          snip_image_urls: [],
+          result_mode: "manual",
+          outsource_status: "sent",
+        } as any).eq("registration_id", regId).eq("test_id", testId);
+        toast.success("All pages removed — test moved back to awaiting results");
+      } else {
+        await supabase.from("outsourced_test_snips").update({
+          snip_image_url: newUrls[0],
+          snip_image_urls: newUrls,
+        } as any).eq("registration_id", regId).eq("test_id", testId);
+        toast.success(`Page ${pageIndex + 1} removed`);
+      }
       qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
     } catch (err: any) {
-      toast.error("Failed to delete snip");
+      toast.error("Failed to delete page");
     }
-  }, [qc]);
+  }, [qc, existingSnips]);
 
   // Set manual mode
   const setManualMode = useCallback(async (regId: string, testId: string) => {
@@ -344,6 +380,7 @@ const OutsourcedResults = () => {
         test_id: testId,
         result_mode: "manual",
         snip_image_url: null,
+        snip_image_urls: [],
       } as any, { onConflict: "registration_id,test_id" });
       qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
     } catch (err: any) {
@@ -627,60 +664,84 @@ const OutsourcedResults = () => {
               )}
 
               <TabsContent value="snip" className="mt-2">
-                {snip?.snip_image_url ? (
-                  <div className="space-y-2">
-                    <div className="relative border rounded-lg overflow-hidden bg-background">
-                      <img src={snip.snip_image_url} alt="Outsourced report snip" className="w-full max-h-[500px] object-contain" />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button size="sm" variant="outline" onClick={() => window.open(snip.snip_image_url, "_blank")}>
-                        <ExternalLink className="h-3.5 w-3.5 mr-1" /> View Full
-                      </Button>
-                      <Button size="sm" variant="destructive" onClick={() => deleteSnip(regId, test.testId)}>
-                        <Trash2 className="h-3.5 w-3.5 mr-1" /> Remove
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <div
-                      ref={el => { pasteAreaRefs.current[testKey] = el; }}
-                      onPaste={(e) => handlePaste(regId, test.testId, e)}
-                      tabIndex={0}
-                      className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none ${isUploading ? "opacity-50 pointer-events-none" : ""}`}
-                      onClick={() => pasteAreaRefs.current[testKey]?.focus()}
-                    >
-                      {isUploading ? (
-                        <div className="flex flex-col items-center gap-2">
-                          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                          <span className="text-sm text-muted-foreground">Uploading…</span>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center gap-2">
-                          <Clipboard className="h-8 w-8 text-muted-foreground" />
-                          <div className="text-sm font-medium">Click here and press Ctrl+V to paste snip</div>
-                          <div className="text-xs text-muted-foreground">Use Windows Snipping Tool (Win+Shift+S), capture the report, then paste here</div>
+                {(() => {
+                  const imageUrls = getSnipImageUrls(regId, test.testId);
+                  return (
+                    <div className="space-y-3">
+                      {/* Existing pages */}
+                      {imageUrls.length > 0 && (
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2 text-sm font-medium">
+                            <FileText className="h-4 w-4" />
+                            {imageUrls.length} Page{imageUrls.length > 1 ? "s" : ""}
+                          </div>
+                          {imageUrls.map((url, idx) => (
+                            <div key={idx} className="border rounded-lg overflow-hidden bg-background">
+                              <div className="flex items-center justify-between px-3 py-1.5 bg-muted/30 border-b">
+                                <span className="text-xs font-medium">Page {idx + 1}</span>
+                                <div className="flex items-center gap-1">
+                                  <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => window.open(url, "_blank")}>
+                                    <ExternalLink className="h-3 w-3 mr-1" /> View
+                                  </Button>
+                                  <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-destructive hover:text-destructive" onClick={() => deleteSnipPage(regId, test.testId, idx)}>
+                                    <Trash2 className="h-3 w-3 mr-1" /> Remove
+                                  </Button>
+                                </div>
+                              </div>
+                              <img src={url} alt={`Page ${idx + 1}`} className="w-full max-h-[400px] object-contain" />
+                            </div>
+                          ))}
                         </div>
                       )}
+
+                      {/* Add page area - always shown */}
+                      <div className="border-2 border-dashed rounded-lg overflow-hidden">
+                        <div className="px-3 py-1.5 bg-muted/20 border-b border-dashed">
+                          <span className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                            <Plus className="h-3 w-3" />
+                            {imageUrls.length > 0 ? "Add Another Page" : "Add Page 1"}
+                          </span>
+                        </div>
+                        <div
+                          ref={el => { pasteAreaRefs.current[testKey] = el; }}
+                          onPaste={(e) => handlePaste(regId, test.testId, e)}
+                          tabIndex={0}
+                          className={`p-6 text-center cursor-pointer hover:bg-primary/5 transition-colors focus:ring-2 focus:ring-primary/20 focus:outline-none ${isUploading ? "opacity-50 pointer-events-none" : ""}`}
+                          onClick={() => pasteAreaRefs.current[testKey]?.focus()}
+                        >
+                          {isUploading ? (
+                            <div className="flex flex-col items-center gap-2">
+                              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                              <span className="text-sm text-muted-foreground">Uploading…</span>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-center gap-1.5">
+                              <Clipboard className="h-6 w-6 text-muted-foreground" />
+                              <div className="text-sm font-medium">Click here and press Ctrl+V to paste snip</div>
+                              <div className="text-xs text-muted-foreground">Win+Shift+S → capture → paste here</div>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 px-6 pb-3">
+                          <div className="flex-1 border-t" />
+                          <span className="text-xs text-muted-foreground">or</span>
+                          <div className="flex-1 border-t" />
+                        </div>
+                        <div className="flex justify-center pb-4">
+                          <label className="cursor-pointer">
+                            <input type="file" accept="image/*" className="hidden" onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) handleFileUpload(regId, test.testId, file);
+                            }} />
+                            <Button variant="outline" size="sm" asChild>
+                              <span><Image className="h-3.5 w-3.5 mr-1" /> Browse Image</span>
+                            </Button>
+                          </label>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 border-t" />
-                      <span className="text-xs text-muted-foreground">or upload an image file</span>
-                      <div className="flex-1 border-t" />
-                    </div>
-                    <div className="flex justify-center">
-                      <label className="cursor-pointer">
-                        <input type="file" accept="image/*" className="hidden" onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) handleFileUpload(regId, test.testId, file);
-                        }} />
-                        <Button variant="outline" size="sm" asChild>
-                          <span><Image className="h-3.5 w-3.5 mr-1" /> Browse Image</span>
-                        </Button>
-                      </label>
-                    </div>
-                  </div>
-                )}
+                  );
+                })()}
               </TabsContent>
             </Tabs>
           </div>
