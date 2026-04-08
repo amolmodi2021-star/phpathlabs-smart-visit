@@ -44,6 +44,47 @@ const navItems = [
 //   { to: "/direct-ai", label: "Direct AI", icon: Zap },
 // ];
 
+const StorageCleanupButton = ({ onClick }: { onClick?: () => void }) => {
+  const [cleaning, setCleaning] = useState(false);
+
+  const runCleanup = async () => {
+    setCleaning(true);
+    onClick?.();
+    try {
+      const [cardRes, snipRes] = await Promise.all([
+        supabase.functions.invoke("cleanup-card-images", { body: { source: "manual" } }),
+        supabase.functions.invoke("cleanup-outsourced-snips", { body: { source: "manual" } }),
+      ]);
+
+      const cardDeleted = cardRes.data?.deleted ?? 0;
+      const snipDeleted = snipRes.data?.deleted ?? snipRes.data?.files_removed ?? 0;
+
+      toast.success("Storage Cleanup Complete", {
+        description: `Card images removed: ${cardDeleted} | Outsourced snips removed: ${snipDeleted}`,
+      });
+    } catch (err: any) {
+      toast.error("Cleanup failed", { description: err.message });
+    } finally {
+      setCleaning(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={runCleanup}
+      disabled={cleaning}
+      className={cn(
+        "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors w-full",
+        "text-muted-foreground hover:bg-destructive/10 hover:text-destructive",
+        cleaning && "opacity-50 cursor-not-allowed"
+      )}
+    >
+      {cleaning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+      Storage Cleanup
+    </button>
+  );
+};
+
 const NavSection = ({ items, onClick }: { items: typeof navItems; onClick?: () => void }) => (
   <>
     {items.map((item) => (
