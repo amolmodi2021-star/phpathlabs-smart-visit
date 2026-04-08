@@ -988,6 +988,45 @@ export type Database = {
           },
         ]
       }
+      health_checkup_profiles: {
+        Row: {
+          created_at: string
+          display_order: number
+          health_checkup_id: string
+          id: string
+          profile_id: string
+        }
+        Insert: {
+          created_at?: string
+          display_order?: number
+          health_checkup_id: string
+          id?: string
+          profile_id: string
+        }
+        Update: {
+          created_at?: string
+          display_order?: number
+          health_checkup_id?: string
+          id?: string
+          profile_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "health_checkup_profiles_health_checkup_id_fkey"
+            columns: ["health_checkup_id"]
+            isOneToOne: false
+            referencedRelation: "health_checkups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "health_checkup_profiles_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "billing_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       health_checkup_tests: {
         Row: {
           created_at: string
