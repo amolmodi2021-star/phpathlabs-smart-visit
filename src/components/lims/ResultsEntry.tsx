@@ -415,9 +415,9 @@ const ResultsEntry = () => {
 
   // ─── Group by test inside params ───
   const groupByTest = (params: ParameterResult[]) => {
-    const groups: Record<string, { testName: string; params: ParameterResult[] }> = {};
+    const groups: Record<string, { testId: string; testName: string; params: ParameterResult[] }> = {};
     for (const p of params) {
-      if (!groups[p.testId]) groups[p.testId] = { testName: p.testName, params: [] };
+      if (!groups[p.testId]) groups[p.testId] = { testId: p.testId, testName: p.testName, params: [] };
       groups[p.testId].params.push(p);
     }
     return Object.values(groups);
@@ -549,13 +549,13 @@ const ResultsEntry = () => {
           </div>
         </div>
 
-        {machineGroups.map((mg, mi) => (
-          <div key={mi} className="space-y-1">
+        {machineGroups.map((mg) => (
+          <div key={mg.machineName} className="space-y-1">
             <div className="text-xs font-semibold text-primary uppercase tracking-wider px-1 pt-2 border-b border-primary/20 pb-1 flex items-center gap-1.5">
               <Monitor className="h-3.5 w-3.5" /> {mg.machineName}
             </div>
-            {groupByTest(mg.params).map((tg, ti) => (
-              <div key={ti} className="ml-1">
+            {groupByTest(mg.params).map((tg) => (
+              <div key={tg.testId} className="ml-1">
                 <div className="text-xs font-medium text-muted-foreground px-1 py-0.5 bg-muted/40 rounded-t">
                   {tg.testName}
                 </div>
@@ -572,9 +572,7 @@ const ResultsEntry = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {tg.params
-                      .sort((a, b) => a.displayOrder - b.displayOrder)
-                      .map(p => renderParamRow(entry, p))}
+                    {tg.params.map(p => renderParamRow(entry, p))}
                   </TableBody>
                 </Table>
               </div>
