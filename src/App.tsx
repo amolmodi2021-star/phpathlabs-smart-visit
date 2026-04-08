@@ -66,6 +66,7 @@ const App = () => (
           <Route path="/lims-demo" element={<ProtectedRoute><LimsDemo /></ProtectedRoute>} />
           <Route path="/whatsapp-webhook" element={<ProtectedRoute><WhatsAppWebhook /></ProtectedRoute>} />
           <Route path="/whatsapp-settings" element={<ProtectedRoute><WhatsAppSettingsPage /></ProtectedRoute>} />
+          <Route path="/report-layout" element={<ProtectedRoute><ReportLayoutSettings /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

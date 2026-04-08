@@ -29,6 +29,7 @@ const navItems = [
   { to: "/whatsapp-webhook", label: "WhatsApp Webhook", icon: Webhook },
   { to: "/whatsapp-settings", label: "WhatsApp Settings", icon: Settings },
   { to: "/lims-demo", label: "LIMS Interface", icon: Webhook },
+  { to: "/report-layout", label: "Report Layout", icon: Layers },
 ];
 
 // Report System modules archived — uncomment to restore
