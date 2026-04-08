@@ -171,9 +171,23 @@ const SnipOnLetterhead = ({
     <div className="space-y-3" ref={containerRef}>
       {imageUrls.length > 0 && (
         <div className="space-y-3">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <FileText className="h-4 w-4" />
-            {imageUrls.length} Page{imageUrls.length > 1 ? "s" : ""}
+          <div className="flex items-center justify-between text-sm font-medium">
+            <div className="flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              {imageUrls.length} Page{imageUrls.length > 1 ? "s" : ""}
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-muted-foreground">Top Margin %</label>
+              <input
+                type="number"
+                min={0}
+                max={50}
+                step={0.5}
+                value={topMarginPct.toFixed(1)}
+                onChange={(e) => setTopMarginPct(Math.max(0, Math.min(50, Number(e.target.value))))}
+                className="w-16 h-7 text-xs text-center border rounded bg-background"
+              />
+            </div>
           </div>
           {imageUrls.map((url, idx) => renderPageOnLetterhead(url, idx))}
         </div>
