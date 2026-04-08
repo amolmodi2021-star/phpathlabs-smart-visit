@@ -140,6 +140,48 @@ const ResultsEntry = () => {
     },
   });
 
+  // ─── Helper: resolve best normal range for a parameter given patient demographics ───
+  const resolveNormalRange = useCallback((parameterId: string, reg: any) => {
+    const ranges = normalRangesMap[parameterId];
+    if (!ranges || ranges.length === 0) return { text: "", low: null as number | null, high: null as number | null };
+
+    // Parse patient age (from dob or age text in registration)
+    let patientAge: number | null = null;
+    if (reg.dob) {
+      const birth = new Date(reg.dob);
+      const now = new Date();
+      patientAge = Math.floor((now.getTime() - birth.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+    }
+    const patientGender = (reg.gender || "").toLowerCase().charAt(0); // 'm' or 'f'
+
+    // Filter by gender
+    let candidates = ranges.filter((r: any) => {
+      const g = (r.gender || "all").toLowerCase();
+      if (g === "all") return true;
+      if (g === "male" && patientGender === "m") return true;
+      if (g === "female" && patientGender === "f") return true;
+      return false;
+    });
+
+    // Filter by age if patient age is known
+    if (patientAge != null) {
+      const ageMatched = candidates.filter((r: any) => {
+        if (r.age_min == null && r.age_max == null) return true;
+        if (r.age_min != null && patientAge! < r.age_min) return false;
+        if (r.age_max != null && patientAge! > r.age_max) return false;
+        return true;
+      });
+      if (ageMatched.length > 0) candidates = ageMatched;
+    }
+
+    // Pick the most specific (prefer gender-specific over 'all')
+    const best = candidates.find((r: any) => (r.gender || "all").toLowerCase() !== "all") || candidates[0];
+    if (!best) return { text: "", low: null as number | null, high: null as number | null };
+
+    const text = best.normal_range_text || (best.normal_range_low != null && best.normal_range_high != null ? `${best.normal_range_low} - ${best.normal_range_high}` : "");
+    return { text, low: best.normal_range_low as number | null, high: best.normal_range_high as number | null };
+  }, [normalRangesMap]);
+
   // ─── Build patient entries ───
   const patientEntries: PatientEntry[] = useMemo(() => {
     return acceptedRegs.map((reg: any) => {
@@ -155,18 +197,24 @@ const ResultsEntry = () => {
           if (tp.is_subheader) continue;
           const p = tp.report_test_parameters;
           if (!p) continue;
-          // Check if result already exists
           const existing = existingResults.find(
             (r: any) => r.registration_id === reg.id && r.parameter_id === p.id
           );
+          // Resolve reference range from parameter_normal_ranges
+          const resolved = resolveNormalRange(p.id, reg);
+          // Fallback to report_test_parameters fields if no range in parameter_normal_ranges
+          const refText = resolved.text || p.normal_range_text || (p.normal_range_low != null && p.normal_range_high != null ? `${p.normal_range_low} - ${p.normal_range_high}` : "");
+          const rangeLow = resolved.low ?? p.normal_range_low;
+          const rangeHigh = resolved.high ?? p.normal_range_high;
+
           parameters.push({
             parameterId: p.id,
             paramCode: p.param_code || "",
             parameterName: p.parameter_name,
             unit: p.unit || "",
-            referenceRange: p.normal_range_text || (p.normal_range_low != null && p.normal_range_high != null ? `${p.normal_range_low} - ${p.normal_range_high}` : ""),
-            normalRangeLow: p.normal_range_low,
-            normalRangeHigh: p.normal_range_high,
+            referenceRange: refText,
+            normalRangeLow: rangeLow,
+            normalRangeHigh: rangeHigh,
             resultValue: existing?.result_value || "",
             flag: existing?.flag || "",
             isCalculated: p.is_calculated || false,
@@ -184,7 +232,7 @@ const ResultsEntry = () => {
       }
       return { registration: reg, parameters };
     });
-  }, [acceptedRegs, testsMap, testParamsMap, existingResults]);
+  }, [acceptedRegs, testsMap, testParamsMap, existingResults, resolveNormalRange]);
 
   // ─── Calculate flag ───
   const calculateFlag = (value: string, low: number | null, high: number | null): string => {
