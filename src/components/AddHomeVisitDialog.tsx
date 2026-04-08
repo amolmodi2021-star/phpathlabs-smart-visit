@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { X, Search, Send } from "lucide-react";
-import { getTests } from "@/lib/tests";
+import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import TimeSlotPicker from "@/components/TimeSlotPicker";
 import { useMessageTemplates } from "@/hooks/useMessageTemplates";
 import { usePhlebotomistAvailability } from "@/hooks/usePhlebotomistAvailability";
@@ -55,8 +55,8 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
   });
 
   const { data: allTests = [] } = useQuery({
-    queryKey: ["tests"],
-    queryFn: async () => await getTests(),
+    queryKey: ["all_selectable_tests"],
+    queryFn: getAllSelectableTests,
   });
 
   // Reset form when dialog opens
