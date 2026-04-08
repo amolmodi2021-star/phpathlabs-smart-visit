@@ -155,3 +155,36 @@ export const searchParameters = async (query: string) => {
     return data || [];
   });
 };
+
+export const addSubheaderToTest = async (testId: string, text: string, displayOrder: number) => {
+  return withRetry(async () => {
+    // Use a dummy parameter_id (will be ignored for subheaders)
+    const { error } = await supabase.from("test_parameters").insert({
+      test_id: testId,
+      parameter_id: "00000000-0000-0000-0000-000000000000",
+      display_order: displayOrder,
+      is_subheader: true,
+      subheader_text: text,
+    } as any);
+    if (error) throw new Error(error.message);
+  });
+};
+
+export const updateSubheaderText = async (id: string, text: string) => {
+  return withRetry(async () => {
+    const { error } = await supabase.from("test_parameters").update({ subheader_text: text } as any).eq("id", id);
+    if (error) throw new Error(error.message);
+  });
+};
+
+export const reorderTestParameters = async (items: { id: string; display_order: number }[]) => {
+  return withRetry(async () => {
+    for (const item of items) {
+      const { error } = await supabase
+        .from("test_parameters")
+        .update({ display_order: item.display_order } as any)
+        .eq("id", item.id);
+      if (error) throw new Error(error.message);
+    }
+  });
+};
