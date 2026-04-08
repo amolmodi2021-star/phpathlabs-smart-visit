@@ -16,6 +16,7 @@ const Lims = () => {
           <TabsTrigger value="register">New Registration</TabsTrigger>
           <TabsTrigger value="patients">Registered Patients</TabsTrigger>
           <TabsTrigger value="sample_collection">Sample Collection</TabsTrigger>
+          <TabsTrigger value="sample_acceptance">Sample Acceptance</TabsTrigger>
           <TabsTrigger value="completed_hv">Completed Home Visits</TabsTrigger>
           <TabsTrigger value="pickup">Pickup Points</TabsTrigger>
           <TabsTrigger value="channels">Channels</TabsTrigger>
@@ -28,6 +29,9 @@ const Lims = () => {
         </TabsContent>
         <TabsContent value="sample_collection">
           <SampleCollection />
+        </TabsContent>
+        <TabsContent value="sample_acceptance">
+          <SampleAcceptance />
         </TabsContent>
         <TabsContent value="completed_hv">
           <CompletedHomeVisits />
