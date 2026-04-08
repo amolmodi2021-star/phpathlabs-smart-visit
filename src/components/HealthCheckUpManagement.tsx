@@ -166,13 +166,21 @@ const HealthCheckUpManagement = () => {
             </form>
 
             {editing?.id && (
-              <TestLinker
-                parentId={editing.id}
-                parentLabel="Health Check-Up"
-                fetchLinks={getHealthCheckupTests}
-                linkTest={linkTestToCheckup}
-                unlinkTest={unlinkTestFromCheckup}
-              />
+              <>
+                <TestLinker
+                  parentId={editing.id}
+                  parentLabel="Health Check-Up"
+                  fetchLinks={getHealthCheckupTests}
+                  linkTest={linkTestToCheckup}
+                  unlinkTest={unlinkTestFromCheckup}
+                />
+                <ProfileLinker
+                  parentId={editing.id}
+                  fetchLinks={getHealthCheckupProfiles}
+                  linkProfile={linkProfileToCheckup}
+                  unlinkProfile={unlinkProfileFromCheckup}
+                />
+              </>
             )}
           </DialogContent>
         </Dialog>
