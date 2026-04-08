@@ -32,12 +32,14 @@ const defaultForm = {
   display_name: "", bold_in_report: false, show_in_report: true, is_single_parameter: false,
   instrument_name: "", method: "", sample_type: "", interpretation: "",
   is_outsourced: false, outsourced_caption: "", department_id: "",
+  is_active: true,
 };
 
 const TestManagement = () => {
   useRealtimeSync("tests", ["tests"]);
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
+  const [showInactive, setShowInactive] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [exportDialog, setExportDialog] = useState(false);
@@ -82,6 +84,7 @@ const TestManagement = () => {
         is_outsourced: values.is_outsourced,
         outsourced_caption: values.outsourced_caption || null,
         department_id: values.department_id || null,
+        is_active: values.is_active,
       };
       await saveTest(payload, editing?.id);
     },
@@ -129,13 +132,18 @@ const TestManagement = () => {
       sample_type: t.sample_type || "", interpretation: t.interpretation || "",
       is_outsourced: t.is_outsourced ?? false, outsourced_caption: t.outsourced_caption || "",
       department_id: t.department_id || "",
+      is_active: t.is_active !== false,
     });
     setIncentiveLocked(true);
     setIncentivePassword("");
     setDialogOpen(true);
   };
 
-  const filtered = tests.filter((t: any) => t.test_name.toLowerCase().includes(search.toLowerCase()));
+  const filtered = tests.filter((t: any) => {
+    const matchesSearch = t.test_name.toLowerCase().includes(search.toLowerCase());
+    const matchesActive = showInactive || t.is_active !== false;
+    return matchesSearch && matchesActive;
+  });
 
   const unlockIncentive = () => {
     if (incentivePassword === INCENTIVE_PASSWORD) { setIncentiveLocked(false); setIncentivePassword(""); }
@@ -201,8 +209,8 @@ const TestManagement = () => {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="flex items-center gap-3"><Switch checked={form.fasting_required} onCheckedChange={(v) => setForm(p => ({ ...p, fasting_required: v }))} /><Label className="text-sm">Fasting Required</Label></div>
                   <div className="flex items-center gap-3"><Switch checked={form.discount_applicable} onCheckedChange={(v) => setForm(p => ({ ...p, discount_applicable: v }))} /><Label className="text-sm">Discount Applicable</Label></div>
-                  <div className="flex items-center gap-3"><Switch checked={form.is_outsourced} onCheckedChange={(v) => setForm(p => ({ ...p, is_outsourced: v, outsourced_caption: v ? p.outsourced_caption : "" }))} /><Label className="text-sm">Mark as Outsourced</Label></div>
-                </div>
+                <div className="flex items-center gap-3"><Switch checked={form.is_outsourced} onCheckedChange={(v) => setForm(p => ({ ...p, is_outsourced: v, outsourced_caption: v ? p.outsourced_caption : "" }))} /><Label className="text-sm">Mark as Outsourced</Label></div>
+                  <div className="flex items-center gap-3"><Switch checked={form.is_active} onCheckedChange={(v) => setForm(p => ({ ...p, is_active: v }))} /><Label className="text-sm">Active</Label></div>
                 {form.is_outsourced && (
                   <div><Label>Outsourced Caption</Label><Input value={form.outsourced_caption} onChange={(e) => setForm(p => ({ ...p, outsourced_caption: e.target.value }))} placeholder="e.g. This test was outsourced to XYZ Lab" /></div>
                 )}
