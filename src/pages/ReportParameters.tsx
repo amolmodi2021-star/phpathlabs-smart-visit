@@ -585,12 +585,14 @@ const ReportParameters = () => {
                       Formula: {form.calculation_formula.map((item, i) => {
                         const t = item.type || "parameter";
                         const prev = i > 0 ? (form.calculation_formula[i - 1]?.type || "parameter") : null;
-                        const needsOp = i > 0 && prev !== "bracket_open" && t !== "bracket_close" && t !== "bracket_open";
-                        const needsOpBeforeBracket = i > 0 && t === "bracket_open" && prev !== "bracket_open";
-                        if (t === "bracket_open") return `${needsOpBeforeBracket && item.operator ? ` ${item.operator} ` : " "}(`;
+                        if (t === "bracket_open") {
+                          const op = i > 0 && prev !== "bracket_open" && item.operator ? ` ${item.operator} ` : "";
+                          return `${op}(`;
+                        }
                         if (t === "bracket_close") return ")";
                         const label = t === "fixed" ? (item.fixed_value || "?") : (item.parameter_name || "?");
-                        return `${needsOp ? ` ${item.operator} ` : " "}${label}`;
+                        const needsOp = i > 0 && prev !== "bracket_open" && t !== "bracket_close";
+                        return `${needsOp ? ` ${item.operator} ` : ""}${label}`;
                       }).join("")}
                     </div>
                   )}
