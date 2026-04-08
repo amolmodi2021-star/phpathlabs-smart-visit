@@ -749,12 +749,27 @@ const PatientRegistration = () => {
               </div>
               {selectedModes.size > 0 && (
                 <div className="space-y-2">
-                  {Array.from(selectedModes).map(mode => (
-                    <div key={mode}>
-                      <Label className="text-xs">{mode} Amount</Label>
-                      <Input type="number" value={modeAmounts[mode] || ""} onChange={e => setModeAmounts(prev => ({ ...prev, [mode]: parseFloat(e.target.value) || 0 }))} />
-                    </div>
-                  ))}
+                  {Array.from(selectedModes).map(mode => {
+                    const otherModesTotal = Array.from(selectedModes)
+                      .filter(m => m !== mode)
+                      .reduce((sum, m) => sum + (modeAmounts[m] || 0), 0);
+                    const maxForThisMode = Math.max(0, calculations.finalAmount - otherModesTotal);
+                    return (
+                      <div key={mode}>
+                        <Label className="text-xs">{mode} Amount</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={maxForThisMode}
+                          value={modeAmounts[mode] || ""}
+                          onChange={e => {
+                            const val = parseFloat(e.target.value) || 0;
+                            setModeAmounts(prev => ({ ...prev, [mode]: Math.min(val, maxForThisMode) }));
+                          }}
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
               )}
               <div className="flex gap-4 text-sm">
