@@ -58,7 +58,7 @@ const SampleCollection = () => {
       let query = supabase
         .from("patient_registrations")
         .select("*")
-        .eq("status", "registered")
+        .in("status", ["registered", "repeat_collection"])
         .eq("bill_cancelled", false)
         .order("created_at", { ascending: false });
 
@@ -471,8 +471,11 @@ const SampleCollection = () => {
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75"></span>
                           <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive"></span>
                         </span>
-                      )}
-                    </div>
+                       )}
+                       {reg.status === "repeat_collection" && (
+                         <Badge variant="destructive" className="ml-2 text-xs">REPEAT</Badge>
+                       )}
+                     </div>
                   </TableCell>
                   <TableCell className="text-sm">{reg.mobile_number}</TableCell>
                   <TableCell><Badge variant="outline" className="text-xs">{getVisitLabel(reg.visit_type)}</Badge></TableCell>
