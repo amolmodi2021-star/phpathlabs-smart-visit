@@ -525,7 +525,7 @@ const ReportParameters = () => {
                       </Button>
                     </div>
                   ))}
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     <Button type="button" variant="outline" size="sm" onClick={() => {
                       setForm({ ...form, calculation_formula: [...form.calculation_formula, { type: "parameter", parameter_id: "", parameter_name: "", operator: "+", fixed_value: "" }] });
                     }}>
@@ -536,12 +536,26 @@ const ReportParameters = () => {
                     }}>
                       <Plus className="h-3 w-3 mr-1" />Add Fixed Value
                     </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => {
+                      setForm({ ...form, calculation_formula: [...form.calculation_formula, { type: "bracket_open", parameter_id: "", parameter_name: "", operator: "", fixed_value: "" }] });
+                    }}>
+                      (
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => {
+                      setForm({ ...form, calculation_formula: [...form.calculation_formula, { type: "bracket_close", parameter_id: "", parameter_name: "", operator: "", fixed_value: "" }] });
+                    }}>
+                      )
+                    </Button>
                   </div>
                   {form.calculation_formula.length > 0 && (
                     <div className="text-xs text-muted-foreground bg-muted p-2 rounded font-mono">
                       Formula: {form.calculation_formula.map((item, i) => {
-                        const label = (item.type || "parameter") === "fixed" ? (item.fixed_value || "?") : (item.parameter_name || "?");
-                        return `${i > 0 ? ` ${item.operator} ` : ""}${label}`;
+                        const t = item.type || "parameter";
+                        if (t === "bracket_open") return "(";
+                        if (t === "bracket_close") return ")";
+                        const label = t === "fixed" ? (item.fixed_value || "?") : (item.parameter_name || "?");
+                        const needsOp = i > 0 && form.calculation_formula[i - 1]?.type !== "bracket_open" && t !== "bracket_close";
+                        return `${needsOp ? ` ${item.operator} ` : " "}${label}`;
                       }).join("")}
                     </div>
                   )}
