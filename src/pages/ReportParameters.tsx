@@ -36,6 +36,7 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
   const [params, setParams] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [showInactive, setShowInactive] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [exportPwdOpen, setExportPwdOpen] = useState(false);
   const [deletePwdOpen, setDeletePwdOpen] = useState(false);
@@ -60,6 +61,7 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
     unit_conversion_enabled: false,
     unit_conversion_operator: "*",
     unit_conversion_value: "",
+    is_active: true,
   });
 
   const [normalRanges, setNormalRanges] = useState<NormalRange[]>([]);
@@ -75,10 +77,12 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
 
   useEffect(() => { load(); }, []);
 
-  const filtered = params.filter((p) =>
-    p.parameter_name.toLowerCase().includes(search.toLowerCase()) ||
-    (p.param_code || "").toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = params.filter((p) => {
+    const matchesSearch = p.parameter_name.toLowerCase().includes(search.toLowerCase()) ||
+      (p.param_code || "").toLowerCase().includes(search.toLowerCase());
+    const matchesActive = showInactive || p.is_active !== false;
+    return matchesSearch && matchesActive;
+  });
 
   // Build normal ranges based on toggles
   const buildRangesFromToggles = useCallback(() => {
@@ -166,6 +170,7 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
         unit_conversion_enabled: form.unit_conversion_enabled,
         unit_conversion_operator: form.unit_conversion_operator,
         unit_conversion_value: form.unit_conversion_value ? Number(form.unit_conversion_value) : null,
+        is_active: form.is_active,
       };
 
       let paramId = editId;
@@ -224,6 +229,7 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
       unit_conversion_enabled: p.unit_conversion_enabled || false,
       unit_conversion_operator: p.unit_conversion_operator || "*",
       unit_conversion_value: p.unit_conversion_value != null ? String(p.unit_conversion_value) : "",
+      is_active: p.is_active !== false,
     });
     setNormalRanges([]);
     setDialogOpen(true);
@@ -321,6 +327,7 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
       normal_range_text: "", machine_name: "", machine_id: "",
       send_for_interface: true, is_calculated: false, calculation_formula: [],
       unit_conversion_enabled: false, unit_conversion_operator: "*", unit_conversion_value: "",
+      is_active: true,
     });
     setNormalRanges([]);
     setDialogOpen(true);
@@ -374,9 +381,12 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
 
       <Card>
         <CardContent className="pt-6">
-          <div className="mb-4 relative">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Search parameters..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8 max-w-sm" />
+          <div className="mb-4 flex items-center gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="Search parameters..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8 max-w-sm" />
+            </div>
+            <div className="flex items-center gap-2"><Switch checked={showInactive} onCheckedChange={setShowInactive} /><Label className="text-sm whitespace-nowrap">Show Inactive</Label></div>
           </div>
           {loading ? <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin" /></div> : (
             <div className="overflow-x-auto">
@@ -393,12 +403,13 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
                      <TableHead>Calculated</TableHead>
                      <TableHead>Global Range</TableHead>
                      <TableHead>Analytics</TableHead>
+                     <TableHead>Status</TableHead>
                      <TableHead className="w-[80px]">Actions</TableHead>
                   </TableRow>
                  </TableHeader>
                  <TableBody>
                   {filtered.map((p) => (
-                     <TableRow key={p.id} className={selectedIds.has(p.id) ? "bg-muted/50" : ""}>
+                     <TableRow key={p.id} className={`${selectedIds.has(p.id) ? "bg-muted/50" : ""} ${p.is_active === false ? "opacity-60" : ""}`}>
                       <TableCell><Checkbox checked={selectedIds.has(p.id)} onCheckedChange={() => toggleSelect(p.id)} /></TableCell>
                       <TableCell className="font-mono text-xs text-muted-foreground">{p.param_code || "-"}</TableCell>
                       <TableCell className="font-medium">{p.parameter_name}</TableCell>
@@ -407,6 +418,7 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
                       <TableCell>{p.is_calculated ? <Badge className="bg-purple-100 text-purple-800">CALC</Badge> : <span className="text-muted-foreground">-</span>}</TableCell>
                       <TableCell>{p.use_global_normal_range ? <Badge className="bg-blue-100 text-blue-800">ON</Badge> : <Badge variant="secondary">OFF</Badge>}</TableCell>
                       <TableCell>{p.store_for_analytics ? <Badge className="bg-green-100 text-green-800">YES</Badge> : <Badge variant="secondary">NO</Badge>}</TableCell>
+                      <TableCell>{p.is_active !== false ? <Badge className="bg-emerald-100 text-emerald-800">Active</Badge> : <Badge variant="destructive">Inactive</Badge>}</TableCell>
                       <TableCell>
                          <div className="flex gap-1">
                           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(p)}><Pencil className="h-3 w-3" /></Button>
@@ -441,6 +453,11 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
             <div className="flex items-center gap-2">
               <Checkbox checked={form.store_for_analytics} onCheckedChange={(c) => setForm({ ...form, store_for_analytics: !!c })} />
               <Label>Store for Analytics (include in historical trends)</Label>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <Label>Active</Label>
+              <Switch checked={form.is_active} onCheckedChange={(v) => setForm({ ...form, is_active: v })} />
             </div>
 
             <Separator />

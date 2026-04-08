@@ -12,6 +12,7 @@ export interface HealthCheckup {
   show_in_report: boolean;
   incentive_allowed: boolean;
   incentive_amount: number;
+  is_active: boolean;
   created_at?: string;
   updated_at?: string;
 }

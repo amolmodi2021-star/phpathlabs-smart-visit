@@ -190,6 +190,7 @@ export type Database = {
           incentive_amount: number
           instrument_name: string | null
           interpretation: string | null
+          is_active: boolean
           is_outsourced: boolean
           method: string | null
           price: number
@@ -212,6 +213,7 @@ export type Database = {
           incentive_amount?: number
           instrument_name?: string | null
           interpretation?: string | null
+          is_active?: boolean
           is_outsourced?: boolean
           method?: string | null
           price?: number
@@ -234,6 +236,7 @@ export type Database = {
           incentive_amount?: number
           instrument_name?: string | null
           interpretation?: string | null
+          is_active?: boolean
           is_outsourced?: boolean
           method?: string | null
           price?: number
@@ -1036,6 +1039,7 @@ export type Database = {
           id: string
           incentive_allowed: boolean
           incentive_amount: number
+          is_active: boolean
           price: number
           show_in_report: boolean
           updated_at: string
@@ -1051,6 +1055,7 @@ export type Database = {
           id?: string
           incentive_allowed?: boolean
           incentive_amount?: number
+          is_active?: boolean
           price?: number
           show_in_report?: boolean
           updated_at?: string
@@ -1066,6 +1071,7 @@ export type Database = {
           id?: string
           incentive_allowed?: boolean
           incentive_amount?: number
+          is_active?: boolean
           price?: number
           show_in_report?: boolean
           updated_at?: string
@@ -2151,6 +2157,7 @@ export type Database = {
           display_order: number | null
           id: string
           interpretation: string | null
+          is_active: boolean
           is_calculated: boolean
           is_outsourced: boolean | null
           machine_id: string | null
@@ -2184,6 +2191,7 @@ export type Database = {
           display_order?: number | null
           id?: string
           interpretation?: string | null
+          is_active?: boolean
           is_calculated?: boolean
           is_outsourced?: boolean | null
           machine_id?: string | null
@@ -2217,6 +2225,7 @@ export type Database = {
           display_order?: number | null
           id?: string
           interpretation?: string | null
+          is_active?: boolean
           is_calculated?: boolean
           is_outsourced?: boolean | null
           machine_id?: string | null
@@ -2386,6 +2395,7 @@ export type Database = {
           incentive_amount: number
           instrument_name: string | null
           interpretation: string | null
+          is_active: boolean
           is_outsourced: boolean
           is_single_parameter: boolean
           machine_id: string | null
@@ -2412,6 +2422,7 @@ export type Database = {
           incentive_amount?: number
           instrument_name?: string | null
           interpretation?: string | null
+          is_active?: boolean
           is_outsourced?: boolean
           is_single_parameter?: boolean
           machine_id?: string | null
@@ -2438,6 +2449,7 @@ export type Database = {
           incentive_amount?: number
           instrument_name?: string | null
           interpretation?: string | null
+          is_active?: boolean
           is_outsourced?: boolean
           is_single_parameter?: boolean
           machine_id?: string | null

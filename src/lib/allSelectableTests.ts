@@ -17,9 +17,9 @@ export interface SelectableTestItem {
  */
 export const getAllSelectableTests = async (): Promise<SelectableTestItem[]> => {
   const [testsRes, checkupsRes, profilesRes] = await Promise.all([
-    supabase.from("tests").select("id, test_name, test_code, price, fasting_required, discount_applicable, incentive_allowed, incentive_amount").order("test_name"),
-    supabase.from("health_checkups").select("id, health_checkup_name, health_checkup_code, price, fasting_required, discount_applicable, incentive_allowed, incentive_amount").order("health_checkup_name"),
-    supabase.from("billing_profiles").select("id, profile_name, profile_code, price, fasting_required, discount_applicable, incentive_allowed, incentive_amount").order("profile_name"),
+    supabase.from("tests").select("id, test_name, test_code, price, fasting_required, discount_applicable, incentive_allowed, incentive_amount").eq("is_active", true).order("test_name"),
+    supabase.from("health_checkups").select("id, health_checkup_name, health_checkup_code, price, fasting_required, discount_applicable, incentive_allowed, incentive_amount").eq("is_active", true).order("health_checkup_name"),
+    supabase.from("billing_profiles").select("id, profile_name, profile_code, price, fasting_required, discount_applicable, incentive_allowed, incentive_amount").eq("is_active", true).order("profile_name"),
   ]);
 
   const tests: SelectableTestItem[] = (testsRes.data || []).map((t: any) => ({
