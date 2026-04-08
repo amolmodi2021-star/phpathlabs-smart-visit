@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Search, Download, Upload, Trash2, Pencil, Loader2, Lock, Unlock } from "lucide-react";
 import { toast } from "sonner";
@@ -18,6 +19,8 @@ import { getTests, saveTest, deleteTest, bulkInsertTests } from "@/lib/tests";
 import TestParameterManager from "@/components/TestParameterManager";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
+import HealthCheckUpManagement from "@/components/HealthCheckUpManagement";
+import ProfileManagement from "@/components/ProfileManagement";
 
 const INCENTIVE_PASSWORD = "9819111107";
 
