@@ -430,7 +430,7 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
               <div className="border rounded-md mt-1 max-h-36 overflow-y-auto">
                 {availableTests.map((t: any) => (
                   <button key={t.id} type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-accent" onClick={() => addTest(t.id)}>
-                    {t.test_name} - ₹{t.price}
+                    {t.test_name} - ₹{t.price}{t.item_type === "package" ? " 📦" : t.item_type === "profile" ? " 📋" : ""}
                   </button>
                 ))}
               </div>
