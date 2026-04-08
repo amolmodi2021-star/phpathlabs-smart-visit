@@ -39,9 +39,14 @@ const SnipOnLetterhead = ({
       try {
         const { data: settings } = await supabase
           .from("report_layout_settings")
-          .select("letterhead_pdf_path")
+          .select("letterhead_pdf_path, top_margin_cm")
           .limit(1)
           .single();
+        if (settings?.top_margin_cm) {
+          // Convert cm to percentage of A4 height (29.7cm)
+          const marginPct = (Number(settings.top_margin_cm) / 29.7) * 100;
+          setTopMarginPct(marginPct);
+        }
         if (!settings?.letterhead_pdf_path) {
           setLetterheadDataUrl(null);
           setLoadingLetterhead(false);
