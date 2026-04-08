@@ -231,7 +231,7 @@ const ResultsEntry = () => {
         }
       }
       return { registration: reg, parameters };
-    });
+    }).filter(entry => entry.parameters.length > 0);
   }, [acceptedRegs, testsMap, testParamsMap, existingResults, resolveNormalRange]);
 
   // ─── Calculate flag ───
