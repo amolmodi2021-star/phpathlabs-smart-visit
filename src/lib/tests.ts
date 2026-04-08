@@ -158,10 +158,9 @@ export const searchParameters = async (query: string) => {
 
 export const addSubheaderToTest = async (testId: string, text: string, displayOrder: number) => {
   return withRetry(async () => {
-    // Use a dummy parameter_id (will be ignored for subheaders)
     const { error } = await supabase.from("test_parameters").insert({
       test_id: testId,
-      parameter_id: "00000000-0000-0000-0000-000000000000",
+      parameter_id: null,
       display_order: displayOrder,
       is_subheader: true,
       subheader_text: text,
