@@ -556,17 +556,17 @@ const OutsourcedResults = () => {
 
   // Count stats
   const stats = useMemo(() => {
-    let notSent = 0, awaiting = 0, entered = 0, total = 0;
+    let notSent = 0, awaiting = 0, total = 0;
     for (const e of patientEntries) {
       for (const t of e.outsourcedTests) {
-        total++;
         const s = getTestStatus(e.registration.id, t.testId);
+        if (s === "results_entered") continue; // sent to verification, don't count
+        total++;
         if (s === "not_sent") notSent++;
         else if (s === "awaiting_results") awaiting++;
-        else if (s === "results_entered") entered++;
       }
     }
-    return { notSent, awaiting, entered, total };
+    return { notSent, awaiting, total };
   }, [patientEntries, existingSnips, existingResults]);
 
   // Render test card
