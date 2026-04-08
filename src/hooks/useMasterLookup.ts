@@ -8,6 +8,7 @@ export interface LookupItem {
   display_order: number;
   is_active: boolean;
   mapped_value: string | null;
+  mapped_value_2: string | null;
 }
 
 export function useMasterLookup(category: string) {

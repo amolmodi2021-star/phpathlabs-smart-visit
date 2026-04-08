@@ -8,11 +8,12 @@ interface Props {
   value: string;
   onChange: (value: string) => void;
   onMappedValue?: (mapped: string) => void;
+  onMappedValue2?: (mapped: string) => void;
   placeholder?: string;
   className?: string;
 }
 
-export default function MasterLookupSelect({ category, value, onChange, onMappedValue, placeholder, className }: Props) {
+export default function MasterLookupSelect({ category, value, onChange, onMappedValue, onMappedValue2, placeholder, className }: Props) {
   const { data: items = [] } = useMasterLookup(category);
   const [custom, setCustom] = useState(false);
 
@@ -58,10 +59,9 @@ export default function MasterLookupSelect({ category, value, onChange, onMapped
         value={value || undefined}
         onValueChange={(v) => {
           onChange(v);
-          if (onMappedValue) {
-            const item = items.find(i => i.value === v);
-            if (item?.mapped_value) onMappedValue(item.mapped_value);
-          }
+          const item = items.find(i => i.value === v);
+          if (onMappedValue && item?.mapped_value) onMappedValue(item.mapped_value);
+          if (onMappedValue2 && item?.mapped_value_2) onMappedValue2(item.mapped_value_2);
         }}
       >
         <SelectTrigger className={className}>
