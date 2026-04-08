@@ -8,7 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, User, Monitor, Save, Calculator, Wifi, WifiOff, ChevronDown, ChevronUp, Check, Loader2, FlaskConical, Package } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Search, User, Monitor, Save, Calculator, Wifi, WifiOff, ChevronDown, ChevronUp, Check, Loader2, FlaskConical, Package, SendHorizonal } from "lucide-react";
 import OutsourcedResults from "./OutsourcedResults";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -50,6 +51,8 @@ const ResultsEntry = () => {
   const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
   const [savingPatient, setSavingPatient] = useState<string | null>(null);
+  const [blankConfirmEntry, setBlankConfirmEntry] = useState<PatientEntry | null>(null);
+  const [blankParamCount, setBlankParamCount] = useState(0);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 400);
@@ -314,7 +317,7 @@ const ResultsEntry = () => {
     setEditedValues(newEdited);
   };
 
-  // ─── Save results for a patient ───
+  // ─── Save & send to verification ───
   const saveMutation = useMutation({
     mutationFn: async ({ entry }: { entry: PatientEntry }) => {
       const reg = entry.registration;
@@ -323,7 +326,6 @@ const ResultsEntry = () => {
       for (const p of entry.parameters) {
         const key = `${reg.id}||${p.parameterId}`;
         const value = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
-        if (!value && !p.isCalculated) continue;
 
         const flag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh);
         upserts.push({
@@ -338,7 +340,7 @@ const ResultsEntry = () => {
           normal_range_low: p.normalRangeLow,
           normal_range_high: p.normalRangeHigh,
           flag: flag || null,
-          status: value ? "entered" : "pending",
+          status: "entered",
           is_calculated: p.isCalculated,
           is_from_interface: p.isFromInterface,
         });
@@ -352,8 +354,7 @@ const ResultsEntry = () => {
       if (error) throw error;
     },
     onSuccess: (_, { entry }) => {
-      toast.success(`Results saved for ${entry.registration.patient_name}`);
-      // Clear edited values for this patient
+      toast.success(`Results saved & sent to verification for ${entry.registration.patient_name}`);
       const regId = entry.registration.id;
       setEditedValues(prev => {
         const next = { ...prev };
@@ -361,7 +362,9 @@ const ResultsEntry = () => {
         return next;
       });
       setSavingPatient(null);
+      setBlankConfirmEntry(null);
       qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
+      qc.invalidateQueries({ queryKey: ["verification_"] });
     },
     onError: (err: any) => {
       toast.error(err.message || "Failed to save results");
@@ -369,13 +372,39 @@ const ResultsEntry = () => {
     },
   });
 
-  // ─── Filter entries ───
+  // ─── Handle save & send to verification with blank check ───
+  const handleSaveAndVerify = (entry: PatientEntry) => {
+    const reg = entry.registration;
+    // Count blank parameters
+    let blanks = 0;
+    for (const p of entry.parameters) {
+      if (p.isCalculated) continue;
+      const key = `${reg.id}||${p.parameterId}`;
+      const val = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
+      if (!val || val.trim() === "") blanks++;
+    }
+    if (blanks > 0) {
+      setBlankParamCount(blanks);
+      setBlankConfirmEntry(entry);
+    } else {
+      setSavingPatient(reg.id);
+      saveMutation.mutate({ entry });
+    }
+  };
+
+  // ─── Filter entries: hide patients whose all results are already "entered" ───
   const filteredEntries = useMemo(() => {
-    if (mode === "patient") return patientEntries;
+    // First filter out patients where ALL parameters already have status "entered" or "verified"
+    const activeEntries = patientEntries.filter(e => {
+      const allEntered = e.parameters.every(p => p.status === "entered" || p.status === "verified");
+      return !allEntered;
+    });
+
+    if (mode === "patient") return activeEntries;
     // Machine mode: filter entries that have params for selected machine
-    if (selectedMachine === "all") return patientEntries;
+    if (selectedMachine === "all") return activeEntries;
     const filterMachine = selectedMachine === "others" ? "" : selectedMachine;
-    return patientEntries
+    return activeEntries
       .map(e => ({
         ...e,
         parameters: e.parameters.filter(p => (p.machineName || "") === filterMachine),
@@ -448,8 +477,11 @@ const ResultsEntry = () => {
     const isInterfaceParameter = p.sendForInterface && !p.isCalculated;
     const isAwaiting = isInterfaceParameter && !currentValue;
 
+    const isBlank = !currentValue || currentValue.trim() === "";
+    const rowBg = (flag === "H" || flag === "L") ? "bg-destructive/5" : (isBlank && !p.isCalculated ? "bg-yellow-50" : "");
+
     return (
-      <TableRow key={key} className={flag === "H" || flag === "L" ? "bg-destructive/5" : ""}>
+      <TableRow key={key} className={rowBg}>
         <TableCell className="py-1.5 text-xs font-mono text-muted-foreground">{p.paramCode}</TableCell>
         <TableCell className="py-1.5 text-sm font-medium">
           {p.parameterName}
@@ -538,18 +570,15 @@ const ResultsEntry = () => {
             {unsaved && <Badge variant="secondary" className="text-xs text-orange-600">Unsaved</Badge>}
             <Button
               size="sm"
-              onClick={() => {
-                setSavingPatient(reg.id);
-                saveMutation.mutate({ entry });
-              }}
+              onClick={() => handleSaveAndVerify(entry)}
               disabled={saveMutation.isPending && savingPatient === reg.id}
             >
               {saveMutation.isPending && savingPatient === reg.id ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-1" />
               ) : (
-                <Save className="h-4 w-4 mr-1" />
+                <SendHorizonal className="h-4 w-4 mr-1" />
               )}
-              Save Results
+              Save & Send to Verification
             </Button>
           </div>
         </div>
@@ -748,6 +777,29 @@ const ResultsEntry = () => {
           )}
         </>
       )}
+      {/* Blank values confirmation dialog */}
+      <AlertDialog open={!!blankConfirmEntry} onOpenChange={open => { if (!open) setBlankConfirmEntry(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Blank Result Values Detected</AlertDialogTitle>
+            <AlertDialogDescription>
+              {blankParamCount} parameter{blankParamCount > 1 ? "s have" : " has"} blank/empty result values (highlighted in yellow). 
+              Are you sure you want to save and send to verification with blank values?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              if (blankConfirmEntry) {
+                setSavingPatient(blankConfirmEntry.registration.id);
+                saveMutation.mutate({ entry: blankConfirmEntry });
+              }
+            }}>
+              Yes, Send to Verification
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
