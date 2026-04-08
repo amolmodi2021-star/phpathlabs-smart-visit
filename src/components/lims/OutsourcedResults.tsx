@@ -757,13 +757,21 @@ const OutsourcedResults = () => {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            <Input
-              placeholder="e.g. SRL Diagnostics, Metropolis, etc."
-              value={labName}
-              onChange={e => setLabName(e.target.value)}
-              autoFocus
-              onKeyDown={e => { if (e.key === "Enter" && labName.trim()) markAsSent(); }}
-            />
+            <Label>Outsourced Lab</Label>
+            <Select value={labName} onValueChange={setLabName}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select outsourced lab" />
+              </SelectTrigger>
+              <SelectContent>
+                {outsourceLabs.map(lab => (
+                  <SelectItem key={lab.id} value={lab.value}>{lab.value}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {outsourceLabs.length === 0 && (
+              <p className="text-xs text-muted-foreground">No labs configured. Add them in Test Management → Settings → Outsource Labs.</p>
+            )}
+          </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowLabDialog(false)}>Cancel</Button>
