@@ -5,7 +5,7 @@ import { Clipboard, Image, Loader2, Plus, Trash2, FileText, ExternalLink } from 
 import { toast } from "sonner";
 import * as pdfjsLib from "pdfjs-dist";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`;
 
 interface SnipOnLetterheadProps {
   regId: string;
