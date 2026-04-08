@@ -32,7 +32,7 @@ const defaultForm = {
   test_name: "", price: "", fasting_required: false, discount_applicable: true,
   description: "", incentive_allowed: false, incentive_amount: "",
   display_name: "", bold_in_report: false, show_in_report: true, is_single_parameter: false,
-  instrument_name: "", method: "", sample_type: "", interpretation: "",
+  instrument_name: "", method: "", sample_type: "", sample_tube: "", interpretation: "",
   is_outsourced: false, outsourced_caption: "", department_id: "",
   is_active: true,
 };
