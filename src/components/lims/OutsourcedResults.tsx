@@ -380,6 +380,7 @@ const OutsourcedResults = () => {
         test_id: testId,
         result_mode: "manual",
         snip_image_url: null,
+        snip_image_urls: [],
       } as any, { onConflict: "registration_id,test_id" });
       qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
     } catch (err: any) {
