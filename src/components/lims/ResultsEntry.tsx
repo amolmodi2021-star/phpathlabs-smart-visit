@@ -33,8 +33,6 @@ interface ParameterResult {
   departmentId: string;
   machineName: string;
   displayOrder: number;
-  departmentId: string;
-  displayOrder: number;
 }
 
 interface PatientEntry {
