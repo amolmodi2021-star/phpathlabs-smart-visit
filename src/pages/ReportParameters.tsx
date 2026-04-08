@@ -371,38 +371,42 @@ const ReportParameters = () => {
           {loading ? <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin" /></div> : (
             <div className="overflow-x-auto">
               <Table>
-                <TableHeader>
+                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[40px]">
+                     <TableHead className="w-[40px]">
                       <Checkbox checked={filtered.length > 0 && selectedIds.size === filtered.length} onCheckedChange={toggleSelectAll} />
-                    </TableHead>
-                    <TableHead>Code</TableHead>
-                    <TableHead>Parameter</TableHead>
-                    <TableHead>Unit</TableHead>
-                    <TableHead>Global Range</TableHead>
-                    <TableHead>Analytics</TableHead>
-                    <TableHead className="w-[80px]">Actions</TableHead>
+                     </TableHead>
+                     <TableHead>Code</TableHead>
+                     <TableHead>Parameter</TableHead>
+                     <TableHead>Unit</TableHead>
+                     <TableHead>Interface</TableHead>
+                     <TableHead>Calculated</TableHead>
+                     <TableHead>Global Range</TableHead>
+                     <TableHead>Analytics</TableHead>
+                     <TableHead className="w-[80px]">Actions</TableHead>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
+                 </TableHeader>
+                 <TableBody>
                   {filtered.map((p) => (
-                    <TableRow key={p.id} className={selectedIds.has(p.id) ? "bg-muted/50" : ""}>
+                     <TableRow key={p.id} className={selectedIds.has(p.id) ? "bg-muted/50" : ""}>
                       <TableCell><Checkbox checked={selectedIds.has(p.id)} onCheckedChange={() => toggleSelect(p.id)} /></TableCell>
                       <TableCell className="font-mono text-xs text-muted-foreground">{p.param_code || "-"}</TableCell>
                       <TableCell className="font-medium">{p.parameter_name}</TableCell>
                       <TableCell>{p.unit || "-"}</TableCell>
+                      <TableCell>{p.send_for_interface !== false ? <Badge className="bg-emerald-100 text-emerald-800">AUTO</Badge> : <Badge variant="secondary">MANUAL</Badge>}</TableCell>
+                      <TableCell>{p.is_calculated ? <Badge className="bg-purple-100 text-purple-800">CALC</Badge> : <span className="text-muted-foreground">-</span>}</TableCell>
                       <TableCell>{p.use_global_normal_range ? <Badge className="bg-blue-100 text-blue-800">ON</Badge> : <Badge variant="secondary">OFF</Badge>}</TableCell>
                       <TableCell>{p.store_for_analytics ? <Badge className="bg-green-100 text-green-800">YES</Badge> : <Badge variant="secondary">NO</Badge>}</TableCell>
                       <TableCell>
-                        <div className="flex gap-1">
+                         <div className="flex gap-1">
                           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(p)}><Pencil className="h-3 w-3" /></Button>
                           <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDelete(p.id)}><Trash2 className="h-3 w-3" /></Button>
-                        </div>
+                         </div>
                       </TableCell>
-                    </TableRow>
+                     </TableRow>
                   ))}
-                  {filtered.length === 0 && <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No parameters found</TableCell></TableRow>}
-                </TableBody>
+                  {filtered.length === 0 && <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No parameters found</TableCell></TableRow>}
+                 </TableBody>
               </Table>
             </div>
           )}
