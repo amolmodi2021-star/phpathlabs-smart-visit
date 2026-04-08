@@ -1860,6 +1860,69 @@ export type Database = {
           },
         ]
       }
+      patient_results: {
+        Row: {
+          created_at: string
+          entered_by: string | null
+          flag: string | null
+          id: string
+          is_calculated: boolean
+          is_from_interface: boolean
+          normal_range_high: number | null
+          normal_range_low: number | null
+          param_code: string | null
+          parameter_id: string
+          parameter_name: string | null
+          reference_range: string | null
+          registration_id: string
+          result_value: string | null
+          status: string
+          test_id: string
+          unit: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          entered_by?: string | null
+          flag?: string | null
+          id?: string
+          is_calculated?: boolean
+          is_from_interface?: boolean
+          normal_range_high?: number | null
+          normal_range_low?: number | null
+          param_code?: string | null
+          parameter_id: string
+          parameter_name?: string | null
+          reference_range?: string | null
+          registration_id: string
+          result_value?: string | null
+          status?: string
+          test_id: string
+          unit?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          entered_by?: string | null
+          flag?: string | null
+          id?: string
+          is_calculated?: boolean
+          is_from_interface?: boolean
+          normal_range_high?: number | null
+          normal_range_low?: number | null
+          param_code?: string | null
+          parameter_id?: string
+          parameter_name?: string | null
+          reference_range?: string | null
+          registration_id?: string
+          result_value?: string | null
+          status?: string
+          test_id?: string
+          unit?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       phlebotomist_leaves: {
         Row: {
           created_at: string
