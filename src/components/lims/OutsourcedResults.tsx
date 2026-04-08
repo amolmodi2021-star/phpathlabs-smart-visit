@@ -741,10 +741,6 @@ const OutsourcedResults = () => {
           <div className="text-xs text-muted-foreground">Awaiting Results</div>
           <div className="text-xl font-bold text-amber-600">{stats.awaiting}</div>
         </Card>
-        <Card className="p-3">
-          <div className="text-xs text-muted-foreground">Results Entered</div>
-          <div className="text-xl font-bold text-green-600">{stats.entered}</div>
-        </Card>
       </div>
 
       {/* Action bar */}
