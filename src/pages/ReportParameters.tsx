@@ -36,6 +36,7 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
   const [params, setParams] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [showInactive, setShowInactive] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [exportPwdOpen, setExportPwdOpen] = useState(false);
   const [deletePwdOpen, setDeletePwdOpen] = useState(false);
@@ -75,10 +76,12 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
 
   useEffect(() => { load(); }, []);
 
-  const filtered = params.filter((p) =>
-    p.parameter_name.toLowerCase().includes(search.toLowerCase()) ||
-    (p.param_code || "").toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = params.filter((p) => {
+    const matchesSearch = p.parameter_name.toLowerCase().includes(search.toLowerCase()) ||
+      (p.param_code || "").toLowerCase().includes(search.toLowerCase());
+    const matchesActive = showInactive || p.is_active !== false;
+    return matchesSearch && matchesActive;
+  });
 
   // Build normal ranges based on toggles
   const buildRangesFromToggles = useCallback(() => {
