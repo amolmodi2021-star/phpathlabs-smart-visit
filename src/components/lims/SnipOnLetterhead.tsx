@@ -27,6 +27,7 @@ const SnipOnLetterhead = ({
 }: SnipOnLetterheadProps) => {
   const [letterheadDataUrl, setLetterheadDataUrl] = useState<string | null>(null);
   const [loadingLetterhead, setLoadingLetterhead] = useState(true);
+  const [topMarginPct, setTopMarginPct] = useState(8.4); // default ~2.5cm on A4 (29.7cm)
   const [pageScales, setPageScales] = useState<Record<number, number>>({});
   const [resizing, setResizing] = useState<{ pageIndex: number; startX: number; startY: number; startScale: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
