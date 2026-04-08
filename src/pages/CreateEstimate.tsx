@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { useMessageTemplates } from "@/hooks/useMessageTemplates";
 import { buildEstimateMessage, shareOnWhatsApp } from "@/lib/whatsapp";
 import { Send, X, Search, ScanLine } from "lucide-react";
-import { getTests } from "@/lib/tests";
+import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import PrescriptionScanDialog from "@/components/PrescriptionScanDialog";
 
 interface SelectedTest {
@@ -39,8 +39,8 @@ const CreateEstimate = () => {
   const searchRef = useRef<HTMLInputElement>(null);
 
   const { data: tests = [] } = useQuery({
-    queryKey: ["tests"],
-    queryFn: async () => await getTests(),
+    queryKey: ["all_selectable_tests"],
+    queryFn: getAllSelectableTests,
   });
 
   const addTest = (testId: string) => {
@@ -233,7 +233,7 @@ const CreateEstimate = () => {
                     className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors"
                     onClick={() => addTest(t.id)}
                   >
-                    {t.test_name} - ₹{t.price}
+                    {t.test_name} - ₹{t.price}{t.item_type === "package" ? " 📦" : t.item_type === "profile" ? " 📋" : ""}
                   </button>
                 ))}
               </div>

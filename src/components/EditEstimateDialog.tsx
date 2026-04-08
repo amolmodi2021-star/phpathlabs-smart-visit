@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { X, Search, Send } from "lucide-react";
-import { getTests } from "@/lib/tests";
+import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import { useMessageTemplates } from "@/hooks/useMessageTemplates";
 import { buildEstimateMessage, shareOnWhatsApp } from "@/lib/whatsapp";
 
@@ -43,8 +43,8 @@ const EditEstimateDialog = ({ estimate, open, onClose }: EditEstimateDialogProps
   const [testSearch, setTestSearch] = useState("");
 
   const { data: allTests = [] } = useQuery({
-    queryKey: ["tests"],
-    queryFn: async () => await getTests(),
+    queryKey: ["all_selectable_tests"],
+    queryFn: getAllSelectableTests,
   });
 
   useEffect(() => {

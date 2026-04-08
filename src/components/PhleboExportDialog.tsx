@@ -60,11 +60,13 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
       const phleboIds = [...new Set(visits.filter((v) => v.phlebotomist_id).map((v) => v.phlebotomist_id!))];
 
       // Fetch all related data in parallel
-      const [estimatesRes, phleboRes, estTestsRes, testsRes] = await Promise.all([
+      const [estimatesRes, phleboRes, estTestsRes, testsRes, checkupsRes, profilesRes] = await Promise.all([
         supabase.from("estimates").select("id, patient_name, home_visit_charges").in("id", estimateIds),
         supabase.from("phlebotomists").select("id, name").in("id", phleboIds),
         supabase.from("estimate_tests").select("estimate_id, test_id, test_name").in("estimate_id", estimateIds),
         supabase.from("tests").select("id, test_name, incentive_allowed, incentive_amount"),
+        supabase.from("health_checkups").select("id, health_checkup_name, incentive_allowed, incentive_amount"),
+        supabase.from("billing_profiles").select("id, profile_name, incentive_allowed, incentive_amount"),
       ]);
 
       const estimateMap: Record<string, { patient_name: string; home_visit_charges: number }> = {};
@@ -75,9 +77,15 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
       const phleboMap: Record<string, string> = {};
       (phleboRes.data || []).forEach((p) => { phleboMap[p.id] = p.name; });
 
-      const testIncentiveMap: Record<string, { name: string; amount: number }> = {};
+      const testIncentiveMap: Record<string, { name: string; amount: number; type: string }> = {};
       (testsRes.data || []).forEach((t) => {
-        if (t.incentive_allowed) testIncentiveMap[t.id] = { name: t.test_name, amount: Number(t.incentive_amount) || 0 };
+        if (t.incentive_allowed) testIncentiveMap[t.id] = { name: t.test_name, amount: Number(t.incentive_amount) || 0, type: "Test" };
+      });
+      (checkupsRes.data || []).forEach((c: any) => {
+        if (c.incentive_allowed) testIncentiveMap[c.id] = { name: c.health_checkup_name + " (Package)", amount: Number(c.incentive_amount) || 0, type: "Package" };
+      });
+      (profilesRes.data || []).forEach((p: any) => {
+        if (p.incentive_allowed) testIncentiveMap[p.id] = { name: p.profile_name + " (Profile)", amount: Number(p.incentive_amount) || 0, type: "Profile" };
       });
 
       // Map estimate -> incentive test names and total incentive

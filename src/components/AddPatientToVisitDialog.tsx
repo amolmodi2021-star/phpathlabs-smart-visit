@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { X, Search } from "lucide-react";
-import { getTests } from "@/lib/tests";
+import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import { format, parse, isValid, differenceInYears } from "date-fns";
 import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
@@ -77,8 +77,8 @@ const AddPatientToVisitDialog = ({ open, onClose, visitDate, visitTime, address,
   };
 
   const { data: allTests = [] } = useQuery({
-    queryKey: ["tests"],
-    queryFn: async () => await getTests(),
+    queryKey: ["all_selectable_tests"],
+    queryFn: getAllSelectableTests,
   });
 
   const handleDobDisplayChange = (val: string) => {

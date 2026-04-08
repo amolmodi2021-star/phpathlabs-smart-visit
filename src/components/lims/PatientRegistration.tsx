@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Search, X, Save, Printer, Send, ChevronDown, ChevronUp } from "lucide-react";
 import { getTests, TestItem } from "@/lib/tests";
+import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import InvoicePreview from "./InvoicePreview";
 
 const TITLES = ["Mr.", "Mrs.", "Ms.", "Master", "Miss", "Baby Of", "Dr."];
@@ -89,7 +90,7 @@ const PatientRegistration = () => {
   const [invoiceData, setInvoiceData] = useState<any>(null);
 
   // Queries
-  const { data: tests = [] } = useQuery({ queryKey: ["tests"], queryFn: getTests });
+  const { data: tests = [] } = useQuery({ queryKey: ["all_selectable_tests"], queryFn: getAllSelectableTests });
   const { data: pickupPoints = [] } = useQuery({
     queryKey: ["pickup_points"],
     queryFn: async () => {
@@ -236,7 +237,7 @@ const PatientRegistration = () => {
   };
 
   // Get test price (channel/pickup custom price or default)
-  const getTestPrice = (test: TestItem): number => {
+  const getTestPrice = (test: { id: string; price: number }): number => {
     if (channelId) {
       const custom = channelPrices.find((cp: any) => cp.test_id === test.id);
       if (custom) return Number(custom.custom_price);

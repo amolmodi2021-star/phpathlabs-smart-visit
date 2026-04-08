@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { X, Search } from "lucide-react";
-import { getTests } from "@/lib/tests";
+import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import { format, parse, isValid, differenceInYears } from "date-fns";
 
 interface EditTest {
@@ -65,7 +65,7 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
     else if (val === "Dr." || val === "Baby Of.") { setGenderConfirmOpen(true); setPendingGender(""); }
   };
 
-  const { data: allTests = [] } = useQuery({ queryKey: ["tests"], queryFn: () => getTests() });
+  const { data: allTests = [] } = useQuery({ queryKey: ["all_selectable_tests"], queryFn: getAllSelectableTests });
   const { data: phlebotomists = [] } = useQuery({
     queryKey: ["phlebotomists", "active"],
     queryFn: async () => { const { data } = await supabase.from("phlebotomists").select("*").eq("status", "Active"); return data || []; },
