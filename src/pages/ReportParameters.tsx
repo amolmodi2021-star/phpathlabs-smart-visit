@@ -478,19 +478,45 @@ const ReportParameters = () => {
                           </SelectContent>
                         </Select>
                       )}
-                      <Select value={item.parameter_id} onValueChange={(v) => {
-                        const selected = params.find(p => p.id === v);
+                      <Select value={item.type || "parameter"} onValueChange={(v) => {
                         const f = [...form.calculation_formula];
-                        f[idx] = { ...f[idx], parameter_id: v, parameter_name: selected?.parameter_name || "" };
+                        f[idx] = { ...f[idx], type: v, parameter_id: "", parameter_name: "", fixed_value: "" };
                         setForm({ ...form, calculation_formula: f });
                       }}>
-                        <SelectTrigger className="flex-1 h-8"><SelectValue placeholder="Select parameter" /></SelectTrigger>
+                        <SelectTrigger className="w-28 h-8"><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          {params.filter(p => p.id !== editId).map(p => (
-                            <SelectItem key={p.id} value={p.id}>{p.parameter_name} ({p.param_code})</SelectItem>
-                          ))}
+                          <SelectItem value="parameter">Parameter</SelectItem>
+                          <SelectItem value="fixed">Fixed Value</SelectItem>
                         </SelectContent>
                       </Select>
+                      {(item.type || "parameter") === "parameter" ? (
+                        <Select value={item.parameter_id} onValueChange={(v) => {
+                          const selected = params.find(p => p.id === v);
+                          const f = [...form.calculation_formula];
+                          f[idx] = { ...f[idx], parameter_id: v, parameter_name: selected?.parameter_name || "" };
+                          setForm({ ...form, calculation_formula: f });
+                        }}>
+                          <SelectTrigger className="flex-1 h-8"><SelectValue placeholder="Select parameter" /></SelectTrigger>
+                          <SelectContent>
+                            {params.filter(p => p.id !== editId).map(p => (
+                              <SelectItem key={p.id} value={p.id}>{p.parameter_name} ({p.param_code})</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Input
+                          type="number"
+                          step="any"
+                          className="flex-1 h-8"
+                          placeholder="Enter fixed value"
+                          value={item.fixed_value || ""}
+                          onChange={(e) => {
+                            const f = [...form.calculation_formula];
+                            f[idx] = { ...f[idx], fixed_value: e.target.value };
+                            setForm({ ...form, calculation_formula: f });
+                          }}
+                        />
+                      )}
                       <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive shrink-0" onClick={() => {
                         const f = form.calculation_formula.filter((_, i) => i !== idx);
                         setForm({ ...form, calculation_formula: f });
@@ -499,14 +525,24 @@ const ReportParameters = () => {
                       </Button>
                     </div>
                   ))}
-                  <Button type="button" variant="outline" size="sm" onClick={() => {
-                    setForm({ ...form, calculation_formula: [...form.calculation_formula, { parameter_id: "", parameter_name: "", operator: "+" }] });
-                  }}>
-                    <Plus className="h-3 w-3 mr-1" />Add Parameter
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={() => {
+                      setForm({ ...form, calculation_formula: [...form.calculation_formula, { type: "parameter", parameter_id: "", parameter_name: "", operator: "+", fixed_value: "" }] });
+                    }}>
+                      <Plus className="h-3 w-3 mr-1" />Add Parameter
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => {
+                      setForm({ ...form, calculation_formula: [...form.calculation_formula, { type: "fixed", parameter_id: "", parameter_name: "", operator: "+", fixed_value: "" }] });
+                    }}>
+                      <Plus className="h-3 w-3 mr-1" />Add Fixed Value
+                    </Button>
+                  </div>
                   {form.calculation_formula.length > 0 && (
                     <div className="text-xs text-muted-foreground bg-muted p-2 rounded font-mono">
-                      Formula: {form.calculation_formula.map((item, i) => `${i > 0 ? ` ${item.operator} ` : ""}${item.parameter_name || "?"}`).join("")}
+                      Formula: {form.calculation_formula.map((item, i) => {
+                        const label = (item.type || "parameter") === "fixed" ? (item.fixed_value || "?") : (item.parameter_name || "?");
+                        return `${i > 0 ? ` ${item.operator} ` : ""}${label}`;
+                      }).join("")}
                     </div>
                   )}
                 </div>
