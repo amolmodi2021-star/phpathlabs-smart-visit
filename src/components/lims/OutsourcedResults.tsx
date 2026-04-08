@@ -665,84 +665,15 @@ const OutsourcedResults = () => {
               )}
 
               <TabsContent value="snip" className="mt-2">
-                {(() => {
-                  const imageUrls = getSnipImageUrls(regId, test.testId);
-                  return (
-                    <div className="space-y-3">
-                      {/* Existing pages */}
-                      {imageUrls.length > 0 && (
-                        <div className="space-y-3">
-                          <div className="flex items-center gap-2 text-sm font-medium">
-                            <FileText className="h-4 w-4" />
-                            {imageUrls.length} Page{imageUrls.length > 1 ? "s" : ""}
-                          </div>
-                          {imageUrls.map((url, idx) => (
-                            <div key={idx} className="border rounded-lg overflow-hidden bg-background">
-                              <div className="flex items-center justify-between px-3 py-1.5 bg-muted/30 border-b">
-                                <span className="text-xs font-medium">Page {idx + 1}</span>
-                                <div className="flex items-center gap-1">
-                                  <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => window.open(url, "_blank")}>
-                                    <ExternalLink className="h-3 w-3 mr-1" /> View
-                                  </Button>
-                                  <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-destructive hover:text-destructive" onClick={() => deleteSnipPage(regId, test.testId, idx)}>
-                                    <Trash2 className="h-3 w-3 mr-1" /> Remove
-                                  </Button>
-                                </div>
-                              </div>
-                              <img src={url} alt={`Page ${idx + 1}`} className="w-full max-h-[400px] object-contain" />
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Add page area - always shown */}
-                      <div className="border-2 border-dashed rounded-lg overflow-hidden">
-                        <div className="px-3 py-1.5 bg-muted/20 border-b border-dashed">
-                          <span className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-                            <Plus className="h-3 w-3" />
-                            {imageUrls.length > 0 ? "Add Another Page" : "Add Page 1"}
-                          </span>
-                        </div>
-                        <div
-                          ref={el => { pasteAreaRefs.current[testKey] = el; }}
-                          onPaste={(e) => handlePaste(regId, test.testId, e)}
-                          tabIndex={0}
-                          className={`p-6 text-center cursor-pointer hover:bg-primary/5 transition-colors focus:ring-2 focus:ring-primary/20 focus:outline-none ${isUploading ? "opacity-50 pointer-events-none" : ""}`}
-                          onClick={() => pasteAreaRefs.current[testKey]?.focus()}
-                        >
-                          {isUploading ? (
-                            <div className="flex flex-col items-center gap-2">
-                              <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                              <span className="text-sm text-muted-foreground">Uploading…</span>
-                            </div>
-                          ) : (
-                            <div className="flex flex-col items-center gap-1.5">
-                              <Clipboard className="h-6 w-6 text-muted-foreground" />
-                              <div className="text-sm font-medium">Click here and press Ctrl+V to paste snip</div>
-                              <div className="text-xs text-muted-foreground">Win+Shift+S → capture → paste here</div>
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 px-6 pb-3">
-                          <div className="flex-1 border-t" />
-                          <span className="text-xs text-muted-foreground">or</span>
-                          <div className="flex-1 border-t" />
-                        </div>
-                        <div className="flex justify-center pb-4">
-                          <label className="cursor-pointer">
-                            <input type="file" accept="image/*" className="hidden" onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (file) handleFileUpload(regId, test.testId, file);
-                            }} />
-                            <Button variant="outline" size="sm" asChild>
-                              <span><Image className="h-3.5 w-3.5 mr-1" /> Browse Image</span>
-                            </Button>
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
+                <SnipOnLetterhead
+                  regId={regId}
+                  testId={test.testId}
+                  imageUrls={getSnipImageUrls(regId, test.testId)}
+                  isUploading={isUploading}
+                  onPaste={handlePaste}
+                  onFileUpload={handleFileUpload}
+                  onDeletePage={deleteSnipPage}
+                />
               </TabsContent>
             </Tabs>
           </div>
