@@ -431,8 +431,85 @@ const ReportParameters = () => {
 
             <Separator />
 
+            {/* Interface & Machine Mapping */}
             <div className="space-y-3">
-              <h3 className="font-semibold text-base">Normal Range Settings</h3>
+              <h3 className="font-semibold text-base">Interface Settings</h3>
+              <div className="flex items-center justify-between">
+                <Label>Send for Interfacing (auto result from machine)</Label>
+                <Switch checked={form.send_for_interface} onCheckedChange={(v) => setForm({ ...form, send_for_interface: v })} />
+              </div>
+              {form.send_for_interface && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div><Label className="text-sm">Machine Name</Label><Input value={form.machine_name} onChange={(e) => setForm({ ...form, machine_name: e.target.value })} placeholder="e.g. Sysmex XN-1000" /></div>
+                  <div><Label className="text-sm">Machine ID</Label><Input value={form.machine_id} onChange={(e) => setForm({ ...form, machine_id: e.target.value })} placeholder="e.g. MACH001" /></div>
+                </div>
+              )}
+            </div>
+
+            <Separator />
+
+            {/* Calculated Parameter */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-base">Calculated Parameter</h3>
+                <Switch checked={form.is_calculated} onCheckedChange={(v) => setForm({ ...form, is_calculated: v })} />
+              </div>
+              {form.is_calculated && (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">Build formula: select parameters and operators. The result will be computed automatically.</p>
+                  {form.calculation_formula.map((item, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      {idx > 0 && (
+                        <Select value={item.operator} onValueChange={(v) => {
+                          const f = [...form.calculation_formula];
+                          f[idx] = { ...f[idx], operator: v };
+                          setForm({ ...form, calculation_formula: f });
+                        }}>
+                          <SelectTrigger className="w-20 h-8"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="+">+</SelectItem>
+                            <SelectItem value="-">−</SelectItem>
+                            <SelectItem value="*">×</SelectItem>
+                            <SelectItem value="/">÷</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
+                      <Select value={item.parameter_id} onValueChange={(v) => {
+                        const selected = params.find(p => p.id === v);
+                        const f = [...form.calculation_formula];
+                        f[idx] = { ...f[idx], parameter_id: v, parameter_name: selected?.parameter_name || "" };
+                        setForm({ ...form, calculation_formula: f });
+                      }}>
+                        <SelectTrigger className="flex-1 h-8"><SelectValue placeholder="Select parameter" /></SelectTrigger>
+                        <SelectContent>
+                          {params.filter(p => p.id !== editId).map(p => (
+                            <SelectItem key={p.id} value={p.id}>{p.parameter_name} ({p.param_code})</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive shrink-0" onClick={() => {
+                        const f = form.calculation_formula.filter((_, i) => i !== idx);
+                        setForm({ ...form, calculation_formula: f });
+                      }}>
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))}
+                  <Button type="button" variant="outline" size="sm" onClick={() => {
+                    setForm({ ...form, calculation_formula: [...form.calculation_formula, { parameter_id: "", parameter_name: "", operator: "+" }] });
+                  }}>
+                    <Plus className="h-3 w-3 mr-1" />Add Parameter
+                  </Button>
+                  {form.calculation_formula.length > 0 && (
+                    <div className="text-xs text-muted-foreground bg-muted p-2 rounded font-mono">
+                      Formula: {form.calculation_formula.map((item, i) => `${i > 0 ? ` ${item.operator} ` : ""}${item.parameter_name || "?"}`).join("")}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <Separator />
 
               <div className="flex items-center justify-between">
                 <Label>Show Global Normal Range in Report</Label>
