@@ -27,7 +27,6 @@ const defaultForm = {
   display_name: "", bold_in_report: false, show_in_report: true, is_single_parameter: false,
   instrument_name: "", method: "", sample_type: "", interpretation: "",
   is_outsourced: false, outsourced_caption: "", department_id: "",
-  machine_name: "", machine_id: "",
 };
 
 const TestManagement = () => {
@@ -78,8 +77,6 @@ const TestManagement = () => {
         is_outsourced: values.is_outsourced,
         outsourced_caption: values.outsourced_caption || null,
         department_id: values.department_id || null,
-        machine_name: values.machine_name || null,
-        machine_id: values.machine_id || null,
       };
       await saveTest(payload, editing?.id);
     },
@@ -127,7 +124,6 @@ const TestManagement = () => {
       sample_type: t.sample_type || "", interpretation: t.interpretation || "",
       is_outsourced: t.is_outsourced ?? false, outsourced_caption: t.outsourced_caption || "",
       department_id: t.department_id || "",
-      machine_name: t.machine_name || "", machine_id: t.machine_id || "",
     });
     setIncentiveLocked(true);
     setIncentivePassword("");
@@ -216,14 +212,6 @@ const TestManagement = () => {
                   <div><Label className="text-sm">Interpretation</Label><Textarea value={form.interpretation} onChange={(e) => setForm(p => ({ ...p, interpretation: e.target.value }))} placeholder="Clinical interpretation notes" rows={3} /></div>
                 </div>
 
-                {/* Machine / Analyzer Mapping */}
-                <div className="border rounded-md p-3 space-y-3 bg-muted/30">
-                  <Label className="font-semibold text-sm">Machine / Interface Mapping</Label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div><Label className="text-sm">Machine Name</Label><Input value={form.machine_name} onChange={(e) => setForm(p => ({ ...p, machine_name: e.target.value }))} placeholder="e.g. Sysmex XN-1000" /></div>
-                    <div><Label className="text-sm">Machine ID</Label><Input value={form.machine_id} onChange={(e) => setForm(p => ({ ...p, machine_id: e.target.value }))} placeholder="e.g. MACH001" /></div>
-                  </div>
-                </div>
 
                 <div><Label>Description</Label><Textarea value={form.description} onChange={(e) => setForm(p => ({ ...p, description: e.target.value }))} /></div>
 
