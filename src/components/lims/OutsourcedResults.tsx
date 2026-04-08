@@ -36,16 +36,12 @@ const OutsourcedResults = () => {
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const pasteAreaRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
-  useState(() => {
-    const t = setTimeout(() => setDebouncedSearch(search), 400);
-    return () => clearTimeout(t);
-  });
-
   // Debounce search
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const handleSearch = useCallback((val: string) => {
     setSearch(val);
-    const t = setTimeout(() => setDebouncedSearch(val), 400);
-    return () => clearTimeout(t);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => setDebouncedSearch(val), 400);
   }, []);
 
   // Fetch accepted registrations
