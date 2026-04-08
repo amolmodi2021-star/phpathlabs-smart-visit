@@ -1942,12 +1942,16 @@ export type Database = {
       report_test_parameters: {
         Row: {
           analyzer: string | null
+          calculation_formula: Json | null
           created_at: string | null
           department_id: string | null
           display_order: number | null
           id: string
           interpretation: string | null
+          is_calculated: boolean
           is_outsourced: boolean | null
+          machine_id: string | null
+          machine_name: string | null
           method: string | null
           normal_range_high: number | null
           normal_range_low: number | null
@@ -1959,6 +1963,7 @@ export type Database = {
           same_for_all_ages: boolean
           same_for_gender: boolean
           sample_type: string | null
+          send_for_interface: boolean
           store_for_analytics: boolean | null
           test_name: string | null
           unit: string | null
@@ -1967,12 +1972,16 @@ export type Database = {
         }
         Insert: {
           analyzer?: string | null
+          calculation_formula?: Json | null
           created_at?: string | null
           department_id?: string | null
           display_order?: number | null
           id?: string
           interpretation?: string | null
+          is_calculated?: boolean
           is_outsourced?: boolean | null
+          machine_id?: string | null
+          machine_name?: string | null
           method?: string | null
           normal_range_high?: number | null
           normal_range_low?: number | null
@@ -1984,6 +1993,7 @@ export type Database = {
           same_for_all_ages?: boolean
           same_for_gender?: boolean
           sample_type?: string | null
+          send_for_interface?: boolean
           store_for_analytics?: boolean | null
           test_name?: string | null
           unit?: string | null
@@ -1992,12 +2002,16 @@ export type Database = {
         }
         Update: {
           analyzer?: string | null
+          calculation_formula?: Json | null
           created_at?: string | null
           department_id?: string | null
           display_order?: number | null
           id?: string
           interpretation?: string | null
+          is_calculated?: boolean
           is_outsourced?: boolean | null
+          machine_id?: string | null
+          machine_name?: string | null
           method?: string | null
           normal_range_high?: number | null
           normal_range_low?: number | null
@@ -2009,6 +2023,7 @@ export type Database = {
           same_for_all_ages?: boolean
           same_for_gender?: boolean
           sample_type?: string | null
+          send_for_interface?: boolean
           store_for_analytics?: boolean | null
           test_name?: string | null
           unit?: string | null
