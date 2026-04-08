@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Search, Printer, ChevronDown, ChevronUp, CheckCircle2 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import JsBarcode from "jsbarcode";
+import * as JsBarcode from "jsbarcode";
 
 const TUBE_COLOR_MAP: Record<string, string> = {
   red: "#e53e3e", lavender: "#b794f4", purple: "#9f7aea", yellow: "#ecc94b",
