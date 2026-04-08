@@ -27,6 +27,7 @@ const SnipOnLetterhead = ({
 }: SnipOnLetterheadProps) => {
   const [letterheadDataUrl, setLetterheadDataUrl] = useState<string | null>(null);
   const [loadingLetterhead, setLoadingLetterhead] = useState(true);
+  const [settingsIdRef, setSettingsIdRef] = useState<string | null>(null);
   const [topMarginPct, setTopMarginPct] = useState(8.4);
   const [topMarginInput, setTopMarginInput] = useState("8.4");
   const [pageScales, setPageScales] = useState<Record<number, number>>({});
@@ -38,24 +39,17 @@ const SnipOnLetterhead = ({
     const loadLetterhead = async () => {
       setLoadingLetterhead(true);
       try {
-        // Load saved margin for this specific snip record
-        const { data: snipRow } = await supabase
-          .from("outsourced_test_snips")
-          .select("top_margin_pct")
-          .eq("registration_id", regId)
-          .eq("test_id", testId)
-          .limit(1)
-          .single();
-
         const { data: settings } = await supabase
           .from("report_layout_settings")
-          .select("letterhead_pdf_path, top_margin_cm")
+          .select("id, letterhead_pdf_path, top_margin_cm")
           .limit(1)
-          .single();
+          .single() as { data: any };
 
-        // Use saved per-snip margin if available, otherwise fall back to layout settings
-        if (snipRow?.top_margin_pct != null) {
-          const saved = Number(snipRow.top_margin_pct);
+        if (settings?.id) setSettingsIdRef(settings.id);
+
+        const savedPct = settings?.top_margin_pct;
+        if (savedPct != null) {
+          const saved = Number(savedPct);
           setTopMarginPct(saved);
           setTopMarginInput(saved.toFixed(1));
         } else if (settings?.top_margin_cm) {
@@ -202,12 +196,13 @@ const SnipOnLetterhead = ({
                   const val = Math.max(0, Math.min(50, Number(topMarginInput) || 0));
                   setTopMarginPct(val);
                   setTopMarginInput(val.toFixed(1));
-                  // Persist margin for this snip record
-                  await supabase
-                    .from("outsourced_test_snips")
-                    .update({ top_margin_pct: val })
-                    .eq("registration_id", regId)
-                    .eq("test_id", testId);
+                  // Persist margin globally in report_layout_settings
+                  if (settingsIdRef) {
+                    await supabase
+                      .from("report_layout_settings")
+                      .update({ top_margin_pct: val } as any)
+                      .eq("id", settingsIdRef);
+                  }
                 }}
                 className="w-16 h-7 text-xs text-center border rounded bg-background"
               />

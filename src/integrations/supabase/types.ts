@@ -2225,6 +2225,7 @@ export type Database = {
           id: string
           letterhead_pdf_path: string | null
           top_margin_cm: number
+          top_margin_pct: number | null
           updated_at: string | null
         }
         Insert: {
@@ -2233,6 +2234,7 @@ export type Database = {
           id?: string
           letterhead_pdf_path?: string | null
           top_margin_cm?: number
+          top_margin_pct?: number | null
           updated_at?: string | null
         }
         Update: {
@@ -2241,6 +2243,7 @@ export type Database = {
           id?: string
           letterhead_pdf_path?: string | null
           top_margin_cm?: number
+          top_margin_pct?: number | null
           updated_at?: string | null
         }
         Relationships: []

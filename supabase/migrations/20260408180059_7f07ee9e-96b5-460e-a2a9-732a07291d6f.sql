@@ -1,0 +1,1 @@
+ALTER TABLE public.report_layout_settings ADD COLUMN top_margin_pct numeric DEFAULT NULL;
