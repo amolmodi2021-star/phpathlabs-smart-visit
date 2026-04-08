@@ -415,9 +415,9 @@ const ResultsEntry = () => {
 
   // ─── Group by test inside params ───
   const groupByTest = (params: ParameterResult[]) => {
-    const groups: Record<string, { testName: string; params: ParameterResult[] }> = {};
+    const groups: Record<string, { testId: string; testName: string; params: ParameterResult[] }> = {};
     for (const p of params) {
-      if (!groups[p.testId]) groups[p.testId] = { testName: p.testName, params: [] };
+      if (!groups[p.testId]) groups[p.testId] = { testId: p.testId, testName: p.testName, params: [] };
       groups[p.testId].params.push(p);
     }
     return Object.values(groups);
