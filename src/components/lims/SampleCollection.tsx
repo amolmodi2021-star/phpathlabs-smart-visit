@@ -148,7 +148,7 @@ const SampleCollection = () => {
     }
 
     return Object.values(groupMap);
-  }, [testsMap, paramSuffixMap]);
+  }, [testsMap, testSuffixMap]);
 
   // Get currently selected barcodes for a registration
   const getSelectedForReg = (regId: string, groups: BarcodeGroup[]) => {
