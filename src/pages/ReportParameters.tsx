@@ -460,6 +460,41 @@ const ReportParameters = () => {
               )}
             </div>
 
+            {/* Unit Conversion */}
+            {form.send_for_interface && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-base">Unit Conversion</h3>
+                  <Switch checked={form.unit_conversion_enabled} onCheckedChange={(v) => setForm({ ...form, unit_conversion_enabled: v })} />
+                </div>
+                <p className="text-xs text-muted-foreground">Convert machine result value to the required unit before storing.</p>
+                {form.unit_conversion_enabled && (
+                  <div className="flex items-center gap-3 bg-muted/40 rounded-md p-3">
+                    <span className="text-sm font-medium whitespace-nowrap">Result Value</span>
+                    <Select value={form.unit_conversion_operator} onValueChange={(v) => setForm({ ...form, unit_conversion_operator: v })}>
+                      <SelectTrigger className="w-20 h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="*">×</SelectItem>
+                        <SelectItem value="/">÷</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      type="number"
+                      className="w-32"
+                      value={form.unit_conversion_value}
+                      onChange={(e) => setForm({ ...form, unit_conversion_value: e.target.value })}
+                      placeholder="e.g. 1000"
+                    />
+                    {form.unit_conversion_value && (
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">
+                        Preview: Result {form.unit_conversion_operator === "*" ? "×" : "÷"} {form.unit_conversion_value}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             <Separator />
 
             {/* Calculated Parameter */}
