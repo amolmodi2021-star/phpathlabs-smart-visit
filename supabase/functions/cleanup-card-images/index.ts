@@ -20,19 +20,28 @@ Deno.serve(async (req) => {
     let totalDeleted = 0;
 
     for (const folder of folders) {
-      const { data: files } = await supabase.storage
+      const { data: files, error: listErr } = await supabase.storage
         .from("loyalty-cards")
         .list(folder, { limit: 1000 });
 
+      if (listErr) {
+        console.error(`Error listing ${folder}:`, listErr);
+        continue;
+      }
+
       if (files && files.length > 0) {
-        // Only delete actual files, not subfolders
+        // Only delete actual files — skip placeholder folders (id is null or name has no extension)
         const filePaths = files
-          .filter((f) => f.name && !f.name.endsWith("/"))
+          .filter((f) => f.id && f.name && f.metadata && Object.keys(f.metadata).length > 0)
           .map((f) => `${folder}/${f.name}`);
 
         if (filePaths.length > 0) {
-          await supabase.storage.from("loyalty-cards").remove(filePaths);
-          totalDeleted += filePaths.length;
+          const { error: removeErr } = await supabase.storage.from("loyalty-cards").remove(filePaths);
+          if (removeErr) {
+            console.error(`Error removing from ${folder}:`, removeErr);
+          } else {
+            totalDeleted += filePaths.length;
+          }
         }
       }
     }
