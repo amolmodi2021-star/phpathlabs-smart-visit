@@ -824,12 +824,12 @@ const OutsourcedResults = () => {
                   <div className="flex items-center gap-1.5">
                     {notSentCount > 0 && <Badge variant="outline" className="text-[10px]">{notSentCount} Not Sent</Badge>}
                     {awaitingCount > 0 && <Badge className="text-[10px] bg-amber-500">{awaitingCount} Awaiting</Badge>}
-                    {enteredCount > 0 && <Badge className="text-[10px] bg-green-600">{enteredCount} Done</Badge>}
+                    
                   </div>
                 </div>
                 {isExpanded && (
                   <CardContent className="pt-0 pb-3 px-3 space-y-2">
-                    {entry.outsourcedTests.map(test => renderTestCard(entry, test))}
+                    {visibleTests.map(test => renderTestCard(entry, test))}
                   </CardContent>
                 )}
               </Card>
