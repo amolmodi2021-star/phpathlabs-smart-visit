@@ -412,10 +412,10 @@ const ResultsEntry = () => {
       .filter(e => e.parameters.length > 0);
   }, [patientEntries, mode, selectedMachine]);
 
-  // ─── Stats ───
+  // ─── Stats (based on filtered entries, excludes already-entered patients) ───
   const stats = useMemo(() => {
     let totalParams = 0, pendingParams = 0, enteredParams = 0, awaitingInterface = 0;
-    for (const e of patientEntries) {
+    for (const e of filteredEntries) {
       for (const p of e.parameters) {
         totalParams++;
         const key = `${e.registration.id}||${p.parameterId}`;
@@ -427,8 +427,8 @@ const ResultsEntry = () => {
         }
       }
     }
-    return { totalParams, pendingParams, enteredParams, awaitingInterface, totalPatients: patientEntries.length };
-  }, [patientEntries, editedValues]);
+    return { totalParams, pendingParams, enteredParams, awaitingInterface, totalPatients: filteredEntries.length };
+  }, [filteredEntries, editedValues]);
 
   // ─── Machine-wise grouping inside a patient ───
   const groupByMachine = (params: ParameterResult[]) => {
