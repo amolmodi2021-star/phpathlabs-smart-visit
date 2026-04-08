@@ -108,6 +108,23 @@ const ResultsEntry = () => {
     },
   });
 
+  // ─── Fetch parameter_normal_ranges for age/gender-specific reference ranges ───
+  const { data: normalRangesMap = {} } = useQuery({
+    queryKey: ["results_normal_ranges"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("parameter_normal_ranges")
+        .select("*")
+        .order("age_min");
+      const map: Record<string, any[]> = {};
+      (data || []).forEach((r: any) => {
+        if (!map[r.parameter_id]) map[r.parameter_id] = [];
+        map[r.parameter_id].push(r);
+      });
+      return map;
+    },
+  });
+
   // ─── Fetch existing results for all accepted patients ───
   const regIds = acceptedRegs.map((r: any) => r.id);
   const { data: existingResults = [] } = useQuery({
