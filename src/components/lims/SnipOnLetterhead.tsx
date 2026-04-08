@@ -138,9 +138,10 @@ const SnipOnLetterhead = ({
               <span className="text-xs text-muted-foreground">No letterhead uploaded</span>
             </div>
           )}
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          {/* Snipped image overlay - top aligned after header margin, centered horizontally */}
+          <div className="absolute inset-0 flex justify-center" style={{ paddingTop: `${topMarginPct}%` }}>
             <div
-              className="relative pointer-events-auto"
+              className="relative"
               style={{ width: `${scale}%` }}
             >
               <img
