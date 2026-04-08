@@ -163,6 +163,9 @@ const ReportParameters = () => {
         send_for_interface: form.send_for_interface,
         is_calculated: form.is_calculated,
         calculation_formula: form.is_calculated ? form.calculation_formula : [],
+        unit_conversion_enabled: form.unit_conversion_enabled,
+        unit_conversion_operator: form.unit_conversion_operator,
+        unit_conversion_value: form.unit_conversion_value ? Number(form.unit_conversion_value) : null,
       };
 
       let paramId = editId;
@@ -218,6 +221,9 @@ const ReportParameters = () => {
       send_for_interface: p.send_for_interface !== false,
       is_calculated: p.is_calculated || false,
       calculation_formula: Array.isArray(p.calculation_formula) ? p.calculation_formula : [],
+      unit_conversion_enabled: p.unit_conversion_enabled || false,
+      unit_conversion_operator: p.unit_conversion_operator || "*",
+      unit_conversion_value: p.unit_conversion_value != null ? String(p.unit_conversion_value) : "",
     });
     setNormalRanges([]);
     setDialogOpen(true);
@@ -314,6 +320,7 @@ const ReportParameters = () => {
       use_global_normal_range: false, same_for_gender: true, same_for_all_ages: true,
       normal_range_text: "", machine_name: "", machine_id: "",
       send_for_interface: true, is_calculated: false, calculation_formula: [],
+      unit_conversion_enabled: false, unit_conversion_operator: "*", unit_conversion_value: "",
     });
     setNormalRanges([]);
     setDialogOpen(true);
