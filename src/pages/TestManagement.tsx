@@ -235,7 +235,7 @@ const TestManagement = () => {
                   <div className="grid grid-cols-2 gap-3">
                     <div><Label className="text-sm">Instrument Name</Label><MasterLookupSelect category="machine_name" value={form.instrument_name} onChange={(v) => setForm(p => ({ ...p, instrument_name: v }))} placeholder="Select machine" /></div>
                     <div><Label className="text-sm">Method</Label><MasterLookupSelect category="method" value={form.method} onChange={(v) => setForm(p => ({ ...p, method: v }))} placeholder="Select method" /></div>
-                    <div><Label className="text-sm">Sample Type</Label><MasterLookupSelect category="sample_tube" value={form.sample_type} onChange={(v) => setForm(p => ({ ...p, sample_type: v }))} onMappedValue={(v) => setForm(p => ({ ...p, sample_type: p.sample_type }))} placeholder="Select sample type" /></div>
+                    <div><Label className="text-sm">Sample Type</Label><MasterLookupSelect category="sample_tube" value={form.sample_type} onChange={(v) => setForm(p => ({ ...p, sample_type: v }))} placeholder="Select sample tube/type" /></div>
                   </div>
                   <div><Label className="text-sm">Interpretation</Label><Textarea value={form.interpretation} onChange={(e) => setForm(p => ({ ...p, interpretation: e.target.value }))} placeholder="Clinical interpretation notes" rows={3} /></div>
                 </div>
