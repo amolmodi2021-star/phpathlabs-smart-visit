@@ -31,6 +31,9 @@ interface ParameterResult {
   testId: string;
   testName: string;
   departmentId: string;
+  machineName: string;
+  displayOrder: number;
+  departmentId: string;
   displayOrder: number;
 }
 
