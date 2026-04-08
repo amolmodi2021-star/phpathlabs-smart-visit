@@ -27,6 +27,7 @@ const SnipOnLetterhead = ({
 }: SnipOnLetterheadProps) => {
   const [letterheadDataUrl, setLetterheadDataUrl] = useState<string | null>(null);
   const [loadingLetterhead, setLoadingLetterhead] = useState(true);
+  const [settingsIdRef, setSettingsIdRef] = useState<string | null>(null);
   const [topMarginPct, setTopMarginPct] = useState(8.4);
   const [topMarginInput, setTopMarginInput] = useState("8.4");
   const [pageScales, setPageScales] = useState<Record<number, number>>({});
