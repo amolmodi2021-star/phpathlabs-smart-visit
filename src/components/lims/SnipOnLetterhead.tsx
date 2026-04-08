@@ -27,6 +27,7 @@ const SnipOnLetterhead = ({
 }: SnipOnLetterheadProps) => {
   const [letterheadDataUrl, setLetterheadDataUrl] = useState<string | null>(null);
   const [loadingLetterhead, setLoadingLetterhead] = useState(true);
+  const [topMarginPct, setTopMarginPct] = useState(8.4); // default ~2.5cm on A4 (29.7cm)
   const [pageScales, setPageScales] = useState<Record<number, number>>({});
   const [resizing, setResizing] = useState<{ pageIndex: number; startX: number; startY: number; startScale: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -38,9 +39,14 @@ const SnipOnLetterhead = ({
       try {
         const { data: settings } = await supabase
           .from("report_layout_settings")
-          .select("letterhead_pdf_path")
+          .select("letterhead_pdf_path, top_margin_cm")
           .limit(1)
           .single();
+        if (settings?.top_margin_cm) {
+          // Convert cm to percentage of A4 height (29.7cm)
+          const marginPct = (Number(settings.top_margin_cm) / 29.7) * 100;
+          setTopMarginPct(marginPct);
+        }
         if (!settings?.letterhead_pdf_path) {
           setLetterheadDataUrl(null);
           setLoadingLetterhead(false);
@@ -132,9 +138,10 @@ const SnipOnLetterhead = ({
               <span className="text-xs text-muted-foreground">No letterhead uploaded</span>
             </div>
           )}
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          {/* Snipped image overlay - top aligned after header margin, centered horizontally */}
+          <div className="absolute inset-0 flex justify-center" style={{ paddingTop: `${topMarginPct}%` }}>
             <div
-              className="relative pointer-events-auto"
+              className="relative"
               style={{ width: `${scale}%` }}
             >
               <img
