@@ -777,6 +777,29 @@ const ResultsEntry = () => {
           )}
         </>
       )}
+      {/* Blank values confirmation dialog */}
+      <AlertDialog open={!!blankConfirmEntry} onOpenChange={open => { if (!open) setBlankConfirmEntry(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Blank Result Values Detected</AlertDialogTitle>
+            <AlertDialogDescription>
+              {blankParamCount} parameter{blankParamCount > 1 ? "s have" : " has"} blank/empty result values (highlighted in yellow). 
+              Are you sure you want to save and send to verification with blank values?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              if (blankConfirmEntry) {
+                setSavingPatient(blankConfirmEntry.registration.id);
+                saveMutation.mutate({ entry: blankConfirmEntry });
+              }
+            }}>
+              Yes, Send to Verification
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
