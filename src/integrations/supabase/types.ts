@@ -2062,7 +2062,7 @@ export type Database = {
           display_order: number | null
           id: string
           is_subheader: boolean
-          parameter_id: string
+          parameter_id: string | null
           subheader_text: string | null
           test_id: string
         }
@@ -2071,7 +2071,7 @@ export type Database = {
           display_order?: number | null
           id?: string
           is_subheader?: boolean
-          parameter_id: string
+          parameter_id?: string | null
           subheader_text?: string | null
           test_id: string
         }
@@ -2080,7 +2080,7 @@ export type Database = {
           display_order?: number | null
           id?: string
           is_subheader?: boolean
-          parameter_id?: string
+          parameter_id?: string | null
           subheader_text?: string | null
           test_id?: string
         }
