@@ -446,7 +446,10 @@ const SampleCollection = () => {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {data.map((reg: any) => {
+          {data.filter((reg: any) => {
+            const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
+            return ((reg.tests || []) as any[]).some((t: any) => !cancelledIds.has(t.test_id));
+          }).map((reg: any) => {
             const groups = buildBarcodeGroups(reg);
             const isExpanded = expandedRow === reg.id;
             const sel = selectedBarcodes[reg.id] || {};

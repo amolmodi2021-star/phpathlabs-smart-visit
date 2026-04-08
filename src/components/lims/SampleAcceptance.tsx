@@ -383,7 +383,10 @@ const SampleAcceptance = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {regs.map((reg: any) => {
+                {regs.filter((reg: any) => {
+                  const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
+                  return ((reg.tests || []) as any[]).some((t: any) => !cancelledIds.has(t.test_id));
+                }).map((reg: any) => {
                   const groups = buildTubeGroups(reg);
                   const isExpanded = expandedRow === reg.id;
                   const allKeys = groups.map(g => `${reg.id}||${g.sampleId}`);
