@@ -88,6 +88,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   const tests: any[] = reg ? (Array.isArray(reg.tests) ? reg.tests : []) : [];
   const alreadyCancelled = reg ? new Set((Array.isArray(reg.cancelled_tests) ? reg.cancelled_tests : []).map((t: any) => t.test_id || t)) : new Set<string>();
   const isBillCancelled = reg?.bill_cancelled;
+  const isRefundBlocked = ["sample_accepted", "processing", "completed", "dispatched"].includes(reg?.status || "");
 
   const newlyCancelled = [...cancelledTestIds].filter(id => !alreadyCancelled.has(id));
   const refundCalc = useMemo(() => {
