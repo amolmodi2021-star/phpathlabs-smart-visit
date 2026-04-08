@@ -41,12 +41,13 @@ const SnipOnLetterhead = ({
       try {
         const { data: settings } = await supabase
           .from("report_layout_settings")
-          .select("letterhead_pdf_path, top_margin_cm")
+          .select("id, letterhead_pdf_path, top_margin_cm")
           .limit(1)
-          .single();
+          .single() as { data: any };
 
-        // Check for saved top_margin_pct
-        const savedPct = (settings as any)?.top_margin_pct;
+        if (settings?.id) setSettingsIdRef(settings.id);
+
+        const savedPct = settings?.top_margin_pct;
         if (savedPct != null) {
           const saved = Number(savedPct);
           setTopMarginPct(saved);
