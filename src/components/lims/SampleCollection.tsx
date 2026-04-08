@@ -199,7 +199,7 @@ const SampleCollection = () => {
     const birth = new Date(dob);
     const now = new Date();
     const years = now.getFullYear() - birth.getFullYear();
-    return `${years} Yr(s)`;
+    return `${years}`;
   };
 
   // Print barcodes helper
@@ -244,12 +244,9 @@ const SampleCollection = () => {
       html += `<div class="label">
         <div class="row1">
           <span>${reg.invoice_number}</span>
-          <span>${location ? `PH ${location}` : ""}</span>
+          <span>${age}${gender ? `/${gender}` : ""}</span>
         </div>
-        <div class="row1" style="justify-content:space-between;">
-          <span class="row2">${patientName}</span>
-          <span style="font-size:6.5pt;">${age}${gender ? `/${gender}` : ""}</span>
-        </div>
+        <div class="row2">${patientName}${location ? ` &nbsp; PH ${location}` : ""}</div>
         <div class="barcode-wrap">
           <img src="${barcodeDataUrl}" style="width:42mm;height:8mm;" />
         </div>
