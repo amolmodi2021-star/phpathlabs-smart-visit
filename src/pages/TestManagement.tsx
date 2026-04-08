@@ -246,26 +246,6 @@ const TestManagement = () => {
                   <div><Label className="text-sm">Interpretation</Label><Textarea value={form.interpretation} onChange={(e) => setForm(p => ({ ...p, interpretation: e.target.value }))} placeholder="Clinical interpretation notes" rows={3} /></div>
                 </div>
 
-const TUBE_COLOR_MAP: Record<string, string> = {
-  red: "#e53e3e", purple: "#9f7aea", lavender: "#b794f4", yellow: "#ecc94b",
-  green: "#48bb78", blue: "#4299e1", gray: "#a0aec0", grey: "#a0aec0",
-  gold: "#d69e2e", orange: "#ed8936", pink: "#ed64a6", black: "#1a202c",
-  white: "#ffffff", light_blue: "#63b3ed", "light blue": "#63b3ed",
-};
-
-function TubeColorDot({ color }: { color: string }) {
-  const c = color.toLowerCase().trim();
-  const hex = TUBE_COLOR_MAP[c] || c;
-  const isValidColor = hex.startsWith("#") || hex.startsWith("rgb") || Object.keys(TUBE_COLOR_MAP).includes(c);
-  if (!isValidColor) return null;
-  return (
-    <span
-      className="inline-block w-6 h-6 rounded-full border-2 border-muted-foreground/30 flex-shrink-0"
-      style={{ backgroundColor: hex }}
-      title={color}
-    />
-  );
-}
 
                 <div><Label>Description</Label><Textarea value={form.description} onChange={(e) => setForm(p => ({ ...p, description: e.target.value }))} /></div>
 
