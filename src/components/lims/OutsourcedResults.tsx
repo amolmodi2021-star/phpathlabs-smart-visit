@@ -664,7 +664,7 @@ const OutsourcedResults = () => {
                 </TabsContent>
               )}
 
-              <TabsContent value="snip" className="mt-2">
+              <TabsContent value="snip" className="mt-2 space-y-3">
                 <SnipOnLetterhead
                   regId={regId}
                   testId={test.testId}
@@ -674,6 +674,18 @@ const OutsourcedResults = () => {
                   onFileUpload={handleFileUpload}
                   onDeletePage={deleteSnipPage}
                 />
+                {getSnipImageUrls(regId, test.testId).length > 0 && (
+                  <div className="flex justify-end">
+                    <Button
+                      size="sm"
+                      onClick={() => saveSnipResults(regId, test.testId, test.testName)}
+                      disabled={savingKey === `${regId}||${test.testId}`}
+                    >
+                      {savingKey === `${regId}||${test.testId}` ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
+                      Save & Send to Verification
+                    </Button>
+                  </div>
+                )}
               </TabsContent>
             </Tabs>
           </div>
