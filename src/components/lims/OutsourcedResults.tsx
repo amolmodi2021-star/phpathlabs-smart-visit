@@ -345,21 +345,32 @@ const OutsourcedResults = () => {
     }
   }, [qc, existingSnips]);
 
-  // Delete snip
-  const deleteSnip = useCallback(async (regId: string, testId: string) => {
+  // Delete a specific snip page
+  const deleteSnipPage = useCallback(async (regId: string, testId: string, pageIndex: number) => {
     try {
-      // Reset back to sent (awaiting results) instead of deleting
-      await supabase.from("outsourced_test_snips").update({
-        snip_image_url: null,
-        result_mode: "manual",
-        outsource_status: "sent",
-      } as any).eq("registration_id", regId).eq("test_id", testId);
-      toast.success("Snip removed — test moved back to awaiting results");
+      const currentUrls = getSnipImageUrls(regId, testId);
+      const newUrls = currentUrls.filter((_, i) => i !== pageIndex);
+      if (newUrls.length === 0) {
+        // No more images — reset back to awaiting results
+        await supabase.from("outsourced_test_snips").update({
+          snip_image_url: null,
+          snip_image_urls: [],
+          result_mode: "manual",
+          outsource_status: "sent",
+        } as any).eq("registration_id", regId).eq("test_id", testId);
+        toast.success("All pages removed — test moved back to awaiting results");
+      } else {
+        await supabase.from("outsourced_test_snips").update({
+          snip_image_url: newUrls[0],
+          snip_image_urls: newUrls,
+        } as any).eq("registration_id", regId).eq("test_id", testId);
+        toast.success(`Page ${pageIndex + 1} removed`);
+      }
       qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
     } catch (err: any) {
-      toast.error("Failed to delete snip");
+      toast.error("Failed to delete page");
     }
-  }, [qc]);
+  }, [qc, existingSnips]);
 
   // Set manual mode
   const setManualMode = useCallback(async (regId: string, testId: string) => {
