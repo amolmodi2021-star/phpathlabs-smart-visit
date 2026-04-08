@@ -211,6 +211,7 @@ const TestManagement = () => {
                   <div className="flex items-center gap-3"><Switch checked={form.discount_applicable} onCheckedChange={(v) => setForm(p => ({ ...p, discount_applicable: v }))} /><Label className="text-sm">Discount Applicable</Label></div>
                 <div className="flex items-center gap-3"><Switch checked={form.is_outsourced} onCheckedChange={(v) => setForm(p => ({ ...p, is_outsourced: v, outsourced_caption: v ? p.outsourced_caption : "" }))} /><Label className="text-sm">Mark as Outsourced</Label></div>
                   <div className="flex items-center gap-3"><Switch checked={form.is_active} onCheckedChange={(v) => setForm(p => ({ ...p, is_active: v }))} /><Label className="text-sm">Active</Label></div>
+                </div>
                 {form.is_outsourced && (
                   <div><Label>Outsourced Caption</Label><Input value={form.outsourced_caption} onChange={(e) => setForm(p => ({ ...p, outsourced_caption: e.target.value }))} placeholder="e.g. This test was outsourced to XYZ Lab" /></div>
                 )}
