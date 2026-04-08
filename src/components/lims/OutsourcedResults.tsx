@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   Search, ChevronDown, ChevronUp, Save, Loader2, Image, Keyboard,
-  Clipboard, Trash2, ExternalLink, Package, Send, Clock, CheckCircle2
+  Clipboard, Trash2, ExternalLink, Package, Send, Clock, CheckCircle2, Pencil
 } from "lucide-react";
 import { toast } from "sonner";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
