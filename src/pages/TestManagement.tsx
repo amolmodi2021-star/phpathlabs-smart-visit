@@ -152,7 +152,7 @@ const TestManagement = () => {
         <TabsContent value="tests">
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-xl font-bold">Test Management</h1>
+        <h2 className="text-lg font-bold">Tests</h2>
         <div className="flex gap-2 flex-wrap">
           <Button size="sm" variant="outline" onClick={downloadTemplate}><Download className="h-4 w-4 mr-1" />Template</Button>
           <Button size="sm" variant="outline" onClick={() => document.getElementById("excel-upload")?.click()}>
@@ -310,6 +310,15 @@ const TestManagement = () => {
         onSuccess={() => { if (deleteDialog) deleteMutation.mutate(deleteDialog); }}
         description="Delete this test?"
       />
+    </div>
+        </TabsContent>
+        <TabsContent value="health_checkups">
+          <HealthCheckUpManagement />
+        </TabsContent>
+        <TabsContent value="profiles">
+          <ProfileManagement />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
