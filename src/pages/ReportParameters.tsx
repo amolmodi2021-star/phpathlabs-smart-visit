@@ -466,6 +466,21 @@ const ReportParameters = () => {
                     if (t === "bracket_open" || t === "bracket_close") {
                       return (
                         <div key={idx} className="flex items-center gap-2">
+                          {idx > 0 && t !== "bracket_close" && form.calculation_formula[idx - 1]?.type !== "bracket_open" && (
+                            <Select value={item.operator || "+"} onValueChange={(v) => {
+                              const f = [...form.calculation_formula];
+                              f[idx] = { ...f[idx], operator: v };
+                              setForm({ ...form, calculation_formula: f });
+                            }}>
+                              <SelectTrigger className="w-20 h-8"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="+">+</SelectItem>
+                                <SelectItem value="-">−</SelectItem>
+                                <SelectItem value="*">×</SelectItem>
+                                <SelectItem value="/">÷</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          )}
                           <span className="text-lg font-bold w-8 text-center">{t === "bracket_open" ? "(" : ")"}</span>
                           <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive shrink-0" onClick={() => {
                             const f = form.calculation_formula.filter((_, i) => i !== idx);
