@@ -13,8 +13,10 @@ interface CategoryDef {
   key: string;
   label: string;
   placeholder: string;
-  mappedTo?: string; // label for the mapped field
-  mappedCategory?: string; // category key that gets auto-filled
+  mappedTo?: string;
+  mappedCategory?: string;
+  mappedTo2?: string;
+  mappedCategory2?: string;
 }
 
 const CATEGORIES: CategoryDef[] = [
@@ -22,7 +24,7 @@ const CATEGORIES: CategoryDef[] = [
   { key: "machine_name", label: "Machine Names", placeholder: "e.g. Sysmex XN-1000", mappedTo: "Machine ID", mappedCategory: "machine_id" },
   { key: "outsource_lab", label: "Outsource Labs", placeholder: "e.g. SRL Diagnostics" },
   { key: "method", label: "Methods", placeholder: "e.g. Immunoturbidimetry" },
-  { key: "sample_tube", label: "Sample Tubes", placeholder: "e.g. EDTA, Plain, Fluoride, Sodium Citrate", mappedTo: "Sample Type", mappedCategory: "sample_type" },
+  { key: "sample_tube", label: "Sample Tubes", placeholder: "e.g. EDTA, Plain, Fluoride, Sodium Citrate", mappedTo: "Sample Type", mappedCategory: "sample_type", mappedTo2: "Tube Color", mappedCategory2: "tube_color" },
 ];
 
 interface LookupItem {
@@ -32,15 +34,18 @@ interface LookupItem {
   display_order: number;
   is_active: boolean;
   mapped_value: string | null;
+  mapped_value_2: string | null;
 }
 
-function CategorySection({ category, placeholder, mappedTo }: { category: string; placeholder: string; mappedTo?: string }) {
+function CategorySection({ category, placeholder, mappedTo, mappedTo2 }: { category: string; placeholder: string; mappedTo?: string; mappedTo2?: string }) {
   const qc = useQueryClient();
   const [newValue, setNewValue] = useState("");
   const [newMappedValue, setNewMappedValue] = useState("");
+  const [newMappedValue2, setNewMappedValue2] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [editMappedValue, setEditMappedValue] = useState("");
+  const [editMappedValue2, setEditMappedValue2] = useState("");
 
   const { data: items = [], isLoading } = useQuery({
     queryKey: ["master_lookup", category],
@@ -57,12 +62,13 @@ function CategorySection({ category, placeholder, mappedTo }: { category: string
   });
 
   const addMutation = useMutation({
-    mutationFn: async ({ value, mapped }: { value: string; mapped?: string }) => {
+    mutationFn: async ({ value, mapped, mapped2 }: { value: string; mapped?: string; mapped2?: string }) => {
       const { error } = await supabase.from("master_lookup").insert({
         category,
         value: value.trim(),
         display_order: items.length,
         ...(mappedTo && mapped ? { mapped_value: mapped.trim() } : {}),
+        ...(mappedTo2 && mapped2 ? { mapped_value_2: mapped2.trim() } : {}),
       } as any);
       if (error) throw error;
     },
@@ -70,15 +76,17 @@ function CategorySection({ category, placeholder, mappedTo }: { category: string
       qc.invalidateQueries({ queryKey: ["master_lookup", category] });
       setNewValue("");
       setNewMappedValue("");
+      setNewMappedValue2("");
       toast.success("Added");
     },
     onError: (e: any) => toast.error(e.message?.includes("duplicate") ? "Already exists" : e.message),
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, value, mapped }: { id: string; value: string; mapped?: string }) => {
+    mutationFn: async ({ id, value, mapped, mapped2 }: { id: string; value: string; mapped?: string; mapped2?: string }) => {
       const updateData: any = { value: value.trim() };
       if (mappedTo) updateData.mapped_value = mapped?.trim() || null;
+      if (mappedTo2) updateData.mapped_value_2 = mapped2?.trim() || null;
       const { error } = await supabase.from("master_lookup").update(updateData).eq("id", id);
       if (error) throw error;
     },
@@ -104,7 +112,7 @@ function CategorySection({ category, placeholder, mappedTo }: { category: string
 
   const handleAdd = () => {
     if (!newValue.trim()) return;
-    addMutation.mutate({ value: newValue, mapped: newMappedValue });
+    addMutation.mutate({ value: newValue, mapped: newMappedValue, mapped2: newMappedValue2 });
   };
 
   return (
@@ -132,6 +140,19 @@ function CategorySection({ category, placeholder, mappedTo }: { category: string
             />
           </div>
         )}
+        {mappedTo2 && (
+          <div className="w-48 space-y-1">
+            <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+              <Link className="h-3 w-3" /> {mappedTo2}
+            </label>
+            <Input
+              value={newMappedValue2}
+              onChange={(e) => setNewMappedValue2(e.target.value)}
+              placeholder={`e.g. ${mappedTo2}`}
+              onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }}
+            />
+          </div>
+        )}
         <Button size="sm" className="h-9" onClick={handleAdd} disabled={!newValue.trim() || addMutation.isPending}>
           <Plus className="h-4 w-4 mr-1" />Add
         </Button>
@@ -153,7 +174,7 @@ function CategorySection({ category, placeholder, mappedTo }: { category: string
                     className="h-8 w-40 text-sm"
                     autoFocus
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") updateMutation.mutate({ id: item.id, value: editValue, mapped: editMappedValue });
+                      if (e.key === "Enter") updateMutation.mutate({ id: item.id, value: editValue, mapped: editMappedValue, mapped2: editMappedValue2 });
                       if (e.key === "Escape") setEditingId(null);
                     }}
                   />
@@ -164,12 +185,24 @@ function CategorySection({ category, placeholder, mappedTo }: { category: string
                       className="h-8 w-32 text-sm"
                       placeholder={mappedTo}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter") updateMutation.mutate({ id: item.id, value: editValue, mapped: editMappedValue });
+                        if (e.key === "Enter") updateMutation.mutate({ id: item.id, value: editValue, mapped: editMappedValue, mapped2: editMappedValue2 });
                         if (e.key === "Escape") setEditingId(null);
                       }}
                     />
                   )}
-                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => updateMutation.mutate({ id: item.id, value: editValue, mapped: editMappedValue })}>
+                  {mappedTo2 && (
+                    <Input
+                      value={editMappedValue2}
+                      onChange={(e) => setEditMappedValue2(e.target.value)}
+                      className="h-8 w-32 text-sm"
+                      placeholder={mappedTo2}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") updateMutation.mutate({ id: item.id, value: editValue, mapped: editMappedValue, mapped2: editMappedValue2 });
+                        if (e.key === "Escape") setEditingId(null);
+                      }}
+                    />
+                  )}
+                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => updateMutation.mutate({ id: item.id, value: editValue, mapped: editMappedValue, mapped2: editMappedValue2 })}>
                     <Check className="h-3.5 w-3.5" />
                   </Button>
                   <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditingId(null)}>
@@ -182,8 +215,11 @@ function CategorySection({ category, placeholder, mappedTo }: { category: string
                   {mappedTo && item.mapped_value && (
                     <span className="text-muted-foreground text-xs">→ {item.mapped_value}</span>
                   )}
+                  {mappedTo2 && item.mapped_value_2 && (
+                    <span className="text-muted-foreground text-xs">| {item.mapped_value_2}</span>
+                  )}
                   <button
-                    onClick={() => { setEditingId(item.id); setEditValue(item.value); setEditMappedValue(item.mapped_value || ""); }}
+                    onClick={() => { setEditingId(item.id); setEditValue(item.value); setEditMappedValue(item.mapped_value || ""); setEditMappedValue2(item.mapped_value_2 || ""); }}
                     className="opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     <Pencil className="h-3 w-3" />
@@ -228,13 +264,13 @@ export default function MasterLookupSettings() {
                   {c.label}
                   {c.mappedTo && (
                     <span className="text-xs font-normal text-muted-foreground ml-2">
-                      (mapped to {c.mappedTo})
+                      (mapped to {c.mappedTo}{c.mappedTo2 ? ` & ${c.mappedTo2}` : ""})
                     </span>
                   )}
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <CategorySection category={c.key} placeholder={c.placeholder} mappedTo={c.mappedTo} />
+                <CategorySection category={c.key} placeholder={c.placeholder} mappedTo={c.mappedTo} mappedTo2={c.mappedTo2} />
               </CardContent>
             </Card>
           </TabsContent>

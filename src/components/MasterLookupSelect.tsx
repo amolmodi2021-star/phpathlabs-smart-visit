@@ -8,6 +8,7 @@ interface Props {
   value: string;
   onChange: (value: string) => void;
   onMappedValue?: (mapped: string) => void;
+  onMappedValue2?: (mapped: string) => void;
   placeholder?: string;
   className?: string;
 }
