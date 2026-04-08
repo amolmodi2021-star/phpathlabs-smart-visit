@@ -621,17 +621,15 @@ const ResultsEntry = () => {
     <div className="space-y-4">
       {/* Mode tabs */}
       <div className="flex items-center gap-3 flex-wrap">
-        {mode !== "outsourced" && (
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search patient, invoice, mobile…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="pl-9"
-            />
-          </div>
-        )}
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search patient, invoice, mobile…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
         <Tabs value={mode} onValueChange={v => setMode(v as any)} className="w-auto">
           <TabsList className="h-9">
             <TabsTrigger value="patient" className="text-xs gap-1 h-7">
