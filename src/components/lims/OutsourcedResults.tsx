@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from "react";
+import React, { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
@@ -57,7 +57,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   const [savingEditLab, setSavingEditLab] = useState(false);
 
   // Sync external search to debounced
-  React.useEffect(() => {
+  useEffect(() => {
     if (externalSearch !== undefined) {
       setDebouncedSearch(externalSearch);
     }
