@@ -633,6 +633,9 @@ const ResultsEntry = () => {
             <TabsTrigger value="machine" className="text-xs gap-1 h-7">
               <Monitor className="h-3.5 w-3.5" /> Machine Wise
             </TabsTrigger>
+            <TabsTrigger value="outsourced" className="text-xs gap-1 h-7">
+              <Package className="h-3.5 w-3.5" /> Outsourced
+            </TabsTrigger>
           </TabsList>
         </Tabs>
         {mode === "machine" && (
