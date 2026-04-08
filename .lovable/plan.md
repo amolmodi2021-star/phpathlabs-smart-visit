@@ -1,32 +1,28 @@
 
 
-## Add Sample ID Suffix for Parameters
+## Problem
 
-### Problem
-When two parameters (e.g., FBS and PPBS) are registered together for the same patient, they share the same barcode/sample ID. The machine cannot distinguish between fasting and post-prandial samples, causing incorrect result mapping.
+The `pdfjs-dist` v4.x uses **top-level await** in its source, which is incompatible with Vite's default esbuild target (`es2020`). This crashes the entire app — not just the snipping page.
 
-### Solution
-Add a toggle + suffix field to parameters so each parameter can specify a custom sample ID suffix (e.g., `-F`, `-P`). During barcode generation and LIMS interfacing, the suffix is appended to the base invoice number to create unique sample IDs per parameter.
+## Solution
 
-### Database Change
-- **Migration**: Add two columns to `report_test_parameters`:
-  - `custom_sample_suffix_enabled` (boolean, default `false`)
-  - `custom_sample_suffix` (text, nullable)
+Two changes are needed:
 
-### UI Change — `src/pages/ReportParameters.tsx`
-- Add to the form state: `custom_sample_suffix_enabled` and `custom_sample_suffix`
-- In the parameter edit dialog (near the Machine/Interface section), add:
-  - Toggle: "Custom Sample ID Suffix"
-  - When ON: show a text input for the suffix value (e.g., `-F`, `-P`)
-- Save/load these fields in `handleSave`, `handleEdit`, and `openNew`
+### 1. Downgrade `pdfjs-dist` to v3.11.174
+Version 3.x doesn't use top-level await and works perfectly with Vite 5. The API is identical for what we use (loading PDF, rendering page to canvas).
 
-### LIMS Interface Impact (future-ready)
-- The `custom_sample_suffix` value will be used later when:
-  1. Generating barcodes — append suffix to invoice number per parameter
-  2. Sending orders via LIMS interface — use suffixed sample IDs
-  3. Receiving results — match results using suffixed sample IDs
+- Update `package.json`: `"pdfjs-dist": "3.11.174"`
+- Update the worker URL in `SnipOnLetterhead.tsx` to match v3 format
 
-### Files to Modify
-- `supabase/migrations/` — new migration for the two columns
-- `src/pages/ReportParameters.tsx` — form state, dialog UI, save/load logic
+### 2. Update worker source URL in SnipOnLetterhead.tsx
+Change the worker initialization to use the matching v3 CDN URL:
+```
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`;
+```
+
+### Files to modify
+- `package.json` — pin `pdfjs-dist` to `3.11.174`
+- `src/components/lims/SnipOnLetterhead.tsx` — hardcode worker URL to v3
+
+This will immediately restore the app to a working state.
 
