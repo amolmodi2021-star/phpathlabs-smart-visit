@@ -11,9 +11,11 @@ import { toast } from "sonner";
 import {
   getHealthCheckups, saveHealthCheckup, deleteHealthCheckup,
   getHealthCheckupTests, linkTestToCheckup, unlinkTestFromCheckup,
+  getHealthCheckupProfiles, linkProfileToCheckup, unlinkProfileFromCheckup,
   HealthCheckup,
 } from "@/lib/healthCheckups";
 import TestLinker from "@/components/TestLinker";
+import ProfileLinker from "@/components/ProfileLinker";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 
 const INCENTIVE_PASSWORD = "9819111107";
@@ -164,13 +166,21 @@ const HealthCheckUpManagement = () => {
             </form>
 
             {editing?.id && (
-              <TestLinker
-                parentId={editing.id}
-                parentLabel="Health Check-Up"
-                fetchLinks={getHealthCheckupTests}
-                linkTest={linkTestToCheckup}
-                unlinkTest={unlinkTestFromCheckup}
-              />
+              <>
+                <TestLinker
+                  parentId={editing.id}
+                  parentLabel="Health Check-Up"
+                  fetchLinks={getHealthCheckupTests}
+                  linkTest={linkTestToCheckup}
+                  unlinkTest={unlinkTestFromCheckup}
+                />
+                <ProfileLinker
+                  parentId={editing.id}
+                  fetchLinks={getHealthCheckupProfiles}
+                  linkProfile={linkProfileToCheckup}
+                  unlinkProfile={unlinkProfileFromCheckup}
+                />
+              </>
             )}
           </DialogContent>
         </Dialog>
