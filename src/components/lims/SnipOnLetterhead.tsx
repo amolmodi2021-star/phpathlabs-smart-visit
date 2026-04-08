@@ -17,17 +17,14 @@ interface SnipOnLetterheadProps {
   onDeletePage: (regId: string, testId: string, pageIndex: number) => void;
 }
 
-interface PageImage {
-  url: string;
-  scale: number;
-}
+const PREVIEW_MAX_HEIGHT = 420; // px – keeps things compact
 
 const SnipOnLetterhead = ({
   regId, testId, imageUrls, isUploading, onPaste, onFileUpload, onDeletePage,
 }: SnipOnLetterheadProps) => {
   const [letterheadDataUrl, setLetterheadDataUrl] = useState<string | null>(null);
   const [loadingLetterhead, setLoadingLetterhead] = useState(true);
-  const [topMarginPct, setTopMarginPct] = useState(8.4); // default ~2.5cm on A4 (29.7cm)
+  const [topMarginPct, setTopMarginPct] = useState(8.4);
   const [pageScales, setPageScales] = useState<Record<number, number>>({});
   const [resizing, setResizing] = useState<{ pageIndex: number; startX: number; startY: number; startScale: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -43,7 +40,6 @@ const SnipOnLetterhead = ({
           .limit(1)
           .single();
         if (settings?.top_margin_cm) {
-          // Convert cm to percentage of A4 height (29.7cm)
           const marginPct = (Number(settings.top_margin_cm) / 29.7) * 100;
           setTopMarginPct(marginPct);
         }
@@ -125,40 +121,43 @@ const SnipOnLetterhead = ({
             </Button>
           </div>
         </div>
-        <div className="relative w-full" style={{ aspectRatio: "210/297" }}>
-          {letterheadDataUrl ? (
-            <img
-              src={letterheadDataUrl}
-              alt="Letterhead"
-              className="absolute inset-0 w-full h-full object-contain"
-              draggable={false}
-            />
-          ) : (
-            <div className="absolute inset-0 border-2 border-dashed border-muted flex items-center justify-center">
-              <span className="text-xs text-muted-foreground">No letterhead uploaded</span>
-            </div>
-          )}
-          {/* Snipped image overlay - top aligned after header margin, centered horizontally */}
-          <div className="absolute inset-0 flex justify-center" style={{ paddingTop: `${topMarginPct}%` }}>
-            <div
-              className="relative"
-              style={{ width: `${scale}%` }}
-            >
+        {/* Compact preview container with scroll */}
+        <div
+          className="relative w-full overflow-auto bg-gray-100"
+          style={{ maxHeight: `${PREVIEW_MAX_HEIGHT}px` }}
+        >
+          <div className="relative w-full" style={{ aspectRatio: "210/297" }}>
+            {letterheadDataUrl ? (
               <img
-                src={url}
-                alt={`Snip page ${idx + 1}`}
-                className="w-full h-auto"
+                src={letterheadDataUrl}
+                alt="Letterhead"
+                className="absolute inset-0 w-full h-full object-cover"
                 draggable={false}
               />
-              <div
-                className="absolute bottom-0 right-0 w-5 h-5 bg-primary/80 rounded-tl-md cursor-nwse-resize flex items-center justify-center hover:bg-primary transition-colors"
-                onMouseDown={(e) => handleResizeStart(e, idx)}
-                title="Drag to resize (proportional)"
-              >
-                <svg width="10" height="10" viewBox="0 0 10 10" className="text-primary-foreground">
-                  <line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" strokeWidth="1.5" />
-                  <line x1="9" y1="5" x2="5" y2="9" stroke="currentColor" strokeWidth="1.5" />
-                </svg>
+            ) : (
+              <div className="absolute inset-0 border-2 border-dashed border-muted flex items-center justify-center">
+                <span className="text-xs text-muted-foreground">No letterhead uploaded</span>
+              </div>
+            )}
+            {/* Snipped image overlay – top-aligned after header margin, centered */}
+            <div className="absolute inset-x-0 top-0 flex justify-center" style={{ paddingTop: `${topMarginPct}%` }}>
+              <div className="relative" style={{ width: `${scale}%` }}>
+                <img
+                  src={url}
+                  alt={`Snip page ${idx + 1}`}
+                  className="w-full h-auto"
+                  draggable={false}
+                />
+                <div
+                  className="absolute bottom-0 right-0 w-5 h-5 bg-primary/80 rounded-tl-md cursor-nwse-resize flex items-center justify-center hover:bg-primary transition-colors"
+                  onMouseDown={(e) => handleResizeStart(e, idx)}
+                  title="Drag to resize"
+                >
+                  <svg width="10" height="10" viewBox="0 0 10 10" className="text-primary-foreground">
+                    <line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" strokeWidth="1.5" />
+                    <line x1="9" y1="5" x2="5" y2="9" stroke="currentColor" strokeWidth="1.5" />
+                  </svg>
+                </div>
               </div>
             </div>
           </div>
@@ -179,6 +178,7 @@ const SnipOnLetterhead = ({
         </div>
       )}
 
+      {/* Add page area – compact */}
       <div className="border-2 border-dashed rounded-lg overflow-hidden">
         <div className="px-3 py-1.5 bg-muted/20 border-b border-dashed">
           <span className="text-xs font-medium text-muted-foreground flex items-center gap-1">
@@ -187,12 +187,12 @@ const SnipOnLetterhead = ({
           </span>
         </div>
 
-        <div className="relative" style={{ aspectRatio: "210/297", maxHeight: "500px" }}>
+        <div className="relative" style={{ height: "220px" }}>
           {letterheadDataUrl ? (
             <img
               src={letterheadDataUrl}
               alt="Letterhead preview"
-              className="absolute inset-0 w-full h-full object-contain opacity-40"
+              className="absolute inset-0 w-full h-full object-cover opacity-30"
               draggable={false}
             />
           ) : loadingLetterhead ? (
@@ -228,7 +228,7 @@ const SnipOnLetterhead = ({
           <span className="text-xs text-muted-foreground">or</span>
           <div className="flex-1 border-t" />
         </div>
-        <div className="flex justify-center pb-4">
+        <div className="flex justify-center pb-3">
           <label className="cursor-pointer">
             <input type="file" accept="image/*" className="hidden" onChange={(e) => {
               const file = e.target.files?.[0];
