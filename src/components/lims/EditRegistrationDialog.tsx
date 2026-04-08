@@ -88,6 +88,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   const tests: any[] = reg ? (Array.isArray(reg.tests) ? reg.tests : []) : [];
   const alreadyCancelled = reg ? new Set((Array.isArray(reg.cancelled_tests) ? reg.cancelled_tests : []).map((t: any) => t.test_id || t)) : new Set<string>();
   const isBillCancelled = reg?.bill_cancelled;
+  const isRefundBlocked = ["sample_accepted", "processing", "completed", "dispatched"].includes(reg?.status || "");
 
   const newlyCancelled = [...cancelledTestIds].filter(id => !alreadyCancelled.has(id));
   const refundCalc = useMemo(() => {
@@ -359,7 +360,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
                 const isNewCancel = cancelledTestIds.has(t.test_id) && !isCancelled;
                 return (
                   <div key={t.test_id || i} className={`flex items-center gap-3 p-2 rounded border ${isCancelled ? "bg-destructive/10 line-through opacity-60" : isNewCancel ? "bg-yellow-50 border-yellow-300" : ""}`}>
-                    {!isBillCancelled && !isCancelled && (
+                    {!isBillCancelled && !isCancelled && !isRefundBlocked && (
                       <Checkbox
                         checked={cancelledTestIds.has(t.test_id)}
                         onCheckedChange={(checked) => {
@@ -380,7 +381,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
               })}
             </div>
 
-            {!isBillCancelled && newlyCancelled.length > 0 && (
+            {!isBillCancelled && !isRefundBlocked && newlyCancelled.length > 0 && (
               <div className="p-3 rounded border bg-muted/50 space-y-2">
                 <div className="text-sm font-medium">Cancel {newlyCancelled.length} test(s) — Refund: ₹{refundCalc}</div>
                 <div className="flex items-center gap-3">
@@ -406,6 +407,11 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
                 {reg.refund_date && <div>Date: {format(new Date(reg.refund_date), "dd-MM-yyyy hh:mm a")}</div>}
               </div>
             )}
+            {isRefundBlocked && !isBillCancelled && (
+              <div className="p-3 rounded border border-orange-300 bg-orange-50 text-sm text-orange-700">
+                Refund / cancellation is not allowed after sample has been accepted.
+              </div>
+            )}
           </div>
 
           <Separator />
@@ -423,7 +429,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
           </div>
 
           {/* Cancel Bill */}
-          {!isBillCancelled && (
+          {!isBillCancelled && !isRefundBlocked && (
             <>
               <Separator />
               <div className="space-y-2">
