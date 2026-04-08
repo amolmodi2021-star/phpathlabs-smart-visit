@@ -129,8 +129,8 @@ const SampleCollection = () => {
       const tubeColor = testInfo.tube_color || "";
       const sampleType = testInfo.sample_type || "";
 
-      // Check if this test has a custom suffix from parameters
-      const suffix = paramSuffixMap[t.test_name] || "";
+      // Check if this test has a custom suffix from parameters (keyed by test_id)
+      const suffix = testSuffixMap[t.test_id] || "";
       const groupKey = `${tube}||${suffix}`;
 
       if (!groupMap[groupKey]) {
