@@ -127,21 +127,21 @@ const SnipOnLetterhead = ({
             </Button>
           </div>
         </div>
-        <div className="relative w-full" style={{ aspectRatio: "210/297" }}>
+        <div className="relative w-full overflow-hidden" style={{ maxHeight: "500px" }}>
           {letterheadDataUrl ? (
             <img
               src={letterheadDataUrl}
               alt="Letterhead"
-              className="absolute inset-0 w-full h-full object-contain"
+              className="w-full h-auto"
               draggable={false}
             />
           ) : (
-            <div className="absolute inset-0 border-2 border-dashed border-muted flex items-center justify-center">
+            <div className="w-full border-2 border-dashed border-muted flex items-center justify-center" style={{ aspectRatio: "210/297", maxHeight: "500px" }}>
               <span className="text-xs text-muted-foreground">No letterhead uploaded</span>
             </div>
           )}
           {/* Snipped image overlay - top aligned after header margin, centered horizontally */}
-          <div className="absolute inset-0 flex justify-center" style={{ paddingTop: `${topMarginPct}%` }}>
+          <div className="absolute left-0 right-0 top-0 flex justify-center" style={{ paddingTop: `${topMarginPct}%` }}>
             <div
               className="relative"
               style={{ width: `${scale}%` }}
@@ -153,7 +153,7 @@ const SnipOnLetterhead = ({
                 draggable={false}
               />
               <div
-                className="absolute bottom-0 right-0 w-5 h-5 bg-primary/80 rounded-tl-md cursor-nwse-resize flex items-center justify-center hover:bg-primary transition-colors"
+                className="absolute bottom-0 right-0 w-5 h-5 bg-primary/80 rounded-tl-md cursor-nwse-resize flex items-center justify-center hover:bg-primary transition-colors z-10"
                 onMouseDown={(e) => handleResizeStart(e, idx)}
                 title="Drag to resize (proportional)"
               >
