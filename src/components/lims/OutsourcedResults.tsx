@@ -17,6 +17,9 @@ import {
   Clipboard, Trash2, ExternalLink, Package, Send, Clock, CheckCircle2
 } from "lucide-react";
 import { toast } from "sonner";
+import { useMasterLookup } from "@/hooks/useMasterLookup";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 
 interface OutsourcedTest {
   testId: string;
