@@ -60,7 +60,13 @@ const SampleCollection = () => {
       }
       const { data, error } = await query;
       if (error) throw error;
-      return (data || []) as any[];
+      const rows = (data || []) as any[];
+      rows.sort((a: any, b: any) => {
+        const aUrgent = a.is_stat ? 1 : 0;
+        const bUrgent = b.is_stat ? 1 : 0;
+        return bUrgent - aUrgent;
+      });
+      return rows;
     },
   });
 
@@ -366,8 +372,15 @@ const SampleCollection = () => {
                     </TableCell>
                     <TableCell className="font-mono text-sm font-bold">{reg.invoice_number}</TableCell>
                     <TableCell>
-                      <div className="font-medium">{reg.patient_name}</div>
-                      {reg.is_stat && <Badge variant="destructive" className="text-[10px] px-1 py-0">STAT</Badge>}
+                      <div className="font-medium">
+                        {reg.patient_name}
+                        {reg.is_stat && (
+                          <span className="relative inline-flex h-2.5 w-2.5 ml-1.5 align-middle">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive"></span>
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="text-sm">{reg.mobile_number}</TableCell>
                     <TableCell><Badge variant="outline" className="text-xs">{getVisitLabel(reg.visit_type)}</Badge></TableCell>
