@@ -22,7 +22,7 @@ const CATEGORIES: CategoryDef[] = [
   { key: "machine_name", label: "Machine Names", placeholder: "e.g. Sysmex XN-1000", mappedTo: "Machine ID", mappedCategory: "machine_id" },
   { key: "outsource_lab", label: "Outsource Labs", placeholder: "e.g. SRL Diagnostics" },
   { key: "method", label: "Methods", placeholder: "e.g. Immunoturbidimetry" },
-  { key: "sample_tube", label: "Sample Tubes", placeholder: "e.g. Red Top, Lavender", mappedTo: "Sample Type", mappedCategory: "sample_type" },
+  { key: "sample_tube", label: "Sample Tubes", placeholder: "e.g. EDTA, Plain, Fluoride, Sodium Citrate", mappedTo: "Sample Type", mappedCategory: "sample_type" },
 ];
 
 interface LookupItem {
