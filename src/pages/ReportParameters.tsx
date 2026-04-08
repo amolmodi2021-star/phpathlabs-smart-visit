@@ -52,6 +52,11 @@ const ReportParameters = () => {
     same_for_gender: true,
     same_for_all_ages: true,
     normal_range_text: "",
+    machine_name: "",
+    machine_id: "",
+    send_for_interface: true,
+    is_calculated: false,
+    calculation_formula: [] as { parameter_id: string; parameter_name: string; operator: string }[],
   });
 
   const [normalRanges, setNormalRanges] = useState<NormalRange[]>([]);
@@ -150,6 +155,11 @@ const ReportParameters = () => {
         same_for_gender: form.same_for_gender,
         same_for_all_ages: form.same_for_all_ages,
         normal_range_text: form.normal_range_text || null,
+        machine_name: form.machine_name || null,
+        machine_id: form.machine_id || null,
+        send_for_interface: form.send_for_interface,
+        is_calculated: form.is_calculated,
+        calculation_formula: form.is_calculated ? form.calculation_formula : [],
       };
 
       let paramId = editId;
@@ -200,6 +210,11 @@ const ReportParameters = () => {
       same_for_gender: p.same_for_gender !== false,
       same_for_all_ages: p.same_for_all_ages !== false,
       normal_range_text: p.normal_range_text || "",
+      machine_name: p.machine_name || "",
+      machine_id: p.machine_id || "",
+      send_for_interface: p.send_for_interface !== false,
+      is_calculated: p.is_calculated || false,
+      calculation_formula: Array.isArray(p.calculation_formula) ? p.calculation_formula : [],
     });
     setNormalRanges([]);
     setDialogOpen(true);
@@ -294,7 +309,8 @@ const ReportParameters = () => {
     setForm({
       parameter_name: "", unit: "", store_for_analytics: false,
       use_global_normal_range: false, same_for_gender: true, same_for_all_ages: true,
-      normal_range_text: "",
+      normal_range_text: "", machine_name: "", machine_id: "",
+      send_for_interface: true, is_calculated: false, calculation_formula: [],
     });
     setNormalRanges([]);
     setDialogOpen(true);
@@ -355,38 +371,42 @@ const ReportParameters = () => {
           {loading ? <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin" /></div> : (
             <div className="overflow-x-auto">
               <Table>
-                <TableHeader>
+                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[40px]">
+                     <TableHead className="w-[40px]">
                       <Checkbox checked={filtered.length > 0 && selectedIds.size === filtered.length} onCheckedChange={toggleSelectAll} />
-                    </TableHead>
-                    <TableHead>Code</TableHead>
-                    <TableHead>Parameter</TableHead>
-                    <TableHead>Unit</TableHead>
-                    <TableHead>Global Range</TableHead>
-                    <TableHead>Analytics</TableHead>
-                    <TableHead className="w-[80px]">Actions</TableHead>
+                     </TableHead>
+                     <TableHead>Code</TableHead>
+                     <TableHead>Parameter</TableHead>
+                     <TableHead>Unit</TableHead>
+                     <TableHead>Interface</TableHead>
+                     <TableHead>Calculated</TableHead>
+                     <TableHead>Global Range</TableHead>
+                     <TableHead>Analytics</TableHead>
+                     <TableHead className="w-[80px]">Actions</TableHead>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
+                 </TableHeader>
+                 <TableBody>
                   {filtered.map((p) => (
-                    <TableRow key={p.id} className={selectedIds.has(p.id) ? "bg-muted/50" : ""}>
+                     <TableRow key={p.id} className={selectedIds.has(p.id) ? "bg-muted/50" : ""}>
                       <TableCell><Checkbox checked={selectedIds.has(p.id)} onCheckedChange={() => toggleSelect(p.id)} /></TableCell>
                       <TableCell className="font-mono text-xs text-muted-foreground">{p.param_code || "-"}</TableCell>
                       <TableCell className="font-medium">{p.parameter_name}</TableCell>
                       <TableCell>{p.unit || "-"}</TableCell>
+                      <TableCell>{p.send_for_interface !== false ? <Badge className="bg-emerald-100 text-emerald-800">AUTO</Badge> : <Badge variant="secondary">MANUAL</Badge>}</TableCell>
+                      <TableCell>{p.is_calculated ? <Badge className="bg-purple-100 text-purple-800">CALC</Badge> : <span className="text-muted-foreground">-</span>}</TableCell>
                       <TableCell>{p.use_global_normal_range ? <Badge className="bg-blue-100 text-blue-800">ON</Badge> : <Badge variant="secondary">OFF</Badge>}</TableCell>
                       <TableCell>{p.store_for_analytics ? <Badge className="bg-green-100 text-green-800">YES</Badge> : <Badge variant="secondary">NO</Badge>}</TableCell>
                       <TableCell>
-                        <div className="flex gap-1">
+                         <div className="flex gap-1">
                           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(p)}><Pencil className="h-3 w-3" /></Button>
                           <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDelete(p.id)}><Trash2 className="h-3 w-3" /></Button>
-                        </div>
+                         </div>
                       </TableCell>
-                    </TableRow>
+                     </TableRow>
                   ))}
-                  {filtered.length === 0 && <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No parameters found</TableCell></TableRow>}
-                </TableBody>
+                  {filtered.length === 0 && <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No parameters found</TableCell></TableRow>}
+                 </TableBody>
               </Table>
             </div>
           )}
@@ -411,6 +431,86 @@ const ReportParameters = () => {
             <div className="flex items-center gap-2">
               <Checkbox checked={form.store_for_analytics} onCheckedChange={(c) => setForm({ ...form, store_for_analytics: !!c })} />
               <Label>Store for Analytics (include in historical trends)</Label>
+            </div>
+
+            <Separator />
+
+            {/* Interface & Machine Mapping */}
+            <div className="space-y-3">
+              <h3 className="font-semibold text-base">Interface Settings</h3>
+              <div className="flex items-center justify-between">
+                <Label>Send for Interfacing (auto result from machine)</Label>
+                <Switch checked={form.send_for_interface} onCheckedChange={(v) => setForm({ ...form, send_for_interface: v })} />
+              </div>
+              {form.send_for_interface && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div><Label className="text-sm">Machine Name</Label><Input value={form.machine_name} onChange={(e) => setForm({ ...form, machine_name: e.target.value })} placeholder="e.g. Sysmex XN-1000" /></div>
+                  <div><Label className="text-sm">Machine ID</Label><Input value={form.machine_id} onChange={(e) => setForm({ ...form, machine_id: e.target.value })} placeholder="e.g. MACH001" /></div>
+                </div>
+              )}
+            </div>
+
+            <Separator />
+
+            {/* Calculated Parameter */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-base">Calculated Parameter</h3>
+                <Switch checked={form.is_calculated} onCheckedChange={(v) => setForm({ ...form, is_calculated: v })} />
+              </div>
+              {form.is_calculated && (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">Build formula: select parameters and operators. The result will be computed automatically.</p>
+                  {form.calculation_formula.map((item, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      {idx > 0 && (
+                        <Select value={item.operator} onValueChange={(v) => {
+                          const f = [...form.calculation_formula];
+                          f[idx] = { ...f[idx], operator: v };
+                          setForm({ ...form, calculation_formula: f });
+                        }}>
+                          <SelectTrigger className="w-20 h-8"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="+">+</SelectItem>
+                            <SelectItem value="-">−</SelectItem>
+                            <SelectItem value="*">×</SelectItem>
+                            <SelectItem value="/">÷</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
+                      <Select value={item.parameter_id} onValueChange={(v) => {
+                        const selected = params.find(p => p.id === v);
+                        const f = [...form.calculation_formula];
+                        f[idx] = { ...f[idx], parameter_id: v, parameter_name: selected?.parameter_name || "" };
+                        setForm({ ...form, calculation_formula: f });
+                      }}>
+                        <SelectTrigger className="flex-1 h-8"><SelectValue placeholder="Select parameter" /></SelectTrigger>
+                        <SelectContent>
+                          {params.filter(p => p.id !== editId).map(p => (
+                            <SelectItem key={p.id} value={p.id}>{p.parameter_name} ({p.param_code})</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-destructive shrink-0" onClick={() => {
+                        const f = form.calculation_formula.filter((_, i) => i !== idx);
+                        setForm({ ...form, calculation_formula: f });
+                      }}>
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))}
+                  <Button type="button" variant="outline" size="sm" onClick={() => {
+                    setForm({ ...form, calculation_formula: [...form.calculation_formula, { parameter_id: "", parameter_name: "", operator: "+" }] });
+                  }}>
+                    <Plus className="h-3 w-3 mr-1" />Add Parameter
+                  </Button>
+                  {form.calculation_formula.length > 0 && (
+                    <div className="text-xs text-muted-foreground bg-muted p-2 rounded font-mono">
+                      Formula: {form.calculation_formula.map((item, i) => `${i > 0 ? ` ${item.operator} ` : ""}${item.parameter_name || "?"}`).join("")}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <Separator />
