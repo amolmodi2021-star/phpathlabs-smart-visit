@@ -340,7 +340,24 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
   };
 
   const updateRange = (index: number, field: keyof NormalRange, value: any) => {
-    setNormalRanges(prev => prev.map((r, i) => i === index ? { ...r, [field]: value } : r));
+    setNormalRanges(prev => prev.map((r, i) => {
+      if (i !== index) return r;
+      const updated = { ...r, [field]: value };
+      // Auto-fill display text when low/high changes for numeric ranges
+      if ((field === "normal_range_low" || field === "normal_range_high") && (updated.range_type || "numeric") === "numeric") {
+        const low = field === "normal_range_low" ? value : updated.normal_range_low;
+        const high = field === "normal_range_high" ? value : updated.normal_range_high;
+        const unit = form.unit || "";
+        if (low !== null && low !== "" && high !== null && high !== "") {
+          updated.normal_range_text = `${low} - ${high} ${unit}`.trim();
+        } else if (low !== null && low !== "") {
+          updated.normal_range_text = `> ${low} ${unit}`.trim();
+        } else if (high !== null && high !== "") {
+          updated.normal_range_text = `< ${high} ${unit}`.trim();
+        }
+      }
+      return updated;
+    }));
   };
 
   const addAgeRange = (gender: string) => {
