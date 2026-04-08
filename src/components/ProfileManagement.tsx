@@ -27,11 +27,13 @@ const defaultForm = {
   bold_in_report: true, show_in_report: true,
   instrument_name: "", method: "", sample_type: "", interpretation: "", description: "",
   incentive_allowed: false, incentive_amount: "",
+  is_active: true,
 };
 
 const ProfileManagement = () => {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
+  const [showInactive, setShowInactive] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [deleteDialog, setDeleteDialog] = useState<string | null>(null);
@@ -71,6 +73,7 @@ const ProfileManagement = () => {
         description: values.description || null,
         incentive_allowed: values.incentive_allowed,
         incentive_amount: parseFloat(values.incentive_amount) || 0,
+        is_active: values.is_active,
       };
       await saveBillingProfile(payload, editing?.id);
     },
@@ -105,13 +108,18 @@ const ProfileManagement = () => {
       description: t.description || "",
       incentive_allowed: t.incentive_allowed,
       incentive_amount: t.incentive_amount ? String(t.incentive_amount) : "",
+      is_active: t.is_active !== false,
     });
     setIncentiveLocked(true);
     setIncentivePassword("");
     setDialogOpen(true);
   };
 
-  const filtered = items.filter((t) => t.profile_name.toLowerCase().includes(search.toLowerCase()));
+  const filtered = items.filter((t) => {
+    const matchesSearch = t.profile_name.toLowerCase().includes(search.toLowerCase());
+    const matchesActive = showInactive || t.is_active !== false;
+    return matchesSearch && matchesActive;
+  });
 
   const unlockIncentive = () => {
     if (incentivePassword === INCENTIVE_PASSWORD) { setIncentiveLocked(false); setIncentivePassword(""); }
@@ -153,6 +161,7 @@ const ProfileManagement = () => {
                 <div className="flex items-center gap-3"><Switch checked={form.fasting_required} onCheckedChange={(v) => setForm(p => ({ ...p, fasting_required: v }))} /><Label className="text-sm">Fasting Required</Label></div>
                 <div className="flex items-center gap-3"><Switch checked={form.discount_applicable} onCheckedChange={(v) => setForm(p => ({ ...p, discount_applicable: v }))} /><Label className="text-sm">Discount Applicable</Label></div>
                 <div className="flex items-center gap-3"><Switch checked={form.is_outsourced} onCheckedChange={(v) => setForm(p => ({ ...p, is_outsourced: v }))} /><Label className="text-sm">Mark as Outsourced</Label></div>
+                <div className="flex items-center gap-3"><Switch checked={form.is_active} onCheckedChange={(v) => setForm(p => ({ ...p, is_active: v }))} /><Label className="text-sm">Active</Label></div>
               </div>
 
               <div className="border rounded-md p-3 space-y-3 bg-muted/30">
@@ -218,12 +227,15 @@ const ProfileManagement = () => {
         </Dialog>
       </div>
 
-      <div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Search profiles..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
+      <div className="flex items-center gap-4">
+        <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Search profiles..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
+        <div className="flex items-center gap-2"><Switch checked={showInactive} onCheckedChange={setShowInactive} /><Label className="text-sm whitespace-nowrap">Show Inactive</Label></div>
+      </div>
 
       {isLoading ? <p className="text-muted-foreground text-sm">Loading...</p> : (
         <div className="grid gap-2">
           {filtered.map((t) => (
-            <Card key={t.id} className="glass-card">
+            <Card key={t.id} className={`glass-card ${t.is_active === false ? "opacity-60" : ""}`}>
               <CardContent className="flex items-center justify-between p-3 gap-3">
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm truncate">{t.profile_name}</p>
@@ -234,6 +246,7 @@ const ProfileManagement = () => {
                     {t.is_outsourced && <span className="text-orange-500">Outsourced</span>}
                     {t.incentive_allowed && <span className="text-primary">Incentive: ₹{t.incentive_amount}</span>}
                     <span className="text-purple-500">Profile</span>
+                    {t.is_active === false && <span className="text-destructive font-semibold">Inactive</span>}
                   </div>
                 </div>
                 <div className="flex gap-1">
