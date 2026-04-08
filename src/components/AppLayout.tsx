@@ -17,8 +17,6 @@ const navItems = [
   { to: "/home-visits", label: "Home Visits", icon: Home },
   { to: "/phlebotomists", label: "Phlebotomists", icon: Users },
   { to: "/tests", label: "Test Management", icon: TestTubes },
-  { to: "/parameters", label: "Parameter Management", icon: Microscope },
-  { to: "/departments", label: "Department Management", icon: Building2 },
   { to: "/templates", label: "Message Templates", icon: MessageSquare },
   { to: "/abnormal-history", label: "Abnormal History", icon: AlertTriangle },
   { to: "/phlebo-dashboard", label: "Phlebo Dashboard", icon: BarChart3 },
