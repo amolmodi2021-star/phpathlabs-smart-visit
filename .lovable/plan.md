@@ -1,34 +1,32 @@
 
 
-## Add Qualitative (Non-Numeric) Normal Range Support
+## Add Sample ID Suffix for Parameters
 
 ### Problem
-Some parameters like Urine Albumin, Widal Test, etc. have qualitative ranges (Absent/Present, Positive/Negative) rather than numeric low/high values. Currently the normal range form only has numeric Low/High fields plus a display text field, which doesn't properly capture expected qualitative values for flagging.
+When two parameters (e.g., FBS and PPBS) are registered together for the same patient, they share the same barcode/sample ID. The machine cannot distinguish between fasting and post-prandial samples, causing incorrect result mapping.
 
 ### Solution
-Add a **"Range Type"** selector per parameter with two options:
-1. **Numeric** (default) — shows Low/High number fields + display text (current behavior)
-2. **Qualitative/Text** — shows a single "Expected Normal Value" text field (e.g., "Absent", "Negative", "Non-Reactive") + display text for report
+Add a toggle + suffix field to parameters so each parameter can specify a custom sample ID suffix (e.g., `-F`, `-P`). During barcode generation and LIMS interfacing, the suffix is appended to the base invoice number to create unique sample IDs per parameter.
 
-This applies to each age/gender range row, so the same parameter could theoretically have text-based ranges.
+### Database Change
+- **Migration**: Add two columns to `report_test_parameters`:
+  - `custom_sample_suffix_enabled` (boolean, default `false`)
+  - `custom_sample_suffix` (text, nullable)
 
-### Implementation
+### UI Change — `src/pages/ReportParameters.tsx`
+- Add to the form state: `custom_sample_suffix_enabled` and `custom_sample_suffix`
+- In the parameter edit dialog (near the Machine/Interface section), add:
+  - Toggle: "Custom Sample ID Suffix"
+  - When ON: show a text input for the suffix value (e.g., `-F`, `-P`)
+- Save/load these fields in `handleSave`, `handleEdit`, and `openNew`
 
-#### Step 1 — Database Migration
-- Add `range_type` column to `parameter_normal_ranges` table (text, default `'numeric'`, values: `'numeric'` or `'qualitative'`)
-- Add `expected_value` column to `parameter_normal_ranges` (text, nullable) — stores the normal qualitative value (e.g., "Absent", "Negative")
-
-#### Step 2 — UI Changes in ReportParameters.tsx
-- Add a toggle or select per range row: "Numeric" vs "Qualitative"
-- When **Numeric**: show Low, High, Display Text (current behavior)
-- When **Qualitative**: hide Low/High, show "Expected Normal Value" input (e.g., "Absent") + Display Text
-- Update the `NormalRange` interface, save logic, and edit-load logic to handle the new fields
-
-#### Step 3 — Flagging Integration (future-ready)
-- The existing qualitative flagging engine in `reportFlags.ts` already detects abnormalities by comparing result text against expected values like "Absent"/"Negative"
-- The `expected_value` field will feed directly into this engine when results are entered
+### LIMS Interface Impact (future-ready)
+- The `custom_sample_suffix` value will be used later when:
+  1. Generating barcodes — append suffix to invoice number per parameter
+  2. Sending orders via LIMS interface — use suffixed sample IDs
+  3. Receiving results — match results using suffixed sample IDs
 
 ### Files to Modify
-- `supabase/migrations/` — new migration adding `range_type` and `expected_value` columns
-- `src/pages/ReportParameters.tsx` — UI changes for range type toggle and conditional fields
+- `supabase/migrations/` — new migration for the two columns
+- `src/pages/ReportParameters.tsx` — form state, dialog UI, save/load logic
 
