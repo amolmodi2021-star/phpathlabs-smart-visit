@@ -34,7 +34,7 @@ interface OutsourcedPatient {
   outsourcedTests: OutsourcedTest[];
 }
 
-const OutsourcedResults = () => {
+const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -43,21 +43,27 @@ const OutsourcedResults = () => {
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
-  // pasteAreaRefs moved to SnipOnLetterhead
   const { data: outsourceLabs = [] } = useMasterLookup("outsource_lab");
 
   // Selection & mark-as-sent state
-  const [selectedTests, setSelectedTests] = useState<Set<string>>(new Set()); // "regId||testId"
+  const [selectedTests, setSelectedTests] = useState<Set<string>>(new Set());
   const [showLabDialog, setShowLabDialog] = useState(false);
   const [labName, setLabName] = useState("");
   const [markingSent, setMarkingSent] = useState(false);
 
   // Edit lab name state
-  const [editLabKey, setEditLabKey] = useState<string | null>(null); // "regId||testId"
+  const [editLabKey, setEditLabKey] = useState<string | null>(null);
   const [editLabName, setEditLabName] = useState("");
   const [savingEditLab, setSavingEditLab] = useState(false);
 
-  // Debounce search
+  // Sync external search to debounced
+  React.useEffect(() => {
+    if (externalSearch !== undefined) {
+      setDebouncedSearch(externalSearch);
+    }
+  }, [externalSearch]);
+
+  // Debounce search (internal fallback)
   const searchTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const handleSearch = useCallback((val: string) => {
     setSearch(val);
