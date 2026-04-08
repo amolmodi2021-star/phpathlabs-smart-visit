@@ -2061,21 +2061,27 @@ export type Database = {
           created_at: string | null
           display_order: number | null
           id: string
+          is_subheader: boolean
           parameter_id: string
+          subheader_text: string | null
           test_id: string
         }
         Insert: {
           created_at?: string | null
           display_order?: number | null
           id?: string
+          is_subheader?: boolean
           parameter_id: string
+          subheader_text?: string | null
           test_id: string
         }
         Update: {
           created_at?: string | null
           display_order?: number | null
           id?: string
+          is_subheader?: boolean
           parameter_id?: string
+          subheader_text?: string | null
           test_id?: string
         }
         Relationships: [
