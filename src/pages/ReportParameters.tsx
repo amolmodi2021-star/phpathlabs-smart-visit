@@ -455,6 +455,11 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
               <Label>Store for Analytics (include in historical trends)</Label>
             </div>
 
+            <div className="flex items-center justify-between">
+              <Label>Active</Label>
+              <Switch checked={form.is_active} onCheckedChange={(v) => setForm({ ...form, is_active: v })} />
+            </div>
+
             <Separator />
 
             {/* Interface & Machine Mapping */}
