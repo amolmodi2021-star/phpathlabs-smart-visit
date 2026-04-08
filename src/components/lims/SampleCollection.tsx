@@ -83,20 +83,21 @@ const SampleCollection = () => {
     },
   });
 
-  // Fetch parameters with custom suffix
-  const { data: paramSuffixMap = {} } = useQuery({
-    queryKey: ["param_suffix_map"],
+  // Fetch parameters with custom suffix via test_parameters junction
+  // Maps billing test_id -> suffix (if any parameter of that test has a suffix)
+  const { data: testSuffixMap = {} } = useQuery({
+    queryKey: ["test_suffix_map"],
     queryFn: async () => {
       const { data } = await supabase
-        .from("report_test_parameters")
-        .select("id, parameter_name, test_name, custom_sample_suffix_enabled, custom_sample_suffix")
-        .eq("custom_sample_suffix_enabled", true);
-      // Map by test_name to suffix
+        .from("test_parameters")
+        .select("test_id, parameter_id, report_test_parameters!inner(custom_sample_suffix_enabled, custom_sample_suffix)")
+        .eq("report_test_parameters.custom_sample_suffix_enabled", true);
+      // Map by test_id to suffix
       const map: Record<string, string> = {};
-      (data || []).forEach((p: any) => {
-        const testName = p.test_name || p.parameter_name;
-        if (testName && p.custom_sample_suffix) {
-          map[testName] = p.custom_sample_suffix;
+      (data || []).forEach((tp: any) => {
+        const suffix = tp.report_test_parameters?.custom_sample_suffix;
+        if (tp.test_id && suffix) {
+          map[tp.test_id] = suffix;
         }
       });
       return map;
@@ -128,8 +129,8 @@ const SampleCollection = () => {
       const tubeColor = testInfo.tube_color || "";
       const sampleType = testInfo.sample_type || "";
 
-      // Check if this test has a custom suffix from parameters
-      const suffix = paramSuffixMap[t.test_name] || "";
+      // Check if this test has a custom suffix from parameters (keyed by test_id)
+      const suffix = testSuffixMap[t.test_id] || "";
       const groupKey = `${tube}||${suffix}`;
 
       if (!groupMap[groupKey]) {
@@ -147,7 +148,7 @@ const SampleCollection = () => {
     }
 
     return Object.values(groupMap);
-  }, [testsMap, paramSuffixMap]);
+  }, [testsMap, testSuffixMap]);
 
   // Get currently selected barcodes for a registration
   const getSelectedForReg = (regId: string, groups: BarcodeGroup[]) => {
