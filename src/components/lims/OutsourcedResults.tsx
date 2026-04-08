@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from "react";
+import React, { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
@@ -34,7 +34,7 @@ interface OutsourcedPatient {
   outsourcedTests: OutsourcedTest[];
 }
 
-const OutsourcedResults = () => {
+const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -43,21 +43,27 @@ const OutsourcedResults = () => {
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
-  // pasteAreaRefs moved to SnipOnLetterhead
   const { data: outsourceLabs = [] } = useMasterLookup("outsource_lab");
 
   // Selection & mark-as-sent state
-  const [selectedTests, setSelectedTests] = useState<Set<string>>(new Set()); // "regId||testId"
+  const [selectedTests, setSelectedTests] = useState<Set<string>>(new Set());
   const [showLabDialog, setShowLabDialog] = useState(false);
   const [labName, setLabName] = useState("");
   const [markingSent, setMarkingSent] = useState(false);
 
   // Edit lab name state
-  const [editLabKey, setEditLabKey] = useState<string | null>(null); // "regId||testId"
+  const [editLabKey, setEditLabKey] = useState<string | null>(null);
   const [editLabName, setEditLabName] = useState("");
   const [savingEditLab, setSavingEditLab] = useState(false);
 
-  // Debounce search
+  // Sync external search to debounced
+  useEffect(() => {
+    if (externalSearch !== undefined) {
+      setDebouncedSearch(externalSearch);
+    }
+  }, [externalSearch]);
+
+  // Debounce search (internal fallback)
   const searchTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const handleSearch = useCallback((val: string) => {
     setSearch(val);
@@ -745,15 +751,6 @@ const OutsourcedResults = () => {
 
       {/* Action bar */}
       <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search patient, invoice, mobile…"
-            value={search}
-            onChange={e => handleSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
         {selectedTests.size > 0 && (
           <Button onClick={() => setShowLabDialog(true)} className="gap-1.5">
             <Send className="h-4 w-4" />
