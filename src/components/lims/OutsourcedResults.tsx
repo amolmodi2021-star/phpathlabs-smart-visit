@@ -834,6 +834,36 @@ const OutsourcedResults = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Edit Lab Name Dialog */}
+      <Dialog open={!!editLabKey} onOpenChange={(open) => { if (!open) { setEditLabKey(null); setEditLabName(""); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Outsourced Lab Name</DialogTitle>
+            <DialogDescription>Select the correct outsourced lab name.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Label>Outsourced Lab</Label>
+            <Select value={editLabName} onValueChange={setEditLabName}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select outsourced lab" />
+              </SelectTrigger>
+              <SelectContent>
+                {outsourceLabs.map(lab => (
+                  <SelectItem key={lab.id} value={lab.value}>{lab.value}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setEditLabKey(null); setEditLabName(""); }}>Cancel</Button>
+            <Button onClick={saveEditLabName} disabled={savingEditLab || !editLabName.trim()} className="gap-1.5">
+              {savingEditLab ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Update Lab Name
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
