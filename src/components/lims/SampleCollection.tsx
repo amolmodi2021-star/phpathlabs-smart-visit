@@ -7,7 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Printer, ChevronDown, ChevronUp, CheckCircle2 } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Search, Printer, ChevronDown, ChevronUp, CheckCircle2, RotateCcw } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import JsBarcode from "jsbarcode";
@@ -19,7 +22,7 @@ const TUBE_COLOR_MAP: Record<string, string> = {
 };
 
 interface BarcodeGroup {
-  sampleId: string; // invoice + suffix
+  sampleId: string;
   sampleTube: string;
   tubeColor: string;
   sampleType: string;
@@ -30,11 +33,17 @@ interface BarcodeGroup {
 
 const SampleCollection = () => {
   const qc = useQueryClient();
+  const [activeTab, setActiveTab] = useState("pending");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [selectedBarcodes, setSelectedBarcodes] = useState<Record<string, Record<string, boolean>>>({});
   const printRef = useRef<HTMLDivElement>(null);
+
+  // Reprint dialog state
+  const [reprintDialog, setReprintDialog] = useState<{ open: boolean; reg: any; groups: BarcodeGroup[] }>({ open: false, reg: null, groups: [] });
+  const [reprintReason, setReprintReason] = useState("");
+  const [reprintSelectedBarcodes, setReprintSelectedBarcodes] = useState<Record<number, boolean>>({});
 
   const handleSearch = (val: string) => {
     setSearch(val);
@@ -42,7 +51,7 @@ const SampleCollection = () => {
     (window as any).__scSearchTimeout = setTimeout(() => setDebouncedSearch(val), 400);
   };
 
-  // Fetch registered patients
+  // Fetch registered patients (pending)
   const { data: registrations = [], isLoading } = useQuery({
     queryKey: ["sample_collection_patients", debouncedSearch],
     queryFn: async () => {
@@ -61,12 +70,30 @@ const SampleCollection = () => {
       const { data, error } = await query;
       if (error) throw error;
       const rows = (data || []) as any[];
-      rows.sort((a: any, b: any) => {
-        const aUrgent = a.is_stat ? 1 : 0;
-        const bUrgent = b.is_stat ? 1 : 0;
-        return bUrgent - aUrgent;
-      });
+      rows.sort((a: any, b: any) => (b.is_stat ? 1 : 0) - (a.is_stat ? 1 : 0));
       return rows;
+    },
+  });
+
+  // Fetch collected patients
+  const { data: collectedRegistrations = [], isLoading: isLoadingCollected } = useQuery({
+    queryKey: ["sample_collected_patients", debouncedSearch],
+    queryFn: async () => {
+      let query = supabase
+        .from("patient_registrations")
+        .select("*")
+        .eq("status", "sample_collected")
+        .eq("bill_cancelled", false)
+        .order("updated_at", { ascending: false });
+
+      if (debouncedSearch) {
+        query = query.or(
+          `patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%`
+        );
+      }
+      const { data, error } = await query;
+      if (error) throw error;
+      return (data || []) as any[];
     },
   });
 
@@ -90,7 +117,6 @@ const SampleCollection = () => {
   });
 
   // Fetch parameters with custom suffix via test_parameters junction
-  // Maps billing test_id -> suffix (if any parameter of that test has a suffix)
   const { data: testSuffixMap = {} } = useQuery({
     queryKey: ["test_suffix_map"],
     queryFn: async () => {
@@ -98,7 +124,6 @@ const SampleCollection = () => {
         .from("test_parameters")
         .select("test_id, parameter_id, report_test_parameters!inner(custom_sample_suffix_enabled, custom_sample_suffix)")
         .eq("report_test_parameters.custom_sample_suffix_enabled", true);
-      // Map by test_id to suffix
       const map: Record<string, string> = {};
       (data || []).forEach((tp: any) => {
         const suffix = tp.report_test_parameters?.custom_sample_suffix;
@@ -126,7 +151,6 @@ const SampleCollection = () => {
     const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
     const activeTests = tests.filter((t: any) => !cancelledIds.has(t.test_id));
 
-    // Group by sample_tube + suffix
     const groupMap: Record<string, BarcodeGroup> = {};
 
     for (const t of activeTests) {
@@ -134,8 +158,6 @@ const SampleCollection = () => {
       const tube = testInfo.sample_tube || "DEFAULT";
       const tubeColor = testInfo.tube_color || "";
       const sampleType = testInfo.sample_type || "";
-
-      // Check if this test has a custom suffix from parameters (keyed by test_id)
       const suffix = testSuffixMap[t.test_id] || "";
       const groupKey = `${tube}||${suffix}`;
 
@@ -156,12 +178,6 @@ const SampleCollection = () => {
     return Object.values(groupMap);
   }, [testsMap, testSuffixMap]);
 
-  // Get currently selected barcodes for a registration
-  const getSelectedForReg = (regId: string, groups: BarcodeGroup[]) => {
-    const sel = selectedBarcodes[regId] || {};
-    return groups.map((g, i) => ({ ...g, selected: !!sel[i] }));
-  };
-
   const toggleBarcode = (regId: string, idx: number) => {
     setSelectedBarcodes(prev => {
       const regSel = { ...(prev[regId] || {}) };
@@ -178,7 +194,6 @@ const SampleCollection = () => {
     });
   };
 
-  // Calculate age from dob
   const calcAge = (dob: string | null) => {
     if (!dob) return "";
     const birth = new Date(dob);
@@ -187,15 +202,8 @@ const SampleCollection = () => {
     return `${years} Yr(s)`;
   };
 
-  // Print barcodes
-  const printBarcodes = (reg: any, groups: BarcodeGroup[]) => {
-    const sel = selectedBarcodes[reg.id] || {};
-    const toPrint = groups.filter((_, i) => sel[i]);
-    if (toPrint.length === 0) {
-      toast.error("Please select at least one barcode to print");
-      return;
-    }
-
+  // Print barcodes helper
+  const doPrintBarcodes = (reg: any, toPrint: BarcodeGroup[]) => {
     const printWindow = window.open("", "_blank", "width=400,height=600");
     if (!printWindow) {
       toast.error("Pop-up blocked. Please allow pop-ups.");
@@ -225,19 +233,12 @@ const SampleCollection = () => {
     </style></head><body>`;
 
     for (const group of toPrint) {
-      // Create barcode SVG
       const canvas = document.createElement("canvas");
       try {
         JsBarcode(canvas, group.sampleId, {
-          format: "CODE128",
-          width: 1.5,
-          height: 30,
-          displayValue: false,
-          margin: 0,
+          format: "CODE128", width: 1.5, height: 30, displayValue: false, margin: 0,
         });
-      } catch {
-        // fallback
-      }
+      } catch { /* fallback */ }
       const barcodeDataUrl = canvas.toDataURL("image/png");
 
       html += `<div class="label">
@@ -263,9 +264,18 @@ const SampleCollection = () => {
     html += "</body></html>";
     printWindow.document.write(html);
     printWindow.document.close();
-    printWindow.onload = () => {
-      printWindow.print();
-    };
+    printWindow.onload = () => { printWindow.print(); };
+  };
+
+  // Print barcodes (pending tab)
+  const printBarcodes = (reg: any, groups: BarcodeGroup[]) => {
+    const sel = selectedBarcodes[reg.id] || {};
+    const toPrint = groups.filter((_, i) => sel[i]);
+    if (toPrint.length === 0) {
+      toast.error("Please select at least one barcode to print");
+      return;
+    }
+    doPrintBarcodes(reg, toPrint);
   };
 
   // Mark sample collected
@@ -279,13 +289,13 @@ const SampleCollection = () => {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["sample_collection_patients"] });
+      qc.invalidateQueries({ queryKey: ["sample_collected_patients"] });
       qc.invalidateQueries({ queryKey: ["patient_registrations"] });
       toast.success("Status updated to Sample Collected");
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
-  // Print and mark collected
   const handlePrintAndCollect = (reg: any, groups: BarcodeGroup[]) => {
     const sel = selectedBarcodes[reg.id] || {};
     const selectedCount = groups.filter((_, i) => sel[i]).length;
@@ -293,14 +303,36 @@ const SampleCollection = () => {
       toast.error("Please select at least one barcode");
       return;
     }
-
-    // Check if all barcodes are selected
     const allSelected = groups.every((_, i) => sel[i]);
     printBarcodes(reg, groups);
-
     if (allSelected) {
       markCollectedMutation.mutate(reg.id);
     }
+  };
+
+  // Reprint dialog handlers
+  const openReprintDialog = (reg: any) => {
+    const groups = buildBarcodeGroups(reg);
+    const allSel: Record<number, boolean> = {};
+    groups.forEach((_, i) => { allSel[i] = true; });
+    setReprintSelectedBarcodes(allSel);
+    setReprintReason("");
+    setReprintDialog({ open: true, reg, groups });
+  };
+
+  const handleReprint = () => {
+    if (!reprintReason.trim()) {
+      toast.error("Please provide a reason for reprinting");
+      return;
+    }
+    const toPrint = reprintDialog.groups.filter((_, i) => reprintSelectedBarcodes[i]);
+    if (toPrint.length === 0) {
+      toast.error("Please select at least one barcode");
+      return;
+    }
+    doPrintBarcodes(reprintDialog.reg, toPrint);
+    toast.success(`Reprinted ${toPrint.length} barcode(s). Reason: ${reprintReason.trim()}`);
+    setReprintDialog({ open: false, reg: null, groups: [] });
   };
 
   const getVisitLabel = (v: string) => {
@@ -317,191 +349,245 @@ const SampleCollection = () => {
     return TUBE_COLOR_MAP[color.toLowerCase().trim()] || color;
   };
 
+  const renderBarcodeExpansion = (reg: any, groups: BarcodeGroup[], isPending: boolean) => {
+    const sel = isPending ? (selectedBarcodes[reg.id] || {}) : {};
+    const selectedCount = isPending ? groups.filter((_, i) => sel[i]).length : 0;
+
+    return (
+      <div className="bg-muted/30 p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <h4 className="text-sm font-semibold">Sample Barcodes</h4>
+          {isPending && (
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => {
+                const allSel = groups.every((_, i) => sel[i]);
+                toggleAllBarcodes(reg.id, groups, !allSel);
+              }}>
+                {groups.every((_, i) => sel[i]) ? "Deselect All" : "Select All"}
+              </Button>
+              <Button size="sm" variant="default" className="gap-1" disabled={selectedCount === 0}
+                onClick={() => handlePrintAndCollect(reg, groups)}>
+                <Printer className="h-3.5 w-3.5" />
+                Print Selected ({selectedCount})
+                {selectedCount === groups.length && " & Collect"}
+              </Button>
+            </div>
+          )}
+        </div>
+
+        <div className="grid gap-2">
+          {groups.map((group, idx) => {
+            const colorHex = getTubeColorHex(group.tubeColor);
+            return (
+              <Card key={idx} className={isPending && sel[idx] ? "ring-2 ring-primary" : ""}>
+                <CardContent className="p-3 flex items-center gap-3">
+                  {isPending && (
+                    <Checkbox checked={!!sel[idx]} onCheckedChange={() => toggleBarcode(reg.id, idx)} />
+                  )}
+                  {colorHex && (
+                    <span className="inline-block w-5 h-5 rounded-full border-2 border-muted-foreground/30 shrink-0"
+                      style={{ backgroundColor: colorHex }} title={group.tubeColor} />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-bold text-sm">{group.sampleId}</span>
+                      <Badge variant="outline" className="text-xs">
+                        {group.sampleTube === "DEFAULT" ? "No Tube" : group.sampleTube}
+                      </Badge>
+                      {group.sampleType && (
+                        <span className="text-xs text-muted-foreground">{group.sampleType}</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                      {group.testNames.join(", ")}
+                    </p>
+                  </div>
+                  {isPending && (
+                    <Button size="sm" variant="ghost" className="shrink-0" onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedBarcodes(prev => ({ ...prev, [reg.id]: { [idx]: true } }));
+                      doPrintBarcodes(reg, [group]);
+                    }}>
+                      <Printer className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+
+        {isPending && selectedCount === groups.length && (
+          <Button className="w-full gap-2" onClick={() => markCollectedMutation.mutate(reg.id)}>
+            <CheckCircle2 className="h-4 w-4" /> Mark as Sample Collected
+          </Button>
+        )}
+      </div>
+    );
+  };
+
+  const renderTable = (data: any[], isPending: boolean, loading: boolean) => {
+    if (loading) return <p className="text-sm text-muted-foreground">Loading...</p>;
+    if (data.length === 0) return (
+      <p className="text-sm text-muted-foreground">
+        {isPending ? "No registered patients pending sample collection" : "No collected samples found"}
+      </p>
+    );
+
+    return (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-8"></TableHead>
+            <TableHead>Invoice</TableHead>
+            <TableHead>Patient Name</TableHead>
+            <TableHead>Mobile</TableHead>
+            <TableHead>Visit</TableHead>
+            <TableHead>Tests</TableHead>
+            <TableHead>Date</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {data.map((reg: any) => {
+            const groups = buildBarcodeGroups(reg);
+            const isExpanded = expandedRow === reg.id;
+            const sel = selectedBarcodes[reg.id] || {};
+            const activeTests = ((reg.tests || []) as any[]).filter(
+              (t: any) => !((reg.cancelled_tests || []) as any[]).some((c: any) => c.test_id === t.test_id)
+            );
+
+            return (
+              <>
+                <TableRow key={reg.id}
+                  className={`cursor-pointer hover:bg-muted/50 ${reg.is_stat ? "bg-destructive/5 border-l-2 border-l-destructive" : ""}`}
+                  onClick={() => setExpandedRow(isExpanded ? null : reg.id)}>
+                  <TableCell>
+                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </TableCell>
+                  <TableCell className="font-mono text-sm font-bold">{reg.invoice_number}</TableCell>
+                  <TableCell>
+                    <div className="font-medium">
+                      {reg.patient_name}
+                      {reg.is_stat && (
+                        <span className="relative inline-flex h-2.5 w-2.5 ml-1.5 align-middle">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive"></span>
+                        </span>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-sm">{reg.mobile_number}</TableCell>
+                  <TableCell><Badge variant="outline" className="text-xs">{getVisitLabel(reg.visit_type)}</Badge></TableCell>
+                  <TableCell className="text-sm">{activeTests.length} tests • {groups.length} tube(s)</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {format(new Date(isPending ? reg.created_at : reg.updated_at), "dd/MM/yy HH:mm")}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {isPending ? (
+                      <Button size="sm" variant="default" className="gap-1"
+                        onClick={(e) => { e.stopPropagation(); toggleAllBarcodes(reg.id, groups, true); setExpandedRow(reg.id); }}>
+                        <Printer className="h-3.5 w-3.5" /> Print All
+                      </Button>
+                    ) : (
+                      <Button size="sm" variant="outline" className="gap-1"
+                        onClick={(e) => { e.stopPropagation(); openReprintDialog(reg); }}>
+                        <RotateCcw className="h-3.5 w-3.5" /> Reprint
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+
+                {isExpanded && (
+                  <TableRow key={`${reg.id}-expand`}>
+                    <TableCell colSpan={8} className="p-0">
+                      {renderBarcodeExpansion(reg, groups, isPending)}
+                    </TableCell>
+                  </TableRow>
+                )}
+              </>
+            );
+          })}
+        </TableBody>
+      </Table>
+    );
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => handleSearch(e.target.value)}
-            placeholder="Search by name, mobile, invoice..."
-            className="pl-8"
-          />
+          <Input value={search} onChange={(e) => handleSearch(e.target.value)}
+            placeholder="Search by name, mobile, invoice..." className="pl-8" />
         </div>
-        <Badge variant="outline">{registrations.length} patients pending</Badge>
       </div>
 
-      {isLoading ? (
-        <p className="text-sm text-muted-foreground">Loading...</p>
-      ) : registrations.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No registered patients pending sample collection</p>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-8"></TableHead>
-              <TableHead>Invoice</TableHead>
-              <TableHead>Patient Name</TableHead>
-              <TableHead>Mobile</TableHead>
-              <TableHead>Visit</TableHead>
-              <TableHead>Tests</TableHead>
-              <TableHead>Date</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {registrations.map((reg: any) => {
-              const groups = buildBarcodeGroups(reg);
-              const isExpanded = expandedRow === reg.id;
-              const sel = selectedBarcodes[reg.id] || {};
-              const selectedCount = groups.filter((_, i) => sel[i]).length;
-              const activeTests = ((reg.tests || []) as any[]).filter(
-                (t: any) => !((reg.cancelled_tests || []) as any[]).some((c: any) => c.test_id === t.test_id)
-              );
+      <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setExpandedRow(null); }}>
+        <TabsList>
+          <TabsTrigger value="pending" className="gap-1.5">
+            Pending <Badge variant="secondary" className="text-xs ml-1">{registrations.length}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="collected" className="gap-1.5">
+            Collected <Badge variant="secondary" className="text-xs ml-1">{collectedRegistrations.length}</Badge>
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="pending" className="mt-3">
+          {renderTable(registrations, true, isLoading)}
+        </TabsContent>
+        <TabsContent value="collected" className="mt-3">
+          {renderTable(collectedRegistrations, false, isLoadingCollected)}
+        </TabsContent>
+      </Tabs>
 
-              return (
-                <>
-                  <TableRow
-                    key={reg.id}
-                    className={`cursor-pointer hover:bg-muted/50 ${reg.is_stat ? "bg-destructive/5 border-l-2 border-l-destructive" : ""}`}
-                    onClick={() => setExpandedRow(isExpanded ? null : reg.id)}
-                  >
-                    <TableCell>
-                      {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                    </TableCell>
-                    <TableCell className="font-mono text-sm font-bold">{reg.invoice_number}</TableCell>
-                    <TableCell>
-                      <div className="font-medium">
-                        {reg.patient_name}
-                        {reg.is_stat && (
-                          <span className="relative inline-flex h-2.5 w-2.5 ml-1.5 align-middle">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive"></span>
-                          </span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm">{reg.mobile_number}</TableCell>
-                    <TableCell><Badge variant="outline" className="text-xs">{getVisitLabel(reg.visit_type)}</Badge></TableCell>
-                    <TableCell className="text-sm">{activeTests.length} tests • {groups.length} tube(s)</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {format(new Date(reg.created_at), "dd/MM/yy HH:mm")}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        variant="default"
-                        className="gap-1"
-                        onClick={(e) => { e.stopPropagation(); toggleAllBarcodes(reg.id, groups, true); setExpandedRow(reg.id); }}
-                      >
-                        <Printer className="h-3.5 w-3.5" /> Print All
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+      {/* Reprint Dialog */}
+      <Dialog open={reprintDialog.open} onOpenChange={(open) => { if (!open) setReprintDialog({ open: false, reg: null, groups: [] }); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Reprint Barcodes</DialogTitle>
+            <DialogDescription>
+              Patient: <strong>{reprintDialog.reg?.patient_name}</strong> — {reprintDialog.reg?.invoice_number}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-2">
+              {reprintDialog.groups.map((group, idx) => {
+                const colorHex = getTubeColorHex(group.tubeColor);
+                return (
+                  <div key={idx} className="flex items-center gap-3 p-2 rounded border">
+                    <Checkbox checked={!!reprintSelectedBarcodes[idx]}
+                      onCheckedChange={() => setReprintSelectedBarcodes(prev => ({ ...prev, [idx]: !prev[idx] }))} />
+                    {colorHex && (
+                      <span className="inline-block w-4 h-4 rounded-full border shrink-0"
+                        style={{ backgroundColor: colorHex }} />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <span className="font-mono font-bold text-sm">{group.sampleId}</span>
+                      <Badge variant="outline" className="text-xs ml-2">
+                        {group.sampleTube === "DEFAULT" ? "No Tube" : group.sampleTube}
+                      </Badge>
+                      <p className="text-xs text-muted-foreground truncate">{group.testNames.join(", ")}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Reason for Reprint <span className="text-destructive">*</span></label>
+              <Textarea value={reprintReason} onChange={(e) => setReprintReason(e.target.value)}
+                placeholder="e.g. Barcode damaged, label fell off, scanner not reading..." rows={2} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReprintDialog({ open: false, reg: null, groups: [] })}>Cancel</Button>
+            <Button className="gap-1" onClick={handleReprint}
+              disabled={!reprintReason.trim() || !Object.values(reprintSelectedBarcodes).some(Boolean)}>
+              <Printer className="h-3.5 w-3.5" /> Reprint
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-                  {isExpanded && (
-                    <TableRow key={`${reg.id}-expand`}>
-                      <TableCell colSpan={8} className="p-0">
-                        <div className="bg-muted/30 p-4 space-y-3">
-                          <div className="flex items-center justify-between">
-                            <h4 className="text-sm font-semibold">Sample Barcodes</h4>
-                            <div className="flex gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  const allSel = groups.every((_, i) => sel[i]);
-                                  toggleAllBarcodes(reg.id, groups, !allSel);
-                                }}
-                              >
-                                {groups.every((_, i) => sel[i]) ? "Deselect All" : "Select All"}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="default"
-                                className="gap-1"
-                                disabled={selectedCount === 0}
-                                onClick={() => handlePrintAndCollect(reg, groups)}
-                              >
-                                <Printer className="h-3.5 w-3.5" />
-                                Print Selected ({selectedCount})
-                                {selectedCount === groups.length && " & Collect"}
-                              </Button>
-                            </div>
-                          </div>
-
-                          <div className="grid gap-2">
-                            {groups.map((group, idx) => {
-                              const colorHex = getTubeColorHex(group.tubeColor);
-                              return (
-                                <Card key={idx} className={`${sel[idx] ? "ring-2 ring-primary" : ""}`}>
-                                  <CardContent className="p-3 flex items-center gap-3">
-                                    <Checkbox
-                                      checked={!!sel[idx]}
-                                      onCheckedChange={() => toggleBarcode(reg.id, idx)}
-                                    />
-                                    {colorHex && (
-                                      <span
-                                        className="inline-block w-5 h-5 rounded-full border-2 border-muted-foreground/30 shrink-0"
-                                        style={{ backgroundColor: colorHex }}
-                                        title={group.tubeColor}
-                                      />
-                                    )}
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-2">
-                                        <span className="font-mono font-bold text-sm">{group.sampleId}</span>
-                                        <Badge variant="outline" className="text-xs">
-                                          {group.sampleTube === "DEFAULT" ? "No Tube" : group.sampleTube}
-                                        </Badge>
-                                        {group.sampleType && (
-                                          <span className="text-xs text-muted-foreground">{group.sampleType}</span>
-                                        )}
-                                      </div>
-                                      <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                                        {group.testNames.join(", ")}
-                                      </p>
-                                    </div>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="shrink-0"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedBarcodes(prev => ({
-                                          ...prev,
-                                          [reg.id]: { [idx]: true },
-                                        }));
-                                        printBarcodes(reg, [group]);
-                                      }}
-                                    >
-                                      <Printer className="h-3.5 w-3.5" />
-                                    </Button>
-                                  </CardContent>
-                                </Card>
-                              );
-                            })}
-                          </div>
-
-                          {selectedCount === groups.length && (
-                            <Button
-                              className="w-full gap-2"
-                              onClick={() => markCollectedMutation.mutate(reg.id)}
-                            >
-                              <CheckCircle2 className="h-4 w-4" />
-                              Mark as Sample Collected
-                            </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </>
-              );
-            })}
-          </TableBody>
-        </Table>
-      )}
       <div ref={printRef} className="hidden" />
     </div>
   );
