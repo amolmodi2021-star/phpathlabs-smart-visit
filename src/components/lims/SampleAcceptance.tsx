@@ -111,7 +111,7 @@ const SampleAcceptance = () => {
     queryFn: async () => {
       const { data } = await supabase
         .from("test_parameters")
-        .select("test_id, parameter_id, report_test_parameters!inner(param_code, parameter_name, custom_sample_suffix_enabled, custom_sample_suffix, send_for_interfacing, machine_id, machine_name, unit)");
+        .select("test_id, parameter_id, report_test_parameters(param_code, parameter_name, custom_sample_suffix_enabled, custom_sample_suffix, send_for_interfacing, machine_id, machine_name, unit)");
       // Build map: test_id -> { suffix, params[] }
       const map: Record<string, { suffix: string; params: any[] }> = {};
       (data || []).forEach((tp: any) => {
