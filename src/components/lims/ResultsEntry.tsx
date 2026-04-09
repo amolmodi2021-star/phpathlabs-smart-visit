@@ -563,6 +563,7 @@ const ResultsEntry = () => {
         <TableCell className="py-1.5 text-center">
           {flag === "H" && <Badge variant="destructive" className="text-xs">HIGH</Badge>}
           {flag === "L" && <Badge variant="destructive" className="text-xs">LOW</Badge>}
+          {flag === "A" && <Badge variant="destructive" className="text-xs">Abnormal</Badge>}
           {flag === "N" && <Badge variant="secondary" className="text-xs text-green-700">Normal</Badge>}
           {!flag && currentValue && <Badge variant="outline" className="text-xs">—</Badge>}
         </TableCell>
