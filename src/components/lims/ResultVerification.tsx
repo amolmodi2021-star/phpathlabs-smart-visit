@@ -43,9 +43,18 @@ interface ParameterResult {
   isSnipMode: boolean;
 }
 
+interface SnipOnlyTest {
+  testId: string;
+  testName: string;
+  labName: string | null;
+  snipUrls: string[];
+  outsourceStatus: string;
+}
+
 interface PatientEntry {
   registration: any;
   parameters: ParameterResult[];
+  snipOnlyTests: SnipOnlyTest[];
 }
 
 const ResultVerification = () => {
@@ -280,6 +289,7 @@ const ResultVerification = () => {
       const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
       const activeTests = tests.filter((t: any) => !cancelledIds.has(t.test_id));
       const parameters: ParameterResult[] = [];
+      const snipOnlyTests: SnipOnlyTest[] = [];
       for (const t of activeTests) {
         const testInfo = testsMap[t.test_id] || {};
         const testSnipKey = `${reg.id}||${t.test_id}`;
@@ -287,10 +297,18 @@ const ResultVerification = () => {
         const paramOutsourcedSet = outsourcedParamSets[testSnipKey];
         const snipDetail = outsourcedSnipDetails[testSnipKey];
         const params = testParamsMap[t.test_id] || [];
-        
-        // Check if this test has any entered results
+        const validParams = params.filter((tp: any) => !tp.is_subheader && tp.report_test_parameters);
+
+        // Snip-only test: no params but has outsourced snip with results_entered status
+        if (validParams.length === 0) {
+          if (snipDetail && snipDetail.snipImageUrls.length > 0 && ["results_entered", "entered"].includes(snipDetail.status)) {
+            snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, outsourceStatus: snipDetail.status });
+          }
+          continue;
+        }
+
         const testEnteredResults = existingResults.filter((r: any) => r.registration_id === reg.id && r.test_id === t.test_id);
-        if (testEnteredResults.length === 0 && !snipDetail) continue; // Skip tests with no entered results
+        if (testEnteredResults.length === 0 && !snipDetail) continue;
 
         for (const tp of params) {
           if (tp.is_subheader) continue;
@@ -298,7 +316,7 @@ const ResultVerification = () => {
           if (!p) continue;
           const isParamOutsourced = isFullTestOutsourced || (paramOutsourcedSet && paramOutsourcedSet.has(p.id));
           const existing = testEnteredResults.find((r: any) => r.parameter_id === p.id);
-          if (!existing && !isParamOutsourced) continue; // Only show params with entered results
+          if (!existing && !isParamOutsourced) continue;
           
           const resolved = resolveNormalRange(p.id, reg);
           const refText = resolved.text || p.normal_range_text || (p.normal_range_low != null && p.normal_range_high != null ? `${p.normal_range_low} - ${p.normal_range_high}` : "");
@@ -321,8 +339,8 @@ const ResultVerification = () => {
           });
         }
       }
-      return { registration: reg, parameters };
-    }).filter(e => e.parameters.length > 0);
+      return { registration: reg, parameters, snipOnlyTests };
+    }).filter(e => e.parameters.length > 0 || e.snipOnlyTests.length > 0);
   }, [registrations, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails]);
 
   // Calculate flag
@@ -398,7 +416,7 @@ const ResultVerification = () => {
     const filterMachine = selectedMachine === "others" ? "" : selectedMachine;
     return patientEntries
       .map(e => ({ ...e, parameters: e.parameters.filter(p => (p.machineName || "") === filterMachine) }))
-      .filter(e => e.parameters.length > 0);
+      .filter(e => e.parameters.length > 0 || e.snipOnlyTests.length > 0);
   }, [patientEntries, mode, selectedMachine]);
 
   const stats = useMemo(() => {
@@ -441,6 +459,12 @@ const ResultVerification = () => {
   };
 
   const handleVerifyTest = (entry: PatientEntry, testId: string, testName: string) => {
+    // Snip-only test — no params to check, verify directly
+    const isSnipOnly = entry.snipOnlyTests.some(s => s.testId === testId);
+    if (isSnipOnly) {
+      verifyTest(entry, testId, testName);
+      return;
+    }
     const blanks = countBlanks(entry, testId);
     if (blanks > 0) {
       setBlankParamCount(blanks);
@@ -510,8 +534,8 @@ const ResultVerification = () => {
         await supabase.from("patient_results").delete().eq("registration_id", reg.id).eq("test_id", testId).eq("status", "entered");
         await supabase.from("patient_results").insert(upserts as any);
       }
-      // Also verify outsourced snips
-      await supabase.from("outsourced_test_snips").update({ outsource_status: "verified" } as any).eq("registration_id", reg.id).eq("test_id", testId).in("outsource_status", ["results_entered", "sent", "results_saved"]);
+      // Also verify outsourced snips (works for both param-based and snip-only)
+      await supabase.from("outsourced_test_snips").update({ outsource_status: "verified" } as any).eq("registration_id", reg.id).eq("test_id", testId).in("outsource_status", ["results_entered", "entered", "sent", "results_saved"]);
       
       toast.success(`${testName} verified & sent to Doctor Approval`);
       setEditedValues(prev => {
@@ -733,6 +757,33 @@ const ResultVerification = () => {
             <span className="text-sm text-muted-foreground ml-2">{reg.invoice_number}</span>
           </div>
         </div>
+
+        {/* Snip-only outsourced tests */}
+        {entry.snipOnlyTests.length > 0 && entry.snipOnlyTests.map(st => {
+          const testKey = `${reg.id}||${st.testId}`;
+          const isVerifying = verifyingKey === testKey;
+          return (
+            <div key={`snip-${st.testId}`} className="flex items-center justify-between px-3 py-2 bg-blue-50 border border-blue-200 rounded text-sm">
+              <div className="flex items-center gap-2">
+                <FlaskConical className="h-4 w-4 text-blue-600 shrink-0" />
+                <span className="font-medium text-blue-800">{st.testName}</span>
+                {st.labName && <Badge variant="outline" className="text-[10px] text-green-600 border-green-300">{st.labName}</Badge>}
+                <Button size="sm" variant="ghost" className="h-5 px-1 text-xs text-blue-600 gap-0.5" onClick={() => setViewSnipImages(st.snipUrls)}>
+                  <Eye className="h-3 w-3" /> View Snip ({st.snipUrls.length} page{st.snipUrls.length > 1 ? "s" : ""})
+                </Button>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button size="sm" variant="ghost" className="h-6 text-[11px] gap-1 text-orange-600" onClick={() => sendBackTest(reg.id, st.testId, st.testName)}>
+                  <Undo2 className="h-3 w-3" /> Send Back
+                </Button>
+                <Button size="sm" variant="outline" className="h-6 text-[11px] gap-1" disabled={isVerifying} onClick={() => handleVerifyTest(entry, st.testId, st.testName)}>
+                  {isVerifying ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+                  Verify & Send to Doctor
+                </Button>
+              </div>
+            </div>
+          );
+        })}
 
         {machineGroups.map((mg) => (
           <div key={mg.machineName} className="space-y-1">

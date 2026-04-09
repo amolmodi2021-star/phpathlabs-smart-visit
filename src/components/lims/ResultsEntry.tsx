@@ -52,10 +52,19 @@ interface IncompleteTest {
   testName: string;
 }
 
+interface SnipOnlyTest {
+  testId: string;
+  testName: string;
+  labName: string | null;
+  snipUrls: string[];
+  outsourceStatus: string;
+}
+
 interface PatientEntry {
   registration: any;
   parameters: ParameterResult[];
   incompleteTests: IncompleteTest[];
+  snipOnlyTests: SnipOnlyTest[];
 }
 
 const handleResultTabKey = (e: React.KeyboardEvent) => {
@@ -457,6 +466,7 @@ const ResultsEntry = () => {
 
       const parameters: ParameterResult[] = [];
       const incompleteTests: IncompleteTest[] = [];
+      const snipOnlyTests: SnipOnlyTest[] = [];
       for (const t of activeTests) {
         const testInfo = testsMap[t.test_id] || {};
         // Naturally outsourced tests are included — they appear with outsourced badges and can be saved & verified
@@ -470,7 +480,12 @@ const ResultsEntry = () => {
         // Track tests with no parameters configured
         const validParams = params.filter((tp: any) => !tp.is_subheader && tp.report_test_parameters);
         if (validParams.length === 0) {
-          incompleteTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "" });
+          // Check if this is a snip-only outsourced test
+          if (snipDetail && snipDetail.snipImageUrls.length > 0 && !["results_entered", "verified", "approved", "dispatched"].includes(snipDetail.status)) {
+            snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, outsourceStatus: snipDetail.status });
+          } else if (!snipDetail || snipDetail.snipImageUrls.length === 0) {
+            incompleteTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "" });
+          }
           continue;
         }
         
@@ -532,8 +547,8 @@ const ResultsEntry = () => {
           });
         }
       }
-      return { registration: reg, parameters, incompleteTests };
-    }).filter(entry => entry.parameters.length > 0 || entry.incompleteTests.length > 0);
+      return { registration: reg, parameters, incompleteTests, snipOnlyTests };
+    }).filter(entry => entry.parameters.length > 0 || entry.incompleteTests.length > 0 || entry.snipOnlyTests.length > 0);
   }, [acceptedRegs, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails]);
 
   // ─── Calculate flag ───
@@ -714,7 +729,11 @@ const ResultsEntry = () => {
         });
       }
 
-      if (upserts.length === 0) return;
+      // Snip-only test (no parameters) — just update outsourced_test_snips status
+      if (upserts.length === 0) {
+        await supabase.from("outsourced_test_snips").update({ outsource_status: "results_entered" } as any).eq("registration_id", reg.id).eq("test_id", testId).in("outsource_status", ["pending", "sent", "results_saved"]);
+        return;
+      }
 
       // Delete existing results for this specific test only, preserving outsourced param results
       const outsourcedParams = outsourcedParamSets[`${reg.id}||${testId}`];
@@ -733,7 +752,7 @@ const ResultsEntry = () => {
       await supabase.from("outsourced_test_snips").update({ outsource_status: "results_entered" } as any).eq("registration_id", reg.id).eq("test_id", testId).in("outsource_status", ["pending", "sent", "results_saved"]);
     },
     onSuccess: (_, { entry, testId }) => {
-      const testName = entry.parameters.find(p => p.testId === testId)?.testName || "Test";
+      const testName = entry.parameters.find(p => p.testId === testId)?.testName || entry.snipOnlyTests.find(s => s.testId === testId)?.testName || "Test";
       toast.success(`${testName} saved & sent to verification`);
       const regId = entry.registration.id;
       // Clear edited values for this test's params only
@@ -765,6 +784,15 @@ const ResultsEntry = () => {
   const handleSaveAndVerify = (entry: PatientEntry, testId: string, testName: string) => {
     const reg = entry.registration;
     const testParams = entry.parameters.filter(p => p.testId === testId);
+    
+    // Snip-only test — no params to check for blanks, just save directly
+    const isSnipOnly = entry.snipOnlyTests.some(s => s.testId === testId);
+    if (isSnipOnly || testParams.length === 0) {
+      setSavingTestKey(`${reg.id}||${testId}`);
+      saveMutation.mutate({ entry, testId });
+      return;
+    }
+    
     // Count blank parameters
     let blanks = 0;
     for (const p of testParams) {
@@ -804,7 +832,7 @@ const ResultsEntry = () => {
       });
 
       return { ...e, parameters: activeParams };
-    }).filter(e => e.parameters.length > 0 || e.incompleteTests.length > 0);
+    }).filter(e => e.parameters.length > 0 || e.incompleteTests.length > 0 || e.snipOnlyTests.length > 0);
 
     if (mode === "patient") return activeEntries;
     if (selectedMachine === "all") return activeEntries;
@@ -814,7 +842,7 @@ const ResultsEntry = () => {
         ...e,
         parameters: e.parameters.filter(p => (p.machineName || "") === filterMachine),
       }))
-      .filter(e => e.parameters.length > 0 || e.incompleteTests.length > 0);
+      .filter(e => e.parameters.length > 0 || e.incompleteTests.length > 0 || e.snipOnlyTests.length > 0);
   }, [patientEntries, mode, selectedMachine]);
 
   // ─── Stats (based on filtered entries, excludes already-entered patients) ───
@@ -1139,6 +1167,32 @@ const ResultsEntry = () => {
                 <span className="text-amber-600">— No parameters configured. Please complete test setup in Report Parameters to enter results.</span>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Snip-only outsourced tests */}
+        {entry.snipOnlyTests.length > 0 && (
+          <div className="space-y-1">
+            {entry.snipOnlyTests.map(st => {
+              const testKey = `${reg.id}||${st.testId}`;
+              const isTestSaving = saveMutation.isPending && savingTestKey === testKey;
+              return (
+                <div key={st.testId} className="flex items-center justify-between px-3 py-2 bg-blue-50 border border-blue-200 rounded text-sm">
+                  <div className="flex items-center gap-2">
+                    <Package className="h-4 w-4 text-blue-600 shrink-0" />
+                    <span className="font-medium text-blue-800">{st.testName}</span>
+                    {st.labName && <Badge variant="outline" className="text-[10px] text-green-600 border-green-300">{st.labName}</Badge>}
+                    <Button size="sm" variant="ghost" className="h-5 px-1 text-xs text-blue-600 gap-0.5" onClick={() => { setViewSnipImages(st.snipUrls); setViewSnipContext(null); }}>
+                      <Eye className="h-3 w-3" /> View Snip ({st.snipUrls.length} page{st.snipUrls.length > 1 ? "s" : ""})
+                    </Button>
+                  </div>
+                  <Button size="sm" variant="outline" className="h-6 text-[11px] gap-1" disabled={isTestSaving} onClick={() => handleSaveAndVerify(entry, st.testId, st.testName)}>
+                    {isTestSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <SendHorizonal className="h-3 w-3" />}
+                    Save & Verify
+                  </Button>
+                </div>
+              );
+            })}
           </div>
         )}
 
