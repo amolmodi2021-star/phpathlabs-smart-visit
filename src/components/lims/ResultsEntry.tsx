@@ -298,10 +298,14 @@ const ResultsEntry = () => {
         if (testInfo.is_outsourced) continue;
         if (transferredTestKeys.has(`${reg.id}||${t.test_id}`)) continue;
         const params = testParamsMap[t.test_id] || [];
+        // Get parameter-level outsourced set for this test
+        const paramOutsourcedSet = outsourcedParamSets[`${reg.id}||${t.test_id}`];
         for (const tp of params) {
           if (tp.is_subheader) continue;
           const p = tp.report_test_parameters;
           if (!p) continue;
+          // Skip parameters that are individually outsourced
+          if (paramOutsourcedSet && paramOutsourcedSet.has(p.id)) continue;
           const existing = existingResults.find(
             (r: any) => r.registration_id === reg.id && r.parameter_id === p.id
           );
