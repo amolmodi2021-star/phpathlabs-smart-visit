@@ -458,7 +458,10 @@ const ResultsEntry = () => {
     for (const p of testParams) {
       const key = `${regId}||${p.parameterId}`;
       const value = currentEdits[key] !== undefined ? currentEdits[key] : p.resultValue;
-      const flag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+      const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+      const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : autoFlag;
+      const unit = p.isOutsourced && editedUnits[key] !== undefined ? editedUnits[key] : p.unit;
+      const refRange = p.isOutsourced && editedRefRanges[key] !== undefined ? editedRefRanges[key] : p.referenceRange;
       upserts.push({
         registration_id: regId,
         test_id: p.testId,
@@ -466,8 +469,8 @@ const ResultsEntry = () => {
         param_code: p.paramCode,
         parameter_name: p.parameterName,
         result_value: value || null,
-        unit: p.unit,
-        reference_range: p.referenceRange,
+        unit: unit,
+        reference_range: refRange,
         normal_range_low: p.normalRangeLow,
         normal_range_high: p.normalRangeHigh,
         flag: flag || null,
@@ -508,8 +511,10 @@ const ResultsEntry = () => {
       for (const p of testParams) {
         const key = `${reg.id}||${p.parameterId}`;
         const value = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
-
-        const flag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+        const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+        const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : autoFlag;
+        const unit = p.isOutsourced && editedUnits[key] !== undefined ? editedUnits[key] : p.unit;
+        const refRange = p.isOutsourced && editedRefRanges[key] !== undefined ? editedRefRanges[key] : p.referenceRange;
         upserts.push({
           registration_id: reg.id,
           test_id: p.testId,
@@ -517,8 +522,8 @@ const ResultsEntry = () => {
           param_code: p.paramCode,
           parameter_name: p.parameterName,
           result_value: value || null,
-          unit: p.unit,
-          reference_range: p.referenceRange,
+          unit: unit,
+          reference_range: refRange,
           normal_range_low: p.normalRangeLow,
           normal_range_high: p.normalRangeHigh,
           flag: flag || null,
