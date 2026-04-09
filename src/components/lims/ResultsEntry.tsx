@@ -323,12 +323,16 @@ const ResultsEntry = () => {
           const rangeLow = resolved.low ?? p.normal_range_low;
           const rangeHigh = resolved.high ?? p.normal_range_high;
 
+          // For outsourced params, use saved values from patient_results if available
+          const savedUnit = isParamOutsourced && existing?.unit ? existing.unit : (p.unit || "");
+          const savedRefRange = isParamOutsourced && existing?.reference_range ? existing.reference_range : refText;
+
           parameters.push({
             parameterId: p.id,
             paramCode: p.param_code || "",
             parameterName: p.parameter_name,
-            unit: p.unit || "",
-            referenceRange: refText,
+            unit: savedUnit,
+            referenceRange: savedRefRange,
             normalRangeLow: rangeLow,
             normalRangeHigh: rangeHigh,
             resultValue: existing?.result_value || "",
@@ -458,7 +462,10 @@ const ResultsEntry = () => {
     for (const p of testParams) {
       const key = `${regId}||${p.parameterId}`;
       const value = currentEdits[key] !== undefined ? currentEdits[key] : p.resultValue;
-      const flag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+      const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+      const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : autoFlag;
+      const unit = p.isOutsourced && editedUnits[key] !== undefined ? editedUnits[key] : p.unit;
+      const refRange = p.isOutsourced && editedRefRanges[key] !== undefined ? editedRefRanges[key] : p.referenceRange;
       upserts.push({
         registration_id: regId,
         test_id: p.testId,
@@ -466,8 +473,8 @@ const ResultsEntry = () => {
         param_code: p.paramCode,
         parameter_name: p.parameterName,
         result_value: value || null,
-        unit: p.unit,
-        reference_range: p.referenceRange,
+        unit: unit,
+        reference_range: refRange,
         normal_range_low: p.normalRangeLow,
         normal_range_high: p.normalRangeHigh,
         flag: flag || null,
@@ -508,8 +515,10 @@ const ResultsEntry = () => {
       for (const p of testParams) {
         const key = `${reg.id}||${p.parameterId}`;
         const value = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
-
-        const flag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+        const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+        const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : autoFlag;
+        const unit = p.isOutsourced && editedUnits[key] !== undefined ? editedUnits[key] : p.unit;
+        const refRange = p.isOutsourced && editedRefRanges[key] !== undefined ? editedRefRanges[key] : p.referenceRange;
         upserts.push({
           registration_id: reg.id,
           test_id: p.testId,
@@ -517,8 +526,8 @@ const ResultsEntry = () => {
           param_code: p.paramCode,
           parameter_name: p.parameterName,
           result_value: value || null,
-          unit: p.unit,
-          reference_range: p.referenceRange,
+          unit: unit,
+          reference_range: refRange,
           normal_range_low: p.normalRangeLow,
           normal_range_high: p.normalRangeHigh,
           flag: flag || null,
