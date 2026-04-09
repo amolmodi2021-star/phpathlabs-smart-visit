@@ -823,6 +823,7 @@ const ResultsEntry = () => {
                         <TableHead className="py-1 text-xs w-[120px]">Ref. Range</TableHead>
                         <TableHead className="py-1 text-xs w-[70px] text-center">Flag</TableHead>
                         <TableHead className="py-1 text-xs w-[70px] text-center">Status</TableHead>
+                        <TableHead className="py-1 text-xs w-[40px] text-center" title="Outsource"></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
