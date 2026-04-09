@@ -484,7 +484,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   }, [qc]);
 
   // Save manual results
-  const saveManualResults = useCallback(async (regId: string, testId: string, testName: string) => {
+  const saveManualResults = useCallback(async (regId: string, testId: string, testName: string, outsourcedParamIds?: string[]) => {
     const key = `${regId}||${testId}`;
     setSavingKey(key);
     try {
@@ -494,6 +494,8 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         if (tp.is_subheader) continue;
         const p = tp.report_test_parameters;
         if (!p) continue;
+        // For parameter-level outsource, only save outsourced parameters
+        if (outsourcedParamIds && outsourcedParamIds.length > 0 && !outsourcedParamIds.includes(p.id)) continue;
         const valKey = `${regId}||${p.id}`;
         const value = editedValues[valKey] || "";
         if (!value) continue;
@@ -514,7 +516,14 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         });
       }
       if (upserts.length > 0) {
-        await supabase.from("patient_results").delete().eq("registration_id", regId).eq("test_id", testId);
+        if (outsourcedParamIds && outsourcedParamIds.length > 0) {
+          // Parameter-level: only delete outsourced param results, not all
+          for (const paramId of outsourcedParamIds) {
+            await supabase.from("patient_results").delete().eq("registration_id", regId).eq("test_id", testId).eq("parameter_id", paramId);
+          }
+        } else {
+          await supabase.from("patient_results").delete().eq("registration_id", regId).eq("test_id", testId);
+        }
         const { error } = await supabase.from("patient_results").insert(upserts as any);
         if (error) throw error;
       }
