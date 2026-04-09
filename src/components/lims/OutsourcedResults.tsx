@@ -690,7 +690,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         <div
           className="flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/30 transition-colors"
           onClick={() => {
-            if (canEnterResults || status === "results_entered") {
+            if (canEnterResults || status === "results_saved") {
               setExpandedTest(isExpanded ? null : testKey);
             }
           }}
@@ -704,7 +704,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
               className="shrink-0"
             />
           )}
-          {(canEnterResults || status === "results_entered") && (
+          {(canEnterResults || status === "results_saved") && (
             isExpanded ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />
           )}
           <div className="flex-1">
@@ -715,7 +715,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
             )}
           </div>
           <div className="flex items-center gap-2">
-            {test.isTransferredInhouse && !test.isParameterLevel && status !== "results_entered" && (
+            {test.isTransferredInhouse && !test.isParameterLevel && status !== "results_saved" && (
               <Button
                 size="sm"
                 variant="ghost"
@@ -773,7 +773,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         )}
 
         {/* Expanded: only for sent tests (awaiting or results_entered) */}
-        {isExpanded && (canEnterResults || status === "results_entered") && (
+        {isExpanded && (canEnterResults || status === "results_saved") && (
           <div className="border-t p-3 space-y-3 bg-muted/10">
             <Tabs defaultValue={currentMode} onValueChange={(v) => {
               if (v === "manual") setManualMode(regId, test.testId);
