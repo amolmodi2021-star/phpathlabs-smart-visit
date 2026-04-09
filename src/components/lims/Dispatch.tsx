@@ -175,7 +175,7 @@ const Dispatch = () => {
         await supabase.from("outsourced_test_snips").update({ outsource_status: "dispatched" } as any).eq("registration_id", reg.id).eq("test_id", test.testId).eq("outsource_status", "approved");
       }
       // Only update registration status if all tests are now dispatched
-      const stillPending = entry.tests.some(t => t.status === "pending");
+      const stillPending = entry.tests.some(t => t.status !== "approved" && t.status !== "dispatched");
       if (!stillPending) {
         await supabase.from("patient_registrations").update({ status: "dispatched" } as any).eq("id", reg.id);
       }
