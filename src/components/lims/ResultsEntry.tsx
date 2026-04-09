@@ -203,19 +203,21 @@ const ResultsEntry = () => {
     queryKey: ["historical_results", expandedUmr, expandedPatient],
     enabled: !!expandedUmr && !!expandedPatient,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("patient_results")
-        .select("parameter_id, result_value, reference_range, created_at, registration_id")
-        .neq("registration_id", expandedPatient!)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      // Now filter by UMR: we need to find registration_ids for same UMR
+      // First get all registration IDs for same UMR
       const { data: sameUmrRegs } = await supabase
         .from("patient_registrations")
         .select("id")
-        .eq("umr_number", expandedUmr!);
-      const validRegIds = new Set((sameUmrRegs || []).map((r: any) => r.id));
-      return (data || []).filter((r: any) => validRegIds.has(r.registration_id));
+        .eq("umr_number", expandedUmr!)
+        .neq("id", expandedPatient!);
+      const regIds = (sameUmrRegs || []).map((r: any) => r.id);
+      if (regIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from("patient_results")
+        .select("parameter_id, result_value, reference_range, created_at")
+        .in("registration_id", regIds)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data || [];
     },
   });
 
