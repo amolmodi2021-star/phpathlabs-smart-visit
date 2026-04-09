@@ -407,7 +407,7 @@ const ResultVerification = () => {
     const filterMachine = selectedMachine === "others" ? "" : selectedMachine;
     return patientEntries
       .map(e => ({ ...e, parameters: e.parameters.filter(p => (p.machineName || "") === filterMachine) }))
-      .filter(e => e.parameters.length > 0);
+      .filter(e => e.parameters.length > 0 || e.snipOnlyTests.length > 0);
   }, [patientEntries, mode, selectedMachine]);
 
   const stats = useMemo(() => {
