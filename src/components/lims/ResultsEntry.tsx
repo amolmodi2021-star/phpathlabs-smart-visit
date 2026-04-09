@@ -192,6 +192,50 @@ const ResultsEntry = () => {
     return { transferredTestKeys: testKeys, outsourcedParamSets: paramSets, outsourcedSnipDetails: details };
   }, [outsourcedSnips]);
 
+  // ─── Fetch historical results for expanded patient (prev 1 & prev 2) ───
+  const expandedUmr = useMemo(() => {
+    if (!expandedPatient) return null;
+    const reg = acceptedRegs.find((r: any) => r.id === expandedPatient);
+    return reg?.umr_number || null;
+  }, [expandedPatient, acceptedRegs]);
+
+  const { data: historicalResults = [] } = useQuery({
+    queryKey: ["historical_results", expandedUmr, expandedPatient],
+    enabled: !!expandedUmr && !!expandedPatient,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("patient_results")
+        .select("parameter_id, result_value, reference_range, created_at, registration_id")
+        .neq("registration_id", expandedPatient!)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      // Now filter by UMR: we need to find registration_ids for same UMR
+      const { data: sameUmrRegs } = await supabase
+        .from("patient_registrations")
+        .select("id")
+        .eq("umr_number", expandedUmr!);
+      const validRegIds = new Set((sameUmrRegs || []).map((r: any) => r.id));
+      return (data || []).filter((r: any) => validRegIds.has(r.registration_id));
+    },
+  });
+
+  // Build history map: parameterId → [{ resultValue, referenceRange, createdAt }] (max 2)
+  const historyMap = useMemo(() => {
+    const map: Record<string, { resultValue: string; referenceRange: string; createdAt: string }[]> = {};
+    for (const r of historicalResults) {
+      if (!r.parameter_id) continue;
+      if (!map[r.parameter_id]) map[r.parameter_id] = [];
+      if (map[r.parameter_id].length < 2) {
+        map[r.parameter_id].push({
+          resultValue: r.result_value || "",
+          referenceRange: r.reference_range || "",
+          createdAt: r.created_at || "",
+        });
+      }
+    }
+    return map;
+  }, [historicalResults]);
+
   // ─── Snip image viewer state ───
   const [viewSnipImages, setViewSnipImages] = useState<string[] | null>(null);
   const [viewSnipContext, setViewSnipContext] = useState<{ regId: string; testId: string } | null>(null);
