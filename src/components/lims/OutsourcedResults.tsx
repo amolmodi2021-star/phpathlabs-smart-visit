@@ -202,6 +202,56 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     },
   });
 
+  // Fetch parameter_normal_ranges for age/gender-specific reference ranges
+  const { data: normalRangesMap = {} } = useQuery({
+    queryKey: ["outsourced_normal_ranges"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("parameter_normal_ranges")
+        .select("*")
+        .order("age_min");
+      const map: Record<string, any[]> = {};
+      (data || []).forEach((r: any) => {
+        if (!map[r.parameter_id]) map[r.parameter_id] = [];
+        map[r.parameter_id].push(r);
+      });
+      return map;
+    },
+  });
+
+  // Helper: resolve best normal range for a parameter given patient demographics
+  const resolveNormalRange = useCallback((parameterId: string, reg: any) => {
+    const ranges = normalRangesMap[parameterId];
+    if (!ranges || ranges.length === 0) return { text: "", low: null as number | null, high: null as number | null };
+    let patientAge: number | null = null;
+    if (reg.dob) {
+      const birth = new Date(reg.dob);
+      const now = new Date();
+      patientAge = Math.floor((now.getTime() - birth.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+    }
+    const patientGender = (reg.gender || "").toLowerCase().charAt(0);
+    let candidates = ranges.filter((r: any) => {
+      const g = (r.gender || "all").toLowerCase();
+      if (g === "all") return true;
+      if (g === "male" && patientGender === "m") return true;
+      if (g === "female" && patientGender === "f") return true;
+      return false;
+    });
+    if (patientAge != null) {
+      const ageMatched = candidates.filter((r: any) => {
+        if (r.age_min == null && r.age_max == null) return true;
+        if (r.age_min != null && patientAge! < r.age_min) return false;
+        if (r.age_max != null && patientAge! > r.age_max) return false;
+        return true;
+      });
+      if (ageMatched.length > 0) candidates = ageMatched;
+    }
+    const best = candidates.find((r: any) => (r.gender || "all").toLowerCase() !== "all") || candidates[0];
+    if (!best) return { text: "", low: null as number | null, high: null as number | null };
+    const text = best.normal_range_text || (best.normal_range_low != null && best.normal_range_high != null ? `${best.normal_range_low} - ${best.normal_range_high}` : "");
+    return { text, low: best.normal_range_low as number | null, high: best.normal_range_high as number | null };
+  }, [normalRangesMap]);
+
   // Build outsourced patient entries (includes naturally outsourced + transferred inhouse tests + parameter-level)
   const patientEntries: OutsourcedPatient[] = useMemo(() => {
     // Build maps from snips
@@ -504,7 +554,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   }, [qc]);
 
   // Save manual results
-  const saveManualResults = useCallback(async (regId: string, testId: string, testName: string, outsourcedParamIds?: string[]) => {
+  const saveManualResults = useCallback(async (regId: string, testId: string, testName: string, outsourcedParamIds?: string[], reg?: any) => {
     const key = `${regId}||${testId}`;
     setSavingKey(key);
     try {
@@ -519,19 +569,23 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         const valKey = `${regId}||${p.id}`;
         const value = editedValues[valKey] || "";
         if (!value) continue;
+        const resolved = reg ? resolveNormalRange(p.id, reg) : { text: "", low: null, high: null };
+        const rangeLow = resolved.low ?? p.normal_range_low;
+        const rangeHigh = resolved.high ?? p.normal_range_high;
+        const rangeText = resolved.text || p.normal_range_text || (rangeLow != null && rangeHigh != null ? `${rangeLow} - ${rangeHigh}` : "");
         const num = parseFloat(value);
         let flag = "";
         if (!isNaN(num)) {
-          if (p.normal_range_low != null && num < p.normal_range_low) flag = "L";
-          else if (p.normal_range_high != null && num > p.normal_range_high) flag = "H";
+          if (rangeLow != null && num < rangeLow) flag = "L";
+          else if (rangeHigh != null && num > rangeHigh) flag = "H";
           else flag = "N";
         }
         upserts.push({
           registration_id: regId, test_id: testId, parameter_id: p.id,
           param_code: p.param_code, parameter_name: p.parameter_name,
           result_value: value, unit: p.unit,
-          reference_range: p.normal_range_text || (p.normal_range_low != null && p.normal_range_high != null ? `${p.normal_range_low} - ${p.normal_range_high}` : ""),
-          normal_range_low: p.normal_range_low, normal_range_high: p.normal_range_high,
+          reference_range: rangeText,
+          normal_range_low: rangeLow, normal_range_high: rangeHigh,
           flag: flag || null, status: "pending", is_calculated: false, is_from_interface: false,
         });
       }
@@ -569,7 +623,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     } finally {
       setSavingKey(null);
     }
-  }, [editedValues, testParamsMap, qc]);
+  }, [editedValues, testParamsMap, qc, resolveNormalRange]);
 
   // Save snip results and move to verification
   const saveSnipResults = useCallback(async (regId: string, testId: string, testName: string) => {
@@ -855,7 +909,8 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                           return null;
                         }
                         const currentValue = editedValues[valKey] !== undefined ? editedValues[valKey] : (existing?.result_value || "");
-                        const refRange = p.normal_range_text || (p.normal_range_low != null && p.normal_range_high != null ? `${p.normal_range_low} - ${p.normal_range_high}` : "");
+                        const resolved = resolveNormalRange(p.id, entry.registration);
+                        const refRange = resolved.text || p.normal_range_text || (p.normal_range_low != null && p.normal_range_high != null ? `${p.normal_range_low} - ${p.normal_range_high}` : "");
 
                         return (
                           <TableRow key={valKey}>
@@ -879,7 +934,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                   <div className="flex justify-end mt-2">
                     <Button
                       size="sm"
-                      onClick={() => saveManualResults(regId, test.testId, test.testName, test.outsourcedParameterIds)}
+                      onClick={() => saveManualResults(regId, test.testId, test.testName, test.outsourcedParameterIds, entry.registration)}
                       disabled={isSaving}
                     >
                       {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
