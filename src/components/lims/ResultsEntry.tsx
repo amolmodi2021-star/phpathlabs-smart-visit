@@ -334,13 +334,17 @@ const ResultsEntry = () => {
     setEditedValues(newEdited);
   };
 
-  // ─── Save & send to verification ───
+  // ─── Save & send to verification (per-test) ───
+  const [savingTestKey, setSavingTestKey] = useState<string | null>(null);
+  const [blankConfirmTestParams, setBlankConfirmTestParams] = useState<{ entry: PatientEntry; testId: string; testName: string } | null>(null);
+
   const saveMutation = useMutation({
-    mutationFn: async ({ entry }: { entry: PatientEntry }) => {
+    mutationFn: async ({ entry, testId }: { entry: PatientEntry; testId: string }) => {
       const reg = entry.registration;
+      const testParams = entry.parameters.filter(p => p.testId === testId);
       const upserts: any[] = [];
 
-      for (const p of entry.parameters) {
+      for (const p of testParams) {
         const key = `${reg.id}||${p.parameterId}`;
         const value = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
 
@@ -365,37 +369,43 @@ const ResultsEntry = () => {
 
       if (upserts.length === 0) return;
 
-      // Delete existing and insert fresh
-      await supabase.from("patient_results").delete().eq("registration_id", reg.id);
+      // Delete existing results for this specific test only, then insert
+      await supabase.from("patient_results").delete().eq("registration_id", reg.id).eq("test_id", testId);
       const { error } = await supabase.from("patient_results").insert(upserts as any);
       if (error) throw error;
     },
-    onSuccess: (_, { entry }) => {
-      toast.success(`Results saved & sent to verification for ${entry.registration.patient_name}`);
+    onSuccess: (_, { entry, testId }) => {
+      const testName = entry.parameters.find(p => p.testId === testId)?.testName || "Test";
+      toast.success(`${testName} saved & sent to verification`);
       const regId = entry.registration.id;
+      // Clear edited values for this test's params only
       setEditedValues(prev => {
         const next = { ...prev };
-        Object.keys(next).forEach(k => { if (k.startsWith(`${regId}||`)) delete next[k]; });
+        entry.parameters.filter(p => p.testId === testId).forEach(p => {
+          delete next[`${regId}||${p.parameterId}`];
+        });
         return next;
       });
-      setSavingPatient(null);
-      setBlankConfirmEntry(null);
-      setHighlightBlanksForRegs(prev => { const next = new Set(prev); next.delete(regId); return next; });
+      setSavingTestKey(null);
+      setBlankConfirmTestParams(null);
+      // Remove highlight for this reg if no more blank issues
+      setHighlightBlanksForRegs(prev => { const next = new Set(prev); next.delete(`${regId}||${testId}`); return next; });
       qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
       qc.invalidateQueries({ queryKey: ["verification_"] });
     },
     onError: (err: any) => {
       toast.error(err.message || "Failed to save results");
-      setSavingPatient(null);
+      setSavingTestKey(null);
     },
   });
 
-  // ─── Handle save & send to verification with blank check ───
-  const handleSaveAndVerify = (entry: PatientEntry) => {
+  // ─── Handle save & send to verification with blank check (per-test) ───
+  const handleSaveAndVerify = (entry: PatientEntry, testId: string, testName: string) => {
     const reg = entry.registration;
+    const testParams = entry.parameters.filter(p => p.testId === testId);
     // Count blank parameters
     let blanks = 0;
-    for (const p of entry.parameters) {
+    for (const p of testParams) {
       if (p.isCalculated) continue;
       const key = `${reg.id}||${p.parameterId}`;
       const val = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
@@ -403,11 +413,11 @@ const ResultsEntry = () => {
     }
     if (blanks > 0) {
       setBlankParamCount(blanks);
-      setBlankConfirmEntry(entry);
-      setHighlightBlanksForRegs(prev => new Set(prev).add(reg.id));
+      setBlankConfirmTestParams({ entry, testId, testName });
+      setHighlightBlanksForRegs(prev => new Set(prev).add(`${reg.id}||${testId}`));
     } else {
-      setSavingPatient(reg.id);
-      saveMutation.mutate({ entry });
+      setSavingTestKey(`${reg.id}||${testId}`);
+      saveMutation.mutate({ entry, testId });
     }
   };
 
