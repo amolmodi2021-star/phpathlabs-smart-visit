@@ -152,8 +152,17 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     },
   });
 
-  // Build outsourced patient entries
+  // Build outsourced patient entries (includes naturally outsourced + transferred inhouse tests)
   const patientEntries: OutsourcedPatient[] = useMemo(() => {
+    // Build a set of transferred test keys from snips for non-outsourced tests
+    const transferredKeys = new Set<string>();
+    existingSnips.forEach((s: any) => {
+      const testInfo = testsMap[s.test_id];
+      if (!testInfo?.is_outsourced) {
+        transferredKeys.add(`${s.registration_id}||${s.test_id}`);
+      }
+    });
+
     return acceptedRegs.map((reg: any) => {
       const tests = (reg.tests || []) as any[];
       const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
@@ -161,17 +170,26 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       for (const t of tests) {
         if (cancelledIds.has(t.test_id)) continue;
         const testInfo = testsMap[t.test_id];
+        const isTransferred = transferredKeys.has(`${reg.id}||${t.test_id}`);
         if (testInfo?.is_outsourced) {
           outsourcedTests.push({
             testId: t.test_id,
             testName: t.test_name || testInfo.test_name || "",
             outsourcedCaption: testInfo.outsourced_caption || "Outsourced Lab",
+            isTransferredInhouse: false,
+          });
+        } else if (isTransferred) {
+          outsourcedTests.push({
+            testId: t.test_id,
+            testName: t.test_name || testInfo?.test_name || "",
+            outsourcedCaption: "Transferred from Inhouse",
+            isTransferredInhouse: true,
           });
         }
       }
       return { registration: reg, outsourcedTests };
     }).filter(e => e.outsourcedTests.length > 0);
-  }, [acceptedRegs, testsMap]);
+  }, [acceptedRegs, testsMap, existingSnips]);
 
   // Get snip record
   const getSnip = (regId: string, testId: string) => {
