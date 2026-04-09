@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Search, ChevronDown, ChevronUp, Loader2, CheckCircle2, Send, Eye, Truck, MessageSquare, Circle } from "lucide-react";
 import { toast } from "sonner";
 
-type TestStatus = "approved" | "pending" | "dispatched";
+type TestStatus = "registered" | "sample_collected" | "sample_accepted" | "results_entered" | "verified" | "approved" | "dispatched";
 
 interface DispatchTest {
   testId: string;
@@ -96,17 +96,30 @@ const Dispatch = () => {
         const testResults = allResults.filter((r: any) => r.registration_id === reg.id && r.test_id === t.test_id);
         const snip = allSnips.find((s: any) => s.registration_id === reg.id && s.test_id === t.test_id);
 
-        // Determine test status
-        const hasApprovedResults = testResults.some((r: any) => r.status === "approved");
-        const hasApprovedSnip = snip && snip.outsource_status === "approved";
+        // Determine granular test status
         const hasDispatchedResults = testResults.some((r: any) => r.status === "dispatched");
         const hasDispatchedSnip = snip && snip.outsource_status === "dispatched";
+        const hasApprovedResults = testResults.some((r: any) => r.status === "approved");
+        const hasApprovedSnip = snip && snip.outsource_status === "approved";
+        const hasVerifiedResults = testResults.some((r: any) => r.status === "verified");
+        const hasVerifiedSnip = snip && snip.outsource_status === "verified";
+        const hasEnteredResults = testResults.some((r: any) => r.status === "entered" || r.status === "results_entered");
+        const hasEnteredSnip = snip && (snip.outsource_status === "results_entered" || snip.outsource_status === "results_saved");
 
-        let status: TestStatus = "pending";
+        let status: TestStatus = "registered";
+        const regStatus = reg.status as string;
         if (hasDispatchedResults || hasDispatchedSnip) {
           status = "dispatched";
         } else if (hasApprovedResults || hasApprovedSnip) {
           status = "approved";
+        } else if (hasVerifiedResults || hasVerifiedSnip) {
+          status = "verified";
+        } else if (hasEnteredResults || hasEnteredSnip) {
+          status = "results_entered";
+        } else if (regStatus === "sample_accepted" || testResults.length > 0) {
+          status = "sample_accepted";
+        } else if (regStatus === "sample_collected") {
+          status = "sample_collected";
         }
 
         const snipUrls = snip && snip.result_mode === "snip" && Array.isArray(snip.snip_image_urls) ? snip.snip_image_urls : [];
@@ -122,7 +135,7 @@ const Dispatch = () => {
       }
 
       const approvedCount = dispatchTests.filter(t => t.status === "approved").length;
-      const pendingCount = dispatchTests.filter(t => t.status === "pending").length;
+      const pendingCount = dispatchTests.filter(t => t.status !== "approved" && t.status !== "dispatched").length;
       const nonDispatchedCount = approvedCount + pendingCount;
 
       let completionStatus: "all_done" | "partial" | "all_pending" = "all_pending";
@@ -162,7 +175,7 @@ const Dispatch = () => {
         await supabase.from("outsourced_test_snips").update({ outsource_status: "dispatched" } as any).eq("registration_id", reg.id).eq("test_id", test.testId).eq("outsource_status", "approved");
       }
       // Only update registration status if all tests are now dispatched
-      const stillPending = entry.tests.some(t => t.status === "pending");
+      const stillPending = entry.tests.some(t => t.status !== "approved" && t.status !== "dispatched");
       if (!stillPending) {
         await supabase.from("patient_registrations").update({ status: "dispatched" } as any).eq("id", reg.id);
       }
@@ -187,8 +200,12 @@ const Dispatch = () => {
 
   const getStatusBadge = (status: TestStatus) => {
     switch (status) {
+      case "registered": return <Badge variant="outline" className="text-[10px]">Registered</Badge>;
+      case "sample_collected": return <Badge variant="outline" className="text-[10px] border-orange-400 text-orange-600">Sample Collected</Badge>;
+      case "sample_accepted": return <Badge variant="outline" className="text-[10px] border-yellow-500 text-yellow-700">Sample Accepted</Badge>;
+      case "results_entered": return <Badge className="text-[10px] bg-indigo-500">Results Entered</Badge>;
+      case "verified": return <Badge className="text-[10px] bg-purple-600">Verified</Badge>;
       case "approved": return <Badge className="text-[10px] bg-green-600">Approved</Badge>;
-      case "pending": return <Badge variant="outline" className="text-[10px] text-muted-foreground">Pending</Badge>;
       case "dispatched": return <Badge className="text-[10px] bg-blue-600">Dispatched</Badge>;
     }
   };
