@@ -364,7 +364,19 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   const getTestStatus = (regId: string, testId: string) => {
     const outsourceStatus = getOutsourceStatus(regId, testId);
     if (outsourceStatus === "pending") return "not_sent";
-    if (outsourceStatus === "results_saved" || outsourceStatus === "results_entered") return "results_saved";
+    if (outsourceStatus === "results_saved" || outsourceStatus === "results_entered") {
+      // Verify actual data exists — if snip was removed, status may be stale
+      const snip = getSnip(regId, testId);
+      if (snip?.result_mode === "snip") {
+        const imageUrls = getSnipImageUrls(regId, testId);
+        if (imageUrls.length === 0) return "awaiting_results";
+      }
+      if (snip?.result_mode === "manual" && !hasManualResults(regId, testId)) {
+        // Status says results_saved but no manual results exist
+        return "awaiting_results";
+      }
+      return "results_saved";
+    }
 
     const snip = getSnip(regId, testId);
     if (snip?.result_mode === "manual" && hasManualResults(regId, testId)) return "results_saved";
