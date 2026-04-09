@@ -360,6 +360,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       setShowLabDialog(false);
       setLabName("");
       qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+      qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] });
     } catch (err: any) {
       toast.error(err.message || "Failed to mark tests");
     } finally {
