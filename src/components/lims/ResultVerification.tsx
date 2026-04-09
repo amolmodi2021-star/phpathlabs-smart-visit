@@ -758,6 +758,33 @@ const ResultVerification = () => {
           </div>
         </div>
 
+        {/* Snip-only outsourced tests */}
+        {entry.snipOnlyTests.length > 0 && entry.snipOnlyTests.map(st => {
+          const testKey = `${reg.id}||${st.testId}`;
+          const isVerifying = verifyingKey === testKey;
+          return (
+            <div key={`snip-${st.testId}`} className="flex items-center justify-between px-3 py-2 bg-blue-50 border border-blue-200 rounded text-sm">
+              <div className="flex items-center gap-2">
+                <FlaskConical className="h-4 w-4 text-blue-600 shrink-0" />
+                <span className="font-medium text-blue-800">{st.testName}</span>
+                {st.labName && <Badge variant="outline" className="text-[10px] text-green-600 border-green-300">{st.labName}</Badge>}
+                <Button size="sm" variant="ghost" className="h-5 px-1 text-xs text-blue-600 gap-0.5" onClick={() => setViewSnipImages(st.snipUrls)}>
+                  <Eye className="h-3 w-3" /> View Snip ({st.snipUrls.length} page{st.snipUrls.length > 1 ? "s" : ""})
+                </Button>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button size="sm" variant="ghost" className="h-6 text-[11px] gap-1 text-orange-600" onClick={() => sendBackTest(reg.id, st.testId, st.testName)}>
+                  <Undo2 className="h-3 w-3" /> Send Back
+                </Button>
+                <Button size="sm" variant="outline" className="h-6 text-[11px] gap-1" disabled={isVerifying} onClick={() => handleVerifyTest(entry, st.testId, st.testName)}>
+                  {isVerifying ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+                  Verify & Send to Doctor
+                </Button>
+              </div>
+            </div>
+          );
+        })}
+
         {machineGroups.map((mg) => (
           <div key={mg.machineName} className="space-y-1">
             <div className="text-xs font-semibold text-primary uppercase tracking-wider px-1 pt-2 border-b border-primary/20 pb-1 flex items-center gap-1.5">
