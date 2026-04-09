@@ -57,6 +57,7 @@ const ResultsEntry = () => {
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
   const [blankParamCount, setBlankParamCount] = useState(0);
   const [highlightBlanksForRegs, setHighlightBlanksForRegs] = useState<Set<string>>(new Set());
+  const autoSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 400);
