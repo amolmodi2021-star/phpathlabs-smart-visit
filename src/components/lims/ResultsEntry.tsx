@@ -156,7 +156,7 @@ const ResultsEntry = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("outsourced_test_snips")
-        .select("registration_id, test_id, outsourced_parameter_ids")
+        .select("registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, sent_at")
         .in("registration_id", regIds);
       if (error) throw error;
       return (data || []) as any[];
