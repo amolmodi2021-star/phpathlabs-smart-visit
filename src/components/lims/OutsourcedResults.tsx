@@ -296,11 +296,12 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   const getTestStatus = (regId: string, testId: string) => {
     const outsourceStatus = getOutsourceStatus(regId, testId);
     if (outsourceStatus === "pending") return "not_sent";
+    if (outsourceStatus === "results_saved") return "results_saved";
     const snip = getSnip(regId, testId);
     const imageUrls = getSnipImageUrls(regId, testId);
-    if (snip?.result_mode === "snip" && imageUrls.length > 0) return "results_entered";
-    if (snip?.result_mode === "manual" && hasManualResults(regId, testId)) return "results_entered";
-    if (outsourceStatus === "results_entered") return "results_entered";
+    if (snip?.result_mode === "snip" && imageUrls.length > 0) return "results_saved";
+    if (snip?.result_mode === "manual" && hasManualResults(regId, testId)) return "results_saved";
+    if (outsourceStatus === "results_entered") return "results_saved";
     return "awaiting_results"; // sent but no results yet
   };
 
@@ -513,7 +514,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
           result_value: value, unit: p.unit,
           reference_range: p.normal_range_text || (p.normal_range_low != null && p.normal_range_high != null ? `${p.normal_range_low} - ${p.normal_range_high}` : ""),
           normal_range_low: p.normal_range_low, normal_range_high: p.normal_range_high,
-          flag: flag || null, status: "entered", is_calculated: false, is_from_interface: false,
+          flag: flag || null, status: "pending", is_calculated: false, is_from_interface: false,
         });
       }
       if (upserts.length > 0) {
@@ -531,7 +532,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       // Update snip record status
       await supabase.from("outsourced_test_snips").upsert({
         registration_id: regId, test_id: testId,
-        result_mode: "manual", outsource_status: "results_entered",
+        result_mode: "manual", outsource_status: "results_saved",
       } as any, { onConflict: "registration_id,test_id" });
 
       toast.success(`Results saved for ${testName}`);
@@ -559,10 +560,10 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     try {
       await supabase.from("outsourced_test_snips").upsert({
         registration_id: regId, test_id: testId,
-        result_mode: "snip", outsource_status: "results_entered",
+        result_mode: "snip", outsource_status: "results_saved",
       } as any, { onConflict: "registration_id,test_id" });
 
-      toast.success(`Snip saved for ${testName} — moved to verification`);
+      toast.success(`Snip saved for ${testName}`);
       qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
       qc.invalidateQueries({ queryKey: ["verification_results"] });
       qc.invalidateQueries({ queryKey: ["verification_outsourced"] });
@@ -630,25 +631,12 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
             {sentAt && <span className="text-[10px] text-muted-foreground">{sentAt}</span>}
           </div>
         );
-      case "results_entered":
+      case "results_saved":
         return (
           <div className="flex items-center gap-1.5 flex-wrap justify-end">
             <Badge className="text-xs bg-green-600 text-white gap-1">
-              <CheckCircle2 className="h-3 w-3" /> Results Entered
+              <CheckCircle2 className="h-3 w-3" /> Results Saved
             </Badge>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-6 px-2 text-[10px]"
-              disabled={savingKey === `${regId}||${testId}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                saveSnipResults(regId, testId, "outsourced test");
-              }}
-            >
-              {savingKey === `${regId}||${testId}` ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Save className="h-3 w-3 mr-1" />}
-              Send to Verification
-            </Button>
             {labNameVal && (
               <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
                 {labNameVal}
@@ -668,16 +656,17 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   // Count stats
   const stats = useMemo(() => {
     let notSent = 0, awaiting = 0, total = 0;
+    let resultsSaved = 0;
     for (const e of patientEntries) {
       for (const t of e.outsourcedTests) {
         const s = getTestStatus(e.registration.id, t.testId);
-        if (s === "results_entered") continue; // sent to verification, don't count
         total++;
         if (s === "not_sent") notSent++;
         else if (s === "awaiting_results") awaiting++;
+        else if (s === "results_saved") resultsSaved++;
       }
     }
-    return { notSent, awaiting, total };
+    return { notSent, awaiting, resultsSaved, total };
   }, [patientEntries, existingSnips, existingResults]);
 
   // Render test card
@@ -701,7 +690,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         <div
           className="flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/30 transition-colors"
           onClick={() => {
-            if (canEnterResults || status === "results_entered") {
+            if (canEnterResults || status === "results_saved") {
               setExpandedTest(isExpanded ? null : testKey);
             }
           }}
@@ -715,7 +704,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
               className="shrink-0"
             />
           )}
-          {(canEnterResults || status === "results_entered") && (
+          {(canEnterResults || status === "results_saved") && (
             isExpanded ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />
           )}
           <div className="flex-1">
@@ -726,7 +715,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
             )}
           </div>
           <div className="flex items-center gap-2">
-            {test.isTransferredInhouse && !test.isParameterLevel && status !== "results_entered" && (
+            {test.isTransferredInhouse && !test.isParameterLevel && status !== "results_saved" && (
               <Button
                 size="sm"
                 variant="ghost"
@@ -784,7 +773,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         )}
 
         {/* Expanded: only for sent tests (awaiting or results_entered) */}
-        {isExpanded && (canEnterResults || status === "results_entered") && (
+        {isExpanded && (canEnterResults || status === "results_saved") && (
           <div className="border-t p-3 space-y-3 bg-muted/10">
             <Tabs defaultValue={currentMode} onValueChange={(v) => {
               if (v === "manual") setManualMode(regId, test.testId);
@@ -888,7 +877,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                       disabled={savingKey === `${regId}||${test.testId}`}
                     >
                       {savingKey === `${regId}||${test.testId}` ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
-                      Save & Send to Verification
+                      Save Results
                     </Button>
                   </div>
                 )}
@@ -916,6 +905,10 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
           <div className="text-xs text-muted-foreground">Awaiting Results</div>
           <div className="text-xl font-bold text-amber-600">{stats.awaiting}</div>
         </Card>
+        <Card className="p-3">
+          <div className="text-xs text-muted-foreground">Results Saved</div>
+          <div className="text-xl font-bold text-green-600">{stats.resultsSaved}</div>
+        </Card>
       </div>
 
       {/* Action bar */}
@@ -942,8 +935,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         <div className="space-y-2">
           {patientEntries.map(entry => {
             const reg = entry.registration;
-            // Filter out tests that have been sent for verification
-            const visibleTests = entry.outsourcedTests.filter(t => getTestStatus(reg.id, t.testId) !== "results_entered");
+            const visibleTests = entry.outsourcedTests;
             if (visibleTests.length === 0) return null;
             const isExpanded = expandedPatient === reg.id;
             const notSentCount = visibleTests.filter(t => getTestStatus(reg.id, t.testId) === "not_sent").length;
