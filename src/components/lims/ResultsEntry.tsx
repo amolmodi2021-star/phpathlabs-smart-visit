@@ -535,11 +535,25 @@ const ResultsEntry = () => {
                 <Calculator className="h-3 w-3" /> Calc
               </Badge>
             </div>
+          ) : p.rangeType === "descriptive" && p.descriptiveOptions.length > 0 ? (
+            <Select
+              value={currentValue || undefined}
+              onValueChange={(v) => handleValueChange(regId, p.parameterId, v, entry)}
+            >
+              <SelectTrigger className="h-7 text-sm w-[180px]">
+                <SelectValue placeholder="Select..." />
+              </SelectTrigger>
+              <SelectContent>
+                {p.descriptiveOptions.map((opt: string) => (
+                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           ) : (
             <Input
               value={currentValue}
               onChange={e => handleValueChange(regId, p.parameterId, e.target.value, entry)}
-              className={`h-7 text-sm w-[140px] ${flag === "H" || flag === "L" ? "border-destructive text-destructive font-bold" : ""}`}
+              className={`h-7 text-sm w-[140px] ${flag === "H" || flag === "L" || flag === "A" ? "border-destructive text-destructive font-bold" : ""}`}
               placeholder="Enter result"
             />
           )}
