@@ -957,7 +957,18 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         <div className="space-y-2">
           {patientEntries.map(entry => {
             const reg = entry.registration;
-            const visibleTests = entry.outsourcedTests;
+            // Filter out tests where all results are already filled
+            const visibleTests = entry.outsourcedTests.filter(t => {
+              const status = getTestStatus(reg.id, t.testId);
+              if (status === "results_saved") {
+                // For snip mode, if snip images exist, consider it done
+                const snip = getSnip(reg.id, t.testId);
+                if (snip?.result_mode === "snip") return false;
+                // For manual mode, check if all params have results
+                return !hasAllResultsFilled(reg.id, t.testId, t.outsourcedParameterIds);
+              }
+              return true;
+            });
             if (visibleTests.length === 0) return null;
             const isExpanded = expandedPatient === reg.id;
             const notSentCount = visibleTests.filter(t => getTestStatus(reg.id, t.testId) === "not_sent").length;
