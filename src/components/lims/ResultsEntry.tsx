@@ -58,6 +58,8 @@ const ResultsEntry = () => {
   const [selectedMachine, setSelectedMachine] = useState<string>("all");
   const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
+  const [editedUnits, setEditedUnits] = useState<Record<string, string>>({});
+  const [editedRefRanges, setEditedRefRanges] = useState<Record<string, string>>({});
   const [blankParamCount, setBlankParamCount] = useState(0);
   const [highlightBlanksForRegs, setHighlightBlanksForRegs] = useState<Set<string>>(new Set());
   const autoSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -737,8 +739,26 @@ const ResultsEntry = () => {
             />
           )}
         </TableCell>
-        <TableCell className="py-1.5 text-xs text-muted-foreground">{p.unit}</TableCell>
-        <TableCell className="py-1.5 text-xs text-muted-foreground">{p.referenceRange}</TableCell>
+        <TableCell className="py-1.5 text-xs text-muted-foreground">
+          {p.isOutsourced ? (
+            <Input
+              value={editedUnits[key] !== undefined ? editedUnits[key] : (p.unit || "")}
+              onChange={e => setEditedUnits(prev => ({ ...prev, [key]: e.target.value }))}
+              className="h-6 text-xs w-[70px]"
+              placeholder="Unit"
+            />
+          ) : p.unit}
+        </TableCell>
+        <TableCell className="py-1.5 text-xs text-muted-foreground">
+          {p.isOutsourced ? (
+            <Input
+              value={editedRefRanges[key] !== undefined ? editedRefRanges[key] : (p.referenceRange || "")}
+              onChange={e => setEditedRefRanges(prev => ({ ...prev, [key]: e.target.value }))}
+              className="h-6 text-xs w-[100px]"
+              placeholder="Ref Range"
+            />
+          ) : p.referenceRange}
+        </TableCell>
         <TableCell className="py-1.5 text-center">
           {flag === "H" && <Badge variant="destructive" className="text-xs">HIGH</Badge>}
           {flag === "L" && <Badge variant="destructive" className="text-xs">LOW</Badge>}
@@ -749,7 +769,11 @@ const ResultsEntry = () => {
         <TableCell className="py-1.5 text-center">
           {p.isOutsourced ? (
             p.outsourceStatus === "sent" && p.outsourceLabName ? (
-              <Badge variant="outline" className="text-xs text-blue-600 border-blue-300 whitespace-nowrap">{p.outsourceLabName}</Badge>
+              currentValue ? (
+                <Badge variant="outline" className="text-xs text-green-600 border-green-300 whitespace-nowrap">{p.outsourceLabName}</Badge>
+              ) : (
+                <Badge variant="outline" className="text-xs text-blue-600 border-blue-300 whitespace-nowrap">{p.outsourceLabName}</Badge>
+              )
             ) : (
               <Badge variant="outline" className="text-xs text-purple-600 border-purple-300">Outsourced</Badge>
             )
@@ -823,13 +847,23 @@ const ResultsEntry = () => {
                   <div className="flex items-center justify-between px-1 py-0.5 bg-muted/40 rounded-t">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-medium text-muted-foreground">{tg.testName}</span>
-                      {isFullTestOutsourced && (
-                        testSnipDetail?.status === "sent" && testSnipDetail?.labName ? (
-                          <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">{testSnipDetail.labName}</Badge>
+                      {isFullTestOutsourced && (() => {
+                        const hasAnyResult = tg.params.some(p => {
+                          const k = `${reg.id}||${p.parameterId}`;
+                          const v = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
+                          return v && v.trim() !== "";
+                        });
+                        const allHaveResults = tg.params.every(p => {
+                          const k = `${reg.id}||${p.parameterId}`;
+                          const v = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
+                          return v && v.trim() !== "";
+                        });
+                        return testSnipDetail?.status === "sent" && testSnipDetail?.labName ? (
+                          <Badge variant="outline" className={`text-[10px] ${allHaveResults ? "text-green-600 border-green-300" : "text-blue-600 border-blue-300"}`}>{testSnipDetail.labName}</Badge>
                         ) : (
                           <Badge variant="outline" className="text-[10px] text-purple-600 border-purple-300">Outsourced</Badge>
-                        )
-                      )}
+                        );
+                      })()}
                     </div>
                     <div className="flex items-center gap-1">
                       {!isFullTestOutsourced && (
