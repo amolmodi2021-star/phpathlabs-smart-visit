@@ -1196,6 +1196,7 @@ const ResultsEntry = () => {
           </div>
         )}
 
+        {machineGroups.map((mg) => (
           <div key={mg.machineName} className="space-y-1">
             <div className="text-xs font-semibold text-primary uppercase tracking-wider px-1 pt-2 border-b border-primary/20 pb-1 flex items-center gap-1.5">
               <Monitor className="h-3.5 w-3.5" /> {mg.machineName}
