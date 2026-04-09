@@ -285,6 +285,24 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     return existingResults.some((r: any) => r.registration_id === regId && r.test_id === testId && r.result_value);
   };
 
+  // Check if a test has all results filled (no pending params)
+  const hasAllResultsFilled = (regId: string, testId: string, outsourcedParamIds?: string[]) => {
+    const params = testParamsMap[testId] || [];
+    const relevantParams = params.filter((tp: any) => {
+      if (tp.is_subheader) return false;
+      const p = tp.report_test_parameters;
+      if (!p) return false;
+      if (outsourcedParamIds && outsourcedParamIds.length > 0 && !outsourcedParamIds.includes(p.id)) return false;
+      return true;
+    });
+    if (relevantParams.length === 0) return false;
+    return relevantParams.every((tp: any) => {
+      const p = tp.report_test_parameters;
+      const existing = existingResults.find((r: any) => r.registration_id === regId && r.parameter_id === p.id);
+      return existing?.result_value && existing.result_value.trim() !== "";
+    });
+  };
+
   // Get outsource status from snip record
   const getOutsourceStatus = (regId: string, testId: string) => {
     const snip = getSnip(regId, testId);
