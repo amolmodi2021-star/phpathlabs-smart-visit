@@ -885,7 +885,7 @@ const ResultsEntry = () => {
                     variant="ghost"
                     className="h-5 px-1 text-xs text-blue-600 hover:text-blue-800 gap-0.5"
                     title="View Snip"
-                    onClick={() => setViewSnipImages(snipDetail.snipImageUrls)}
+                    onClick={() => { setViewSnipImages(snipDetail.snipImageUrls); setViewSnipContext({ regId, testId: p.testId }); }}
                   >
                     <Eye className="h-3 w-3" /> View
                   </Button>
