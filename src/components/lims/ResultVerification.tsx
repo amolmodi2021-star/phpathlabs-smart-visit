@@ -518,9 +518,14 @@ const ResultVerification = () => {
   const sendBackTest = async (regId: string, testId: string, testName: string) => {
     try {
       await supabase.from("patient_results").update({ status: "pending" } as any).eq("registration_id", regId).eq("test_id", testId).eq("status", "entered");
+      await supabase.from("outsourced_test_snips").update({ outsource_status: "results_saved" } as any).eq("registration_id", regId).eq("test_id", testId).in("outsource_status", ["results_entered", "entered"]);
       toast.success(`${testName} sent back to Results Entry`);
       qc.invalidateQueries({ queryKey: ["verification_results_v2"] });
+      qc.invalidateQueries({ queryKey: ["verification_outsourced_v2"] });
       qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
+      qc.invalidateQueries({ queryKey: ["outsourced_manual_results"] });
+      qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+      qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] });
     } catch (err: any) {
       toast.error(err.message || "Failed");
     }
