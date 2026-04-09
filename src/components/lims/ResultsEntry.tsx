@@ -810,6 +810,23 @@ const ResultsEntry = () => {
   const renderHistoryCell = (parameterId: string, index: number) => {
     const hist = historyMap[parameterId]?.[index];
     if (!hist || !hist.resultValue) return <TableCell className="py-1.5 text-center text-xs text-muted-foreground">—</TableCell>;
+    if (hist.snipImageUrls && hist.snipImageUrls.length > 0) {
+      return (
+        <TableCell className="py-1.5 text-xs">
+          <div className="leading-tight">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-5 px-1 text-xs text-blue-600 hover:text-blue-800 gap-0.5"
+              onClick={() => { setViewSnipImages(hist.snipImageUrls); setViewSnipContext(null); }}
+            >
+              <Eye className="h-3 w-3" /> View Snip
+            </Button>
+            <div className="text-muted-foreground text-[10px]">{hist.createdAt ? formatDateDDMMYYYY(hist.createdAt) : ""}</div>
+          </div>
+        </TableCell>
+      );
+    }
     return (
       <TableCell className="py-1.5 text-xs">
         <div className="leading-tight">
