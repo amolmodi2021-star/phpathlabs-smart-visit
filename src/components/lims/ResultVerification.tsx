@@ -113,7 +113,8 @@ const ResultVerification = () => {
       const { data } = await supabase
         .from("outsourced_test_snips")
         .select("registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, sent_at, result_mode, snip_image_urls")
-        .in("registration_id", regIds);
+        .in("registration_id", regIds)
+        .in("outsource_status", ["results_entered", "entered"]);
       return (data || []) as any[];
     },
   });

@@ -680,6 +680,8 @@ const ResultsEntry = () => {
       }
       const { error } = await supabase.from("patient_results").insert(upserts as any);
       if (error) throw error;
+      // Update outsourced snip status to results_entered so it flows to Verification
+      await supabase.from("outsourced_test_snips").update({ outsource_status: "results_entered" } as any).eq("registration_id", reg.id).eq("test_id", testId).in("outsource_status", ["pending", "sent", "results_saved"]);
     },
     onSuccess: (_, { entry, testId }) => {
       const testName = entry.parameters.find(p => p.testId === testId)?.testName || "Test";
