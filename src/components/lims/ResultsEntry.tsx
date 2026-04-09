@@ -297,7 +297,7 @@ const ResultsEntry = () => {
       }
       return { registration: reg, parameters };
     }).filter(entry => entry.parameters.length > 0);
-  }, [acceptedRegs, testsMap, testParamsMap, existingResults, resolveNormalRange]);
+  }, [acceptedRegs, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys]);
 
   // ─── Calculate flag ───
   const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string): string => {
