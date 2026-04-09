@@ -736,9 +736,9 @@ const ResultsEntry = () => {
               <SelectTrigger className="h-7 text-sm w-[180px]">
                 <SelectValue placeholder="Select..." />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="max-w-[400px]">
                 {p.descriptiveOptions.map((opt: string) => (
-                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                  <SelectItem key={opt} value={opt} className="whitespace-normal">{opt}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -1175,9 +1175,9 @@ const ResultsEntry = () => {
                                 <SelectTrigger className="h-7 text-sm w-full">
                                   <SelectValue placeholder="Select..." />
                                 </SelectTrigger>
-                                <SelectContent>
+                                <SelectContent className="max-w-[400px]">
                                   {p.descriptiveOptions.map((opt: string) => (
-                                    <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                                    <SelectItem key={opt} value={opt} className="whitespace-normal">{opt}</SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>
