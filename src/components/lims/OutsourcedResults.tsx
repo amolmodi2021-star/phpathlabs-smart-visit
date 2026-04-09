@@ -736,28 +736,30 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     }
   };
 
-  // Count stats
+  // Count stats — only count tests still in the results section (not yet transferred to verification)
   const stats = useMemo(() => {
-    let notSent = 0, awaiting = 0, total = 0;
+    let notSent = 0, awaiting = 0;
     let resultsSaved = 0;
     for (const e of patientEntries) {
       for (const t of e.outsourcedTests) {
+        // Skip tests that have already moved past results section
+        const snip = getSnip(e.registration.id, t.testId);
+        if (snip && ["results_entered", "entered", "verified", "approved"].includes(snip.outsource_status)) continue;
+
         const s = getTestStatus(e.registration.id, t.testId);
-        // Skip tests that have all results filled
+        // Skip tests that have all results filled and verified
         if (s === "results_saved") {
-          const snip = getSnip(e.registration.id, t.testId);
           if (snip?.result_mode === "snip") {
             const testResults = existingResults.filter((r: any) => r.registration_id === e.registration.id && r.test_id === t.testId);
             if (testResults.length > 0 && testResults.every((r: any) => r.status === "verified")) continue;
           } else if (hasAllResultsFilled(e.registration.id, t.testId, t.outsourcedParameterIds)) continue;
         }
-        total++;
         if (s === "not_sent") notSent++;
         else if (s === "awaiting_results") awaiting++;
         else if (s === "results_saved") resultsSaved++;
       }
     }
-    return { notSent, awaiting, resultsSaved, total };
+    return { notSent, awaiting, resultsSaved };
   }, [patientEntries, existingSnips, existingResults, testParamsMap]);
 
   // Render test card
@@ -988,11 +990,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   return (
     <div className="space-y-4">
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card className="p-3">
-          <div className="text-xs text-muted-foreground">Total Outsourced</div>
-          <div className="text-xl font-bold">{stats.total}</div>
-        </Card>
+      <div className="grid grid-cols-3 gap-3">
         <Card className="p-3">
           <div className="text-xs text-muted-foreground">Not Sent</div>
           <div className="text-xl font-bold text-muted-foreground">{stats.notSent}</div>
