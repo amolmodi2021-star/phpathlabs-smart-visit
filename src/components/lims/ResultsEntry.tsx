@@ -43,6 +43,7 @@ interface ParameterResult {
   isOutsourced: boolean; // true if this param is outsourced (test-level or param-level)
   outsourceLabName: string | null; // lab name if sent
   outsourceStatus: string; // pending | sent | results_entered
+  isSnipMode: boolean; // true if results were added via snip/image
 }
 
 interface PatientEntry {
@@ -356,6 +357,7 @@ const ResultsEntry = () => {
             isOutsourced: !!isParamOutsourced,
             outsourceLabName: isParamOutsourced ? (snipDetail?.labName || null) : null,
             outsourceStatus: isParamOutsourced ? (snipDetail?.status || "pending") : "",
+            isSnipMode: isParamOutsourced && snipDetail?.resultMode === "snip",
           });
         }
       }
@@ -755,41 +757,53 @@ const ResultsEntry = () => {
         </TableCell>
         <TableCell className="py-1.5 text-xs text-muted-foreground">
           {p.isOutsourced ? (
-            <Input
-              value={editedUnits[key] !== undefined ? editedUnits[key] : (p.unit || "")}
-              onChange={e => setEditedUnits(prev => ({ ...prev, [key]: e.target.value }))}
-              className="h-6 text-xs w-[70px]"
-              placeholder="Unit"
-            />
+            p.isSnipMode ? (
+              <span className="text-xs text-muted-foreground">{p.unit || "—"}</span>
+            ) : (
+              <Input
+                value={editedUnits[key] !== undefined ? editedUnits[key] : (p.unit || "")}
+                onChange={e => setEditedUnits(prev => ({ ...prev, [key]: e.target.value }))}
+                className="h-6 text-xs w-[70px]"
+                placeholder="Unit"
+              />
+            )
           ) : p.unit}
         </TableCell>
         <TableCell className="py-1.5 text-xs text-muted-foreground">
           {p.isOutsourced ? (
-            <Input
-              value={editedRefRanges[key] !== undefined ? editedRefRanges[key] : (p.referenceRange || "")}
-              onChange={e => setEditedRefRanges(prev => ({ ...prev, [key]: e.target.value }))}
-              className="h-6 text-xs w-[100px]"
-              placeholder="Ref Range"
-            />
+            p.isSnipMode ? (
+              <span className="text-xs text-muted-foreground">{p.referenceRange || "—"}</span>
+            ) : (
+              <Input
+                value={editedRefRanges[key] !== undefined ? editedRefRanges[key] : (p.referenceRange || "")}
+                onChange={e => setEditedRefRanges(prev => ({ ...prev, [key]: e.target.value }))}
+                className="h-6 text-xs w-[100px]"
+                placeholder="Ref Range"
+              />
+            )
           ) : p.referenceRange}
         </TableCell>
         <TableCell className="py-1.5 text-center">
           {p.isOutsourced ? (
-            <Select
-              value={flag || "none"}
-              onValueChange={(v) => setEditedFlags(prev => ({ ...prev, [key]: v === "none" ? "" : v }))}
-            >
-              <SelectTrigger className="h-6 text-xs w-[80px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">—</SelectItem>
-                <SelectItem value="N">Normal</SelectItem>
-                <SelectItem value="H">HIGH</SelectItem>
-                <SelectItem value="L">LOW</SelectItem>
-                <SelectItem value="A">Abnormal</SelectItem>
-              </SelectContent>
-            </Select>
+            p.isSnipMode ? (
+              <span className="text-xs text-muted-foreground">—</span>
+            ) : (
+              <Select
+                value={flag || "none"}
+                onValueChange={(v) => setEditedFlags(prev => ({ ...prev, [key]: v === "none" ? "" : v }))}
+              >
+                <SelectTrigger className="h-6 text-xs w-[80px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">—</SelectItem>
+                  <SelectItem value="N">Normal</SelectItem>
+                  <SelectItem value="H">HIGH</SelectItem>
+                  <SelectItem value="L">LOW</SelectItem>
+                  <SelectItem value="A">Abnormal</SelectItem>
+                </SelectContent>
+              </Select>
+            )
           ) : (
             <>
               {flag === "H" && <Badge variant="destructive" className="text-xs">HIGH</Badge>}
@@ -802,7 +816,9 @@ const ResultsEntry = () => {
         </TableCell>
         <TableCell className="py-1.5 text-center">
           {p.isOutsourced ? (
-            (p.outsourceStatus === "sent" || p.outsourceStatus === "results_saved") && p.outsourceLabName ? (
+            p.isSnipMode && p.outsourceLabName ? (
+              <Badge variant="outline" className="text-xs text-green-600 border-green-300 bg-green-50 whitespace-nowrap">{p.outsourceLabName}</Badge>
+            ) : (p.outsourceStatus === "sent" || p.outsourceStatus === "results_saved") && p.outsourceLabName ? (
               currentValue ? (
                 <Badge variant="outline" className="text-xs text-green-600 border-green-300 whitespace-nowrap">{p.outsourceLabName}</Badge>
               ) : (
