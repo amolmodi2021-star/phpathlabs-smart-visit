@@ -28,6 +28,8 @@ interface OutsourcedTest {
   testName: string;
   outsourcedCaption: string;
   isTransferredInhouse: boolean; // true = originally inhouse, transferred to outsourced
+  outsourcedParameterIds?: string[]; // if set, only these params are outsourced (parameter-level)
+  isParameterLevel: boolean; // true = only specific params outsourced, not whole test
 }
 
 interface OutsourcedPatient {
@@ -59,17 +61,45 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
 
   // Return to inhouse state
   const [returningKey, setReturningKey] = useState<string | null>(null);
+
+  // Return entire test to inhouse
   const returnToInhouse = async (regId: string, testId: string, testName: string) => {
     const key = `${regId}||${testId}`;
     setReturningKey(key);
     try {
-      // Delete the outsourced_test_snips record to return test to inhouse
       await supabase.from("outsourced_test_snips").delete().eq("registration_id", regId).eq("test_id", testId);
       toast.success(`${testName} returned to Inhouse`);
       qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
       qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] });
       qc.invalidateQueries({ queryKey: ["outsourced_accepted_regs"] });
       qc.invalidateQueries({ queryKey: ["results_accepted_regs"] });
+    } catch (err: any) {
+      toast.error(err.message || "Return failed");
+    } finally {
+      setReturningKey(null);
+    }
+  };
+
+  // Return individual parameter to inhouse
+  const returnParamToInhouse = async (regId: string, testId: string, paramId: string, paramName: string) => {
+    const key = `${regId}||${paramId}`;
+    setReturningKey(key);
+    try {
+      const snip = existingSnips.find((s: any) => s.registration_id === regId && s.test_id === testId);
+      const currentIds: string[] = Array.isArray(snip?.outsourced_parameter_ids) ? snip.outsourced_parameter_ids : [];
+      const newIds = currentIds.filter(id => id !== paramId);
+      if (newIds.length === 0) {
+        // No more outsourced params, delete the snip record
+        await supabase.from("outsourced_test_snips").delete().eq("registration_id", regId).eq("test_id", testId);
+      } else {
+        await supabase.from("outsourced_test_snips").update({
+          outsourced_parameter_ids: newIds,
+        } as any).eq("registration_id", regId).eq("test_id", testId);
+      }
+      toast.success(`${paramName} returned to Inhouse`);
+      qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+      qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] });
+      qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
     } catch (err: any) {
       toast.error(err.message || "Return failed");
     } finally {
@@ -172,13 +202,18 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     },
   });
 
-  // Build outsourced patient entries (includes naturally outsourced + transferred inhouse tests)
+  // Build outsourced patient entries (includes naturally outsourced + transferred inhouse tests + parameter-level)
   const patientEntries: OutsourcedPatient[] = useMemo(() => {
-    // Build a set of transferred test keys from snips for non-outsourced tests
+    // Build maps from snips
     const transferredKeys = new Set<string>();
+    const paramLevelMap: Record<string, string[]> = {};
     existingSnips.forEach((s: any) => {
       const testInfo = testsMap[s.test_id];
-      if (!testInfo?.is_outsourced) {
+      const paramIds = Array.isArray(s.outsourced_parameter_ids) ? s.outsourced_parameter_ids : [];
+      if (paramIds.length > 0) {
+        // Parameter-level outsource
+        paramLevelMap[`${s.registration_id}||${s.test_id}`] = paramIds;
+      } else if (!testInfo?.is_outsourced) {
         transferredKeys.add(`${s.registration_id}||${s.test_id}`);
       }
     });
@@ -190,13 +225,17 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       for (const t of tests) {
         if (cancelledIds.has(t.test_id)) continue;
         const testInfo = testsMap[t.test_id];
-        const isTransferred = transferredKeys.has(`${reg.id}||${t.test_id}`);
+        const testKey = `${reg.id}||${t.test_id}`;
+        const isTransferred = transferredKeys.has(testKey);
+        const paramIds = paramLevelMap[testKey];
+
         if (testInfo?.is_outsourced) {
           outsourcedTests.push({
             testId: t.test_id,
             testName: t.test_name || testInfo.test_name || "",
             outsourcedCaption: testInfo.outsourced_caption || "Outsourced Lab",
             isTransferredInhouse: false,
+            isParameterLevel: false,
           });
         } else if (isTransferred) {
           outsourcedTests.push({
@@ -204,6 +243,16 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
             testName: t.test_name || testInfo?.test_name || "",
             outsourcedCaption: "Transferred from Inhouse",
             isTransferredInhouse: true,
+            isParameterLevel: false,
+          });
+        } else if (paramIds && paramIds.length > 0) {
+          outsourcedTests.push({
+            testId: t.test_id,
+            testName: t.test_name || testInfo?.test_name || "",
+            outsourcedCaption: `${paramIds.length} parameter(s) outsourced`,
+            isTransferredInhouse: true,
+            isParameterLevel: true,
+            outsourcedParameterIds: paramIds,
           });
         }
       }
@@ -655,9 +704,12 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
           <div className="flex-1">
             <span className="font-medium text-sm">{test.testName}</span>
             <span className="text-xs text-muted-foreground ml-2">({test.outsourcedCaption})</span>
+            {test.isParameterLevel && (
+              <Badge variant="outline" className="ml-2 text-[10px]">Param Level</Badge>
+            )}
           </div>
           <div className="flex items-center gap-2">
-            {test.isTransferredInhouse && status !== "results_entered" && (
+            {test.isTransferredInhouse && !test.isParameterLevel && status !== "results_entered" && (
               <Button
                 size="sm"
                 variant="ghost"
@@ -679,6 +731,40 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
             {renderStatusBadge(regId, test.testId)}
           </div>
         </div>
+
+        {/* Parameter-level: show individual outsourced parameters with return buttons */}
+        {test.isParameterLevel && test.outsourcedParameterIds && test.outsourcedParameterIds.length > 0 && (
+          <div className="border-t px-3 py-2 bg-muted/5">
+            <div className="text-xs font-semibold text-muted-foreground mb-1">Outsourced Parameters:</div>
+            <div className="flex flex-wrap gap-1.5">
+              {test.outsourcedParameterIds.map((paramId: string) => {
+                const paramInfo = (testParamsMap[test.testId] || []).find(
+                  (tp: any) => !tp.is_subheader && tp.report_test_parameters?.id === paramId
+                );
+                const paramName = paramInfo?.report_test_parameters?.parameter_name || paramId;
+                const isReturning = returningKey === `${regId}||${paramId}`;
+                return (
+                  <div key={paramId} className="flex items-center gap-1 border rounded px-2 py-0.5 bg-background text-xs">
+                    <span>{paramName}</span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-4 w-4 p-0 text-muted-foreground hover:text-primary"
+                      title="Return to Inhouse"
+                      disabled={isReturning}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        returnParamToInhouse(regId, test.testId, paramId, paramName);
+                      }}
+                    >
+                      {isReturning ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowLeftRight className="h-3 w-3" />}
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Expanded: only for sent tests (awaiting or results_entered) */}
         {isExpanded && (canEnterResults || status === "results_entered") && (
