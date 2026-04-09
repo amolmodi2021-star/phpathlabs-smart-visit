@@ -678,6 +678,12 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     for (const e of patientEntries) {
       for (const t of e.outsourcedTests) {
         const s = getTestStatus(e.registration.id, t.testId);
+        // Skip tests that have all results filled
+        if (s === "results_saved") {
+          const snip = getSnip(e.registration.id, t.testId);
+          if (snip?.result_mode === "snip") continue;
+          if (hasAllResultsFilled(e.registration.id, t.testId, t.outsourcedParameterIds)) continue;
+        }
         total++;
         if (s === "not_sent") notSent++;
         else if (s === "awaiting_results") awaiting++;
@@ -685,7 +691,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       }
     }
     return { notSent, awaiting, resultsSaved, total };
-  }, [patientEntries, existingSnips, existingResults]);
+  }, [patientEntries, existingSnips, existingResults, testParamsMap]);
 
   // Render test card
   const renderTestCard = (entry: OutsourcedPatient, test: OutsourcedTest) => {
