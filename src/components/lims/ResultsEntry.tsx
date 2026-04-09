@@ -820,22 +820,41 @@ const ResultsEntry = () => {
           )}
         </TableCell>
         <TableCell className="py-1.5 text-center">
-          {!p.isCalculated && !p.isOutsourced && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-5 w-5 p-0 text-muted-foreground hover:text-primary"
-              title="Transfer to Outsourced"
-              disabled={transferringKey === `${regId}||${p.parameterId}`}
-              onClick={() => transferParamToOutsourced(regId, p.testId, p.parameterId, p.parameterName)}
-            >
-              {transferringKey === `${regId}||${p.parameterId}` ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <ArrowRightLeft className="h-3 w-3" />
-              )}
-            </Button>
-          )}
+          <div className="flex items-center justify-center gap-1">
+            {!p.isCalculated && !p.isOutsourced && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-5 w-5 p-0 text-muted-foreground hover:text-primary"
+                title="Transfer to Outsourced"
+                disabled={transferringKey === `${regId}||${p.parameterId}`}
+                onClick={() => transferParamToOutsourced(regId, p.testId, p.parameterId, p.parameterName)}
+              >
+                {transferringKey === `${regId}||${p.parameterId}` ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <ArrowRightLeft className="h-3 w-3" />
+                )}
+              </Button>
+            )}
+            {p.isOutsourced && (() => {
+              const snipDetail = outsourcedSnipDetails[`${regId}||${p.testId}`];
+              if (snipDetail?.resultMode === "snip" && snipDetail.snipImageUrls.length > 0) {
+                return (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-5 px-1 text-xs text-blue-600 hover:text-blue-800 gap-0.5"
+                    title="View Snip"
+                    onClick={() => setViewSnipImages(snipDetail.snipImageUrls)}
+                  >
+                    <Eye className="h-3 w-3" /> View
+                  </Button>
+                );
+              }
+              return null;
+            })()}
+          </div>
         </TableCell>
       </TableRow>
     );
