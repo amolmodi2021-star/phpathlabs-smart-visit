@@ -136,6 +136,7 @@ const DoctorApproval = () => {
       const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
       const activeTests = tests.filter((t: any) => !cancelledIds.has(t.test_id));
       const parameters: ParameterResult[] = [];
+      const snipOnlyTests: SnipOnlyTest[] = [];
       for (const t of activeTests) {
         const testInfo = testsMap[t.test_id] || {};
         const testSnipKey = `${reg.id}||${t.test_id}`;
@@ -143,6 +144,15 @@ const DoctorApproval = () => {
         const paramOutsourcedSet = outsourcedParamSets[testSnipKey];
         const snipDetail = outsourcedSnipDetails[testSnipKey];
         const params = testParamsMap[t.test_id] || [];
+        const validParams = params.filter((tp: any) => !tp.is_subheader && tp.report_test_parameters);
+
+        if (validParams.length === 0) {
+          if (snipDetail && snipDetail.snipImageUrls.length > 0 && snipDetail.status === "verified") {
+            snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, outsourceStatus: snipDetail.status });
+          }
+          continue;
+        }
+
         const testVerifiedResults = existingResults.filter((r: any) => r.registration_id === reg.id && r.test_id === t.test_id);
         if (testVerifiedResults.length === 0 && !snipDetail) continue;
         for (const tp of params) {
@@ -170,8 +180,8 @@ const DoctorApproval = () => {
           });
         }
       }
-      return { registration: reg, parameters };
-    }).filter(e => e.parameters.length > 0);
+      return { registration: reg, parameters, snipOnlyTests };
+    }).filter(e => e.parameters.length > 0 || e.snipOnlyTests.length > 0);
   }, [registrations, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails]);
 
   const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string): string => {
