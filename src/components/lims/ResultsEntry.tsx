@@ -1348,10 +1348,22 @@ const ResultsEntry = () => {
         </DialogContent>
       </Dialog>
       {/* Snip Image Viewer Dialog */}
-      <Dialog open={!!viewSnipImages} onOpenChange={open => { if (!open) setViewSnipImages(null); }}>
+      <Dialog open={!!viewSnipImages} onOpenChange={open => { if (!open) { setViewSnipImages(null); setViewSnipContext(null); } }}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Outsourced Result — Snipped Images</DialogTitle>
+            <DialogTitle className="flex items-center justify-between">
+              <span>Outsourced Result — Snipped Images</span>
+              <Button
+                size="sm"
+                variant="destructive"
+                className="gap-1"
+                disabled={removingSnip}
+                onClick={removeSnipImages}
+              >
+                {removingSnip ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                Remove Snip
+              </Button>
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             {viewSnipImages?.map((url, idx) => (
