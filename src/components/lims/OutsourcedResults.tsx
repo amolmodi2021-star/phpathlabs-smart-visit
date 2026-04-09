@@ -484,7 +484,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   }, [qc]);
 
   // Save manual results
-  const saveManualResults = useCallback(async (regId: string, testId: string, testName: string) => {
+  const saveManualResults = useCallback(async (regId: string, testId: string, testName: string, outsourcedParamIds?: string[]) => {
     const key = `${regId}||${testId}`;
     setSavingKey(key);
     try {
@@ -494,6 +494,8 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         if (tp.is_subheader) continue;
         const p = tp.report_test_parameters;
         if (!p) continue;
+        // For parameter-level outsource, only save outsourced parameters
+        if (outsourcedParamIds && outsourcedParamIds.length > 0 && !outsourcedParamIds.includes(p.id)) continue;
         const valKey = `${regId}||${p.id}`;
         const value = editedValues[valKey] || "";
         if (!value) continue;
@@ -514,7 +516,14 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         });
       }
       if (upserts.length > 0) {
-        await supabase.from("patient_results").delete().eq("registration_id", regId).eq("test_id", testId);
+        if (outsourcedParamIds && outsourcedParamIds.length > 0) {
+          // Parameter-level: only delete outsourced param results, not all
+          for (const paramId of outsourcedParamIds) {
+            await supabase.from("patient_results").delete().eq("registration_id", regId).eq("test_id", testId).eq("parameter_id", paramId);
+          }
+        } else {
+          await supabase.from("patient_results").delete().eq("registration_id", regId).eq("test_id", testId);
+        }
         const { error } = await supabase.from("patient_results").insert(upserts as any);
         if (error) throw error;
       }
@@ -798,6 +807,8 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                     <TableBody>
                       {params.map((tp: any) => {
                         if (tp.is_subheader) {
+                          // For parameter-level outsource, skip subheaders
+                          if (test.isParameterLevel) return null;
                           return (
                             <TableRow key={tp.id || tp.subheader_text}>
                               <TableCell colSpan={5} className="py-1 text-xs font-semibold text-primary bg-muted/30">
@@ -808,6 +819,10 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                         }
                         const p = tp.report_test_parameters;
                         if (!p) return null;
+                        // For parameter-level outsource, only show outsourced parameters
+                        if (test.isParameterLevel && test.outsourcedParameterIds && !test.outsourcedParameterIds.includes(p.id)) {
+                          return null;
+                        }
                         const valKey = `${regId}||${p.id}`;
                         const existing = existingResults.find(
                           (r: any) => r.registration_id === regId && r.parameter_id === p.id
@@ -837,7 +852,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                   <div className="flex justify-end mt-2">
                     <Button
                       size="sm"
-                      onClick={() => saveManualResults(regId, test.testId, test.testName)}
+                      onClick={() => saveManualResults(regId, test.testId, test.testName, test.outsourcedParameterIds)}
                       disabled={isSaving}
                     >
                       {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
