@@ -164,7 +164,7 @@ const Dispatch = () => {
 
       return { registration: reg, tests: dispatchTests, completionStatus, approvedCount, pendingCount } as DispatchEntry;
     }).filter(Boolean) as DispatchEntry[];
-  }, [registrations, allResults, allSnips, testsMap]);
+  }, [registrations, allResults, allSnips, testsMap, heldSet]);
 
   const stats = useMemo(() => ({
     totalPatients: dispatchEntries.length,
