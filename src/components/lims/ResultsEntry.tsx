@@ -240,6 +240,9 @@ const ResultsEntry = () => {
             departmentId: testInfo.department_id || "",
             machineName: testInfo.instrument_name || "",
             displayOrder: tp.display_order || 0,
+            rangeType: resolved.rangeType,
+            descriptiveOptions: resolved.descriptiveOptions,
+            expectedValue: resolved.expectedValue,
           });
         }
       }
