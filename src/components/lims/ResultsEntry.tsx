@@ -681,6 +681,7 @@ const ResultsEntry = () => {
   // ─── Save & send to verification (per-test) ───
   const [savingTestKey, setSavingTestKey] = useState<string | null>(null);
   const [blankConfirmTestParams, setBlankConfirmTestParams] = useState<{ entry: PatientEntry; testId: string; testName: string } | null>(null);
+  const [blankParamIds, setBlankParamIds] = useState<Set<string>>(new Set());
 
   const saveMutation = useMutation({
     mutationFn: async ({ entry, testId }: { entry: PatientEntry; testId: string }) => {
@@ -774,6 +775,14 @@ const ResultsEntry = () => {
     }
     if (blanks > 0) {
       setBlankParamCount(blanks);
+      const ids = new Set<string>();
+      for (const p of testParams) {
+        if (p.isCalculated) continue;
+        const key = `${reg.id}||${p.parameterId}`;
+        const val = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
+        if (!val || val.trim() === "") ids.add(p.parameterId);
+      }
+      setBlankParamIds(ids);
       setBlankConfirmTestParams({ entry, testId, testName });
       setHighlightBlanksForRegs(prev => new Set(prev).add(`${reg.id}||${testId}`));
     } else {
@@ -1412,9 +1421,7 @@ const ResultsEntry = () => {
             const reg = entry.registration;
             const blankParams = entry.parameters.filter(p => {
               if (p.testId !== testId || p.isCalculated) return false;
-              const key = `${reg.id}||${p.parameterId}`;
-              const val = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
-              return !val || val.trim() === "";
+              return blankParamIds.has(p.parameterId);
             });
             return (
               <div className="border rounded-lg overflow-hidden">
