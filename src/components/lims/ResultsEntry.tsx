@@ -163,12 +163,14 @@ const ResultsEntry = () => {
     },
   });
 
-  // Build lookup: test-level outsourced keys and parameter-level outsourced sets
-  const { transferredTestKeys, outsourcedParamSets } = useMemo(() => {
+  // Build lookup: test-level outsourced keys and parameter-level outsourced sets, plus status/lab info
+  const { transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails } = useMemo(() => {
     const testKeys = new Set<string>();
     const paramSets: Record<string, Set<string>> = {};
+    const details: Record<string, { status: string; labName: string | null; sentAt: string | null }> = {};
     outsourcedSnips.forEach((s: any) => {
       const key = `${s.registration_id}||${s.test_id}`;
+      details[key] = { status: s.outsource_status || "pending", labName: s.outsourced_lab_name || null, sentAt: s.sent_at || null };
       const paramIds = Array.isArray(s.outsourced_parameter_ids) ? s.outsourced_parameter_ids : [];
       if (paramIds.length > 0) {
         // Parameter-level outsource
@@ -179,7 +181,7 @@ const ResultsEntry = () => {
         testKeys.add(key);
       }
     });
-    return { transferredTestKeys: testKeys, outsourcedParamSets: paramSets };
+    return { transferredTestKeys: testKeys, outsourcedParamSets: paramSets, outsourcedSnipDetails: details };
   }, [outsourcedSnips]);
 
   // ─── Transfer to outsourced state ───
