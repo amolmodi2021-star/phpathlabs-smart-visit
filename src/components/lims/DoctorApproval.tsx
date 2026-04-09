@@ -23,7 +23,15 @@ interface ParameterResult {
   isOutsourced: boolean; outsourceLabName: string | null; outsourceStatus: string; isSnipMode: boolean;
 }
 
-interface PatientEntry { registration: any; parameters: ParameterResult[]; }
+interface SnipOnlyTest {
+  testId: string;
+  testName: string;
+  labName: string | null;
+  snipUrls: string[];
+  outsourceStatus: string;
+}
+
+interface PatientEntry { registration: any; parameters: ParameterResult[]; snipOnlyTests: SnipOnlyTest[]; }
 
 const DoctorApproval = () => {
   const qc = useQueryClient();
