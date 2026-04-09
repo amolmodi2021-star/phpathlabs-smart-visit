@@ -283,36 +283,6 @@ const Dispatch = () => {
                             </div>
                           </div>
 
-                          {test.status === "approved" && test.results.length > 0 && (
-                            <div className="px-3 pb-2">
-                              <Table>
-                                <TableHeader><TableRow>
-                                  <TableHead className="text-xs py-1">Parameter</TableHead>
-                                  <TableHead className="text-xs py-1">Result</TableHead>
-                                  <TableHead className="text-xs py-1">Unit</TableHead>
-                                  <TableHead className="text-xs py-1">Ref. Range</TableHead>
-                                  <TableHead className="text-xs py-1">Flag</TableHead>
-                                </TableRow></TableHeader>
-                                <TableBody>
-                                  {test.results.map((r: any) => (
-                                    <TableRow key={r.id}>
-                                      <TableCell className="py-1 text-sm">{r.parameter_name}</TableCell>
-                                      <TableCell className="py-1 text-sm font-medium">{r.result_value}</TableCell>
-                                      <TableCell className="py-1 text-xs text-muted-foreground">{r.unit}</TableCell>
-                                      <TableCell className="py-1 text-xs text-muted-foreground">{r.reference_range}</TableCell>
-                                      <TableCell className="py-1">
-                                        {r.flag === "H" && <Badge variant="destructive" className="text-[10px] px-1">H</Badge>}
-                                        {r.flag === "L" && <Badge className="text-[10px] px-1 bg-amber-500">L</Badge>}
-                                        {r.flag === "A" && <Badge variant="destructive" className="text-[10px] px-1">A</Badge>}
-                                        {r.flag === "N" && <Badge variant="outline" className="text-[10px] px-1">N</Badge>}
-                                      </TableCell>
-                                    </TableRow>
-                                  ))}
-                                </TableBody>
-                              </Table>
-                            </div>
-                          )}
-
                           {test.status === "approved" && test.snipUrls.length > 0 && (
                             <div className="px-3 pb-2">
                               <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={() => setViewSnipImages(test.snipUrls)}>
