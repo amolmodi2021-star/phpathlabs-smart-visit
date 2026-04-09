@@ -137,6 +137,87 @@ export type Database = {
         }
         Relationships: []
       }
+      approved_reports: {
+        Row: {
+          address: string | null
+          approval_date: string | null
+          approved_by: string | null
+          created_at: string
+          dob: string | null
+          doctor_name: string | null
+          email: string | null
+          gender: string | null
+          id: string
+          invoice_number: string | null
+          is_stat: boolean | null
+          mobile_number: string | null
+          outsourced_snip_urls: Json | null
+          patient_name: string | null
+          print_date: string | null
+          registration_date: string | null
+          registration_id: string
+          report_language: string | null
+          sample_collection_date: string | null
+          test_date: string | null
+          test_results: Json | null
+          title: string | null
+          umr_number: string | null
+          visit_type: string | null
+        }
+        Insert: {
+          address?: string | null
+          approval_date?: string | null
+          approved_by?: string | null
+          created_at?: string
+          dob?: string | null
+          doctor_name?: string | null
+          email?: string | null
+          gender?: string | null
+          id?: string
+          invoice_number?: string | null
+          is_stat?: boolean | null
+          mobile_number?: string | null
+          outsourced_snip_urls?: Json | null
+          patient_name?: string | null
+          print_date?: string | null
+          registration_date?: string | null
+          registration_id: string
+          report_language?: string | null
+          sample_collection_date?: string | null
+          test_date?: string | null
+          test_results?: Json | null
+          title?: string | null
+          umr_number?: string | null
+          visit_type?: string | null
+        }
+        Update: {
+          address?: string | null
+          approval_date?: string | null
+          approved_by?: string | null
+          created_at?: string
+          dob?: string | null
+          doctor_name?: string | null
+          email?: string | null
+          gender?: string | null
+          id?: string
+          invoice_number?: string | null
+          is_stat?: boolean | null
+          mobile_number?: string | null
+          outsourced_snip_urls?: Json | null
+          patient_name?: string | null
+          print_date?: string | null
+          registration_date?: string | null
+          registration_id?: string
+          report_language?: string | null
+          sample_collection_date?: string | null
+          test_date?: string | null
+          test_results?: Json | null
+          title?: string | null
+          umr_number?: string | null
+          visit_type?: string | null
+        }
+        Relationships: []
+      }
       billing_profile_tests: {
         Row: {
           created_at: string
