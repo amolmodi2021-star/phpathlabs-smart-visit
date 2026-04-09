@@ -733,7 +733,7 @@ const ResultsEntry = () => {
               value={currentValue || undefined}
               onValueChange={(v) => handleValueChange(regId, p.parameterId, v, entry)}
             >
-              <SelectTrigger className="h-7 text-sm w-[180px]">
+              <SelectTrigger className="h-7 text-sm !w-[180px] min-w-[180px] max-w-[180px]">
                 <SelectValue placeholder="Select..." />
               </SelectTrigger>
               <SelectContent className="max-w-[400px]">
