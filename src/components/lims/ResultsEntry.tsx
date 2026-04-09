@@ -15,6 +15,7 @@ import { useMasterLookup } from "@/hooks/useMasterLookup";
 import OutsourcedResults from "./OutsourcedResults";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { formatDateDDMMYYYY } from "@/lib/utils";
 
 // ─── Types ───
 interface ParameterResult {
@@ -190,6 +191,52 @@ const ResultsEntry = () => {
     });
     return { transferredTestKeys: testKeys, outsourcedParamSets: paramSets, outsourcedSnipDetails: details };
   }, [outsourcedSnips]);
+
+  // ─── Fetch historical results for expanded patient (prev 1 & prev 2) ───
+  const expandedUmr = useMemo(() => {
+    if (!expandedPatient) return null;
+    const reg = acceptedRegs.find((r: any) => r.id === expandedPatient);
+    return reg?.umr_number || null;
+  }, [expandedPatient, acceptedRegs]);
+
+  const { data: historicalResults = [] } = useQuery({
+    queryKey: ["historical_results", expandedUmr, expandedPatient],
+    enabled: !!expandedUmr && !!expandedPatient,
+    queryFn: async () => {
+      // First get all registration IDs for same UMR
+      const { data: sameUmrRegs } = await supabase
+        .from("patient_registrations")
+        .select("id")
+        .eq("umr_number", expandedUmr!)
+        .neq("id", expandedPatient!);
+      const regIds = (sameUmrRegs || []).map((r: any) => r.id);
+      if (regIds.length === 0) return [];
+      const { data, error } = await supabase
+        .from("patient_results")
+        .select("parameter_id, result_value, reference_range, created_at")
+        .in("registration_id", regIds)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Build history map: parameterId → [{ resultValue, referenceRange, createdAt }] (max 2)
+  const historyMap = useMemo(() => {
+    const map: Record<string, { resultValue: string; referenceRange: string; createdAt: string }[]> = {};
+    for (const r of historicalResults) {
+      if (!r.parameter_id) continue;
+      if (!map[r.parameter_id]) map[r.parameter_id] = [];
+      if (map[r.parameter_id].length < 2) {
+        map[r.parameter_id].push({
+          resultValue: r.result_value || "",
+          referenceRange: r.reference_range || "",
+          createdAt: r.created_at || "",
+        });
+      }
+    }
+    return map;
+  }, [historicalResults]);
 
   // ─── Snip image viewer state ───
   const [viewSnipImages, setViewSnipImages] = useState<string[] | null>(null);
@@ -735,6 +782,21 @@ const ResultsEntry = () => {
     return Math.round((filled / entry.parameters.length) * 100);
   };
 
+  // ─── Render history cell ───
+  const renderHistoryCell = (parameterId: string, index: number) => {
+    const hist = historyMap[parameterId]?.[index];
+    if (!hist || !hist.resultValue) return <TableCell className="py-1.5 text-center text-xs text-muted-foreground">—</TableCell>;
+    return (
+      <TableCell className="py-1.5 text-xs">
+        <div className="leading-tight">
+          <div className="font-bold">{hist.resultValue}</div>
+          <div className="text-muted-foreground">{hist.referenceRange || "—"}</div>
+          <div className="text-muted-foreground text-[10px]">{hist.createdAt ? formatDateDDMMYYYY(hist.createdAt) : ""}</div>
+        </div>
+      </TableCell>
+    );
+  };
+
   // ─── Render parameter row ───
   const renderParamRow = (entry: PatientEntry, p: ParameterResult) => {
     const regId = entry.registration.id;
@@ -756,6 +818,8 @@ const ResultsEntry = () => {
           {p.parameterName}
           {p.isCalculated && <Calculator className="inline h-3 w-3 ml-1 text-primary" />}
         </TableCell>
+        {renderHistoryCell(p.parameterId, 0)}
+        {renderHistoryCell(p.parameterId, 1)}
         <TableCell className="py-1.5 w-[180px]">
           {isInterfaceParameter ? (
             <div className="flex items-center gap-1">
@@ -1024,6 +1088,8 @@ const ResultsEntry = () => {
                       <TableRow>
                         <TableHead className="py-1 text-xs w-[80px]">Code</TableHead>
                         <TableHead className="py-1 text-xs">Parameter</TableHead>
+                        <TableHead className="py-1 text-xs w-[100px]">Prev 1</TableHead>
+                        <TableHead className="py-1 text-xs w-[100px]">Prev 2</TableHead>
                         <TableHead className="py-1 text-xs w-[200px]">Result</TableHead>
                         <TableHead className="py-1 text-xs w-[60px]">Unit</TableHead>
                         <TableHead className="py-1 text-xs w-[120px]">Ref. Range</TableHead>
