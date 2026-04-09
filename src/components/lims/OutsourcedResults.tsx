@@ -704,9 +704,12 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
           <div className="flex-1">
             <span className="font-medium text-sm">{test.testName}</span>
             <span className="text-xs text-muted-foreground ml-2">({test.outsourcedCaption})</span>
+            {test.isParameterLevel && (
+              <Badge variant="outline" className="ml-2 text-[10px]">Param Level</Badge>
+            )}
           </div>
           <div className="flex items-center gap-2">
-            {test.isTransferredInhouse && status !== "results_entered" && (
+            {test.isTransferredInhouse && !test.isParameterLevel && status !== "results_entered" && (
               <Button
                 size="sm"
                 variant="ghost"
@@ -728,6 +731,40 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
             {renderStatusBadge(regId, test.testId)}
           </div>
         </div>
+
+        {/* Parameter-level: show individual outsourced parameters with return buttons */}
+        {test.isParameterLevel && test.outsourcedParameterIds && test.outsourcedParameterIds.length > 0 && (
+          <div className="border-t px-3 py-2 bg-muted/5">
+            <div className="text-xs font-semibold text-muted-foreground mb-1">Outsourced Parameters:</div>
+            <div className="flex flex-wrap gap-1.5">
+              {test.outsourcedParameterIds.map((paramId: string) => {
+                const paramInfo = (testParamsMap[test.testId] || []).find(
+                  (tp: any) => !tp.is_subheader && tp.report_test_parameters?.id === paramId
+                );
+                const paramName = paramInfo?.report_test_parameters?.parameter_name || paramId;
+                const isReturning = returningKey === `${regId}||${paramId}`;
+                return (
+                  <div key={paramId} className="flex items-center gap-1 border rounded px-2 py-0.5 bg-background text-xs">
+                    <span>{paramName}</span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-4 w-4 p-0 text-muted-foreground hover:text-primary"
+                      title="Return to Inhouse"
+                      disabled={isReturning}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        returnParamToInhouse(regId, test.testId, paramId, paramName);
+                      }}
+                    >
+                      {isReturning ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowLeftRight className="h-3 w-3" />}
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Expanded: only for sent tests (awaiting or results_entered) */}
         {isExpanded && (canEnterResults || status === "results_entered") && (
