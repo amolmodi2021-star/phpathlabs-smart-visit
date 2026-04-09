@@ -681,8 +681,10 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         // Skip tests that have all results filled
         if (s === "results_saved") {
           const snip = getSnip(e.registration.id, t.testId);
-          if (snip?.result_mode === "snip") continue;
-          if (hasAllResultsFilled(e.registration.id, t.testId, t.outsourcedParameterIds)) continue;
+          if (snip?.result_mode === "snip") {
+            const testResults = existingResults.filter((r: any) => r.registration_id === e.registration.id && r.test_id === t.testId);
+            if (testResults.length > 0 && testResults.every((r: any) => r.status === "verified")) continue;
+          } else if (hasAllResultsFilled(e.registration.id, t.testId, t.outsourcedParameterIds)) continue;
         }
         total++;
         if (s === "not_sent") notSent++;
@@ -967,9 +969,14 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
             const visibleTests = entry.outsourcedTests.filter(t => {
               const status = getTestStatus(reg.id, t.testId);
               if (status === "results_saved") {
-                // For snip mode, if snip images exist, consider it done
                 const snip = getSnip(reg.id, t.testId);
-                if (snip?.result_mode === "snip") return false;
+                const outsourceStatus = getOutsourceStatus(reg.id, t.testId);
+                // For snip mode, keep visible so user can review — only hide if results are verified
+                if (snip?.result_mode === "snip") {
+                  // Hide only if all patient_results for this test are verified
+                  const testResults = existingResults.filter((r: any) => r.registration_id === reg.id && r.test_id === t.testId);
+                  return testResults.length === 0 || !testResults.every((r: any) => r.status === "verified");
+                }
                 // For manual mode, check if all params have results
                 return !hasAllResultsFilled(reg.id, t.testId, t.outsourcedParameterIds);
               }
