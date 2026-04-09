@@ -213,11 +213,33 @@ const ResultsEntry = () => {
       if (regIds.length === 0) return [];
       const { data, error } = await supabase
         .from("patient_results")
-        .select("parameter_id, result_value, reference_range, created_at")
+        .select("parameter_id, result_value, reference_range, created_at, test_id, registration_id")
         .in("registration_id", regIds)
+        .not("result_value", "is", null)
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return data || [];
+      // Fetch snip records to exclude snip-mode results
+      const { data: snips } = await supabase
+        .from("outsourced_test_snips")
+        .select("registration_id, test_id, result_mode, outsourced_parameter_ids")
+        .in("registration_id", regIds)
+        .eq("result_mode", "snip");
+      const snipParamSet = new Set<string>();
+      (snips || []).forEach((s: any) => {
+        const paramIds = Array.isArray(s.outsourced_parameter_ids) ? s.outsourced_parameter_ids : [];
+        if (paramIds.length > 0) {
+          paramIds.forEach((pid: string) => snipParamSet.add(`${s.registration_id}||${s.test_id}||${pid}`));
+        } else {
+          // Full test snip - mark all params for this reg+test
+          snipParamSet.add(`${s.registration_id}||${s.test_id}||__full__`);
+        }
+      });
+      // Filter out snip results
+      return (data || []).filter((r: any) => {
+        const fullKey = `${r.registration_id}||${r.test_id}||__full__`;
+        const paramKey = `${r.registration_id}||${r.test_id}||${r.parameter_id}`;
+        return !snipParamSet.has(fullKey) && !snipParamSet.has(paramKey);
+      });
     },
   });
 
