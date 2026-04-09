@@ -36,6 +36,9 @@ interface ParameterResult {
   departmentId: string;
   machineName: string;
   displayOrder: number;
+  rangeType: string; // numeric | qualitative | descriptive
+  descriptiveOptions: string[];
+  expectedValue: string;
 }
 
 interface PatientEntry {
