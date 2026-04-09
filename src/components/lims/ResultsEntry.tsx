@@ -723,6 +723,24 @@ const ResultsEntry = () => {
           {p.status === "verified" && <Badge className="text-xs bg-green-600">Verified</Badge>}
           {p.status === "pending" && !currentValue && <Badge variant="outline" className="text-xs">Pending</Badge>}
         </TableCell>
+        <TableCell className="py-1.5 text-center">
+          {!p.isCalculated && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-5 w-5 p-0 text-muted-foreground hover:text-primary"
+              title="Transfer to Outsourced"
+              disabled={transferringKey === `${regId}||${p.parameterId}`}
+              onClick={() => transferParamToOutsourced(regId, p.testId, p.parameterId, p.parameterName)}
+            >
+              {transferringKey === `${regId}||${p.parameterId}` ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <ArrowRightLeft className="h-3 w-3" />
+              )}
+            </Button>
+          )}
+        </TableCell>
       </TableRow>
     );
   };
