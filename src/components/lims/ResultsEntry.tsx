@@ -345,7 +345,6 @@ const ResultsEntry = () => {
   };
 
   // ─── Auto-save (saves with status "pending", does NOT transfer) ───
-  const autoSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const autoSaveTest = async (regId: string, testId: string, entry: PatientEntry, currentEdits: Record<string, string>) => {
     const testParams = entry.parameters.filter(p => p.testId === testId);
     const upserts: any[] = [];
