@@ -799,7 +799,7 @@ const ResultsEntry = () => {
         </TableCell>
         <TableCell className="py-1.5 text-center">
           {p.isOutsourced ? (
-            p.outsourceStatus === "sent" && p.outsourceLabName ? (
+            (p.outsourceStatus === "sent" || p.outsourceStatus === "results_saved") && p.outsourceLabName ? (
               currentValue ? (
                 <Badge variant="outline" className="text-xs text-green-600 border-green-300 whitespace-nowrap">{p.outsourceLabName}</Badge>
               ) : (
@@ -889,7 +889,7 @@ const ResultsEntry = () => {
                           const v = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
                           return v && v.trim() !== "";
                         });
-                        return testSnipDetail?.status === "sent" && testSnipDetail?.labName ? (
+                        return (testSnipDetail?.status === "sent" || testSnipDetail?.status === "results_saved") && testSnipDetail?.labName ? (
                           <Badge variant="outline" className={`text-[10px] ${allHaveResults ? "text-green-600 border-green-300" : "text-blue-600 border-blue-300"}`}>{testSnipDetail.labName}</Badge>
                         ) : (
                           <Badge variant="outline" className="text-[10px] text-purple-600 border-purple-300">Outsourced</Badge>
