@@ -30,6 +30,7 @@ const navItems = [
   { to: "/whatsapp-settings", label: "WhatsApp Settings", icon: Settings },
   { to: "/lims-demo", label: "LIMS Interface", icon: Webhook },
   { to: "/report-layout", label: "Report Layout", icon: Layers },
+  { to: "/signature-management", label: "Doctor & Signatures", icon: PenTool },
 ];
 
 // Report System modules archived — uncomment to restore
