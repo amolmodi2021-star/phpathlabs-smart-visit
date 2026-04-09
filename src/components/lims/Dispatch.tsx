@@ -93,8 +93,10 @@ const Dispatch = () => {
   });
 
   // Build dispatch entries with per-test status
+  const heldSet = useMemo(() => new Set(heldRegIds), [heldRegIds]);
+
   const dispatchEntries = useMemo(() => {
-    return registrations.map((reg: any) => {
+    return registrations.filter((reg: any) => !heldSet.has(reg.id)).map((reg: any) => {
       const tests = (reg.tests || []) as any[];
       const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
       const activeTests = tests.filter((t: any) => !cancelledIds.has(t.test_id));
