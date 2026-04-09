@@ -323,12 +323,16 @@ const ResultsEntry = () => {
           const rangeLow = resolved.low ?? p.normal_range_low;
           const rangeHigh = resolved.high ?? p.normal_range_high;
 
+          // For outsourced params, use saved values from patient_results if available
+          const savedUnit = isParamOutsourced && existing?.unit ? existing.unit : (p.unit || "");
+          const savedRefRange = isParamOutsourced && existing?.reference_range ? existing.reference_range : refText;
+
           parameters.push({
             parameterId: p.id,
             paramCode: p.param_code || "",
             parameterName: p.parameter_name,
-            unit: p.unit || "",
-            referenceRange: refText,
+            unit: savedUnit,
+            referenceRange: savedRefRange,
             normalRangeLow: rangeLow,
             normalRangeHigh: rangeHigh,
             resultValue: existing?.result_value || "",
