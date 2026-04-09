@@ -58,6 +58,8 @@ const ResultsEntry = () => {
   const [selectedMachine, setSelectedMachine] = useState<string>("all");
   const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
+  const [editedUnits, setEditedUnits] = useState<Record<string, string>>({});
+  const [editedRefRanges, setEditedRefRanges] = useState<Record<string, string>>({});
   const [blankParamCount, setBlankParamCount] = useState(0);
   const [highlightBlanksForRegs, setHighlightBlanksForRegs] = useState<Set<string>>(new Set());
   const autoSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
