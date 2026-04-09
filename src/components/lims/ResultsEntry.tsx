@@ -251,8 +251,13 @@ const ResultsEntry = () => {
   }, [acceptedRegs, testsMap, testParamsMap, existingResults, resolveNormalRange]);
 
   // ─── Calculate flag ───
-  const calculateFlag = (value: string, low: number | null, high: number | null): string => {
+  const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string): string => {
     if (!value || value.trim() === "") return "";
+    if (rangeType === "qualitative") {
+      if (!expectedValue) return "";
+      return value.trim().toLowerCase() === expectedValue.trim().toLowerCase() ? "N" : "A";
+    }
+    if (rangeType === "descriptive") return ""; // no flag for descriptive
     const num = parseFloat(value);
     if (isNaN(num)) return "";
     if (low != null && num < low) return "L";
