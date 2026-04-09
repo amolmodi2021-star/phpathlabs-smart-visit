@@ -198,18 +198,47 @@ const ResultsEntry = () => {
 
   const removeSnipImages = async () => {
     if (!viewSnipContext) return;
+    const { regId, testId } = viewSnipContext;
+    const snipKey = `${regId}||${testId}`;
     setRemovingSnip(true);
     try {
-      await supabase.from("outsourced_test_snips").update({
+      const { error: snipError } = await supabase.from("outsourced_test_snips").update({
         snip_image_url: null,
         snip_image_urls: [],
         result_mode: "manual",
         outsource_status: "sent",
-      } as any).eq("registration_id", viewSnipContext.regId).eq("test_id", viewSnipContext.testId);
+      } as any).eq("registration_id", regId).eq("test_id", testId);
+      if (snipError) throw snipError;
+
+      const outsourcedParams = outsourcedParamSets[snipKey];
+      if (outsourcedParams && outsourcedParams.size > 0) {
+        const { error: resultsError } = await supabase
+          .from("patient_results")
+          .delete()
+          .eq("registration_id", regId)
+          .eq("test_id", testId)
+          .in("parameter_id", Array.from(outsourcedParams));
+        if (resultsError) throw resultsError;
+      } else if (transferredTestKeys.has(snipKey)) {
+        const { error: resultsError } = await supabase
+          .from("patient_results")
+          .delete()
+          .eq("registration_id", regId)
+          .eq("test_id", testId);
+        if (resultsError) throw resultsError;
+      }
+
       toast.success("Snipped images removed");
       setViewSnipImages(null);
       setViewSnipContext(null);
-      qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["outsourced_snips"] }),
+        qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] }),
+        qc.invalidateQueries({ queryKey: ["outsourced_manual_results"] }),
+        qc.invalidateQueries({ queryKey: ["patient_results_existing"] }),
+        qc.invalidateQueries({ queryKey: ["verification_results"] }),
+        qc.invalidateQueries({ queryKey: ["verification_outsourced"] }),
+      ]);
     } catch (e: any) {
       toast.error("Failed to remove: " + e.message);
     } finally {
