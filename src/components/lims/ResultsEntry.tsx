@@ -218,34 +218,35 @@ const ResultsEntry = () => {
         .not("result_value", "is", null)
         .order("created_at", { ascending: false });
       if (error) throw error;
-      // Fetch snip records to exclude snip-mode results
+      // Fetch snip records to tag snip-mode results
       const { data: snips } = await supabase
         .from("outsourced_test_snips")
-        .select("registration_id, test_id, result_mode, outsourced_parameter_ids")
+        .select("registration_id, test_id, result_mode, outsourced_parameter_ids, snip_image_urls")
         .in("registration_id", regIds)
         .eq("result_mode", "snip");
-      const snipParamSet = new Set<string>();
+      const snipInfoMap: Record<string, string[]> = {};
       (snips || []).forEach((s: any) => {
+        const urls = Array.isArray(s.snip_image_urls) ? s.snip_image_urls : [];
         const paramIds = Array.isArray(s.outsourced_parameter_ids) ? s.outsourced_parameter_ids : [];
         if (paramIds.length > 0) {
-          paramIds.forEach((pid: string) => snipParamSet.add(`${s.registration_id}||${s.test_id}||${pid}`));
+          paramIds.forEach((pid: string) => { snipInfoMap[`${s.registration_id}||${s.test_id}||${pid}`] = urls; });
         } else {
-          // Full test snip - mark all params for this reg+test
-          snipParamSet.add(`${s.registration_id}||${s.test_id}||__full__`);
+          snipInfoMap[`${s.registration_id}||${s.test_id}||__full__`] = urls;
         }
       });
-      // Filter out snip results
-      return (data || []).filter((r: any) => {
+      // Tag each result with snip info
+      return (data || []).map((r: any) => {
         const fullKey = `${r.registration_id}||${r.test_id}||__full__`;
         const paramKey = `${r.registration_id}||${r.test_id}||${r.parameter_id}`;
-        return !snipParamSet.has(fullKey) && !snipParamSet.has(paramKey);
+        const snipUrls = snipInfoMap[paramKey] || snipInfoMap[fullKey] || null;
+        return { ...r, snipImageUrls: snipUrls };
       });
     },
   });
 
-  // Build history map: parameterId → [{ resultValue, referenceRange, createdAt }] (max 2)
+  // Build history map: parameterId → [{ resultValue, referenceRange, createdAt, snipImageUrls }] (max 2)
   const historyMap = useMemo(() => {
-    const map: Record<string, { resultValue: string; referenceRange: string; createdAt: string }[]> = {};
+    const map: Record<string, { resultValue: string; referenceRange: string; createdAt: string; snipImageUrls: string[] | null }[]> = {};
     for (const r of historicalResults) {
       if (!r.parameter_id) continue;
       if (!map[r.parameter_id]) map[r.parameter_id] = [];
@@ -254,6 +255,7 @@ const ResultsEntry = () => {
           resultValue: r.result_value || "",
           referenceRange: r.reference_range || "",
           createdAt: r.created_at || "",
+          snipImageUrls: r.snipImageUrls || null,
         });
       }
     }
