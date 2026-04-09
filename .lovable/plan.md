@@ -1,28 +1,44 @@
 
 
-## Problem
+# Plan: Add Historical Result Columns (Previous 2 Values) to Results Entry
 
-The `pdfjs-dist` v4.x uses **top-level await** in its source, which is incompatible with Vite's default esbuild target (`es2020`). This crashes the entire app — not just the snipping page.
+## Overview
+Add two columns ("Prev 1" and "Prev 2") before the Result column in the patient-wise and machine-wise result entry table. These columns show the last two historical result values for the same parameter from the same patient (matched by UMR number), along with the reference range and date from those past records.
 
-## Solution
+## Data Source
+- Query `patient_results` joined with `patient_registrations` to find previous results for the same UMR number and parameter.
+- Exclude the current registration's results.
+- Order by `created_at DESC` and take the top 2 per parameter.
 
-Two changes are needed:
+## Display Format (per column)
+Each history cell shows a compact stack:
+- **Result value** (bold)
+- **Reference range** (small, muted — from that historical record, not current master)
+- **Date** (small, muted — dd-MM-yyyy format)
 
-### 1. Downgrade `pdfjs-dist` to v3.11.174
-Version 3.x doesn't use top-level await and works perfectly with Vite 5. The API is identical for what we use (loading PDF, rendering page to canvas).
+If no historical data exists, show "—".
 
-- Update `package.json`: `"pdfjs-dist": "3.11.174"`
-- Update the worker URL in `SnipOnLetterhead.tsx` to match v3 format
+## Technical Changes
 
-### 2. Update worker source URL in SnipOnLetterhead.tsx
-Change the worker initialization to use the matching v3 CDN URL:
+### File: `src/components/lims/ResultsEntry.tsx`
+
+1. **New query**: Fetch historical results for expanded patient's UMR number.
+   - When a patient is expanded, query `patient_results` joined with `patient_registrations` where `umr_number` matches and `registration_id != current`, ordered by `created_at DESC`.
+   - Build a map: `parameterId → [{ resultValue, referenceRange, createdAt }, ...]` (max 2 per param).
+
+2. **Table header**: Insert two new `<TableHead>` columns ("Prev 1", "Prev 2") between "Parameter" and "Result" columns.
+
+3. **renderParamRow**: Insert two new `<TableCell>` elements that look up the history map and display the stacked value/range/date or "—".
+
+4. **Blank dialog table**: Add the same two columns for consistency.
+
+## UI Layout
+```text
+Code | Parameter | Prev 1      | Prev 2      | Result | Unit | Ref. Range | Flag | Status | Actions
+                   12.5           11.8
+                   11-16 g/dL     11-16 g/dL
+                   26-03-2026     15-02-2026
 ```
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`;
-```
 
-### Files to modify
-- `package.json` — pin `pdfjs-dist` to `3.11.174`
-- `src/components/lims/SnipOnLetterhead.tsx` — hardcode worker URL to v3
-
-This will immediately restore the app to a working state.
+Columns will be narrow (~100px) with compact text (text-xs) to avoid excessive width.
 
