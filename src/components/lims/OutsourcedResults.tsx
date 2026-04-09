@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   Search, ChevronDown, ChevronUp, Save, Loader2, Image, Keyboard,
-  Clipboard, Trash2, ExternalLink, Package, Send, Clock, CheckCircle2, Pencil, Plus, FileText
+  Clipboard, Trash2, ExternalLink, Package, Send, Clock, CheckCircle2, Pencil, Plus, FileText, ArrowLeftRight
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -27,6 +27,7 @@ interface OutsourcedTest {
   testId: string;
   testName: string;
   outsourcedCaption: string;
+  isTransferredInhouse: boolean; // true = originally inhouse, transferred to outsourced
 }
 
 interface OutsourcedPatient {
@@ -55,6 +56,26 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   const [editLabKey, setEditLabKey] = useState<string | null>(null);
   const [editLabName, setEditLabName] = useState("");
   const [savingEditLab, setSavingEditLab] = useState(false);
+
+  // Return to inhouse state
+  const [returningKey, setReturningKey] = useState<string | null>(null);
+  const returnToInhouse = async (regId: string, testId: string, testName: string) => {
+    const key = `${regId}||${testId}`;
+    setReturningKey(key);
+    try {
+      // Delete the outsourced_test_snips record to return test to inhouse
+      await supabase.from("outsourced_test_snips").delete().eq("registration_id", regId).eq("test_id", testId);
+      toast.success(`${testName} returned to Inhouse`);
+      qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+      qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] });
+      qc.invalidateQueries({ queryKey: ["outsourced_accepted_regs"] });
+      qc.invalidateQueries({ queryKey: ["results_accepted_regs"] });
+    } catch (err: any) {
+      toast.error(err.message || "Return failed");
+    } finally {
+      setReturningKey(null);
+    }
+  };
 
   // Sync external search to debounced
   useEffect(() => {
@@ -151,8 +172,17 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     },
   });
 
-  // Build outsourced patient entries
+  // Build outsourced patient entries (includes naturally outsourced + transferred inhouse tests)
   const patientEntries: OutsourcedPatient[] = useMemo(() => {
+    // Build a set of transferred test keys from snips for non-outsourced tests
+    const transferredKeys = new Set<string>();
+    existingSnips.forEach((s: any) => {
+      const testInfo = testsMap[s.test_id];
+      if (!testInfo?.is_outsourced) {
+        transferredKeys.add(`${s.registration_id}||${s.test_id}`);
+      }
+    });
+
     return acceptedRegs.map((reg: any) => {
       const tests = (reg.tests || []) as any[];
       const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
@@ -160,17 +190,26 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       for (const t of tests) {
         if (cancelledIds.has(t.test_id)) continue;
         const testInfo = testsMap[t.test_id];
+        const isTransferred = transferredKeys.has(`${reg.id}||${t.test_id}`);
         if (testInfo?.is_outsourced) {
           outsourcedTests.push({
             testId: t.test_id,
             testName: t.test_name || testInfo.test_name || "",
             outsourcedCaption: testInfo.outsourced_caption || "Outsourced Lab",
+            isTransferredInhouse: false,
+          });
+        } else if (isTransferred) {
+          outsourcedTests.push({
+            testId: t.test_id,
+            testName: t.test_name || testInfo?.test_name || "",
+            outsourcedCaption: "Transferred from Inhouse",
+            isTransferredInhouse: true,
           });
         }
       }
       return { registration: reg, outsourcedTests };
     }).filter(e => e.outsourcedTests.length > 0);
-  }, [acceptedRegs, testsMap]);
+  }, [acceptedRegs, testsMap, existingSnips]);
 
   // Get snip record
   const getSnip = (regId: string, testId: string) => {
@@ -617,7 +656,28 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
             <span className="font-medium text-sm">{test.testName}</span>
             <span className="text-xs text-muted-foreground ml-2">({test.outsourcedCaption})</span>
           </div>
-          {renderStatusBadge(regId, test.testId)}
+          <div className="flex items-center gap-2">
+            {test.isTransferredInhouse && status !== "results_entered" && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 text-[11px] gap-1 text-muted-foreground hover:text-primary"
+                disabled={returningKey === testKey}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  returnToInhouse(regId, test.testId, test.testName);
+                }}
+              >
+                {returningKey === testKey ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <ArrowLeftRight className="h-3 w-3" />
+                )}
+                Return to Inhouse
+              </Button>
+            )}
+            {renderStatusBadge(regId, test.testId)}
+          </div>
         </div>
 
         {/* Expanded: only for sent tests (awaiting or results_entered) */}

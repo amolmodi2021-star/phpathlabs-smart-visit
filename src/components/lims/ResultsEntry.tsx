@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Search, User, Monitor, Save, Calculator, Wifi, WifiOff, ChevronDown, ChevronUp, Check, Loader2, FlaskConical, Package, SendHorizonal } from "lucide-react";
+import { Search, User, Monitor, Save, Calculator, Wifi, WifiOff, ChevronDown, ChevronUp, Check, Loader2, FlaskConical, Package, SendHorizonal, ArrowRightLeft } from "lucide-react";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 import OutsourcedResults from "./OutsourcedResults";
 import { format } from "date-fns";
@@ -149,6 +149,53 @@ const ResultsEntry = () => {
     },
   });
 
+  // ─── Fetch outsourced_test_snips to know which inhouse tests have been transferred ───
+  const { data: outsourcedSnips = [] } = useQuery({
+    queryKey: ["results_outsourced_snips", regIds.join(",")],
+    enabled: regIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("outsourced_test_snips")
+        .select("registration_id, test_id")
+        .in("registration_id", regIds);
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+  });
+
+  // Set of transferred test keys (regId||testId)
+  const transferredTestKeys = useMemo(() => {
+    const set = new Set<string>();
+    outsourcedSnips.forEach((s: any) => set.add(`${s.registration_id}||${s.test_id}`));
+    return set;
+  }, [outsourcedSnips]);
+
+  // ─── Transfer to outsourced state ───
+  const [transferringKey, setTransferringKey] = useState<string | null>(null);
+  const transferToOutsourced = async (regId: string, testId: string, testName: string) => {
+    const key = `${regId}||${testId}`;
+    setTransferringKey(key);
+    try {
+      await supabase.from("outsourced_test_snips").upsert({
+        registration_id: regId,
+        test_id: testId,
+        outsource_status: "pending",
+        result_mode: "manual",
+      } as any, { onConflict: "registration_id,test_id" });
+      // Delete any pending patient_results for this test
+      await supabase.from("patient_results").delete().eq("registration_id", regId).eq("test_id", testId);
+      toast.success(`${testName} transferred to Outsourced`);
+      qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] });
+      qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+      qc.invalidateQueries({ queryKey: ["outsourced_accepted_regs"] });
+      qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
+    } catch (err: any) {
+      toast.error(err.message || "Transfer failed");
+    } finally {
+      setTransferringKey(null);
+    }
+  };
+
   // ─── Helper: resolve best normal range for a parameter given patient demographics ───
   const resolveNormalRange = useCallback((parameterId: string, reg: any) => {
     const ranges = normalRangesMap[parameterId];
@@ -203,7 +250,10 @@ const ResultsEntry = () => {
 
       const parameters: ParameterResult[] = [];
       for (const t of activeTests) {
+        // Skip tests that are outsourced by nature or transferred to outsourced
         const testInfo = testsMap[t.test_id] || {};
+        if (testInfo.is_outsourced) continue;
+        if (transferredTestKeys.has(`${reg.id}||${t.test_id}`)) continue;
         const params = testParamsMap[t.test_id] || [];
         for (const tp of params) {
           if (tp.is_subheader) continue;
@@ -247,7 +297,7 @@ const ResultsEntry = () => {
       }
       return { registration: reg, parameters };
     }).filter(entry => entry.parameters.length > 0);
-  }, [acceptedRegs, testsMap, testParamsMap, existingResults, resolveNormalRange]);
+  }, [acceptedRegs, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys]);
 
   // ─── Calculate flag ───
   const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string): string => {
@@ -667,20 +717,36 @@ const ResultsEntry = () => {
                 <div key={tg.testId} className="ml-1">
                   <div className="flex items-center justify-between px-1 py-0.5 bg-muted/40 rounded-t">
                     <span className="text-xs font-medium text-muted-foreground">{tg.testName}</span>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-6 text-[11px] gap-1"
-                      disabled={isTestSaving}
-                      onClick={() => handleSaveAndVerify(entry, tg.testId, tg.testName)}
-                    >
-                      {isTestSaving ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : (
-                        <SendHorizonal className="h-3 w-3" />
-                      )}
-                      Save & Verify
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 text-[11px] gap-1 text-muted-foreground hover:text-primary"
+                        disabled={transferringKey === testKey}
+                        onClick={() => transferToOutsourced(reg.id, tg.testId, tg.testName)}
+                      >
+                        {transferringKey === testKey ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <ArrowRightLeft className="h-3 w-3" />
+                        )}
+                        Transfer to Outsourced
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 text-[11px] gap-1"
+                        disabled={isTestSaving}
+                        onClick={() => handleSaveAndVerify(entry, tg.testId, tg.testName)}
+                      >
+                        {isTestSaving ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <SendHorizonal className="h-3 w-3" />
+                        )}
+                        Save & Verify
+                      </Button>
+                    </div>
                   </div>
                   <Table>
                     <TableHeader>
