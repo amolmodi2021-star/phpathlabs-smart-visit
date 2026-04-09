@@ -554,7 +554,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   }, [qc]);
 
   // Save manual results
-  const saveManualResults = useCallback(async (regId: string, testId: string, testName: string, outsourcedParamIds?: string[]) => {
+  const saveManualResults = useCallback(async (regId: string, testId: string, testName: string, outsourcedParamIds?: string[], reg?: any) => {
     const key = `${regId}||${testId}`;
     setSavingKey(key);
     try {
@@ -569,19 +569,23 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         const valKey = `${regId}||${p.id}`;
         const value = editedValues[valKey] || "";
         if (!value) continue;
+        const resolved = reg ? resolveNormalRange(p.id, reg) : { text: "", low: null, high: null };
+        const rangeLow = resolved.low ?? p.normal_range_low;
+        const rangeHigh = resolved.high ?? p.normal_range_high;
+        const rangeText = resolved.text || p.normal_range_text || (rangeLow != null && rangeHigh != null ? `${rangeLow} - ${rangeHigh}` : "");
         const num = parseFloat(value);
         let flag = "";
         if (!isNaN(num)) {
-          if (p.normal_range_low != null && num < p.normal_range_low) flag = "L";
-          else if (p.normal_range_high != null && num > p.normal_range_high) flag = "H";
+          if (rangeLow != null && num < rangeLow) flag = "L";
+          else if (rangeHigh != null && num > rangeHigh) flag = "H";
           else flag = "N";
         }
         upserts.push({
           registration_id: regId, test_id: testId, parameter_id: p.id,
           param_code: p.param_code, parameter_name: p.parameter_name,
           result_value: value, unit: p.unit,
-          reference_range: p.normal_range_text || (p.normal_range_low != null && p.normal_range_high != null ? `${p.normal_range_low} - ${p.normal_range_high}` : ""),
-          normal_range_low: p.normal_range_low, normal_range_high: p.normal_range_high,
+          reference_range: rangeText,
+          normal_range_low: rangeLow, normal_range_high: rangeHigh,
           flag: flag || null, status: "pending", is_calculated: false, is_from_interface: false,
         });
       }
