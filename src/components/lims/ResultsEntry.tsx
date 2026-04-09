@@ -762,7 +762,6 @@ const ResultsEntry = () => {
           ) : p.referenceRange}
         </TableCell>
         <TableCell className="py-1.5 text-center">
-        <TableCell className="py-1.5 text-center">
           {p.isOutsourced ? (
             <Select
               value={flag || "none"}
