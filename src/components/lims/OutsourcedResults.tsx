@@ -905,7 +905,8 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                           return null;
                         }
                         const currentValue = editedValues[valKey] !== undefined ? editedValues[valKey] : (existing?.result_value || "");
-                        const refRange = p.normal_range_text || (p.normal_range_low != null && p.normal_range_high != null ? `${p.normal_range_low} - ${p.normal_range_high}` : "");
+                        const resolved = resolveNormalRange(p.id, entry.registration);
+                        const refRange = resolved.text || p.normal_range_text || (p.normal_range_low != null && p.normal_range_high != null ? `${p.normal_range_low} - ${p.normal_range_high}` : "");
 
                         return (
                           <TableRow key={valKey}>
