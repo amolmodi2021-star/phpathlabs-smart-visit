@@ -762,11 +762,32 @@ const ResultsEntry = () => {
           ) : p.referenceRange}
         </TableCell>
         <TableCell className="py-1.5 text-center">
-          {flag === "H" && <Badge variant="destructive" className="text-xs">HIGH</Badge>}
-          {flag === "L" && <Badge variant="destructive" className="text-xs">LOW</Badge>}
-          {flag === "A" && <Badge variant="destructive" className="text-xs">Abnormal</Badge>}
-          {flag === "N" && <Badge variant="secondary" className="text-xs text-green-700">Normal</Badge>}
-          {!flag && currentValue && <Badge variant="outline" className="text-xs">—</Badge>}
+        <TableCell className="py-1.5 text-center">
+          {p.isOutsourced ? (
+            <Select
+              value={flag || "none"}
+              onValueChange={(v) => setEditedFlags(prev => ({ ...prev, [key]: v === "none" ? "" : v }))}
+            >
+              <SelectTrigger className="h-6 text-xs w-[80px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">—</SelectItem>
+                <SelectItem value="N">Normal</SelectItem>
+                <SelectItem value="H">HIGH</SelectItem>
+                <SelectItem value="L">LOW</SelectItem>
+                <SelectItem value="A">Abnormal</SelectItem>
+              </SelectContent>
+            </Select>
+          ) : (
+            <>
+              {flag === "H" && <Badge variant="destructive" className="text-xs">HIGH</Badge>}
+              {flag === "L" && <Badge variant="destructive" className="text-xs">LOW</Badge>}
+              {flag === "A" && <Badge variant="destructive" className="text-xs">Abnormal</Badge>}
+              {flag === "N" && <Badge variant="secondary" className="text-xs text-green-700">Normal</Badge>}
+              {!flag && currentValue && <Badge variant="outline" className="text-xs">—</Badge>}
+            </>
+          )}
         </TableCell>
         <TableCell className="py-1.5 text-center">
           {p.isOutsourced ? (
