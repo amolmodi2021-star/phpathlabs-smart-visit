@@ -306,6 +306,7 @@ const ResultsEntry = () => {
         qc.invalidateQueries({ queryKey: ["outsourced_snips"] }),
         qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] }),
         qc.invalidateQueries({ queryKey: ["outsourced_manual_results"] }),
+        qc.invalidateQueries({ queryKey: ["outsourced_accepted_regs"] }),
         qc.invalidateQueries({ queryKey: ["patient_results_existing"] }),
         qc.invalidateQueries({ queryKey: ["verification_results"] }),
         qc.invalidateQueries({ queryKey: ["verification_outsourced"] }),
