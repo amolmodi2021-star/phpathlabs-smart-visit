@@ -210,7 +210,7 @@ const DoctorApproval = () => {
     if (mode === "patient") return patientEntries;
     if (selectedMachine === "all") return patientEntries;
     const fm = selectedMachine === "others" ? "" : selectedMachine;
-    return patientEntries.map(e => ({ ...e, parameters: e.parameters.filter(p => (p.machineName || "") === fm) })).filter(e => e.parameters.length > 0);
+    return patientEntries.map(e => ({ ...e, parameters: e.parameters.filter(p => (p.machineName || "") === fm) })).filter(e => e.parameters.length > 0 || e.snipOnlyTests.length > 0);
   }, [patientEntries, mode, selectedMachine]);
 
   const stats = useMemo(() => ({ totalPatients: filteredEntries.length, totalParams: filteredEntries.reduce((s, e) => s + e.parameters.length, 0) }), [filteredEntries]);
