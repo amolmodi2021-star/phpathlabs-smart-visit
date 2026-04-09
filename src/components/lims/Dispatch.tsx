@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Search, ChevronDown, ChevronUp, Loader2, CheckCircle2, Send, Eye, Truck, MessageSquare, Circle } from "lucide-react";
 import { toast } from "sonner";
@@ -282,36 +282,6 @@ const Dispatch = () => {
                               )}
                             </div>
                           </div>
-
-                          {test.status === "approved" && test.results.length > 0 && (
-                            <div className="px-3 pb-2">
-                              <Table>
-                                <TableHeader><TableRow>
-                                  <TableHead className="text-xs py-1">Parameter</TableHead>
-                                  <TableHead className="text-xs py-1">Result</TableHead>
-                                  <TableHead className="text-xs py-1">Unit</TableHead>
-                                  <TableHead className="text-xs py-1">Ref. Range</TableHead>
-                                  <TableHead className="text-xs py-1">Flag</TableHead>
-                                </TableRow></TableHeader>
-                                <TableBody>
-                                  {test.results.map((r: any) => (
-                                    <TableRow key={r.id}>
-                                      <TableCell className="py-1 text-sm">{r.parameter_name}</TableCell>
-                                      <TableCell className="py-1 text-sm font-medium">{r.result_value}</TableCell>
-                                      <TableCell className="py-1 text-xs text-muted-foreground">{r.unit}</TableCell>
-                                      <TableCell className="py-1 text-xs text-muted-foreground">{r.reference_range}</TableCell>
-                                      <TableCell className="py-1">
-                                        {r.flag === "H" && <Badge variant="destructive" className="text-[10px] px-1">H</Badge>}
-                                        {r.flag === "L" && <Badge className="text-[10px] px-1 bg-amber-500">L</Badge>}
-                                        {r.flag === "A" && <Badge variant="destructive" className="text-[10px] px-1">A</Badge>}
-                                        {r.flag === "N" && <Badge variant="outline" className="text-[10px] px-1">N</Badge>}
-                                      </TableCell>
-                                    </TableRow>
-                                  ))}
-                                </TableBody>
-                              </Table>
-                            </div>
-                          )}
 
                           {test.status === "approved" && test.snipUrls.length > 0 && (
                             <div className="px-3 pb-2">
