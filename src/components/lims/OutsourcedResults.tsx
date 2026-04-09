@@ -174,13 +174,18 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     },
   });
 
-  // Build outsourced patient entries (includes naturally outsourced + transferred inhouse tests)
+  // Build outsourced patient entries (includes naturally outsourced + transferred inhouse tests + parameter-level)
   const patientEntries: OutsourcedPatient[] = useMemo(() => {
-    // Build a set of transferred test keys from snips for non-outsourced tests
+    // Build maps from snips
     const transferredKeys = new Set<string>();
+    const paramLevelMap: Record<string, string[]> = {};
     existingSnips.forEach((s: any) => {
       const testInfo = testsMap[s.test_id];
-      if (!testInfo?.is_outsourced) {
+      const paramIds = Array.isArray(s.outsourced_parameter_ids) ? s.outsourced_parameter_ids : [];
+      if (paramIds.length > 0) {
+        // Parameter-level outsource
+        paramLevelMap[`${s.registration_id}||${s.test_id}`] = paramIds;
+      } else if (!testInfo?.is_outsourced) {
         transferredKeys.add(`${s.registration_id}||${s.test_id}`);
       }
     });
@@ -192,13 +197,17 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       for (const t of tests) {
         if (cancelledIds.has(t.test_id)) continue;
         const testInfo = testsMap[t.test_id];
-        const isTransferred = transferredKeys.has(`${reg.id}||${t.test_id}`);
+        const testKey = `${reg.id}||${t.test_id}`;
+        const isTransferred = transferredKeys.has(testKey);
+        const paramIds = paramLevelMap[testKey];
+
         if (testInfo?.is_outsourced) {
           outsourcedTests.push({
             testId: t.test_id,
             testName: t.test_name || testInfo.test_name || "",
             outsourcedCaption: testInfo.outsourced_caption || "Outsourced Lab",
             isTransferredInhouse: false,
+            isParameterLevel: false,
           });
         } else if (isTransferred) {
           outsourcedTests.push({
@@ -206,6 +215,16 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
             testName: t.test_name || testInfo?.test_name || "",
             outsourcedCaption: "Transferred from Inhouse",
             isTransferredInhouse: true,
+            isParameterLevel: false,
+          });
+        } else if (paramIds && paramIds.length > 0) {
+          outsourcedTests.push({
+            testId: t.test_id,
+            testName: t.test_name || testInfo?.test_name || "",
+            outsourcedCaption: `${paramIds.length} parameter(s) outsourced`,
+            isTransferredInhouse: true,
+            isParameterLevel: true,
+            outsourcedParameterIds: paramIds,
           });
         }
       }
