@@ -729,7 +729,11 @@ const ResultsEntry = () => {
         });
       }
 
-      if (upserts.length === 0) return;
+      // Snip-only test (no parameters) — just update outsourced_test_snips status
+      if (upserts.length === 0) {
+        await supabase.from("outsourced_test_snips").update({ outsource_status: "results_entered" } as any).eq("registration_id", reg.id).eq("test_id", testId).in("outsource_status", ["pending", "sent", "results_saved"]);
+        return;
+      }
 
       // Delete existing results for this specific test only, preserving outsourced param results
       const outsourcedParams = outsourcedParamSets[`${reg.id}||${testId}`];
@@ -780,6 +784,15 @@ const ResultsEntry = () => {
   const handleSaveAndVerify = (entry: PatientEntry, testId: string, testName: string) => {
     const reg = entry.registration;
     const testParams = entry.parameters.filter(p => p.testId === testId);
+    
+    // Snip-only test — no params to check for blanks, just save directly
+    const isSnipOnly = entry.snipOnlyTests.some(s => s.testId === testId);
+    if (isSnipOnly || testParams.length === 0) {
+      setSavingTestKey(`${reg.id}||${testId}`);
+      saveMutation.mutate({ entry, testId });
+      return;
+    }
+    
     // Count blank parameters
     let blanks = 0;
     for (const p of testParams) {
