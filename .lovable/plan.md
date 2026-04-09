@@ -1,79 +1,41 @@
 
 
-# Plan: Create Approved Reports Archive Table
+# Plan: Enhance Dispatch Section — Show All Patients with Status Markers
 
 ## What it does
-Creates a permanent archive table (`approved_reports`) that captures a complete snapshot of all patient demographics, test results, reference ranges, flags, and key timestamps at the moment of doctor approval. This ensures historical reports can be regenerated exactly as they were originally approved, regardless of future changes to reference ranges or test configurations.
+- Shows **all registered patients** (not just those with approved tests) in the dispatch list
+- Displays test names with their current status (approved/pending) per patient
+- Adds a **completion status marker** beside the WhatsApp button:
+  - **Green circle** (✅): All tests approved — ready for full dispatch
+  - **Yellow/amber circle** (⚠): Some tests approved, some still pending
+  - **Red circle** (🔴): No tests approved yet — all pending
 
-## Database Migration
+## Technical Changes
 
-**New table: `approved_reports`**
+### File: `src/components/lims/Dispatch.tsx`
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid PK | auto-generated |
-| registration_id | uuid | links to patient_registrations |
-| invoice_number | text | |
-| umr_number | text | |
-| patient_name | text | |
-| title | text | |
-| gender | text | |
-| dob | date | |
-| mobile_number | text | |
-| email | text | nullable |
-| address | text | nullable |
-| doctor_name | text | referring doctor |
-| visit_type | text | |
-| is_stat | boolean | |
-| report_language | text | |
-| approved_by | text | doctor/pathologist who approved |
-| registration_date | timestamptz | from patient_registrations.created_at |
-| sample_collection_date | timestamptz | nullable, from sample collection step |
-| test_date | timestamptz | when results were entered |
-| approval_date | timestamptz | now() at approval time |
-| print_date | timestamptz | nullable, updated when printed |
-| test_results | jsonb | full snapshot — see below |
-| outsourced_snip_urls | jsonb | snip images if any |
-| created_at | timestamptz | default now() |
+1. **Broaden registration query**: Remove the `approved`-only filter. Fetch all non-cancelled registrations (statuses: `sample_accepted`, `entered`, `verified`, `approved`, `dispatched`) so every patient appears.
 
-**`test_results` JSONB structure** — array of objects, one per parameter:
-```json
-[{
-  "test_id": "...", "test_name": "...",
-  "parameter_id": "...", "param_code": "PRM0001", "parameter_name": "Hemoglobin",
-  "result_value": "12.5", "unit": "g/dL",
-  "reference_range": "11-16 g/dL", "normal_range_low": 11, "normal_range_high": 16,
-  "flag": "N", "is_calculated": false, "is_outsourced": false,
-  "outsource_lab_name": null
-}]
-```
+2. **Build per-test status**: For each active test in a registration, determine its status:
+   - "approved" — has approved results or approved outsourced snip
+   - "pending" — not yet approved (still in results entry, verification, or doctor approval stages)
+   - "dispatched" — already dispatched
 
-RLS: permissive (matching existing pattern). Enable realtime not needed.
+3. **Compute completion marker** per patient:
+   - `all_done`: every active test has status "approved" → green badge
+   - `partial`: some approved, some pending → amber badge  
+   - `all_pending`: none approved → red badge
+   - Already-dispatched tests are excluded from pending count
 
-## Code Changes
+4. **Display changes**:
+   - Show marker icon (colored dot or badge) next to the WhatsApp button
+   - In expanded view, list **all** active tests with their status badge (Approved / Pending / Dispatched)
+   - Only show "Dispatch All" and per-test "Mark Dispatched" buttons for approved tests
+   - Pending tests show a muted "Pending" badge with no action buttons
 
-### File: `src/components/lims/DoctorApproval.tsx`
-
-**In `approveTest` function** (after successful status updates, ~line 236):
-- Build a snapshot object from `entry.registration` demographics + the `upserts` array (which already contains frozen result values, reference ranges, flags)
-- Collect outsourced snip URLs from `outsourcedSnipDetails`
-- Insert one row into `approved_reports` with all captured data
-- Use `approved_by` from a pathologist name (can default to "Doctor" or pull from app settings if configured)
-
-**In `approveAllForPatient` function** (~line 263):
-- Same logic but insert one `approved_reports` row per test (or one row per patient with all tests combined in the JSONB array)
-- Combine all test parameters into a single `test_results` JSONB for that registration
-
-**Duplicate prevention**: Before inserting, check if an `approved_reports` row already exists for the same `registration_id` + `test_id` combination (upsert or skip).
-
-### Approach for timestamps
-- `registration_date`: from `reg.created_at`
-- `sample_collection_date`: query `patient_registrations.updated_at` when status was `sample_collected` (or store null if not tracked separately — can enhance later)
-- `test_date`: from `patient_results.created_at` of the earliest result for this test
-- `approval_date`: `new Date().toISOString()` at approval time
-- `print_date`: null initially, updated when report is printed/dispatched
+5. **Stats update**: Show "Total Patients", "Ready to Dispatch" (all approved), "Partially Ready" counts
 
 ## Summary
-1. **Migration**: Create `approved_reports` table with full demographic + result snapshot columns
-2. **DoctorApproval.tsx**: Insert frozen snapshot into `approved_reports` during both `approveTest` and `approveAllForPatient` flows
+- **One file changed**: `src/components/lims/Dispatch.tsx`
+- Broadens the query to show all patients, adds per-test status tracking, and renders completion markers (green/amber/red) beside the WhatsApp button
 
