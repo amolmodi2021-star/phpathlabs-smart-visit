@@ -459,6 +459,12 @@ const ResultVerification = () => {
   };
 
   const handleVerifyTest = (entry: PatientEntry, testId: string, testName: string) => {
+    // Snip-only test — no params to check, verify directly
+    const isSnipOnly = entry.snipOnlyTests.some(s => s.testId === testId);
+    if (isSnipOnly) {
+      verifyTest(entry, testId, testName);
+      return;
+    }
     const blanks = countBlanks(entry, testId);
     if (blanks > 0) {
       setBlankParamCount(blanks);
