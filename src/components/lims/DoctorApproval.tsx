@@ -505,6 +505,17 @@ const DoctorApproval = () => {
 
   return (
     <div className="space-y-4">
+      <Tabs value={activeSection} onValueChange={v => setActiveSection(v as any)} className="w-auto">
+        <TabsList className="h-9">
+          <TabsTrigger value="approval" className="text-xs gap-1 h-7"><Stethoscope className="h-3.5 w-3.5" /> Doctor Approval</TabsTrigger>
+          <TabsTrigger value="modified" className="text-xs gap-1 h-7"><FileCheck className="h-3.5 w-3.5" /> Modified Approval</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {activeSection === "modified" ? (
+        <ModifiedApproval />
+      ) : (
+      <>
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -576,6 +587,8 @@ const DoctorApproval = () => {
           <div className="space-y-4">{viewSnipImages?.map((url, idx) => (<div key={idx} className="border rounded-lg overflow-hidden"><img src={url} alt={`Snip page ${idx + 1}`} className="w-full object-contain" /></div>))}</div>
         </DialogContent>
       </Dialog>
+      </>
+      )}
     </div>
   );
 };
