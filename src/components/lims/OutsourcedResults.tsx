@@ -681,8 +681,10 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         // Skip tests that have all results filled
         if (s === "results_saved") {
           const snip = getSnip(e.registration.id, t.testId);
-          if (snip?.result_mode === "snip") continue;
-          if (hasAllResultsFilled(e.registration.id, t.testId, t.outsourcedParameterIds)) continue;
+          if (snip?.result_mode === "snip") {
+            const testResults = existingResults.filter((r: any) => r.registration_id === e.registration.id && r.test_id === t.testId);
+            if (testResults.length > 0 && testResults.every((r: any) => r.status === "verified")) continue;
+          } else if (hasAllResultsFilled(e.registration.id, t.testId, t.outsourcedParameterIds)) continue;
         }
         total++;
         if (s === "not_sent") notSent++;
