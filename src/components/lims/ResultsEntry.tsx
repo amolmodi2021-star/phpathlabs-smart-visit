@@ -674,7 +674,8 @@ const ResultsEntry = () => {
     const regId = entry.registration.id;
     const key = `${regId}||${p.parameterId}`;
     const currentValue = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
-    const flag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+    const autoFlag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+    const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : autoFlag;
     const isInterfaceParameter = p.sendForInterface && !p.isCalculated;
     const isAwaiting = isInterfaceParameter && !currentValue;
 
