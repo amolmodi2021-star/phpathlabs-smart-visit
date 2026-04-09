@@ -1086,6 +1086,8 @@ const ResultsEntry = () => {
                       <TableRow>
                         <TableHead className="py-1 text-xs w-[80px]">Code</TableHead>
                         <TableHead className="py-1 text-xs">Parameter</TableHead>
+                        <TableHead className="py-1 text-xs w-[100px]">Prev 1</TableHead>
+                        <TableHead className="py-1 text-xs w-[100px]">Prev 2</TableHead>
                         <TableHead className="py-1 text-xs w-[200px]">Result</TableHead>
                         <TableHead className="py-1 text-xs w-[60px]">Unit</TableHead>
                         <TableHead className="py-1 text-xs w-[120px]">Ref. Range</TableHead>
