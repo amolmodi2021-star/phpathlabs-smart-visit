@@ -423,14 +423,14 @@ const ResultsEntry = () => {
 
   // ─── Filter entries: hide patients whose all results are already "entered" ───
   const filteredEntries = useMemo(() => {
-    // First filter out patients where ALL parameters already have status "entered" or "verified"
-    const activeEntries = patientEntries.filter(e => {
-      const allEntered = e.parameters.every(p => p.status === "entered" || p.status === "verified");
-      return !allEntered;
-    });
+    // Filter out patients where ALL parameters already have status "entered" or "verified"
+    // Now filter at test level: remove tests whose params are all entered/verified
+    const activeEntries = patientEntries.map(e => {
+      const activeParams = e.parameters.filter(p => p.status !== "entered" && p.status !== "verified");
+      return { ...e, parameters: activeParams };
+    }).filter(e => e.parameters.length > 0);
 
     if (mode === "patient") return activeEntries;
-    // Machine mode: filter entries that have params for selected machine
     if (selectedMachine === "all") return activeEntries;
     const filterMachine = selectedMachine === "others" ? "" : selectedMachine;
     return activeEntries
