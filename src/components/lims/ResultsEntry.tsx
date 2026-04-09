@@ -894,6 +894,8 @@ const ResultsEntry = () => {
                 onChange={e => handleValueChange(regId, p.parameterId, e.target.value, entry)}
                 className="h-7 text-sm w-[120px]"
                 placeholder="Manual"
+                data-result-input=""
+                onKeyDown={handleResultTabKey}
               />
               <Badge
                 variant="outline"
@@ -919,7 +921,7 @@ const ResultsEntry = () => {
               value={currentValue || undefined}
               onValueChange={(v) => handleValueChange(regId, p.parameterId, v, entry)}
             >
-              <SelectTrigger className="h-7 text-sm !w-[180px] min-w-[180px] max-w-[180px]">
+              <SelectTrigger className="h-7 text-sm !w-[180px] min-w-[180px] max-w-[180px]" data-result-input="" data-result-value={currentValue || ""} onKeyDown={handleResultTabKey}>
                 <SelectValue placeholder="Select..." />
               </SelectTrigger>
               <SelectContent className="max-w-[400px]">
@@ -934,6 +936,8 @@ const ResultsEntry = () => {
               onChange={e => handleValueChange(regId, p.parameterId, e.target.value, entry)}
               className={`h-7 text-sm w-[180px] ${flag === "H" || flag === "L" || flag === "A" ? "border-destructive text-destructive font-bold" : ""}`}
               placeholder="Enter result"
+              data-result-input=""
+              onKeyDown={handleResultTabKey}
             />
           )}
         </TableCell>
@@ -1393,7 +1397,7 @@ const ResultsEntry = () => {
                                 value={currentValue || undefined}
                                 onValueChange={(v) => handleValueChange(reg.id, p.parameterId, v, entry)}
                               >
-                                <SelectTrigger className="h-7 text-sm w-full">
+                              <SelectTrigger className="h-7 text-sm w-full" data-result-input="" data-result-value={currentValue || ""} onKeyDown={handleResultTabKey}>
                                   <SelectValue placeholder="Select..." />
                                 </SelectTrigger>
                                 <SelectContent className="max-w-[400px]">
@@ -1408,6 +1412,8 @@ const ResultsEntry = () => {
                                 onChange={e => handleValueChange(reg.id, p.parameterId, e.target.value, entry)}
                                 className="h-7 text-sm w-full"
                                 placeholder="Enter result"
+                                data-result-input=""
+                                onKeyDown={handleResultTabKey}
                               />
                             )}
                           </TableCell>
