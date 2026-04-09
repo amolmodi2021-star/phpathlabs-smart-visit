@@ -64,6 +64,7 @@ const ResultVerification = () => {
   const autoSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const [blankConfirmTestParams, setBlankConfirmTestParams] = useState<{ entry: PatientEntry; testId: string; testName: string } | null>(null);
   const [blankParamCount, setBlankParamCount] = useState(0);
+  const [blankParamIds, setBlankParamIds] = useState<Set<string>>(new Set());
   const [highlightBlanksForRegs, setHighlightBlanksForRegs] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -443,6 +444,15 @@ const ResultVerification = () => {
     const blanks = countBlanks(entry, testId);
     if (blanks > 0) {
       setBlankParamCount(blanks);
+      const ids = new Set<string>();
+      const testParams = entry.parameters.filter(p => p.testId === testId);
+      for (const p of testParams) {
+        if (p.isCalculated) continue;
+        const key = `${entry.registration.id}||${p.parameterId}`;
+        const val = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
+        if (!val || val.trim() === "") ids.add(p.parameterId);
+      }
+      setBlankParamIds(ids);
       setBlankConfirmTestParams({ entry, testId, testName });
       setHighlightBlanksForRegs(prev => new Set(prev).add(`${entry.registration.id}||${testId}`));
     } else {
@@ -455,7 +465,15 @@ const ResultVerification = () => {
     let totalBlanks = 0;
     for (const tid of testIds) totalBlanks += countBlanks(entry, tid);
     if (totalBlanks > 0) {
-      setBlankParamCount(totalBlanks);
+      const ids = new Set<string>();
+      for (const tid of testIds) {
+        for (const p of entry.parameters.filter(pp => pp.testId === tid && !pp.isCalculated)) {
+          const key = `${entry.registration.id}||${p.parameterId}`;
+          const val = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
+          if (!val || val.trim() === "") ids.add(p.parameterId);
+        }
+      }
+      setBlankParamIds(ids);
       setBlankConfirmTestParams({ entry, testId: "__all__", testName: "All Tests" });
     } else {
       verifyAllForPatient(entry);
@@ -874,11 +892,7 @@ const ResultVerification = () => {
             const relevantParams = isAll
               ? entry.parameters.filter(p => !p.isCalculated)
               : entry.parameters.filter(p => p.testId === testId && !p.isCalculated);
-            const blankParams = relevantParams.filter(p => {
-              const key = `${reg.id}||${p.parameterId}`;
-              const val = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
-              return !val || val.trim() === "";
-            });
+            const blankParams = relevantParams.filter(p => blankParamIds.has(p.parameterId));
             return (
               <div className="border rounded-lg overflow-hidden">
                 <Table>
