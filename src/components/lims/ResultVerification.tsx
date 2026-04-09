@@ -289,6 +289,7 @@ const ResultVerification = () => {
       const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
       const activeTests = tests.filter((t: any) => !cancelledIds.has(t.test_id));
       const parameters: ParameterResult[] = [];
+      const snipOnlyTests: SnipOnlyTest[] = [];
       for (const t of activeTests) {
         const testInfo = testsMap[t.test_id] || {};
         const testSnipKey = `${reg.id}||${t.test_id}`;
@@ -296,10 +297,18 @@ const ResultVerification = () => {
         const paramOutsourcedSet = outsourcedParamSets[testSnipKey];
         const snipDetail = outsourcedSnipDetails[testSnipKey];
         const params = testParamsMap[t.test_id] || [];
-        
-        // Check if this test has any entered results
+        const validParams = params.filter((tp: any) => !tp.is_subheader && tp.report_test_parameters);
+
+        // Snip-only test: no params but has outsourced snip with results_entered status
+        if (validParams.length === 0) {
+          if (snipDetail && snipDetail.snipImageUrls.length > 0 && ["results_entered", "entered"].includes(snipDetail.status)) {
+            snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, outsourceStatus: snipDetail.status });
+          }
+          continue;
+        }
+
         const testEnteredResults = existingResults.filter((r: any) => r.registration_id === reg.id && r.test_id === t.test_id);
-        if (testEnteredResults.length === 0 && !snipDetail) continue; // Skip tests with no entered results
+        if (testEnteredResults.length === 0 && !snipDetail) continue;
 
         for (const tp of params) {
           if (tp.is_subheader) continue;
@@ -307,7 +316,7 @@ const ResultVerification = () => {
           if (!p) continue;
           const isParamOutsourced = isFullTestOutsourced || (paramOutsourcedSet && paramOutsourcedSet.has(p.id));
           const existing = testEnteredResults.find((r: any) => r.parameter_id === p.id);
-          if (!existing && !isParamOutsourced) continue; // Only show params with entered results
+          if (!existing && !isParamOutsourced) continue;
           
           const resolved = resolveNormalRange(p.id, reg);
           const refText = resolved.text || p.normal_range_text || (p.normal_range_low != null && p.normal_range_high != null ? `${p.normal_range_low} - ${p.normal_range_high}` : "");
@@ -330,8 +339,8 @@ const ResultVerification = () => {
           });
         }
       }
-      return { registration: reg, parameters };
-    }).filter(e => e.parameters.length > 0);
+      return { registration: reg, parameters, snipOnlyTests };
+    }).filter(e => e.parameters.length > 0 || e.snipOnlyTests.length > 0);
   }, [registrations, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails]);
 
   // Calculate flag
