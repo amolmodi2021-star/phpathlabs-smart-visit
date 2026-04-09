@@ -52,10 +52,19 @@ interface IncompleteTest {
   testName: string;
 }
 
+interface SnipOnlyTest {
+  testId: string;
+  testName: string;
+  labName: string | null;
+  snipUrls: string[];
+  outsourceStatus: string;
+}
+
 interface PatientEntry {
   registration: any;
   parameters: ParameterResult[];
   incompleteTests: IncompleteTest[];
+  snipOnlyTests: SnipOnlyTest[];
 }
 
 const handleResultTabKey = (e: React.KeyboardEvent) => {
@@ -470,7 +479,12 @@ const ResultsEntry = () => {
         // Track tests with no parameters configured
         const validParams = params.filter((tp: any) => !tp.is_subheader && tp.report_test_parameters);
         if (validParams.length === 0) {
-          incompleteTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "" });
+          // Check if this is a snip-only outsourced test
+          if (snipDetail && snipDetail.snipImageUrls.length > 0 && !["results_entered", "verified", "approved", "dispatched"].includes(snipDetail.status)) {
+            snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, outsourceStatus: snipDetail.status });
+          } else if (!snipDetail || snipDetail.snipImageUrls.length === 0) {
+            incompleteTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "" });
+          }
           continue;
         }
         
