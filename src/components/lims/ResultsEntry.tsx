@@ -47,9 +47,15 @@ interface ParameterResult {
   isSnipMode: boolean; // true if results were added via snip/image
 }
 
+interface IncompleteTest {
+  testId: string;
+  testName: string;
+}
+
 interface PatientEntry {
   registration: any;
   parameters: ParameterResult[];
+  incompleteTests: IncompleteTest[];
 }
 
 const handleResultTabKey = (e: React.KeyboardEvent) => {
