@@ -1594,6 +1594,7 @@ export type Database = {
           notes: string | null
           outsource_status: string
           outsourced_lab_name: string | null
+          outsourced_parameter_ids: Json | null
           registration_id: string
           result_mode: string
           sent_at: string | null
@@ -1609,6 +1610,7 @@ export type Database = {
           notes?: string | null
           outsource_status?: string
           outsourced_lab_name?: string | null
+          outsourced_parameter_ids?: Json | null
           registration_id: string
           result_mode?: string
           sent_at?: string | null
@@ -1624,6 +1626,7 @@ export type Database = {
           notes?: string | null
           outsource_status?: string
           outsourced_lab_name?: string | null
+          outsourced_parameter_ids?: Json | null
           registration_id?: string
           result_mode?: string
           sent_at?: string | null
