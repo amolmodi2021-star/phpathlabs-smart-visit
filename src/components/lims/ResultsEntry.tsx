@@ -717,20 +717,36 @@ const ResultsEntry = () => {
                 <div key={tg.testId} className="ml-1">
                   <div className="flex items-center justify-between px-1 py-0.5 bg-muted/40 rounded-t">
                     <span className="text-xs font-medium text-muted-foreground">{tg.testName}</span>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-6 text-[11px] gap-1"
-                      disabled={isTestSaving}
-                      onClick={() => handleSaveAndVerify(entry, tg.testId, tg.testName)}
-                    >
-                      {isTestSaving ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : (
-                        <SendHorizonal className="h-3 w-3" />
-                      )}
-                      Save & Verify
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 text-[11px] gap-1 text-muted-foreground hover:text-primary"
+                        disabled={transferringKey === testKey}
+                        onClick={() => transferToOutsourced(reg.id, tg.testId, tg.testName)}
+                      >
+                        {transferringKey === testKey ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <ArrowRightLeft className="h-3 w-3" />
+                        )}
+                        Transfer to Outsourced
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 text-[11px] gap-1"
+                        disabled={isTestSaving}
+                        onClick={() => handleSaveAndVerify(entry, tg.testId, tg.testName)}
+                      >
+                        {isTestSaving ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <SendHorizonal className="h-3 w-3" />
+                        )}
+                        Save & Verify
+                      </Button>
+                    </div>
                   </div>
                   <Table>
                     <TableHeader>
