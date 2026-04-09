@@ -498,7 +498,7 @@ const ResultsEntry = () => {
 
     const isBlank = !currentValue || currentValue.trim() === "";
     const shouldHighlightBlanks = highlightBlanksForRegs.has(regId);
-    const rowBg = (flag === "H" || flag === "L") ? "bg-destructive/5" : (isBlank && !p.isCalculated && shouldHighlightBlanks ? "bg-yellow-50" : "");
+    const rowBg = (flag === "H" || flag === "L" || flag === "A") ? "bg-destructive/5" : (isBlank && !p.isCalculated && shouldHighlightBlanks ? "bg-yellow-50" : "");
 
     return (
       <TableRow key={key} className={rowBg}>
