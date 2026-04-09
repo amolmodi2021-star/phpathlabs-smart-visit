@@ -52,6 +52,28 @@ interface PatientEntry {
   parameters: ParameterResult[];
 }
 
+const handleResultTabKey = (e: React.KeyboardEvent) => {
+  if (e.key !== "Tab") return;
+  e.preventDefault();
+  const allInputs = Array.from(document.querySelectorAll<HTMLElement>("[data-result-input]"));
+  if (allInputs.length === 0) return;
+  const currentIdx = allInputs.indexOf(e.currentTarget as HTMLElement);
+  const direction = e.shiftKey ? -1 : 1;
+  const len = allInputs.length;
+  for (let i = 1; i <= len; i++) {
+    const nextIdx = (currentIdx + i * direction + len) % len;
+    const el = allInputs[nextIdx];
+    const val = (el as HTMLInputElement).value ?? el.getAttribute("data-result-value") ?? "";
+    if (!val || val.trim() === "") {
+      el.focus();
+      return;
+    }
+  }
+  // No blank found — just move to next
+  const nextIdx = (currentIdx + direction + len) % len;
+  allInputs[nextIdx]?.focus();
+};
+
 const ResultsEntry = () => {
   const qc = useQueryClient();
   const { data: masterMachines = [] } = useMasterLookup("machine_name");
@@ -872,6 +894,8 @@ const ResultsEntry = () => {
                 onChange={e => handleValueChange(regId, p.parameterId, e.target.value, entry)}
                 className="h-7 text-sm w-[120px]"
                 placeholder="Manual"
+                data-result-input=""
+                onKeyDown={handleResultTabKey}
               />
               <Badge
                 variant="outline"
@@ -897,7 +921,7 @@ const ResultsEntry = () => {
               value={currentValue || undefined}
               onValueChange={(v) => handleValueChange(regId, p.parameterId, v, entry)}
             >
-              <SelectTrigger className="h-7 text-sm !w-[180px] min-w-[180px] max-w-[180px]">
+              <SelectTrigger className="h-7 text-sm !w-[180px] min-w-[180px] max-w-[180px]" data-result-input="" data-result-value={currentValue || ""} onKeyDown={handleResultTabKey}>
                 <SelectValue placeholder="Select..." />
               </SelectTrigger>
               <SelectContent className="max-w-[400px]">
@@ -912,6 +936,8 @@ const ResultsEntry = () => {
               onChange={e => handleValueChange(regId, p.parameterId, e.target.value, entry)}
               className={`h-7 text-sm w-[180px] ${flag === "H" || flag === "L" || flag === "A" ? "border-destructive text-destructive font-bold" : ""}`}
               placeholder="Enter result"
+              data-result-input=""
+              onKeyDown={handleResultTabKey}
             />
           )}
         </TableCell>
@@ -1371,7 +1397,7 @@ const ResultsEntry = () => {
                                 value={currentValue || undefined}
                                 onValueChange={(v) => handleValueChange(reg.id, p.parameterId, v, entry)}
                               >
-                                <SelectTrigger className="h-7 text-sm w-full">
+                              <SelectTrigger className="h-7 text-sm w-full" data-result-input="" data-result-value={currentValue || ""} onKeyDown={handleResultTabKey}>
                                   <SelectValue placeholder="Select..." />
                                 </SelectTrigger>
                                 <SelectContent className="max-w-[400px]">
@@ -1386,6 +1412,8 @@ const ResultsEntry = () => {
                                 onChange={e => handleValueChange(reg.id, p.parameterId, e.target.value, entry)}
                                 className="h-7 text-sm w-full"
                                 placeholder="Enter result"
+                                data-result-input=""
+                                onKeyDown={handleResultTabKey}
                               />
                             )}
                           </TableCell>
