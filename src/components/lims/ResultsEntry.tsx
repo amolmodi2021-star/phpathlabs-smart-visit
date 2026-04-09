@@ -816,25 +816,38 @@ const ResultsEntry = () => {
             {groupByTest(mg.params).map((tg) => {
               const testKey = `${reg.id}||${tg.testId}`;
               const isTestSaving = saveMutation.isPending && savingTestKey === testKey;
+              const isFullTestOutsourced = transferredTestKeys.has(testKey);
+              const testSnipDetail = outsourcedSnipDetails[testKey];
               return (
                 <div key={tg.testId} className="ml-1">
                   <div className="flex items-center justify-between px-1 py-0.5 bg-muted/40 rounded-t">
-                    <span className="text-xs font-medium text-muted-foreground">{tg.testName}</span>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-6 text-[11px] gap-1 text-muted-foreground hover:text-primary"
-                        disabled={transferringKey === testKey}
-                        onClick={() => transferToOutsourced(reg.id, tg.testId, tg.testName)}
-                      >
-                        {transferringKey === testKey ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-muted-foreground">{tg.testName}</span>
+                      {isFullTestOutsourced && (
+                        testSnipDetail?.status === "sent" && testSnipDetail?.labName ? (
+                          <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">Awaiting Results from {testSnipDetail.labName}</Badge>
                         ) : (
-                          <ArrowRightLeft className="h-3 w-3" />
-                        )}
-                        Transfer to Outsourced
-                      </Button>
+                          <Badge variant="outline" className="text-[10px] text-purple-600 border-purple-300">Outsourced</Badge>
+                        )
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {!isFullTestOutsourced && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 text-[11px] gap-1 text-muted-foreground hover:text-primary"
+                          disabled={transferringKey === testKey}
+                          onClick={() => transferToOutsourced(reg.id, tg.testId, tg.testName)}
+                        >
+                          {transferringKey === testKey ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <ArrowRightLeft className="h-3 w-3" />
+                          )}
+                          Transfer to Outsourced
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         variant="outline"
