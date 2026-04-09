@@ -364,13 +364,12 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   const getTestStatus = (regId: string, testId: string) => {
     const outsourceStatus = getOutsourceStatus(regId, testId);
     if (outsourceStatus === "pending") return "not_sent";
-    if (outsourceStatus === "results_saved") return "results_saved";
+    if (outsourceStatus === "results_saved" || outsourceStatus === "results_entered") return "results_saved";
+
     const snip = getSnip(regId, testId);
-    const imageUrls = getSnipImageUrls(regId, testId);
-    if (snip?.result_mode === "snip" && imageUrls.length > 0) return "results_saved";
     if (snip?.result_mode === "manual" && hasManualResults(regId, testId)) return "results_saved";
-    if (outsourceStatus === "results_entered") return "results_saved";
-    return "awaiting_results"; // sent but no results yet
+
+    return "awaiting_results"; // sent but still under review until user saves
   };
 
   // Toggle test selection
@@ -465,7 +464,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
             snip_image_url: newUrls[0],
             snip_image_urls: newUrls,
             result_mode: "snip",
-            outsource_status: "results_entered",
+            outsource_status: "sent",
           } as any, { onConflict: "registration_id,test_id" });
           toast.success(`Page ${newUrls.length} added successfully`);
           qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
@@ -499,7 +498,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         snip_image_url: newUrls[0],
         snip_image_urls: newUrls,
         result_mode: "snip",
-        outsource_status: "results_entered",
+        outsource_status: "sent",
       } as any, { onConflict: "registration_id,test_id" });
       toast.success(`Page ${newUrls.length} added successfully`);
       qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
