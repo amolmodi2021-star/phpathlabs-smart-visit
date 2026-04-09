@@ -468,7 +468,17 @@ const ResultsEntry = () => {
     }
     if (upserts.length === 0) return;
     try {
-      await supabase.from("patient_results").delete().eq("registration_id", regId).eq("test_id", testId);
+      // Get outsourced param IDs to preserve their results
+      const outsourcedParams = outsourcedParamSets[`${regId}||${testId}`];
+      if (outsourcedParams && outsourcedParams.size > 0) {
+        // Delete only non-outsourced params
+        const paramIdsToDelete = upserts.map(u => u.parameter_id);
+        for (const pid of paramIdsToDelete) {
+          await supabase.from("patient_results").delete().eq("registration_id", regId).eq("test_id", testId).eq("parameter_id", pid);
+        }
+      } else {
+        await supabase.from("patient_results").delete().eq("registration_id", regId).eq("test_id", testId);
+      }
       await supabase.from("patient_results").insert(upserts as any);
     } catch {
       // silent auto-save failure
@@ -510,8 +520,17 @@ const ResultsEntry = () => {
 
       if (upserts.length === 0) return;
 
-      // Delete existing results for this specific test only, then insert
-      await supabase.from("patient_results").delete().eq("registration_id", reg.id).eq("test_id", testId);
+      // Delete existing results for this specific test only, preserving outsourced param results
+      const outsourcedParams = outsourcedParamSets[`${reg.id}||${testId}`];
+      if (outsourcedParams && outsourcedParams.size > 0) {
+        // Delete only the params we're about to re-insert (non-outsourced)
+        const paramIdsToDelete = upserts.map(u => u.parameter_id);
+        for (const pid of paramIdsToDelete) {
+          await supabase.from("patient_results").delete().eq("registration_id", reg.id).eq("test_id", testId).eq("parameter_id", pid);
+        }
+      } else {
+        await supabase.from("patient_results").delete().eq("registration_id", reg.id).eq("test_id", testId);
+      }
       const { error } = await supabase.from("patient_results").insert(upserts as any);
       if (error) throw error;
     },
