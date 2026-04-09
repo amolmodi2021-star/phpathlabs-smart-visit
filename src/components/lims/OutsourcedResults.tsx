@@ -798,6 +798,8 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                     <TableBody>
                       {params.map((tp: any) => {
                         if (tp.is_subheader) {
+                          // For parameter-level outsource, skip subheaders
+                          if (test.isParameterLevel) return null;
                           return (
                             <TableRow key={tp.id || tp.subheader_text}>
                               <TableCell colSpan={5} className="py-1 text-xs font-semibold text-primary bg-muted/30">
@@ -808,6 +810,10 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                         }
                         const p = tp.report_test_parameters;
                         if (!p) return null;
+                        // For parameter-level outsource, only show outsourced parameters
+                        if (test.isParameterLevel && test.outsourcedParameterIds && !test.outsourcedParameterIds.includes(p.id)) {
+                          return null;
+                        }
                         const valKey = `${regId}||${p.id}`;
                         const existing = existingResults.find(
                           (r: any) => r.registration_id === regId && r.parameter_id === p.id
