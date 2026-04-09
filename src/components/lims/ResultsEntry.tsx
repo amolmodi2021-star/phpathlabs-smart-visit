@@ -371,8 +371,8 @@ const ResultsEntry = () => {
     }
     if (upserts.length === 0) return;
     try {
-      await supabase.from("patient_results").delete().eq("registration_id", regId).eq("test_id", testId).eq("status", "pending");
-      await supabase.from("patient_results").upsert(upserts as any, { onConflict: "registration_id,parameter_id", ignoreDuplicates: false });
+      await supabase.from("patient_results").delete().eq("registration_id", regId).eq("test_id", testId);
+      await supabase.from("patient_results").insert(upserts as any);
     } catch {
       // silent auto-save failure
     }
