@@ -67,6 +67,7 @@ const App = () => (
           <Route path="/whatsapp-webhook" element={<ProtectedRoute><WhatsAppWebhook /></ProtectedRoute>} />
           <Route path="/whatsapp-settings" element={<ProtectedRoute><WhatsAppSettingsPage /></ProtectedRoute>} />
           <Route path="/report-layout" element={<ProtectedRoute><ReportLayoutSettings /></ProtectedRoute>} />
+          <Route path="/signature-management" element={<ProtectedRoute><SignatureManagement /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
