@@ -161,6 +161,9 @@ const RegisteredPatients = () => {
         <Button variant="outline" size="sm" onClick={() => setShowExportPwd(true)}>
           <Download className="h-4 w-4 mr-1" />Export All
         </Button>
+        <Button variant="destructive" size="sm" onClick={() => setShowClearPwd(true)} disabled={clearing}>
+          <Trash2 className="h-4 w-4 mr-1" />{clearing ? "Clearing..." : "Clear All Data"}
+        </Button>
       </div>
 
       <div className="text-sm text-muted-foreground">{count} registration(s) found</div>
