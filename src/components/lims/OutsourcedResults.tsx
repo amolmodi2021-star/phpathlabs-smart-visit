@@ -656,7 +656,28 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
             <span className="font-medium text-sm">{test.testName}</span>
             <span className="text-xs text-muted-foreground ml-2">({test.outsourcedCaption})</span>
           </div>
-          {renderStatusBadge(regId, test.testId)}
+          <div className="flex items-center gap-2">
+            {test.isTransferredInhouse && status !== "results_entered" && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 text-[11px] gap-1 text-muted-foreground hover:text-primary"
+                disabled={returningKey === testKey}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  returnToInhouse(regId, test.testId, test.testName);
+                }}
+              >
+                {returningKey === testKey ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <ArrowLeftRight className="h-3 w-3" />
+                )}
+                Return to Inhouse
+              </Button>
+            )}
+            {renderStatusBadge(regId, test.testId)}
+          </div>
         </div>
 
         {/* Expanded: only for sent tests (awaiting or results_entered) */}
