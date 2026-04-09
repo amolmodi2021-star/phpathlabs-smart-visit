@@ -55,8 +55,6 @@ const ResultsEntry = () => {
   const [selectedMachine, setSelectedMachine] = useState<string>("all");
   const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
-  const [savingPatient, setSavingPatient] = useState<string | null>(null);
-  const [blankConfirmEntry, setBlankConfirmEntry] = useState<PatientEntry | null>(null);
   const [blankParamCount, setBlankParamCount] = useState(0);
   const [highlightBlanksForRegs, setHighlightBlanksForRegs] = useState<Set<string>>(new Set());
 
