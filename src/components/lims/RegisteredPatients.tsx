@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, ChevronLeft, ChevronRight, Pencil, Download, Eye, ChevronDown, ChevronUp } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, Pencil, Download, Eye, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { exportToExcel } from "@/lib/excel";
@@ -16,6 +17,7 @@ import InvoicePreview from "./InvoicePreview";
 const PAGE_SIZE = 20;
 
 const RegisteredPatients = () => {
+  const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(0);
@@ -23,6 +25,8 @@ const RegisteredPatients = () => {
   const [viewBillReg, setViewBillReg] = useState<any>(null);
   const [showExportPwd, setShowExportPwd] = useState(false);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [showClearPwd, setShowClearPwd] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   const registrationSearchFilter = debouncedSearch
     ? `patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%,umr_number.ilike.%${debouncedSearch}%`
@@ -156,6 +160,9 @@ const RegisteredPatients = () => {
         </div>
         <Button variant="outline" size="sm" onClick={() => setShowExportPwd(true)}>
           <Download className="h-4 w-4 mr-1" />Export All
+        </Button>
+        <Button variant="destructive" size="sm" onClick={() => setShowClearPwd(true)} disabled={clearing}>
+          <Trash2 className="h-4 w-4 mr-1" />{clearing ? "Clearing..." : "Clear All Data"}
         </Button>
       </div>
 
@@ -291,6 +298,27 @@ const RegisteredPatients = () => {
         open={showExportPwd}
         onOpenChange={setShowExportPwd}
         onSuccess={handleExport}
+      />
+
+      <ExportPasswordDialog
+        open={showClearPwd}
+        onOpenChange={setShowClearPwd}
+        onSuccess={async () => {
+          setClearing(true);
+          try {
+            await supabase.from("patient_results").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+            await supabase.from("outsourced_test_snips").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+            await supabase.from("patient_registrations").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+            await supabase.from("invoice_counter").delete().neq("date_key", "");
+            await supabase.from("patient_master").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+            toast.success("All LIMS data cleared successfully");
+            qc.invalidateQueries();
+          } catch (err: any) {
+            toast.error(err.message || "Failed to clear data");
+          } finally {
+            setClearing(false);
+          }
+        }}
       />
     </div>
   );
