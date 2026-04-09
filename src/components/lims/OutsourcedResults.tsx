@@ -55,7 +55,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   // Edit lab name state
   const [editLabKey, setEditLabKey] = useState<string | null>(null);
   const [editLabName, setEditLabName] = useState("");
-  const [savingEditLab, setSavingEditLab] = false);
+  const [savingEditLab, setSavingEditLab] = useState(false);
 
   // Return to inhouse state
   const [returningKey, setReturningKey] = useState<string | null>(null);
