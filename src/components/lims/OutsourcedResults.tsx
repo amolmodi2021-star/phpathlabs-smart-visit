@@ -623,7 +623,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     } finally {
       setSavingKey(null);
     }
-  }, [editedValues, testParamsMap, qc]);
+  }, [editedValues, testParamsMap, qc, resolveNormalRange]);
 
   // Save snip results and move to verification
   const saveSnipResults = useCallback(async (regId: string, testId: string, testName: string) => {
