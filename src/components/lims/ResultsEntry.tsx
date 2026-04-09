@@ -52,6 +52,28 @@ interface PatientEntry {
   parameters: ParameterResult[];
 }
 
+const handleResultTabKey = (e: React.KeyboardEvent) => {
+  if (e.key !== "Tab") return;
+  e.preventDefault();
+  const allInputs = Array.from(document.querySelectorAll<HTMLElement>("[data-result-input]"));
+  if (allInputs.length === 0) return;
+  const currentIdx = allInputs.indexOf(e.currentTarget as HTMLElement);
+  const direction = e.shiftKey ? -1 : 1;
+  const len = allInputs.length;
+  for (let i = 1; i <= len; i++) {
+    const nextIdx = (currentIdx + i * direction + len) % len;
+    const el = allInputs[nextIdx];
+    const val = (el as HTMLInputElement).value ?? el.getAttribute("data-result-value") ?? "";
+    if (!val || val.trim() === "") {
+      el.focus();
+      return;
+    }
+  }
+  // No blank found — just move to next
+  const nextIdx = (currentIdx + direction + len) % len;
+  allInputs[nextIdx]?.focus();
+};
+
 const ResultsEntry = () => {
   const qc = useQueryClient();
   const { data: masterMachines = [] } = useMasterLookup("machine_name");
