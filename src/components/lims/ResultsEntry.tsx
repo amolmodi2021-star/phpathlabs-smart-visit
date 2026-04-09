@@ -832,7 +832,7 @@ const ResultsEntry = () => {
       });
 
       return { ...e, parameters: activeParams };
-    }).filter(e => e.parameters.length > 0 || e.incompleteTests.length > 0);
+    }).filter(e => e.parameters.length > 0 || e.incompleteTests.length > 0 || e.snipOnlyTests.length > 0);
 
     if (mode === "patient") return activeEntries;
     if (selectedMachine === "all") return activeEntries;
