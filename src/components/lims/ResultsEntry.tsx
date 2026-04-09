@@ -60,6 +60,7 @@ const ResultsEntry = () => {
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
   const [editedUnits, setEditedUnits] = useState<Record<string, string>>({});
   const [editedRefRanges, setEditedRefRanges] = useState<Record<string, string>>({});
+  const [editedFlags, setEditedFlags] = useState<Record<string, string>>({});
   const [blankParamCount, setBlankParamCount] = useState(0);
   const [highlightBlanksForRegs, setHighlightBlanksForRegs] = useState<Set<string>>(new Set());
   const autoSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -673,7 +674,8 @@ const ResultsEntry = () => {
     const regId = entry.registration.id;
     const key = `${regId}||${p.parameterId}`;
     const currentValue = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
-    const flag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+    const autoFlag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+    const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : autoFlag;
     const isInterfaceParameter = p.sendForInterface && !p.isCalculated;
     const isAwaiting = isInterfaceParameter && !currentValue;
 
@@ -760,11 +762,31 @@ const ResultsEntry = () => {
           ) : p.referenceRange}
         </TableCell>
         <TableCell className="py-1.5 text-center">
-          {flag === "H" && <Badge variant="destructive" className="text-xs">HIGH</Badge>}
-          {flag === "L" && <Badge variant="destructive" className="text-xs">LOW</Badge>}
-          {flag === "A" && <Badge variant="destructive" className="text-xs">Abnormal</Badge>}
-          {flag === "N" && <Badge variant="secondary" className="text-xs text-green-700">Normal</Badge>}
-          {!flag && currentValue && <Badge variant="outline" className="text-xs">—</Badge>}
+          {p.isOutsourced ? (
+            <Select
+              value={flag || "none"}
+              onValueChange={(v) => setEditedFlags(prev => ({ ...prev, [key]: v === "none" ? "" : v }))}
+            >
+              <SelectTrigger className="h-6 text-xs w-[80px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">—</SelectItem>
+                <SelectItem value="N">Normal</SelectItem>
+                <SelectItem value="H">HIGH</SelectItem>
+                <SelectItem value="L">LOW</SelectItem>
+                <SelectItem value="A">Abnormal</SelectItem>
+              </SelectContent>
+            </Select>
+          ) : (
+            <>
+              {flag === "H" && <Badge variant="destructive" className="text-xs">HIGH</Badge>}
+              {flag === "L" && <Badge variant="destructive" className="text-xs">LOW</Badge>}
+              {flag === "A" && <Badge variant="destructive" className="text-xs">Abnormal</Badge>}
+              {flag === "N" && <Badge variant="secondary" className="text-xs text-green-700">Normal</Badge>}
+              {!flag && currentValue && <Badge variant="outline" className="text-xs">—</Badge>}
+            </>
+          )}
         </TableCell>
         <TableCell className="py-1.5 text-center">
           {p.isOutsourced ? (
