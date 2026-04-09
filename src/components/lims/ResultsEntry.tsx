@@ -456,6 +456,7 @@ const ResultsEntry = () => {
       const activeTests = tests.filter((t: any) => !cancelledIds.has(t.test_id));
 
       const parameters: ParameterResult[] = [];
+      const incompleteTests: IncompleteTest[] = [];
       for (const t of activeTests) {
         const testInfo = testsMap[t.test_id] || {};
         // Naturally outsourced tests are included — they appear with outsourced badges and can be saved & verified
@@ -465,6 +466,13 @@ const ResultsEntry = () => {
         const snipDetail = outsourcedSnipDetails[testSnipKey];
 
         const params = testParamsMap[t.test_id] || [];
+        
+        // Track tests with no parameters configured
+        const validParams = params.filter((tp: any) => !tp.is_subheader && tp.report_test_parameters);
+        if (validParams.length === 0) {
+          incompleteTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "" });
+          continue;
+        }
         
         // Collect params for this test first to check if ALL are already entered
         const testParamResults: { param: any; tp: any; isParamOutsourced: boolean; existing: any }[] = [];
@@ -524,8 +532,8 @@ const ResultsEntry = () => {
           });
         }
       }
-      return { registration: reg, parameters };
-    }).filter(entry => entry.parameters.length > 0);
+      return { registration: reg, parameters, incompleteTests };
+    }).filter(entry => entry.parameters.length > 0 || entry.incompleteTests.length > 0);
   }, [acceptedRegs, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails]);
 
   // ─── Calculate flag ───
