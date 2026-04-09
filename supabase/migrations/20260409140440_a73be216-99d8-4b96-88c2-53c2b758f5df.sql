@@ -1,0 +1,1 @@
+ALTER TABLE approved_reports ADD COLUMN is_held boolean NOT NULL DEFAULT false;
