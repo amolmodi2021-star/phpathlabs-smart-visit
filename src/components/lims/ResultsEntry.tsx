@@ -787,7 +787,7 @@ const ResultsEntry = () => {
     const activeEntries = patientEntries.map(e => {
       const activeParams = e.parameters.filter(p => p.isOutsourced || (p.status !== "entered" && p.status !== "verified"));
       return { ...e, parameters: activeParams };
-    }).filter(e => e.parameters.length > 0);
+    }).filter(e => e.parameters.length > 0 || e.incompleteTests.length > 0);
 
     if (mode === "patient") return activeEntries;
     if (selectedMachine === "all") return activeEntries;
@@ -797,7 +797,7 @@ const ResultsEntry = () => {
         ...e,
         parameters: e.parameters.filter(p => (p.machineName || "") === filterMachine),
       }))
-      .filter(e => e.parameters.length > 0);
+      .filter(e => e.parameters.length > 0 || e.incompleteTests.length > 0);
   }, [patientEntries, mode, selectedMachine]);
 
   // ─── Stats (based on filtered entries, excludes already-entered patients) ───
