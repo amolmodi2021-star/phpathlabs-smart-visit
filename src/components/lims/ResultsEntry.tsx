@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Search, User, Monitor, Save, Calculator, Wifi, WifiOff, ChevronDown, ChevronUp, Check, Loader2, FlaskConical, Package, SendHorizonal, ArrowRightLeft } from "lucide-react";
+import { Search, User, Monitor, Save, Calculator, Wifi, WifiOff, ChevronDown, ChevronUp, Check, Loader2, FlaskConical, Package, SendHorizonal, ArrowRightLeft, Eye } from "lucide-react";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 import OutsourcedResults from "./OutsourcedResults";
 import { format } from "date-fns";
@@ -163,7 +163,7 @@ const ResultsEntry = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("outsourced_test_snips")
-        .select("registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, sent_at")
+        .select("registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, sent_at, result_mode, snip_image_urls")
         .in("registration_id", regIds);
       if (error) throw error;
       return (data || []) as any[];
@@ -174,22 +174,24 @@ const ResultsEntry = () => {
   const { transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails } = useMemo(() => {
     const testKeys = new Set<string>();
     const paramSets: Record<string, Set<string>> = {};
-    const details: Record<string, { status: string; labName: string | null; sentAt: string | null }> = {};
+    const details: Record<string, { status: string; labName: string | null; sentAt: string | null; resultMode: string; snipImageUrls: string[] }> = {};
     outsourcedSnips.forEach((s: any) => {
       const key = `${s.registration_id}||${s.test_id}`;
-      details[key] = { status: s.outsource_status || "pending", labName: s.outsourced_lab_name || null, sentAt: s.sent_at || null };
+      const urls = Array.isArray(s.snip_image_urls) ? s.snip_image_urls : [];
+      details[key] = { status: s.outsource_status || "pending", labName: s.outsourced_lab_name || null, sentAt: s.sent_at || null, resultMode: s.result_mode || "manual", snipImageUrls: urls };
       const paramIds = Array.isArray(s.outsourced_parameter_ids) ? s.outsourced_parameter_ids : [];
       if (paramIds.length > 0) {
-        // Parameter-level outsource
         if (!paramSets[key]) paramSets[key] = new Set();
         paramIds.forEach((pid: string) => paramSets[key].add(pid));
       } else {
-        // Full test outsource
         testKeys.add(key);
       }
     });
     return { transferredTestKeys: testKeys, outsourcedParamSets: paramSets, outsourcedSnipDetails: details };
   }, [outsourcedSnips]);
+
+  // ─── Snip image viewer state ───
+  const [viewSnipImages, setViewSnipImages] = useState<string[] | null>(null);
 
   // ─── Transfer to outsourced state ───
   const [transferringKey, setTransferringKey] = useState<string | null>(null);
@@ -818,22 +820,41 @@ const ResultsEntry = () => {
           )}
         </TableCell>
         <TableCell className="py-1.5 text-center">
-          {!p.isCalculated && !p.isOutsourced && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-5 w-5 p-0 text-muted-foreground hover:text-primary"
-              title="Transfer to Outsourced"
-              disabled={transferringKey === `${regId}||${p.parameterId}`}
-              onClick={() => transferParamToOutsourced(regId, p.testId, p.parameterId, p.parameterName)}
-            >
-              {transferringKey === `${regId}||${p.parameterId}` ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <ArrowRightLeft className="h-3 w-3" />
-              )}
-            </Button>
-          )}
+          <div className="flex items-center justify-center gap-1">
+            {!p.isCalculated && !p.isOutsourced && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-5 w-5 p-0 text-muted-foreground hover:text-primary"
+                title="Transfer to Outsourced"
+                disabled={transferringKey === `${regId}||${p.parameterId}`}
+                onClick={() => transferParamToOutsourced(regId, p.testId, p.parameterId, p.parameterName)}
+              >
+                {transferringKey === `${regId}||${p.parameterId}` ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <ArrowRightLeft className="h-3 w-3" />
+                )}
+              </Button>
+            )}
+            {p.isOutsourced && (() => {
+              const snipDetail = outsourcedSnipDetails[`${regId}||${p.testId}`];
+              if (snipDetail?.resultMode === "snip" && snipDetail.snipImageUrls.length > 0) {
+                return (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-5 px-1 text-xs text-blue-600 hover:text-blue-800 gap-0.5"
+                    title="View Snip"
+                    onClick={() => setViewSnipImages(snipDetail.snipImageUrls)}
+                  >
+                    <Eye className="h-3 w-3" /> View
+                  </Button>
+                );
+              }
+              return null;
+            })()}
+          </div>
         </TableCell>
       </TableRow>
     );
@@ -1285,6 +1306,21 @@ const ResultsEntry = () => {
               Send to Verification
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Snip Image Viewer Dialog */}
+      <Dialog open={!!viewSnipImages} onOpenChange={open => { if (!open) setViewSnipImages(null); }}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Outsourced Result — Snipped Images</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {viewSnipImages?.map((url, idx) => (
+              <div key={idx} className="border rounded-lg overflow-hidden">
+                <img src={url} alt={`Snip page ${idx + 1}`} className="w-full object-contain" />
+              </div>
+            ))}
+          </div>
         </DialogContent>
       </Dialog>
     </div>
