@@ -1016,7 +1016,7 @@ const ResultsEntry = () => {
           {p.isOutsourced ? (
             p.isSnipMode && p.outsourceLabName ? (
               <Badge variant="outline" className="text-xs text-green-600 border-green-300 bg-green-50 whitespace-nowrap">{p.outsourceLabName}</Badge>
-            ) : (p.outsourceStatus === "sent" || p.outsourceStatus === "results_saved") && p.outsourceLabName ? (
+            ) : (p.outsourceStatus === "sent" || p.outsourceStatus === "results_saved" || p.outsourceStatus === "results_entered") && p.outsourceLabName ? (
               currentValue ? (
                 <Badge variant="outline" className="text-xs text-green-600 border-green-300 whitespace-nowrap">{p.outsourceLabName}</Badge>
               ) : (
