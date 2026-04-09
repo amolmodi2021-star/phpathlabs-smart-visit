@@ -1116,30 +1116,177 @@ const ResultsEntry = () => {
           )}
         </>
       )}
-      {/* Blank values confirmation dialog */}
-      <AlertDialog open={!!blankConfirmTestParams} onOpenChange={open => { if (!open) setBlankConfirmTestParams(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Blank Result Values Detected</AlertDialogTitle>
-            <AlertDialogDescription>
-              {blankParamCount} parameter{blankParamCount > 1 ? "s have" : " has"} blank/empty result values in <strong>{blankConfirmTestParams?.testName}</strong> (highlighted in yellow). 
-              Are you sure you want to save and send to verification with blank values?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => {
+      {/* Blank values detailed dialog */}
+      <Dialog open={!!blankConfirmTestParams} onOpenChange={open => {
+        if (!open) {
+          setBlankConfirmTestParams(null);
+        }
+      }}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-lg">
+              Blank Result Values — {blankConfirmTestParams?.testName}
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              {blankParamCount} parameter{blankParamCount !== 1 ? "s have" : " has"} blank values. You can fill them below or send to verification as-is.
+            </p>
+          </DialogHeader>
+          {blankConfirmTestParams && (() => {
+            const { entry, testId } = blankConfirmTestParams;
+            const reg = entry.registration;
+            const blankParams = entry.parameters.filter(p => {
+              if (p.testId !== testId || p.isCalculated) return false;
+              const key = `${reg.id}||${p.parameterId}`;
+              const val = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
+              return !val || val.trim() === "";
+            });
+            return (
+              <div className="border rounded-lg overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="py-2 text-xs w-[80px]">Code</TableHead>
+                      <TableHead className="py-2 text-xs">Parameter</TableHead>
+                      <TableHead className="py-2 text-xs w-[180px]">Result</TableHead>
+                      <TableHead className="py-2 text-xs w-[80px]">Unit</TableHead>
+                      <TableHead className="py-2 text-xs w-[120px]">Ref. Range</TableHead>
+                      <TableHead className="py-2 text-xs w-[80px] text-center">Flag</TableHead>
+                      <TableHead className="py-2 text-xs w-[90px] text-center">Status</TableHead>
+                      <TableHead className="py-2 text-xs w-[50px] text-center"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {blankParams.map(p => {
+                      const key = `${reg.id}||${p.parameterId}`;
+                      const currentValue = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
+                      const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+                      const isInterfaceParameter = p.sendForInterface && !p.isCalculated;
+                      const isAwaiting = isInterfaceParameter && !currentValue;
+                      return (
+                        <TableRow key={key} className="bg-yellow-50">
+                          <TableCell className="py-2 text-xs font-mono text-muted-foreground">{p.paramCode}</TableCell>
+                          <TableCell className="py-2 text-sm font-medium">{p.parameterName}</TableCell>
+                          <TableCell className="py-2">
+                            {p.rangeType === "descriptive" && p.descriptiveOptions.length > 0 ? (
+                              <Select
+                                value={currentValue || undefined}
+                                onValueChange={(v) => handleValueChange(reg.id, p.parameterId, v, entry)}
+                              >
+                                <SelectTrigger className="h-7 text-sm w-full">
+                                  <SelectValue placeholder="Select..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {p.descriptiveOptions.map((opt: string) => (
+                                    <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <Input
+                                value={currentValue}
+                                onChange={e => handleValueChange(reg.id, p.parameterId, e.target.value, entry)}
+                                className="h-7 text-sm w-full"
+                                placeholder="Enter result"
+                              />
+                            )}
+                          </TableCell>
+                          <TableCell className="py-2 text-xs text-muted-foreground">
+                            {p.isOutsourced ? (
+                              <Input
+                                value={editedUnits[key] !== undefined ? editedUnits[key] : (p.unit || "")}
+                                onChange={e => setEditedUnits(prev => ({ ...prev, [key]: e.target.value }))}
+                                className="h-6 text-xs w-[70px]"
+                                placeholder="Unit"
+                              />
+                            ) : p.unit}
+                          </TableCell>
+                          <TableCell className="py-2 text-xs text-muted-foreground">
+                            {p.isOutsourced ? (
+                              <Input
+                                value={editedRefRanges[key] !== undefined ? editedRefRanges[key] : (p.referenceRange || "")}
+                                onChange={e => setEditedRefRanges(prev => ({ ...prev, [key]: e.target.value }))}
+                                className="h-6 text-xs w-[100px]"
+                                placeholder="Ref Range"
+                              />
+                            ) : p.referenceRange}
+                          </TableCell>
+                          <TableCell className="py-2 text-center">
+                            {p.isOutsourced ? (
+                              <Select
+                                value={flag || "none"}
+                                onValueChange={(v) => setEditedFlags(prev => ({ ...prev, [key]: v === "none" ? "" : v }))}
+                              >
+                                <SelectTrigger className="h-6 text-xs w-[75px]">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none">—</SelectItem>
+                                  <SelectItem value="N">Normal</SelectItem>
+                                  <SelectItem value="H">HIGH</SelectItem>
+                                  <SelectItem value="L">LOW</SelectItem>
+                                  <SelectItem value="A">Abnormal</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <>
+                                {flag === "H" && <Badge variant="destructive" className="text-xs">HIGH</Badge>}
+                                {flag === "L" && <Badge variant="destructive" className="text-xs">LOW</Badge>}
+                                {flag === "A" && <Badge variant="destructive" className="text-xs">Abnormal</Badge>}
+                                {!flag && <Badge variant="outline" className="text-xs">—</Badge>}
+                              </>
+                            )}
+                          </TableCell>
+                          <TableCell className="py-2 text-center">
+                            {p.isOutsourced ? (
+                              <Badge variant="outline" className="text-xs text-purple-600 border-purple-300">Outsourced</Badge>
+                            ) : isAwaiting ? (
+                              <Badge variant="outline" className="text-xs text-orange-600 border-orange-300 gap-0.5">
+                                <Wifi className="h-3 w-3" /> Awaiting
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-xs">Pending</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="py-2 text-center">
+                            {!p.isOutsourced && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-5 w-5 p-0 text-muted-foreground hover:text-primary"
+                                title="Transfer to Outsourced"
+                                onClick={() => transferParamToOutsourced(reg.id, p.testId, p.parameterId, p.parameterName)}
+                              >
+                                <ArrowRightLeft className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            );
+          })()}
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => {
+              setBlankConfirmTestParams(null);
+            }}>
+              Cancel & Review
+            </Button>
+            <Button onClick={() => {
               if (blankConfirmTestParams) {
                 const { entry, testId } = blankConfirmTestParams;
                 setSavingTestKey(`${entry.registration.id}||${testId}`);
                 saveMutation.mutate({ entry, testId });
               }
             }}>
-              Yes, Send to Verification
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+              <SendHorizonal className="h-4 w-4 mr-1" />
+              Send to Verification
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
