@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ interface DispatchEntry {
 
 const Dispatch = () => {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
@@ -262,9 +264,14 @@ const Dispatch = () => {
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {entry.completionStatus !== "all_pending" && (
-                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={(e) => { e.stopPropagation(); dispatchViaWhatsApp(reg); }}>
-                        <MessageSquare className="h-3.5 w-3.5" /> WhatsApp
-                      </Button>
+                      <>
+                        <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={(e) => { e.stopPropagation(); navigate(`/lims/report/${reg.id}`); }}>
+                          <Eye className="h-3.5 w-3.5" /> View Report
+                        </Button>
+                        <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={(e) => { e.stopPropagation(); dispatchViaWhatsApp(reg); }}>
+                          <MessageSquare className="h-3.5 w-3.5" /> WhatsApp
+                        </Button>
+                      </>
                     )}
                     {hasApproved && (
                       <Button size="sm" variant="default" className="h-7 text-xs gap-1" disabled={isDispatching} onClick={(e) => { e.stopPropagation(); markAsDispatched(entry); }}>
