@@ -425,6 +425,43 @@ const ResultVerification = () => {
     return Object.values(groups);
   };
 
+  // ─── Blank result check before verify ───
+  const countBlanks = (entry: PatientEntry, testId: string) => {
+    const reg = entry.registration;
+    const testParams = entry.parameters.filter(p => p.testId === testId);
+    let blanks = 0;
+    for (const p of testParams) {
+      if (p.isCalculated) continue;
+      const key = `${reg.id}||${p.parameterId}`;
+      const val = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
+      if (!val || val.trim() === "") blanks++;
+    }
+    return blanks;
+  };
+
+  const handleVerifyTest = (entry: PatientEntry, testId: string, testName: string) => {
+    const blanks = countBlanks(entry, testId);
+    if (blanks > 0) {
+      setBlankParamCount(blanks);
+      setBlankConfirmTestParams({ entry, testId, testName });
+      setHighlightBlanksForRegs(prev => new Set(prev).add(`${entry.registration.id}||${testId}`));
+    } else {
+      verifyTest(entry, testId, testName);
+    }
+  };
+
+  const handleVerifyAll = (entry: PatientEntry) => {
+    const testIds = [...new Set(entry.parameters.map(p => p.testId))];
+    let totalBlanks = 0;
+    for (const tid of testIds) totalBlanks += countBlanks(entry, tid);
+    if (totalBlanks > 0) {
+      setBlankParamCount(totalBlanks);
+      setBlankConfirmTestParams({ entry, testId: "__all__", testName: "All Tests" });
+    } else {
+      verifyAllForPatient(entry);
+    }
+  };
+
   // Verify test (update status to verified)
   const [verifyingKey, setVerifyingKey] = useState<string | null>(null);
 
@@ -695,7 +732,7 @@ const ResultVerification = () => {
                       <Button size="sm" variant="ghost" className="h-6 text-[11px] gap-1 text-orange-600" onClick={() => sendBackTest(reg.id, tg.testId, tg.testName)}>
                         <Undo2 className="h-3 w-3" /> Send Back
                       </Button>
-                      <Button size="sm" variant="outline" className="h-6 text-[11px] gap-1" disabled={isVerifying} onClick={() => verifyTest(entry, tg.testId, tg.testName)}>
+                      <Button size="sm" variant="outline" className="h-6 text-[11px] gap-1" disabled={isVerifying} onClick={() => handleVerifyTest(entry, tg.testId, tg.testName)}>
                         {isVerifying ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
                         Verify & Send to Doctor
                       </Button>
