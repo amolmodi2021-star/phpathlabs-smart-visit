@@ -9,11 +9,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Search, User, Monitor, Calculator, ChevronDown, ChevronUp, Loader2, CheckCircle2, Undo2, RotateCcw, Eye, Stethoscope } from "lucide-react";
+import { Search, User, Monitor, Calculator, ChevronDown, ChevronUp, Loader2, CheckCircle2, Undo2, RotateCcw, Eye, Stethoscope, FileCheck } from "lucide-react";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { toast } from "sonner";
 import { formatDateDDMMYYYY } from "@/lib/utils";
-
+import ModifiedApproval from "./ModifiedApproval";
 interface ParameterResult {
   parameterId: string; paramCode: string; parameterName: string; unit: string; referenceRange: string;
   normalRangeLow: number | null; normalRangeHigh: number | null; resultValue: string; flag: string;
@@ -36,6 +36,7 @@ interface PatientEntry { registration: any; parameters: ParameterResult[]; snipO
 const DoctorApproval = () => {
   const qc = useQueryClient();
   const { data: masterMachines = [] } = useMasterLookup("machine_name");
+  const [activeSection, setActiveSection] = useState<"approval" | "modified">("approval");
   const [mode, setMode] = useState<"patient" | "machine">("patient");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
