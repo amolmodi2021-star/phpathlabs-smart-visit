@@ -17,6 +17,7 @@ import InvoicePreview from "./InvoicePreview";
 const PAGE_SIZE = 20;
 
 const RegisteredPatients = () => {
+  const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(0);
@@ -24,6 +25,8 @@ const RegisteredPatients = () => {
   const [viewBillReg, setViewBillReg] = useState<any>(null);
   const [showExportPwd, setShowExportPwd] = useState(false);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [showClearPwd, setShowClearPwd] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   const registrationSearchFilter = debouncedSearch
     ? `patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%,umr_number.ilike.%${debouncedSearch}%`
