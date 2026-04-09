@@ -39,6 +39,9 @@ interface ParameterResult {
   rangeType: string; // numeric | qualitative | descriptive
   descriptiveOptions: string[];
   expectedValue: string;
+  isOutsourced: boolean; // true if this param is outsourced (test-level or param-level)
+  outsourceLabName: string | null; // lab name if sent
+  outsourceStatus: string; // pending | sent | results_entered
 }
 
 interface PatientEntry {
@@ -156,19 +159,21 @@ const ResultsEntry = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("outsourced_test_snips")
-        .select("registration_id, test_id, outsourced_parameter_ids")
+        .select("registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, sent_at")
         .in("registration_id", regIds);
       if (error) throw error;
       return (data || []) as any[];
     },
   });
 
-  // Build lookup: test-level outsourced keys and parameter-level outsourced sets
-  const { transferredTestKeys, outsourcedParamSets } = useMemo(() => {
+  // Build lookup: test-level outsourced keys and parameter-level outsourced sets, plus status/lab info
+  const { transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails } = useMemo(() => {
     const testKeys = new Set<string>();
     const paramSets: Record<string, Set<string>> = {};
+    const details: Record<string, { status: string; labName: string | null; sentAt: string | null }> = {};
     outsourcedSnips.forEach((s: any) => {
       const key = `${s.registration_id}||${s.test_id}`;
+      details[key] = { status: s.outsource_status || "pending", labName: s.outsourced_lab_name || null, sentAt: s.sent_at || null };
       const paramIds = Array.isArray(s.outsourced_parameter_ids) ? s.outsourced_parameter_ids : [];
       if (paramIds.length > 0) {
         // Parameter-level outsource
@@ -179,7 +184,7 @@ const ResultsEntry = () => {
         testKeys.add(key);
       }
     });
-    return { transferredTestKeys: testKeys, outsourcedParamSets: paramSets };
+    return { transferredTestKeys: testKeys, outsourcedParamSets: paramSets, outsourcedSnipDetails: details };
   }, [outsourcedSnips]);
 
   // ─── Transfer to outsourced state ───
@@ -284,7 +289,7 @@ const ResultsEntry = () => {
     return { text, low: best.normal_range_low as number | null, high: best.normal_range_high as number | null, rangeType, descriptiveOptions, expectedValue };
   }, [normalRangesMap]);
 
-  // ─── Build patient entries ───
+  // ─── Build patient entries (includes outsourced tests/params with badges) ───
   const patientEntries: PatientEntry[] = useMemo(() => {
     return acceptedRegs.map((reg: any) => {
       const tests = (reg.tests || []) as any[];
@@ -293,25 +298,24 @@ const ResultsEntry = () => {
 
       const parameters: ParameterResult[] = [];
       for (const t of activeTests) {
-        // Skip tests that are outsourced by nature or transferred to outsourced
         const testInfo = testsMap[t.test_id] || {};
+        // Skip naturally outsourced tests (configured as outsourced in test master)
         if (testInfo.is_outsourced) continue;
-        if (transferredTestKeys.has(`${reg.id}||${t.test_id}`)) continue;
+        const testSnipKey = `${reg.id}||${t.test_id}`;
+        const isFullTestOutsourced = transferredTestKeys.has(testSnipKey);
+        const paramOutsourcedSet = outsourcedParamSets[testSnipKey];
+        const snipDetail = outsourcedSnipDetails[testSnipKey];
+
         const params = testParamsMap[t.test_id] || [];
-        // Get parameter-level outsourced set for this test
-        const paramOutsourcedSet = outsourcedParamSets[`${reg.id}||${t.test_id}`];
         for (const tp of params) {
           if (tp.is_subheader) continue;
           const p = tp.report_test_parameters;
           if (!p) continue;
-          // Skip parameters that are individually outsourced
-          if (paramOutsourcedSet && paramOutsourcedSet.has(p.id)) continue;
+          const isParamOutsourced = isFullTestOutsourced || (paramOutsourcedSet && paramOutsourcedSet.has(p.id));
           const existing = existingResults.find(
             (r: any) => r.registration_id === reg.id && r.parameter_id === p.id
           );
-          // Resolve reference range from parameter_normal_ranges
           const resolved = resolveNormalRange(p.id, reg);
-          // Fallback to report_test_parameters fields if no range in parameter_normal_ranges
           const refText = resolved.text || p.normal_range_text || (p.normal_range_low != null && p.normal_range_high != null ? `${p.normal_range_low} - ${p.normal_range_high}` : "");
           const rangeLow = resolved.low ?? p.normal_range_low;
           const rangeHigh = resolved.high ?? p.normal_range_high;
@@ -339,12 +343,15 @@ const ResultsEntry = () => {
             rangeType: resolved.rangeType,
             descriptiveOptions: resolved.descriptiveOptions,
             expectedValue: resolved.expectedValue,
+            isOutsourced: !!isParamOutsourced,
+            outsourceLabName: isParamOutsourced ? (snipDetail?.labName || null) : null,
+            outsourceStatus: isParamOutsourced ? (snipDetail?.status || "pending") : "",
           });
         }
       }
       return { registration: reg, parameters };
     }).filter(entry => entry.parameters.length > 0);
-  }, [acceptedRegs, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets]);
+  }, [acceptedRegs, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails]);
 
   // ─── Calculate flag ───
   const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string): string => {
@@ -552,6 +559,8 @@ const ResultsEntry = () => {
       setHighlightBlanksForRegs(prev => { const next = new Set(prev); next.delete(`${regId}||${testId}`); return next; });
       qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
       qc.invalidateQueries({ queryKey: ["verification_"] });
+      qc.invalidateQueries({ queryKey: ["outsourced_manual_results"] });
+      qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
     },
     onError: (err: any) => {
       toast.error(err.message || "Failed to save results");
@@ -738,12 +747,22 @@ const ResultsEntry = () => {
           {!flag && currentValue && <Badge variant="outline" className="text-xs">—</Badge>}
         </TableCell>
         <TableCell className="py-1.5 text-center">
-          {p.status === "entered" && <Badge variant="secondary" className="text-xs">Entered</Badge>}
-          {p.status === "verified" && <Badge className="text-xs bg-green-600">Verified</Badge>}
-          {p.status === "pending" && !currentValue && <Badge variant="outline" className="text-xs">Pending</Badge>}
+          {p.isOutsourced ? (
+            p.outsourceStatus === "sent" && p.outsourceLabName ? (
+              <Badge variant="outline" className="text-xs text-blue-600 border-blue-300 whitespace-nowrap">Awaiting Results from {p.outsourceLabName}</Badge>
+            ) : (
+              <Badge variant="outline" className="text-xs text-purple-600 border-purple-300">Outsourced</Badge>
+            )
+          ) : (
+            <>
+              {p.status === "entered" && <Badge variant="secondary" className="text-xs">Entered</Badge>}
+              {p.status === "verified" && <Badge className="text-xs bg-green-600">Verified</Badge>}
+              {p.status === "pending" && !currentValue && <Badge variant="outline" className="text-xs">Pending</Badge>}
+            </>
+          )}
         </TableCell>
         <TableCell className="py-1.5 text-center">
-          {!p.isCalculated && (
+          {!p.isCalculated && !p.isOutsourced && (
             <Button
               size="sm"
               variant="ghost"
@@ -797,25 +816,38 @@ const ResultsEntry = () => {
             {groupByTest(mg.params).map((tg) => {
               const testKey = `${reg.id}||${tg.testId}`;
               const isTestSaving = saveMutation.isPending && savingTestKey === testKey;
+              const isFullTestOutsourced = transferredTestKeys.has(testKey);
+              const testSnipDetail = outsourcedSnipDetails[testKey];
               return (
                 <div key={tg.testId} className="ml-1">
                   <div className="flex items-center justify-between px-1 py-0.5 bg-muted/40 rounded-t">
-                    <span className="text-xs font-medium text-muted-foreground">{tg.testName}</span>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-6 text-[11px] gap-1 text-muted-foreground hover:text-primary"
-                        disabled={transferringKey === testKey}
-                        onClick={() => transferToOutsourced(reg.id, tg.testId, tg.testName)}
-                      >
-                        {transferringKey === testKey ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-muted-foreground">{tg.testName}</span>
+                      {isFullTestOutsourced && (
+                        testSnipDetail?.status === "sent" && testSnipDetail?.labName ? (
+                          <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">Awaiting Results from {testSnipDetail.labName}</Badge>
                         ) : (
-                          <ArrowRightLeft className="h-3 w-3" />
-                        )}
-                        Transfer to Outsourced
-                      </Button>
+                          <Badge variant="outline" className="text-[10px] text-purple-600 border-purple-300">Outsourced</Badge>
+                        )
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {!isFullTestOutsourced && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 text-[11px] gap-1 text-muted-foreground hover:text-primary"
+                          disabled={transferringKey === testKey}
+                          onClick={() => transferToOutsourced(reg.id, tg.testId, tg.testName)}
+                        >
+                          {transferringKey === testKey ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <ArrowRightLeft className="h-3 w-3" />
+                          )}
+                          Transfer to Outsourced
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         variant="outline"
