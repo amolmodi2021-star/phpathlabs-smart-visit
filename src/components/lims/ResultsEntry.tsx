@@ -507,7 +507,7 @@ const ResultsEntry = () => {
     const isAwaiting = isInterfaceParameter && !currentValue;
 
     const isBlank = !currentValue || currentValue.trim() === "";
-    const shouldHighlightBlanks = highlightBlanksForRegs.has(regId);
+    const shouldHighlightBlanks = highlightBlanksForRegs.has(`${regId}||${p.testId}`);
     const rowBg = (flag === "H" || flag === "L" || flag === "A") ? "bg-destructive/5" : (isBlank && !p.isCalculated && shouldHighlightBlanks ? "bg-yellow-50" : "");
 
     return (
@@ -595,37 +595,20 @@ const ResultsEntry = () => {
 
     return (
       <div className="space-y-3 p-3 bg-muted/20 rounded-lg border">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div>
-              <span className="font-semibold">{reg.patient_name}</span>
-              {reg.is_stat && (
-                <span className="relative inline-flex h-2.5 w-2.5 ml-1.5 align-middle">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive" />
-                </span>
-              )}
-              <span className="text-sm text-muted-foreground ml-2">{reg.invoice_number}</span>
-            </div>
-            <Badge variant={completion === 100 ? "default" : "outline"} className="text-xs">
-              {completion}% Complete
-            </Badge>
+        <div className="flex items-center gap-3">
+          <div>
+            <span className="font-semibold">{reg.patient_name}</span>
+            {reg.is_stat && (
+              <span className="relative inline-flex h-2.5 w-2.5 ml-1.5 align-middle">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive" />
+              </span>
+            )}
+            <span className="text-sm text-muted-foreground ml-2">{reg.invoice_number}</span>
           </div>
-          <div className="flex items-center gap-2">
-            {unsaved && <Badge variant="secondary" className="text-xs text-orange-600">Unsaved</Badge>}
-            <Button
-              size="sm"
-              onClick={() => handleSaveAndVerify(entry)}
-              disabled={saveMutation.isPending && savingPatient === reg.id}
-            >
-              {saveMutation.isPending && savingPatient === reg.id ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-1" />
-              ) : (
-                <SendHorizonal className="h-4 w-4 mr-1" />
-              )}
-              Save & Send to Verification
-            </Button>
-          </div>
+          <Badge variant={completion === 100 ? "default" : "outline"} className="text-xs">
+            {completion}% Complete
+          </Badge>
         </div>
 
         {machineGroups.map((mg) => (
@@ -633,29 +616,47 @@ const ResultsEntry = () => {
             <div className="text-xs font-semibold text-primary uppercase tracking-wider px-1 pt-2 border-b border-primary/20 pb-1 flex items-center gap-1.5">
               <Monitor className="h-3.5 w-3.5" /> {mg.machineName}
             </div>
-            {groupByTest(mg.params).map((tg) => (
-              <div key={tg.testId} className="ml-1">
-                <div className="text-xs font-medium text-muted-foreground px-1 py-0.5 bg-muted/40 rounded-t">
-                  {tg.testName}
+            {groupByTest(mg.params).map((tg) => {
+              const testKey = `${reg.id}||${tg.testId}`;
+              const isTestSaving = saveMutation.isPending && savingTestKey === testKey;
+              return (
+                <div key={tg.testId} className="ml-1">
+                  <div className="flex items-center justify-between px-1 py-0.5 bg-muted/40 rounded-t">
+                    <span className="text-xs font-medium text-muted-foreground">{tg.testName}</span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 text-[11px] gap-1"
+                      disabled={isTestSaving}
+                      onClick={() => handleSaveAndVerify(entry, tg.testId, tg.testName)}
+                    >
+                      {isTestSaving ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <SendHorizonal className="h-3 w-3" />
+                      )}
+                      Save & Verify
+                    </Button>
+                  </div>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="py-1 text-xs w-[80px]">Code</TableHead>
+                        <TableHead className="py-1 text-xs">Parameter</TableHead>
+                        <TableHead className="py-1 text-xs w-[200px]">Result</TableHead>
+                        <TableHead className="py-1 text-xs w-[60px]">Unit</TableHead>
+                        <TableHead className="py-1 text-xs w-[120px]">Ref. Range</TableHead>
+                        <TableHead className="py-1 text-xs w-[70px] text-center">Flag</TableHead>
+                        <TableHead className="py-1 text-xs w-[70px] text-center">Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {tg.params.map(p => renderParamRow(entry, p))}
+                    </TableBody>
+                  </Table>
                 </div>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="py-1 text-xs w-[80px]">Code</TableHead>
-                      <TableHead className="py-1 text-xs">Parameter</TableHead>
-                      <TableHead className="py-1 text-xs w-[200px]">Result</TableHead>
-                      <TableHead className="py-1 text-xs w-[60px]">Unit</TableHead>
-                      <TableHead className="py-1 text-xs w-[120px]">Ref. Range</TableHead>
-                      <TableHead className="py-1 text-xs w-[70px] text-center">Flag</TableHead>
-                      <TableHead className="py-1 text-xs w-[70px] text-center">Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {tg.params.map(p => renderParamRow(entry, p))}
-                  </TableBody>
-                </Table>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ))}
       </div>
@@ -823,21 +824,22 @@ const ResultsEntry = () => {
         </>
       )}
       {/* Blank values confirmation dialog */}
-      <AlertDialog open={!!blankConfirmEntry} onOpenChange={open => { if (!open) setBlankConfirmEntry(null); }}>
+      <AlertDialog open={!!blankConfirmTestParams} onOpenChange={open => { if (!open) setBlankConfirmTestParams(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Blank Result Values Detected</AlertDialogTitle>
             <AlertDialogDescription>
-              {blankParamCount} parameter{blankParamCount > 1 ? "s have" : " has"} blank/empty result values (highlighted in yellow). 
+              {blankParamCount} parameter{blankParamCount > 1 ? "s have" : " has"} blank/empty result values in <strong>{blankConfirmTestParams?.testName}</strong> (highlighted in yellow). 
               Are you sure you want to save and send to verification with blank values?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={() => {
-              if (blankConfirmEntry) {
-                setSavingPatient(blankConfirmEntry.registration.id);
-                saveMutation.mutate({ entry: blankConfirmEntry });
+              if (blankConfirmTestParams) {
+                const { entry, testId } = blankConfirmTestParams;
+                setSavingTestKey(`${entry.registration.id}||${testId}`);
+                saveMutation.mutate({ entry, testId });
               }
             }}>
               Yes, Send to Verification
