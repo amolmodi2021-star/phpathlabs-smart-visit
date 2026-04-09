@@ -586,6 +586,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       setEditLabKey(null);
       setEditLabName("");
       qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+      qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] });
     } catch (err: any) {
       toast.error(err.message || "Failed to update");
     } finally {
