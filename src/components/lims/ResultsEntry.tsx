@@ -344,7 +344,7 @@ const ResultsEntry = () => {
         const key = `${reg.id}||${p.parameterId}`;
         const value = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
 
-        const flag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh);
+        const flag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
         upserts.push({
           registration_id: reg.id,
           test_id: p.testId,
@@ -492,7 +492,7 @@ const ResultsEntry = () => {
     const regId = entry.registration.id;
     const key = `${regId}||${p.parameterId}`;
     const currentValue = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
-    const flag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh);
+    const flag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
     const isInterfaceParameter = p.sendForInterface && !p.isCalculated;
     const isAwaiting = isInterfaceParameter && !currentValue;
 
