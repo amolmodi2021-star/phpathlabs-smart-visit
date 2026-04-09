@@ -62,6 +62,9 @@ const ResultVerification = () => {
   const [editedFlags, setEditedFlags] = useState<Record<string, string>>({});
   const [viewSnipImages, setViewSnipImages] = useState<string[] | null>(null);
   const autoSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const [blankConfirmTestParams, setBlankConfirmTestParams] = useState<{ entry: PatientEntry; testId: string; testName: string } | null>(null);
+  const [blankParamCount, setBlankParamCount] = useState(0);
+  const [highlightBlanksForRegs, setHighlightBlanksForRegs] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 400);
