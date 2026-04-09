@@ -77,6 +77,16 @@ const Dispatch = () => {
     },
   });
 
+  // Fetch held report registration IDs
+  const { data: heldRegIds = [] } = useQuery({
+    queryKey: ["dispatch_held_reports", regIds.join(",")],
+    enabled: regIds.length > 0,
+    queryFn: async () => {
+      const { data } = await supabase.from("approved_reports").select("registration_id").eq("is_held", true).in("registration_id", regIds);
+      return (data || []).map((r: any) => r.registration_id) as string[];
+    },
+  });
+
   const { data: testsMap = {} } = useQuery({
     queryKey: ["results_tests_map"],
     queryFn: async () => { const { data } = await supabase.from("tests").select("id, test_name"); const map: Record<string, any> = {}; (data || []).forEach((t: any) => { map[t.id] = t; }); return map; },
