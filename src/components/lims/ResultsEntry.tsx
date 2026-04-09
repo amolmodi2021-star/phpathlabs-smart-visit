@@ -1112,6 +1112,19 @@ const ResultsEntry = () => {
           </Badge>
         </div>
 
+        {/* Incomplete tests warning */}
+        {entry.incompleteTests.length > 0 && (
+          <div className="space-y-1">
+            {entry.incompleteTests.map(t => (
+              <div key={t.testId} className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded text-sm">
+                <FlaskConical className="h-4 w-4 text-amber-600 shrink-0" />
+                <span className="font-medium text-amber-800">{t.testName}</span>
+                <span className="text-amber-600">— No parameters configured. Please complete test setup in Report Parameters to enter results.</span>
+              </div>
+            ))}
+          </div>
+        )}
+
         {machineGroups.map((mg) => (
           <div key={mg.machineName} className="space-y-1">
             <div className="text-xs font-semibold text-primary uppercase tracking-wider px-1 pt-2 border-b border-primary/20 pb-1 flex items-center gap-1.5">
