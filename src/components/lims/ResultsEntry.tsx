@@ -250,7 +250,10 @@ const ResultsEntry = () => {
 
       const parameters: ParameterResult[] = [];
       for (const t of activeTests) {
+        // Skip tests that are outsourced by nature or transferred to outsourced
         const testInfo = testsMap[t.test_id] || {};
+        if (testInfo.is_outsourced) continue;
+        if (transferredTestKeys.has(`${reg.id}||${t.test_id}`)) continue;
         const params = testParamsMap[t.test_id] || [];
         for (const tp of params) {
           if (tp.is_subheader) continue;
