@@ -452,8 +452,7 @@ const ResultsEntry = () => {
       const parameters: ParameterResult[] = [];
       for (const t of activeTests) {
         const testInfo = testsMap[t.test_id] || {};
-        // Skip naturally outsourced tests (configured as outsourced in test master)
-        if (testInfo.is_outsourced) continue;
+        // Naturally outsourced tests are included — they appear with outsourced badges and can be saved & verified
         const testSnipKey = `${reg.id}||${t.test_id}`;
         const isFullTestOutsourced = transferredTestKeys.has(testSnipKey);
         const paramOutsourcedSet = outsourcedParamSets[testSnipKey];
