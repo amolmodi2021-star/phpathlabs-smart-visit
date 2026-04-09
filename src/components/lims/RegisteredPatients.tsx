@@ -299,6 +299,27 @@ const RegisteredPatients = () => {
         onOpenChange={setShowExportPwd}
         onSuccess={handleExport}
       />
+
+      <ExportPasswordDialog
+        open={showClearPwd}
+        onOpenChange={setShowClearPwd}
+        onSuccess={async () => {
+          setClearing(true);
+          try {
+            await supabase.from("patient_results").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+            await supabase.from("outsourced_test_snips").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+            await supabase.from("patient_registrations").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+            await supabase.from("invoice_counter").delete().neq("date_key", "");
+            await supabase.from("patient_master").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+            toast.success("All LIMS data cleared successfully");
+            qc.invalidateQueries();
+          } catch (err: any) {
+            toast.error(err.message || "Failed to clear data");
+          } finally {
+            setClearing(false);
+          }
+        }}
+      />
     </div>
   );
 };
