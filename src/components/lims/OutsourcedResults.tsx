@@ -285,6 +285,24 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     return existingResults.some((r: any) => r.registration_id === regId && r.test_id === testId && r.result_value);
   };
 
+  // Check if a test has all results filled (no pending params)
+  const hasAllResultsFilled = (regId: string, testId: string, outsourcedParamIds?: string[]) => {
+    const params = testParamsMap[testId] || [];
+    const relevantParams = params.filter((tp: any) => {
+      if (tp.is_subheader) return false;
+      const p = tp.report_test_parameters;
+      if (!p) return false;
+      if (outsourcedParamIds && outsourcedParamIds.length > 0 && !outsourcedParamIds.includes(p.id)) return false;
+      return true;
+    });
+    if (relevantParams.length === 0) return false;
+    return relevantParams.every((tp: any) => {
+      const p = tp.report_test_parameters;
+      const existing = existingResults.find((r: any) => r.registration_id === regId && r.parameter_id === p.id);
+      return existing?.result_value && existing.result_value.trim() !== "";
+    });
+  };
+
   // Get outsource status from snip record
   const getOutsourceStatus = (regId: string, testId: string) => {
     const snip = getSnip(regId, testId);
@@ -660,6 +678,12 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     for (const e of patientEntries) {
       for (const t of e.outsourcedTests) {
         const s = getTestStatus(e.registration.id, t.testId);
+        // Skip tests that have all results filled
+        if (s === "results_saved") {
+          const snip = getSnip(e.registration.id, t.testId);
+          if (snip?.result_mode === "snip") continue;
+          if (hasAllResultsFilled(e.registration.id, t.testId, t.outsourcedParameterIds)) continue;
+        }
         total++;
         if (s === "not_sent") notSent++;
         else if (s === "awaiting_results") awaiting++;
@@ -667,7 +691,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       }
     }
     return { notSent, awaiting, resultsSaved, total };
-  }, [patientEntries, existingSnips, existingResults]);
+  }, [patientEntries, existingSnips, existingResults, testParamsMap]);
 
   // Render test card
   const renderTestCard = (entry: OutsourcedPatient, test: OutsourcedTest) => {
@@ -939,7 +963,18 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         <div className="space-y-2">
           {patientEntries.map(entry => {
             const reg = entry.registration;
-            const visibleTests = entry.outsourcedTests;
+            // Filter out tests where all results are already filled
+            const visibleTests = entry.outsourcedTests.filter(t => {
+              const status = getTestStatus(reg.id, t.testId);
+              if (status === "results_saved") {
+                // For snip mode, if snip images exist, consider it done
+                const snip = getSnip(reg.id, t.testId);
+                if (snip?.result_mode === "snip") return false;
+                // For manual mode, check if all params have results
+                return !hasAllResultsFilled(reg.id, t.testId, t.outsourcedParameterIds);
+              }
+              return true;
+            });
             if (visibleTests.length === 0) return null;
             const isExpanded = expandedPatient === reg.id;
             const notSentCount = visibleTests.filter(t => getTestStatus(reg.id, t.testId) === "not_sent").length;
