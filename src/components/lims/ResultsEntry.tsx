@@ -47,9 +47,15 @@ interface ParameterResult {
   isSnipMode: boolean; // true if results were added via snip/image
 }
 
+interface IncompleteTest {
+  testId: string;
+  testName: string;
+}
+
 interface PatientEntry {
   registration: any;
   parameters: ParameterResult[];
+  incompleteTests: IncompleteTest[];
 }
 
 const handleResultTabKey = (e: React.KeyboardEvent) => {
@@ -450,6 +456,7 @@ const ResultsEntry = () => {
       const activeTests = tests.filter((t: any) => !cancelledIds.has(t.test_id));
 
       const parameters: ParameterResult[] = [];
+      const incompleteTests: IncompleteTest[] = [];
       for (const t of activeTests) {
         const testInfo = testsMap[t.test_id] || {};
         // Naturally outsourced tests are included — they appear with outsourced badges and can be saved & verified
@@ -459,6 +466,13 @@ const ResultsEntry = () => {
         const snipDetail = outsourcedSnipDetails[testSnipKey];
 
         const params = testParamsMap[t.test_id] || [];
+        
+        // Track tests with no parameters configured
+        const validParams = params.filter((tp: any) => !tp.is_subheader && tp.report_test_parameters);
+        if (validParams.length === 0) {
+          incompleteTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "" });
+          continue;
+        }
         
         // Collect params for this test first to check if ALL are already entered
         const testParamResults: { param: any; tp: any; isParamOutsourced: boolean; existing: any }[] = [];
@@ -518,8 +532,8 @@ const ResultsEntry = () => {
           });
         }
       }
-      return { registration: reg, parameters };
-    }).filter(entry => entry.parameters.length > 0);
+      return { registration: reg, parameters, incompleteTests };
+    }).filter(entry => entry.parameters.length > 0 || entry.incompleteTests.length > 0);
   }, [acceptedRegs, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails]);
 
   // ─── Calculate flag ───
@@ -1098,6 +1112,19 @@ const ResultsEntry = () => {
           </Badge>
         </div>
 
+        {/* Incomplete tests warning */}
+        {entry.incompleteTests.length > 0 && (
+          <div className="space-y-1">
+            {entry.incompleteTests.map(t => (
+              <div key={t.testId} className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded text-sm">
+                <FlaskConical className="h-4 w-4 text-amber-600 shrink-0" />
+                <span className="font-medium text-amber-800">{t.testName}</span>
+                <span className="text-amber-600">— No parameters configured. Please complete test setup in Report Parameters to enter results.</span>
+              </div>
+            ))}
+          </div>
+        )}
+
         {machineGroups.map((mg) => (
           <div key={mg.machineName} className="space-y-1">
             <div className="text-xs font-semibold text-primary uppercase tracking-wider px-1 pt-2 border-b border-primary/20 pb-1 flex items-center gap-1.5">
@@ -1319,6 +1346,11 @@ const ResultsEntry = () => {
                           {reg.mobile_number} • {entry.parameters.length} parameters
                         </div>
                       </div>
+                      {entry.incompleteTests.length > 0 && (
+                        <Badge variant="outline" className="text-xs text-amber-600 border-amber-300 gap-0.5">
+                          <FlaskConical className="h-3 w-3" /> {entry.incompleteTests.length} test{entry.incompleteTests.length > 1 ? "s" : ""} need setup
+                        </Badge>
+                      )}
                       <div className="flex items-center gap-2 shrink-0">
                         {awaitingCount > 0 && (
                           <Badge variant="outline" className="text-xs text-orange-600 border-orange-300 gap-0.5">
