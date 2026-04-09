@@ -174,22 +174,24 @@ const ResultsEntry = () => {
   const { transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails } = useMemo(() => {
     const testKeys = new Set<string>();
     const paramSets: Record<string, Set<string>> = {};
-    const details: Record<string, { status: string; labName: string | null; sentAt: string | null }> = {};
+    const details: Record<string, { status: string; labName: string | null; sentAt: string | null; resultMode: string; snipImageUrls: string[] }> = {};
     outsourcedSnips.forEach((s: any) => {
       const key = `${s.registration_id}||${s.test_id}`;
-      details[key] = { status: s.outsource_status || "pending", labName: s.outsourced_lab_name || null, sentAt: s.sent_at || null };
+      const urls = Array.isArray(s.snip_image_urls) ? s.snip_image_urls : [];
+      details[key] = { status: s.outsource_status || "pending", labName: s.outsourced_lab_name || null, sentAt: s.sent_at || null, resultMode: s.result_mode || "manual", snipImageUrls: urls };
       const paramIds = Array.isArray(s.outsourced_parameter_ids) ? s.outsourced_parameter_ids : [];
       if (paramIds.length > 0) {
-        // Parameter-level outsource
         if (!paramSets[key]) paramSets[key] = new Set();
         paramIds.forEach((pid: string) => paramSets[key].add(pid));
       } else {
-        // Full test outsource
         testKeys.add(key);
       }
     });
     return { transferredTestKeys: testKeys, outsourcedParamSets: paramSets, outsourcedSnipDetails: details };
   }, [outsourcedSnips]);
+
+  // ─── Snip image viewer state ───
+  const [viewSnipImages, setViewSnipImages] = useState<string[] | null>(null);
 
   // ─── Transfer to outsourced state ───
   const [transferringKey, setTransferringKey] = useState<string | null>(null);
