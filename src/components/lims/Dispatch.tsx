@@ -233,6 +233,7 @@ const Dispatch = () => {
               <Card key={reg.id} className={isExpanded ? "ring-1 ring-primary/30" : ""}>
                 <div className="flex items-center justify-between p-3 cursor-pointer hover:bg-muted/30 transition-colors" onClick={() => setExpandedPatient(isExpanded ? null : reg.id)}>
                   <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-4 flex justify-center shrink-0">{getCompletionDot(entry.completionStatus)}</div>
                     {isExpanded ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
                     {reg.is_stat && <span className="relative flex h-2.5 w-2.5 shrink-0"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" /><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive" /></span>}
                     <div className="min-w-0">
@@ -243,10 +244,11 @@ const Dispatch = () => {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    {getCompletionDot(entry.completionStatus)}
-                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={(e) => { e.stopPropagation(); dispatchViaWhatsApp(reg); }}>
-                      <MessageSquare className="h-3.5 w-3.5" /> WhatsApp
-                    </Button>
+                    {entry.completionStatus !== "all_pending" && (
+                      <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={(e) => { e.stopPropagation(); dispatchViaWhatsApp(reg); }}>
+                        <MessageSquare className="h-3.5 w-3.5" /> WhatsApp
+                      </Button>
+                    )}
                     {hasApproved && (
                       <Button size="sm" variant="default" className="h-7 text-xs gap-1" disabled={isDispatching} onClick={(e) => { e.stopPropagation(); markAsDispatched(entry); }}>
                         {isDispatching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} Dispatch All
