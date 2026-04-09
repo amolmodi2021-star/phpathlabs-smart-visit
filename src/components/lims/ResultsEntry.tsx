@@ -193,6 +193,29 @@ const ResultsEntry = () => {
 
   // ─── Snip image viewer state ───
   const [viewSnipImages, setViewSnipImages] = useState<string[] | null>(null);
+  const [viewSnipContext, setViewSnipContext] = useState<{ regId: string; testId: string } | null>(null);
+  const [removingSnip, setRemovingSnip] = useState(false);
+
+  const removeSnipImages = async () => {
+    if (!viewSnipContext) return;
+    setRemovingSnip(true);
+    try {
+      await supabase.from("outsourced_test_snips").update({
+        snip_image_url: null,
+        snip_image_urls: [],
+        result_mode: "manual",
+        outsource_status: "sent",
+      } as any).eq("registration_id", viewSnipContext.regId).eq("test_id", viewSnipContext.testId);
+      toast.success("Snipped images removed");
+      setViewSnipImages(null);
+      setViewSnipContext(null);
+      qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+    } catch (e: any) {
+      toast.error("Failed to remove: " + e.message);
+    } finally {
+      setRemovingSnip(false);
+    }
+  };
 
   // ─── Transfer to outsourced state ───
   const [transferringKey, setTransferringKey] = useState<string | null>(null);
