@@ -460,6 +460,9 @@ const ResultsEntry = () => {
         const snipDetail = outsourcedSnipDetails[testSnipKey];
 
         const params = testParamsMap[t.test_id] || [];
+        
+        // Collect params for this test first to check if ALL are already entered
+        const testParamResults: { param: any; tp: any; isParamOutsourced: boolean; existing: any }[] = [];
         for (const tp of params) {
           if (tp.is_subheader) continue;
           const p = tp.report_test_parameters;
@@ -468,6 +471,15 @@ const ResultsEntry = () => {
           const existing = existingResults.find(
             (r: any) => r.registration_id === reg.id && r.parameter_id === p.id
           );
+          testParamResults.push({ param: p, tp, isParamOutsourced, existing });
+        }
+        
+        // Skip this test entirely if ALL its parameters have status 'entered' (already sent to verification)
+        if (testParamResults.length > 0 && testParamResults.every(({ existing }) => existing?.status === "entered")) {
+          continue;
+        }
+
+        for (const { param: p, tp, isParamOutsourced, existing } of testParamResults) {
           const resolved = resolveNormalRange(p.id, reg);
           const refText = resolved.text || p.normal_range_text || (p.normal_range_low != null && p.normal_range_high != null ? `${p.normal_range_low} - ${p.normal_range_high}` : "");
           const rangeLow = resolved.low ?? p.normal_range_low;
@@ -1113,8 +1125,8 @@ const ResultsEntry = () => {
                           const v = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
                           return v && v.trim() !== "";
                         });
-                        return (testSnipDetail?.status === "sent" || testSnipDetail?.status === "results_saved") && testSnipDetail?.labName ? (
-                          <Badge variant="outline" className={`text-[10px] ${allHaveResults ? "text-green-600 border-green-300" : "text-blue-600 border-blue-300"}`}>{testSnipDetail.labName}</Badge>
+                        return (testSnipDetail?.status === "sent" || testSnipDetail?.status === "results_saved" || testSnipDetail?.status === "results_entered") && testSnipDetail?.labName ? (
+                          <Badge variant="outline" className={`text-[10px] ${allHaveResults || testSnipDetail?.status === "results_entered" ? "text-green-600 border-green-300" : "text-blue-600 border-blue-300"}`}>{testSnipDetail.labName}</Badge>
                         ) : (
                           <Badge variant="outline" className="text-[10px] text-purple-600 border-purple-300">Outsourced</Badge>
                         );
