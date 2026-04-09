@@ -149,29 +149,43 @@ const ResultsEntry = () => {
     },
   });
 
-  // ─── Fetch outsourced_test_snips to know which inhouse tests have been transferred ───
+  // ─── Fetch outsourced_test_snips to know which inhouse tests/params have been transferred ───
   const { data: outsourcedSnips = [] } = useQuery({
     queryKey: ["results_outsourced_snips", regIds.join(",")],
     enabled: regIds.length > 0,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("outsourced_test_snips")
-        .select("registration_id, test_id")
+        .select("registration_id, test_id, outsourced_parameter_ids")
         .in("registration_id", regIds);
       if (error) throw error;
       return (data || []) as any[];
     },
   });
 
-  // Set of transferred test keys (regId||testId)
-  const transferredTestKeys = useMemo(() => {
-    const set = new Set<string>();
-    outsourcedSnips.forEach((s: any) => set.add(`${s.registration_id}||${s.test_id}`));
-    return set;
+  // Build lookup: test-level outsourced keys and parameter-level outsourced sets
+  const { transferredTestKeys, outsourcedParamSets } = useMemo(() => {
+    const testKeys = new Set<string>();
+    const paramSets: Record<string, Set<string>> = {};
+    outsourcedSnips.forEach((s: any) => {
+      const key = `${s.registration_id}||${s.test_id}`;
+      const paramIds = Array.isArray(s.outsourced_parameter_ids) ? s.outsourced_parameter_ids : [];
+      if (paramIds.length > 0) {
+        // Parameter-level outsource
+        if (!paramSets[key]) paramSets[key] = new Set();
+        paramIds.forEach((pid: string) => paramSets[key].add(pid));
+      } else {
+        // Full test outsource
+        testKeys.add(key);
+      }
+    });
+    return { transferredTestKeys: testKeys, outsourcedParamSets: paramSets };
   }, [outsourcedSnips]);
 
   // ─── Transfer to outsourced state ───
   const [transferringKey, setTransferringKey] = useState<string | null>(null);
+
+  // Transfer entire test to outsourced
   const transferToOutsourced = async (regId: string, testId: string, testName: string) => {
     const key = `${regId}||${testId}`;
     setTransferringKey(key);
@@ -181,13 +195,42 @@ const ResultsEntry = () => {
         test_id: testId,
         outsource_status: "pending",
         result_mode: "manual",
+        outsourced_parameter_ids: null,
       } as any, { onConflict: "registration_id,test_id" });
-      // Delete any pending patient_results for this test
       await supabase.from("patient_results").delete().eq("registration_id", regId).eq("test_id", testId);
       toast.success(`${testName} transferred to Outsourced`);
       qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] });
       qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
       qc.invalidateQueries({ queryKey: ["outsourced_accepted_regs"] });
+      qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
+    } catch (err: any) {
+      toast.error(err.message || "Transfer failed");
+    } finally {
+      setTransferringKey(null);
+    }
+  };
+
+  // Transfer individual parameter to outsourced
+  const transferParamToOutsourced = async (regId: string, testId: string, paramId: string, paramName: string) => {
+    const key = `${regId}||${paramId}`;
+    setTransferringKey(key);
+    try {
+      const snipKey = `${regId}||${testId}`;
+      const existing = outsourcedParamSets[snipKey];
+      const currentIds = existing ? Array.from(existing) : [];
+      const newIds = [...currentIds, paramId];
+      await supabase.from("outsourced_test_snips").upsert({
+        registration_id: regId,
+        test_id: testId,
+        outsource_status: "pending",
+        result_mode: "manual",
+        outsourced_parameter_ids: newIds,
+      } as any, { onConflict: "registration_id,test_id" });
+      // Delete pending result for this param
+      await supabase.from("patient_results").delete().eq("registration_id", regId).eq("test_id", testId).eq("parameter_id", paramId);
+      toast.success(`${paramName} transferred to Outsourced`);
+      qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] });
+      qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
       qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
     } catch (err: any) {
       toast.error(err.message || "Transfer failed");
