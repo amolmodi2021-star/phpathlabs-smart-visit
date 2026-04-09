@@ -824,6 +824,10 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                         const existing = existingResults.find(
                           (r: any) => r.registration_id === regId && r.parameter_id === p.id
                         );
+                        // Skip parameters that already have a result value saved
+                        if (existing?.result_value && existing.result_value.trim() !== "" && editedValues[valKey] === undefined) {
+                          return null;
+                        }
                         const currentValue = editedValues[valKey] !== undefined ? editedValues[valKey] : (existing?.result_value || "");
                         const refRange = p.normal_range_text || (p.normal_range_low != null && p.normal_range_high != null ? `${p.normal_range_low} - ${p.normal_range_high}` : "");
 
