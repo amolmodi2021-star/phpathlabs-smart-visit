@@ -364,7 +364,11 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   const getTestStatus = (regId: string, testId: string) => {
     const outsourceStatus = getOutsourceStatus(regId, testId);
     if (outsourceStatus === "pending") return "not_sent";
-    if (outsourceStatus === "results_saved" || outsourceStatus === "results_entered") {
+    // Tests that have progressed past the results stage — hide from outsourced view
+    if (["results_entered", "verified", "approved", "dispatched"].includes(outsourceStatus)) {
+      return "completed" as any;
+    }
+    if (outsourceStatus === "results_saved") {
       // Verify actual data exists — if snip was removed, status may be stale
       const snip = getSnip(regId, testId);
       if (snip?.result_mode === "snip") {
@@ -1032,6 +1036,8 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
             // Filter out tests where all results are already filled
             const visibleTests = entry.outsourcedTests.filter(t => {
               const status = getTestStatus(reg.id, t.testId);
+              // Hide tests that have progressed past results stage
+              if (status === "completed") return false;
               if (status === "results_saved") {
                 const snip = getSnip(reg.id, t.testId);
                 // For snip mode, results are complete — hide from pending list
