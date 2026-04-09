@@ -202,6 +202,56 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     },
   });
 
+  // Fetch parameter_normal_ranges for age/gender-specific reference ranges
+  const { data: normalRangesMap = {} } = useQuery({
+    queryKey: ["outsourced_normal_ranges"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("parameter_normal_ranges")
+        .select("*")
+        .order("age_min");
+      const map: Record<string, any[]> = {};
+      (data || []).forEach((r: any) => {
+        if (!map[r.parameter_id]) map[r.parameter_id] = [];
+        map[r.parameter_id].push(r);
+      });
+      return map;
+    },
+  });
+
+  // Helper: resolve best normal range for a parameter given patient demographics
+  const resolveNormalRange = useCallback((parameterId: string, reg: any) => {
+    const ranges = normalRangesMap[parameterId];
+    if (!ranges || ranges.length === 0) return { text: "", low: null as number | null, high: null as number | null };
+    let patientAge: number | null = null;
+    if (reg.dob) {
+      const birth = new Date(reg.dob);
+      const now = new Date();
+      patientAge = Math.floor((now.getTime() - birth.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+    }
+    const patientGender = (reg.gender || "").toLowerCase().charAt(0);
+    let candidates = ranges.filter((r: any) => {
+      const g = (r.gender || "all").toLowerCase();
+      if (g === "all") return true;
+      if (g === "male" && patientGender === "m") return true;
+      if (g === "female" && patientGender === "f") return true;
+      return false;
+    });
+    if (patientAge != null) {
+      const ageMatched = candidates.filter((r: any) => {
+        if (r.age_min == null && r.age_max == null) return true;
+        if (r.age_min != null && patientAge! < r.age_min) return false;
+        if (r.age_max != null && patientAge! > r.age_max) return false;
+        return true;
+      });
+      if (ageMatched.length > 0) candidates = ageMatched;
+    }
+    const best = candidates.find((r: any) => (r.gender || "all").toLowerCase() !== "all") || candidates[0];
+    if (!best) return { text: "", low: null as number | null, high: null as number | null };
+    const text = best.normal_range_text || (best.normal_range_low != null && best.normal_range_high != null ? `${best.normal_range_low} - ${best.normal_range_high}` : "");
+    return { text, low: best.normal_range_low as number | null, high: best.normal_range_high as number | null };
+  }, [normalRangesMap]);
+
   // Build outsourced patient entries (includes naturally outsourced + transferred inhouse tests + parameter-level)
   const patientEntries: OutsourcedPatient[] = useMemo(() => {
     // Build maps from snips
