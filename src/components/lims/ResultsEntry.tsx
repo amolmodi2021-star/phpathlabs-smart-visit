@@ -748,9 +748,11 @@ const ResultsEntry = () => {
       // Remove highlight for this reg if no more blank issues
       setHighlightBlanksForRegs(prev => { const next = new Set(prev); next.delete(`${regId}||${testId}`); return next; });
       qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
-      qc.invalidateQueries({ queryKey: ["verification_"] });
+      qc.invalidateQueries({ queryKey: ["verification_results_v2"] });
+      qc.invalidateQueries({ queryKey: ["verification_outsourced_v2"] });
       qc.invalidateQueries({ queryKey: ["outsourced_manual_results"] });
       qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+      qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] });
     },
     onError: (err: any) => {
       toast.error(err.message || "Failed to save results");
@@ -782,10 +784,16 @@ const ResultsEntry = () => {
 
   // ─── Filter entries: hide patients whose all results are already "entered" ───
   const filteredEntries = useMemo(() => {
-    // Filter out patients where ALL parameters already have status "entered" or "verified"
-    // Now filter at test level: remove tests whose params are all entered/verified
     const activeEntries = patientEntries.map(e => {
-      const activeParams = e.parameters.filter(p => p.isOutsourced || (p.status !== "entered" && p.status !== "verified"));
+      const activeParams = e.parameters.filter((p) => {
+        if (p.isOutsourced) {
+          return !["results_entered", "verified", "approved", "dispatched"].includes(p.outsourceStatus || "")
+            && !["entered", "verified", "approved", "dispatched"].includes(p.status || "");
+        }
+
+        return !["entered", "verified", "approved", "dispatched"].includes(p.status || "");
+      });
+
       return { ...e, parameters: activeParams };
     }).filter(e => e.parameters.length > 0 || e.incompleteTests.length > 0);
 
