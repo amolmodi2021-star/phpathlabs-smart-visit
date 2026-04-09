@@ -28,6 +28,8 @@ interface OutsourcedTest {
   testName: string;
   outsourcedCaption: string;
   isTransferredInhouse: boolean; // true = originally inhouse, transferred to outsourced
+  outsourcedParameterIds?: string[]; // if set, only these params are outsourced (parameter-level)
+  isParameterLevel: boolean; // true = only specific params outsourced, not whole test
 }
 
 interface OutsourcedPatient {
