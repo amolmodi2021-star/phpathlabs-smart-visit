@@ -847,13 +847,23 @@ const ResultsEntry = () => {
                   <div className="flex items-center justify-between px-1 py-0.5 bg-muted/40 rounded-t">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-medium text-muted-foreground">{tg.testName}</span>
-                      {isFullTestOutsourced && (
-                        testSnipDetail?.status === "sent" && testSnipDetail?.labName ? (
-                          <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">{testSnipDetail.labName}</Badge>
+                      {isFullTestOutsourced && (() => {
+                        const hasAnyResult = tg.params.some(p => {
+                          const k = `${reg.id}||${p.parameterId}`;
+                          const v = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
+                          return v && v.trim() !== "";
+                        });
+                        const allHaveResults = tg.params.every(p => {
+                          const k = `${reg.id}||${p.parameterId}`;
+                          const v = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
+                          return v && v.trim() !== "";
+                        });
+                        return testSnipDetail?.status === "sent" && testSnipDetail?.labName ? (
+                          <Badge variant="outline" className={`text-[10px] ${allHaveResults ? "text-green-600 border-green-300" : "text-blue-600 border-blue-300"}`}>{testSnipDetail.labName}</Badge>
                         ) : (
                           <Badge variant="outline" className="text-[10px] text-purple-600 border-purple-300">Outsourced</Badge>
-                        )
-                      )}
+                        );
+                      })()}
                     </div>
                     <div className="flex items-center gap-1">
                       {!isFullTestOutsourced && (
