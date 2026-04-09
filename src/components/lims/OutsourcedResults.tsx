@@ -61,17 +61,45 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
 
   // Return to inhouse state
   const [returningKey, setReturningKey] = useState<string | null>(null);
+
+  // Return entire test to inhouse
   const returnToInhouse = async (regId: string, testId: string, testName: string) => {
     const key = `${regId}||${testId}`;
     setReturningKey(key);
     try {
-      // Delete the outsourced_test_snips record to return test to inhouse
       await supabase.from("outsourced_test_snips").delete().eq("registration_id", regId).eq("test_id", testId);
       toast.success(`${testName} returned to Inhouse`);
       qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
       qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] });
       qc.invalidateQueries({ queryKey: ["outsourced_accepted_regs"] });
       qc.invalidateQueries({ queryKey: ["results_accepted_regs"] });
+    } catch (err: any) {
+      toast.error(err.message || "Return failed");
+    } finally {
+      setReturningKey(null);
+    }
+  };
+
+  // Return individual parameter to inhouse
+  const returnParamToInhouse = async (regId: string, testId: string, paramId: string, paramName: string) => {
+    const key = `${regId}||${paramId}`;
+    setReturningKey(key);
+    try {
+      const snip = existingSnips.find((s: any) => s.registration_id === regId && s.test_id === testId);
+      const currentIds: string[] = Array.isArray(snip?.outsourced_parameter_ids) ? snip.outsourced_parameter_ids : [];
+      const newIds = currentIds.filter(id => id !== paramId);
+      if (newIds.length === 0) {
+        // No more outsourced params, delete the snip record
+        await supabase.from("outsourced_test_snips").delete().eq("registration_id", regId).eq("test_id", testId);
+      } else {
+        await supabase.from("outsourced_test_snips").update({
+          outsourced_parameter_ids: newIds,
+        } as any).eq("registration_id", regId).eq("test_id", testId);
+      }
+      toast.success(`${paramName} returned to Inhouse`);
+      qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+      qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] });
+      qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
     } catch (err: any) {
       toast.error(err.message || "Return failed");
     } finally {
