@@ -934,7 +934,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                   <div className="flex justify-end mt-2">
                     <Button
                       size="sm"
-                      onClick={() => saveManualResults(regId, test.testId, test.testName, test.outsourcedParameterIds)}
+                      onClick={() => saveManualResults(regId, test.testId, test.testName, test.outsourcedParameterIds, entry.registration)}
                       disabled={isSaving}
                     >
                       {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
