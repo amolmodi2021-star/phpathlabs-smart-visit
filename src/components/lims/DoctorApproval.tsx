@@ -201,10 +201,16 @@ const DoctorApproval = () => {
   const groupByTest = (params: ParameterResult[]) => { const g: Record<string, { testId: string; testName: string; params: ParameterResult[] }> = {}; for (const p of params) { if (!g[p.testId]) g[p.testId] = { testId: p.testId, testName: p.testName, params: [] }; g[p.testId].params.push(p); } return Object.values(g); };
 
   const invalidateAll = () => {
-    qc.invalidateQueries({ queryKey: ["doctor_approval"] });
+    qc.invalidateQueries({ queryKey: ["doctor_approval_regs"] });
+    qc.invalidateQueries({ queryKey: ["doctor_approval_results"] });
+    qc.invalidateQueries({ queryKey: ["doctor_approval_snips"] });
+    qc.invalidateQueries({ queryKey: ["doctor_approval_history"] });
     qc.invalidateQueries({ queryKey: ["verification_results_v2"] });
+    qc.invalidateQueries({ queryKey: ["verification_outsourced_v2"] });
     qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
-    qc.invalidateQueries({ queryKey: ["dispatch_"] });
+    qc.invalidateQueries({ queryKey: ["dispatch_regs"] });
+    qc.invalidateQueries({ queryKey: ["dispatch_results"] });
+    qc.invalidateQueries({ queryKey: ["dispatch_snips"] });
   };
 
   // Approve test
