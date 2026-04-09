@@ -8,6 +8,8 @@ import SampleCollection from "@/components/lims/SampleCollection";
 import SampleAcceptance from "@/components/lims/SampleAcceptance";
 import ResultsEntry from "@/components/lims/ResultsEntry";
 import ResultVerification from "@/components/lims/ResultVerification";
+import DoctorApproval from "@/components/lims/DoctorApproval";
+import Dispatch from "@/components/lims/Dispatch";
 
 const Lims = () => {
   return (
@@ -21,6 +23,8 @@ const Lims = () => {
           <TabsTrigger value="sample_acceptance">Sample Acceptance</TabsTrigger>
           <TabsTrigger value="results">Results</TabsTrigger>
           <TabsTrigger value="verification">Result Verification</TabsTrigger>
+          <TabsTrigger value="doctor_approval">Doctor Approval</TabsTrigger>
+          <TabsTrigger value="dispatch">Dispatch</TabsTrigger>
           <TabsTrigger value="completed_hv">Completed Home Visits</TabsTrigger>
           <TabsTrigger value="pickup">Pickup Points</TabsTrigger>
           <TabsTrigger value="channels">Channels</TabsTrigger>
@@ -42,6 +46,12 @@ const Lims = () => {
         </TabsContent>
         <TabsContent value="verification">
           <ResultVerification />
+        </TabsContent>
+        <TabsContent value="doctor_approval">
+          <DoctorApproval />
+        </TabsContent>
+        <TabsContent value="dispatch">
+          <Dispatch />
         </TabsContent>
         <TabsContent value="completed_hv">
           <CompletedHomeVisits />
