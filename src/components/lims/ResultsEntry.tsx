@@ -745,9 +745,19 @@ const ResultsEntry = () => {
           {!flag && currentValue && <Badge variant="outline" className="text-xs">—</Badge>}
         </TableCell>
         <TableCell className="py-1.5 text-center">
-          {p.status === "entered" && <Badge variant="secondary" className="text-xs">Entered</Badge>}
-          {p.status === "verified" && <Badge className="text-xs bg-green-600">Verified</Badge>}
-          {p.status === "pending" && !currentValue && <Badge variant="outline" className="text-xs">Pending</Badge>}
+          {p.isOutsourced ? (
+            p.outsourceStatus === "sent" && p.outsourceLabName ? (
+              <Badge variant="outline" className="text-xs text-blue-600 border-blue-300 whitespace-nowrap">Awaiting Results from {p.outsourceLabName}</Badge>
+            ) : (
+              <Badge variant="outline" className="text-xs text-purple-600 border-purple-300">Outsourced</Badge>
+            )
+          ) : (
+            <>
+              {p.status === "entered" && <Badge variant="secondary" className="text-xs">Entered</Badge>}
+              {p.status === "verified" && <Badge className="text-xs bg-green-600">Verified</Badge>}
+              {p.status === "pending" && !currentValue && <Badge variant="outline" className="text-xs">Pending</Badge>}
+            </>
+          )}
         </TableCell>
         <TableCell className="py-1.5 text-center">
           {!p.isCalculated && (
