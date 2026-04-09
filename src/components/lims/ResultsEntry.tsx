@@ -36,6 +36,9 @@ interface ParameterResult {
   departmentId: string;
   machineName: string;
   displayOrder: number;
+  rangeType: string; // numeric | qualitative | descriptive
+  descriptiveOptions: string[];
+  expectedValue: string;
 }
 
 interface PatientEntry {
@@ -150,7 +153,7 @@ const ResultsEntry = () => {
   // ─── Helper: resolve best normal range for a parameter given patient demographics ───
   const resolveNormalRange = useCallback((parameterId: string, reg: any) => {
     const ranges = normalRangesMap[parameterId];
-    if (!ranges || ranges.length === 0) return { text: "", low: null as number | null, high: null as number | null };
+    if (!ranges || ranges.length === 0) return { text: "", low: null as number | null, high: null as number | null, rangeType: "numeric", descriptiveOptions: [] as string[], expectedValue: "" };
 
     // Parse patient age (from dob or age text in registration)
     let patientAge: number | null = null;
@@ -183,10 +186,13 @@ const ResultsEntry = () => {
 
     // Pick the most specific (prefer gender-specific over 'all')
     const best = candidates.find((r: any) => (r.gender || "all").toLowerCase() !== "all") || candidates[0];
-    if (!best) return { text: "", low: null as number | null, high: null as number | null };
+    if (!best) return { text: "", low: null as number | null, high: null as number | null, rangeType: "numeric", descriptiveOptions: [] as string[], expectedValue: "" };
 
     const text = best.normal_range_text || (best.normal_range_low != null && best.normal_range_high != null ? `${best.normal_range_low} - ${best.normal_range_high}` : "");
-    return { text, low: best.normal_range_low as number | null, high: best.normal_range_high as number | null };
+    const rangeType = best.range_type || "numeric";
+    const descriptiveOptions = Array.isArray(best.descriptive_options) ? best.descriptive_options : [];
+    const expectedValue = best.expected_value || "";
+    return { text, low: best.normal_range_low as number | null, high: best.normal_range_high as number | null, rangeType, descriptiveOptions, expectedValue };
   }, [normalRangesMap]);
 
   // ─── Build patient entries ───
@@ -234,6 +240,9 @@ const ResultsEntry = () => {
             departmentId: testInfo.department_id || "",
             machineName: testInfo.instrument_name || "",
             displayOrder: tp.display_order || 0,
+            rangeType: resolved.rangeType,
+            descriptiveOptions: resolved.descriptiveOptions,
+            expectedValue: resolved.expectedValue,
           });
         }
       }
@@ -242,8 +251,13 @@ const ResultsEntry = () => {
   }, [acceptedRegs, testsMap, testParamsMap, existingResults, resolveNormalRange]);
 
   // ─── Calculate flag ───
-  const calculateFlag = (value: string, low: number | null, high: number | null): string => {
+  const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string): string => {
     if (!value || value.trim() === "") return "";
+    if (rangeType === "qualitative") {
+      if (!expectedValue) return "";
+      return value.trim().toLowerCase() === expectedValue.trim().toLowerCase() ? "N" : "A";
+    }
+    if (rangeType === "descriptive") return ""; // no flag for descriptive
     const num = parseFloat(value);
     if (isNaN(num)) return "";
     if (low != null && num < low) return "L";
@@ -330,7 +344,7 @@ const ResultsEntry = () => {
         const key = `${reg.id}||${p.parameterId}`;
         const value = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
 
-        const flag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh);
+        const flag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
         upserts.push({
           registration_id: reg.id,
           test_id: p.testId,
@@ -478,13 +492,13 @@ const ResultsEntry = () => {
     const regId = entry.registration.id;
     const key = `${regId}||${p.parameterId}`;
     const currentValue = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
-    const flag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh);
+    const flag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
     const isInterfaceParameter = p.sendForInterface && !p.isCalculated;
     const isAwaiting = isInterfaceParameter && !currentValue;
 
     const isBlank = !currentValue || currentValue.trim() === "";
     const shouldHighlightBlanks = highlightBlanksForRegs.has(regId);
-    const rowBg = (flag === "H" || flag === "L") ? "bg-destructive/5" : (isBlank && !p.isCalculated && shouldHighlightBlanks ? "bg-yellow-50" : "");
+    const rowBg = (flag === "H" || flag === "L" || flag === "A") ? "bg-destructive/5" : (isBlank && !p.isCalculated && shouldHighlightBlanks ? "bg-yellow-50" : "");
 
     return (
       <TableRow key={key} className={rowBg}>
@@ -521,11 +535,25 @@ const ResultsEntry = () => {
                 <Calculator className="h-3 w-3" /> Calc
               </Badge>
             </div>
+          ) : p.rangeType === "descriptive" && p.descriptiveOptions.length > 0 ? (
+            <Select
+              value={currentValue || undefined}
+              onValueChange={(v) => handleValueChange(regId, p.parameterId, v, entry)}
+            >
+              <SelectTrigger className="h-7 text-sm w-[180px]">
+                <SelectValue placeholder="Select..." />
+              </SelectTrigger>
+              <SelectContent>
+                {p.descriptiveOptions.map((opt: string) => (
+                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           ) : (
             <Input
               value={currentValue}
               onChange={e => handleValueChange(regId, p.parameterId, e.target.value, entry)}
-              className={`h-7 text-sm w-[140px] ${flag === "H" || flag === "L" ? "border-destructive text-destructive font-bold" : ""}`}
+              className={`h-7 text-sm w-[140px] ${flag === "H" || flag === "L" || flag === "A" ? "border-destructive text-destructive font-bold" : ""}`}
               placeholder="Enter result"
             />
           )}
@@ -535,6 +563,7 @@ const ResultsEntry = () => {
         <TableCell className="py-1.5 text-center">
           {flag === "H" && <Badge variant="destructive" className="text-xs">HIGH</Badge>}
           {flag === "L" && <Badge variant="destructive" className="text-xs">LOW</Badge>}
+          {flag === "A" && <Badge variant="destructive" className="text-xs">Abnormal</Badge>}
           {flag === "N" && <Badge variant="secondary" className="text-xs text-green-700">Normal</Badge>}
           {!flag && currentValue && <Badge variant="outline" className="text-xs">—</Badge>}
         </TableCell>
