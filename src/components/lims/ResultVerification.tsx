@@ -1,30 +1,76 @@
-import { useState, useEffect, useMemo } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, CheckCircle2, ChevronDown, ChevronUp, Loader2, Image as ImageIcon, FlaskConical, ClipboardCheck } from "lucide-react";
-import { format } from "date-fns";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Search, User, Monitor, Calculator, Wifi, ChevronDown, ChevronUp, Loader2, FlaskConical, CheckCircle2, SendHorizonal, Eye, Undo2, ClipboardCheck } from "lucide-react";
+import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { toast } from "sonner";
+import { formatDateDDMMYYYY } from "@/lib/utils";
+
+interface ParameterResult {
+  parameterId: string;
+  paramCode: string;
+  parameterName: string;
+  unit: string;
+  referenceRange: string;
+  normalRangeLow: number | null;
+  normalRangeHigh: number | null;
+  resultValue: string;
+  flag: string;
+  isCalculated: boolean;
+  calculationFormula: any[];
+  isFromInterface: boolean;
+  sendForInterface: boolean;
+  status: string;
+  testId: string;
+  testName: string;
+  departmentId: string;
+  machineName: string;
+  displayOrder: number;
+  rangeType: string;
+  descriptiveOptions: string[];
+  expectedValue: string;
+  isOutsourced: boolean;
+  outsourceLabName: string | null;
+  outsourceStatus: string;
+  isSnipMode: boolean;
+}
+
+interface PatientEntry {
+  registration: any;
+  parameters: ParameterResult[];
+}
 
 const ResultVerification = () => {
   const qc = useQueryClient();
+  const { data: masterMachines = [] } = useMasterLookup("machine_name");
+  const [mode, setMode] = useState<"patient" | "machine">("patient");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [selectedMachine, setSelectedMachine] = useState<string>("all");
   const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
-  const [verifyingKey, setVerifyingKey] = useState<string | null>(null);
+  const [editedValues, setEditedValues] = useState<Record<string, string>>({});
+  const [editedUnits, setEditedUnits] = useState<Record<string, string>>({});
+  const [editedRefRanges, setEditedRefRanges] = useState<Record<string, string>>({});
+  const [editedFlags, setEditedFlags] = useState<Record<string, string>>({});
+  const [viewSnipImages, setViewSnipImages] = useState<string[] | null>(null);
+  const autoSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 400);
     return () => clearTimeout(t);
   }, [search]);
 
-  // Fetch registrations with status entered or sample_accepted (which may have entered results)
+  // Fetch registrations with entered results
   const { data: registrations = [], isLoading: loadingRegs } = useQuery({
-    queryKey: ["verification_regs", debouncedSearch],
+    queryKey: ["verification_regs_v2", debouncedSearch],
     queryFn: async () => {
       let query = supabase
         .from("patient_registrations")
@@ -45,9 +91,9 @@ const ResultVerification = () => {
 
   const regIds = registrations.map((r: any) => r.id);
 
-  // Fetch entered patient_results
-  const { data: enteredResults = [] } = useQuery({
-    queryKey: ["verification_results", regIds.join(",")],
+  // Fetch entered results
+  const { data: existingResults = [] } = useQuery({
+    queryKey: ["verification_results_v2", regIds.join(",")],
     enabled: regIds.length > 0,
     queryFn: async () => {
       const { data } = await supabase
@@ -61,112 +107,363 @@ const ResultVerification = () => {
 
   // Fetch outsourced snips with results_entered status
   const { data: outsourcedSnips = [] } = useQuery({
-    queryKey: ["verification_outsourced", regIds.join(",")],
+    queryKey: ["verification_outsourced_v2", regIds.join(",")],
     enabled: regIds.length > 0,
     queryFn: async () => {
       const { data } = await supabase
         .from("outsourced_test_snips")
-        .select("*")
-        .in("registration_id", regIds)
-        .eq("outsource_status", "results_entered");
+        .select("registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, sent_at, result_mode, snip_image_urls")
+        .in("registration_id", regIds);
       return (data || []) as any[];
     },
   });
 
+  const { transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails } = useMemo(() => {
+    const testKeys = new Set<string>();
+    const paramSets: Record<string, Set<string>> = {};
+    const details: Record<string, { status: string; labName: string | null; resultMode: string; snipImageUrls: string[] }> = {};
+    outsourcedSnips.forEach((s: any) => {
+      const key = `${s.registration_id}||${s.test_id}`;
+      const urls = Array.isArray(s.snip_image_urls) ? s.snip_image_urls : [];
+      details[key] = { status: s.outsource_status || "pending", labName: s.outsourced_lab_name || null, resultMode: s.result_mode || "manual", snipImageUrls: urls };
+      const paramIds = Array.isArray(s.outsourced_parameter_ids) ? s.outsourced_parameter_ids : [];
+      if (paramIds.length > 0) {
+        if (!paramSets[key]) paramSets[key] = new Set();
+        paramIds.forEach((pid: string) => paramSets[key].add(pid));
+      } else {
+        testKeys.add(key);
+      }
+    });
+    return { transferredTestKeys: testKeys, outsourcedParamSets: paramSets, outsourcedSnipDetails: details };
+  }, [outsourcedSnips]);
+
   // Fetch tests master
   const { data: testsMap = {} } = useQuery({
-    queryKey: ["verification_tests_map"],
+    queryKey: ["results_tests_map"],
     queryFn: async () => {
-      const { data } = await supabase.from("tests").select("id, test_name, department_id");
+      const { data } = await supabase.from("tests").select("id, test_name, department_id, instrument_name");
       const map: Record<string, any> = {};
       (data || []).forEach((t: any) => { map[t.id] = t; });
       return map;
     },
   });
 
-  // Build verification entries: patients who have at least one entered result or outsourced snip
-  const verificationEntries = useMemo(() => {
-    return registrations
-      .map((reg: any) => {
-        const tests = (reg.tests || []) as any[];
-        const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
-        const activeTests = tests.filter((t: any) => !cancelledIds.has(t.test_id));
+  // Fetch test_parameters
+  const { data: testParamsMap = {} } = useQuery({
+    queryKey: ["results_test_params_full"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("test_parameters")
+        .select("test_id, parameter_id, display_order, is_subheader, subheader_text, report_test_parameters(id, param_code, parameter_name, unit, normal_range_low, normal_range_high, normal_range_text, is_calculated, calculation_formula, send_for_interface)")
+        .order("display_order");
+      const map: Record<string, any[]> = {};
+      (data || []).forEach((tp: any) => {
+        if (!tp.test_id) return;
+        if (!map[tp.test_id]) map[tp.test_id] = [];
+        map[tp.test_id].push(tp);
+      });
+      return map;
+    },
+  });
 
-        // Group entered results by test
-        const manualTests: Record<string, any[]> = {};
-        enteredResults
-          .filter((r: any) => r.registration_id === reg.id)
-          .forEach((r: any) => {
-            if (!manualTests[r.test_id]) manualTests[r.test_id] = [];
-            manualTests[r.test_id].push(r);
-          });
+  // Fetch parameter_normal_ranges
+  const { data: normalRangesMap = {} } = useQuery({
+    queryKey: ["results_normal_ranges"],
+    queryFn: async () => {
+      const { data } = await supabase.from("parameter_normal_ranges").select("*").order("age_min");
+      const map: Record<string, any[]> = {};
+      (data || []).forEach((r: any) => {
+        if (!map[r.parameter_id]) map[r.parameter_id] = [];
+        map[r.parameter_id].push(r);
+      });
+      return map;
+    },
+  });
 
-        // Outsourced snips for this reg
-        const snips = outsourcedSnips.filter((s: any) => s.registration_id === reg.id);
+  // Historical results
+  const expandedUmr = useMemo(() => {
+    if (!expandedPatient) return null;
+    const reg = registrations.find((r: any) => r.id === expandedPatient);
+    return reg?.umr_number || null;
+  }, [expandedPatient, registrations]);
 
-        const verifiableTests: any[] = [];
-        for (const t of activeTests) {
-          const testInfo = testsMap[t.test_id] || {};
-          const manualResults = manualTests[t.test_id];
-          const snip = snips.find((s: any) => s.test_id === t.test_id);
-
-          if (manualResults && manualResults.length > 0) {
-            verifiableTests.push({
-              testId: t.test_id,
-              testName: t.test_name || testInfo.test_name || "Unknown",
-              type: "manual",
-              results: manualResults,
-              snip: null,
-            });
-          } else if (snip) {
-            verifiableTests.push({
-              testId: t.test_id,
-              testName: t.test_name || testInfo.test_name || "Unknown",
-              type: "snip",
-              results: [],
-              snip,
-            });
-          }
+  const { data: historicalResults = [] } = useQuery({
+    queryKey: ["historical_results_verif", expandedUmr, expandedPatient],
+    enabled: !!expandedUmr && !!expandedPatient,
+    queryFn: async () => {
+      const { data: sameUmrRegs } = await supabase
+        .from("patient_registrations")
+        .select("id")
+        .eq("umr_number", expandedUmr!)
+        .neq("id", expandedPatient!);
+      const rIds = (sameUmrRegs || []).map((r: any) => r.id);
+      if (rIds.length === 0) return [];
+      const { data } = await supabase
+        .from("patient_results")
+        .select("parameter_id, result_value, reference_range, created_at, test_id, registration_id")
+        .in("registration_id", rIds)
+        .not("result_value", "is", null)
+        .order("created_at", { ascending: false });
+      const { data: snips } = await supabase
+        .from("outsourced_test_snips")
+        .select("registration_id, test_id, result_mode, outsourced_parameter_ids, snip_image_urls")
+        .in("registration_id", rIds)
+        .eq("result_mode", "snip");
+      const snipInfoMap: Record<string, string[]> = {};
+      (snips || []).forEach((s: any) => {
+        const urls = Array.isArray(s.snip_image_urls) ? s.snip_image_urls : [];
+        const paramIds = Array.isArray(s.outsourced_parameter_ids) ? s.outsourced_parameter_ids : [];
+        if (paramIds.length > 0) {
+          paramIds.forEach((pid: string) => { snipInfoMap[`${s.registration_id}||${s.test_id}||${pid}`] = urls; });
+        } else {
+          snipInfoMap[`${s.registration_id}||${s.test_id}||__full__`] = urls;
         }
+      });
+      return (data || []).map((r: any) => {
+        const fullKey = `${r.registration_id}||${r.test_id}||__full__`;
+        const paramKey = `${r.registration_id}||${r.test_id}||${r.parameter_id}`;
+        return { ...r, snipImageUrls: snipInfoMap[paramKey] || snipInfoMap[fullKey] || null };
+      });
+    },
+  });
 
-        if (verifiableTests.length === 0) return null;
-        return { registration: reg, tests: verifiableTests };
-      })
-      .filter(Boolean) as any[];
-  }, [registrations, enteredResults, outsourcedSnips, testsMap]);
+  const historyMap = useMemo(() => {
+    const map: Record<string, { resultValue: string; referenceRange: string; createdAt: string; snipImageUrls: string[] | null }[]> = {};
+    for (const r of historicalResults) {
+      if (!r.parameter_id) continue;
+      if (!map[r.parameter_id]) map[r.parameter_id] = [];
+      if (map[r.parameter_id].length < 2) {
+        map[r.parameter_id].push({ resultValue: r.result_value || "", referenceRange: r.reference_range || "", createdAt: r.created_at || "", snipImageUrls: r.snipImageUrls || null });
+      }
+    }
+    return map;
+  }, [historicalResults]);
 
-  // Stats
-  const totalPatients = verificationEntries.length;
-  const totalTests = verificationEntries.reduce((sum: number, e: any) => sum + e.tests.length, 0);
+  // Resolve normal range
+  const resolveNormalRange = useCallback((parameterId: string, reg: any) => {
+    const ranges = normalRangesMap[parameterId];
+    if (!ranges || ranges.length === 0) return { text: "", low: null as number | null, high: null as number | null, rangeType: "numeric", descriptiveOptions: [] as string[], expectedValue: "" };
+    let patientAge: number | null = null;
+    if (reg.dob) {
+      const birth = new Date(reg.dob);
+      patientAge = Math.floor((Date.now() - birth.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+    }
+    const patientGender = (reg.gender || "").toLowerCase().charAt(0);
+    let candidates = ranges.filter((r: any) => {
+      const g = (r.gender || "all").toLowerCase();
+      return g === "all" || (g === "male" && patientGender === "m") || (g === "female" && patientGender === "f");
+    });
+    if (patientAge != null) {
+      const ageMatched = candidates.filter((r: any) => {
+        if (r.age_min == null && r.age_max == null) return true;
+        if (r.age_min != null && patientAge! < r.age_min) return false;
+        if (r.age_max != null && patientAge! > r.age_max) return false;
+        return true;
+      });
+      if (ageMatched.length > 0) candidates = ageMatched;
+    }
+    const best = candidates.find((r: any) => (r.gender || "all").toLowerCase() !== "all") || candidates[0];
+    if (!best) return { text: "", low: null as number | null, high: null as number | null, rangeType: "numeric", descriptiveOptions: [] as string[], expectedValue: "" };
+    const text = best.normal_range_text || (best.normal_range_low != null && best.normal_range_high != null ? `${best.normal_range_low} - ${best.normal_range_high}` : "");
+    return { text, low: best.normal_range_low as number | null, high: best.normal_range_high as number | null, rangeType: best.range_type || "numeric", descriptiveOptions: Array.isArray(best.descriptive_options) ? best.descriptive_options : [], expectedValue: best.expected_value || "" };
+  }, [normalRangesMap]);
 
-  // Verify a single test
-  const verifyTest = async (regId: string, testId: string, type: string, testName: string) => {
-    const key = `${regId}||${testId}`;
+  // Build patient entries
+  const patientEntries: PatientEntry[] = useMemo(() => {
+    return registrations.map((reg: any) => {
+      const tests = (reg.tests || []) as any[];
+      const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
+      const activeTests = tests.filter((t: any) => !cancelledIds.has(t.test_id));
+      const parameters: ParameterResult[] = [];
+      for (const t of activeTests) {
+        const testInfo = testsMap[t.test_id] || {};
+        const testSnipKey = `${reg.id}||${t.test_id}`;
+        const isFullTestOutsourced = transferredTestKeys.has(testSnipKey);
+        const paramOutsourcedSet = outsourcedParamSets[testSnipKey];
+        const snipDetail = outsourcedSnipDetails[testSnipKey];
+        const params = testParamsMap[t.test_id] || [];
+        
+        // Check if this test has any entered results
+        const testEnteredResults = existingResults.filter((r: any) => r.registration_id === reg.id && r.test_id === t.test_id);
+        if (testEnteredResults.length === 0 && !snipDetail) continue; // Skip tests with no entered results
+
+        for (const tp of params) {
+          if (tp.is_subheader) continue;
+          const p = tp.report_test_parameters;
+          if (!p) continue;
+          const isParamOutsourced = isFullTestOutsourced || (paramOutsourcedSet && paramOutsourcedSet.has(p.id));
+          const existing = testEnteredResults.find((r: any) => r.parameter_id === p.id);
+          if (!existing && !isParamOutsourced) continue; // Only show params with entered results
+          
+          const resolved = resolveNormalRange(p.id, reg);
+          const refText = resolved.text || p.normal_range_text || (p.normal_range_low != null && p.normal_range_high != null ? `${p.normal_range_low} - ${p.normal_range_high}` : "");
+          const savedUnit = isParamOutsourced && existing?.unit ? existing.unit : (p.unit || "");
+          const savedRefRange = isParamOutsourced && existing?.reference_range ? existing.reference_range : refText;
+          parameters.push({
+            parameterId: p.id, paramCode: p.param_code || "", parameterName: p.parameter_name,
+            unit: savedUnit, referenceRange: savedRefRange,
+            normalRangeLow: resolved.low ?? p.normal_range_low, normalRangeHigh: resolved.high ?? p.normal_range_high,
+            resultValue: existing?.result_value || "", flag: existing?.flag || "",
+            isCalculated: p.is_calculated || false, calculationFormula: p.calculation_formula || [],
+            isFromInterface: existing?.is_from_interface || false, sendForInterface: p.send_for_interface || false,
+            status: existing?.status || "pending", testId: t.test_id,
+            testName: t.test_name || testInfo.test_name || "", departmentId: testInfo.department_id || "",
+            machineName: testInfo.instrument_name || "", displayOrder: tp.display_order || 0,
+            rangeType: resolved.rangeType, descriptiveOptions: resolved.descriptiveOptions, expectedValue: resolved.expectedValue,
+            isOutsourced: !!isParamOutsourced, outsourceLabName: isParamOutsourced ? (snipDetail?.labName || null) : null,
+            outsourceStatus: isParamOutsourced ? (snipDetail?.status || "pending") : "",
+            isSnipMode: isParamOutsourced && snipDetail?.resultMode === "snip",
+          });
+        }
+      }
+      return { registration: reg, parameters };
+    }).filter(e => e.parameters.length > 0);
+  }, [registrations, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails]);
+
+  // Calculate flag
+  const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string): string => {
+    if (!value || value.trim() === "") return "";
+    if (rangeType === "qualitative") {
+      if (!expectedValue) return "";
+      return value.trim().toLowerCase() === expectedValue.trim().toLowerCase() ? "N" : "A";
+    }
+    if (rangeType === "descriptive") return "";
+    const num = parseFloat(value);
+    if (isNaN(num)) return "";
+    if (low != null && num < low) return "L";
+    if (high != null && num > high) return "H";
+    return "N";
+  };
+
+  // Evaluate formula
+  const evaluateFormula = (formula: any[], paramValues: Record<string, string>): string => {
+    if (!formula || formula.length === 0) return "";
+    try {
+      let expr = "";
+      for (const token of formula) {
+        if (token.type === "parameter") {
+          const val = paramValues[token.parameter_id];
+          if (!val || isNaN(parseFloat(val))) return "";
+          expr += parseFloat(val);
+        } else if (token.type === "fixed_value") { expr += token.fixed_value; }
+        else if (token.type === "bracket_open") { expr += "("; }
+        else if (token.type === "bracket_close") { expr += ")"; }
+        if (token.operator && token.type !== "bracket_close") {
+          const op = token.operator;
+          if (["+", "-", "*", "/"].includes(op)) expr += ` ${op} `;
+        }
+      }
+      expr = expr.replace(/\s+/g, " ").trim();
+      if (expr.endsWith("+") || expr.endsWith("-") || expr.endsWith("*") || expr.endsWith("/")) expr = expr.slice(0, -1).trim();
+      const result = new Function(`return (${expr})`)();
+      if (typeof result === "number" && isFinite(result)) return parseFloat(result.toFixed(2)).toString();
+      return "";
+    } catch { return ""; }
+  };
+
+  const getParamValue = (regId: string, paramId: string, entry: PatientEntry): string => {
+    const key = `${regId}||${paramId}`;
+    if (editedValues[key] !== undefined) return editedValues[key];
+    const param = entry.parameters.find(p => p.parameterId === paramId);
+    return param?.resultValue || "";
+  };
+
+  const handleValueChange = (regId: string, paramId: string, value: string, entry: PatientEntry) => {
+    const key = `${regId}||${paramId}`;
+    const newEdited = { ...editedValues, [key]: value };
+    const paramValues: Record<string, string> = {};
+    for (const p of entry.parameters) {
+      const pk = `${regId}||${p.parameterId}`;
+      paramValues[p.parameterId] = pk === key ? value : (newEdited[pk] !== undefined ? newEdited[pk] : p.resultValue);
+    }
+    for (const p of entry.parameters) {
+      if (p.isCalculated && p.calculationFormula.length > 0) {
+        const calcResult = evaluateFormula(p.calculationFormula, paramValues);
+        newEdited[`${regId}||${p.parameterId}`] = calcResult;
+        paramValues[p.parameterId] = calcResult;
+      }
+    }
+    setEditedValues(newEdited);
+  };
+
+  // Filter
+  const filteredEntries = useMemo(() => {
+    if (mode === "patient") return patientEntries;
+    if (selectedMachine === "all") return patientEntries;
+    const filterMachine = selectedMachine === "others" ? "" : selectedMachine;
+    return patientEntries
+      .map(e => ({ ...e, parameters: e.parameters.filter(p => (p.machineName || "") === filterMachine) }))
+      .filter(e => e.parameters.length > 0);
+  }, [patientEntries, mode, selectedMachine]);
+
+  const stats = useMemo(() => {
+    let totalParams = 0;
+    for (const e of filteredEntries) totalParams += e.parameters.length;
+    return { totalPatients: filteredEntries.length, totalParams };
+  }, [filteredEntries]);
+
+  const groupByMachine = (params: ParameterResult[]) => {
+    const groups: Record<string, { machineName: string; params: ParameterResult[] }> = {};
+    for (const p of params) {
+      const machine = p.machineName || "Others";
+      if (!groups[machine]) groups[machine] = { machineName: machine, params: [] };
+      groups[machine].params.push(p);
+    }
+    return Object.values(groups);
+  };
+
+  const groupByTest = (params: ParameterResult[]) => {
+    const groups: Record<string, { testId: string; testName: string; params: ParameterResult[] }> = {};
+    for (const p of params) {
+      if (!groups[p.testId]) groups[p.testId] = { testId: p.testId, testName: p.testName, params: [] };
+      groups[p.testId].params.push(p);
+    }
+    return Object.values(groups);
+  };
+
+  // Verify test (update status to verified)
+  const [verifyingKey, setVerifyingKey] = useState<string | null>(null);
+
+  const verifyTest = async (entry: PatientEntry, testId: string, testName: string) => {
+    const reg = entry.registration;
+    const key = `${reg.id}||${testId}`;
     setVerifyingKey(key);
     try {
-      if (type === "manual") {
-        // Update patient_results status to verified
-        await supabase
-          .from("patient_results")
-          .update({ status: "verified" } as any)
-          .eq("registration_id", regId)
-          .eq("test_id", testId)
-          .eq("status", "entered");
+      const testParams = entry.parameters.filter(p => p.testId === testId);
+      // Save any edited values first
+      const upserts: any[] = [];
+      for (const p of testParams) {
+        const k = `${reg.id}||${p.parameterId}`;
+        const value = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
+        const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+        const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
+        const unit = p.isOutsourced && editedUnits[k] !== undefined ? editedUnits[k] : p.unit;
+        const refRange = p.isOutsourced && editedRefRanges[k] !== undefined ? editedRefRanges[k] : p.referenceRange;
+        upserts.push({
+          registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId,
+          param_code: p.paramCode, parameter_name: p.parameterName,
+          result_value: value || null, unit, reference_range: refRange,
+          normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh,
+          flag: flag || null, status: "verified", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface,
+        });
       }
-      if (type === "snip") {
-        // Update outsourced_test_snips status
-        await supabase
-          .from("outsourced_test_snips")
-          .update({ outsource_status: "verified" } as any)
-          .eq("registration_id", regId)
-          .eq("test_id", testId);
+      if (upserts.length > 0) {
+        await supabase.from("patient_results").delete().eq("registration_id", reg.id).eq("test_id", testId).eq("status", "entered");
+        await supabase.from("patient_results").insert(upserts as any);
       }
-
-      toast.success(`${testName} verified`);
-      qc.invalidateQueries({ queryKey: ["verification_results"] });
-      qc.invalidateQueries({ queryKey: ["verification_outsourced"] });
+      // Also verify outsourced snips
+      await supabase.from("outsourced_test_snips").update({ outsource_status: "verified" } as any).eq("registration_id", reg.id).eq("test_id", testId).in("outsource_status", ["results_entered", "sent", "results_saved"]);
+      
+      toast.success(`${testName} verified & sent to Doctor Approval`);
+      setEditedValues(prev => {
+        const next = { ...prev };
+        testParams.forEach(p => { delete next[`${reg.id}||${p.parameterId}`]; });
+        return next;
+      });
+      qc.invalidateQueries({ queryKey: ["verification_results_v2"] });
+      qc.invalidateQueries({ queryKey: ["verification_outsourced_v2"] });
+      qc.invalidateQueries({ queryKey: ["doctor_approval"] });
       qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
-      qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
     } catch (err: any) {
       toast.error(err.message || "Verification failed");
     } finally {
@@ -174,67 +471,297 @@ const ResultVerification = () => {
     }
   };
 
-  // Verify all tests for a patient
-  const verifyAllForPatient = async (entry: any) => {
-    const regId = entry.registration.id;
-    setVerifyingKey(regId);
+  // Verify all tests for patient
+  const verifyAllForPatient = async (entry: PatientEntry) => {
+    const reg = entry.registration;
+    setVerifyingKey(reg.id);
     try {
-      // Verify all manual results
-      await supabase
-        .from("patient_results")
-        .update({ status: "verified" } as any)
-        .eq("registration_id", regId)
-        .eq("status", "entered");
-
-      // Verify all outsourced snips
-      await supabase
-        .from("outsourced_test_snips")
-        .update({ outsource_status: "verified" } as any)
-        .eq("registration_id", regId)
-        .eq("outsource_status", "results_entered");
-
-      toast.success(`All tests verified for ${entry.registration.patient_name}`);
-      qc.invalidateQueries({ queryKey: ["verification_results"] });
-      qc.invalidateQueries({ queryKey: ["verification_outsourced"] });
+      const testIds = [...new Set(entry.parameters.map(p => p.testId))];
+      for (const testId of testIds) {
+        const testParams = entry.parameters.filter(p => p.testId === testId);
+        const upserts: any[] = [];
+        for (const p of testParams) {
+          const k = `${reg.id}||${p.parameterId}`;
+          const value = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
+          const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+          const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
+          const unit = p.isOutsourced && editedUnits[k] !== undefined ? editedUnits[k] : p.unit;
+          const refRange = p.isOutsourced && editedRefRanges[k] !== undefined ? editedRefRanges[k] : p.referenceRange;
+          upserts.push({
+            registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId,
+            param_code: p.paramCode, parameter_name: p.parameterName,
+            result_value: value || null, unit, reference_range: refRange,
+            normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh,
+            flag: flag || null, status: "verified", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface,
+          });
+        }
+        if (upserts.length > 0) {
+          await supabase.from("patient_results").delete().eq("registration_id", reg.id).eq("test_id", testId).eq("status", "entered");
+          await supabase.from("patient_results").insert(upserts as any);
+        }
+        await supabase.from("outsourced_test_snips").update({ outsource_status: "verified" } as any).eq("registration_id", reg.id).eq("test_id", testId).in("outsource_status", ["results_entered", "sent", "results_saved"]);
+      }
+      toast.success(`All tests verified for ${reg.patient_name}`);
+      qc.invalidateQueries({ queryKey: ["verification_results_v2"] });
+      qc.invalidateQueries({ queryKey: ["verification_outsourced_v2"] });
+      qc.invalidateQueries({ queryKey: ["doctor_approval"] });
       qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
-      qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
     } catch (err: any) {
       toast.error(err.message || "Verification failed");
     } finally {
       setVerifyingKey(null);
     }
+  };
+
+  // Send back to Results Entry
+  const sendBackTest = async (regId: string, testId: string, testName: string) => {
+    try {
+      await supabase.from("patient_results").update({ status: "pending" } as any).eq("registration_id", regId).eq("test_id", testId).eq("status", "entered");
+      toast.success(`${testName} sent back to Results Entry`);
+      qc.invalidateQueries({ queryKey: ["verification_results_v2"] });
+      qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
+    } catch (err: any) {
+      toast.error(err.message || "Failed");
+    }
+  };
+
+  // Render history cell
+  const renderHistoryCell = (parameterId: string, index: number) => {
+    const hist = historyMap[parameterId]?.[index];
+    if (!hist || !hist.resultValue) return <TableCell className="py-1.5 text-center text-xs text-muted-foreground">—</TableCell>;
+    if (hist.snipImageUrls && hist.snipImageUrls.length > 0) {
+      return (
+        <TableCell className="py-1.5 text-xs">
+          <div className="leading-tight">
+            <Button size="sm" variant="ghost" className="h-5 px-1 text-xs text-blue-600 hover:text-blue-800 gap-0.5" onClick={() => setViewSnipImages(hist.snipImageUrls)}>
+              <Eye className="h-3 w-3" /> View Snip
+            </Button>
+            <div className="text-muted-foreground text-[10px]">{hist.createdAt ? formatDateDDMMYYYY(hist.createdAt) : ""}</div>
+          </div>
+        </TableCell>
+      );
+    }
+    return (
+      <TableCell className="py-1.5 text-xs">
+        <div className="leading-tight">
+          <div className="font-bold">{hist.resultValue}</div>
+          <div className="text-muted-foreground">{hist.referenceRange || "—"}</div>
+          <div className="text-muted-foreground text-[10px]">{hist.createdAt ? formatDateDDMMYYYY(hist.createdAt) : ""}</div>
+        </div>
+      </TableCell>
+    );
+  };
+
+  // Render parameter row
+  const renderParamRow = (entry: PatientEntry, p: ParameterResult) => {
+    const regId = entry.registration.id;
+    const key = `${regId}||${p.parameterId}`;
+    const currentValue = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
+    const autoFlag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+    const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : autoFlag;
+    const rowBg = (flag === "H" || flag === "L" || flag === "A") ? "bg-destructive/5" : "";
+
+    return (
+      <TableRow key={key} className={rowBg}>
+        <TableCell className="py-1.5 text-xs font-mono text-muted-foreground">{p.paramCode}</TableCell>
+        <TableCell className="py-1.5 text-sm font-medium">
+          {p.parameterName}
+          {p.isCalculated && <Calculator className="inline h-3 w-3 ml-1 text-primary" />}
+        </TableCell>
+        {renderHistoryCell(p.parameterId, 0)}
+        {renderHistoryCell(p.parameterId, 1)}
+        <TableCell className="py-1.5 w-[180px]">
+          {p.isCalculated ? (
+            <Input value={currentValue} readOnly className="h-7 text-sm bg-muted/50 w-[120px] font-mono" placeholder="Auto" />
+          ) : p.rangeType === "descriptive" && p.descriptiveOptions.length > 0 ? (
+            <Select value={currentValue || undefined} onValueChange={(v) => handleValueChange(regId, p.parameterId, v, entry)}>
+              <SelectTrigger className="h-7 text-sm !w-[180px] min-w-[180px] max-w-[180px]"><SelectValue placeholder="Select..." /></SelectTrigger>
+              <SelectContent className="max-w-[400px]">
+                {p.descriptiveOptions.map((opt: string) => (<SelectItem key={opt} value={opt} className="whitespace-normal">{opt}</SelectItem>))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Input
+              value={currentValue}
+              onChange={e => handleValueChange(regId, p.parameterId, e.target.value, entry)}
+              className={`h-7 text-sm w-[180px] ${flag === "H" || flag === "L" || flag === "A" ? "border-destructive text-destructive font-bold" : ""}`}
+              placeholder="Enter result"
+            />
+          )}
+        </TableCell>
+        <TableCell className="py-1.5 text-xs text-muted-foreground">
+          {p.isOutsourced && !p.isSnipMode ? (
+            <Input value={editedUnits[key] !== undefined ? editedUnits[key] : (p.unit || "")} onChange={e => setEditedUnits(prev => ({ ...prev, [key]: e.target.value }))} className="h-6 text-xs w-[70px]" placeholder="Unit" />
+          ) : p.unit}
+        </TableCell>
+        <TableCell className="py-1.5 text-xs text-muted-foreground">
+          {p.isOutsourced && !p.isSnipMode ? (
+            <Input value={editedRefRanges[key] !== undefined ? editedRefRanges[key] : (p.referenceRange || "")} onChange={e => setEditedRefRanges(prev => ({ ...prev, [key]: e.target.value }))} className="h-6 text-xs w-[100px]" placeholder="Ref Range" />
+          ) : p.referenceRange}
+        </TableCell>
+        <TableCell className="py-1.5 text-center">
+          {p.isOutsourced && !p.isSnipMode ? (
+            <Select value={flag || "none"} onValueChange={(v) => setEditedFlags(prev => ({ ...prev, [key]: v === "none" ? "" : v }))}>
+              <SelectTrigger className="h-6 text-xs w-[80px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">—</SelectItem>
+                <SelectItem value="N">Normal</SelectItem>
+                <SelectItem value="H">HIGH</SelectItem>
+                <SelectItem value="L">LOW</SelectItem>
+                <SelectItem value="A">Abnormal</SelectItem>
+              </SelectContent>
+            </Select>
+          ) : (
+            <>
+              {flag === "H" && <Badge variant="destructive" className="text-xs">HIGH</Badge>}
+              {flag === "L" && <Badge variant="destructive" className="text-xs">LOW</Badge>}
+              {flag === "A" && <Badge variant="destructive" className="text-xs">Abnormal</Badge>}
+              {flag === "N" && <Badge variant="secondary" className="text-xs text-green-700">Normal</Badge>}
+              {!flag && currentValue && <Badge variant="outline" className="text-xs">—</Badge>}
+            </>
+          )}
+        </TableCell>
+        <TableCell className="py-1.5 text-center">
+          {p.isOutsourced ? (
+            p.isSnipMode && p.outsourceLabName ? (
+              <Badge variant="outline" className="text-xs text-green-600 border-green-300 bg-green-50 whitespace-nowrap">{p.outsourceLabName}</Badge>
+            ) : p.outsourceLabName ? (
+              <Badge variant="outline" className="text-xs text-green-600 border-green-300 whitespace-nowrap">{p.outsourceLabName}</Badge>
+            ) : (
+              <Badge variant="outline" className="text-xs text-purple-600 border-purple-300">Outsourced</Badge>
+            )
+          ) : (
+            <Badge variant="secondary" className="text-xs">Entered</Badge>
+          )}
+        </TableCell>
+        <TableCell className="py-1.5 text-center">
+          {p.isOutsourced && (() => {
+            const snipDetail = outsourcedSnipDetails[`${regId}||${p.testId}`];
+            if (snipDetail?.resultMode === "snip" && snipDetail.snipImageUrls.length > 0) {
+              return (
+                <Button size="sm" variant="ghost" className="h-5 px-1 text-xs text-blue-600 hover:text-blue-800 gap-0.5" onClick={() => setViewSnipImages(snipDetail.snipImageUrls)}>
+                  <Eye className="h-3 w-3" /> View
+                </Button>
+              );
+            }
+            return null;
+          })()}
+        </TableCell>
+      </TableRow>
+    );
+  };
+
+  const renderPatientExpanded = (entry: PatientEntry) => {
+    const reg = entry.registration;
+    const machineGroups = groupByMachine(entry.parameters);
+
+    return (
+      <div className="space-y-3 p-3 bg-muted/20 rounded-lg border">
+        <div className="flex items-center gap-3">
+          <div>
+            <span className="font-semibold">{reg.patient_name}</span>
+            {reg.is_stat && (
+              <span className="relative inline-flex h-2.5 w-2.5 ml-1.5 align-middle">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive" />
+              </span>
+            )}
+            <span className="text-sm text-muted-foreground ml-2">{reg.invoice_number}</span>
+          </div>
+        </div>
+
+        {machineGroups.map((mg) => (
+          <div key={mg.machineName} className="space-y-1">
+            <div className="text-xs font-semibold text-primary uppercase tracking-wider px-1 pt-2 border-b border-primary/20 pb-1 flex items-center gap-1.5">
+              <Monitor className="h-3.5 w-3.5" /> {mg.machineName}
+            </div>
+            {groupByTest(mg.params).map((tg) => {
+              const testKey = `${reg.id}||${tg.testId}`;
+              const isVerifying = verifyingKey === testKey;
+              return (
+                <div key={tg.testId} className="ml-1">
+                  <div className="flex items-center justify-between px-1 py-0.5 bg-muted/40 rounded-t">
+                    <span className="text-xs font-medium text-muted-foreground">{tg.testName}</span>
+                    <div className="flex items-center gap-1">
+                      <Button size="sm" variant="ghost" className="h-6 text-[11px] gap-1 text-orange-600" onClick={() => sendBackTest(reg.id, tg.testId, tg.testName)}>
+                        <Undo2 className="h-3 w-3" /> Send Back
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-6 text-[11px] gap-1" disabled={isVerifying} onClick={() => verifyTest(entry, tg.testId, tg.testName)}>
+                        {isVerifying ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+                        Verify & Send to Doctor
+                      </Button>
+                    </div>
+                  </div>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="py-1 text-xs w-[80px]">Code</TableHead>
+                        <TableHead className="py-1 text-xs">Parameter</TableHead>
+                        <TableHead className="py-1 text-xs w-[100px]">Prev 1</TableHead>
+                        <TableHead className="py-1 text-xs w-[100px]">Prev 2</TableHead>
+                        <TableHead className="py-1 text-xs w-[200px]">Result</TableHead>
+                        <TableHead className="py-1 text-xs w-[60px]">Unit</TableHead>
+                        <TableHead className="py-1 text-xs w-[120px]">Ref. Range</TableHead>
+                        <TableHead className="py-1 text-xs w-[70px] text-center">Flag</TableHead>
+                        <TableHead className="py-1 text-xs w-[70px] text-center">Status</TableHead>
+                        <TableHead className="py-1 text-xs w-[40px] text-center"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>{tg.params.map(p => renderParamRow(entry, p))}</TableBody>
+                  </Table>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    );
   };
 
   return (
     <div className="space-y-4">
-      {/* Stats */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input placeholder="Search patient, invoice, mobile…" value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+        </div>
+        <Tabs value={mode} onValueChange={v => setMode(v as any)} className="w-auto">
+          <TabsList className="h-9">
+            <TabsTrigger value="patient" className="text-xs gap-1 h-7"><User className="h-3.5 w-3.5" /> Patient Wise</TabsTrigger>
+            <TabsTrigger value="machine" className="text-xs gap-1 h-7"><Monitor className="h-3.5 w-3.5" /> Machine Wise</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        {mode === "machine" && (
+          <Select value={selectedMachine} onValueChange={setSelectedMachine}>
+            <SelectTrigger className="w-[200px] h-9"><SelectValue placeholder="All Machines" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Machines</SelectItem>
+              {(() => {
+                const machines = new Set<string>();
+                masterMachines.forEach((m: any) => machines.add(m.value));
+                patientEntries.forEach(e => e.parameters.forEach(p => { if (p.machineName) machines.add(p.machineName); }));
+                machines.add("Others");
+                return Array.from(machines).sort((a, b) => a === "Others" ? 1 : b === "Others" ? -1 : a.localeCompare(b));
+              })().map(m => (<SelectItem key={m} value={m === "Others" ? "others" : m}>{m}</SelectItem>))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
+
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <Card className="p-3">
           <div className="text-xs text-muted-foreground">Patients Pending Verification</div>
-          <div className="text-xl font-bold">{totalPatients}</div>
+          <div className="text-xl font-bold">{stats.totalPatients}</div>
         </Card>
         <Card className="p-3">
-          <div className="text-xs text-muted-foreground">Tests to Verify</div>
-          <div className="text-xl font-bold">{totalTests}</div>
+          <div className="text-xs text-muted-foreground">Parameters to Verify</div>
+          <div className="text-xl font-bold">{stats.totalParams}</div>
         </Card>
-      </div>
-
-      {/* Search */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Search by name, mobile, invoice..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9"
-        />
       </div>
 
       {loadingRegs ? (
-        <div className="flex justify-center py-8">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-        </div>
-      ) : verificationEntries.length === 0 ? (
+        <Card><CardContent className="p-8 text-center text-muted-foreground">Loading…</CardContent></Card>
+      ) : filteredEntries.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <ClipboardCheck className="h-12 w-12 mx-auto mb-3 opacity-30" />
           <p className="text-lg font-medium">No results pending verification</p>
@@ -242,146 +769,60 @@ const ResultVerification = () => {
         </div>
       ) : (
         <div className="space-y-2">
-          {verificationEntries.map((entry: any) => {
+          {filteredEntries.map(entry => {
             const reg = entry.registration;
             const isExpanded = expandedPatient === reg.id;
             const isVerifying = verifyingKey === reg.id;
-
             return (
-              <Card key={reg.id} className="overflow-hidden">
-                <div
-                  className="flex items-center justify-between p-3 cursor-pointer hover:bg-muted/30 transition-colors"
-                  onClick={() => setExpandedPatient(isExpanded ? null : reg.id)}
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    {reg.is_stat && (
-                      <span className="relative flex h-2.5 w-2.5 shrink-0">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive" />
-                      </span>
-                    )}
-                    <div className="min-w-0">
-                      <div className="font-medium text-sm truncate">
-                        {reg.patient_name}
-                        <span className="text-xs text-muted-foreground ml-2">{reg.invoice_number}</span>
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {reg.mobile_number} • {reg.gender} • {entry.tests.length} test{entry.tests.length > 1 ? "s" : ""} to verify
-                      </div>
+              <Card key={reg.id} className={isExpanded ? "ring-1 ring-primary/30" : ""}>
+                <div className="flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/30 transition-colors" onClick={() => setExpandedPatient(isExpanded ? null : reg.id)}>
+                  {isExpanded ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{reg.patient_name}</span>
+                      {reg.is_stat && (
+                        <span className="relative inline-flex h-2.5 w-2.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive" />
+                        </span>
+                      )}
+                      <span className="text-sm text-muted-foreground font-mono">{reg.invoice_number}</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {reg.mobile_number} • {entry.parameters.length} parameters to verify
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <Button
-                      size="sm"
-                      variant="default"
-                      className="h-7 text-xs"
-                      disabled={isVerifying}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        verifyAllForPatient(entry);
-                      }}
-                    >
+                    <Button size="sm" variant="default" className="h-7 text-xs" disabled={isVerifying} onClick={(e) => { e.stopPropagation(); verifyAllForPatient(entry); }}>
                       {isVerifying ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <CheckCircle2 className="h-3.5 w-3.5 mr-1" />}
                       Verify All
                     </Button>
-                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                   </div>
                 </div>
-
                 {isExpanded && (
-                  <div className="border-t p-3 space-y-3 bg-muted/10">
-                    {entry.tests.map((test: any) => {
-                      const testKey = `${reg.id}||${test.testId}`;
-                      const isTestVerifying = verifyingKey === testKey;
-
-                      return (
-                        <div key={testKey} className="border rounded-lg overflow-hidden bg-background">
-                          <div className="flex items-center justify-between px-3 py-2">
-                            <div className="flex items-center gap-2">
-                              {test.type === "snip" ? (
-                                <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                              ) : (
-                                <FlaskConical className="h-4 w-4 text-muted-foreground" />
-                              )}
-                              <span className="font-medium text-sm">{test.testName}</span>
-                              <Badge variant="outline" className="text-[10px]">
-                                {test.type === "snip" ? "Outsourced / Snip" : "Manual Entry"}
-                              </Badge>
-                              {test.snip?.outsourced_lab_name && (
-                                <span className="text-[10px] text-muted-foreground">
-                                  Lab: {test.snip.outsourced_lab_name}
-                                </span>
-                              )}
-                            </div>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 text-xs"
-                              disabled={isTestVerifying}
-                              onClick={() => verifyTest(reg.id, test.testId, test.type, test.testName)}
-                            >
-                              {isTestVerifying ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <CheckCircle2 className="h-3.5 w-3.5 mr-1" />}
-                              Verify
-                            </Button>
-                          </div>
-
-                          {/* Show results for manual entry */}
-                          {test.type === "manual" && test.results.length > 0 && (
-                            <div className="px-3 pb-2">
-                              <Table>
-                                <TableHeader>
-                                  <TableRow>
-                                    <TableHead className="text-xs py-1">Parameter</TableHead>
-                                    <TableHead className="text-xs py-1">Result</TableHead>
-                                    <TableHead className="text-xs py-1">Unit</TableHead>
-                                    <TableHead className="text-xs py-1">Ref. Range</TableHead>
-                                    <TableHead className="text-xs py-1">Flag</TableHead>
-                                  </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                  {test.results.map((r: any) => (
-                                    <TableRow key={r.id}>
-                                      <TableCell className="py-1 text-sm">{r.parameter_name}</TableCell>
-                                      <TableCell className="py-1 text-sm font-medium">{r.result_value}</TableCell>
-                                      <TableCell className="py-1 text-xs text-muted-foreground">{r.unit}</TableCell>
-                                      <TableCell className="py-1 text-xs text-muted-foreground">{r.reference_range}</TableCell>
-                                      <TableCell className="py-1">
-                                        {r.flag === "H" && <Badge variant="destructive" className="text-[10px] px-1">H</Badge>}
-                                        {r.flag === "L" && <Badge className="text-[10px] px-1 bg-amber-500">L</Badge>}
-                                        {r.flag === "N" && <Badge variant="outline" className="text-[10px] px-1">N</Badge>}
-                                      </TableCell>
-                                    </TableRow>
-                                  ))}
-                                </TableBody>
-                              </Table>
-                            </div>
-                          )}
-
-                          {/* Show snip images for outsourced */}
-                          {test.type === "snip" && test.snip?.snip_image_urls && (
-                            <div className="px-3 pb-2 space-y-2">
-                              {(test.snip.snip_image_urls as string[]).map((url: string, idx: number) => (
-                                <div key={idx} className="border rounded overflow-hidden">
-                                  <img
-                                    src={url}
-                                    alt={`Snip page ${idx + 1}`}
-                                    className="w-full max-h-[300px] object-contain cursor-pointer"
-                                    onClick={() => window.open(url, "_blank")}
-                                  />
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <CardContent className="pt-0 pb-3 px-3">
+                    {renderPatientExpanded(entry)}
+                  </CardContent>
                 )}
               </Card>
             );
           })}
         </div>
       )}
+
+      {/* Snip Image Viewer */}
+      <Dialog open={!!viewSnipImages} onOpenChange={open => { if (!open) setViewSnipImages(null); }}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Outsourced Result — Snipped Images</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            {viewSnipImages?.map((url, idx) => (
+              <div key={idx} className="border rounded-lg overflow-hidden">
+                <img src={url} alt={`Snip page ${idx + 1}`} className="w-full object-contain" />
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
