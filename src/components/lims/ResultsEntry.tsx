@@ -760,7 +760,7 @@ const ResultsEntry = () => {
           )}
         </TableCell>
         <TableCell className="py-1.5 text-center">
-          {!p.isCalculated && (
+          {!p.isCalculated && !p.isOutsourced && (
             <Button
               size="sm"
               variant="ghost"
