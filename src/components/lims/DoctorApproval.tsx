@@ -69,7 +69,7 @@ const DoctorApproval = () => {
     queryKey: ["doctor_approval_snips", regIds.join(",")],
     enabled: regIds.length > 0,
     queryFn: async () => {
-      const { data } = await supabase.from("outsourced_test_snips").select("registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, result_mode, snip_image_urls").in("registration_id", regIds);
+      const { data } = await supabase.from("outsourced_test_snips").select("registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, result_mode, snip_image_urls").in("registration_id", regIds).eq("outsource_status", "verified");
       return (data || []) as any[];
     },
   });
