@@ -1,0 +1,1 @@
+ALTER TABLE public.approved_reports ADD CONSTRAINT approved_reports_registration_id_unique UNIQUE (registration_id);
