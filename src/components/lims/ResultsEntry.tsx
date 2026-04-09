@@ -330,6 +330,52 @@ const ResultsEntry = () => {
     }
 
     setEditedValues(newEdited);
+
+    // Schedule auto-save for this test (debounced)
+    const testId = entry.parameters.find(p => p.parameterId === paramId)?.testId;
+    if (testId) {
+      const autoKey = `${regId}||${testId}`;
+      if (autoSaveTimers.current[autoKey]) clearTimeout(autoSaveTimers.current[autoKey]);
+      autoSaveTimers.current[autoKey] = setTimeout(() => {
+        autoSaveTest(regId, testId, entry, newEdited);
+        delete autoSaveTimers.current[autoKey];
+      }, 1500);
+    }
+  };
+
+  // ─── Auto-save (saves with status "pending", does NOT transfer) ───
+  const autoSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const autoSaveTest = async (regId: string, testId: string, entry: PatientEntry, currentEdits: Record<string, string>) => {
+    const testParams = entry.parameters.filter(p => p.testId === testId);
+    const upserts: any[] = [];
+    for (const p of testParams) {
+      const key = `${regId}||${p.parameterId}`;
+      const value = currentEdits[key] !== undefined ? currentEdits[key] : p.resultValue;
+      const flag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+      upserts.push({
+        registration_id: regId,
+        test_id: p.testId,
+        parameter_id: p.parameterId,
+        param_code: p.paramCode,
+        parameter_name: p.parameterName,
+        result_value: value || null,
+        unit: p.unit,
+        reference_range: p.referenceRange,
+        normal_range_low: p.normalRangeLow,
+        normal_range_high: p.normalRangeHigh,
+        flag: flag || null,
+        status: "pending",
+        is_calculated: p.isCalculated,
+        is_from_interface: p.isFromInterface,
+      });
+    }
+    if (upserts.length === 0) return;
+    try {
+      await supabase.from("patient_results").delete().eq("registration_id", regId).eq("test_id", testId).eq("status", "pending");
+      await supabase.from("patient_results").upsert(upserts as any, { onConflict: "registration_id,parameter_id", ignoreDuplicates: false });
+    } catch {
+      // silent auto-save failure
+    }
   };
 
   // ─── Save & send to verification (per-test) ───
