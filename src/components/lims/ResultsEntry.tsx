@@ -1308,6 +1308,21 @@ const ResultsEntry = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Snip Image Viewer Dialog */}
+      <Dialog open={!!viewSnipImages} onOpenChange={open => { if (!open) setViewSnipImages(null); }}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Outsourced Result — Snipped Images</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {viewSnipImages?.map((url, idx) => (
+              <div key={idx} className="border rounded-lg overflow-hidden">
+                <img src={url} alt={`Snip page ${idx + 1}`} className="w-full object-contain" />
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
