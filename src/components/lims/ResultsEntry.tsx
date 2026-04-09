@@ -780,6 +780,21 @@ const ResultsEntry = () => {
     return Math.round((filled / entry.parameters.length) * 100);
   };
 
+  // ─── Render history cell ───
+  const renderHistoryCell = (parameterId: string, index: number) => {
+    const hist = historyMap[parameterId]?.[index];
+    if (!hist || !hist.resultValue) return <TableCell className="py-1.5 text-center text-xs text-muted-foreground">—</TableCell>;
+    return (
+      <TableCell className="py-1.5 text-xs">
+        <div className="leading-tight">
+          <div className="font-bold">{hist.resultValue}</div>
+          <div className="text-muted-foreground">{hist.referenceRange || "—"}</div>
+          <div className="text-muted-foreground text-[10px]">{hist.createdAt ? formatDateDDMMYYYY(hist.createdAt) : ""}</div>
+        </div>
+      </TableCell>
+    );
+  };
+
   // ─── Render parameter row ───
   const renderParamRow = (entry: PatientEntry, p: ParameterResult) => {
     const regId = entry.registration.id;
@@ -801,6 +816,8 @@ const ResultsEntry = () => {
           {p.parameterName}
           {p.isCalculated && <Calculator className="inline h-3 w-3 ml-1 text-primary" />}
         </TableCell>
+        {renderHistoryCell(p.parameterId, 0)}
+        {renderHistoryCell(p.parameterId, 1)}
         <TableCell className="py-1.5 w-[180px]">
           {isInterfaceParameter ? (
             <div className="flex items-center gap-1">
