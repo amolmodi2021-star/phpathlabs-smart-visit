@@ -55,7 +55,27 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   // Edit lab name state
   const [editLabKey, setEditLabKey] = useState<string | null>(null);
   const [editLabName, setEditLabName] = useState("");
-  const [savingEditLab, setSavingEditLab] = useState(false);
+  const [savingEditLab, setSavingEditLab] = false);
+
+  // Return to inhouse state
+  const [returningKey, setReturningKey] = useState<string | null>(null);
+  const returnToInhouse = async (regId: string, testId: string, testName: string) => {
+    const key = `${regId}||${testId}`;
+    setReturningKey(key);
+    try {
+      // Delete the outsourced_test_snips record to return test to inhouse
+      await supabase.from("outsourced_test_snips").delete().eq("registration_id", regId).eq("test_id", testId);
+      toast.success(`${testName} returned to Inhouse`);
+      qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+      qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] });
+      qc.invalidateQueries({ queryKey: ["outsourced_accepted_regs"] });
+      qc.invalidateQueries({ queryKey: ["results_accepted_regs"] });
+    } catch (err: any) {
+      toast.error(err.message || "Return failed");
+    } finally {
+      setReturningKey(null);
+    }
+  };
 
   // Sync external search to debounced
   useEffect(() => {
