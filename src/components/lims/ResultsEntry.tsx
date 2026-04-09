@@ -289,7 +289,7 @@ const ResultsEntry = () => {
     return { text, low: best.normal_range_low as number | null, high: best.normal_range_high as number | null, rangeType, descriptiveOptions, expectedValue };
   }, [normalRangesMap]);
 
-  // ─── Build patient entries ───
+  // ─── Build patient entries (includes outsourced tests/params with badges) ───
   const patientEntries: PatientEntry[] = useMemo(() => {
     return acceptedRegs.map((reg: any) => {
       const tests = (reg.tests || []) as any[];
@@ -298,25 +298,24 @@ const ResultsEntry = () => {
 
       const parameters: ParameterResult[] = [];
       for (const t of activeTests) {
-        // Skip tests that are outsourced by nature or transferred to outsourced
         const testInfo = testsMap[t.test_id] || {};
+        // Skip naturally outsourced tests (configured as outsourced in test master)
         if (testInfo.is_outsourced) continue;
-        if (transferredTestKeys.has(`${reg.id}||${t.test_id}`)) continue;
+        const testSnipKey = `${reg.id}||${t.test_id}`;
+        const isFullTestOutsourced = transferredTestKeys.has(testSnipKey);
+        const paramOutsourcedSet = outsourcedParamSets[testSnipKey];
+        const snipDetail = outsourcedSnipDetails[testSnipKey];
+
         const params = testParamsMap[t.test_id] || [];
-        // Get parameter-level outsourced set for this test
-        const paramOutsourcedSet = outsourcedParamSets[`${reg.id}||${t.test_id}`];
         for (const tp of params) {
           if (tp.is_subheader) continue;
           const p = tp.report_test_parameters;
           if (!p) continue;
-          // Skip parameters that are individually outsourced
-          if (paramOutsourcedSet && paramOutsourcedSet.has(p.id)) continue;
+          const isParamOutsourced = isFullTestOutsourced || (paramOutsourcedSet && paramOutsourcedSet.has(p.id));
           const existing = existingResults.find(
             (r: any) => r.registration_id === reg.id && r.parameter_id === p.id
           );
-          // Resolve reference range from parameter_normal_ranges
           const resolved = resolveNormalRange(p.id, reg);
-          // Fallback to report_test_parameters fields if no range in parameter_normal_ranges
           const refText = resolved.text || p.normal_range_text || (p.normal_range_low != null && p.normal_range_high != null ? `${p.normal_range_low} - ${p.normal_range_high}` : "");
           const rangeLow = resolved.low ?? p.normal_range_low;
           const rangeHigh = resolved.high ?? p.normal_range_high;
@@ -344,12 +343,15 @@ const ResultsEntry = () => {
             rangeType: resolved.rangeType,
             descriptiveOptions: resolved.descriptiveOptions,
             expectedValue: resolved.expectedValue,
+            isOutsourced: !!isParamOutsourced,
+            outsourceLabName: isParamOutsourced ? (snipDetail?.labName || null) : null,
+            outsourceStatus: isParamOutsourced ? (snipDetail?.status || "pending") : "",
           });
         }
       }
       return { registration: reg, parameters };
     }).filter(entry => entry.parameters.length > 0);
-  }, [acceptedRegs, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets]);
+  }, [acceptedRegs, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails]);
 
   // ─── Calculate flag ───
   const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string): string => {
