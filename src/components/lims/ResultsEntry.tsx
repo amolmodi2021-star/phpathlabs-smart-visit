@@ -749,7 +749,7 @@ const ResultsEntry = () => {
         <TableCell className="py-1.5 text-center">
           {p.isOutsourced ? (
             p.outsourceStatus === "sent" && p.outsourceLabName ? (
-              <Badge variant="outline" className="text-xs text-blue-600 border-blue-300 whitespace-nowrap">Awaiting Results from {p.outsourceLabName}</Badge>
+              <Badge variant="outline" className="text-xs text-blue-600 border-blue-300 whitespace-nowrap">{p.outsourceLabName}</Badge>
             ) : (
               <Badge variant="outline" className="text-xs text-purple-600 border-purple-300">Outsourced</Badge>
             )
@@ -825,7 +825,7 @@ const ResultsEntry = () => {
                       <span className="text-xs font-medium text-muted-foreground">{tg.testName}</span>
                       {isFullTestOutsourced && (
                         testSnipDetail?.status === "sent" && testSnipDetail?.labName ? (
-                          <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">Awaiting Results from {testSnipDetail.labName}</Badge>
+                          <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300">{testSnipDetail.labName}</Badge>
                         ) : (
                           <Badge variant="outline" className="text-[10px] text-purple-600 border-purple-300">Outsourced</Badge>
                         )
