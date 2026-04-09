@@ -752,7 +752,7 @@ const ResultsEntry = () => {
       await supabase.from("outsourced_test_snips").update({ outsource_status: "results_entered" } as any).eq("registration_id", reg.id).eq("test_id", testId).in("outsource_status", ["pending", "sent", "results_saved"]);
     },
     onSuccess: (_, { entry, testId }) => {
-      const testName = entry.parameters.find(p => p.testId === testId)?.testName || "Test";
+      const testName = entry.parameters.find(p => p.testId === testId)?.testName || entry.snipOnlyTests.find(s => s.testId === testId)?.testName || "Test";
       toast.success(`${testName} saved & sent to verification`);
       const regId = entry.registration.id;
       // Clear edited values for this test's params only
@@ -842,7 +842,7 @@ const ResultsEntry = () => {
         ...e,
         parameters: e.parameters.filter(p => (p.machineName || "") === filterMachine),
       }))
-      .filter(e => e.parameters.length > 0 || e.incompleteTests.length > 0);
+      .filter(e => e.parameters.length > 0 || e.incompleteTests.length > 0 || e.snipOnlyTests.length > 0);
   }, [patientEntries, mode, selectedMachine]);
 
   // ─── Stats (based on filtered entries, excludes already-entered patients) ───
