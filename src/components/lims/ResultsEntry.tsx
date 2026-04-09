@@ -559,6 +559,8 @@ const ResultsEntry = () => {
       setHighlightBlanksForRegs(prev => { const next = new Set(prev); next.delete(`${regId}||${testId}`); return next; });
       qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
       qc.invalidateQueries({ queryKey: ["verification_"] });
+      qc.invalidateQueries({ queryKey: ["outsourced_manual_results"] });
+      qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
     },
     onError: (err: any) => {
       toast.error(err.message || "Failed to save results");
