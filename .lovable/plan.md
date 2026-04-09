@@ -1,43 +1,35 @@
 
 
-# Fix: Result Verification and Doctor Approval Flow
+# Fix: Reverse Flow — Snip Removal from Results Entry Should Restore Outsourced Section
 
 ## Problem
-Records appear in Result Verification and Doctor Approval even when no results have been "Saved & Verified" in the Results section. The outsourced section creates `outsourced_test_snips` records (with `outsource_status: pending`), and the Verification/Approval pages incorrectly treat the mere existence of these records as a reason to display the patient.
 
-**Root cause**: The data flow should be:
-1. Outsourced section saves results (manual or snip) → updates Patient-wise/Machine-wise views only
-2. Only when "Save & Verify" is clicked in Results section (Patient-wise/Machine-wise) should records move to Result Verification
-3. Only "Verify" in Result Verification moves records to Doctor Approval
+When a snip image is added in the Outsourced section (sets `outsource_status: results_saved`) and then removed from the Patient-wise/Machine-wise view in Results Entry:
+1. The badge turns blue (local UI update), but the **database is not properly updated** — `outsource_status` remains `results_saved` and snip images persist.
+2. The patient disappears from the Outsourced section because the `visibleTests` filter sees `results_saved` status and hides the test (thinking results are complete).
+3. The counter still shows "Results Saved: 1" due to stale data.
 
-Currently, `outsourced_test_snips` records with any status (including `pending`, `sent`, `results_saved`) cause patients to appear in Verification and Approval prematurely.
+**Root cause**: The `removeSnipImages` function in ResultsEntry updates the snip record with `as any` cast, but the upsert from the outsourced section may be overriding it, or the update is silently not persisting. Additionally, the outsourced section's visibility logic hides `results_saved` tests when snip images exist — but after removal, the status should revert so the test reappears.
 
 ## Changes
 
-### 1. ResultVerification.tsx — Filter outsourced snips properly
+### 1. ResultsEntry.tsx — Fix `removeSnipImages` function
 
-**Query change (line ~109-118)**: Filter `outsourced_test_snips` to only include records where `outsource_status` is `entered` (meaning "Save & Verify" was clicked in the Results section, which sets `patient_results.status = 'entered'`).
+- After updating the snip record (setting `outsource_status: "sent"`, clearing images), **verify the update succeeded** by checking `count` from the response.
+- Also add `outsourced_accepted_regs` and `outsourced_manual_results` to the invalidation list so the outsourced section refreshes properly.
+- If the test was parameter-level outsourced (has `outsourcedParameterIds`), keep the snip record but just clear the image data and reset status. Don't delete the snip record itself.
 
-**Build logic (line 288)**: Change the condition so that a snip record alone is not enough — require that the test has `entered`-status results in `patient_results` OR the snip's `outsource_status` indicates it has been through the Results section's "Save & Verify" step. Specifically, only show outsourced tests when their snip `outsource_status` is in `['results_entered', 'entered']` — NOT `pending`, `sent`, or `results_saved`.
+### 2. OutsourcedResults.tsx — Fix visibility logic for reversed tests
 
-### 2. DoctorApproval.tsx — Filter outsourced snips properly
+- In `getTestStatus`: When `outsource_status` is `"sent"` and `result_mode` is `"manual"` with no manual results, return `"awaiting_results"` (this already works correctly).
+- In `visibleTests` filter (line ~1023-1037): Currently hides `results_saved` tests where snip images exist. After removal, status should be `"sent"` so this filter won't apply. But add a safety check: if `results_saved` but no snip images and no manual results, show the test (don't hide it).
+- In the stats counter: same fix — don't count a test as `results_saved` if its snip images are empty and it has no manual results.
 
-**Query change (line ~68-75)**: Filter `outsourced_test_snips` to only include records where `outsource_status = 'verified'`.
+### 3. OutsourcedResults.tsx — Fix counter accuracy
 
-### 3. ResultsEntry.tsx — Update outsource_status on Save & Verify
-
-**Save mutation (~line 682)**: After saving results with `status: 'entered'`, also update the corresponding `outsourced_test_snips` record's `outsource_status` from `results_saved` to `results_entered` (or a similar status that signals it passed through Save & Verify).
-
-This ensures the lifecycle is:
-```text
-Outsourced section saves → outsource_status = 'results_saved' (visible in Results section only)
-Results "Save & Verify"  → patient_results.status = 'entered', outsource_status = 'results_entered' (→ Verification)
-Verification "Verify"    → patient_results.status = 'verified', outsource_status = 'verified' (→ Doctor Approval)
-Doctor "Approve"          → patient_results.status = 'approved', outsource_status = 'approved' (→ Dispatch)
-```
+- In the `stats` memo (line ~728-749): After checking `results_saved`, verify that the test actually has results (snip images OR manual results). If neither exists, treat it as `awaiting_results` instead.
 
 ## Summary of File Changes
-- **ResultVerification.tsx**: Filter snips query to only `outsource_status IN ('results_entered')`, and adjust build logic to not show tests based solely on snip existence
-- **DoctorApproval.tsx**: Filter snips query to only `outsource_status = 'verified'`
-- **ResultsEntry.tsx**: In `saveMutation`, update `outsource_status` to `results_entered` when "Save & Verify" is clicked
+- **ResultsEntry.tsx**: Enhance `removeSnipImages` to add more query invalidations (`outsourced_accepted_regs`, `outsourced_manual_results`) and add a count check for the update
+- **OutsourcedResults.tsx**: Fix `visibleTests` filter and stats counter to not hide tests that have `results_saved` status but no actual results/images (reverse flow scenario); also fix `getTestStatus` to check for actual data presence, not just status string
 
