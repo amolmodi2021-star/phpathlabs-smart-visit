@@ -153,7 +153,7 @@ const ResultsEntry = () => {
   // ─── Helper: resolve best normal range for a parameter given patient demographics ───
   const resolveNormalRange = useCallback((parameterId: string, reg: any) => {
     const ranges = normalRangesMap[parameterId];
-    if (!ranges || ranges.length === 0) return { text: "", low: null as number | null, high: null as number | null };
+    if (!ranges || ranges.length === 0) return { text: "", low: null as number | null, high: null as number | null, rangeType: "numeric", descriptiveOptions: [] as string[], expectedValue: "" };
 
     // Parse patient age (from dob or age text in registration)
     let patientAge: number | null = null;
@@ -186,10 +186,13 @@ const ResultsEntry = () => {
 
     // Pick the most specific (prefer gender-specific over 'all')
     const best = candidates.find((r: any) => (r.gender || "all").toLowerCase() !== "all") || candidates[0];
-    if (!best) return { text: "", low: null as number | null, high: null as number | null };
+    if (!best) return { text: "", low: null as number | null, high: null as number | null, rangeType: "numeric", descriptiveOptions: [] as string[], expectedValue: "" };
 
     const text = best.normal_range_text || (best.normal_range_low != null && best.normal_range_high != null ? `${best.normal_range_low} - ${best.normal_range_high}` : "");
-    return { text, low: best.normal_range_low as number | null, high: best.normal_range_high as number | null };
+    const rangeType = best.range_type || "numeric";
+    const descriptiveOptions = Array.isArray(best.descriptive_options) ? best.descriptive_options : [];
+    const expectedValue = best.expected_value || "";
+    return { text, low: best.normal_range_low as number | null, high: best.normal_range_high as number | null, rangeType, descriptiveOptions, expectedValue };
   }, [normalRangesMap]);
 
   // ─── Build patient entries ───
