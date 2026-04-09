@@ -466,6 +466,7 @@ const ResultsEntry = () => {
 
       const parameters: ParameterResult[] = [];
       const incompleteTests: IncompleteTest[] = [];
+      const snipOnlyTests: SnipOnlyTest[] = [];
       for (const t of activeTests) {
         const testInfo = testsMap[t.test_id] || {};
         // Naturally outsourced tests are included — they appear with outsourced badges and can be saved & verified
@@ -546,8 +547,8 @@ const ResultsEntry = () => {
           });
         }
       }
-      return { registration: reg, parameters, incompleteTests };
-    }).filter(entry => entry.parameters.length > 0 || entry.incompleteTests.length > 0);
+      return { registration: reg, parameters, incompleteTests, snipOnlyTests };
+    }).filter(entry => entry.parameters.length > 0 || entry.incompleteTests.length > 0 || entry.snipOnlyTests.length > 0);
   }, [acceptedRegs, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails]);
 
   // ─── Calculate flag ───
