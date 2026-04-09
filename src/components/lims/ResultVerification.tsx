@@ -534,8 +534,8 @@ const ResultVerification = () => {
         await supabase.from("patient_results").delete().eq("registration_id", reg.id).eq("test_id", testId).eq("status", "entered");
         await supabase.from("patient_results").insert(upserts as any);
       }
-      // Also verify outsourced snips
-      await supabase.from("outsourced_test_snips").update({ outsource_status: "verified" } as any).eq("registration_id", reg.id).eq("test_id", testId).in("outsource_status", ["results_entered", "sent", "results_saved"]);
+      // Also verify outsourced snips (works for both param-based and snip-only)
+      await supabase.from("outsourced_test_snips").update({ outsource_status: "verified" } as any).eq("registration_id", reg.id).eq("test_id", testId).in("outsource_status", ["results_entered", "entered", "sent", "results_saved"]);
       
       toast.success(`${testName} verified & sent to Doctor Approval`);
       setEditedValues(prev => {
