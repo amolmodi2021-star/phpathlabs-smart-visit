@@ -62,6 +62,9 @@ const ResultVerification = () => {
   const [editedFlags, setEditedFlags] = useState<Record<string, string>>({});
   const [viewSnipImages, setViewSnipImages] = useState<string[] | null>(null);
   const autoSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const [blankConfirmTestParams, setBlankConfirmTestParams] = useState<{ entry: PatientEntry; testId: string; testName: string } | null>(null);
+  const [blankParamCount, setBlankParamCount] = useState(0);
+  const [highlightBlanksForRegs, setHighlightBlanksForRegs] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 400);
@@ -422,6 +425,43 @@ const ResultVerification = () => {
     return Object.values(groups);
   };
 
+  // ─── Blank result check before verify ───
+  const countBlanks = (entry: PatientEntry, testId: string) => {
+    const reg = entry.registration;
+    const testParams = entry.parameters.filter(p => p.testId === testId);
+    let blanks = 0;
+    for (const p of testParams) {
+      if (p.isCalculated) continue;
+      const key = `${reg.id}||${p.parameterId}`;
+      const val = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
+      if (!val || val.trim() === "") blanks++;
+    }
+    return blanks;
+  };
+
+  const handleVerifyTest = (entry: PatientEntry, testId: string, testName: string) => {
+    const blanks = countBlanks(entry, testId);
+    if (blanks > 0) {
+      setBlankParamCount(blanks);
+      setBlankConfirmTestParams({ entry, testId, testName });
+      setHighlightBlanksForRegs(prev => new Set(prev).add(`${entry.registration.id}||${testId}`));
+    } else {
+      verifyTest(entry, testId, testName);
+    }
+  };
+
+  const handleVerifyAll = (entry: PatientEntry) => {
+    const testIds = [...new Set(entry.parameters.map(p => p.testId))];
+    let totalBlanks = 0;
+    for (const tid of testIds) totalBlanks += countBlanks(entry, tid);
+    if (totalBlanks > 0) {
+      setBlankParamCount(totalBlanks);
+      setBlankConfirmTestParams({ entry, testId: "__all__", testName: "All Tests" });
+    } else {
+      verifyAllForPatient(entry);
+    }
+  };
+
   // Verify test (update status to verified)
   const [verifyingKey, setVerifyingKey] = useState<string | null>(null);
 
@@ -692,7 +732,7 @@ const ResultVerification = () => {
                       <Button size="sm" variant="ghost" className="h-6 text-[11px] gap-1 text-orange-600" onClick={() => sendBackTest(reg.id, tg.testId, tg.testName)}>
                         <Undo2 className="h-3 w-3" /> Send Back
                       </Button>
-                      <Button size="sm" variant="outline" className="h-6 text-[11px] gap-1" disabled={isVerifying} onClick={() => verifyTest(entry, tg.testId, tg.testName)}>
+                      <Button size="sm" variant="outline" className="h-6 text-[11px] gap-1" disabled={isVerifying} onClick={() => handleVerifyTest(entry, tg.testId, tg.testName)}>
                         {isVerifying ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
                         Verify & Send to Doctor
                       </Button>
@@ -799,7 +839,7 @@ const ResultVerification = () => {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <Button size="sm" variant="default" className="h-7 text-xs" disabled={isVerifying} onClick={(e) => { e.stopPropagation(); verifyAllForPatient(entry); }}>
+                    <Button size="sm" variant="default" className="h-7 text-xs" disabled={isVerifying} onClick={(e) => { e.stopPropagation(); handleVerifyAll(entry); }}>
                       {isVerifying ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <CheckCircle2 className="h-3.5 w-3.5 mr-1" />}
                       Verify All
                     </Button>
@@ -815,6 +855,110 @@ const ResultVerification = () => {
           })}
         </div>
       )}
+
+      {/* Blank values dialog */}
+      <Dialog open={!!blankConfirmTestParams} onOpenChange={open => { if (!open) setBlankConfirmTestParams(null); }}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-lg">
+              Blank Result Values — {blankConfirmTestParams?.testName}
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              {blankParamCount} parameter{blankParamCount !== 1 ? "s have" : " has"} blank values. You can fill them below or send to Doctor Approval as-is.
+            </p>
+          </DialogHeader>
+          {blankConfirmTestParams && (() => {
+            const { entry, testId } = blankConfirmTestParams;
+            const reg = entry.registration;
+            const isAll = testId === "__all__";
+            const relevantParams = isAll
+              ? entry.parameters.filter(p => !p.isCalculated)
+              : entry.parameters.filter(p => p.testId === testId && !p.isCalculated);
+            const blankParams = relevantParams.filter(p => {
+              const key = `${reg.id}||${p.parameterId}`;
+              const val = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
+              return !val || val.trim() === "";
+            });
+            return (
+              <div className="border rounded-lg overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="py-2 text-xs w-[80px]">Code</TableHead>
+                      <TableHead className="py-2 text-xs">Parameter</TableHead>
+                      <TableHead className="py-2 text-xs w-[180px]">Result</TableHead>
+                      <TableHead className="py-2 text-xs w-[80px]">Unit</TableHead>
+                      <TableHead className="py-2 text-xs w-[120px]">Ref. Range</TableHead>
+                      <TableHead className="py-2 text-xs w-[80px] text-center">Flag</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {blankParams.map(p => {
+                      const key = `${reg.id}||${p.parameterId}`;
+                      const currentValue = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
+                      const flag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+                      return (
+                        <TableRow key={key} className="bg-yellow-50">
+                          <TableCell className="py-2 text-xs font-mono text-muted-foreground">{p.paramCode}</TableCell>
+                          <TableCell className="py-2 text-sm font-medium">{p.parameterName}</TableCell>
+                          <TableCell className="py-2">
+                            {p.rangeType === "descriptive" && p.descriptiveOptions.length > 0 ? (
+                              <Select value={currentValue || undefined} onValueChange={(v) => handleValueChange(reg.id, p.parameterId, v, entry)}>
+                                <SelectTrigger className="h-7 text-sm w-full"><SelectValue placeholder="Select..." /></SelectTrigger>
+                                <SelectContent className="max-w-[400px]">
+                                  {p.descriptiveOptions.map((opt: string) => (
+                                    <SelectItem key={opt} value={opt} className="whitespace-normal">{opt}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <Input value={currentValue} onChange={e => handleValueChange(reg.id, p.parameterId, e.target.value, entry)} className="h-7 text-sm w-full" placeholder="Enter result" />
+                            )}
+                          </TableCell>
+                          <TableCell className="py-2 text-xs text-muted-foreground">
+                            {p.isOutsourced ? (
+                              <Input value={editedUnits[key] !== undefined ? editedUnits[key] : (p.unit || "")} onChange={e => setEditedUnits(prev => ({ ...prev, [key]: e.target.value }))} className="h-6 text-xs w-[70px]" placeholder="Unit" />
+                            ) : p.unit}
+                          </TableCell>
+                          <TableCell className="py-2 text-xs text-muted-foreground">
+                            {p.isOutsourced ? (
+                              <Input value={editedRefRanges[key] !== undefined ? editedRefRanges[key] : (p.referenceRange || "")} onChange={e => setEditedRefRanges(prev => ({ ...prev, [key]: e.target.value }))} className="h-6 text-xs w-[100px]" placeholder="Ref Range" />
+                            ) : p.referenceRange}
+                          </TableCell>
+                          <TableCell className="py-2 text-center">
+                            {flag === "H" && <Badge variant="destructive" className="text-xs">HIGH</Badge>}
+                            {flag === "L" && <Badge variant="destructive" className="text-xs">LOW</Badge>}
+                            {flag === "A" && <Badge variant="destructive" className="text-xs">Abnormal</Badge>}
+                            {!flag && <Badge variant="outline" className="text-xs">—</Badge>}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            );
+          })()}
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setBlankConfirmTestParams(null)}>Cancel & Review</Button>
+            <Button onClick={() => {
+              if (blankConfirmTestParams) {
+                const { entry, testId } = blankConfirmTestParams;
+                setBlankConfirmTestParams(null);
+                setHighlightBlanksForRegs(prev => { const next = new Set(prev); next.delete(`${entry.registration.id}||${testId}`); return next; });
+                if (testId === "__all__") {
+                  verifyAllForPatient(entry);
+                } else {
+                  verifyTest(entry, testId, blankConfirmTestParams.testName);
+                }
+              }
+            }}>
+              <SendHorizonal className="h-4 w-4 mr-1" />
+              Send to Doctor Approval
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Snip Image Viewer */}
       <Dialog open={!!viewSnipImages} onOpenChange={open => { if (!open) setViewSnipImages(null); }}>
