@@ -970,12 +970,11 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
               const status = getTestStatus(reg.id, t.testId);
               if (status === "results_saved") {
                 const snip = getSnip(reg.id, t.testId);
-                const outsourceStatus = getOutsourceStatus(reg.id, t.testId);
-                // For snip mode, keep visible so user can review — only hide if results are verified
+                // For snip mode, results are complete — hide from pending list
                 if (snip?.result_mode === "snip") {
-                  // Hide only if all patient_results for this test are verified
-                  const testResults = existingResults.filter((r: any) => r.registration_id === reg.id && r.test_id === t.testId);
-                  return testResults.length === 0 || !testResults.every((r: any) => r.status === "verified");
+                  const imageUrls = getSnipImageUrls(reg.id, t.testId);
+                  // Hide if snip images exist (results are done)
+                  if (imageUrls.length > 0) return false;
                 }
                 // For manual mode, check if all params have results
                 return !hasAllResultsFilled(reg.id, t.testId, t.outsourcedParameterIds);
