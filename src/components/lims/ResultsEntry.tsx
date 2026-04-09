@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Search, User, Monitor, Save, Calculator, Wifi, WifiOff, ChevronDown, ChevronUp, Check, Loader2, FlaskConical, Package, SendHorizonal, ArrowRightLeft, Eye } from "lucide-react";
+import { Search, User, Monitor, Save, Calculator, Wifi, WifiOff, ChevronDown, ChevronUp, Check, Loader2, FlaskConical, Package, SendHorizonal, ArrowRightLeft, Eye, Trash2 } from "lucide-react";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 import OutsourcedResults from "./OutsourcedResults";
 import { format } from "date-fns";
@@ -193,6 +193,29 @@ const ResultsEntry = () => {
 
   // ─── Snip image viewer state ───
   const [viewSnipImages, setViewSnipImages] = useState<string[] | null>(null);
+  const [viewSnipContext, setViewSnipContext] = useState<{ regId: string; testId: string } | null>(null);
+  const [removingSnip, setRemovingSnip] = useState(false);
+
+  const removeSnipImages = async () => {
+    if (!viewSnipContext) return;
+    setRemovingSnip(true);
+    try {
+      await supabase.from("outsourced_test_snips").update({
+        snip_image_url: null,
+        snip_image_urls: [],
+        result_mode: "manual",
+        outsource_status: "sent",
+      } as any).eq("registration_id", viewSnipContext.regId).eq("test_id", viewSnipContext.testId);
+      toast.success("Snipped images removed");
+      setViewSnipImages(null);
+      setViewSnipContext(null);
+      qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+    } catch (e: any) {
+      toast.error("Failed to remove: " + e.message);
+    } finally {
+      setRemovingSnip(false);
+    }
+  };
 
   // ─── Transfer to outsourced state ───
   const [transferringKey, setTransferringKey] = useState<string | null>(null);
@@ -862,7 +885,7 @@ const ResultsEntry = () => {
                     variant="ghost"
                     className="h-5 px-1 text-xs text-blue-600 hover:text-blue-800 gap-0.5"
                     title="View Snip"
-                    onClick={() => setViewSnipImages(snipDetail.snipImageUrls)}
+                    onClick={() => { setViewSnipImages(snipDetail.snipImageUrls); setViewSnipContext({ regId, testId: p.testId }); }}
                   >
                     <Eye className="h-3 w-3" /> View
                   </Button>
@@ -1325,10 +1348,22 @@ const ResultsEntry = () => {
         </DialogContent>
       </Dialog>
       {/* Snip Image Viewer Dialog */}
-      <Dialog open={!!viewSnipImages} onOpenChange={open => { if (!open) setViewSnipImages(null); }}>
+      <Dialog open={!!viewSnipImages} onOpenChange={open => { if (!open) { setViewSnipImages(null); setViewSnipContext(null); } }}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Outsourced Result — Snipped Images</DialogTitle>
+            <DialogTitle className="flex items-center justify-between">
+              <span>Outsourced Result — Snipped Images</span>
+              <Button
+                size="sm"
+                variant="destructive"
+                className="gap-1"
+                disabled={removingSnip}
+                onClick={removeSnipImages}
+              >
+                {removingSnip ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                Remove Snip
+              </Button>
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             {viewSnipImages?.map((url, idx) => (
