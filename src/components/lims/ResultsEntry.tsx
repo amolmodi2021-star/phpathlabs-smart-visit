@@ -1346,6 +1346,11 @@ const ResultsEntry = () => {
                           {reg.mobile_number} • {entry.parameters.length} parameters
                         </div>
                       </div>
+                      {entry.incompleteTests.length > 0 && (
+                        <Badge variant="outline" className="text-xs text-amber-600 border-amber-300 gap-0.5">
+                          <FlaskConical className="h-3 w-3" /> {entry.incompleteTests.length} test{entry.incompleteTests.length > 1 ? "s" : ""} need setup
+                        </Badge>
+                      )}
                       <div className="flex items-center gap-2 shrink-0">
                         {awaitingCount > 0 && (
                           <Badge variant="outline" className="text-xs text-orange-600 border-orange-300 gap-0.5">
