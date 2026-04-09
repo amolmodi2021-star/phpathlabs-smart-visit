@@ -27,6 +27,7 @@ interface OutsourcedTest {
   testId: string;
   testName: string;
   outsourcedCaption: string;
+  isTransferredInhouse: boolean; // true = originally inhouse, transferred to outsourced
 }
 
 interface OutsourcedPatient {
