@@ -213,7 +213,7 @@ const ResultsEntry = () => {
       if (regIds.length === 0) return [];
       const { data, error } = await supabase
         .from("patient_results")
-        .select("parameter_id, result_value, reference_range, created_at, test_id")
+        .select("parameter_id, result_value, reference_range, created_at, test_id, registration_id")
         .in("registration_id", regIds)
         .not("result_value", "is", null)
         .order("created_at", { ascending: false });
