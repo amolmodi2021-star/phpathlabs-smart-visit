@@ -739,8 +739,26 @@ const ResultsEntry = () => {
             />
           )}
         </TableCell>
-        <TableCell className="py-1.5 text-xs text-muted-foreground">{p.unit}</TableCell>
-        <TableCell className="py-1.5 text-xs text-muted-foreground">{p.referenceRange}</TableCell>
+        <TableCell className="py-1.5 text-xs text-muted-foreground">
+          {p.isOutsourced ? (
+            <Input
+              value={editedUnits[key] !== undefined ? editedUnits[key] : (p.unit || "")}
+              onChange={e => setEditedUnits(prev => ({ ...prev, [key]: e.target.value }))}
+              className="h-6 text-xs w-[70px]"
+              placeholder="Unit"
+            />
+          ) : p.unit}
+        </TableCell>
+        <TableCell className="py-1.5 text-xs text-muted-foreground">
+          {p.isOutsourced ? (
+            <Input
+              value={editedRefRanges[key] !== undefined ? editedRefRanges[key] : (p.referenceRange || "")}
+              onChange={e => setEditedRefRanges(prev => ({ ...prev, [key]: e.target.value }))}
+              className="h-6 text-xs w-[100px]"
+              placeholder="Ref Range"
+            />
+          ) : p.referenceRange}
+        </TableCell>
         <TableCell className="py-1.5 text-center">
           {flag === "H" && <Badge variant="destructive" className="text-xs">HIGH</Badge>}
           {flag === "L" && <Badge variant="destructive" className="text-xs">LOW</Badge>}
@@ -751,7 +769,11 @@ const ResultsEntry = () => {
         <TableCell className="py-1.5 text-center">
           {p.isOutsourced ? (
             p.outsourceStatus === "sent" && p.outsourceLabName ? (
-              <Badge variant="outline" className="text-xs text-blue-600 border-blue-300 whitespace-nowrap">{p.outsourceLabName}</Badge>
+              currentValue ? (
+                <Badge variant="outline" className="text-xs text-green-600 border-green-300 whitespace-nowrap">{p.outsourceLabName}</Badge>
+              ) : (
+                <Badge variant="outline" className="text-xs text-blue-600 border-blue-300 whitespace-nowrap">{p.outsourceLabName}</Badge>
+              )
             ) : (
               <Badge variant="outline" className="text-xs text-purple-600 border-purple-300">Outsourced</Badge>
             )
