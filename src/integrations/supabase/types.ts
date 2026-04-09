@@ -149,6 +149,7 @@ export type Database = {
           gender: string | null
           id: string
           invoice_number: string | null
+          is_held: boolean
           is_stat: boolean | null
           mobile_number: string | null
           outsourced_snip_urls: Json | null
@@ -175,6 +176,7 @@ export type Database = {
           gender?: string | null
           id?: string
           invoice_number?: string | null
+          is_held?: boolean
           is_stat?: boolean | null
           mobile_number?: string | null
           outsourced_snip_urls?: Json | null
@@ -201,6 +203,7 @@ export type Database = {
           gender?: string | null
           id?: string
           invoice_number?: string | null
+          is_held?: boolean
           is_stat?: boolean | null
           mobile_number?: string | null
           outsourced_snip_urls?: Json | null

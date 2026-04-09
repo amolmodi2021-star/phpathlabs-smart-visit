@@ -9,11 +9,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Search, User, Monitor, Calculator, ChevronDown, ChevronUp, Loader2, CheckCircle2, Undo2, RotateCcw, Eye, Stethoscope } from "lucide-react";
+import { Search, User, Monitor, Calculator, ChevronDown, ChevronUp, Loader2, CheckCircle2, Undo2, RotateCcw, Eye, Stethoscope, FileCheck } from "lucide-react";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { toast } from "sonner";
 import { formatDateDDMMYYYY } from "@/lib/utils";
-
+import ModifiedApproval from "./ModifiedApproval";
 interface ParameterResult {
   parameterId: string; paramCode: string; parameterName: string; unit: string; referenceRange: string;
   normalRangeLow: number | null; normalRangeHigh: number | null; resultValue: string; flag: string;
@@ -36,6 +36,7 @@ interface PatientEntry { registration: any; parameters: ParameterResult[]; snipO
 const DoctorApproval = () => {
   const qc = useQueryClient();
   const { data: masterMachines = [] } = useMasterLookup("machine_name");
+  const [activeSection, setActiveSection] = useState<"approval" | "modified">("approval");
   const [mode, setMode] = useState<"patient" | "machine">("patient");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -504,6 +505,17 @@ const DoctorApproval = () => {
 
   return (
     <div className="space-y-4">
+      <Tabs value={activeSection} onValueChange={v => setActiveSection(v as any)} className="w-auto">
+        <TabsList className="h-9">
+          <TabsTrigger value="approval" className="text-xs gap-1 h-7"><Stethoscope className="h-3.5 w-3.5" /> Doctor Approval</TabsTrigger>
+          <TabsTrigger value="modified" className="text-xs gap-1 h-7"><FileCheck className="h-3.5 w-3.5" /> Modified Approval</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {activeSection === "modified" ? (
+        <ModifiedApproval />
+      ) : (
+      <>
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -575,6 +587,8 @@ const DoctorApproval = () => {
           <div className="space-y-4">{viewSnipImages?.map((url, idx) => (<div key={idx} className="border rounded-lg overflow-hidden"><img src={url} alt={`Snip page ${idx + 1}`} className="w-full object-contain" /></div>))}</div>
         </DialogContent>
       </Dialog>
+      </>
+      )}
     </div>
   );
 };

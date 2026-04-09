@@ -77,14 +77,26 @@ const Dispatch = () => {
     },
   });
 
+  // Fetch held report registration IDs
+  const { data: heldRegIds = [] } = useQuery({
+    queryKey: ["dispatch_held_reports", regIds.join(",")],
+    enabled: regIds.length > 0,
+    queryFn: async () => {
+      const { data } = await supabase.from("approved_reports").select("registration_id").eq("is_held", true).in("registration_id", regIds);
+      return (data || []).map((r: any) => r.registration_id) as string[];
+    },
+  });
+
   const { data: testsMap = {} } = useQuery({
     queryKey: ["results_tests_map"],
     queryFn: async () => { const { data } = await supabase.from("tests").select("id, test_name"); const map: Record<string, any> = {}; (data || []).forEach((t: any) => { map[t.id] = t; }); return map; },
   });
 
   // Build dispatch entries with per-test status
+  const heldSet = useMemo(() => new Set(heldRegIds), [heldRegIds]);
+
   const dispatchEntries = useMemo(() => {
-    return registrations.map((reg: any) => {
+    return registrations.filter((reg: any) => !heldSet.has(reg.id)).map((reg: any) => {
       const tests = (reg.tests || []) as any[];
       const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
       const activeTests = tests.filter((t: any) => !cancelledIds.has(t.test_id));
@@ -152,7 +164,7 @@ const Dispatch = () => {
 
       return { registration: reg, tests: dispatchTests, completionStatus, approvedCount, pendingCount } as DispatchEntry;
     }).filter(Boolean) as DispatchEntry[];
-  }, [registrations, allResults, allSnips, testsMap]);
+  }, [registrations, allResults, allSnips, testsMap, heldSet]);
 
   const stats = useMemo(() => ({
     totalPatients: dispatchEntries.length,
