@@ -1036,6 +1036,8 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
             // Filter out tests where all results are already filled
             const visibleTests = entry.outsourcedTests.filter(t => {
               const status = getTestStatus(reg.id, t.testId);
+              // Hide tests that have progressed past results stage
+              if (status === "completed") return false;
               if (status === "results_saved") {
                 const snip = getSnip(reg.id, t.testId);
                 // For snip mode, results are complete — hide from pending list
