@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   Search, ChevronDown, ChevronUp, Save, Loader2, Image, Keyboard,
-  Clipboard, Trash2, ExternalLink, Package, Send, Clock, CheckCircle2, Pencil, Plus, FileText
+  Clipboard, Trash2, ExternalLink, Package, Send, Clock, CheckCircle2, Pencil, Plus, FileText, ArrowLeftRight
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
