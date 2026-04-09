@@ -424,6 +424,41 @@ const DoctorApproval = () => {
           {reg.is_stat && <span className="relative inline-flex h-2.5 w-2.5 ml-1.5 align-middle"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" /><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive" /></span>}
           <span className="text-sm text-muted-foreground">{reg.invoice_number}</span>
         </div>
+        {/* Snip-only outsourced tests */}
+        {entry.snipOnlyTests.length > 0 && entry.snipOnlyTests.map(st => {
+          const testKey = `${reg.id}||${st.testId}`;
+          const isApproving = actionKey === `${testKey}||approve`;
+          const isSendingBack = actionKey === `${testKey}||back`;
+          return (
+            <div key={`snip-${st.testId}`} className="flex items-center justify-between px-3 py-2 bg-blue-50 border border-blue-200 rounded text-sm">
+              <div className="flex items-center gap-2">
+                <Stethoscope className="h-4 w-4 text-blue-600 shrink-0" />
+                <span className="font-medium text-blue-800">{st.testName}</span>
+                {st.labName && <Badge variant="outline" className="text-[10px] text-green-600 border-green-300">{st.labName}</Badge>}
+                <Button size="sm" variant="ghost" className="h-5 px-1 text-xs text-blue-600 gap-0.5" onClick={() => setViewSnipImages(st.snipUrls)}>
+                  <Eye className="h-3 w-3" /> View Snip
+                </Button>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button size="sm" variant="ghost" className="h-6 text-[11px] gap-1 text-orange-600" disabled={isSendingBack} onClick={() => sendBackForVerification(reg.id, st.testId, st.testName)}>
+                  {isSendingBack ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />} Send Back
+                </Button>
+                <Button size="sm" variant="default" className="h-6 text-[11px] gap-1" disabled={isApproving} onClick={async () => {
+                  setActionKey(`${testKey}||approve`);
+                  try {
+                    await supabase.from("outsourced_test_snips").update({ outsource_status: "approved" } as any).eq("registration_id", reg.id).eq("test_id", st.testId).eq("outsource_status", "verified");
+                    await supabase.from("approved_reports").upsert({ registration_id: reg.id, invoice_number: reg.invoice_number, umr_number: reg.umr_number, patient_name: reg.patient_name, title: reg.title, gender: reg.gender, dob: reg.dob, mobile_number: reg.mobile_number, email: reg.email, address: reg.address, doctor_name: reg.doctor_name, visit_type: reg.visit_type, is_stat: reg.is_stat, report_language: reg.report_language, approved_by: "Doctor", registration_date: reg.created_at, approval_date: new Date().toISOString(), test_results: [{ test_id: st.testId, test_name: st.testName, is_outsourced: true, outsource_lab_name: st.labName }], outsourced_snip_urls: st.snipUrls } as any, { onConflict: "registration_id" as any, ignoreDuplicates: false });
+                    toast.success(`${st.testName} approved`);
+                    invalidateAll();
+                  } catch (err: any) { toast.error(err.message || "Approval failed"); }
+                  finally { setActionKey(null); }
+                }}>
+                  {isApproving ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />} Approve
+                </Button>
+              </div>
+            </div>
+          );
+        })}
         {machineGroups.map((mg) => (
           <div key={mg.machineName} className="space-y-1">
             <div className="text-xs font-semibold text-primary uppercase tracking-wider px-1 pt-2 border-b border-primary/20 pb-1 flex items-center gap-1.5"><Monitor className="h-3.5 w-3.5" /> {mg.machineName}</div>
