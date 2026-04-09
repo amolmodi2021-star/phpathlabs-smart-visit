@@ -39,6 +39,9 @@ interface ParameterResult {
   rangeType: string; // numeric | qualitative | descriptive
   descriptiveOptions: string[];
   expectedValue: string;
+  isOutsourced: boolean; // true if this param is outsourced (test-level or param-level)
+  outsourceLabName: string | null; // lab name if sent
+  outsourceStatus: string; // pending | sent | results_entered
 }
 
 interface PatientEntry {
