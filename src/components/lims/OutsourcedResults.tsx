@@ -541,6 +541,9 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       });
       qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
       qc.invalidateQueries({ queryKey: ["outsourced_manual_results"] });
+      qc.invalidateQueries({ queryKey: ["verification_results"] });
+      qc.invalidateQueries({ queryKey: ["verification_outsourced"] });
+      qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
     } catch (err: any) {
       toast.error(err.message || "Failed to save results");
     } finally {
@@ -560,6 +563,9 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
 
       toast.success(`Snip saved for ${testName} — moved to verification`);
       qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+      qc.invalidateQueries({ queryKey: ["verification_results"] });
+      qc.invalidateQueries({ queryKey: ["verification_outsourced"] });
+      qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
     } catch (err: any) {
       toast.error(err.message || "Failed to save");
     } finally {
