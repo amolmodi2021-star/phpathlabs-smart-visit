@@ -1189,7 +1189,7 @@ const ResultsEntry = () => {
                     <Package className="h-4 w-4 text-blue-600 shrink-0" />
                     <span className="font-medium text-blue-800">{st.testName}</span>
                     {st.labName && <Badge variant="outline" className="text-[10px] text-green-600 border-green-300">{st.labName}</Badge>}
-                    <Button size="sm" variant="ghost" className="h-5 px-1 text-xs text-blue-600 gap-0.5" onClick={() => { setViewSnipImages(st.snipUrls); setViewSnipContext(null); }}>
+                    <Button size="sm" variant="ghost" className="h-5 px-1 text-xs text-blue-600 gap-0.5" onClick={() => { setViewSnipImages(st.snipUrls); setViewSnipContext({ regId: reg.id, testId: st.testId }); }}>
                       <Eye className="h-3 w-3" /> View Snip ({st.snipUrls.length} page{st.snipUrls.length > 1 ? "s" : ""})
                     </Button>
                   </div>
