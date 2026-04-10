@@ -554,12 +554,12 @@ const LimsReportView = () => {
               />
 
               {/* Main Content Area */}
-              <div className="flex-1 overflow-hidden" style={{ fontSize: "9px" }}>
+              <div className="flex-1 overflow-hidden" style={{ fontSize: "13px" }}>
                 {page.type === "structured" && (
                   <div>
                     {/* Department Header */}
                     {page.departmentName && (
-                      <div className="text-center font-bold border-b border-t py-1 mb-1" style={{ fontSize: "11px" }}>
+                      <div className="text-center font-bold border-b border-t py-1 mb-1" style={{ fontSize: "15px" }}>
                         {page.departmentName}
                       </div>
                     )}
@@ -568,14 +568,14 @@ const LimsReportView = () => {
                     {page.testBlocks?.map((block, bi) => (
                       <div key={bi} className="mb-2">
                         {/* Test Name Header */}
-                        <div className="font-bold py-0.5 border-b" style={{ fontSize: "10px" }}>
+                        <div className="font-bold py-0.5 border-b" style={{ fontSize: "14px" }}>
                           {block.testName}
-                          {block.sampleType && <span className="font-normal text-gray-500 ml-2">(Sample: {block.sampleType})</span>}
+                          {block.sampleType && <span className="font-normal text-gray-500 ml-2" style={{ fontSize: "12px" }}>(Sample: {block.sampleType})</span>}
                         </div>
 
                         {/* Metadata */}
                         {(block.instrument || block.method) && (
-                          <div className="text-gray-500 py-0.5" style={{ fontSize: "8px" }}>
+                          <div className="text-gray-500 py-0.5" style={{ fontSize: "11px" }}>
                             {block.instrument && <span>Instrument: {block.instrument}</span>}
                             {block.instrument && block.method && <span className="mx-2">|</span>}
                             {block.method && <span>Method: {block.method}</span>}
@@ -583,14 +583,14 @@ const LimsReportView = () => {
                         )}
 
                         {/* Parameter Table */}
-                        <table className="w-full border-collapse" style={{ fontSize: "9px" }}>
+                        <table className="w-full border-collapse" style={{ fontSize: "13px" }}>
                           <thead>
-                            <tr className="border-b" style={{ fontSize: "8px" }}>
-                              <th className="text-left py-0.5 font-semibold w-[35%]">Parameter</th>
-                              <th className="text-center py-0.5 font-semibold w-[15%]">Result</th>
-                              <th className="text-center py-0.5 font-semibold w-[10%]">Unit</th>
-                              <th className="text-center py-0.5 font-semibold w-[25%]">Reference Range</th>
-                              <th className="text-center py-0.5 font-semibold w-[15%]">Flag</th>
+                            <tr className="border-b" style={{ fontSize: "12px" }}>
+                              <th className="text-left py-0.5 font-semibold" style={{ width: "35%" }}>Parameter</th>
+                              <th className="text-center py-0.5 font-semibold" style={{ width: "20%" }}>Result</th>
+                              <th className="text-center py-0.5 font-semibold" style={{ width: "10%" }}>Unit</th>
+                              <th className="text-center py-0.5 font-semibold" style={{ width: "22%" }}>Reference Range</th>
+                              <th className="text-center py-0.5 font-semibold" style={{ width: "13%" }}>Flag</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -600,7 +600,7 @@ const LimsReportView = () => {
 
                         {/* Interpretation */}
                         {block.interpretation && (
-                          <div className="mt-1 p-1 bg-gray-50 border rounded text-gray-700" style={{ fontSize: "8px" }}>
+                          <div className="mt-1 p-1 bg-gray-50 border rounded text-gray-700" style={{ fontSize: "11px" }}>
                             <span className="font-semibold">Interpretation: </span>
                             {block.interpretation}
                           </div>
