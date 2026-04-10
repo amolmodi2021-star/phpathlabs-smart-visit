@@ -19,6 +19,8 @@ export interface TestItem {
   sample_type?: string | null;
   interpretation?: string | null;
   is_active?: boolean;
+  fit_to_page?: boolean;
+  dedicated_page?: boolean;
   created_at?: string;
   updated_at?: string;
 }
