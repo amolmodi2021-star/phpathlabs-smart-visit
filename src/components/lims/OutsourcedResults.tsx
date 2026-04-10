@@ -136,6 +136,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
           "processing", "partial_processing", "processed",
           "partial_verified", "verified",
           "partially_approved", "approved",
+          "partially_dispatched", "dispatched",
         ])
         .eq("bill_cancelled", false)
         .order("is_stat", { ascending: false })
