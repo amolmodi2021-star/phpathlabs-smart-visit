@@ -83,15 +83,38 @@ const RegisteredPatients = () => {
 
   const totalPages = Math.ceil(count / PAGE_SIZE);
 
-  const statusColor = (s: string) => {
+  const statusColor = (s: string): "default" | "secondary" | "destructive" | "outline" => {
     switch (s) {
       case "registered": return "secondary";
+      case "partially_collected": return "outline";
       case "sample_collected": return "default";
-      case "processing": return "outline";
-      case "completed": return "default";
+      case "partially_accepted": return "outline";
+      case "sample_accepted": return "default";
+      case "processing": case "partial_processing": return "outline";
+      case "processed": return "default";
+      case "partial_verified": return "outline";
+      case "verified": return "default";
+      case "partially_approved": return "outline";
+      case "approved": return "default";
+      case "partially_dispatched": return "outline";
+      case "dispatched": return "default";
+      case "repeat_collection": return "destructive";
       case "cancelled": return "destructive";
       default: return "secondary";
     }
+  };
+
+  const statusLabel = (s: string) => {
+    const labels: Record<string, string> = {
+      registered: "Registered", partially_collected: "Partial Collection", sample_collected: "Collected",
+      partially_accepted: "Partial Accepted", sample_accepted: "Accepted",
+      processing: "Processing", partial_processing: "Partial Processing", processed: "Processed",
+      partial_verified: "Partial Verified", verified: "Verified",
+      partially_approved: "Partial Approved", approved: "Approved",
+      partially_dispatched: "Partial Dispatched", dispatched: "Dispatched",
+      repeat_collection: "Repeat Collection",
+    };
+    return labels[s] || s;
   };
 
   const visitTypeLabel = (v: string) => {
