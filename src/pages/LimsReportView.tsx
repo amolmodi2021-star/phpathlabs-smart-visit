@@ -365,8 +365,13 @@ const LimsReportView = () => {
     if (!printRef.current) return;
     setDownloading(true);
     try {
+      // Always print without letterhead
+      const originalLetterhead = showLetterhead;
+      setShowLetterhead(false);
+      await new Promise(r => setTimeout(r, 150));
+
       const pageElements = printRef.current.querySelectorAll("[data-page]");
-      if (pageElements.length === 0) { toast.error("No pages to print"); setDownloading(false); return; }
+      if (pageElements.length === 0) { toast.error("No pages to print"); setShowLetterhead(originalLetterhead); setDownloading(false); return; }
 
       const imageUrls: string[] = [];
       for (let i = 0; i < pageElements.length; i++) {
