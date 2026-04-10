@@ -101,7 +101,6 @@ const SampleAcceptance = () => {
         .select("*")
         .in("id", regIds)
         .eq("bill_cancelled", false)
-        .neq("status", "dispatched")
         .order("updated_at", { ascending: false });
       if (debouncedSearch) {
         query = query.or(
