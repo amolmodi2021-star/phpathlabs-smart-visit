@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -196,6 +197,7 @@ const Dispatch = () => {
         await supabase.from("patient_registrations").update({ status: "dispatched" } as any).eq("id", reg.id);
       }
       toast.success(`Reports dispatched for ${reg.patient_name}`);
+      recalculateRegistrationStatus(reg.id).catch(console.error);
       qc.invalidateQueries({ queryKey: ["dispatch_"] });
       qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
     } catch (err: any) { toast.error(err.message || "Dispatch failed"); }

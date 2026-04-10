@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
@@ -538,6 +539,7 @@ const ResultVerification = () => {
       await supabase.from("outsourced_test_snips").update({ outsource_status: "verified" } as any).eq("registration_id", reg.id).eq("test_id", testId).in("outsource_status", ["results_entered", "entered", "sent", "results_saved"]);
       
       toast.success(`${testName} verified & sent to Doctor Approval`);
+      recalculateRegistrationStatus(reg.id).catch(console.error);
       setEditedValues(prev => {
         const next = { ...prev };
         testParams.forEach(p => { delete next[`${reg.id}||${p.parameterId}`]; });
@@ -585,6 +587,7 @@ const ResultVerification = () => {
         await supabase.from("outsourced_test_snips").update({ outsource_status: "verified" } as any).eq("registration_id", reg.id).eq("test_id", testId).in("outsource_status", ["results_entered", "sent", "results_saved"]);
       }
       toast.success(`All tests verified for ${reg.patient_name}`);
+      recalculateRegistrationStatus(reg.id).catch(console.error);
       qc.invalidateQueries({ queryKey: ["verification_results_v2"] });
       qc.invalidateQueries({ queryKey: ["verification_outsourced_v2"] });
       qc.invalidateQueries({ queryKey: ["doctor_approval"] });
