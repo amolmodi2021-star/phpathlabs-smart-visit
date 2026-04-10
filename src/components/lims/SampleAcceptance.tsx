@@ -215,7 +215,7 @@ const SampleAcceptance = () => {
       const acceptedKeys = new Set(accepted.map(a => a.key));
       for (const g of collectedGroups) {
         if (acceptedKeys.has(g.key)) continue; // skip already-accepted
-        const key = `${reg.id}||${g.sampleId}`;
+        const key = `${reg.id}||${g.key}`;
         map[g.sampleId] = { reg, tubeKey: key, group: g };
       }
     }
@@ -238,7 +238,7 @@ const SampleAcceptance = () => {
     const collectedGroups = getCollectedGroups(reg, groups);
     const accepted = parseAcceptedSamples((reg as any).accepted_samples);
     const acceptedKeys = new Set(accepted.map(a => a.key));
-    const keys = collectedGroups.filter(g => !acceptedKeys.has(g.key)).map(g => `${reg.id}||${g.sampleId}`);
+    const keys = collectedGroups.filter(g => !acceptedKeys.has(g.key)).map(g => `${reg.id}||${g.key}`);
     setSelectedTubes(prev => {
       const next = new Set(prev);
       const allSelected = keys.length > 0 && keys.every(k => next.has(k));
@@ -253,9 +253,9 @@ const SampleAcceptance = () => {
 
   // Accept selected tubes for a patient — now stores per-tube timestamps
   const acceptMutation = useMutation({
-    mutationFn: async ({ reg, acceptedSampleIds }: { reg: any; acceptedSampleIds: string[] }) => {
+    mutationFn: async ({ reg, acceptedKeys: incomingKeys }: { reg: any; acceptedKeys: string[] }) => {
       const groups = buildTubeGroups(reg);
-      const acceptedGroups = groups.filter(g => acceptedSampleIds.includes(g.sampleId));
+      const acceptedGroups = groups.filter(g => incomingKeys.includes(g.key));
 
       // Generate LIMS orders for accepted groups
       for (const group of acceptedGroups) {
@@ -296,10 +296,11 @@ const SampleAcceptance = () => {
         .map(g => ({ key: g.key, accepted_at: now }));
       const updatedAccepted = [...existing, ...newEntries];
 
-      // Check if ALL groups are now accepted
-      const allGroupKeys = new Set(groups.map(g => g.key));
+      // Check if all COLLECTED groups are now accepted
+      const collectedGroups = getCollectedGroups(reg, groups);
+      const allCollectedKeys = new Set(collectedGroups.map(g => g.key));
       const allAcceptedKeys = new Set(updatedAccepted.map(e => e.key));
-      const allGroupsAccepted = [...allGroupKeys].every(k => allAcceptedKeys.has(k));
+      const allGroupsAccepted = collectedGroups.length > 0 && [...allCollectedKeys].every(k => allAcceptedKeys.has(k));
 
       const updatePayload: any = { accepted_samples: updatedAccepted };
       if (allGroupsAccepted) {
@@ -312,8 +313,8 @@ const SampleAcceptance = () => {
         .eq("id", reg.id);
       if (error) throw error;
     },
-    onSuccess: (_, { acceptedSampleIds }) => {
-      toast.success(`${acceptedSampleIds.length} sample(s) accepted & LIMS orders generated`);
+    onSuccess: (_, { acceptedKeys: keys }) => {
+      toast.success(`${keys.length} sample(s) accepted & LIMS orders generated`);
       setSelectedTubes(new Set());
       qc.invalidateQueries({ queryKey: ["sample_acceptance_pending"] });
       qc.invalidateQueries({ queryKey: ["sample_acceptance_accepted"] });
@@ -351,13 +352,14 @@ const SampleAcceptance = () => {
     if (selectedTubes.size === 0) { toast.error("Select at least one sample tube"); return; }
     const regMap: Record<string, string[]> = {};
     selectedTubes.forEach(key => {
-      const [regId, sampleId] = key.split("||");
+      const [regId, ...rest] = key.split("||");
+      const tubeKey = rest.join("||"); // e.g. "EDTA||" or "PLAIN||suffix"
       if (!regMap[regId]) regMap[regId] = [];
-      regMap[regId].push(sampleId);
+      regMap[regId].push(tubeKey);
     });
     for (const regId of Object.keys(regMap)) {
       const reg = pendingRegs.find((r: any) => r.id === regId);
-      if (reg) acceptMutation.mutate({ reg, acceptedSampleIds: regMap[regId] });
+      if (reg) acceptMutation.mutate({ reg, acceptedKeys: regMap[regId] });
     }
   };
 
@@ -380,7 +382,7 @@ const SampleAcceptance = () => {
     const map = sampleIdToRegMap();
     const match = map[trimmed];
     if (match) {
-      acceptMutation.mutate({ reg: match.reg, acceptedSampleIds: [match.group.sampleId] });
+      acceptMutation.mutate({ reg: match.reg, acceptedKeys: [match.group.key] });
       setSearch("");
       setDebouncedSearch("");
       toast.info(`Scanned: ${match.group.sampleId} → Accepting…`);
@@ -462,7 +464,7 @@ const SampleAcceptance = () => {
                   const uncollectedCount = isAccepted ? 0 : (groups.length - collectedGroups.length);
 
                   // For pending tab: selection keys are only for collected & unaccepted tubes
-                  const selectableKeys = pendingGroups.map(g => `${reg.id}||${g.sampleId}`);
+                  const selectableKeys = pendingGroups.map(g => `${reg.id}||${g.key}`);
                   const allSelected = selectableKeys.length > 0 && selectableKeys.every(k => selectedTubes.has(k));
                   const someSelected = selectableKeys.some(k => selectedTubes.has(k));
 
@@ -534,9 +536,9 @@ const SampleAcceptance = () => {
                           <TableCell className="text-right" onClick={e => e.stopPropagation()}>
                             <div className="flex gap-2 justify-end">
                               <Button size="sm" onClick={() => {
-                                const sampleIds = pendingGroups.map(g => g.sampleId);
-                                if (sampleIds.length === 0) { toast.info("All tubes already accepted"); return; }
-                                acceptMutation.mutate({ reg, acceptedSampleIds: sampleIds });
+                                const tubeKeys = pendingGroups.map(g => g.key);
+                                if (tubeKeys.length === 0) { toast.info("All tubes already accepted"); return; }
+                                acceptMutation.mutate({ reg, acceptedKeys: tubeKeys });
                               }} disabled={acceptMutation.isPending}>
                                 <ShieldCheck className="h-4 w-4 mr-1" /> Accept All
                               </Button>
@@ -559,7 +561,7 @@ const SampleAcceptance = () => {
                             <div className="space-y-2">
                               <div className="text-sm font-medium">Sample Details</div>
                               {displayGroups.map((g, i) => {
-                                const tubeKey = `${reg.id}||${g.sampleId}`;
+                                const tubeKey = `${reg.id}||${g.key}`;
                                 const isChecked = selectedTubes.has(tubeKey);
                                 const acceptedAt = acceptedKeysMap.get(g.key);
                                 const isAlreadyAccepted = !!acceptedAt;
@@ -607,7 +609,7 @@ const SampleAcceptance = () => {
                                     {!isAccepted && !isAlreadyAccepted && (
                                       <div className="flex gap-1" onClick={e => e.stopPropagation()}>
                                         <Button size="sm" variant="outline" className="h-7 text-xs"
-                                          onClick={() => acceptMutation.mutate({ reg, acceptedSampleIds: [g.sampleId] })}
+                                          onClick={() => acceptMutation.mutate({ reg, acceptedKeys: [g.key] })}
                                           disabled={acceptMutation.isPending}>
                                           <ShieldCheck className="h-3 w-3 mr-1" /> Accept
                                         </Button>
