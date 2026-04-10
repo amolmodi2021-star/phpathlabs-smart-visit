@@ -1,67 +1,26 @@
 
 
-# Allow Partially Accepted Samples to Flow Through the Entire Pipeline
+# Swap Prev 2 and Prev 1 Column Order in Results Entry
 
 ## Problem
-Currently, only registrations with `status = "sample_accepted"` appear in Results Entry, Result Verification, Outsourced Results, Doctor Approval, and Dispatch. Partially accepted samples (where some tubes are accepted via `accepted_samples` but status hasn't changed to `sample_accepted`) are excluded from the entire downstream pipeline.
+Currently the column order is: Code, Parameter, **Prev 1**, **Prev 2**, Result, ... — but the user wants **Prev 2 before Prev 1** so the chronological order reads left-to-right (older → newer → current result).
 
-## Solution
-Update the query filters in all downstream LIMS modules to include registrations that have any accepted samples, even if the overall status hasn't yet reached `sample_accepted`.
+## Changes — `src/components/lims/ResultsEntry.tsx`
 
-## Changes
-
-### 1. `src/components/lims/ResultsEntry.tsx` (line 120)
-Change:
-```typescript
-.eq("status", "sample_accepted")
+### 1. Swap table header labels (lines 1273-1274)
 ```
-To:
-```typescript
-.or("status.eq.sample_accepted,accepted_samples.neq.[]")
+Before: Prev 1, Prev 2
+After:  Prev 2, Prev 1
 ```
 
-### 2. `src/components/lims/OutsourcedResults.tsx` (line 132)
-Same change — replace `.eq("status", "sample_accepted")` with `.or("status.eq.sample_accepted,accepted_samples.neq.[]")`.
-
-### 3. `src/components/lims/ResultVerification.tsx` (line 91)
-Change:
-```typescript
-.in("status", ["sample_accepted", "entered"])
+### 2. Swap renderHistoryCell calls in renderParamRow (lines 957-958)
 ```
-To:
-```typescript
-.or("status.in.(sample_accepted,entered),accepted_samples.neq.[]")
+Before: renderHistoryCell(p.parameterId, 0)  then  renderHistoryCell(p.parameterId, 1)
+After:  renderHistoryCell(p.parameterId, 1)  then  renderHistoryCell(p.parameterId, 0)
 ```
 
-### 4. `src/components/lims/DoctorApproval.tsx` (line 58)
-Change:
-```typescript
-.in("status", ["sample_accepted", "entered", "verified"])
-```
-To:
-```typescript
-.or("status.in.(sample_accepted,entered,verified),accepted_samples.neq.[]")
-```
+This swaps the cells so index 1 (older/Prev 2) renders first, then index 0 (newer/Prev 1), matching the new header order.
 
-### 5. `src/components/lims/Dispatch.tsx` (line 48)
-Change:
-```typescript
-.in("status", ["sample_accepted", "entered", "verified", "approved", "dispatched"])
-```
-To:
-```typescript
-.or("status.in.(sample_accepted,entered,verified,approved,dispatched),accepted_samples.neq.[]")
-```
-
-### 6. Add "PARTIAL" badge in Results Entry and downstream
-In each module, show a "PARTIAL" badge next to the patient name when `status !== "sample_accepted"` and `accepted_samples` is non-empty, so technicians can see which patients are partially accepted.
-
-## Files
-- `src/components/lims/ResultsEntry.tsx`
-- `src/components/lims/OutsourcedResults.tsx`
-- `src/components/lims/ResultVerification.tsx`
-- `src/components/lims/DoctorApproval.tsx`
-- `src/components/lims/Dispatch.tsx`
-
-No database migration needed — uses the existing `accepted_samples` column.
+## File
+- `src/components/lims/ResultsEntry.tsx` — two small edits only
 
