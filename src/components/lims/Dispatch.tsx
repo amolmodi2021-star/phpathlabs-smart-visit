@@ -379,7 +379,7 @@ const Dispatch = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {selectedEntry.completionStatus !== "all_pending" && (
+                      {selectedEntry.tests.some(t => t.status === "approved" || t.status === "dispatched") && (
                         <>
                           <Button size="sm" variant="outline" className="gap-1" onClick={() => openReportSelectDialog(selectedEntry)}>
                             <Eye className="h-4 w-4" /> View Report
