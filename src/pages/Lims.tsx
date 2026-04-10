@@ -1,3 +1,4 @@
+import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import PatientRegistration from "@/components/lims/PatientRegistration";
 import RegisteredPatients from "@/components/lims/RegisteredPatients";
@@ -12,10 +13,13 @@ import DoctorApproval from "@/components/lims/DoctorApproval";
 import Dispatch from "@/components/lims/Dispatch";
 
 const Lims = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get("tab") || "register";
+
   return (
     <div className="space-y-4 animate-fade-in">
       <h1 className="text-xl font-bold">LIMS</h1>
-      <Tabs defaultValue="register" className="w-full">
+      <Tabs value={activeTab} onValueChange={(v) => setSearchParams({ tab: v }, { replace: true })} className="w-full">
         <TabsList className="w-full justify-start flex-wrap h-auto gap-1">
           <TabsTrigger value="register">New Registration</TabsTrigger>
           <TabsTrigger value="patients">Registered Patients</TabsTrigger>
