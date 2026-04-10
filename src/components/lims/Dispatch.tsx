@@ -114,7 +114,7 @@ const Dispatch = () => {
     queryKey: ["dispatch_all_snips", regIds.join(",")],
     enabled: regIds.length > 0,
     queryFn: async () => {
-      const { data } = await supabase.from("outsourced_test_snips").select("registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, result_mode, snip_image_urls").in("registration_id", regIds);
+      const { data } = await supabase.from("outsourced_test_snips").select("registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, result_mode, snip_image_urls, updated_at, sent_at").in("registration_id", regIds);
       return (data || []) as any[];
     },
   });
