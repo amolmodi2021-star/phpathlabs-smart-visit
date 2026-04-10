@@ -756,6 +756,7 @@ const ResultsEntry = () => {
           normal_range_high: p.normalRangeHigh,
           flag: flag || null,
           status: "entered",
+          entered_at: new Date().toISOString(),
           is_calculated: p.isCalculated,
           is_from_interface: p.isFromInterface,
         });

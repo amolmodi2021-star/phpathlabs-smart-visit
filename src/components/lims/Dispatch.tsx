@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Search, Loader2, CheckCircle2, Send, Eye, Truck, MessageSquare, Circle, Phone, Calendar, FileText, User } from "lucide-react";
+import { Search, Loader2, CheckCircle2, Send, Eye, Truck, MessageSquare, Circle, Phone, Calendar, FileText, User, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -21,6 +21,12 @@ interface DispatchTest {
   status: TestStatus;
   results: any[];
   snipUrls: string[];
+  collectedAt: string | null;
+  acceptedAt: string | null;
+  enteredAt: string | null;
+  verifiedAt: string | null;
+  approvedAt: string | null;
+  dispatchedAt: string | null;
 }
 
 interface DispatchEntry {
@@ -68,6 +74,15 @@ const Dispatch = () => {
     },
   });
 
+  const { data: allTubes = [] } = useQuery({
+    queryKey: ["dispatch_all_tubes", regIds.join(",")],
+    enabled: regIds.length > 0,
+    queryFn: async () => {
+      const { data } = await supabase.from("sample_tubes" as any).select("registration_id, test_ids, collected_at, accepted_at, status").in("registration_id", regIds);
+      return (data || []) as any[];
+    },
+  });
+
   const { data: allSnips = [] } = useQuery({
     queryKey: ["dispatch_all_snips", regIds.join(",")],
     enabled: regIds.length > 0,
@@ -106,6 +121,9 @@ const Dispatch = () => {
         const testResults = allResults.filter((r: any) => r.registration_id === reg.id && r.test_id === t.test_id);
         const snip = allSnips.find((s: any) => s.registration_id === reg.id && s.test_id === t.test_id);
 
+        // Find tube for this test
+        const tube = allTubes.find((tb: any) => tb.registration_id === reg.id && Array.isArray(tb.test_ids) && tb.test_ids.includes(t.test_id));
+
         const hasDispatchedResults = testResults.some((r: any) => r.status === "dispatched");
         const hasDispatchedSnip = snip && snip.outsource_status === "dispatched";
         const hasApprovedResults = testResults.some((r: any) => r.status === "approved");
@@ -127,12 +145,27 @@ const Dispatch = () => {
         const snipUrls = snip && snip.result_mode === "snip" && Array.isArray(snip.snip_image_urls) ? snip.snip_image_urls : [];
         const approvedResults = testResults.filter((r: any) => r.status === "approved");
 
+        // Extract audit timestamps
+        const collectedAt = tube?.collected_at || null;
+        const acceptedAt = tube?.accepted_at || null;
+        // Get the earliest entered_at, verified_at, approved_at, dispatched_at from results
+        const getEarliest = (field: string) => {
+          const vals = testResults.map((r: any) => r[field]).filter(Boolean);
+          return vals.length > 0 ? vals.sort()[0] : null;
+        };
+
         dispatchTests.push({
           testId: t.test_id,
           testName: t.test_name || testInfo.test_name || "Unknown",
           status,
           results: approvedResults,
           snipUrls: status === "approved" ? snipUrls : [],
+          collectedAt,
+          acceptedAt,
+          enteredAt: getEarliest("entered_at"),
+          verifiedAt: getEarliest("verified_at"),
+          approvedAt: getEarliest("approved_at"),
+          dispatchedAt: getEarliest("dispatched_at"),
         });
       }
 
@@ -147,7 +180,7 @@ const Dispatch = () => {
 
       return { registration: reg, tests: dispatchTests, completionStatus, approvedCount, pendingCount } as DispatchEntry;
     }).filter(Boolean) as DispatchEntry[];
-  }, [registrations, allResults, allSnips, testsMap, heldSet]);
+  }, [registrations, allResults, allSnips, allTubes, testsMap, heldSet]);
 
   // Auto-select first patient when entries change
   useEffect(() => {
@@ -177,7 +210,7 @@ const Dispatch = () => {
     try {
       const approvedTests = entry.tests.filter(t => t.status === "approved");
       for (const test of approvedTests) {
-        await supabase.from("patient_results").update({ status: "dispatched" } as any).eq("registration_id", reg.id).eq("test_id", test.testId).eq("status", "approved");
+        await supabase.from("patient_results").update({ status: "dispatched", dispatched_at: new Date().toISOString() } as any).eq("registration_id", reg.id).eq("test_id", test.testId).eq("status", "approved");
         await supabase.from("outsourced_test_snips").update({ outsource_status: "dispatched" } as any).eq("registration_id", reg.id).eq("test_id", test.testId).eq("outsource_status", "approved");
       }
       const stillPending = entry.tests.some(t => t.status !== "approved" && t.status !== "dispatched");
@@ -195,7 +228,7 @@ const Dispatch = () => {
   const markTestDispatched = async (regId: string, testId: string, testName: string) => {
     setActionKey(`${regId}||${testId}||dispatch`);
     try {
-      await supabase.from("patient_results").update({ status: "dispatched" } as any).eq("registration_id", regId).eq("test_id", testId).eq("status", "approved");
+      await supabase.from("patient_results").update({ status: "dispatched", dispatched_at: new Date().toISOString() } as any).eq("registration_id", regId).eq("test_id", testId).eq("status", "approved");
       await supabase.from("outsourced_test_snips").update({ outsource_status: "dispatched" } as any).eq("registration_id", regId).eq("test_id", testId).eq("outsource_status", "approved");
       toast.success(`${testName} marked as dispatched`);
       qc.invalidateQueries({ queryKey: ["dispatch_"] });
@@ -365,18 +398,29 @@ const Dispatch = () => {
                   </div>
                 </div>
 
-                {/* Test details list */}
+                {/* Test details list with audit trail */}
                 <ScrollArea className="flex-1">
-                  <div className="p-4 space-y-2">
+                  <div className="p-4 space-y-3">
                     <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
                       Tests ({selectedEntry.tests.length})
                     </div>
                     {selectedEntry.tests.map((test) => {
                       const testKey = `${selectedEntry.registration.id}||${test.testId}`;
                       const isTestDispatching = actionKey === `${testKey}||dispatch`;
+
+                      const auditSteps = [
+                        { label: "Sample Collected", timestamp: test.collectedAt },
+                        { label: "Sample Accepted", timestamp: test.acceptedAt },
+                        { label: "Results Entered", timestamp: test.enteredAt },
+                        { label: "Verified", timestamp: test.verifiedAt },
+                        { label: "Approved", timestamp: test.approvedAt },
+                        { label: "Dispatched", timestamp: test.dispatchedAt },
+                      ];
+
                       return (
                         <div key={testKey} className="border rounded-lg bg-background">
-                          <div className="flex items-center justify-between px-4 py-3">
+                          {/* Test header */}
+                          <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/30">
                             <div className="flex items-center gap-3">
                               <span className="font-medium text-sm">{test.testName}</span>
                               {getStatusBadge(test.status)}
@@ -397,6 +441,31 @@ const Dispatch = () => {
                                   </Button>
                                 </>
                               )}
+                            </div>
+                          </div>
+                          {/* Audit trail */}
+                          <div className="px-4 py-2.5">
+                            <div className="space-y-1">
+                              {auditSteps.map((step, idx) => {
+                                const isDone = !!step.timestamp;
+                                return (
+                                  <div key={idx} className="grid grid-cols-[24px_160px_1fr] items-center gap-1 py-0.5">
+                                    <div className="flex justify-center">
+                                      {isDone ? (
+                                        <div className="h-2.5 w-2.5 rounded-full bg-green-500" />
+                                      ) : (
+                                        <div className="h-2.5 w-2.5 rounded-full border-2 border-muted-foreground/30" />
+                                      )}
+                                    </div>
+                                    <span className={`text-xs ${isDone ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+                                      {step.label}
+                                    </span>
+                                    <span className={`text-xs ${isDone ? "text-muted-foreground" : "text-muted-foreground/40"}`}>
+                                      {isDone ? formatDate(step.timestamp) : "—"}
+                                    </span>
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
                         </div>
