@@ -692,8 +692,21 @@ function renderParamsWithSubheaders(block: TestBlock, tpOrder: any[]) {
 
 function renderParamRow(param: TestResultEntry, key: string) {
   const isAbnormal = param.flag && param.flag !== "N" && param.flag !== "Normal";
+  const isDescriptive = !param.unit && !param.reference_range && !param.normal_range_low && !param.normal_range_high && (!param.flag || param.flag === "N" || param.flag === "Normal");
+
+  if (isDescriptive) {
+    return (
+      <tr key={key} className="border-b border-gray-100">
+        <td className="py-0.5 pl-1" style={{ fontSize: "13px" }}>{param.parameter_name}</td>
+        <td colSpan={4} className="py-0.5 pl-1" style={{ fontSize: "13px", wordBreak: "break-word" }}>
+          {param.result_value}
+        </td>
+      </tr>
+    );
+  }
+
   return (
-    <tr key={key} className={`border-b border-gray-100 ${isAbnormal ? "font-bold" : ""}`}>
+    <tr key={key} className={`border-b border-gray-100 ${isAbnormal ? "font-bold" : ""}`} style={{ fontSize: "13px" }}>
       <td className="py-0.5 pl-1">{param.parameter_name}</td>
       <td className={`text-center py-0.5 ${isAbnormal ? "text-red-600" : ""}`}>
         {param.result_value}
@@ -702,7 +715,7 @@ function renderParamRow(param: TestResultEntry, key: string) {
       <td className="text-center py-0.5 text-gray-500">{param.reference_range || ""}</td>
       <td className="text-center py-0.5">
         {param.flag && param.flag !== "N" && param.flag !== "Normal" && (
-          <span className={`text-xs font-bold ${param.flag === "H" || param.flag === "High" ? "text-red-600" : "text-blue-600"}`}>
+          <span className={`font-bold ${param.flag === "H" || param.flag === "High" ? "text-red-600" : "text-blue-600"}`} style={{ fontSize: "12px" }}>
             {param.flag === "H" ? "HIGH" : param.flag === "L" ? "LOW" : param.flag}
           </span>
         )}
