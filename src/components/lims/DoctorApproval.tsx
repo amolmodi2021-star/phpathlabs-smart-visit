@@ -636,6 +636,13 @@ const DoctorApproval = () => {
           <div className="space-y-4">{viewSnipImages?.map((url, idx) => (<div key={idx} className="border rounded-lg overflow-hidden"><img src={url} alt={`Snip page ${idx + 1}`} className="w-full object-contain" /></div>))}</div>
         </DialogContent>
       </Dialog>
+      {daTotalPages > 1 && (
+        <div className="flex items-center justify-between mt-4">
+          <Button variant="outline" size="sm" disabled={daPage === 0} onClick={() => setDaPage(p => p - 1)}>Prev</Button>
+          <span className="text-sm text-muted-foreground">Page {daPage + 1} of {daTotalPages} ({daCount} total)</span>
+          <Button variant="outline" size="sm" disabled={daPage >= daTotalPages - 1} onClick={() => setDaPage(p => p + 1)}>Next</Button>
+        </div>
+      )}
       </>
       )}
     </div>
