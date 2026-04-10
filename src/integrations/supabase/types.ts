@@ -1859,6 +1859,7 @@ export type Database = {
           bill_cancelled: boolean
           cancelled_tests: Json
           channel_id: string | null
+          collected_samples: Json
           created_at: string
           discount_amount: number
           dob: string | null
@@ -1898,6 +1899,7 @@ export type Database = {
           bill_cancelled?: boolean
           cancelled_tests?: Json
           channel_id?: string | null
+          collected_samples?: Json
           created_at?: string
           discount_amount?: number
           dob?: string | null
@@ -1937,6 +1939,7 @@ export type Database = {
           bill_cancelled?: boolean
           cancelled_tests?: Json
           channel_id?: string | null
+          collected_samples?: Json
           created_at?: string
           discount_amount?: number
           dob?: string | null
