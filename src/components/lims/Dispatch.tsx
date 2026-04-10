@@ -48,8 +48,8 @@ const Dispatch = () => {
     queryKey: ["dispatch_regs", debouncedSearch],
     queryFn: async () => {
       let query = supabase.from("patient_registrations").select("*")
-        .in("status", ["partially_approved", "approved", "partially_dispatched"])
         .eq("bill_cancelled", false)
+        .neq("status", "dispatched")
         .order("is_stat", { ascending: false })
         .order("updated_at", { ascending: false });
       if (debouncedSearch) query = query.or(`patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%,umr_number.ilike.%${debouncedSearch}%`);
