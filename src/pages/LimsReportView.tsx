@@ -93,7 +93,9 @@ const LimsReportView = () => {
 
   const convertPdfToImage = async (pdfUrl: string) => {
     try {
-      const pdf = await pdfjsLib.getDocument(pdfUrl).promise;
+      const response = await fetch(pdfUrl);
+      const arrayBuffer = await response.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
       const page = await pdf.getPage(1);
       const viewport = page.getViewport({ scale: 2 });
       const canvas = document.createElement("canvas");
@@ -103,7 +105,10 @@ const LimsReportView = () => {
       if (!ctx) return null;
       await page.render({ canvasContext: ctx, viewport }).promise;
       return canvas.toDataURL("image/png");
-    } catch { return null; }
+    } catch (err) {
+      console.error("Failed to convert letterhead PDF to image:", err);
+      return null;
+    }
   };
 
   const loadAllData = async () => {
