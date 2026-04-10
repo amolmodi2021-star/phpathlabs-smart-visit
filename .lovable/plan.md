@@ -1,34 +1,69 @@
 
+## Root cause
+The report you are viewing is rendered by `src/pages/LimsReportView.tsx`, not by `src/components/report/ReportResultsSection.tsx`.
 
-# Plan: Increase Report Font Sizes and Fix Descriptive Result Spanning
+That is why:
+- only the patient demographics changed (`LimsReportHeader.tsx` is actually used here)
+- department name, test name, table headers, and parameter rows stayed tiny
+- descriptive results still wrap inside the narrow Result column
 
-## Problem
-1. Font sizes across the report (demographics, department headers, table headers, result rows) are too small to read on mobile
-2. Descriptive results (no unit/ref range) are still constrained to the narrow "Result" column due to the `colgroup` fixed widths — the `colSpan={3}` spans 3 narrow columns but `tableLayout: fixed` keeps them small
+`LimsReportView.tsx` still has hardcoded very small inline sizes like:
+- main content `9px`
+- department `11px`
+- test name `10px`
+- table header `8px`
+- metadata/interpretation `8px`
 
-## Changes
+## What I will change
 
-### 1. `src/components/report/LimsReportHeader.tsx`
-- Increase demographics font from `11px` to `13px`
+### 1. Increase the actual report font sizes in `src/pages/LimsReportView.tsx`
+Update the live report page so mobile readability improves visibly:
+- Department name: increase substantially
+- Test name: increase substantially
+- Table headers: increase substantially
+- Parameter/result/unit/reference/flag rows: increase substantially
+- Subheaders inside tests: increase too
+- Interpretation and metadata: increase slightly so they remain readable but secondary
 
-### 2. `src/components/report/ReportResultsSection.tsx`
+### 2. Fix descriptive-result layout in `src/pages/LimsReportView.tsx`
+Update `renderParamRow()` so when a row is descriptive and has no unit, no reference range, and no flag:
+- the result text will span across the full right-side area
+- instead of staying inside only the Result column
 
-**Font size increases:**
-- Department banner: `text-base` (16px) → `text-lg` (18px)
-- Profile name header: `text-base` → `text-lg`
-- Table column headers (Parameter/Result/Unit/Ref Range): `text-sm` (14px) → `text-base` (16px)
-- Result row text: add explicit `text-base` to all `<td>` cells
-- Test group sub-headers: `text-sm` → `text-base`
-- Flag badge: `text-[10px]` → `text-xs` (12px), increase badge size
-- Interpretation text: `text-[9px]` → `text-xs`
-- Meta/remark text: `text-[10px]` → `text-xs`
+This means using a spanning cell for the descriptive text so it occupies:
+`Result + Unit + Reference Range + Flag` space
 
-**Fix descriptive result spanning:**
-- Remove `tableLayout: 'fixed'` from both tables — this is what prevents `colSpan` from utilizing the full width
-- Remove the `<colgroup>` entirely — let the browser auto-size columns
-- Instead, apply `width` styles directly on `<th>` headers so normal rows get proper widths, but `colSpan={3}` rows can naturally expand to fill the remaining space
+```text
+Current:
+| Parameter | Result text wraps | Unit | Ref Range | Flag |
 
-### Files Modified
-- `src/components/report/LimsReportHeader.tsx`
-- `src/components/report/ReportResultsSection.tsx`
+Target:
+| Parameter | Descriptive text uses the whole remaining width          |
+```
 
+### 3. Keep long patient names wrapping cleanly
+Retain the patient-name wrapping already added in `src/components/report/LimsReportHeader.tsx`.
+
+### 4. Adjust page-height estimates in `src/pages/LimsReportView.tsx`
+Because larger fonts make rows taller, I will also update the pagination/height constants so:
+- rows do not collide
+- test blocks do not overflow awkwardly
+- PDF/export layout remains stable
+
+## Files to update
+- `src/pages/LimsReportView.tsx` — main fix
+- `src/components/report/LimsReportHeader.tsx` — keep current demographic wrapping, only touch again if needed for balance
+
+## Technical details
+- Replace tiny inline font sizes in the report view with larger values used consistently across headers and rows
+- Update the parameter-row renderer to branch like:
+  - normal numeric row -> standard 5-column layout
+  - descriptive row with no unit/range/flag -> `colSpan={4}` for the right side
+- Revisit row/header height constants so the multi-page report layout still paginates correctly
+
+## Expected outcome
+After this change, on `/lims/report/...`:
+- department names will look clearly larger
+- test names will look clearly larger
+- column headers and parameter rows will be readable on mobile
+- descriptive results will stretch across the available right-side width instead of wrapping inside the Result column
