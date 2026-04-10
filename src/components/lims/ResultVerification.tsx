@@ -58,6 +58,8 @@ interface PatientEntry {
   snipOnlyTests: SnipOnlyTest[];
 }
 
+const RV_PAGE_SIZE = 50;
+
 const ResultVerification = () => {
   const qc = useQueryClient();
   const { data: masterMachines = [] } = useMasterLookup("machine_name");
@@ -76,23 +78,37 @@ const ResultVerification = () => {
   const [blankParamCount, setBlankParamCount] = useState(0);
   const [blankParamIds, setBlankParamIds] = useState<Set<string>>(new Set());
   const [highlightBlanksForRegs, setHighlightBlanksForRegs] = useState<Set<string>>(new Set());
+  const [rvPage, setRvPage] = useState(0);
 
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search), 400);
+    const t = setTimeout(() => { setDebouncedSearch(search); setRvPage(0); }, 400);
     return () => clearTimeout(t);
   }, [search]);
 
+  const { data: rvCount = 0 } = useQuery({
+    queryKey: ["verification_regs_count", debouncedSearch],
+    queryFn: async () => {
+      let query = supabase.from("patient_registrations").select("id", { count: "exact", head: true })
+        .in("status", ["processing", "partial_processing", "processed", "partial_verified", "verified", "partially_approved", "approved", "partially_dispatched", "dispatched"])
+        .eq("bill_cancelled", false);
+      if (debouncedSearch) query = query.or(`patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%,umr_number.ilike.%${debouncedSearch}%`);
+      const { count } = await query;
+      return count || 0;
+    },
+  });
+
   // Fetch registrations with entered results
   const { data: registrations = [], isLoading: loadingRegs } = useQuery({
-    queryKey: ["verification_regs_v2", debouncedSearch],
+    queryKey: ["verification_regs_v2", debouncedSearch, rvPage],
     queryFn: async () => {
       let query = supabase
         .from("patient_registrations")
-        .select("*")
+        .select("id, invoice_number, patient_name, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, gender, dob, created_at, updated_at, bill_cancelled, doctor_name")
         .in("status", ["processing", "partial_processing", "processed", "partial_verified", "verified", "partially_approved", "approved", "partially_dispatched", "dispatched"])
         .eq("bill_cancelled", false)
         .order("is_stat", { ascending: false })
-        .order("updated_at", { ascending: false });
+        .order("updated_at", { ascending: false })
+        .range(rvPage * RV_PAGE_SIZE, rvPage * RV_PAGE_SIZE + RV_PAGE_SIZE - 1);
       if (debouncedSearch) {
         query = query.or(
           `patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%,umr_number.ilike.%${debouncedSearch}%`
@@ -102,6 +118,8 @@ const ResultVerification = () => {
       return (data || []) as any[];
     },
   });
+
+  const rvTotalPages = Math.ceil(rvCount / RV_PAGE_SIZE);
 
   const regIds = registrations.map((r: any) => r.id);
 
