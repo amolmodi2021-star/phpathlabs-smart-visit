@@ -1,26 +1,21 @@
 
 
-# Show Partially Collected Samples in Collected Tab
+# Hide Pending Samples in Collected Tab Dropdown
 
 ## Problem
-When 1 of 3 tubes is collected, the patient stays in "Pending" only (status is still `registered`). The user expects to also see the collected tubes in the "Collected" tab.
+In the Collected tab, expanding a partially-collected patient shows ALL tube groups — including ones not yet collected. Only collected tubes should appear.
 
-## Solution
-Update the "Collected" tab query to include patients that have partial collections (`collected_samples` is a non-empty array) in addition to fully collected patients (`status = sample_collected`).
+## Fix
+In `src/components/lims/SampleCollection.tsx`, line 440: when `!isPending`, filter the groups to only show collected ones.
 
-### Changes in `src/components/lims/SampleCollection.tsx`
+Change the `groups.map(...)` loop (line 440) to iterate over a filtered list:
 
-1. **Update `collectedRegistrations` query** (line ~84-98):
-   - Change from only `status = "sample_collected"` to also include patients where `collected_samples` has entries (i.e., `collected_samples` array length > 0)
-   - Use `.or('status.eq.sample_collected,collected_samples.neq.[]')` to fetch both fully and partially collected patients
+```typescript
+const displayGroups = isPending ? groups : groups.filter(g => g.isCollected);
+```
 
-2. **Update Collected tab rendering**:
-   - For partially collected patients (status still `registered`), show a "Partial" badge alongside the collected tubes
-   - Already-collected tubes show as they do now; uncollected tubes are hidden in this view
-   - The existing barcode expansion in the Collected tab already handles showing collected state
+Then use `displayGroups` in the `.map()` at line 440. The header text and all rendering below will use this filtered list, so uncollected tubes are simply hidden in the Collected view.
 
-3. **Keep patient in Pending tab too** — no change needed there, partially collected patients should appear in both tabs (Pending for remaining tubes, Collected for already-done tubes)
-
-## Files
-- `src/components/lims/SampleCollection.tsx`
+## File
+- `src/components/lims/SampleCollection.tsx` — one small change around line 439-440
 
