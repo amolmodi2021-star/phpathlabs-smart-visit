@@ -1,34 +1,33 @@
 
 
-# Plan: Test Selection Dialog Before Report Generation
+# Plan: Increase Report Font Sizes and Descriptive Result Spanning
 
-## What Changes
+## Changes
 
-When the user clicks "View Report" in the Dispatch section, instead of navigating directly to the report page, a dialog will appear listing all approved tests for that registration with checkboxes. The user can select/deselect individual tests or use "Select All." Clicking "Generate Report" navigates to the report page with only the selected tests.
+### 1. Patient Demographics — `src/components/report/LimsReportHeader.tsx`
+- Increase font size from `9px` to `11px`
+- Allow patient name to wrap (add `break-words` / `overflow-wrap`) so long names don't overflow
 
-## Implementation
+### 2. Department Header — `src/components/report/ReportResultsSection.tsx`
+- Department banner: increase from `text-sm` (~14px) to `text-base` (~16px)
+- Profile name header: increase from `text-sm` to `text-base`
+- Test group sub-header: increase from `text-[10px]`/`text-xs` to `text-sm`
 
-### 1. Add Test Selection Dialog to `src/components/lims/Dispatch.tsx`
+### 3. Table Column Headers (Parameter, Result, Unit, Reference Range)
+- Increase from `text-[10px]`/`text-xs` (~12px) to `text-sm` (~14px)
+- Apply to both standalone and profile table `<thead>` rows
 
-- Add state for: dialog open, selected registration entry, selected test IDs (Set)
-- When "View Report" is clicked, open the dialog instead of navigating
-- Dialog shows:
-  - "Select All" checkbox at the top
-  - Each approved test with a checkbox (test name as label)
-  - All selected by default
-  - "Generate Report" button that navigates to `/lims/report/{regId}?tests=id1,id2,id3`
-- Only show tests that are approved (status === "approved" or "dispatched")
+### 4. Result Row Font Sizes
+- Normal tables: keep `text-sm` (already fine after header bump)
+- Compact tables: increase from `text-xs` to `text-sm`
 
-### 2. Update `src/pages/LimsReportView.tsx` to Filter by Selected Tests
+### 5. Descriptive Result Spanning (key improvement)
+- When a result row has **no unit AND no reference range** (both empty/null), treat it as a descriptive result
+- Instead of rendering 3 separate columns (Result | Unit | Ref Range), render the result value with `colSpan={3}` spanning the full right side — same as morphology rows already do
+- Detection logic: `!r.unit && !r.normal_range_text && !r.normal_range_low && !r.normal_range_high`
+- Apply this in both the standalone (`_individual`) table and the profile table
 
-- Read `tests` query parameter from URL (comma-separated test IDs)
-- If present, filter the `approved_reports` test_results array to only include results matching those test IDs
-- Also filter `outsourced_test_snips` to only matching test IDs
-- If no `tests` param, show all tests (backward compatible)
-
-### Technical Details
-
-- The `DispatchEntry.tests` array already has `testId` and `testName` per test with status — perfect for populating checkboxes
-- URL query params (`?tests=...`) keep the approach stateless and shareable
-- No database changes needed
+### Files Modified
+- `src/components/report/LimsReportHeader.tsx` — font size + name wrapping
+- `src/components/report/ReportResultsSection.tsx` — all header/row font sizes + descriptive spanning
 
