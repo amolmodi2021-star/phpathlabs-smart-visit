@@ -92,7 +92,14 @@ input[type="number"] {
   background: transparent !important;
   color: black !important;
 }
+.print-strip-colors [data-pdf-section="department"] > .border {
+  border-color: transparent !important;
+}
 .print-strip-colors table,
+.print-strip-colors th,
+.print-strip-colors td {
+  border-color: #d1d5db !important;
+}
 .print-strip-colors th,
 .print-strip-colors td {
   border-color: #d1d5db !important;
