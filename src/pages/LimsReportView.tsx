@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Loader2, Printer, ArrowLeft, Download } from "lucide-react";
@@ -73,6 +73,9 @@ interface PageContent {
 const LimsReportView = () => {
   const { registrationId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const selectedTestIdsParam = searchParams.get("tests");
+  const selectedTestIds = selectedTestIdsParam ? new Set(selectedTestIdsParam.split(",")) : null;
   const printRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
@@ -133,7 +136,15 @@ const LimsReportView = () => {
       supabase.from("pathologist_signatures").select("*"),
     ]);
 
-    setApprovedReports(reports || []);
+    // Filter approved reports test_results by selected test IDs if provided
+    const filteredReports = (reports || []).map((r: any) => {
+      if (!selectedTestIds) return r;
+      return {
+        ...r,
+        test_results: ((r.test_results || []) as any[]).filter((tr: any) => selectedTestIds.has(tr.test_id)),
+      };
+    });
+    setApprovedReports(filteredReports);
     setRegistration(regData);
     setDepartments(depts || []);
 
@@ -179,9 +190,10 @@ const LimsReportView = () => {
       }
     }
 
-    // Snip images - collect all snip-only tests (tests with snip images)
+    // Snip images - collect all snip-only tests (tests with snip images), filtered by selected test IDs
     const snipPages: SnipPage[] = [];
     (snips || []).forEach((s: any) => {
+      if (selectedTestIds && !selectedTestIds.has(s.test_id)) return;
       const urls = Array.isArray(s.snip_image_urls) ? s.snip_image_urls : [];
       if (s.result_mode === "snip" || urls.length > 0) {
         urls.forEach((url: string) => snipPages.push({ imageUrl: url }));
