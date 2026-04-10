@@ -14,7 +14,7 @@ import { Calendar as DatePickerCalendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Search, Loader2, CheckCircle2, Send, Eye, Truck, MessageSquare, Circle, Phone, Calendar as CalendarIcon, FileText, User, Clock, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
-import { format, startOfDay, endOfDay } from "date-fns";
+import { format, startOfDay, endOfDay, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
 
 type TestStatus = "registered" | "sample_collected" | "sample_accepted" | "results_entered" | "verified" | "approved" | "dispatched";
@@ -45,7 +45,7 @@ const Dispatch = () => {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
-  const [dateFrom, setDateFrom] = useState<Date>(startOfDay(new Date()));
+  const [dateFrom, setDateFrom] = useState<Date>(startOfDay(subDays(new Date(), 7)));
   const [dateTo, setDateTo] = useState<Date>(endOfDay(new Date()));
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [actionKey, setActionKey] = useState<string | null>(null);
