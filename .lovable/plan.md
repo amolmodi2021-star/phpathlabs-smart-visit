@@ -1,32 +1,33 @@
 
 
-# Two-Level Accordion in Results Entry: Tests → Parameters
+# Fix: PARTIAL Badge Showing When All Samples Are Collected
 
 ## Problem
-Currently, when a patient row is expanded in Results Entry, all tests with all their parameters are shown at once. The user wants a collapsible two-level approach: first show a list of test names, then clicking a test expands its parameter table.
+In the "Collected" tab, registrations where all samples have been collected still show the amber "PARTIAL" badge. The current condition (`reg.status !== "sample_collected"`) only checks the global status field, which may not yet reflect that all tubes are collected.
 
-## Changes — `src/components/lims/ResultsEntry.tsx`
+## Root Cause
+Line 610 in `SampleCollection.tsx` shows the PARTIAL badge based solely on `reg.status !== "sample_collected"`. It doesn't check whether all tube groups have actually been collected.
 
-### 1. Add state for expanded tests
-Add a new state variable to track which tests are expanded within the expanded patient:
+## Fix — `src/components/lims/SampleCollection.tsx`
+
+Update line 610-612 to also check if there are actually uncollected tubes remaining. The `groups` variable (from `buildBarcodeGroups`) is already available and contains an `isCollected` flag per group.
+
+**Change from:**
 ```typescript
-const [expandedTests, setExpandedTests] = useState<Set<string>>(new Set());
+{!isPending && reg.status !== "sample_collected" && (
+  <Badge className="ml-2 text-xs bg-amber-500 text-white border-0">PARTIAL</Badge>
+)}
 ```
 
-### 2. Update `renderPatientExpanded` — test rows as collapsible headers
-In the section that renders `machineGroups → groupByTest`, wrap each test group so:
-- The test header row (showing test name, outsource badge, Save & Verify button) becomes clickable with a chevron toggle
-- The parameter `<Table>` underneath is only rendered when the test is in the `expandedTests` set
-- Clicking the test header toggles its key (`regId||testId`) in `expandedTests`
+**Change to:**
+```typescript
+{!isPending && reg.status !== "sample_collected" && groups.some(g => !g.isCollected) && (
+  <Badge className="ml-2 text-xs bg-amber-500 text-white border-0">PARTIAL</Badge>
+)}
+```
 
-### 3. Visual treatment
-- Each test row shows: chevron icon, test name, completion count (e.g., "3/5 entered"), outsource badge, and Save & Verify button
-- Collapsed state: just the header row with a summary
-- Expanded state: header row + full parameter table below it
-
-### 4. Machine-wise mode
-Same behavior applies — within each machine group, tests are listed as collapsible rows.
+This adds a check that at least one tube group is still uncollected before showing the PARTIAL badge. If all groups are collected, the badge won't appear regardless of the status field.
 
 ## File
-- `src/components/lims/ResultsEntry.tsx`
+- `src/components/lims/SampleCollection.tsx` — one-line edit
 
