@@ -114,7 +114,7 @@ const Dispatch = () => {
     queryKey: ["dispatch_all_snips", regIds.join(",")],
     enabled: regIds.length > 0,
     queryFn: async () => {
-      const { data } = await supabase.from("outsourced_test_snips").select("registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, result_mode, snip_image_urls").in("registration_id", regIds);
+      const { data } = await supabase.from("outsourced_test_snips").select("registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, result_mode, snip_image_urls, updated_at, sent_at").in("registration_id", regIds);
       return (data || []) as any[];
     },
   });
@@ -181,6 +181,28 @@ const Dispatch = () => {
           return vals.length > 0 ? vals.sort()[0] : null;
         };
 
+        // For snip-only outsourced tests, derive timestamps from outsourced_test_snips
+        let enteredAt = getEarliest("entered_at");
+        let verifiedAt = getEarliest("verified_at");
+        let approvedAtTs = getEarliest("approved_at");
+        let dispatchedAtTs = getEarliest("dispatched_at");
+        if (snip && testResults.length === 0) {
+          const snipStatus = snip.outsource_status;
+          const snipTime = snip.updated_at || snip.sent_at || null;
+          if (["results_entered", "results_saved", "verified", "approved", "dispatched"].includes(snipStatus) && !enteredAt) {
+            enteredAt = snipTime;
+          }
+          if (["verified", "approved", "dispatched"].includes(snipStatus) && !verifiedAt) {
+            verifiedAt = snipTime;
+          }
+          if (["approved", "dispatched"].includes(snipStatus) && !approvedAtTs) {
+            approvedAtTs = snipTime;
+          }
+          if (snipStatus === "dispatched" && !dispatchedAtTs) {
+            dispatchedAtTs = snipTime;
+          }
+        }
+
         dispatchTests.push({
           testId: t.test_id,
           testName: t.test_name || testInfo.test_name || "Unknown",
@@ -189,10 +211,10 @@ const Dispatch = () => {
           snipUrls: status === "approved" ? snipUrls : [],
           collectedAt,
           acceptedAt,
-          enteredAt: getEarliest("entered_at"),
-          verifiedAt: getEarliest("verified_at"),
-          approvedAt: getEarliest("approved_at"),
-          dispatchedAt: getEarliest("dispatched_at"),
+          enteredAt,
+          verifiedAt,
+          approvedAt: approvedAtTs,
+          dispatchedAt: dispatchedAtTs,
         });
       }
 
