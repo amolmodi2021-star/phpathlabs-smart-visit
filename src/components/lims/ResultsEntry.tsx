@@ -493,11 +493,9 @@ const ResultsEntry = () => {
     return acceptedRegs.map((reg: any) => {
       const tests = (reg.tests || []) as any[];
       const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
-      const activeTests = tests.filter((t: any) => !cancelledIds.has(t.test_id));
+      const acceptedTestIds = acceptedTestIdsByReg[reg.id];
+      const activeTests = tests.filter((t: any) => !cancelledIds.has(t.test_id) && acceptedTestIds?.has(t.test_id));
 
-      const parameters: ParameterResult[] = [];
-      const incompleteTests: IncompleteTest[] = [];
-      const snipOnlyTests: SnipOnlyTest[] = [];
       for (const t of activeTests) {
         const testInfo = testsMap[t.test_id] || {};
         // Naturally outsourced tests are included — they appear with outsourced badges and can be saved & verified
