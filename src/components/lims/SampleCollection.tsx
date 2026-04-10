@@ -22,6 +22,7 @@ const TUBE_COLOR_MAP: Record<string, string> = {
 };
 
 interface BarcodeGroup {
+  groupKey: string;
   sampleId: string;
   sampleTube: string;
   tubeColor: string;
@@ -29,6 +30,7 @@ interface BarcodeGroup {
   suffix: string;
   testNames: string[];
   selected: boolean;
+  isCollected: boolean;
 }
 
 const SampleCollection = () => {
@@ -150,6 +152,7 @@ const SampleCollection = () => {
     const tests = (reg.tests || []) as any[];
     const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
     const activeTests = tests.filter((t: any) => !cancelledIds.has(t.test_id));
+    const collectedKeys = (reg.collected_samples || []) as string[];
 
     const groupMap: Record<string, BarcodeGroup> = {};
 
@@ -163,6 +166,7 @@ const SampleCollection = () => {
 
       if (!groupMap[groupKey]) {
         groupMap[groupKey] = {
+          groupKey,
           sampleId: suffix ? `${reg.invoice_number}${suffix}` : reg.invoice_number,
           sampleTube: tube,
           tubeColor,
@@ -170,6 +174,7 @@ const SampleCollection = () => {
           suffix,
           testNames: [],
           selected: false,
+          isCollected: collectedKeys.includes(groupKey),
         };
       }
       groupMap[groupKey].testNames.push(t.test_name);
@@ -189,7 +194,7 @@ const SampleCollection = () => {
   const toggleAllBarcodes = (regId: string, groups: BarcodeGroup[], selectAll: boolean) => {
     setSelectedBarcodes(prev => {
       const regSel: Record<number, boolean> = {};
-      groups.forEach((_, i) => { regSel[i] = selectAll; });
+      groups.forEach((g, i) => { regSel[i] = g.isCollected ? false : selectAll; });
       return { ...prev, [regId]: regSel };
     });
   };
@@ -275,12 +280,12 @@ const SampleCollection = () => {
     doPrintBarcodes(reg, toPrint);
   };
 
-  // Mark sample collected
+  // Mark sample collected (full)
   const markCollectedMutation = useMutation({
-    mutationFn: async (regId: string) => {
+    mutationFn: async ({ regId, collectedKeys }: { regId: string; collectedKeys: string[] }) => {
       const { error } = await supabase
         .from("patient_registrations")
-        .update({ status: "sample_collected" })
+        .update({ status: "sample_collected", collected_samples: collectedKeys })
         .eq("id", regId);
       if (error) throw error;
     },
@@ -293,17 +298,55 @@ const SampleCollection = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Partial collect mutation
+  const partialCollectMutation = useMutation({
+    mutationFn: async ({ regId, collectedKeys }: { regId: string; collectedKeys: string[] }) => {
+      const { error } = await supabase
+        .from("patient_registrations")
+        .update({ collected_samples: collectedKeys })
+        .eq("id", regId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sample_collection_patients"] });
+      qc.invalidateQueries({ queryKey: ["patient_registrations"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const handlePrintAndCollect = (reg: any, groups: BarcodeGroup[]) => {
     const sel = selectedBarcodes[reg.id] || {};
-    const selectedCount = groups.filter((_, i) => sel[i]).length;
-    if (selectedCount === 0) {
+    const pendingGroups = groups.filter(g => !g.isCollected);
+    const selectedPending = pendingGroups.filter((_, i) => {
+      const origIdx = groups.indexOf(pendingGroups[i]!);
+      return sel[origIdx];
+    });
+    // Recalculate using original indices
+    const selectedOriginalIndices = groups.map((g, i) => (!g.isCollected && sel[i]) ? i : -1).filter(i => i >= 0);
+    const toPrint = selectedOriginalIndices.map(i => groups[i]);
+    
+    if (toPrint.length === 0) {
       toast.error("Please select at least one barcode");
       return;
     }
-    const allSelected = groups.every((_, i) => sel[i]);
-    printBarcodes(reg, groups);
-    if (allSelected) {
-      markCollectedMutation.mutate(reg.id);
+    
+    // Print selected barcodes
+    doPrintBarcodes(reg, toPrint);
+    
+    // Merge with existing collected keys
+    const existingCollected = (reg.collected_samples || []) as string[];
+    const newKeys = toPrint.map(g => g.groupKey);
+    const allCollectedKeys = [...new Set([...existingCollected, ...newKeys])];
+    
+    // Check if all groups are now collected
+    const allGroupKeys = groups.map(g => g.groupKey);
+    const allNowCollected = allGroupKeys.every(k => allCollectedKeys.includes(k));
+    
+    if (allNowCollected) {
+      markCollectedMutation.mutate({ regId: reg.id, collectedKeys: allCollectedKeys });
+    } else {
+      partialCollectMutation.mutate({ regId: reg.id, collectedKeys: allCollectedKeys });
+      toast.success(`${toPrint.length} of ${groups.length} samples collected. ${groups.length - allCollectedKeys.length} remaining.`);
     }
   };
 
@@ -348,25 +391,37 @@ const SampleCollection = () => {
 
   const renderBarcodeExpansion = (reg: any, groups: BarcodeGroup[], isPending: boolean) => {
     const sel = isPending ? (selectedBarcodes[reg.id] || {}) : {};
-    const selectedCount = isPending ? groups.filter((_, i) => sel[i]).length : 0;
+    const pendingGroups = groups.filter(g => !g.isCollected);
+    const collectedGroups = groups.filter(g => g.isCollected);
+    const selectedPendingCount = isPending ? groups.filter((g, i) => !g.isCollected && sel[i]).length : 0;
+    const allPendingSelected = isPending && pendingGroups.length > 0 && pendingGroups.every(g => {
+      const idx = groups.indexOf(g);
+      return sel[idx];
+    });
 
     return (
       <div className="bg-muted/30 p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <h4 className="text-sm font-semibold">Sample Barcodes</h4>
-          {isPending && (
+          <h4 className="text-sm font-semibold">
+            Sample Barcodes
+            {isPending && collectedGroups.length > 0 && (
+              <span className="text-xs text-muted-foreground font-normal ml-2">
+                ({collectedGroups.length} collected, {pendingGroups.length} remaining)
+              </span>
+            )}
+          </h4>
+          {isPending && pendingGroups.length > 0 && (
             <div className="flex gap-2">
               <Button size="sm" variant="outline" onClick={() => {
-                const allSel = groups.every((_, i) => sel[i]);
+                const allSel = allPendingSelected;
                 toggleAllBarcodes(reg.id, groups, !allSel);
               }}>
-                {groups.every((_, i) => sel[i]) ? "Deselect All" : "Select All"}
+                {allPendingSelected ? "Deselect All" : "Select All"}
               </Button>
-              <Button size="sm" variant="default" className="gap-1" disabled={selectedCount === 0}
+              <Button size="sm" variant="default" className="gap-1" disabled={selectedPendingCount === 0}
                 onClick={() => handlePrintAndCollect(reg, groups)}>
                 <Printer className="h-3.5 w-3.5" />
-                Print Selected ({selectedCount})
-                {selectedCount === groups.length && " & Collect"}
+                Print & Collect ({selectedPendingCount})
               </Button>
             </div>
           )}
@@ -375,11 +430,16 @@ const SampleCollection = () => {
         <div className="grid gap-2">
           {groups.map((group, idx) => {
             const colorHex = getTubeColorHex(group.tubeColor);
+            const isCollected = group.isCollected;
             return (
-              <Card key={idx} className={isPending && sel[idx] ? "ring-2 ring-primary" : ""}>
+              <Card key={idx} className={`${isCollected ? "opacity-60" : ""} ${isPending && !isCollected && sel[idx] ? "ring-2 ring-primary" : ""}`}>
                 <CardContent className="p-3 flex items-center gap-3">
                   {isPending && (
-                    <Checkbox checked={!!sel[idx]} onCheckedChange={() => toggleBarcode(reg.id, idx)} />
+                    <Checkbox 
+                      checked={isCollected ? true : !!sel[idx]} 
+                      disabled={isCollected}
+                      onCheckedChange={() => !isCollected && toggleBarcode(reg.id, idx)} 
+                    />
                   )}
                   {colorHex && (
                     <span className="inline-block w-5 h-5 rounded-full border-2 border-muted-foreground/30 shrink-0"
@@ -394,16 +454,31 @@ const SampleCollection = () => {
                       {group.sampleType && (
                         <span className="text-xs text-muted-foreground">{group.sampleType}</span>
                       )}
+                      {isCollected && (
+                        <Badge className="text-xs bg-green-100 text-green-800 border-green-300">
+                          <CheckCircle2 className="h-3 w-3 mr-1" /> Collected
+                        </Badge>
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5 truncate">
                       {group.testNames.join(", ")}
                     </p>
                   </div>
-                  {isPending && (
+                  {isPending && !isCollected && (
                     <Button size="sm" variant="ghost" className="shrink-0" onClick={(e) => {
                       e.stopPropagation();
-                      setSelectedBarcodes(prev => ({ ...prev, [reg.id]: { [idx]: true } }));
                       doPrintBarcodes(reg, [group]);
+                      // Also mark this single tube as collected
+                      const existingCollected = (reg.collected_samples || []) as string[];
+                      const allCollectedKeys = [...new Set([...existingCollected, group.groupKey])];
+                      const allGroupKeys = groups.map(g => g.groupKey);
+                      const allNowCollected = allGroupKeys.every(k => allCollectedKeys.includes(k));
+                      if (allNowCollected) {
+                        markCollectedMutation.mutate({ regId: reg.id, collectedKeys: allCollectedKeys });
+                      } else {
+                        partialCollectMutation.mutate({ regId: reg.id, collectedKeys: allCollectedKeys });
+                        toast.success(`Sample collected. ${allGroupKeys.length - allCollectedKeys.length} remaining.`);
+                      }
                     }}>
                       <Printer className="h-3.5 w-3.5" />
                     </Button>
@@ -414,8 +489,12 @@ const SampleCollection = () => {
           })}
         </div>
 
-        {isPending && selectedCount === groups.length && (
-          <Button className="w-full gap-2" onClick={() => markCollectedMutation.mutate(reg.id)}>
+        {isPending && allPendingSelected && pendingGroups.length > 0 && (
+          <Button className="w-full gap-2" onClick={() => {
+            const existingCollected = (reg.collected_samples || []) as string[];
+            const allKeys = groups.map(g => g.groupKey);
+            markCollectedMutation.mutate({ regId: reg.id, collectedKeys: [...new Set([...existingCollected, ...allKeys])] });
+          }}>
             <CheckCircle2 className="h-4 w-4" /> Mark as Sample Collected
           </Button>
         )}
@@ -482,7 +561,14 @@ const SampleCollection = () => {
                   </TableCell>
                   <TableCell className="text-sm">{reg.mobile_number}</TableCell>
                   <TableCell><Badge variant="outline" className="text-xs">{getVisitLabel(reg.visit_type)}</Badge></TableCell>
-                  <TableCell className="text-sm">{activeTests.length} tests • {groups.length} tube(s)</TableCell>
+                  <TableCell className="text-sm">
+                    {activeTests.length} tests • {groups.length} tube(s)
+                    {isPending && groups.some(g => g.isCollected) && (
+                      <span className="text-xs text-green-600 ml-1">
+                        ({groups.filter(g => g.isCollected).length} done)
+                      </span>
+                    )}
+                  </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {format(new Date(isPending ? reg.created_at : reg.updated_at), "dd/MM/yy HH:mm")}
                   </TableCell>
