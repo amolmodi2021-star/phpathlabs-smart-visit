@@ -558,18 +558,21 @@ const LimsReportView = () => {
             left: 0;
             top: 0;
             width: 210mm;
+            gap: 0 !important;
           }
           [data-page] {
             position: relative;
             display: block;
             width: 210mm !important;
             height: 297mm !important;
-            page-break-after: always;
-            break-after: page;
             margin: 0 !important;
             padding: 0 !important;
             box-shadow: none !important;
             overflow: hidden;
+          }
+          [data-page]:not(:last-child) {
+            page-break-after: always;
+            break-after: page;
           }
           @page { size: A4; margin: 0; }
           .print\\:hidden { display: none !important; }
