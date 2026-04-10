@@ -121,6 +121,9 @@ const Dispatch = () => {
         const testResults = allResults.filter((r: any) => r.registration_id === reg.id && r.test_id === t.test_id);
         const snip = allSnips.find((s: any) => s.registration_id === reg.id && s.test_id === t.test_id);
 
+        // Find tube for this test
+        const tube = allTubes.find((tb: any) => tb.registration_id === reg.id && Array.isArray(tb.test_ids) && tb.test_ids.includes(t.test_id));
+
         const hasDispatchedResults = testResults.some((r: any) => r.status === "dispatched");
         const hasDispatchedSnip = snip && snip.outsource_status === "dispatched";
         const hasApprovedResults = testResults.some((r: any) => r.status === "approved");
@@ -142,12 +145,27 @@ const Dispatch = () => {
         const snipUrls = snip && snip.result_mode === "snip" && Array.isArray(snip.snip_image_urls) ? snip.snip_image_urls : [];
         const approvedResults = testResults.filter((r: any) => r.status === "approved");
 
+        // Extract audit timestamps
+        const collectedAt = tube?.collected_at || null;
+        const acceptedAt = tube?.accepted_at || null;
+        // Get the earliest entered_at, verified_at, approved_at, dispatched_at from results
+        const getEarliest = (field: string) => {
+          const vals = testResults.map((r: any) => r[field]).filter(Boolean);
+          return vals.length > 0 ? vals.sort()[0] : null;
+        };
+
         dispatchTests.push({
           testId: t.test_id,
           testName: t.test_name || testInfo.test_name || "Unknown",
           status,
           results: approvedResults,
           snipUrls: status === "approved" ? snipUrls : [],
+          collectedAt,
+          acceptedAt,
+          enteredAt: getEarliest("entered_at"),
+          verifiedAt: getEarliest("verified_at"),
+          approvedAt: getEarliest("approved_at"),
+          dispatchedAt: getEarliest("dispatched_at"),
         });
       }
 
@@ -162,7 +180,7 @@ const Dispatch = () => {
 
       return { registration: reg, tests: dispatchTests, completionStatus, approvedCount, pendingCount } as DispatchEntry;
     }).filter(Boolean) as DispatchEntry[];
-  }, [registrations, allResults, allSnips, testsMap, heldSet]);
+  }, [registrations, allResults, allSnips, allTubes, testsMap, heldSet]);
 
   // Auto-select first patient when entries change
   useEffect(() => {
