@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
@@ -619,6 +619,28 @@ const SampleAcceptance = () => {
     );
   };
 
+  const filteredPendingCount = useMemo(() => {
+    return pendingRegs.filter((reg: any) => {
+      const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
+      const hasActiveTests = ((reg.tests || []) as any[]).some((t: any) => !cancelledIds.has(t.test_id));
+      if (!hasActiveTests) return false;
+      const groups = buildTubeGroups(reg);
+      const accepted = parseAcceptedSamples(reg.accepted_samples);
+      const acceptedKeys = new Set(accepted.map(a => a.key));
+      return groups.some(g => !acceptedKeys.has(g.key));
+    }).length;
+  }, [pendingRegs]);
+
+  const filteredAcceptedCount = useMemo(() => {
+    return acceptedRegs.filter((reg: any) => {
+      const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
+      const hasActiveTests = ((reg.tests || []) as any[]).some((t: any) => !cancelledIds.has(t.test_id));
+      if (!hasActiveTests) return false;
+      const accepted = parseAcceptedSamples(reg.accepted_samples);
+      return accepted.length > 0;
+    }).length;
+  }, [acceptedRegs]);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-4">
@@ -639,14 +661,14 @@ const SampleAcceptance = () => {
         <TabsList>
           <TabsTrigger value="pending">
             Pending Acceptance
-            {pendingRegs.length > 0 && (
-              <Badge variant="secondary" className="ml-2 text-xs">{pendingRegs.length}</Badge>
+            {filteredPendingCount > 0 && (
+              <Badge variant="secondary" className="ml-2 text-xs">{filteredPendingCount}</Badge>
             )}
           </TabsTrigger>
           <TabsTrigger value="accepted">
             Accepted
-            {acceptedRegs.length > 0 && (
-              <Badge variant="secondary" className="ml-2 text-xs">{acceptedRegs.length}</Badge>
+            {filteredAcceptedCount > 0 && (
+              <Badge variant="secondary" className="ml-2 text-xs">{filteredAcceptedCount}</Badge>
             )}
           </TabsTrigger>
         </TabsList>
