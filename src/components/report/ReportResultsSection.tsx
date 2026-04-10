@@ -77,7 +77,7 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
     <>
       {Object.entries(grouped).map(([dept, profiles]) => (
         <div key={dept} data-pdf-section="department">
-          {!hideDeptHeader && <div className="text-white px-3 py-1.5 rounded-t font-semibold text-sm text-center" style={{ backgroundColor: '#2E3192' }}>{dept}</div>}
+          {!hideDeptHeader && <div className="text-white px-3 py-1.5 rounded-t font-semibold text-base text-center" style={{ backgroundColor: '#2E3192' }}>{dept}</div>}
           <div className={`border ${hideDeptHeader ? 'rounded' : 'border-t-0 rounded-b'}`}>
             {Object.entries(profiles).map(([profName, params], profIdx) => {
               const useCompact = compact || isCompactProfile(profName);
@@ -88,7 +88,7 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                 return (
                   <div key="standalone-group" data-pdf-section="profile" className="print:break-inside-avoid">
                     {profIdx > 0 && <div style={{ height: '2mm' }} />}
-                    <table className={`w-full ${useCompact ? 'text-xs' : 'text-sm'}`} style={{ tableLayout: 'fixed' }}>
+                    <table className="w-full text-sm" style={{ tableLayout: 'fixed' }}>
                       <colgroup>
                         <col style={{ width: '36%' }} />
                         <col style={{ width: '24px' }} />
@@ -97,7 +97,7 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                         <col style={{ width: '28%' }} />
                       </colgroup>
                       <thead>
-                        <tr className={`text-gray-500 border-b ${useCompact ? 'text-[10px]' : 'text-xs'}`}>
+                        <tr className="text-gray-500 border-b text-sm">
                           <th className="text-left py-0.5 px-3">Parameter</th>
                           <th></th>
                           <th className="text-center py-0.5">Result</th>
@@ -131,7 +131,7 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                                 <tr><td colSpan={5}><div className="border-t-2 border-gray-400" style={{ marginBottom: '3mm' }} /></td></tr>
                               )}
                               {prevHadInterpretation && (
-                                <tr className={`text-gray-500 border-b ${useCompact ? 'text-[10px]' : 'text-xs'}`}>
+                                 <tr className="text-gray-500 border-b text-sm">
                                   <th className="text-left py-0.5 px-3">Parameter</th>
                                   <th></th>
                                   <th className="text-center py-0.5">Result</th>
@@ -144,19 +144,19 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                                 <td className="text-right py-1">
                                   {isAbnormal && <span className="flag-badge inline-flex items-center justify-center min-w-[14px] h-[14px] rounded bg-red-600 text-white text-[10px] leading-none font-bold">{r.flag}</span>}
                                 </td>
-                                {isMorphRow ? (
-                                  <td colSpan={3} className="text-left px-2 text-gray-800 py-1" style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>
-                                    {r.result_value}
-                                  </td>
-                                ) : (
-                                  <>
-                                    <td className={`text-center font-semibold py-1 ${isAbnormal ? "text-red-600 font-bold" : ""}`}>
-                                      {r.result_value}
-                                    </td>
-                                    <td className="text-center text-gray-600 py-1">{r.unit}</td>
-                                    <td className="text-center text-gray-600 py-1">{r.normal_range_text || `${r.normal_range_low || ""} - ${r.normal_range_high || ""}`}</td>
-                                  </>
-                                )}
+                                 {isMorphRow || (!r.unit && !r.normal_range_text && !r.normal_range_low && !r.normal_range_high) ? (
+                                   <td colSpan={3} className="text-left px-2 text-gray-800 py-1" style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>
+                                     {r.result_value}
+                                   </td>
+                                 ) : (
+                                   <>
+                                     <td className={`text-center font-semibold py-1 ${isAbnormal ? "text-red-600 font-bold" : ""}`}>
+                                       {r.result_value}
+                                     </td>
+                                     <td className="text-center text-gray-600 py-1">{r.unit}</td>
+                                     <td className="text-center text-gray-600 py-1">{r.normal_range_text || `${r.normal_range_low || ""} - ${r.normal_range_high || ""}`}</td>
+                                   </>
+                                 )}
                               </tr>
                               {r.remark && (
                                 <tr className="border-b border-gray-100">
@@ -219,10 +219,10 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                   {shouldShowProfile(params) && (
                     <>
                       <div style={{ height: '1mm' }} />
-                      <div className="bg-blue-50 px-3 py-1 font-semibold text-sm border-b" style={{ color: '#2E3192' }}>{profName}</div>
+                      <div className="bg-blue-50 px-3 py-1 font-semibold text-base border-b" style={{ color: '#2E3192' }}>{profName}</div>
                     </>
                   )}
-                  <table className={`w-full ${useCompact ? 'text-xs' : 'text-sm'}`} style={{ tableLayout: 'fixed' }}>
+                  <table className="w-full text-sm" style={{ tableLayout: 'fixed' }}>
                     <colgroup>
                       <col style={{ width: '36%' }} />
                       <col style={{ width: '24px' }} />
@@ -231,7 +231,7 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                       <col style={{ width: '28%' }} />
                     </colgroup>
                     <thead>
-                      <tr className={`text-gray-500 border-b ${useCompact ? 'text-[10px]' : 'text-xs'}`}>
+                      <tr className="text-gray-500 border-b text-sm">
                         <th className="text-left py-0.5 px-3">Parameter</th>
                         <th></th>
                         <th className="text-center py-0.5">Result</th>
@@ -244,7 +244,7 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                         <>
                           {hasMultipleTestNames && group.testName && (
                             <tr key={`header-${gIdx}`}>
-                              <td colSpan={5} className={`px-3 font-semibold text-gray-700 bg-gray-50 border-b ${useCompact ? 'py-0.5 text-[10px]' : 'py-0.5 text-xs'}`}>
+                              <td colSpan={5} className="px-3 font-semibold text-gray-700 bg-gray-50 border-b py-0.5 text-sm">
                                 {group.testName}
                               </td>
                             </tr>
@@ -259,7 +259,7 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                                   <td className={`text-right ${useCompact ? 'py-[2px]' : 'py-1'}`}>
                                     {isAbnormal && <span className="flag-badge inline-flex items-center justify-center min-w-[14px] h-[14px] rounded bg-red-600 text-white text-[10px] leading-none font-bold">{r.flag}</span>}
                                   </td>
-                                  {isMorphRow ? (
+                                  {isMorphRow || (!r.unit && !r.normal_range_text && !r.normal_range_low && !r.normal_range_high) ? (
                                     <td colSpan={3} className={`text-left px-2 text-gray-800 ${useCompact ? 'py-[2px]' : 'py-1'}`} style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>
                                       {r.result_value}
                                     </td>
