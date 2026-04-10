@@ -285,7 +285,7 @@ const SampleCollection = () => {
     mutationFn: async ({ regId, collectedKeys }: { regId: string; collectedKeys: string[] }) => {
       const { error } = await supabase
         .from("patient_registrations")
-        .update({ status: "sample_collected", collected_samples: collectedKeys })
+        .update({ status: "sample_collected", collected_samples: collectedKeys } as any)
         .eq("id", regId);
       if (error) throw error;
     },
@@ -303,7 +303,7 @@ const SampleCollection = () => {
     mutationFn: async ({ regId, collectedKeys }: { regId: string; collectedKeys: string[] }) => {
       const { error } = await supabase
         .from("patient_registrations")
-        .update({ collected_samples: collectedKeys })
+        .update({ collected_samples: collectedKeys } as any)
         .eq("id", regId);
       if (error) throw error;
     },
