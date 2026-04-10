@@ -83,7 +83,7 @@ const SampleCollection = () => {
       let query = supabase
         .from("patient_registrations")
         .select("*")
-        .in("status", ["registered", "repeat_collection"])
+        .in("status", ["registered", "repeat_collection", "sample_collected", "sample_accepted"])
         .eq("bill_cancelled", false)
         .order("created_at", { ascending: false });
 
