@@ -1,39 +1,30 @@
 
 
-# Fix: Revert Conditional Margins & Fix Print Alignment
+# Fix: Print Pages Stacking On Top Of Each Other
 
 ## Problem
-1. The conditional margin logic (switching between letterhead margins and 10mm) introduced in the last change broke the print layout
-2. The print CSS doesn't properly position each page as a standalone A4 sheet — the flex container gaps and browser print rendering cause the large blank space and misalignment seen in the screenshot
+The print CSS sets `position: absolute; top: 0;` on every `[data-page]` element. This places ALL pages at the exact same position (top-left), causing them to overlap into a single printed page.
 
-## Changes to `src/pages/LimsReportView.tsx`
+## Solution
+Remove `position: absolute` and `top: 0` from the print CSS. Instead, use `position: relative` and `display: block` so pages flow naturally one after another, each triggering a page break.
 
-### 1. Revert conditional margins back to always use layout settings
-```typescript
-// Line 217-218: Change back to:
-const topMm = (layoutSettings.top_margin_cm || 2.5) * 10;
-const bottomMm = (layoutSettings.bottom_margin_cm || 1.5) * 10;
+## Change in `src/pages/LimsReportView.tsx` (lines 552-571)
 
-// Line 364-365: Same revert:
-const topMm = (layoutSettings.top_margin_cm || 2.5) * 10;
-const bottomMm = (layoutSettings.bottom_margin_cm || 1.5) * 10;
-```
-
-### 2. Fix print CSS for proper A4 alignment
-The current print styles don't force each `[data-page]` to fill exactly one printed page. Update the print styles to:
-- Set each page to `width: 210mm; height: 297mm` explicitly in print
-- Remove flex gaps that add extra space between pages
-- Use `page-break-inside: avoid` to keep page content intact
-- Hide the `Parameter` column header text "Parameter" and show only data (the "Flag" column header too) — actually, looking at the screenshot again, test names ARE expected. The user concern is about alignment, not hiding test names.
+Replace the current print styles with:
 
 ```css
 @media print {
   body * { visibility: hidden; }
-  [data-page], [data-page] * { visibility: visible; }
-  [data-page] {
+  #print-container, #print-container * { visibility: visible; }
+  #print-container {
     position: absolute;
     left: 0;
     top: 0;
+    width: 210mm;
+  }
+  [data-page] {
+    position: relative;
+    display: block;
     width: 210mm !important;
     height: 297mm !important;
     page-break-after: always;
@@ -48,6 +39,8 @@ The current print styles don't force each `[data-page]` to fill exactly one prin
 }
 ```
 
-### Files
-- `src/pages/LimsReportView.tsx` — revert margins, fix print positioning CSS
+Also add `id="print-container"` to the wrapping `div ref={printRef}` (line 416) so the print container itself is positioned absolutely but its children (pages) flow naturally within it.
+
+## Files
+- `src/pages/LimsReportView.tsx`
 
