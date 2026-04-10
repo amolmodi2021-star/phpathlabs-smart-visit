@@ -122,6 +122,7 @@ const ResultsEntry = () => {
         .from("patient_registrations")
         .select("*")
         .or("status.eq.sample_accepted,accepted_samples.neq.[]")
+        .not("status", "in", "(approved,dispatched)")
         .eq("bill_cancelled", false)
         .order("is_stat", { ascending: false })
         .order("updated_at", { ascending: false });
