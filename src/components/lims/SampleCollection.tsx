@@ -534,9 +534,12 @@ const SampleCollection = () => {
 
         {isPending && allPendingSelected && pendingGroups.length > 0 && (
           <Button className="w-full gap-2" onClick={() => {
-            const existingCollected = (reg.collected_samples || []) as string[];
-            const allKeys = groups.map(g => g.groupKey);
-            markCollectedMutation.mutate({ regId: reg.id, collectedKeys: [...new Set([...existingCollected, ...allKeys])] });
+            const existingEntries = parseCollectedSamples(reg.collected_samples || []);
+            const now = new Date().toISOString();
+            const mergedMap = new Map<string, CollectedSampleEntry>();
+            for (const e of existingEntries) mergedMap.set(e.key, e);
+            for (const g of groups) mergedMap.set(g.groupKey, { key: g.groupKey, collected_at: now });
+            markCollectedMutation.mutate({ regId: reg.id, collectedEntries: Array.from(mergedMap.values()) });
           }}>
             <CheckCircle2 className="h-4 w-4" /> Mark as Sample Collected
           </Button>
