@@ -232,6 +232,12 @@ const LimsReportView = () => {
     setSnipImages(snipPages);
     setTestParamsMap(computedTpMap);
     setLoading(false);
+
+    } catch (err: any) {
+      console.error("Failed to load report data:", err);
+      toast.error("Failed to load report data");
+      setLoading(false);
+    }
   };
 
   // ── Build structured content ──
