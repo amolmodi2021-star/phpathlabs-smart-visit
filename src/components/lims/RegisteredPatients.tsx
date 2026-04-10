@@ -250,7 +250,7 @@ const RegisteredPatients = () => {
                       {r.due_amount > 0 && <div className="text-xs text-destructive">Due: ₹{r.due_amount}</div>}
                       {r.refund_amount > 0 && <div className="text-xs text-orange-600">Refund: ₹{r.refund_amount}</div>}
                     </TableCell>
-                    <TableCell><Badge variant={statusColor(r.status)}>{r.bill_cancelled ? "cancelled" : r.status}</Badge></TableCell>
+                    <TableCell><Badge variant={statusColor(r.status)}>{r.bill_cancelled ? "cancelled" : statusLabel(r.status)}</Badge></TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
                         <Button variant="ghost" size="icon" className="h-8 w-8" title="View Bill" onClick={() => setViewBillReg(r)}>
