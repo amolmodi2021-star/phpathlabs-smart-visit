@@ -214,8 +214,8 @@ const LimsReportView = () => {
   const { pages, totalPages } = useMemo(() => {
     if (approvedReports.length === 0) return { pages: [] as PageContent[], totalPages: 0 };
 
-    const topMm = layoutSettings.top_margin_cm * 10;
-    const bottomMm = layoutSettings.bottom_margin_cm * 10;
+    const topMm = showLetterhead ? layoutSettings.top_margin_cm * 10 : 10;
+    const bottomMm = showLetterhead ? layoutSettings.bottom_margin_cm * 10 : 10;
     const usableHeight = PAGE_HEIGHT_MM - topMm - bottomMm - HEADER_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM;
 
     // Merge all test_results from all approved reports
@@ -361,8 +361,8 @@ const LimsReportView = () => {
   };
 
   const report = approvedReports[0];
-  const topMm = layoutSettings.top_margin_cm * 10;
-  const bottomMm = layoutSettings.bottom_margin_cm * 10;
+  const topMm = showLetterhead ? layoutSettings.top_margin_cm * 10 : 10;
+  const bottomMm = showLetterhead ? layoutSettings.bottom_margin_cm * 10 : 10;
 
   if (loading) {
     return (
