@@ -20,12 +20,12 @@ const PAGE_WIDTH_MM = 210;
 const HEADER_HEIGHT_MM = 28;
 const SIGNATURE_HEIGHT_MM = 16;
 const PAGE_NUM_HEIGHT_MM = 6;
-const DEPT_HEADER_MM = 8;
-const TEST_HEADER_MM = 6;
-const TABLE_HEADER_MM = 5;
-const ROW_HEIGHT_MM = 4.5;
-const INTERPRETATION_MM = 8;
-const META_LINE_MM = 4;
+const DEPT_HEADER_MM = 10;
+const TEST_HEADER_MM = 8;
+const TABLE_HEADER_MM = 7;
+const ROW_HEIGHT_MM = 5.5;
+const INTERPRETATION_MM = 10;
+const META_LINE_MM = 5;
 const GAP_MM = 3;
 
 interface TestResultEntry {
@@ -554,12 +554,12 @@ const LimsReportView = () => {
               />
 
               {/* Main Content Area */}
-              <div className="flex-1 overflow-hidden" style={{ fontSize: "9px" }}>
+              <div className="flex-1 overflow-hidden" style={{ fontSize: "13px" }}>
                 {page.type === "structured" && (
                   <div>
                     {/* Department Header */}
                     {page.departmentName && (
-                      <div className="text-center font-bold border-b border-t py-1 mb-1" style={{ fontSize: "11px" }}>
+                      <div className="text-center font-bold border-b border-t py-1 mb-1" style={{ fontSize: "15px" }}>
                         {page.departmentName}
                       </div>
                     )}
@@ -568,14 +568,14 @@ const LimsReportView = () => {
                     {page.testBlocks?.map((block, bi) => (
                       <div key={bi} className="mb-2">
                         {/* Test Name Header */}
-                        <div className="font-bold py-0.5 border-b" style={{ fontSize: "10px" }}>
+                        <div className="font-bold py-0.5 border-b" style={{ fontSize: "14px" }}>
                           {block.testName}
-                          {block.sampleType && <span className="font-normal text-gray-500 ml-2">(Sample: {block.sampleType})</span>}
+                          {block.sampleType && <span className="font-normal text-gray-500 ml-2" style={{ fontSize: "12px" }}>(Sample: {block.sampleType})</span>}
                         </div>
 
                         {/* Metadata */}
                         {(block.instrument || block.method) && (
-                          <div className="text-gray-500 py-0.5" style={{ fontSize: "8px" }}>
+                          <div className="text-gray-500 py-0.5" style={{ fontSize: "11px" }}>
                             {block.instrument && <span>Instrument: {block.instrument}</span>}
                             {block.instrument && block.method && <span className="mx-2">|</span>}
                             {block.method && <span>Method: {block.method}</span>}
@@ -583,14 +583,14 @@ const LimsReportView = () => {
                         )}
 
                         {/* Parameter Table */}
-                        <table className="w-full border-collapse" style={{ fontSize: "9px" }}>
+                        <table className="w-full border-collapse" style={{ fontSize: "13px" }}>
                           <thead>
-                            <tr className="border-b" style={{ fontSize: "8px" }}>
-                              <th className="text-left py-0.5 font-semibold w-[35%]">Parameter</th>
-                              <th className="text-center py-0.5 font-semibold w-[15%]">Result</th>
-                              <th className="text-center py-0.5 font-semibold w-[10%]">Unit</th>
-                              <th className="text-center py-0.5 font-semibold w-[25%]">Reference Range</th>
-                              <th className="text-center py-0.5 font-semibold w-[15%]">Flag</th>
+                            <tr className="border-b" style={{ fontSize: "12px" }}>
+                              <th className="text-left py-0.5 font-semibold" style={{ width: "35%" }}>Parameter</th>
+                              <th className="text-center py-0.5 font-semibold" style={{ width: "20%" }}>Result</th>
+                              <th className="text-center py-0.5 font-semibold" style={{ width: "10%" }}>Unit</th>
+                              <th className="text-center py-0.5 font-semibold" style={{ width: "22%" }}>Reference Range</th>
+                              <th className="text-center py-0.5 font-semibold" style={{ width: "13%" }}>Flag</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -600,7 +600,7 @@ const LimsReportView = () => {
 
                         {/* Interpretation */}
                         {block.interpretation && (
-                          <div className="mt-1 p-1 bg-gray-50 border rounded text-gray-700" style={{ fontSize: "8px" }}>
+                          <div className="mt-1 p-1 bg-gray-50 border rounded text-gray-700" style={{ fontSize: "11px" }}>
                             <span className="font-semibold">Interpretation: </span>
                             {block.interpretation}
                           </div>
@@ -664,7 +664,7 @@ function renderParamsWithSubheaders(block: TestBlock, tpOrder: any[]) {
       if (tp.is_subheader && tp.subheader_text) {
         rows.push(
           <tr key={`sh-${i}`}>
-            <td colSpan={5} className="font-semibold pt-1 pb-0.5 text-gray-700 border-b" style={{ fontSize: "9px" }}>
+            <td colSpan={5} className="font-semibold pt-1 pb-0.5 text-gray-700 border-b" style={{ fontSize: "13px" }}>
               {tp.subheader_text}
             </td>
           </tr>
@@ -692,8 +692,21 @@ function renderParamsWithSubheaders(block: TestBlock, tpOrder: any[]) {
 
 function renderParamRow(param: TestResultEntry, key: string) {
   const isAbnormal = param.flag && param.flag !== "N" && param.flag !== "Normal";
+  const isDescriptive = !param.unit && !param.reference_range && !param.normal_range_low && !param.normal_range_high && (!param.flag || param.flag === "N" || param.flag === "Normal");
+
+  if (isDescriptive) {
+    return (
+      <tr key={key} className="border-b border-gray-100">
+        <td className="py-0.5 pl-1" style={{ fontSize: "13px" }}>{param.parameter_name}</td>
+        <td colSpan={4} className="py-0.5 pl-1" style={{ fontSize: "13px", wordBreak: "break-word" }}>
+          {param.result_value}
+        </td>
+      </tr>
+    );
+  }
+
   return (
-    <tr key={key} className={`border-b border-gray-100 ${isAbnormal ? "font-bold" : ""}`}>
+    <tr key={key} className={`border-b border-gray-100 ${isAbnormal ? "font-bold" : ""}`} style={{ fontSize: "13px" }}>
       <td className="py-0.5 pl-1">{param.parameter_name}</td>
       <td className={`text-center py-0.5 ${isAbnormal ? "text-red-600" : ""}`}>
         {param.result_value}
@@ -702,7 +715,7 @@ function renderParamRow(param: TestResultEntry, key: string) {
       <td className="text-center py-0.5 text-gray-500">{param.reference_range || ""}</td>
       <td className="text-center py-0.5">
         {param.flag && param.flag !== "N" && param.flag !== "Normal" && (
-          <span className={`text-xs font-bold ${param.flag === "H" || param.flag === "High" ? "text-red-600" : "text-blue-600"}`}>
+          <span className={`font-bold ${param.flag === "H" || param.flag === "High" ? "text-red-600" : "text-blue-600"}`} style={{ fontSize: "12px" }}>
             {param.flag === "H" ? "HIGH" : param.flag === "L" ? "LOW" : param.flag}
           </span>
         )}
