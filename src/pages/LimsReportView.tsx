@@ -400,6 +400,7 @@ const LimsReportView = () => {
       // Always print without letterhead
       const originalLetterhead = showLetterhead;
       setShowLetterhead(false);
+      printRef.current.classList.add("print-strip-colors");
       await new Promise(r => setTimeout(r, 150));
 
       const pageElements = printRef.current.querySelectorAll("[data-page]");
@@ -412,7 +413,8 @@ const LimsReportView = () => {
         imageUrls.push(png);
       }
 
-      // Restore letterhead state after capturing
+      // Restore styles after capturing
+      printRef.current.classList.remove("print-strip-colors");
       setShowLetterhead(originalLetterhead);
 
       // Create hidden iframe for printing (no new tab)
