@@ -470,7 +470,12 @@ const SampleCollection = () => {
         </div>
 
         <div className="grid gap-2">
-          {(isPending ? groups : groups.filter(g => g.isCollected)).map((group, idx) => {
+          {(isPending ? groups : groups.filter(g => {
+            if (!g.isCollected) return false;
+            const accepted = parseCollectedSamples(reg.accepted_samples || []);
+            const acceptedKeys = new Set(accepted.map((a: any) => a.key));
+            return !acceptedKeys.has(g.groupKey);
+          })).map((group, idx) => {
             const colorHex = getTubeColorHex(group.tubeColor);
             const isCollected = group.isCollected;
             return (
@@ -586,7 +591,11 @@ const SampleCollection = () => {
               const groups = buildBarcodeGroups(reg);
               return groups.some(g => !g.isCollected);
             }
-            return true;
+            // Collected tab: only show if at least one collected tube is NOT yet accepted
+            const collected = parseCollectedSamples(reg.collected_samples || []);
+            const accepted = parseCollectedSamples(reg.accepted_samples || []);
+            const acceptedKeys = new Set(accepted.map((a: any) => a.key));
+            return collected.some((c: any) => !acceptedKeys.has(c.key));
           }).map((reg: any) => {
             const groups = buildBarcodeGroups(reg);
             const isExpanded = expandedRow === reg.id;
@@ -685,7 +694,9 @@ const SampleCollection = () => {
           <TabsTrigger value="collected" className="gap-1.5">
             Collected <Badge variant="secondary" className="text-xs ml-1">{collectedRegistrations.filter((r: any) => {
               const collected = parseCollectedSamples(r.collected_samples || []);
-              return collected.length > 0;
+              const accepted = parseCollectedSamples(r.accepted_samples || []);
+              const acceptedKeys = new Set(accepted.map((a: any) => a.key));
+              return collected.some((c: any) => !acceptedKeys.has(c.key));
             }).length}</Badge>
           </TabsTrigger>
         </TabsList>
