@@ -74,6 +74,15 @@ const Dispatch = () => {
     },
   });
 
+  const { data: allTubes = [] } = useQuery({
+    queryKey: ["dispatch_all_tubes", regIds.join(",")],
+    enabled: regIds.length > 0,
+    queryFn: async () => {
+      const { data } = await supabase.from("sample_tubes" as any).select("registration_id, test_ids, collected_at, accepted_at, status").in("registration_id", regIds);
+      return (data || []) as any[];
+    },
+  });
+
   const { data: allSnips = [] } = useQuery({
     queryKey: ["dispatch_all_snips", regIds.join(",")],
     enabled: regIds.length > 0,
