@@ -214,8 +214,8 @@ const LimsReportView = () => {
   const { pages, totalPages } = useMemo(() => {
     if (approvedReports.length === 0) return { pages: [] as PageContent[], totalPages: 0 };
 
-    const topMm = showLetterhead ? layoutSettings.top_margin_cm * 10 : 10;
-    const bottomMm = showLetterhead ? layoutSettings.bottom_margin_cm * 10 : 10;
+    const topMm = (layoutSettings.top_margin_cm || 2.5) * 10;
+    const bottomMm = (layoutSettings.bottom_margin_cm || 1.5) * 10;
     const usableHeight = PAGE_HEIGHT_MM - topMm - bottomMm - HEADER_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM;
 
     // Merge all test_results from all approved reports
@@ -326,7 +326,7 @@ const LimsReportView = () => {
     });
 
     return { pages: allPages, totalPages: allPages.length };
-  }, [approvedReports, departments, testsMap, testParamsMap, snipImages, layoutSettings, showLetterhead]);
+  }, [approvedReports, departments, testsMap, testParamsMap, snipImages, layoutSettings]);
 
   // ── PDF export ──
   const handleDownloadPdf = async () => {
@@ -361,8 +361,8 @@ const LimsReportView = () => {
   };
 
   const report = approvedReports[0];
-  const topMm = showLetterhead ? layoutSettings.top_margin_cm * 10 : 10;
-  const bottomMm = showLetterhead ? layoutSettings.bottom_margin_cm * 10 : 10;
+  const topMm = (layoutSettings.top_margin_cm || 2.5) * 10;
+  const bottomMm = (layoutSettings.bottom_margin_cm || 1.5) * 10;
 
   if (loading) {
     return (
@@ -553,12 +553,18 @@ const LimsReportView = () => {
         @media print {
           body * { visibility: hidden; }
           [data-page], [data-page] * { visibility: visible; }
-          [data-page] { 
-            position: relative;
+          [data-page] {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 210mm !important;
+            height: 297mm !important;
             page-break-after: always;
             break-after: page;
             margin: 0 !important;
+            padding: 0 !important;
             box-shadow: none !important;
+            overflow: hidden;
           }
           @page { size: A4; margin: 0; }
           .print\\:hidden { display: none !important; }
