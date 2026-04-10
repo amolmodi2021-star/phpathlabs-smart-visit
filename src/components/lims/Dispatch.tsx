@@ -431,6 +431,26 @@ const Dispatch = () => {
                               </CollapsibleTrigger>
                             </div>
                             <div className="flex items-center gap-1.5 shrink-0">
+                              {/* TAT badge */}
+                              {(() => {
+                                const startTime = test.collectedAt;
+                                const endTime = test.dispatchedAt;
+                                if (startTime) {
+                                  const start = new Date(startTime).getTime();
+                                  const end = endTime ? new Date(endTime).getTime() : Date.now();
+                                  const diffMs = end - start;
+                                  const totalMins = Math.floor(diffMs / 60000);
+                                  const hrs = Math.floor(totalMins / 60);
+                                  const mins = totalMins % 60;
+                                  const label = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+                                  return (
+                                    <Badge variant="outline" className={`text-[9px] px-1.5 py-0 h-5 font-mono ${endTime ? "border-emerald-500 text-emerald-700 bg-emerald-50" : "border-sky-400 text-sky-600 bg-sky-50"}`}>
+                                      <Clock className="h-2.5 w-2.5 mr-0.5" />{label}
+                                    </Badge>
+                                  );
+                                }
+                                return null;
+                              })()}
                               {/* Step badges */}
                               {auditSteps.map((step, idx) => {
                                 const isDone = !!step.timestamp;
