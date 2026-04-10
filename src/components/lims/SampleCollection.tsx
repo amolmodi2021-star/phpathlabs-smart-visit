@@ -73,7 +73,7 @@ const SampleCollection = () => {
         .in("status", ["pending", "collected"])
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return (data || []) as SampleTubeRow[];
+      return (data || []) as unknown as SampleTubeRow[];
     },
   });
 
