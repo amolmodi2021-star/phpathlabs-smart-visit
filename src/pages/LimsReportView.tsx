@@ -20,12 +20,12 @@ const PAGE_WIDTH_MM = 210;
 const HEADER_HEIGHT_MM = 28;
 const SIGNATURE_HEIGHT_MM = 16;
 const PAGE_NUM_HEIGHT_MM = 6;
-const DEPT_HEADER_MM = 8;
-const TEST_HEADER_MM = 6;
-const TABLE_HEADER_MM = 5;
-const ROW_HEIGHT_MM = 4.5;
-const INTERPRETATION_MM = 8;
-const META_LINE_MM = 4;
+const DEPT_HEADER_MM = 10;
+const TEST_HEADER_MM = 8;
+const TABLE_HEADER_MM = 7;
+const ROW_HEIGHT_MM = 5.5;
+const INTERPRETATION_MM = 10;
+const META_LINE_MM = 5;
 const GAP_MM = 3;
 
 interface TestResultEntry {
