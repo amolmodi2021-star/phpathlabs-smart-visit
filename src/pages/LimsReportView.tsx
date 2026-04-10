@@ -326,7 +326,7 @@ const LimsReportView = () => {
     });
 
     return { pages: allPages, totalPages: allPages.length };
-  }, [approvedReports, departments, testsMap, testParamsMap, snipImages, layoutSettings]);
+  }, [approvedReports, departments, testsMap, testParamsMap, snipImages, layoutSettings, showLetterhead]);
 
   // ── PDF export ──
   const handleDownloadPdf = async () => {
