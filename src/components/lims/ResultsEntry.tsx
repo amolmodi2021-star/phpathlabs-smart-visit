@@ -581,7 +581,7 @@ const ResultsEntry = () => {
       }
       return { registration: reg, parameters, incompleteTests, snipOnlyTests };
     }).filter(entry => entry.parameters.length > 0 || entry.incompleteTests.length > 0 || entry.snipOnlyTests.length > 0);
-  }, [acceptedRegs, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails]);
+  }, [acceptedRegs, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails, acceptedTestIdsByReg]);
 
   // ─── Calculate flag ───
   const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string): string => {
