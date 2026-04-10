@@ -190,6 +190,7 @@ const SampleCollection = () => {
 
       if (!groupMap[groupKey]) {
         const entry = collectedEntries.find(e => e.key === groupKey);
+        const isGroupCollected = collectedKeySet.has(groupKey);
         groupMap[groupKey] = {
           groupKey,
           sampleId: suffix ? `${reg.invoice_number}${suffix}` : reg.invoice_number,
@@ -199,8 +200,8 @@ const SampleCollection = () => {
           suffix,
           testNames: [],
           selected: false,
-          isCollected: collectedKeySet.has(groupKey),
-          collectedAt: entry?.collected_at || null,
+          isCollected: isGroupCollected,
+          collectedAt: entry?.collected_at || (isGroupCollected ? reg.updated_at : null),
         };
       }
       groupMap[groupKey].testNames.push(t.test_name);
@@ -498,7 +499,7 @@ const SampleCollection = () => {
                           <CheckCircle2 className="h-3 w-3 mr-1" /> Collected
                         </Badge>
                       )}
-                      {isCollected && group.collectedAt && (
+                      {isCollected && (
                         <span className="text-xs text-muted-foreground">{formatCollectedAt(group.collectedAt)}</span>
                       )}
                     </div>
