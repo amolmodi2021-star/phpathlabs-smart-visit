@@ -375,32 +375,35 @@ const LimsReportView = () => {
         imageUrls.push(png);
       }
 
-      const printWindow = window.open("", "_blank");
-      if (!printWindow) { toast.error("Pop-up blocked. Please allow pop-ups."); setDownloading(false); return; }
+      // Create hidden iframe for printing (no new tab)
+      const iframe = document.createElement("iframe");
+      iframe.style.position = "fixed";
+      iframe.style.top = "-10000px";
+      iframe.style.left = "-10000px";
+      iframe.style.width = "210mm";
+      iframe.style.height = "297mm";
+      iframe.style.border = "none";
+      document.body.appendChild(iframe);
 
-      printWindow.document.write(`
+      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (!iframeDoc || !iframe.contentWindow) {
+        toast.error("Print failed");
+        document.body.removeChild(iframe);
+        setDownloading(false);
+        return;
+      }
+
+      iframeDoc.open();
+      iframeDoc.write(`
         <html>
           <head>
-            <title>Print Report</title>
             <style>
               @page { size: A4; margin: 0; }
               * { margin: 0; padding: 0; box-sizing: border-box; }
               body { width: 210mm; }
-              .print-page {
-                width: 210mm;
-                height: 297mm;
-                overflow: hidden;
-                page-break-after: always;
-                display: block;
-              }
-              .print-page:last-child {
-                page-break-after: auto;
-              }
-              .print-page img {
-                display: block;
-                width: 210mm;
-                height: 297mm;
-              }
+              .print-page { width: 210mm; height: 297mm; overflow: hidden; page-break-after: always; display: block; }
+              .print-page:last-child { page-break-after: auto; }
+              .print-page img { display: block; width: 210mm; height: 297mm; }
             </style>
           </head>
           <body>
@@ -408,14 +411,15 @@ const LimsReportView = () => {
           </body>
         </html>
       `);
-      printWindow.document.close();
+      iframeDoc.close();
 
-      const images = printWindow.document.querySelectorAll(".print-page img");
+      const images = iframeDoc.querySelectorAll(".print-page img");
       let loadedCount = 0;
       const onAllLoaded = () => {
         setTimeout(() => {
-          printWindow.focus();
-          printWindow.print();
+          iframe.contentWindow!.focus();
+          iframe.contentWindow!.print();
+          setTimeout(() => { try { document.body.removeChild(iframe); } catch(e) {} }, 1000);
         }, 300);
       };
 
