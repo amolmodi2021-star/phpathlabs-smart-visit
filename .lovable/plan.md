@@ -1,32 +1,53 @@
 
 
-# Fix: Print Misalignment Due to Letterhead Spacing
+# Fix: Revert Conditional Margins & Fix Print Alignment
 
 ## Problem
-The report reserves a large top margin (`top_margin_cm`, likely ~2.5cm = 25mm) to position content below the letterhead. When printing via the browser's Print dialog, background images are hidden by default — so the letterhead disappears but the blank space remains, pushing content far down the page.
+1. The conditional margin logic (switching between letterhead margins and 10mm) introduced in the last change broke the print layout
+2. The print CSS doesn't properly position each page as a standalone A4 sheet — the flex container gaps and browser print rendering cause the large blank space and misalignment seen in the screenshot
 
-## Solution
-Make the top/bottom padding conditional on the `showLetterhead` toggle:
-- **Letterhead ON**: Use the configured `top_margin_cm` / `bottom_margin_cm` (current behavior)
-- **Letterhead OFF**: Use a minimal print margin (e.g., 10mm top, 10mm bottom)
+## Changes to `src/pages/LimsReportView.tsx`
 
-This affects two places in `src/pages/LimsReportView.tsx`:
+### 1. Revert conditional margins back to always use layout settings
+```typescript
+// Line 217-218: Change back to:
+const topMm = (layoutSettings.top_margin_cm || 2.5) * 10;
+const bottomMm = (layoutSettings.bottom_margin_cm || 1.5) * 10;
 
-### Changes
-
-1. **Pagination logic** (line ~217): Use conditional margins when calculating `usableHeight` so content is paginated correctly for both modes
-2. **Render padding** (line ~364, ~440): Apply the same conditional margins to the rendered page padding
-
-```
-// Conceptual change:
-const topMm = showLetterhead ? layoutSettings.top_margin_cm * 10 : 10;
-const bottomMm = showLetterhead ? layoutSettings.bottom_margin_cm * 10 : 10;
+// Line 364-365: Same revert:
+const topMm = (layoutSettings.top_margin_cm || 2.5) * 10;
+const bottomMm = (layoutSettings.bottom_margin_cm || 1.5) * 10;
 ```
 
-Both the `useMemo` pagination calculation and the render section use `topMm`/`bottomMm`, so both must reference `showLetterhead`.
+### 2. Fix print CSS for proper A4 alignment
+The current print styles don't force each `[data-page]` to fill exactly one printed page. Update the print styles to:
+- Set each page to `width: 210mm; height: 297mm` explicitly in print
+- Remove flex gaps that add extra space between pages
+- Use `page-break-inside: avoid` to keep page content intact
+- Hide the `Parameter` column header text "Parameter" and show only data (the "Flag" column header too) — actually, looking at the screenshot again, test names ARE expected. The user concern is about alignment, not hiding test names.
+
+```css
+@media print {
+  body * { visibility: hidden; }
+  [data-page], [data-page] * { visibility: visible; }
+  [data-page] {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 210mm !important;
+    height: 297mm !important;
+    page-break-after: always;
+    break-after: page;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    overflow: hidden;
+  }
+  @page { size: A4; margin: 0; }
+  .print\\:hidden { display: none !important; }
+}
+```
 
 ### Files
-- `src/pages/LimsReportView.tsx` — conditional margins based on `showLetterhead` state
-
-No database changes needed.
+- `src/pages/LimsReportView.tsx` — revert margins, fix print positioning CSS
 
