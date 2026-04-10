@@ -237,14 +237,20 @@ const ReportResultsSection = ({
                                   </td>
                                 </tr>
                               )}
-                              {hasParamMeta && (
+                              {paramMeta.sample_type && (
                                 <tr>
                                   <td colSpan={totalCols} className="px-3 py-0.5 text-gray-500 border-t border-gray-100" style={{ fontSize: metaFontSize }}>
-                                    ({[
-                                      paramMeta.sample_type && `Sample: ${paramMeta.sample_type}`,
+                                    (Sample: {paramMeta.sample_type})
+                                  </td>
+                                </tr>
+                              )}
+                              {(paramMeta.analyzer || paramMeta.method) && (
+                                <tr>
+                                  <td colSpan={totalCols} className="px-3 py-0.5 text-gray-500 border-t border-gray-100" style={{ fontSize: metaFontSize }}>
+                                    {[
                                       paramMeta.analyzer && `Instrument: ${paramMeta.analyzer}`,
                                       paramMeta.method && `Method: ${paramMeta.method}`,
-                                    ].filter(Boolean).join(' | ')})
+                                    ].filter(Boolean).join(' | ')}
                                   </td>
                                 </tr>
                               )}
@@ -297,16 +303,20 @@ const ReportResultsSection = ({
                       <div style={{ height: '1mm' }} />
                       <div className="px-3 py-1 font-semibold bg-blue-50 print:bg-transparent border-b-2 border-gray-600" style={{ color: '#2E3192', fontSize: profileFontSize }}>
                         {profName}
-                        {(profMeta?.sample_type || profMeta?.analyzer || profMeta?.method) && (
+                        {profMeta?.sample_type && (
                           <span className="font-normal text-gray-500 ml-2" style={{ fontSize: metaFontSize }}>
-                            ({[
-                              profMeta?.sample_type && `Sample: ${profMeta.sample_type}`,
-                              profMeta?.analyzer && `Instrument: ${profMeta.analyzer}`,
-                              profMeta?.method && `Method: ${profMeta.method}`,
-                            ].filter(Boolean).join(' | ')})
+                            (Sample: {profMeta.sample_type})
                           </span>
                         )}
                       </div>
+                      {(profMeta?.analyzer || profMeta?.method) && (
+                        <div className="px-3 py-0.5 text-gray-500" style={{ fontSize: metaFontSize }}>
+                          {[
+                            profMeta?.analyzer && `Instrument: ${profMeta.analyzer}`,
+                            profMeta?.method && `Method: ${profMeta.method}`,
+                          ].filter(Boolean).join(' | ')}
+                        </div>
+                      )}
                     </>
                   )}
                   <table className="w-full" style={{ fontSize: rowFontSize }}>
