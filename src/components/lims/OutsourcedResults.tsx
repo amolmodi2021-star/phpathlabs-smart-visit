@@ -40,6 +40,7 @@ interface OutsourcedPatient {
 
 const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   const qc = useQueryClient();
+  useRealtimeSync("outsourced_test_snips", ["outsourced_snips", "results_outsourced_snips", "outsourced_accepted_regs"]);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
