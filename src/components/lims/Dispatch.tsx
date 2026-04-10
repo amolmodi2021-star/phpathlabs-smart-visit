@@ -7,10 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Search, ChevronDown, ChevronUp, Loader2, CheckCircle2, Send, Eye, Truck, MessageSquare, Circle } from "lucide-react";
+import { Search, Loader2, CheckCircle2, Send, Eye, Truck, MessageSquare, Circle, Phone, Calendar, FileText, User } from "lucide-react";
 import { toast } from "sonner";
+import { format } from "date-fns";
 
 type TestStatus = "registered" | "sample_collected" | "sample_accepted" | "results_entered" | "verified" | "approved" | "dispatched";
 
@@ -35,7 +36,7 @@ const Dispatch = () => {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
+  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [actionKey, setActionKey] = useState<string | null>(null);
   const [viewSnipImages, setViewSnipImages] = useState<string[] | null>(null);
   const [reportSelectEntry, setReportSelectEntry] = useState<DispatchEntry | null>(null);
@@ -43,7 +44,6 @@ const Dispatch = () => {
 
   useEffect(() => { const t = setTimeout(() => setDebouncedSearch(search), 400); return () => clearTimeout(t); }, [search]);
 
-  // Fetch all non-cancelled registrations
   const { data: registrations = [], isLoading: loadingRegs } = useQuery({
     queryKey: ["dispatch_regs", debouncedSearch],
     queryFn: async () => {
@@ -60,7 +60,6 @@ const Dispatch = () => {
 
   const regIds = registrations.map((r: any) => r.id);
 
-  // Fetch ALL results (not just approved)
   const { data: allResults = [] } = useQuery({
     queryKey: ["dispatch_all_results", regIds.join(",")],
     enabled: regIds.length > 0,
@@ -70,7 +69,6 @@ const Dispatch = () => {
     },
   });
 
-  // Fetch ALL outsourced snips
   const { data: allSnips = [] } = useQuery({
     queryKey: ["dispatch_all_snips", regIds.join(",")],
     enabled: regIds.length > 0,
@@ -80,7 +78,6 @@ const Dispatch = () => {
     },
   });
 
-  // Fetch held report registration IDs
   const { data: heldRegIds = [] } = useQuery({
     queryKey: ["dispatch_held_reports", regIds.join(",")],
     enabled: regIds.length > 0,
@@ -95,7 +92,6 @@ const Dispatch = () => {
     queryFn: async () => { const { data } = await supabase.from("tests").select("id, test_name"); const map: Record<string, any> = {}; (data || []).forEach((t: any) => { map[t.id] = t; }); return map; },
   });
 
-  // Build dispatch entries with per-test status
   const heldSet = useMemo(() => new Set(heldRegIds), [heldRegIds]);
 
   const dispatchEntries = useMemo(() => {
@@ -103,17 +99,14 @@ const Dispatch = () => {
       const tests = (reg.tests || []) as any[];
       const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
       const activeTests = tests.filter((t: any) => !cancelledIds.has(t.test_id));
-
       if (activeTests.length === 0) return null;
 
       const dispatchTests: DispatchTest[] = [];
-
       for (const t of activeTests) {
         const testInfo = testsMap[t.test_id] || {};
         const testResults = allResults.filter((r: any) => r.registration_id === reg.id && r.test_id === t.test_id);
         const snip = allSnips.find((s: any) => s.registration_id === reg.id && s.test_id === t.test_id);
 
-        // Determine granular test status
         const hasDispatchedResults = testResults.some((r: any) => r.status === "dispatched");
         const hasDispatchedSnip = snip && snip.outsource_status === "dispatched";
         const hasApprovedResults = testResults.some((r: any) => r.status === "approved");
@@ -125,19 +118,12 @@ const Dispatch = () => {
 
         let status: TestStatus = "registered";
         const regStatus = reg.status as string;
-        if (hasDispatchedResults || hasDispatchedSnip) {
-          status = "dispatched";
-        } else if (hasApprovedResults || hasApprovedSnip) {
-          status = "approved";
-        } else if (hasVerifiedResults || hasVerifiedSnip) {
-          status = "verified";
-        } else if (hasEnteredResults || hasEnteredSnip) {
-          status = "results_entered";
-        } else if (regStatus === "sample_accepted" || testResults.length > 0) {
-          status = "sample_accepted";
-        } else if (regStatus === "sample_collected") {
-          status = "sample_collected";
-        }
+        if (hasDispatchedResults || hasDispatchedSnip) status = "dispatched";
+        else if (hasApprovedResults || hasApprovedSnip) status = "approved";
+        else if (hasVerifiedResults || hasVerifiedSnip) status = "verified";
+        else if (hasEnteredResults || hasEnteredSnip) status = "results_entered";
+        else if (regStatus === "sample_accepted" || testResults.length > 0) status = "sample_accepted";
+        else if (regStatus === "sample_collected") status = "sample_collected";
 
         const snipUrls = snip && snip.result_mode === "snip" && Array.isArray(snip.snip_image_urls) ? snip.snip_image_urls : [];
         const approvedResults = testResults.filter((r: any) => r.status === "approved");
@@ -156,18 +142,22 @@ const Dispatch = () => {
       const nonDispatchedCount = approvedCount + pendingCount;
 
       let completionStatus: "all_done" | "partial" | "all_pending" = "all_pending";
-      if (nonDispatchedCount === 0) {
-        // All dispatched already — treat as all_done
-        completionStatus = "all_done";
-      } else if (pendingCount === 0) {
-        completionStatus = "all_done";
-      } else if (approvedCount > 0) {
-        completionStatus = "partial";
-      }
+      if (nonDispatchedCount === 0) completionStatus = "all_done";
+      else if (pendingCount === 0) completionStatus = "all_done";
+      else if (approvedCount > 0) completionStatus = "partial";
 
       return { registration: reg, tests: dispatchTests, completionStatus, approvedCount, pendingCount } as DispatchEntry;
     }).filter(Boolean) as DispatchEntry[];
   }, [registrations, allResults, allSnips, testsMap, heldSet]);
+
+  // Auto-select first patient when entries change
+  useEffect(() => {
+    if (dispatchEntries.length > 0 && (!selectedPatientId || !dispatchEntries.find(e => e.registration.id === selectedPatientId))) {
+      setSelectedPatientId(dispatchEntries[0].registration.id);
+    }
+  }, [dispatchEntries, selectedPatientId]);
+
+  const selectedEntry = useMemo(() => dispatchEntries.find(e => e.registration.id === selectedPatientId) || null, [dispatchEntries, selectedPatientId]);
 
   const stats = useMemo(() => ({
     totalPatients: dispatchEntries.length,
@@ -191,7 +181,6 @@ const Dispatch = () => {
         await supabase.from("patient_results").update({ status: "dispatched" } as any).eq("registration_id", reg.id).eq("test_id", test.testId).eq("status", "approved");
         await supabase.from("outsourced_test_snips").update({ outsource_status: "dispatched" } as any).eq("registration_id", reg.id).eq("test_id", test.testId).eq("outsource_status", "approved");
       }
-      // Only update registration status if all tests are now dispatched
       const stillPending = entry.tests.some(t => t.status !== "approved" && t.status !== "dispatched");
       if (!stillPending) {
         await supabase.from("patient_registrations").update({ status: "dispatched" } as any).eq("id", reg.id);
@@ -219,12 +208,20 @@ const Dispatch = () => {
   const getStatusBadge = (status: TestStatus) => {
     switch (status) {
       case "registered": return <Badge variant="outline" className="text-[10px]">Registered</Badge>;
-      case "sample_collected": return <Badge variant="outline" className="text-[10px] border-orange-400 text-orange-600">Sample Collected</Badge>;
-      case "sample_accepted": return <Badge variant="outline" className="text-[10px] border-yellow-500 text-yellow-700">Sample Accepted</Badge>;
-      case "results_entered": return <Badge className="text-[10px] bg-indigo-500">Results Entered</Badge>;
+      case "sample_collected": return <Badge variant="outline" className="text-[10px] border-orange-400 text-orange-600">Collected</Badge>;
+      case "sample_accepted": return <Badge variant="outline" className="text-[10px] border-yellow-500 text-yellow-700">Accepted</Badge>;
+      case "results_entered": return <Badge className="text-[10px] bg-indigo-500">Entered</Badge>;
       case "verified": return <Badge className="text-[10px] bg-purple-600">Verified</Badge>;
       case "approved": return <Badge className="text-[10px] bg-green-600">Approved</Badge>;
       case "dispatched": return <Badge className="text-[10px] bg-blue-600">Dispatched</Badge>;
+    }
+  };
+
+  const getCompletionDot = (status: "all_done" | "partial" | "all_pending") => {
+    switch (status) {
+      case "all_done": return <Circle className="h-3 w-3 fill-green-500 text-green-500" />;
+      case "partial": return <Circle className="h-3 w-3 fill-amber-500 text-amber-500" />;
+      case "all_pending": return <Circle className="h-3 w-3 fill-red-500 text-red-500" />;
     }
   };
 
@@ -246,11 +243,8 @@ const Dispatch = () => {
   };
 
   const toggleSelectAll = () => {
-    if (allReportableSelected) {
-      setSelectedTestIds(new Set());
-    } else {
-      setSelectedTestIds(new Set(reportableTests.map(t => t.testId)));
-    }
+    if (allReportableSelected) setSelectedTestIds(new Set());
+    else setSelectedTestIds(new Set(reportableTests.map(t => t.testId)));
   };
 
   const handleGenerateReport = () => {
@@ -261,25 +255,18 @@ const Dispatch = () => {
     setReportSelectEntry(null);
   };
 
-  const getCompletionDot = (status: "all_done" | "partial" | "all_pending") => {
-    switch (status) {
-      case "all_done": return <Circle className="h-4 w-4 fill-green-500 text-green-500" />;
-      case "partial": return <Circle className="h-4 w-4 fill-amber-500 text-amber-500" />;
-      case "all_pending": return <Circle className="h-4 w-4 fill-red-500 text-red-500" />;
-    }
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return "—";
+    try { return format(new Date(dateStr), "dd MMM yyyy, hh:mm a"); } catch { return dateStr; }
   };
 
   return (
-    <div className="space-y-4">
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input placeholder="Search by name, mobile, invoice..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <Card className="p-3"><div className="text-xs text-muted-foreground">Total Patients</div><div className="text-xl font-bold">{stats.totalPatients}</div></Card>
-        <Card className="p-3"><div className="text-xs text-muted-foreground">Ready to Dispatch</div><div className="text-xl font-bold text-green-600">{stats.readyToDispatch}</div></Card>
-        <Card className="p-3"><div className="text-xs text-muted-foreground">Partially Ready</div><div className="text-xl font-bold text-amber-600">{stats.partiallyReady}</div></Card>
+    <div className="space-y-3">
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-3">
+        <Card className="p-3"><div className="text-xs text-muted-foreground">Total</div><div className="text-xl font-bold">{stats.totalPatients}</div></Card>
+        <Card className="p-3"><div className="text-xs text-muted-foreground">Ready</div><div className="text-xl font-bold text-green-600">{stats.readyToDispatch}</div></Card>
+        <Card className="p-3"><div className="text-xs text-muted-foreground">Partial</div><div className="text-xl font-bold text-amber-600">{stats.partiallyReady}</div></Card>
       </div>
 
       {loadingRegs ? (
@@ -291,89 +278,147 @@ const Dispatch = () => {
           <p className="text-sm">All approved reports have been dispatched</p>
         </div>
       ) : (
-        <div className="space-y-2">
-          {dispatchEntries.map((entry) => {
-            const reg = entry.registration;
-            const isExpanded = expandedPatient === reg.id;
-            const isDispatching = actionKey === `${reg.id}||dispatch`;
-            const hasApproved = entry.approvedCount > 0;
-            return (
-              <Card key={reg.id} className={isExpanded ? "ring-1 ring-primary/30" : ""}>
-                <div className="flex items-center justify-between p-3 cursor-pointer hover:bg-muted/30 transition-colors" onClick={() => setExpandedPatient(isExpanded ? null : reg.id)}>
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-4 flex justify-center shrink-0">{getCompletionDot(entry.completionStatus)}</div>
-                    {isExpanded ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
-                    {reg.is_stat && <span className="relative flex h-2.5 w-2.5 shrink-0"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" /><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive" /></span>}
-                    <div className="min-w-0">
-                      <div className="font-medium text-sm truncate">{reg.patient_name}{!["sample_accepted","entered","verified","approved","dispatched"].includes(reg.status) && Array.isArray(reg.accepted_samples) && reg.accepted_samples.length > 0 && <Badge className="bg-amber-100 text-amber-700 text-[10px] ml-1">PARTIAL</Badge>}<span className="text-xs text-muted-foreground ml-2">{reg.invoice_number}</span></div>
-                      <div className="text-xs text-muted-foreground">
-                        {reg.mobile_number} • {entry.approvedCount} approved, {entry.pendingCount} pending
+        <div className="flex gap-3" style={{ height: "calc(100vh - 240px)" }}>
+          {/* LEFT PANEL — Patient List */}
+          <Card className="w-[380px] shrink-0 flex flex-col overflow-hidden">
+            <div className="p-3 border-b">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input placeholder="Search name, mobile, invoice..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8 h-9 text-sm" />
+              </div>
+            </div>
+            <ScrollArea className="flex-1">
+              <div className="divide-y">
+                {dispatchEntries.map((entry) => {
+                  const reg = entry.registration;
+                  const isSelected = selectedPatientId === reg.id;
+                  return (
+                    <div
+                      key={reg.id}
+                      className={`px-3 py-2.5 cursor-pointer transition-colors hover:bg-muted/50 ${isSelected ? "bg-primary/5 border-l-2 border-l-primary" : "border-l-2 border-l-transparent"}`}
+                      onClick={() => setSelectedPatientId(reg.id)}
+                    >
+                      <div className="flex items-start gap-2">
+                        <div className="mt-1 shrink-0">{getCompletionDot(entry.completionStatus)}</div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            {reg.is_stat && <span className="relative flex h-2 w-2 shrink-0"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-destructive" /></span>}
+                            <span className="font-medium text-sm truncate">{reg.patient_name}</span>
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-xs text-muted-foreground flex items-center gap-1"><Phone className="h-3 w-3" />{reg.mobile_number}</span>
+                          </div>
+                          <div className="flex items-center justify-between mt-0.5">
+                            <span className="text-xs text-muted-foreground flex items-center gap-1"><FileText className="h-3 w-3" />{reg.invoice_number}</span>
+                            <span className="text-[10px] text-muted-foreground">{entry.approvedCount}A / {entry.pendingCount}P</span>
+                          </div>
+                          <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            {formatDate(reg.created_at)}
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {entry.completionStatus !== "all_pending" && (
-                      <>
-                        <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={(e) => { e.stopPropagation(); openReportSelectDialog(entry); }}>
-                          <Eye className="h-3.5 w-3.5" /> View Report
+                  );
+                })}
+              </div>
+            </ScrollArea>
+          </Card>
+
+          {/* RIGHT PANEL — Selected Patient Details */}
+          <Card className="flex-1 flex flex-col overflow-hidden">
+            {selectedEntry ? (
+              <>
+                {/* Patient header */}
+                <div className="p-4 border-b bg-muted/20">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <User className="h-5 w-5 text-muted-foreground" />
+                        <h3 className="font-semibold text-lg">{selectedEntry.registration.patient_name}</h3>
+                        {selectedEntry.registration.is_stat && <Badge variant="destructive" className="text-[10px]">STAT</Badge>}
+                        {getCompletionDot(selectedEntry.completionStatus)}
+                      </div>
+                      <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
+                        <span className="flex items-center gap-1"><Phone className="h-3.5 w-3.5" />{selectedEntry.registration.mobile_number}</span>
+                        <span className="flex items-center gap-1"><FileText className="h-3.5 w-3.5" />{selectedEntry.registration.invoice_number}</span>
+                        {selectedEntry.registration.umr_number && <span>UMR: {selectedEntry.registration.umr_number}</span>}
+                        <span className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" />{formatDate(selectedEntry.registration.created_at)}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {selectedEntry.completionStatus !== "all_pending" && (
+                        <>
+                          <Button size="sm" variant="outline" className="gap-1" onClick={() => openReportSelectDialog(selectedEntry)}>
+                            <Eye className="h-4 w-4" /> View Report
+                          </Button>
+                          <Button size="sm" variant="outline" className="gap-1" onClick={() => dispatchViaWhatsApp(selectedEntry.registration)}>
+                            <MessageSquare className="h-4 w-4" /> WhatsApp
+                          </Button>
+                        </>
+                      )}
+                      {selectedEntry.approvedCount > 0 && (
+                        <Button size="sm" className="gap-1" disabled={actionKey === `${selectedEntry.registration.id}||dispatch`} onClick={() => markAsDispatched(selectedEntry)}>
+                          {actionKey === `${selectedEntry.registration.id}||dispatch` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Dispatch All
                         </Button>
-                        <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={(e) => { e.stopPropagation(); dispatchViaWhatsApp(reg); }}>
-                          <MessageSquare className="h-3.5 w-3.5" /> WhatsApp
-                        </Button>
-                      </>
-                    )}
-                    {hasApproved && (
-                      <Button size="sm" variant="default" className="h-7 text-xs gap-1" disabled={isDispatching} onClick={(e) => { e.stopPropagation(); markAsDispatched(entry); }}>
-                        {isDispatching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} Dispatch All
-                      </Button>
-                    )}
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                {isExpanded && (
-                  <div className="border-t p-3 space-y-3 bg-muted/10">
-                    {entry.tests.map((test) => {
-                      const testKey = `${reg.id}||${test.testId}`;
+                {/* Test details list */}
+                <ScrollArea className="flex-1">
+                  <div className="p-4 space-y-2">
+                    <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                      Tests ({selectedEntry.tests.length})
+                    </div>
+                    {selectedEntry.tests.map((test) => {
+                      const testKey = `${selectedEntry.registration.id}||${test.testId}`;
                       const isTestDispatching = actionKey === `${testKey}||dispatch`;
                       return (
-                        <div key={testKey} className="border rounded-lg overflow-hidden bg-background">
-                          <div className="flex items-center justify-between px-3 py-2">
-                            <div className="flex items-center gap-2">
+                        <div key={testKey} className="border rounded-lg bg-background">
+                          <div className="flex items-center justify-between px-4 py-3">
+                            <div className="flex items-center gap-3">
                               <span className="font-medium text-sm">{test.testName}</span>
                               {getStatusBadge(test.status)}
                             </div>
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-2">
+                              {test.status === "approved" && test.snipUrls.length > 0 && (
+                                <Button size="sm" variant="ghost" className="h-8 text-xs gap-1" onClick={() => setViewSnipImages(test.snipUrls)}>
+                                  <Eye className="h-3.5 w-3.5" /> Snip ({test.snipUrls.length})
+                                </Button>
+                              )}
                               {test.status === "approved" && (
                                 <>
-                                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => dispatchViaWhatsApp(reg)}>
-                                    <MessageSquare className="h-3 w-3" /> WhatsApp
+                                  <Button size="sm" variant="outline" className="h-8 text-xs gap-1" onClick={() => dispatchViaWhatsApp(selectedEntry.registration)}>
+                                    <MessageSquare className="h-3.5 w-3.5" />
                                   </Button>
-                                  <Button size="sm" variant="default" className="h-7 text-xs gap-1" disabled={isTestDispatching} onClick={() => markTestDispatched(reg.id, test.testId, test.testName)}>
-                                    {isTestDispatching ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />} Mark Dispatched
+                                  <Button size="sm" className="h-8 text-xs gap-1" disabled={isTestDispatching} onClick={() => markTestDispatched(selectedEntry.registration.id, test.testId, test.testName)}>
+                                    {isTestDispatching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />} Dispatch
                                   </Button>
                                 </>
                               )}
                             </div>
                           </div>
-
-                          {test.status === "approved" && test.snipUrls.length > 0 && (
-                            <div className="px-3 pb-2">
-                              <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={() => setViewSnipImages(test.snipUrls)}>
-                                <Eye className="h-3 w-3" /> View Outsourced Report ({test.snipUrls.length} page{test.snipUrls.length > 1 ? "s" : ""})
-                              </Button>
-                            </div>
-                          )}
                         </div>
                       );
                     })}
                   </div>
-                )}
-              </Card>
-            );
-          })}
+                </ScrollArea>
+              </>
+            ) : (
+              <div className="flex-1 flex items-center justify-center text-muted-foreground">
+                <div className="text-center">
+                  <User className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                  <p className="text-sm">Select a patient to view details</p>
+                </div>
+              </div>
+            )}
+          </Card>
         </div>
       )}
 
+      {/* Snip viewer dialog */}
       <Dialog open={!!viewSnipImages} onOpenChange={open => { if (!open) setViewSnipImages(null); }}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Outsourced Result — Snipped Images</DialogTitle></DialogHeader>
@@ -381,6 +426,7 @@ const Dispatch = () => {
         </DialogContent>
       </Dialog>
 
+      {/* Report select dialog */}
       <Dialog open={!!reportSelectEntry} onOpenChange={open => { if (!open) setReportSelectEntry(null); }}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Select Tests for Report</DialogTitle></DialogHeader>
