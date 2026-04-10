@@ -1,48 +1,53 @@
 
+Goal: fix the report preview so the letterhead actually appears when the toggle is ON.
 
-# Fix: Letterhead Not Showing When Toggle Is On
+What I found
+- The toggle logic is already correct in `src/pages/LimsReportView.tsx`.
+- The real failure is in PDF.js worker loading:
+  - `LimsReportView.tsx` uses `pdf.worker.min.mjs`
+  - the project is pinned to `pdfjs-dist 3.11.174`
+  - the working implementation in `src/components/lims/SnipOnLetterhead.tsx` uses `pdf.worker.min.js`
+- Your runtime logs confirm this exact error:
+  - `Cannot load script at: .../pdf.worker.min.mjs`
+- Because of that, `convertPdfToImage()` fails, `letterheadImageUrl` stays `null`, and nothing is shown even when the toggle is on.
 
-## Problem
-The letterhead PDF is correctly stored and the toggle is working, but the `convertPdfToImage` function (which uses `pdfjs-dist` to render the PDF to a canvas) is silently failing — its `catch` block returns `null`, so `letterheadImageUrl` stays `null` and no image is rendered regardless of the toggle state.
+Implementation plan
 
-This is likely a CORS or PDF worker loading issue with `pdfjs-dist`.
+1. Update the PDF.js worker path in `src/pages/LimsReportView.tsx`
+- Change:
+  - `pdf.worker.min.mjs`
+- To:
+  - `pdf.worker.min.js`
+- This will match the installed PDF.js version and the existing working pattern already used elsewhere in the app.
 
-## Solution
-Add error logging to diagnose, and also add a more robust fallback approach:
+2. Keep the current `fetch -> ArrayBuffer -> getDocument({ data })` approach
+- That part is fine and can stay.
+- The missing piece is the correct worker file, not the fetch logic.
 
-### Changes to `src/pages/LimsReportView.tsx`
+3. Improve failure handling in `convertPdfToImage()`
+- Keep the `console.error`
+- Add a small visible fallback state/message only if conversion fails, so future breakage is easier to spot instead of silently rendering no letterhead.
 
-1. **Add console.error to the catch block** in `convertPdfToImage` so failures are visible during debugging.
+4. Verify the render path in the report page
+- Confirm `letterheadImageUrl && showLetterhead` now resolves truthy after the worker fix.
+- Confirm the preview and downloaded PDF both include the letterhead when the toggle is ON and exclude it when OFF.
 
-2. **Add a fallback approach**: If PDF-to-image conversion fails, fall back to rendering the letterhead as an `<iframe>` or `<object>` element (similar to how `ReportLayoutSettings.tsx` successfully previews it). However, for PDF download purposes, iframes won't work.
+Optional cleanup I recommend while touching this file
+- The console also shows React ref warnings for:
+  - `LimsReportHeader`
+  - `ReportSignatureBlock`
+- These are not the cause of the missing letterhead, but I can clean them up in the same pass if needed by removing/refactoring any invalid ref usage around those components.
 
-3. **Better approach — fetch PDF as blob to avoid CORS**: Instead of passing the URL directly to `pdfjsLib.getDocument()`, fetch the PDF as an `ArrayBuffer` first using `fetch()`, then pass the buffer to `pdfjsLib.getDocument()`. This avoids CORS issues with the worker.
+Files to update
+- `src/pages/LimsReportView.tsx`
 
-```typescript
-const convertPdfToImage = async (pdfUrl: string) => {
-  try {
-    // Fetch as ArrayBuffer to avoid CORS issues
-    const response = await fetch(pdfUrl);
-    const arrayBuffer = await response.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    const page = await pdf.getPage(1);
-    const viewport = page.getViewport({ scale: 2 });
-    const canvas = document.createElement("canvas");
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-    await page.render({ canvasContext: ctx, viewport }).promise;
-    return canvas.toDataURL("image/png");
-  } catch (err) {
-    console.error("Failed to convert letterhead PDF to image:", err);
-    return null;
-  }
-};
-```
+Expected result
+- Refreshing the report page will show the letterhead by default.
+- Turning the toggle OFF will hide it.
+- Downloaded PDF will match the selected toggle state.
 
-This single change to the `convertPdfToImage` function should fix the letterhead rendering. The toggle logic itself is already correct.
-
-## Files Modified
-- `src/pages/LimsReportView.tsx` — Update `convertPdfToImage` to fetch PDF as ArrayBuffer and add error logging
-
+Technical note
+- Root cause is version/worker mismatch, not a storage or toggle bug.
+- `pdfjs-dist@3.11.174` should use the classic worker file:
+  - `pdf.worker.min.js`
+- The current `.mjs` URL is what is breaking runtime worker initialization.
