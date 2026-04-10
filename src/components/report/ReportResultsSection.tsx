@@ -115,7 +115,7 @@ const ParamRow = ({ r, rowKey, compact, isMorph, showFlagText, rowFontSize, colC
   const rightSpan = showFlagText ? 3 : 2;
 
   return (
-    <tr key={rowKey} className={`border-b border-gray-100`} style={{ fontSize: rowFontSize }}>
+    <tr key={rowKey} className={`border-b border-gray-100 ${isAbnormal ? 'bg-red-50 print:bg-transparent' : ''}`} style={{ fontSize: rowFontSize }}>
       <td className={`px-3 ${nameWeight} ${py}`}>{r.parameter_name}</td>
       {!showFlagText && (
         <td className={`text-right ${py}`} style={{ width: '24px' }}>
@@ -187,7 +187,7 @@ const ReportResultsSection = ({
         <div key={dept} data-pdf-section="department">
           {!hideDeptHeader && (
             <div
-              className="px-3 py-1.5 rounded-t font-bold text-center border-2 border-gray-800 text-gray-900"
+              className="px-3 py-1.5 rounded-t font-bold text-center bg-[#2E3192] text-white print:bg-transparent print:text-gray-900 print:border-2 print:border-gray-800"
               style={{ fontSize: deptFontSize }}
             >
               {dept}
@@ -295,7 +295,7 @@ const ReportResultsSection = ({
                   {shouldShowProfile(nonSubheaderParams) && (
                     <>
                       <div style={{ height: '1mm' }} />
-                      <div className="px-3 py-1 font-semibold border-b-2 border-gray-600" style={{ color: '#2E3192', fontSize: profileFontSize }}>
+                      <div className="px-3 py-1 font-semibold bg-blue-50 print:bg-transparent border-b-2 border-gray-600" style={{ color: '#2E3192', fontSize: profileFontSize }}>
                         {profName}
                         {profMeta?.sample_type && <span className="font-normal text-gray-500 ml-2" style={{ fontSize: metaFontSize }}>(Sample: {profMeta.sample_type})</span>}
                       </div>
@@ -320,7 +320,7 @@ const ReportResultsSection = ({
                           <React.Fragment key={`p-${i}`}>
                             {hasMultipleTestNames && r.test_name && (i === 0 || r.test_name !== params[i - 1]?.test_name) && !params[i - 1]?.is_subheader && (
                               <tr>
-                                <td colSpan={totalCols} className="px-3 font-semibold text-gray-700 border-b py-0.5" style={{ fontSize: rowFontSize }}>
+                                <td colSpan={totalCols} className="px-3 font-semibold text-gray-700 bg-gray-50 print:bg-transparent border-b py-0.5" style={{ fontSize: rowFontSize }}>
                                   {r.test_name}
                                 </td>
                               </tr>
