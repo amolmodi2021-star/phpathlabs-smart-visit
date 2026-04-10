@@ -12,7 +12,7 @@ import LimsReportHeader from "@/components/report/LimsReportHeader";
 import ReportSignatureBlock from "@/components/report/ReportSignatureBlock";
 import { toast } from "sonner";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.mjs";
+pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
 // ── Height constants (mm) ──
 const PAGE_HEIGHT_MM = 297;
