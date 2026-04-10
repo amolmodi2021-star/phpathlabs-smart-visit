@@ -330,10 +330,16 @@ const RegisteredPatients = () => {
           setClearing(true);
           try {
             await supabase.from("patient_results").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+            await supabase.from("approved_reports").delete().neq("id", "00000000-0000-0000-0000-000000000000");
             await supabase.from("outsourced_test_snips").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+            await supabase.from("sample_tubes" as any).delete().neq("id", "00000000-0000-0000-0000-000000000000");
             await supabase.from("patient_registrations").delete().neq("id", "00000000-0000-0000-0000-000000000000");
             await supabase.from("invoice_counter").delete().neq("date_key", "");
+            await supabase.from("sample_tube_counter" as any).delete().neq("date_key", "");
             await supabase.from("patient_master").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+            await supabase.rpc("generate_umr_number" as any).then(() => {});
+            // Reset UMR counter to 0
+            await supabase.from("umr_counter" as any).update({ last_sequence: 0 }).eq("counter_key", "main");
             toast.success("All LIMS data cleared successfully");
             qc.invalidateQueries();
           } catch (err: any) {
