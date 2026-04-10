@@ -372,7 +372,7 @@ const LimsReportView = () => {
       for (let i = 0; i < pageElements.length; i++) {
         if (i > 0) pdf.addPage();
         const el = pageElements[i] as HTMLElement;
-        const png = await toPng(el, { quality: 1, pixelRatio: 2, backgroundColor: "#ffffff" });
+        const png = await toPng(el, { quality: 1, pixelRatio: 4, backgroundColor: "#ffffff" });
         pdf.addImage(png, "PNG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM);
       }
 
@@ -409,7 +409,7 @@ const LimsReportView = () => {
       const imageUrls: string[] = [];
       for (let i = 0; i < pageElements.length; i++) {
         const el = pageElements[i] as HTMLElement;
-        const png = await toPng(el, { quality: 1, pixelRatio: 2, backgroundColor: "#ffffff" });
+        const png = await toPng(el, { quality: 1, pixelRatio: 4, backgroundColor: "#ffffff" });
         imageUrls.push(png);
       }
 
