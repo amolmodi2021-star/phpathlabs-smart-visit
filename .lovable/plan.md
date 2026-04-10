@@ -1,33 +1,38 @@
 
 
-# Fix: PARTIAL Badge Showing When All Samples Are Collected
+# Fix: Pending Acceptance Counter Mismatch
 
 ## Problem
-In the "Collected" tab, registrations where all samples have been collected still show the amber "PARTIAL" badge. The current condition (`reg.status !== "sample_collected"`) only checks the global status field, which may not yet reflect that all tubes are collected.
+The "Pending Acceptance" tab badge shows `pendingRegs.length` (the raw query result count), but the table body applies two additional filters before rendering rows:
+1. Checks that the registration has at least one active (non-cancelled) test
+2. Checks that at least one tube group is NOT yet accepted
 
-## Root Cause
-Line 610 in `SampleCollection.tsx` shows the PARTIAL badge based solely on `reg.status !== "sample_collected"`. It doesn't check whether all tube groups have actually been collected.
+When a registration fails either filter, it's hidden from the display but still counted in the badge — causing the "1" counter with no visible rows.
 
-## Fix — `src/components/lims/SampleCollection.tsx`
+## Fix — `src/components/lims/SampleAcceptance.tsx`
 
-Update line 610-612 to also check if there are actually uncollected tubes remaining. The `groups` variable (from `buildBarcodeGroups`) is already available and contains an `isCollected` flag per group.
+### Compute filtered counts for both tabs
+Add two `useMemo` values that apply the same filtering logic used in `renderTable` (lines 421-436):
 
-**Change from:**
 ```typescript
-{!isPending && reg.status !== "sample_collected" && (
-  <Badge className="ml-2 text-xs bg-amber-500 text-white border-0">PARTIAL</Badge>
-)}
+const filteredPendingCount = useMemo(() => {
+  return pendingRegs.filter(reg => {
+    const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
+    const hasActiveTests = ((reg.tests || []) as any[]).some((t: any) => !cancelledIds.has(t.test_id));
+    if (!hasActiveTests) return false;
+    const groups = buildTubeGroups(reg);
+    const accepted = parseAcceptedSamples(reg.accepted_samples);
+    const acceptedKeys = new Set(accepted.map(a => a.key));
+    return groups.some(g => !acceptedKeys.has(g.key));
+  }).length;
+}, [pendingRegs, buildTubeGroups]);
 ```
 
-**Change to:**
-```typescript
-{!isPending && reg.status !== "sample_collected" && groups.some(g => !g.isCollected) && (
-  <Badge className="ml-2 text-xs bg-amber-500 text-white border-0">PARTIAL</Badge>
-)}
-```
+Similarly for `filteredAcceptedCount`.
 
-This adds a check that at least one tube group is still uncollected before showing the PARTIAL badge. If all groups are collected, the badge won't appear regardless of the status field.
+### Update badge counters (lines 642-643, 648-649)
+Replace `pendingRegs.length` with `filteredPendingCount` and `acceptedRegs.length` with `filteredAcceptedCount`.
 
 ## File
-- `src/components/lims/SampleCollection.tsx` — one-line edit
+- `src/components/lims/SampleAcceptance.tsx`
 
