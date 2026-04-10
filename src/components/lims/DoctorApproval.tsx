@@ -254,7 +254,7 @@ const DoctorApproval = () => {
       }
       await supabase.from("outsourced_test_snips").update({ outsource_status: "approved" } as any).eq("registration_id", reg.id).eq("test_id", testId).eq("outsource_status", "verified");
 
-      // Archive snapshot
+      // Archive snapshot — merge with existing approved_reports data
       const snipKey = `${reg.id}||${testId}`;
       const snipDetail = outsourcedSnipDetails[snipKey];
       const snipUrls = snipDetail?.snipImageUrls || [];
@@ -266,7 +266,13 @@ const DoctorApproval = () => {
         flag: u.flag, is_calculated: u.is_calculated, is_outsourced: testParams[0]?.isOutsourced || false,
         outsource_lab_name: snipDetail?.labName || null,
       }));
-      const earliestResult = testParams.reduce((min, p) => !min ? p : p.displayOrder < min.displayOrder ? p : min, null as ParameterResult | null);
+      // Fetch existing approved_reports to merge
+      const { data: existingReport } = await supabase.from("approved_reports").select("test_results, outsourced_snip_urls").eq("registration_id", reg.id).maybeSingle();
+      const existingResults = Array.isArray((existingReport as any)?.test_results) ? (existingReport as any).test_results : [];
+      const existingSnipUrls = Array.isArray((existingReport as any)?.outsourced_snip_urls) ? (existingReport as any).outsourced_snip_urls : [];
+      // Remove old entries for this test, then add new ones
+      const mergedResults = existingResults.filter((r: any) => r.test_id !== testId).concat(testResultsSnapshot);
+      const mergedSnipUrls = [...new Set([...existingSnipUrls.filter((u: string) => !u.includes(testId)), ...snipUrls])];
       await supabase.from("approved_reports").upsert({
         registration_id: reg.id, invoice_number: reg.invoice_number, umr_number: reg.umr_number,
         patient_name: reg.patient_name, title: reg.title, gender: reg.gender, dob: reg.dob,
@@ -274,7 +280,7 @@ const DoctorApproval = () => {
         doctor_name: reg.doctor_name, visit_type: reg.visit_type, is_stat: reg.is_stat,
         report_language: reg.report_language, approved_by: "Doctor",
         registration_date: reg.created_at, approval_date: new Date().toISOString(),
-        test_results: testResultsSnapshot, outsourced_snip_urls: snipUrls,
+        test_results: mergedResults, outsourced_snip_urls: mergedSnipUrls,
       } as any, { onConflict: "registration_id" as any, ignoreDuplicates: false });
 
       toast.success(`${testName} approved`);
