@@ -380,6 +380,9 @@ const LimsReportView = () => {
         imageUrls.push(png);
       }
 
+      // Restore letterhead state after capturing
+      setShowLetterhead(originalLetterhead);
+
       // Create hidden iframe for printing (no new tab)
       const iframe = document.createElement("iframe");
       iframe.style.position = "fixed";
