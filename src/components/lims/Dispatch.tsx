@@ -444,8 +444,8 @@ const Dispatch = () => {
                                   const mins = totalMins % 60;
                                   const label = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
                                   return (
-                                    <Badge variant="outline" className={`text-[9px] px-1.5 py-0 h-5 font-mono ${endTime ? "border-emerald-500 text-emerald-700 bg-emerald-50" : "border-sky-400 text-sky-600 bg-sky-50"}`}>
-                                      <Clock className="h-2.5 w-2.5 mr-0.5" />{label}
+                                    <Badge variant="outline" className={`text-xs px-2 py-0.5 h-6 font-mono ${endTime ? "border-emerald-500 text-emerald-700 bg-emerald-50" : "border-sky-400 text-sky-600 bg-sky-50"}`}>
+                                      <Clock className="h-3 w-3 mr-1" />{label}
                                     </Badge>
                                   );
                                 }
@@ -467,7 +467,7 @@ const Dispatch = () => {
                                   <Badge
                                     key={idx}
                                     variant="outline"
-                                    className={`text-[9px] px-1.5 py-0 h-5 ${isDone ? badgeColors[idx] : "border-muted text-muted-foreground/40 bg-transparent"}`}
+                                    className={`text-[10px] px-2 py-0.5 h-6 ${isDone ? badgeColors[idx] : "border-muted text-muted-foreground/40 bg-transparent"}`}
                                   >
                                     {shortLabels[idx]}
                                   </Badge>
