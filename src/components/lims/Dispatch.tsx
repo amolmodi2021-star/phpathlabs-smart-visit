@@ -4,6 +4,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
+
+const DISPATCH_PAGE_SIZE = 50;
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -53,22 +55,40 @@ const Dispatch = () => {
   const [reportSelectEntry, setReportSelectEntry] = useState<DispatchEntry | null>(null);
   const [selectedTestIds, setSelectedTestIds] = useState<Set<string>>(new Set());
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  useEffect(() => { const t = setTimeout(() => setDebouncedSearch(search), 400); return () => clearTimeout(t); }, [search]);
+  const [dispatchPage, setDispatchPage] = useState(0);
+  useEffect(() => { const t = setTimeout(() => { setDebouncedSearch(search); setDispatchPage(0); }, 400); return () => clearTimeout(t); }, [search]);
+
+  const { data: dispatchCount = 0 } = useQuery({
+    queryKey: ["dispatch_regs_count", debouncedSearch, dateFrom.toISOString(), dateTo.toISOString()],
+    queryFn: async () => {
+      let query = supabase.from("patient_registrations").select("id", { count: "exact", head: true })
+        .eq("bill_cancelled", false)
+        .gte("created_at", dateFrom.toISOString())
+        .lte("created_at", dateTo.toISOString());
+      if (debouncedSearch) query = query.or(`patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%,umr_number.ilike.%${debouncedSearch}%`);
+      const { count } = await query;
+      return count || 0;
+    },
+  });
 
   const { data: registrations = [], isLoading: loadingRegs } = useQuery({
-    queryKey: ["dispatch_regs", debouncedSearch, dateFrom.toISOString(), dateTo.toISOString()],
+    queryKey: ["dispatch_regs", debouncedSearch, dateFrom.toISOString(), dateTo.toISOString(), dispatchPage],
     queryFn: async () => {
-      let query = supabase.from("patient_registrations").select("*")
+      let query = supabase.from("patient_registrations")
+        .select("id, invoice_number, patient_name, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, created_at, updated_at, bill_cancelled")
         .eq("bill_cancelled", false)
         .gte("created_at", dateFrom.toISOString())
         .lte("created_at", dateTo.toISOString())
         .order("is_stat", { ascending: false })
-        .order("updated_at", { ascending: false });
+        .order("updated_at", { ascending: false })
+        .range(dispatchPage * DISPATCH_PAGE_SIZE, dispatchPage * DISPATCH_PAGE_SIZE + DISPATCH_PAGE_SIZE - 1);
       if (debouncedSearch) query = query.or(`patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%,umr_number.ilike.%${debouncedSearch}%`);
       const { data } = await query;
       return (data || []) as any[];
     },
   });
+
+  const dispatchTotalPages = Math.ceil(dispatchCount / DISPATCH_PAGE_SIZE);
 
   const regIds = registrations.map((r: any) => r.id);
 
@@ -334,7 +354,7 @@ const Dispatch = () => {
           </PopoverContent>
         </Popover>
         <Button variant="ghost" size="sm" className="text-xs" onClick={() => { setDateFrom(startOfDay(new Date())); setDateTo(endOfDay(new Date())); }}>Today</Button>
-        <span className="text-xs text-muted-foreground ml-auto">{dispatchEntries.length} records</span>
+        <span className="text-xs text-muted-foreground ml-auto">{dispatchCount} records{dispatchTotalPages > 1 ? ` (page ${dispatchPage + 1}/${dispatchTotalPages})` : ""}</span>
       </div>
 
       {loadingRegs ? (
@@ -391,6 +411,13 @@ const Dispatch = () => {
                 })}
               </div>
             </ScrollArea>
+            {dispatchTotalPages > 1 && (
+              <div className="p-2 border-t flex items-center justify-between">
+                <Button variant="ghost" size="sm" className="text-xs h-7" disabled={dispatchPage === 0} onClick={() => setDispatchPage(p => p - 1)}>Prev</Button>
+                <span className="text-xs text-muted-foreground">{dispatchPage + 1} / {dispatchTotalPages}</span>
+                <Button variant="ghost" size="sm" className="text-xs h-7" disabled={dispatchPage >= dispatchTotalPages - 1} onClick={() => setDispatchPage(p => p + 1)}>Next</Button>
+              </div>
+            )}
           </Card>
 
           {/* RIGHT PANEL — Selected Patient Details */}
