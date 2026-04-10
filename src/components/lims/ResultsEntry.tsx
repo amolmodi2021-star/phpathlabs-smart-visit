@@ -91,6 +91,8 @@ const handleResultTabKey = (e: React.KeyboardEvent) => {
   allInputs[nextIdx]?.focus();
 };
 
+const RE_PAGE_SIZE = 50;
+
 const ResultsEntry = () => {
   const qc = useQueryClient();
   useRealtimeSync("outsourced_test_snips", ["results_outsourced_snips", "outsourced_snips", "outsourced_accepted_regs"]);
@@ -109,23 +111,37 @@ const ResultsEntry = () => {
   const [blankParamCount, setBlankParamCount] = useState(0);
   const [highlightBlanksForRegs, setHighlightBlanksForRegs] = useState<Set<string>>(new Set());
   const autoSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const [rePage, setRePage] = useState(0);
 
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search), 400);
+    const t = setTimeout(() => { setDebouncedSearch(search); setRePage(0); }, 400);
     return () => clearTimeout(t);
   }, [search]);
 
+  const { data: reCount = 0 } = useQuery({
+    queryKey: ["results_accepted_count", debouncedSearch],
+    queryFn: async () => {
+      let query = supabase.from("patient_registrations").select("id", { count: "exact", head: true })
+        .in("status", ["sample_accepted", "partially_accepted", "processing", "partial_processing", "processed", "partial_verified", "verified", "partially_approved", "approved", "partially_dispatched", "dispatched"])
+        .eq("bill_cancelled", false);
+      if (debouncedSearch) query = query.or(`patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%`);
+      const { count } = await query;
+      return count || 0;
+    },
+  });
+
   // ─── Fetch accepted registrations ───
   const { data: acceptedRegs = [], isLoading: loadingRegs } = useQuery({
-    queryKey: ["results_accepted_regs", debouncedSearch],
+    queryKey: ["results_accepted_regs", debouncedSearch, rePage],
     queryFn: async () => {
       let query = supabase
         .from("patient_registrations")
-        .select("*")
+        .select("id, invoice_number, patient_name, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, gender, dob, created_at, updated_at, bill_cancelled, doctor_name")
         .in("status", ["sample_accepted", "partially_accepted", "processing", "partial_processing", "processed", "partial_verified", "verified", "partially_approved", "approved", "partially_dispatched", "dispatched"])
         .eq("bill_cancelled", false)
         .order("is_stat", { ascending: false })
-        .order("updated_at", { ascending: false });
+        .order("updated_at", { ascending: false })
+        .range(rePage * RE_PAGE_SIZE, rePage * RE_PAGE_SIZE + RE_PAGE_SIZE - 1);
       if (debouncedSearch) {
         query = query.or(
           `patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%`
@@ -136,6 +152,8 @@ const ResultsEntry = () => {
       return (data || []) as any[];
     },
   });
+
+  const reTotalPages = Math.ceil(reCount / RE_PAGE_SIZE);
 
   // (departments query removed – now using machine-wise grouping)
 

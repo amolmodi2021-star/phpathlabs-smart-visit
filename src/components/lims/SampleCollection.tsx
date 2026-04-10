@@ -63,15 +63,19 @@ const SampleCollection = () => {
     (window as any).__scSearchTimeout = setTimeout(() => setDebouncedSearch(val), 400);
   };
 
-  // Fetch sample_tubes with pending or collected status
+  // Fetch sample_tubes with pending or collected status - limited to last 14 days
   const { data: allTubes = [], isLoading } = useQuery({
     queryKey: ["sample_tubes_collection", debouncedSearch],
     queryFn: async () => {
+      const fourteenDaysAgo = new Date();
+      fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
       const { data, error } = await supabase
         .from("sample_tubes" as any)
         .select("*")
         .in("status", ["pending", "collected"])
-        .order("created_at", { ascending: false });
+        .gte("created_at", fourteenDaysAgo.toISOString())
+        .order("created_at", { ascending: false })
+        .limit(500);
       if (error) throw error;
       return (data || []) as unknown as SampleTubeRow[];
     },
