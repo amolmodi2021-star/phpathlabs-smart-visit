@@ -2670,11 +2670,13 @@ export type Database = {
         Row: {
           bold_in_report: boolean
           created_at: string
+          dedicated_page: boolean
           department_id: string | null
           description: string | null
           discount_applicable: boolean
           display_name: string | null
           fasting_required: boolean
+          fit_to_page: boolean
           id: string
           incentive_allowed: boolean
           incentive_amount: number
@@ -2699,11 +2701,13 @@ export type Database = {
         Insert: {
           bold_in_report?: boolean
           created_at?: string
+          dedicated_page?: boolean
           department_id?: string | null
           description?: string | null
           discount_applicable?: boolean
           display_name?: string | null
           fasting_required?: boolean
+          fit_to_page?: boolean
           id?: string
           incentive_allowed?: boolean
           incentive_amount?: number
@@ -2728,11 +2732,13 @@ export type Database = {
         Update: {
           bold_in_report?: boolean
           created_at?: string
+          dedicated_page?: boolean
           department_id?: string | null
           description?: string | null
           discount_applicable?: boolean
           display_name?: string | null
           fasting_required?: boolean
+          fit_to_page?: boolean
           id?: string
           incentive_allowed?: boolean
           incentive_amount?: number

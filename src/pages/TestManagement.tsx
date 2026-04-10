@@ -34,7 +34,7 @@ const defaultForm = {
   display_name: "", bold_in_report: false, show_in_report: true, is_single_parameter: false,
   instrument_name: "", method: "", sample_type: "", sample_tube: "", tube_color: "", interpretation: "",
   is_outsourced: false, outsourced_caption: "", department_id: "",
-  is_active: true,
+  is_active: true, fit_to_page: false, dedicated_page: false,
 };
 
 const TUBE_COLOR_MAP: Record<string, string> = {
@@ -110,6 +110,8 @@ const TestManagement = () => {
         outsourced_caption: values.outsourced_caption || null,
         department_id: values.department_id || null,
         is_active: values.is_active,
+        fit_to_page: values.fit_to_page,
+        dedicated_page: values.dedicated_page,
       };
       await saveTest(payload, editing?.id);
     },
@@ -160,6 +162,7 @@ const TestManagement = () => {
       is_outsourced: t.is_outsourced ?? false, outsourced_caption: t.outsourced_caption || "",
       department_id: t.department_id || "",
       is_active: t.is_active !== false,
+      fit_to_page: t.fit_to_page ?? false, dedicated_page: t.dedicated_page ?? false,
     });
     setIncentiveLocked(true);
     setIncentivePassword("");
@@ -251,6 +254,8 @@ const TestManagement = () => {
                     <div className="flex items-center gap-3"><Switch checked={form.bold_in_report} onCheckedChange={(v) => setForm(p => ({ ...p, bold_in_report: v }))} /><Label className="text-sm">Bold in Report</Label></div>
                     <div className="flex items-center gap-3"><Switch checked={form.show_in_report} onCheckedChange={(v) => setForm(p => ({ ...p, show_in_report: v }))} /><Label className="text-sm">Show Display Name in Report</Label></div>
                     <div className="flex items-center gap-3"><Switch checked={form.is_single_parameter} onCheckedChange={(v) => setForm(p => ({ ...p, is_single_parameter: v }))} /><Label className="text-sm">Test = Parameter (Single Parameter Test)</Label></div>
+                    <div className="flex items-center gap-3"><Switch checked={form.fit_to_page} onCheckedChange={(v) => setForm(p => ({ ...p, fit_to_page: v }))} /><Label className="text-sm">Fit to Page</Label></div>
+                    <div className="flex items-center gap-3"><Switch checked={form.dedicated_page} onCheckedChange={(v) => setForm(p => ({ ...p, dedicated_page: v }))} /><Label className="text-sm">Dedicated Page</Label></div>
                   </div>
                 </div>
 
