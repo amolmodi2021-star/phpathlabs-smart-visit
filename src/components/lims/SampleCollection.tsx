@@ -391,25 +391,37 @@ const SampleCollection = () => {
 
   const renderBarcodeExpansion = (reg: any, groups: BarcodeGroup[], isPending: boolean) => {
     const sel = isPending ? (selectedBarcodes[reg.id] || {}) : {};
-    const selectedCount = isPending ? groups.filter((_, i) => sel[i]).length : 0;
+    const pendingGroups = groups.filter(g => !g.isCollected);
+    const collectedGroups = groups.filter(g => g.isCollected);
+    const selectedPendingCount = isPending ? groups.filter((g, i) => !g.isCollected && sel[i]).length : 0;
+    const allPendingSelected = isPending && pendingGroups.length > 0 && pendingGroups.every(g => {
+      const idx = groups.indexOf(g);
+      return sel[idx];
+    });
 
     return (
       <div className="bg-muted/30 p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <h4 className="text-sm font-semibold">Sample Barcodes</h4>
-          {isPending && (
+          <h4 className="text-sm font-semibold">
+            Sample Barcodes
+            {isPending && collectedGroups.length > 0 && (
+              <span className="text-xs text-muted-foreground font-normal ml-2">
+                ({collectedGroups.length} collected, {pendingGroups.length} remaining)
+              </span>
+            )}
+          </h4>
+          {isPending && pendingGroups.length > 0 && (
             <div className="flex gap-2">
               <Button size="sm" variant="outline" onClick={() => {
-                const allSel = groups.every((_, i) => sel[i]);
+                const allSel = allPendingSelected;
                 toggleAllBarcodes(reg.id, groups, !allSel);
               }}>
-                {groups.every((_, i) => sel[i]) ? "Deselect All" : "Select All"}
+                {allPendingSelected ? "Deselect All" : "Select All"}
               </Button>
-              <Button size="sm" variant="default" className="gap-1" disabled={selectedCount === 0}
+              <Button size="sm" variant="default" className="gap-1" disabled={selectedPendingCount === 0}
                 onClick={() => handlePrintAndCollect(reg, groups)}>
                 <Printer className="h-3.5 w-3.5" />
-                Print Selected ({selectedCount})
-                {selectedCount === groups.length && " & Collect"}
+                Print & Collect ({selectedPendingCount})
               </Button>
             </div>
           )}
@@ -418,11 +430,16 @@ const SampleCollection = () => {
         <div className="grid gap-2">
           {groups.map((group, idx) => {
             const colorHex = getTubeColorHex(group.tubeColor);
+            const isCollected = group.isCollected;
             return (
-              <Card key={idx} className={isPending && sel[idx] ? "ring-2 ring-primary" : ""}>
+              <Card key={idx} className={`${isCollected ? "opacity-60" : ""} ${isPending && !isCollected && sel[idx] ? "ring-2 ring-primary" : ""}`}>
                 <CardContent className="p-3 flex items-center gap-3">
                   {isPending && (
-                    <Checkbox checked={!!sel[idx]} onCheckedChange={() => toggleBarcode(reg.id, idx)} />
+                    <Checkbox 
+                      checked={isCollected ? true : !!sel[idx]} 
+                      disabled={isCollected}
+                      onCheckedChange={() => !isCollected && toggleBarcode(reg.id, idx)} 
+                    />
                   )}
                   {colorHex && (
                     <span className="inline-block w-5 h-5 rounded-full border-2 border-muted-foreground/30 shrink-0"
@@ -437,16 +454,31 @@ const SampleCollection = () => {
                       {group.sampleType && (
                         <span className="text-xs text-muted-foreground">{group.sampleType}</span>
                       )}
+                      {isCollected && (
+                        <Badge className="text-xs bg-green-100 text-green-800 border-green-300">
+                          <CheckCircle2 className="h-3 w-3 mr-1" /> Collected
+                        </Badge>
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5 truncate">
                       {group.testNames.join(", ")}
                     </p>
                   </div>
-                  {isPending && (
+                  {isPending && !isCollected && (
                     <Button size="sm" variant="ghost" className="shrink-0" onClick={(e) => {
                       e.stopPropagation();
-                      setSelectedBarcodes(prev => ({ ...prev, [reg.id]: { [idx]: true } }));
                       doPrintBarcodes(reg, [group]);
+                      // Also mark this single tube as collected
+                      const existingCollected = (reg.collected_samples || []) as string[];
+                      const allCollectedKeys = [...new Set([...existingCollected, group.groupKey])];
+                      const allGroupKeys = groups.map(g => g.groupKey);
+                      const allNowCollected = allGroupKeys.every(k => allCollectedKeys.includes(k));
+                      if (allNowCollected) {
+                        markCollectedMutation.mutate({ regId: reg.id, collectedKeys: allCollectedKeys });
+                      } else {
+                        partialCollectMutation.mutate({ regId: reg.id, collectedKeys: allCollectedKeys });
+                        toast.success(`Sample collected. ${allGroupKeys.length - allCollectedKeys.length} remaining.`);
+                      }
                     }}>
                       <Printer className="h-3.5 w-3.5" />
                     </Button>
@@ -457,8 +489,12 @@ const SampleCollection = () => {
           })}
         </div>
 
-        {isPending && selectedCount === groups.length && (
-          <Button className="w-full gap-2" onClick={() => markCollectedMutation.mutate(reg.id)}>
+        {isPending && allPendingSelected && pendingGroups.length > 0 && (
+          <Button className="w-full gap-2" onClick={() => {
+            const existingCollected = (reg.collected_samples || []) as string[];
+            const allKeys = groups.map(g => g.groupKey);
+            markCollectedMutation.mutate({ regId: reg.id, collectedKeys: [...new Set([...existingCollected, ...allKeys])] });
+          }}>
             <CheckCircle2 className="h-4 w-4" /> Mark as Sample Collected
           </Button>
         )}
