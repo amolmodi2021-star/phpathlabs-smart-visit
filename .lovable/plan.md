@@ -1,45 +1,26 @@
 
 
-# Partial Sample Collection
+# Fix: Print Error and Sample Not Marked as Collected
 
-## Problem
-Currently, when only some barcode groups (tubes) are selected, the system prints labels but does not track that those samples were collected. The patient stays in "pending" with no indication of which tubes are already done. The "Mark as Sample Collected" button only appears when ALL tubes are selected.
+## Root Cause
+In `handlePrintAndCollect`, `doPrintBarcodes()` opens a popup window and schedules `printWindow.print()` via `onload`. Immediately after, the Supabase mutation fires, which invalidates queries and triggers a React re-render. This destroys the print window's callback context before `onload` fires, causing:
+1. "Failed to execute 'print' on 'Window'" error
+2. The mutation failing silently (sample not marked collected)
 
-## Solution
-Add a `collected_samples` JSONB column to `patient_registrations` to track which tube groups have been collected. This enables partial collection where:
-- Collected tubes show as "Collected" (greyed out, non-selectable) in the expansion
-- Remaining tubes stay selectable for future collection
-- When all tubes are finally collected, status auto-updates to `sample_collected`
+## Fix
+Refactor `doPrintBarcodes` to return a `Promise` that resolves after the print dialog completes. Then make `handlePrintAndCollect` `async` and `await` the print before running the mutation.
 
-## Database Change
-Add one column via migration:
-```sql
-ALTER TABLE patient_registrations 
-ADD COLUMN collected_samples jsonb NOT NULL DEFAULT '[]'::jsonb;
-```
+### Changes in `src/components/lims/SampleCollection.tsx`
 
-The column stores an array of collected group keys, e.g. `["EDTA||", "FLUORIDE||-F"]`.
+1. **`doPrintBarcodes`** — wrap in a Promise:
+   - Resolve after `printWindow.print()` completes (in the `onload` callback, after `print()`)
+   - Add `printWindow.onafterprint` as an alternative resolution point
+   - Use a `setTimeout` fallback (2s) in case `onafterprint` isn't supported
 
-## UI Changes in `src/components/lims/SampleCollection.tsx`
+2. **`handlePrintAndCollect`** — make `async`, `await doPrintBarcodes(...)` before running the mutation
 
-1. **Add `groupKey` to `BarcodeGroup` interface** — store the `tube||suffix` key so we can track it.
+3. **Individual tube print button** (line ~468) — same pattern: await print before running partial collect mutation
 
-2. **Update `buildBarcodeGroups`** — include the `groupKey` in each group and mark groups as already collected based on `reg.collected_samples`.
-
-3. **Update `handlePrintAndCollect`** — when partial selection:
-   - Print the selected barcodes
-   - Save the selected group keys into `collected_samples` (merge with existing)
-   - If all groups are now collected, set status to `sample_collected`
-   - Show toast: "X of Y samples collected. Remaining pending."
-
-4. **Update `renderBarcodeExpansion`** — for already-collected groups:
-   - Show a green "Collected" badge, disable the checkbox, grey out the card
-   - The print button changes to show remaining uncollected count
-   - "Mark as Sample Collected" button appears when all remaining are selected
-
-5. **Individual tube print button** — when clicking the small print icon on a single tube, also mark that tube as collected.
-
-## Files
-- `src/components/lims/SampleCollection.tsx` — UI logic for partial collection
-- Migration — add `collected_samples` column
+## File
+- `src/components/lims/SampleCollection.tsx`
 
