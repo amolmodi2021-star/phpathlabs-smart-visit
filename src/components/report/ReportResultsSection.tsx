@@ -237,14 +237,20 @@ const ReportResultsSection = ({
                                   </td>
                                 </tr>
                               )}
-                              {hasParamMeta && (
+                              {paramMeta.sample_type && (
                                 <tr>
                                   <td colSpan={totalCols} className="px-3 py-0.5 text-gray-500 border-t border-gray-100" style={{ fontSize: metaFontSize }}>
-                                    ({[
-                                      paramMeta.sample_type && `Sample: ${paramMeta.sample_type}`,
+                                    (Sample: {paramMeta.sample_type})
+                                  </td>
+                                </tr>
+                              )}
+                              {(paramMeta.analyzer || paramMeta.method) && (
+                                <tr>
+                                  <td colSpan={totalCols} className="px-3 py-0.5 text-gray-500 border-t border-gray-100" style={{ fontSize: metaFontSize }}>
+                                    {[
                                       paramMeta.analyzer && `Instrument: ${paramMeta.analyzer}`,
                                       paramMeta.method && `Method: ${paramMeta.method}`,
-                                    ].filter(Boolean).join(' | ')})
+                                    ].filter(Boolean).join(' | ')}
                                   </td>
                                 </tr>
                               )}
