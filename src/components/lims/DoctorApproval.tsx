@@ -566,6 +566,9 @@ const DoctorApproval = () => {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{reg.patient_name}</span>
+                      {!["sample_accepted","entered","verified"].includes(reg.status) && Array.isArray(reg.accepted_samples) && reg.accepted_samples.length > 0 && (
+                        <Badge className="bg-amber-100 text-amber-700 text-[10px]">PARTIAL</Badge>
+                      )}
                       {reg.is_stat && <span className="relative inline-flex h-2.5 w-2.5"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" /><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive" /></span>}
                       <span className="text-sm text-muted-foreground font-mono">{reg.invoice_number}</span>
                     </div>
