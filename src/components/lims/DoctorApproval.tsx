@@ -22,6 +22,7 @@ interface ParameterResult {
   status: string; testId: string; testName: string; departmentId: string; machineName: string;
   displayOrder: number; rangeType: string; descriptiveOptions: string[]; expectedValue: string;
   isOutsourced: boolean; outsourceLabName: string | null; outsourceStatus: string; isSnipMode: boolean;
+  enteredAt: string | null; verifiedAt: string | null;
 }
 
 interface SnipOnlyTest {
@@ -198,6 +199,7 @@ const DoctorApproval = () => {
             isOutsourced: !!isParamOutsourced, outsourceLabName: isParamOutsourced ? (snipDetail?.labName || null) : null,
             outsourceStatus: isParamOutsourced ? (snipDetail?.status || "pending") : "",
             isSnipMode: isParamOutsourced && snipDetail?.resultMode === "snip",
+            enteredAt: existing?.entered_at || null, verifiedAt: existing?.verified_at || null,
           });
         }
       }
@@ -266,7 +268,7 @@ const DoctorApproval = () => {
         const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
         const unit = p.isOutsourced && editedUnits[k] !== undefined ? editedUnits[k] : p.unit;
         const refRange = p.isOutsourced && editedRefRanges[k] !== undefined ? editedRefRanges[k] : p.referenceRange;
-        upserts.push({ registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId, param_code: p.paramCode, parameter_name: p.parameterName, result_value: value || null, unit, reference_range: refRange, normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh, flag: flag || null, status: "approved", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, approved_at: new Date().toISOString() });
+        upserts.push({ registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId, param_code: p.paramCode, parameter_name: p.parameterName, result_value: value || null, unit, reference_range: refRange, normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh, flag: flag || null, status: "approved", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, approved_at: new Date().toISOString(), entered_at: p.enteredAt || null, verified_at: p.verifiedAt || null });
       }
       if (upserts.length > 0) {
         await supabase.from("patient_results").delete().eq("registration_id", reg.id).eq("test_id", testId).eq("status", "verified");
@@ -333,7 +335,7 @@ const DoctorApproval = () => {
           const value = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
           const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
           const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
-          upserts.push({ registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId, param_code: p.paramCode, parameter_name: p.parameterName, result_value: value || null, unit: p.unit, reference_range: p.referenceRange, normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh, flag: flag || null, status: "approved", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, approved_at: new Date().toISOString() });
+          upserts.push({ registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId, param_code: p.paramCode, parameter_name: p.parameterName, result_value: value || null, unit: p.unit, reference_range: p.referenceRange, normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh, flag: flag || null, status: "approved", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, approved_at: new Date().toISOString(), entered_at: p.enteredAt || null, verified_at: p.verifiedAt || null });
         }
         if (upserts.length > 0) {
           await supabase.from("patient_results").delete().eq("registration_id", reg.id).eq("test_id", testId).eq("status", "verified");
