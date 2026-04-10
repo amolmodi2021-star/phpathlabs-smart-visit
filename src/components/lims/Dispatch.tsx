@@ -52,14 +52,16 @@ const Dispatch = () => {
   const [viewSnipImages, setViewSnipImages] = useState<string[] | null>(null);
   const [reportSelectEntry, setReportSelectEntry] = useState<DispatchEntry | null>(null);
   const [selectedTestIds, setSelectedTestIds] = useState<Set<string>>(new Set());
-
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   useEffect(() => { const t = setTimeout(() => setDebouncedSearch(search), 400); return () => clearTimeout(t); }, [search]);
 
   const { data: registrations = [], isLoading: loadingRegs } = useQuery({
-    queryKey: ["dispatch_regs", debouncedSearch],
+    queryKey: ["dispatch_regs", debouncedSearch, dateFrom.toISOString(), dateTo.toISOString()],
     queryFn: async () => {
       let query = supabase.from("patient_registrations").select("*")
         .eq("bill_cancelled", false)
+        .gte("created_at", dateFrom.toISOString())
+        .lte("created_at", dateTo.toISOString())
         .order("is_stat", { ascending: false })
         .order("updated_at", { ascending: false });
       if (debouncedSearch) query = query.or(`patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%,umr_number.ilike.%${debouncedSearch}%`);
