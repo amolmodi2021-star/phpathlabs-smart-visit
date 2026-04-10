@@ -21,6 +21,11 @@ const TUBE_COLOR_MAP: Record<string, string> = {
   white: "#ffffff", orange: "#ed8936", pink: "#ed64a6", black: "#1a202c",
 };
 
+interface CollectedSampleEntry {
+  key: string;
+  collected_at: string;
+}
+
 interface BarcodeGroup {
   groupKey: string;
   sampleId: string;
@@ -31,7 +36,25 @@ interface BarcodeGroup {
   testNames: string[];
   selected: boolean;
   isCollected: boolean;
+  collectedAt: string | null;
 }
+
+const parseCollectedSamples = (raw: any[]): CollectedSampleEntry[] => {
+  if (!raw || raw.length === 0) return [];
+  return raw.map(item => {
+    if (typeof item === "string") return { key: item, collected_at: "" };
+    return { key: item.key, collected_at: item.collected_at || "" };
+  });
+};
+
+const getCollectedKeys = (entries: CollectedSampleEntry[]): string[] => entries.map(e => e.key);
+
+const formatCollectedAt = (dt: string): string => {
+  if (!dt) return "";
+  try {
+    return format(new Date(dt), "dd-MM-yyyy hh:mm a");
+  } catch { return ""; }
+};
 
 const SampleCollection = () => {
   const qc = useQueryClient();
@@ -152,7 +175,8 @@ const SampleCollection = () => {
     const tests = (reg.tests || []) as any[];
     const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
     const activeTests = tests.filter((t: any) => !cancelledIds.has(t.test_id));
-    const collectedKeys = (reg.collected_samples || []) as string[];
+    const collectedEntries = parseCollectedSamples(reg.collected_samples || []);
+    const collectedKeySet = new Set(getCollectedKeys(collectedEntries));
 
     const groupMap: Record<string, BarcodeGroup> = {};
 
@@ -165,6 +189,7 @@ const SampleCollection = () => {
       const groupKey = `${tube}||${suffix}`;
 
       if (!groupMap[groupKey]) {
+        const entry = collectedEntries.find(e => e.key === groupKey);
         groupMap[groupKey] = {
           groupKey,
           sampleId: suffix ? `${reg.invoice_number}${suffix}` : reg.invoice_number,
@@ -174,7 +199,8 @@ const SampleCollection = () => {
           suffix,
           testNames: [],
           selected: false,
-          isCollected: collectedKeys.includes(groupKey),
+          isCollected: collectedKeySet.has(groupKey),
+          collectedAt: entry?.collected_at || null,
         };
       }
       groupMap[groupKey].testNames.push(t.test_name);
@@ -298,10 +324,10 @@ const SampleCollection = () => {
 
   // Mark sample collected (full)
   const markCollectedMutation = useMutation({
-    mutationFn: async ({ regId, collectedKeys }: { regId: string; collectedKeys: string[] }) => {
+    mutationFn: async ({ regId, collectedEntries }: { regId: string; collectedEntries: CollectedSampleEntry[] }) => {
       const { error } = await supabase
         .from("patient_registrations")
-        .update({ status: "sample_collected", collected_samples: collectedKeys } as any)
+        .update({ status: "sample_collected", collected_samples: collectedEntries } as any)
         .eq("id", regId);
       if (error) throw error;
     },
@@ -316,10 +342,10 @@ const SampleCollection = () => {
 
   // Partial collect mutation
   const partialCollectMutation = useMutation({
-    mutationFn: async ({ regId, collectedKeys }: { regId: string; collectedKeys: string[] }) => {
+    mutationFn: async ({ regId, collectedEntries }: { regId: string; collectedEntries: CollectedSampleEntry[] }) => {
       const { error } = await supabase
         .from("patient_registrations")
-        .update({ collected_samples: collectedKeys } as any)
+        .update({ collected_samples: collectedEntries } as any)
         .eq("id", regId);
       if (error) throw error;
     },
@@ -343,19 +369,23 @@ const SampleCollection = () => {
     // Wait for print to finish before mutating
     await doPrintBarcodes(reg, toPrint);
     
-    // Merge with existing collected keys
-    const existingCollected = (reg.collected_samples || []) as string[];
-    const newKeys = toPrint.map(g => g.groupKey);
-    const allCollectedKeys = [...new Set([...existingCollected, ...newKeys])];
+    // Merge with existing collected entries
+    const existingEntries = parseCollectedSamples(reg.collected_samples || []);
+    const now = new Date().toISOString();
+    const newEntries: CollectedSampleEntry[] = toPrint.map(g => ({ key: g.groupKey, collected_at: now }));
+    const mergedMap = new Map<string, CollectedSampleEntry>();
+    for (const e of existingEntries) mergedMap.set(e.key, e);
+    for (const e of newEntries) mergedMap.set(e.key, e);
+    const allEntries = Array.from(mergedMap.values());
     
     const allGroupKeys = groups.map(g => g.groupKey);
-    const allNowCollected = allGroupKeys.every(k => allCollectedKeys.includes(k));
+    const allNowCollected = allGroupKeys.every(k => mergedMap.has(k));
     
     if (allNowCollected) {
-      markCollectedMutation.mutate({ regId: reg.id, collectedKeys: allCollectedKeys });
+      markCollectedMutation.mutate({ regId: reg.id, collectedEntries: allEntries });
     } else {
-      partialCollectMutation.mutate({ regId: reg.id, collectedKeys: allCollectedKeys });
-      toast.success(`${toPrint.length} of ${groups.length} samples collected. ${groups.length - allCollectedKeys.length} remaining.`);
+      partialCollectMutation.mutate({ regId: reg.id, collectedEntries: allEntries });
+      toast.success(`${toPrint.length} of ${groups.length} samples collected. ${groups.length - allEntries.length} remaining.`);
     }
   };
 
@@ -468,6 +498,9 @@ const SampleCollection = () => {
                           <CheckCircle2 className="h-3 w-3 mr-1" /> Collected
                         </Badge>
                       )}
+                      {isCollected && group.collectedAt && (
+                        <span className="text-xs text-muted-foreground">{formatCollectedAt(group.collectedAt)}</span>
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5 truncate">
                       {group.testNames.join(", ")}
@@ -478,15 +511,19 @@ const SampleCollection = () => {
                       e.stopPropagation();
                       await doPrintBarcodes(reg, [group]);
                       // Mark this single tube as collected after print
-                      const existingCollected = (reg.collected_samples || []) as string[];
-                      const allCollectedKeys = [...new Set([...existingCollected, group.groupKey])];
+                      const existingEntries = parseCollectedSamples(reg.collected_samples || []);
+                      const now = new Date().toISOString();
+                      const mergedMap = new Map<string, CollectedSampleEntry>();
+                      for (const e of existingEntries) mergedMap.set(e.key, e);
+                      mergedMap.set(group.groupKey, { key: group.groupKey, collected_at: now });
+                      const allEntries = Array.from(mergedMap.values());
                       const allGroupKeys = groups.map(g => g.groupKey);
-                      const allNowCollected = allGroupKeys.every(k => allCollectedKeys.includes(k));
+                      const allNowCollected = allGroupKeys.every(k => mergedMap.has(k));
                       if (allNowCollected) {
-                        markCollectedMutation.mutate({ regId: reg.id, collectedKeys: allCollectedKeys });
+                        markCollectedMutation.mutate({ regId: reg.id, collectedEntries: allEntries });
                       } else {
-                        partialCollectMutation.mutate({ regId: reg.id, collectedKeys: allCollectedKeys });
-                        toast.success(`Sample collected. ${allGroupKeys.length - allCollectedKeys.length} remaining.`);
+                        partialCollectMutation.mutate({ regId: reg.id, collectedEntries: allEntries });
+                        toast.success(`Sample collected. ${allGroupKeys.length - allEntries.length} remaining.`);
                       }
                     }}>
                       <Printer className="h-3.5 w-3.5" />
@@ -500,9 +537,12 @@ const SampleCollection = () => {
 
         {isPending && allPendingSelected && pendingGroups.length > 0 && (
           <Button className="w-full gap-2" onClick={() => {
-            const existingCollected = (reg.collected_samples || []) as string[];
-            const allKeys = groups.map(g => g.groupKey);
-            markCollectedMutation.mutate({ regId: reg.id, collectedKeys: [...new Set([...existingCollected, ...allKeys])] });
+            const existingEntries = parseCollectedSamples(reg.collected_samples || []);
+            const now = new Date().toISOString();
+            const mergedMap = new Map<string, CollectedSampleEntry>();
+            for (const e of existingEntries) mergedMap.set(e.key, e);
+            for (const g of groups) mergedMap.set(g.groupKey, { key: g.groupKey, collected_at: now });
+            markCollectedMutation.mutate({ regId: reg.id, collectedEntries: Array.from(mergedMap.values()) });
           }}>
             <CheckCircle2 className="h-4 w-4" /> Mark as Sample Collected
           </Button>
