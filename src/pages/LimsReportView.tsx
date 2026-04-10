@@ -494,7 +494,7 @@ const LimsReportView = () => {
   if (!report) {
     return (
       <div className="p-6 space-y-4">
-        <Button variant="outline" onClick={() => navigate(-1)}>
+        <Button variant="outline" onClick={() => navigate("/lims?tab=dispatch")}>
           <ArrowLeft className="h-4 w-4 mr-1" />Back
         </Button>
         <div className="text-center py-12 text-muted-foreground">
@@ -509,7 +509,7 @@ const LimsReportView = () => {
     <div className="p-4 space-y-4">
       {/* Toolbar */}
       <div className="flex items-center gap-3 print:hidden">
-        <Button variant="outline" size="sm" onClick={() => navigate(-1)}>
+        <Button variant="outline" size="sm" onClick={() => navigate("/lims?tab=dispatch")}>
           <ArrowLeft className="h-4 w-4 mr-1" />Back
         </Button>
         <h1 className="text-xl font-bold">
