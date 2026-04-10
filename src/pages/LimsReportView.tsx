@@ -664,7 +664,7 @@ function renderParamsWithSubheaders(block: TestBlock, tpOrder: any[]) {
       if (tp.is_subheader && tp.subheader_text) {
         rows.push(
           <tr key={`sh-${i}`}>
-            <td colSpan={5} className="font-semibold pt-1 pb-0.5 text-gray-700 border-b" style={{ fontSize: "9px" }}>
+            <td colSpan={5} className="font-semibold pt-1 pb-0.5 text-gray-700 border-b" style={{ fontSize: "13px" }}>
               {tp.subheader_text}
             </td>
           </tr>
