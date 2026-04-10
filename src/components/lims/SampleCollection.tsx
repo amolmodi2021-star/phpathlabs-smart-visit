@@ -107,8 +107,8 @@ const SampleCollection = () => {
       let query = supabase
         .from("patient_registrations")
         .select("*")
-        .in("status", ["registered", "sample_collected"])
-        .or("status.eq.sample_collected,collected_samples.neq.[]")
+        .in("status", ["registered", "sample_collected", "sample_accepted"])
+        .or("status.eq.sample_collected,status.eq.sample_accepted,collected_samples.neq.[]")
         .eq("bill_cancelled", false)
         .order("updated_at", { ascending: false });
 
@@ -579,7 +579,14 @@ const SampleCollection = () => {
         <TableBody>
           {data.filter((reg: any) => {
             const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
-            return ((reg.tests || []) as any[]).some((t: any) => !cancelledIds.has(t.test_id));
+            const hasActiveTests = ((reg.tests || []) as any[]).some((t: any) => !cancelledIds.has(t.test_id));
+            if (!hasActiveTests) return false;
+            if (isPending) {
+              // Only show if at least one tube is NOT yet collected
+              const groups = buildBarcodeGroups(reg);
+              return groups.some(g => !g.isCollected);
+            }
+            return true;
           }).map((reg: any) => {
             const groups = buildBarcodeGroups(reg);
             const isExpanded = expandedRow === reg.id;
