@@ -2553,6 +2553,77 @@ export type Database = {
           },
         ]
       }
+      sample_tube_counter: {
+        Row: {
+          date_key: string
+          last_sequence: number
+        }
+        Insert: {
+          date_key: string
+          last_sequence?: number
+        }
+        Update: {
+          date_key?: string
+          last_sequence?: number
+        }
+        Relationships: []
+      }
+      sample_tubes: {
+        Row: {
+          accepted_at: string | null
+          collected_at: string | null
+          created_at: string
+          id: string
+          registration_id: string
+          sample_type: string | null
+          sample_uid: string
+          status: string
+          suffix: string | null
+          test_ids: Json
+          test_names: Json
+          tube_color: string | null
+          tube_type: string | null
+        }
+        Insert: {
+          accepted_at?: string | null
+          collected_at?: string | null
+          created_at?: string
+          id?: string
+          registration_id: string
+          sample_type?: string | null
+          sample_uid: string
+          status?: string
+          suffix?: string | null
+          test_ids?: Json
+          test_names?: Json
+          tube_color?: string | null
+          tube_type?: string | null
+        }
+        Update: {
+          accepted_at?: string | null
+          collected_at?: string | null
+          created_at?: string
+          id?: string
+          registration_id?: string
+          sample_type?: string | null
+          sample_uid?: string
+          status?: string
+          suffix?: string | null
+          test_ids?: Json
+          test_names?: Json
+          tube_color?: string | null
+          tube_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sample_tubes_registration_id_fkey"
+            columns: ["registration_id"]
+            isOneToOne: false
+            referencedRelation: "patient_registrations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       test_parameters: {
         Row: {
           created_at: string | null
@@ -2872,6 +2943,7 @@ export type Database = {
       cleanup_non_phpl_duplicates: { Args: never; Returns: number }
       cleanup_non_phpl_mobile_duplicates: { Args: never; Returns: number }
       generate_invoice_number: { Args: never; Returns: string }
+      generate_sample_uid: { Args: never; Returns: string }
       generate_umr_number: { Args: never; Returns: string }
       get_abnormal_history_counts: {
         Args: never
