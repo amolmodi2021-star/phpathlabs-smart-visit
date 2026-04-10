@@ -354,7 +354,7 @@ const Dispatch = () => {
           </PopoverContent>
         </Popover>
         <Button variant="ghost" size="sm" className="text-xs" onClick={() => { setDateFrom(startOfDay(new Date())); setDateTo(endOfDay(new Date())); }}>Today</Button>
-        <span className="text-xs text-muted-foreground ml-auto">{dispatchEntries.length} records</span>
+        <span className="text-xs text-muted-foreground ml-auto">{dispatchCount} records{dispatchTotalPages > 1 ? ` (page ${dispatchPage + 1}/${dispatchTotalPages})` : ""}</span>
       </div>
 
       {loadingRegs ? (
