@@ -22,6 +22,7 @@ const TUBE_COLOR_MAP: Record<string, string> = {
 };
 
 interface BarcodeGroup {
+  groupKey: string;
   sampleId: string;
   sampleTube: string;
   tubeColor: string;
@@ -29,6 +30,7 @@ interface BarcodeGroup {
   suffix: string;
   testNames: string[];
   selected: boolean;
+  isCollected: boolean;
 }
 
 const SampleCollection = () => {
