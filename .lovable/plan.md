@@ -1,19 +1,23 @@
 
 
-# Show Collection Date/Time for Every Collected Tube
+# Show Partially Collected Samples in Sample Acceptance
 
 ## Problem
-Tubes collected before the recent timestamp feature was added have no `collected_at` stored, so the collection time doesn't display for those tubes. The timestamp display code exists (line 501-503) but only renders when `collectedAt` is non-empty.
+The Sample Acceptance "Pending" query only fetches patients with `status = "sample_collected"`. Partially collected patients (status still `registered` but with entries in `collected_samples`) are excluded.
 
 ## Fix
-In `src/components/lims/SampleCollection.tsx`:
+In `src/components/lims/SampleAcceptance.tsx`, update the pending query (line 63) to also include partially collected patients, mirroring the approach used in the Collected tab of Sample Collection:
 
-1. **Fallback timestamp for old data**: When building barcode groups (line 192-204), if a tube is marked collected but has no `collected_at`, fall back to `reg.updated_at` as an approximate collection time.
+```typescript
+// Change from:
+.eq("status", "sample_collected")
 
-2. **Always show timestamp for collected tubes**: Remove the `&& group.collectedAt` condition at line 501 — since every collected tube will now have a timestamp (either real or fallback), the date/time will always display.
+// To:
+.or("status.eq.sample_collected,collected_samples.neq.[]")
+```
 
-3. **Pass `reg.updated_at` into `buildBarcodeGroups`**: Update the function signature to accept the registration's `updated_at` so it can use it as a fallback.
+This will show both fully collected and partially collected patients in Sample Acceptance. Partially collected patients should also get a "PARTIAL" badge in the Sample Acceptance pending list for clarity.
 
 ## File
-- `src/components/lims/SampleCollection.tsx`
+- `src/components/lims/SampleAcceptance.tsx` — update query filter + add PARTIAL badge
 
