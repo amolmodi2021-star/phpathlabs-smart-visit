@@ -353,6 +353,7 @@ const SampleCollection = () => {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["sample_collection_patients"] });
+      qc.invalidateQueries({ queryKey: ["sample_collected_patients"] });
       qc.invalidateQueries({ queryKey: ["patient_registrations"] });
     },
     onError: (e: Error) => toast.error(e.message),
