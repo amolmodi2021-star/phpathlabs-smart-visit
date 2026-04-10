@@ -301,7 +301,7 @@ const ReportResultsSection = ({
                   {shouldShowProfile(nonSubheaderParams) && (
                     <>
                       <div style={{ height: '1mm' }} />
-                      <div className="px-3 py-1 font-semibold bg-blue-50 print:bg-transparent border-2 border-gray-600" style={{ color: '#2E3192', fontSize: profileFontSize }}>
+                      <div className="px-3 py-1 font-semibold bg-blue-50 print:bg-transparent <div className="px-3 py-1 font-semibold bg-blue-50 print:bg-transparent border border-gray-600" style={{ color: '#2E3192', fontSize: profileFontSize }}>" style={{ color: '#2E3192', fontSize: profileFontSize }}>
                         {profName}
                         {profMeta?.sample_type && (
                           <span className="font-normal text-gray-500 ml-2" style={{ fontSize: metaFontSize }}>
