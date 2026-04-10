@@ -175,7 +175,8 @@ const SampleCollection = () => {
     const tests = (reg.tests || []) as any[];
     const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
     const activeTests = tests.filter((t: any) => !cancelledIds.has(t.test_id));
-    const collectedKeys = (reg.collected_samples || []) as string[];
+    const collectedEntries = parseCollectedSamples(reg.collected_samples || []);
+    const collectedKeySet = new Set(getCollectedKeys(collectedEntries));
 
     const groupMap: Record<string, BarcodeGroup> = {};
 
@@ -188,6 +189,7 @@ const SampleCollection = () => {
       const groupKey = `${tube}||${suffix}`;
 
       if (!groupMap[groupKey]) {
+        const entry = collectedEntries.find(e => e.key === groupKey);
         groupMap[groupKey] = {
           groupKey,
           sampleId: suffix ? `${reg.invoice_number}${suffix}` : reg.invoice_number,
@@ -197,7 +199,8 @@ const SampleCollection = () => {
           suffix,
           testNames: [],
           selected: false,
-          isCollected: collectedKeys.includes(groupKey),
+          isCollected: collectedKeySet.has(groupKey),
+          collectedAt: entry?.collected_at || null,
         };
       }
       groupMap[groupKey].testNames.push(t.test_name);
