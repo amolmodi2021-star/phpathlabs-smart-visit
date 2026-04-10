@@ -1,69 +1,50 @@
 
-## Root cause
-The report you are viewing is rendered by `src/pages/LimsReportView.tsx`, not by `src/components/report/ReportResultsSection.tsx`.
 
-That is why:
-- only the patient demographics changed (`LimsReportHeader.tsx` is actually used here)
-- department name, test name, table headers, and parameter rows stayed tiny
-- descriptive results still wrap inside the narrow Result column
+# Plan: Consolidate to Single Report Rendering Format
 
-`LimsReportView.tsx` still has hardcoded very small inline sizes like:
-- main content `9px`
-- department `11px`
-- test name `10px`
-- table header `8px`
-- metadata/interpretation `8px`
+## Current Situation
 
-## What I will change
+There are **two separate report renderers** with duplicated logic:
 
-### 1. Increase the actual report font sizes in `src/pages/LimsReportView.tsx`
-Update the live report page so mobile readability improves visibly:
-- Department name: increase substantially
-- Test name: increase substantially
-- Table headers: increase substantially
-- Parameter/result/unit/reference/flag rows: increase substantially
-- Subheaders inside tests: increase too
-- Interpretation and metadata: increase slightly so they remain readable but secondary
+1. **`src/pages/ViewReport.tsx`** — uses `ReportResultsSection` component (for uploaded reports)
+2. **`src/pages/LimsReportView.tsx`** — has its own inline table rendering with `renderParamRow()` / `renderParamsWithSubheaders()` (for LIMS approved reports)
 
-### 2. Fix descriptive-result layout in `src/pages/LimsReportView.tsx`
-Update `renderParamRow()` so when a row is descriptive and has no unit, no reference range, and no flag:
-- the result text will span across the full right-side area
-- instead of staying inside only the Result column
+Both render the same kind of data (parameters, results, units, reference ranges, flags) but with different code, different font sizes, and different layout logic. Any fix (like the font size or descriptive spanning) must be applied twice.
 
-This means using a spanning cell for the descriptive text so it occupies:
-`Result + Unit + Reference Range + Flag` space
+## Approach
 
-```text
-Current:
-| Parameter | Result text wraps | Unit | Ref Range | Flag |
+**Refactor `LimsReportView.tsx` to use `ReportResultsSection`** instead of its own inline rendering.
 
-Target:
-| Parameter | Descriptive text uses the whole remaining width          |
-```
+### Steps
 
-### 3. Keep long patient names wrapping cleanly
-Retain the patient-name wrapping already added in `src/components/report/LimsReportHeader.tsx`.
+1. **Extend `ReportResultsSection` to support all LIMS features**
+   - Add support for **subheaders** (already present in LIMS via `test_parameters` ordering)
+   - Add support for the **Flag column** display (HIGH/LOW text — currently LIMS shows this but the component only shows H/L badges)
+   - Ensure font sizes are consistent and large enough (apply the 13-15px sizing uniformly)
+   - Ensure descriptive result spanning works correctly with `colSpan`
 
-### 4. Adjust page-height estimates in `src/pages/LimsReportView.tsx`
-Because larger fonts make rows taller, I will also update the pagination/height constants so:
-- rows do not collide
-- test blocks do not overflow awkwardly
-- PDF/export layout remains stable
+2. **Transform LIMS data into `ReportResultsSection` format**
+   - In `LimsReportView.tsx`, convert the `TestBlock[]` data into the `grouped: Record<string, Record<string, TestResult[]>>` format that `ReportResultsSection` expects
+   - Map `departmentName` → department key, `testName` → profile key, `params` → TestResult array
+   - Pass subheader info and metadata through the existing `profileMetaMap` prop
 
-## Files to update
-- `src/pages/LimsReportView.tsx` — main fix
-- `src/components/report/LimsReportHeader.tsx` — keep current demographic wrapping, only touch again if needed for balance
+3. **Replace inline rendering in `LimsReportView.tsx`**
+   - Remove `renderParamRow()` and `renderParamsWithSubheaders()` functions
+   - Replace the inline `<table>` block in each test block with `<ReportResultsSection>`
+   - Keep the page layout, pagination, letterhead, snip pages, and PDF export logic unchanged
 
-## Technical details
-- Replace tiny inline font sizes in the report view with larger values used consistently across headers and rows
-- Update the parameter-row renderer to branch like:
-  - normal numeric row -> standard 5-column layout
-  - descriptive row with no unit/range/flag -> `colSpan={4}` for the right side
-- Revisit row/header height constants so the multi-page report layout still paginates correctly
+4. **Update pagination height estimates**
+   - Adjust `ROW_HEIGHT_MM` and other constants to match the actual rendered heights from `ReportResultsSection`
 
-## Expected outcome
-After this change, on `/lims/report/...`:
-- department names will look clearly larger
-- test names will look clearly larger
-- column headers and parameter rows will be readable on mobile
-- descriptive results will stretch across the available right-side width instead of wrapping inside the Result column
+### Files Modified
+- `src/components/report/ReportResultsSection.tsx` — add subheader support, unify font sizes
+- `src/pages/LimsReportView.tsx` — remove inline rendering, use `ReportResultsSection` with data transformation
+
+### What Stays Unchanged
+- `ViewReport.tsx` — already uses `ReportResultsSection`, no changes needed
+- Page layout, letterhead, signatures, PDF export, snip pages — all stay in `LimsReportView.tsx`
+- Database schema — no changes
+
+### Benefit
+One rendering component for all reports. Future font/layout changes apply everywhere automatically.
+
