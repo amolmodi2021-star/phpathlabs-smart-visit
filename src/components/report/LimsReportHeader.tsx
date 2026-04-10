@@ -55,7 +55,7 @@ const LimsReportHeader = ({
   const displayName = [title, patientName].filter(Boolean).join(" ");
 
   return (
-    <div className="border-b pb-1 mb-1" style={{ fontSize: "11px", lineHeight: "1.5" }}>
+    <div className="border-b pb-1 mb-1" style={{ fontSize: "13px", lineHeight: "1.5" }}>
       <div className="grid grid-cols-3 gap-x-4 gap-y-0.5">
         <div style={{ overflowWrap: 'break-word', wordBreak: 'break-word' }}><span className="font-semibold">Patient Name:</span> {displayName || "—"}</div>
         <div><span className="font-semibold">Age / Gender:</span> {age} / {gender || "—"}</div>
