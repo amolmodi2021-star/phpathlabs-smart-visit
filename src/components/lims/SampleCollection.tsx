@@ -369,19 +369,23 @@ const SampleCollection = () => {
     // Wait for print to finish before mutating
     await doPrintBarcodes(reg, toPrint);
     
-    // Merge with existing collected keys
-    const existingCollected = (reg.collected_samples || []) as string[];
-    const newKeys = toPrint.map(g => g.groupKey);
-    const allCollectedKeys = [...new Set([...existingCollected, ...newKeys])];
+    // Merge with existing collected entries
+    const existingEntries = parseCollectedSamples(reg.collected_samples || []);
+    const now = new Date().toISOString();
+    const newEntries: CollectedSampleEntry[] = toPrint.map(g => ({ key: g.groupKey, collected_at: now }));
+    const mergedMap = new Map<string, CollectedSampleEntry>();
+    for (const e of existingEntries) mergedMap.set(e.key, e);
+    for (const e of newEntries) mergedMap.set(e.key, e);
+    const allEntries = Array.from(mergedMap.values());
     
     const allGroupKeys = groups.map(g => g.groupKey);
-    const allNowCollected = allGroupKeys.every(k => allCollectedKeys.includes(k));
+    const allNowCollected = allGroupKeys.every(k => mergedMap.has(k));
     
     if (allNowCollected) {
-      markCollectedMutation.mutate({ regId: reg.id, collectedKeys: allCollectedKeys });
+      markCollectedMutation.mutate({ regId: reg.id, collectedEntries: allEntries });
     } else {
-      partialCollectMutation.mutate({ regId: reg.id, collectedKeys: allCollectedKeys });
-      toast.success(`${toPrint.length} of ${groups.length} samples collected. ${groups.length - allCollectedKeys.length} remaining.`);
+      partialCollectMutation.mutate({ regId: reg.id, collectedEntries: allEntries });
+      toast.success(`${toPrint.length} of ${groups.length} samples collected. ${groups.length - allEntries.length} remaining.`);
     }
   };
 
