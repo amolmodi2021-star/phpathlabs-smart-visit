@@ -1,56 +1,88 @@
 
-Goal: make Print output exactly match the on-screen report/PDF, instead of letting the browser re-layout the live DOM.
 
-What I found
-- In `src/pages/LimsReportView.tsx`, the PDF path is reliable because it captures each `[data-page]` as an image with `html-to-image` and places that into A4 pages.
-- The Print button still uses `window.print()` on the live DOM.
-- That means the browser re-paginates the report again during print. Because this page uses normal-flow footer content, an inner content wrapper with `height: 100%` plus vertical padding, and no `box-sizing: border-box` on the page shell, tiny print-time layout differences push `Page 1 of 2` onto a new sheet.
-- So this is not just a CSS page-break bug. The print engine is laying out a slightly different document than the one you see on screen / in the PDF.
+# Fix: Print Without Opening New Tab
 
-Plan
-1. Replace live-DOM printing with image-based printing
-- Add a dedicated `handlePrint` in `src/pages/LimsReportView.tsx`.
-- Reuse the same capture pipeline already used for PDF export:
-  - wait for fonts/render
-  - capture each `[data-page]` to PNG
-  - open a clean print window
-  - render one full-page image per A4 sheet
-  - call `print()` only after all images load
-- This guarantees the printed output matches the visible report exactly, page-for-page.
+## Current Issues
+1. **New tab opens** — `window.open("", "_blank")` creates a visible Chrome tab. User wants only the print dialog.
+2. **Images not stored in DB** — Confirmed: images are base64 data URLs generated in-memory, never sent to any server/database. No change needed.
+3. **Image quality** — Already using `pixelRatio: 2` which is high quality. No change needed.
 
-2. Refactor the report page shell to be deterministic
-- Keep each page at exact A4 size with `boxSizing: "border-box"`.
-- Move vertical page padding to the page shell or a fixed layout structure instead of using a `height: 100%` inner wrapper that also has top/bottom padding.
-- Make signature + page number a fixed bottom/footer area, positioned like the more stable `ViewReport.tsx` approach.
-- Give the main content region an explicit remaining height so it cannot push the footer into another physical page.
+## Solution
+Replace `window.open("", "_blank")` with a **hidden iframe** approach:
+- Create a temporary hidden `<iframe>` in the current page
+- Write the same HTML/images into the iframe
+- Call `iframe.contentWindow.print()` to trigger the print dialog
+- Remove the iframe after printing
 
-3. Simplify print CSS
-- Remove reliance on the current complex `@media print` live-page pagination rules for the main report.
-- Keep only minimal print CSS for the popup print document:
-  - `@page { size: A4; margin: 0 }`
-  - each printed sheet is `210mm x 297mm`
-  - page break only between sheets, never inside one
-- This avoids further blank/intermediate pages caused by browser interpretation of the app DOM.
+This shows only the native print dialog — no new tab, no visible window.
 
-4. Keep PDF and Print aligned
-- Extract shared page-capture logic so both “Download PDF” and “Print” use the same rendered pages.
-- This avoids future drift where PDF looks right but print looks different.
+## Changes in `src/pages/LimsReportView.tsx`
 
-Files to update
+Replace lines 378-428 (the `window.open` + print logic) with:
+
+```typescript
+// Create hidden iframe for printing
+const iframe = document.createElement("iframe");
+iframe.style.position = "fixed";
+iframe.style.top = "-10000px";
+iframe.style.left = "-10000px";
+iframe.style.width = "210mm";
+iframe.style.height = "297mm";
+document.body.appendChild(iframe);
+
+const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+if (!iframeDoc || !iframe.contentWindow) {
+  toast.error("Print failed");
+  document.body.removeChild(iframe);
+  setDownloading(false);
+  return;
+}
+
+iframeDoc.open();
+iframeDoc.write(`
+  <html>
+    <head>
+      <style>
+        @page { size: A4; margin: 0; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { width: 210mm; }
+        .print-page { width: 210mm; height: 297mm; overflow: hidden; page-break-after: always; }
+        .print-page:last-child { page-break-after: auto; }
+        .print-page img { display: block; width: 210mm; height: 297mm; }
+      </style>
+    </head>
+    <body>
+      ${imageUrls.map(url => `<div class="print-page"><img src="${url}" /></div>`).join("")}
+    </body>
+  </html>
+`);
+iframeDoc.close();
+
+// Wait for images to load, then print
+const images = iframeDoc.querySelectorAll(".print-page img");
+let loadedCount = 0;
+const onAllLoaded = () => {
+  setTimeout(() => {
+    iframe.contentWindow!.focus();
+    iframe.contentWindow!.print();
+    setTimeout(() => document.body.removeChild(iframe), 1000);
+  }, 300);
+};
+
+if (images.length === 0) onAllLoaded();
+else {
+  images.forEach(img => {
+    (img as HTMLImageElement).onload = () => { loadedCount++; if (loadedCount === images.length) onAllLoaded(); };
+    (img as HTMLImageElement).onerror = () => { loadedCount++; if (loadedCount === images.length) onAllLoaded(); };
+  });
+}
+```
+
+## Summary
+- **No new tab** — hidden iframe triggers print dialog directly
+- **No DB storage** — images are in-memory base64, discarded after print
+- **Same quality** — identical capture settings (pixelRatio: 2)
+
+## Files
 - `src/pages/LimsReportView.tsx`
 
-Technical details
-- New flow:
-  1. Screen renders report pages
-  2. Print captures those pages as images
-  3. Print window prints only those captured A4 images
-- I will follow the existing safe capture patterns already used in:
-  - `LimsReportView.tsx` PDF export
-  - `DirectAI.tsx` off-screen/sandbox capture approach
-  - `ViewReport.tsx` fixed footer/page shell layout pattern
-
-Expected result
-- No extra middle page
-- No footer text spilling to another page
-- Printed output matches the displayed report and generated PDF exactly
-- Stable A4 output regardless of browser print reflow quirks
