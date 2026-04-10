@@ -1,26 +1,26 @@
 
 
-# Plan: Reorganize Test/Profile Metadata Display
+# Plan: Display Name Priority & Single Parameter Name Override
 
-## Current Issue
-- **Sample type** appears twice: once beside the profile name (line 300) and again in the meta row below the table (line 344)
-- **Instrument name** and **Method** are shown below the table in a meta row — user wants them beside the test/profile name instead
-- **Interpretation** should remain below the table (keep as-is)
+## What Changes
 
-## Changes — `src/components/report/ReportResultsSection.tsx`
+### 1. Use `display_name` (with fallback to `test_name`) for test/profile headers
 
-### 1. Profile header line (line 298-301)
-Move instrument and method INTO the profile header alongside sample type:
+In `transformBlocksToGrouped` (LimsReportView.tsx, line 655), the profile key currently uses `block.testName` which is always the raw `test_name`. Change the test block construction (line 291) to prefer `display_name` over `test_name`:
+
 ```
-{profName} (Sample: X | Instrument: Y | Method: Z)
+testName: testInfo?.display_name || params[0]?.test_name || testInfo?.test_name || "Unknown Test"
 ```
 
-### 2. Remove the meta row below the table (lines 342-348)
-Delete the `hasMetaRow` block entirely — sample type, instrument, and method are now shown in the header. Interpretation and outsourced caption stay below.
+Also update `buildProfileMetaMap` (line 714) since it uses `block.testName` as the key — this will automatically use the display name since the block already carries it.
 
-### 3. Standalone parameters section (lines 240-253)
-Same change: move instrument/method into a subtitle line below the parameter, remove the separate meta row. Keep interpretation below.
+### 2. Single Parameter Test: replace parameter name with display_name/test_name
+
+When `is_single_parameter` is true, the test has exactly one parameter row. Instead of showing the parameter's own name, show `display_name` (priority) or `test_name`.
+
+- Add `is_single_parameter` to the tests fetch query (line 139) and to the `TestBlock` interface
+- In `transformBlocksToGrouped`, when `testsMap[block.testId]?.is_single_parameter` is true, override `parameter_name` in the single result entry with `block.testName` (which already prefers display_name per change #1)
 
 ### Files Modified
-- `src/components/report/ReportResultsSection.tsx` — ~20 lines changed
+- `src/pages/LimsReportView.tsx` — test block construction + transform function (~5 lines changed)
 
