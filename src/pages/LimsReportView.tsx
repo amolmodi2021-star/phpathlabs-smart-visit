@@ -137,7 +137,7 @@ const LimsReportView = () => {
       supabase.from("patient_registrations").select("*").eq("id", registrationId).single(),
       supabase.from("report_layout_settings").select("*").limit(1).single(),
       supabase.from("report_departments").select("*").order("display_order", { ascending: true }),
-      supabase.from("tests").select("id, test_name, department_id, instrument_name, method, sample_type, interpretation, is_outsourced, display_name, bold_in_report, show_in_report, fit_to_page, dedicated_page"),
+      supabase.from("tests").select("id, test_name, department_id, instrument_name, method, sample_type, interpretation, is_outsourced, display_name, bold_in_report, show_in_report, fit_to_page, dedicated_page, is_single_parameter"),
       supabase.from("outsourced_test_snips").select("*").eq("registration_id", registrationId),
       supabase.from("pathologist_signatures").select("*"),
     ]);
@@ -289,7 +289,7 @@ const LimsReportView = () => {
 
       testBlocks.push({
         testId,
-        testName: params[0]?.test_name || testInfo?.test_name || "Unknown Test",
+        testName: testInfo?.display_name || params[0]?.test_name || testInfo?.test_name || "Unknown Test",
         departmentId: deptId,
         departmentName: deptName,
         departmentOrder: deptOrder,
@@ -301,6 +301,7 @@ const LimsReportView = () => {
         estimatedHeightMm: heightMm,
         fitToPage: testInfo?.fit_to_page ?? false,
         dedicatedPage: testInfo?.dedicated_page ?? false,
+        isSingleParameter: testInfo?.is_single_parameter ?? false,
       });
     });
 
@@ -685,6 +686,11 @@ function transformBlocksToGrouped(
       block.params.forEach(param => {
         results.push(mapParamToTestResult(param));
       });
+    }
+
+    // Single parameter test: override parameter name with test display name
+    if (block.isSingleParameter && results.length === 1 && !results[0].is_subheader) {
+      results[0] = { ...results[0], parameter_name: block.testName };
     }
 
     profiles[profName] = results;
