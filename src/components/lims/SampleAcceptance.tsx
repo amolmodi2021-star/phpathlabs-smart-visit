@@ -60,7 +60,7 @@ const SampleAcceptance = () => {
       let query = supabase
         .from("patient_registrations")
         .select("*")
-        .eq("status", "sample_collected")
+        .or("status.eq.sample_collected,collected_samples.neq.[]")
         .eq("bill_cancelled", false)
         .order("updated_at", { ascending: false });
       if (debouncedSearch) {
@@ -419,6 +419,9 @@ const SampleAcceptance = () => {
                               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75"></span>
                               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive"></span>
                             </span>
+                          )}
+                          {reg.status === "registered" && (
+                            <Badge variant="outline" className="ml-2 text-xs border-orange-400 text-orange-600">PARTIAL</Badge>
                           )}
                         </TableCell>
                         <TableCell>{reg.mobile_number}</TableCell>
