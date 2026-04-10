@@ -1,6 +1,6 @@
 import React from 'react';
 
-interface TestResult {
+export interface TestResult {
   department?: string;
   profile_name?: string;
   test_name?: string;
@@ -11,7 +11,7 @@ interface TestResult {
   normal_range_high?: string;
   normal_range_text?: string;
   flag?: string;
-  // Master data fields (auto-applied at report render)
+  // Master data fields
   sample_type?: string;
   analyzer?: string;
   method?: string;
@@ -19,9 +19,12 @@ interface TestResult {
   outsourced_caption?: string;
   interpretation?: string;
   remark?: string;
+  // Subheader support
+  is_subheader?: boolean;
+  subheader_text?: string;
 }
 
-interface ProfileMeta {
+export interface ProfileMeta {
   sample_type?: string;
   analyzer?: string;
   method?: string;
@@ -31,19 +34,31 @@ interface ProfileMeta {
   enable_test_grouping?: boolean;
 }
 
-interface ReportResultsSectionProps {
+export interface ReportResultsSectionProps {
   grouped: Record<string, Record<string, TestResult[]>>;
   shouldShowProfile: (params: TestResult[]) => boolean;
   compact?: boolean;
   hideDeptHeader?: boolean;
   profileMetaMap?: Record<string, ProfileMeta>;
+  /** LIMS mode: show Flag as text column (HIGH/LOW) instead of badge */
+  showFlagText?: boolean;
+  /** Font size overrides for LIMS vs uploaded report contexts */
+  fontSize?: {
+    department?: string;
+    profile?: string;
+    tableHeader?: string;
+    row?: string;
+    meta?: string;
+  };
 }
+
+// ── Helpers ──
 
 const groupByTestName = (params: TestResult[]): { testName: string | null; params: TestResult[] }[] => {
   const groups: { testName: string | null; params: TestResult[] }[] = [];
   const seen = new Map<string, TestResult[]>();
-
   params.forEach((r) => {
+    if (r.is_subheader) return; // subheaders handled separately
     const tn = r.test_name || null;
     const key = tn || "__none__";
     if (!seen.has(key)) {
@@ -52,12 +67,10 @@ const groupByTestName = (params: TestResult[]): { testName: string | null; param
     }
     seen.get(key)!.push(r);
   });
-
   return groups;
 };
 
 const COMPACT_PROFILES = ["cbc", "complete blood count", "urine routine"];
-
 const MORPHOLOGY_TESTS = ["morphology", "rbc morphology", "wbc morphology", "platelet morphology", "peripheral smear"];
 
 const isCompactProfile = (profName: string): boolean => {
@@ -65,42 +78,132 @@ const isCompactProfile = (profName: string): boolean => {
   return COMPACT_PROFILES.some(cp => lower.includes(cp));
 };
 
-
 const isMorphologySection = (testName: string | null | undefined): boolean => {
   if (!testName) return false;
   const lower = testName.toLowerCase();
   return MORPHOLOGY_TESTS.some(m => lower.includes(m));
 };
 
-const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHeader, profileMetaMap }: ReportResultsSectionProps) => {
+const isDescriptiveResult = (r: TestResult): boolean => {
+  return !r.unit && !r.normal_range_text && !r.normal_range_low && !r.normal_range_high
+    && (!r.flag || r.flag === "N" || r.flag === "Normal");
+};
+
+// ── Sub-components ──
+
+interface ParamRowProps {
+  r: TestResult;
+  rowKey: string;
+  compact: boolean;
+  isMorph: boolean;
+  showFlagText: boolean;
+  rowFontSize: string;
+  colCount: number;
+}
+
+const ParamRow = ({ r, rowKey, compact, isMorph, showFlagText, rowFontSize, colCount }: ParamRowProps) => {
+  const isAbnormal = r.flag === "H" || r.flag === "L" || r.flag === "High" || r.flag === "Low";
+  const isDescriptive = isDescriptiveResult(r) || isMorph;
+  const py = compact ? 'py-[2px]' : 'py-0.5';
+
+  // How many cols does the right side span when descriptive?
+  const rightSpan = showFlagText ? 4 : 3;
+
+  return (
+    <tr key={rowKey} className={`border-b border-gray-100 ${isAbnormal ? "bg-red-50" : ""}`} style={{ fontSize: rowFontSize }}>
+      <td className={`px-3 font-semibold ${py}`}>{r.parameter_name}</td>
+      {!showFlagText && (
+        <td className={`text-right ${py}`} style={{ width: '24px' }}>
+          {isAbnormal && <span className="flag-badge inline-flex items-center justify-center min-w-[18px] h-[18px] rounded bg-red-600 text-white text-xs leading-none font-bold">{r.flag}</span>}
+        </td>
+      )}
+      {isDescriptive ? (
+        <td colSpan={rightSpan} className={`text-left px-2 text-gray-800 ${py}`} style={{ wordBreak: 'break-word', whiteSpace: 'normal' }}>
+          {r.result_value}
+        </td>
+      ) : (
+        <>
+          <td className={`text-center font-semibold ${py} ${isAbnormal ? "text-red-600 font-bold" : ""}`}>
+            {r.result_value}
+          </td>
+          <td className={`text-center text-gray-600 ${py}`}>{r.unit}</td>
+          <td className={`text-center text-gray-600 ${py}`}>
+            {r.normal_range_text || `${r.normal_range_low || ""} - ${r.normal_range_high || ""}`}
+          </td>
+          {showFlagText && (
+            <td className={`text-center ${py}`}>
+              {r.flag && r.flag !== "N" && r.flag !== "Normal" && (
+                <span className={`font-bold ${r.flag === "H" || r.flag === "High" ? "text-red-600" : "text-blue-600"}`}>
+                  {r.flag === "H" ? "HIGH" : r.flag === "L" ? "LOW" : r.flag}
+                </span>
+              )}
+            </td>
+          )}
+        </>
+      )}
+    </tr>
+  );
+};
+
+// ── Table header ──
+
+const TableHeader = ({ showFlagText, fontSize }: { showFlagText: boolean; fontSize: string }) => (
+  <thead>
+    <tr className="text-gray-500 border-b" style={{ fontSize }}>
+      <th className="text-left py-0.5 px-3" style={{ width: showFlagText ? '35%' : '36%' }}>Parameter</th>
+      {!showFlagText && <th style={{ width: '24px' }}></th>}
+      <th className="text-center py-0.5" style={{ width: '20%' }}>Result</th>
+      <th className="text-center py-0.5" style={{ width: showFlagText ? '10%' : '14%' }}>Unit</th>
+      <th className="text-center py-0.5" style={{ width: '22%' }}>Reference Range</th>
+      {showFlagText && <th className="text-center py-0.5" style={{ width: '13%' }}>Flag</th>}
+    </tr>
+  </thead>
+);
+
+// ── Main component ──
+
+const ReportResultsSection = ({
+  grouped,
+  shouldShowProfile,
+  compact,
+  hideDeptHeader,
+  profileMetaMap,
+  showFlagText = false,
+  fontSize,
+}: ReportResultsSectionProps) => {
+  const deptFontSize = fontSize?.department || '18px';
+  const profileFontSize = fontSize?.profile || '18px';
+  const headerFontSize = fontSize?.tableHeader || '14px';
+  const rowFontSize = fontSize?.row || '14px';
+  const metaFontSize = fontSize?.meta || '12px';
+  const colCount = showFlagText ? 5 : 5; // always 5 cols but layout differs
+
   return (
     <>
       {Object.entries(grouped).map(([dept, profiles]) => (
         <div key={dept} data-pdf-section="department">
-          {!hideDeptHeader && <div className="text-white px-3 py-1.5 rounded-t font-semibold text-lg text-center" style={{ backgroundColor: '#2E3192' }}>{dept}</div>}
+          {!hideDeptHeader && (
+            <div
+              className="text-white px-3 py-1.5 rounded-t font-semibold text-center"
+              style={{ backgroundColor: '#2E3192', fontSize: deptFontSize }}
+            >
+              {dept}
+            </div>
+          )}
           <div className={`border ${hideDeptHeader ? 'rounded' : 'border-t-0 rounded-b'}`}>
             {Object.entries(profiles).map(([profName, params], profIdx) => {
               const useCompact = compact || isCompactProfile(profName);
               const isStandalone = profName === "_individual";
 
-              // For standalone parameters, render in a single table with one header
+              // ─── Standalone parameters ───
               if (isStandalone) {
                 return (
                   <div key="standalone-group" data-pdf-section="profile" className="print:break-inside-avoid">
                     {profIdx > 0 && <div style={{ height: '2mm' }} />}
-                    <table className="w-full text-base">
-                      <thead>
-                        <tr className="text-gray-500 border-b text-base">
-                          <th className="text-left py-0.5 px-3" style={{ width: '36%' }}>Parameter</th>
-                          <th style={{ width: '24px' }}></th>
-                          <th className="text-center py-0.5" style={{ width: '20%' }}>Result</th>
-                          <th className="text-center py-0.5" style={{ width: '14%' }}>Unit</th>
-                          <th className="text-center py-0.5" style={{ width: '22%' }}>Reference Range</th>
-                        </tr>
-                      </thead>
+                    <table className="w-full" style={{ fontSize: rowFontSize }}>
+                      <TableHeader showFlagText={showFlagText} fontSize={headerFontSize} />
                       <tbody>
                         {params.map((r, pIdx) => {
-                          const isAbnormal = r.flag === "H" || r.flag === "L";
                           const isMorphRow = isMorphologySection(r.test_name);
                           const paramMeta = {
                             sample_type: r.sample_type,
@@ -113,54 +216,27 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                           const hasParamMeta = paramMeta.sample_type || paramMeta.analyzer || paramMeta.method;
                           const hasParamOutsourced = paramMeta.is_outsourced && paramMeta.outsourced_caption;
                           const hasParamInterpretation = paramMeta.interpretation && paramMeta.interpretation.replace(/<[^>]*>/g, '').trim().length > 0;
-
-                          // Check if the previous parameter had an interpretation
                           const prevParam = pIdx > 0 ? params[pIdx - 1] : null;
                           const prevHadInterpretation = prevParam?.interpretation && prevParam.interpretation.replace(/<[^>]*>/g, '').trim().length > 0;
+                          const totalCols = showFlagText ? 5 : 5;
 
                           return (
                             <React.Fragment key={`standalone-${pIdx}`}>
                               {pIdx > 0 && (
-                                <tr><td colSpan={5}><div className="border-t-2 border-gray-400" style={{ marginBottom: '3mm' }} /></td></tr>
+                                <tr><td colSpan={totalCols}><div className="border-t-2 border-gray-400" style={{ marginBottom: '3mm' }} /></td></tr>
                               )}
-                              {prevHadInterpretation && (
-                                 <tr className="text-gray-500 border-b text-base">
-                                  <th className="text-left py-0.5 px-3" style={{ width: '36%' }}>Parameter</th>
-                                  <th style={{ width: '24px' }}></th>
-                                  <th className="text-center py-0.5" style={{ width: '20%' }}>Result</th>
-                                  <th className="text-center py-0.5" style={{ width: '14%' }}>Unit</th>
-                                  <th className="text-center py-0.5" style={{ width: '22%' }}>Reference Range</th>
-                                </tr>
-                              )}
-                              <tr className={`border-b border-gray-100 ${isAbnormal ? "bg-red-50" : ""}`}>
-                                <td className="px-3 py-1 font-semibold">{r.parameter_name}</td>
-                                <td className="text-right py-1">
-                                   {isAbnormal && <span className="flag-badge inline-flex items-center justify-center min-w-[18px] h-[18px] rounded bg-red-600 text-white text-xs leading-none font-bold">{r.flag}</span>}
-                                </td>
-                                 {isMorphRow || (!r.unit && !r.normal_range_text && !r.normal_range_low && !r.normal_range_high) ? (
-                                   <td colSpan={3} className="text-left px-2 text-gray-800 py-1" style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>
-                                     {r.result_value}
-                                   </td>
-                                 ) : (
-                                   <>
-                                     <td className={`text-center font-semibold py-1 ${isAbnormal ? "text-red-600 font-bold" : ""}`}>
-                                       {r.result_value}
-                                     </td>
-                                     <td className="text-center text-gray-600 py-1">{r.unit}</td>
-                                     <td className="text-center text-gray-600 py-1">{r.normal_range_text || `${r.normal_range_low || ""} - ${r.normal_range_high || ""}`}</td>
-                                   </>
-                                 )}
-                              </tr>
+                              {prevHadInterpretation && <TableHeader showFlagText={showFlagText} fontSize={headerFontSize} />}
+                              <ParamRow r={r} rowKey={`s-${pIdx}`} compact={useCompact} isMorph={isMorphRow} showFlagText={showFlagText} rowFontSize={rowFontSize} colCount={totalCols} />
                               {r.remark && (
                                 <tr className="border-b border-gray-100">
-                                  <td colSpan={5} className="px-3 py-0.5">
-                                     <span className="text-xs italic text-gray-600">* {r.remark}</span>
+                                  <td colSpan={totalCols} className="px-3 py-0.5">
+                                    <span className="italic text-gray-600" style={{ fontSize: metaFontSize }}>* {r.remark}</span>
                                   </td>
                                 </tr>
                               )}
                               {hasParamMeta && (
                                 <tr>
-                                  <td colSpan={5} className="px-3 py-1 text-xs text-gray-500 border-t border-gray-100">
+                                  <td colSpan={totalCols} className="px-3 py-1 text-gray-500 border-t border-gray-100" style={{ fontSize: metaFontSize }}>
                                     <div className="flex gap-4 flex-wrap">
                                       {paramMeta.sample_type && <span><strong>Sample Type:</strong> {paramMeta.sample_type}</span>}
                                       {paramMeta.analyzer && <span><strong>Analyzer:</strong> {paramMeta.analyzer}</span>}
@@ -171,10 +247,11 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                               )}
                               {hasParamInterpretation && (
                                 <tr>
-                                  <td colSpan={5} className="px-3 py-1.5 border-t border-gray-100">
-                                     <div className="text-xs font-semibold text-gray-600 mb-0.5">Interpretation:</div>
+                                  <td colSpan={totalCols} className="px-3 py-1.5 border-t border-gray-100">
+                                    <div className="font-semibold text-gray-600 mb-0.5" style={{ fontSize: metaFontSize }}>Interpretation:</div>
                                     <div
-                                      className="text-xs text-gray-700 prose prose-xs max-w-none [&_img]:max-h-[60mm] [&_img]:inline-block [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
+                                      className="text-gray-700 prose prose-xs max-w-none [&_img]:max-h-[60mm] [&_img]:inline-block [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
+                                      style={{ fontSize: metaFontSize }}
                                       dangerouslySetInnerHTML={{ __html: paramMeta.interpretation! }}
                                     />
                                   </td>
@@ -182,7 +259,7 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                               )}
                               {hasParamOutsourced && (
                                 <tr>
-                                  <td colSpan={5} className="px-3 py-1 text-xs text-gray-500 italic border-t border-gray-100">
+                                  <td colSpan={totalCols} className="px-3 py-1 text-gray-500 italic border-t border-gray-100" style={{ fontSize: metaFontSize }}>
                                     {paramMeta.outsourced_caption}
                                   </td>
                                 </tr>
@@ -196,103 +273,91 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                 );
               }
 
-              // Profile-level rendering (non-standalone)
-              const testGroups = groupByTestName(params);
-              const isGroupedProfile = profileMetaMap?.[profName]?.enable_test_grouping ?? false;
-              const hasMultipleTestNames = isGroupedProfile && testGroups.filter(g => g.testName).length >= 1;
+              // ─── Profile-level rendering ───
               const profMeta = profileMetaMap ? profileMetaMap[profName] : null;
-              const meta = profMeta;
-              const hasMetaRow = meta && (meta.sample_type || meta.analyzer || meta.method);
-              const hasOutsourced = meta?.is_outsourced && meta?.outsourced_caption;
-              const hasInterpretation = meta?.interpretation && meta.interpretation.replace(/<[^>]*>/g, '').trim().length > 0;
+              const isGroupedProfile = profMeta?.enable_test_grouping ?? false;
+              const testGroups = groupByTestName(params);
+              const hasMultipleTestNames = isGroupedProfile && testGroups.filter(g => g.testName).length >= 1;
+              const hasMetaRow = profMeta && (profMeta.sample_type || profMeta.analyzer || profMeta.method);
+              const hasOutsourced = profMeta?.is_outsourced && profMeta?.outsourced_caption;
+              const hasInterpretation = profMeta?.interpretation && profMeta.interpretation.replace(/<[^>]*>/g, '').trim().length > 0;
+              const totalCols = showFlagText ? 5 : 5;
+
+              // Collect subheaders from params for ordered rendering
+              const subheaders = params.filter(p => p.is_subheader);
+              const nonSubheaderParams = params.filter(p => !p.is_subheader);
 
               return (
                 <div key={profName} data-pdf-section="profile" className="print:break-inside-avoid">
                   {profIdx > 0 && <div style={{ height: useCompact ? '1.5mm' : '2mm' }} />}
-                  {shouldShowProfile(params) && (
+                  {shouldShowProfile(nonSubheaderParams) && (
                     <>
                       <div style={{ height: '1mm' }} />
-                      <div className="bg-blue-50 px-3 py-1 font-semibold text-lg border-b" style={{ color: '#2E3192' }}>{profName}</div>
+                      <div className="bg-blue-50 px-3 py-1 font-semibold border-b" style={{ color: '#2E3192', fontSize: profileFontSize }}>
+                        {profName}
+                        {profMeta?.sample_type && <span className="font-normal text-gray-500 ml-2" style={{ fontSize: metaFontSize }}>(Sample: {profMeta.sample_type})</span>}
+                      </div>
                     </>
                   )}
-                  <table className="w-full text-base">
-                    <thead>
-                      <tr className="text-gray-500 border-b text-base">
-                        <th className="text-left py-0.5 px-3" style={{ width: '36%' }}>Parameter</th>
-                        <th style={{ width: '24px' }}></th>
-                        <th className="text-center py-0.5" style={{ width: '20%' }}>Result</th>
-                        <th className="text-center py-0.5" style={{ width: '14%' }}>Unit</th>
-                        <th className="text-center py-0.5" style={{ width: '22%' }}>Reference Range</th>
-                      </tr>
-                    </thead>
+                  <table className="w-full" style={{ fontSize: rowFontSize }}>
+                    <TableHeader showFlagText={showFlagText} fontSize={headerFontSize} />
                     <tbody>
-                      {testGroups.map((group, gIdx) => (
-                        <>
-                          {hasMultipleTestNames && group.testName && (
-                            <tr key={`header-${gIdx}`}>
-                              <td colSpan={5} className="px-3 font-semibold text-gray-700 bg-gray-50 border-b py-0.5 text-base">
-                                {group.testName}
+                      {/* Render params preserving subheader insertion order */}
+                      {params.map((r, i) => {
+                        if (r.is_subheader) {
+                          return (
+                            <tr key={`sh-${i}`}>
+                              <td colSpan={totalCols} className="font-semibold pt-1 pb-0.5 text-gray-700 border-b px-3" style={{ fontSize: rowFontSize }}>
+                                {r.subheader_text || r.parameter_name}
                               </td>
                             </tr>
-                          )}
-                          {group.params.map((r, i) => {
-                            const isAbnormal = r.flag === "H" || r.flag === "L";
-                            const isMorphRow = isMorphologySection(group.testName);
-                            return (
-                              <>
-                                <tr key={`${gIdx}-${i}`} className={`border-b border-gray-100 ${isAbnormal ? "bg-red-50" : ""}`} style={useCompact ? { lineHeight: '1.2' } : undefined}>
-                                  <td className={`px-3 font-semibold ${useCompact ? 'py-[2px]' : 'py-1'}`}>{r.parameter_name}</td>
-                                  <td className={`text-right ${useCompact ? 'py-[2px]' : 'py-1'}`}>
-                                    {isAbnormal && <span className="flag-badge inline-flex items-center justify-center min-w-[18px] h-[18px] rounded bg-red-600 text-white text-xs leading-none font-bold">{r.flag}</span>}
-                                  </td>
-                                  {isMorphRow || (!r.unit && !r.normal_range_text && !r.normal_range_low && !r.normal_range_high) ? (
-                                    <td colSpan={3} className={`text-left px-2 text-gray-800 ${useCompact ? 'py-[2px]' : 'py-1'}`} style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>
-                                      {r.result_value}
-                                    </td>
-                                  ) : (
-                                    <>
-                                      <td className={`text-center font-semibold ${useCompact ? 'py-[2px]' : 'py-1'} ${isAbnormal ? "text-red-600 font-bold" : ""}`}>
-                                        {r.result_value}
-                                      </td>
-                                      <td className={`text-center text-gray-600 ${useCompact ? 'py-[2px]' : 'py-1'}`}>{r.unit}</td>
-                                      <td className={`text-center text-gray-600 ${useCompact ? 'py-[2px]' : 'py-1'}`}>{r.normal_range_text || `${r.normal_range_low || ""} - ${r.normal_range_high || ""}`}</td>
-                                    </>
-                                  )}
-                                </tr>
-                                {r.remark && (
-                                  <tr key={`${gIdx}-${i}-remark`} className="border-b border-gray-100">
-                                    <td colSpan={5} className="px-3 py-0.5">
-                                      <span className="text-xs italic text-gray-600">* {r.remark}</span>
-                                    </td>
-                                  </tr>
-                                )}
-                              </>
-                            );
-                          })}
-                        </>
-                      ))}
+                          );
+                        }
+
+                        const isMorphRow = isMorphologySection(r.test_name);
+                        return (
+                          <React.Fragment key={`p-${i}`}>
+                            {hasMultipleTestNames && r.test_name && (i === 0 || r.test_name !== params[i - 1]?.test_name) && !params[i - 1]?.is_subheader && (
+                              <tr>
+                                <td colSpan={totalCols} className="px-3 font-semibold text-gray-700 bg-gray-50 border-b py-0.5" style={{ fontSize: rowFontSize }}>
+                                  {r.test_name}
+                                </td>
+                              </tr>
+                            )}
+                            <ParamRow r={r} rowKey={`r-${i}`} compact={useCompact} isMorph={isMorphRow} showFlagText={showFlagText} rowFontSize={rowFontSize} colCount={totalCols} />
+                            {r.remark && (
+                              <tr className="border-b border-gray-100">
+                                <td colSpan={totalCols} className="px-3 py-0.5">
+                                  <span className="italic text-gray-600" style={{ fontSize: metaFontSize }}>* {r.remark}</span>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
                     </tbody>
                   </table>
 
                   {hasMetaRow && (
-                    <div className="px-3 py-1 text-xs text-gray-500 border-t border-gray-100 flex gap-4 flex-wrap">
-                      {meta!.sample_type && <span><strong>Sample Type:</strong> {meta!.sample_type}</span>}
-                      {meta!.analyzer && <span><strong>Analyzer:</strong> {meta!.analyzer}</span>}
-                      {meta!.method && <span><strong>Method:</strong> {meta!.method}</span>}
+                    <div className="px-3 py-1 text-gray-500 border-t border-gray-100 flex gap-4 flex-wrap" style={{ fontSize: metaFontSize }}>
+                      {profMeta!.sample_type && <span><strong>Sample Type:</strong> {profMeta!.sample_type}</span>}
+                      {profMeta!.analyzer && <span><strong>Analyzer:</strong> {profMeta!.analyzer}</span>}
+                      {profMeta!.method && <span><strong>Method:</strong> {profMeta!.method}</span>}
                     </div>
                   )}
                   {hasInterpretation && (
                     <div className="px-3 py-1.5 border-t border-gray-100">
-                      <div className="text-xs font-semibold text-gray-600 mb-0.5">Interpretation:</div>
+                      <div className="font-semibold text-gray-600 mb-0.5" style={{ fontSize: metaFontSize }}>Interpretation:</div>
                       <div
-                        className="text-xs text-gray-700 prose prose-xs max-w-none [&_img]:max-h-[60mm] [&_img]:inline-block [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
-                        dangerouslySetInnerHTML={{ __html: meta!.interpretation! }}
+                        className="text-gray-700 prose prose-xs max-w-none [&_img]:max-h-[60mm] [&_img]:inline-block [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
+                        style={{ fontSize: metaFontSize }}
+                        dangerouslySetInnerHTML={{ __html: profMeta!.interpretation! }}
                       />
                     </div>
                   )}
                   {hasOutsourced && (
-                    <div className="px-3 py-1 text-xs text-gray-500 italic border-t border-gray-100">
-                      {meta!.outsourced_caption}
+                    <div className="px-3 py-1 text-gray-500 italic border-t border-gray-100" style={{ fontSize: metaFontSize }}>
+                      {profMeta!.outsourced_caption}
                     </div>
                   )}
                 </div>
