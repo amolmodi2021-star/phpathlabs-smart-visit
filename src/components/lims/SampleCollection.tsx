@@ -152,6 +152,7 @@ const SampleCollection = () => {
     const tests = (reg.tests || []) as any[];
     const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
     const activeTests = tests.filter((t: any) => !cancelledIds.has(t.test_id));
+    const collectedKeys = (reg.collected_samples || []) as string[];
 
     const groupMap: Record<string, BarcodeGroup> = {};
 
@@ -165,6 +166,7 @@ const SampleCollection = () => {
 
       if (!groupMap[groupKey]) {
         groupMap[groupKey] = {
+          groupKey,
           sampleId: suffix ? `${reg.invoice_number}${suffix}` : reg.invoice_number,
           sampleTube: tube,
           tubeColor,
@@ -172,6 +174,7 @@ const SampleCollection = () => {
           suffix,
           testNames: [],
           selected: false,
+          isCollected: collectedKeys.includes(groupKey),
         };
       }
       groupMap[groupKey].testNames.push(t.test_name);
