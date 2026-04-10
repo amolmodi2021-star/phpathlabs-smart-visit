@@ -207,66 +207,82 @@ const SampleCollection = () => {
     return `${years}`;
   };
 
-  // Print barcodes helper
-  const doPrintBarcodes = (reg: any, toPrint: BarcodeGroup[]) => {
-    const printWindow = window.open("", "_blank", "width=400,height=600");
-    if (!printWindow) {
-      toast.error("Pop-up blocked. Please allow pop-ups.");
-      return;
-    }
-
-    const age = calcAge(reg.dob);
-    const gender = reg.gender ? reg.gender.charAt(0) : "";
-    const location = reg.pickup_point_id ? ppMap[reg.pickup_point_id] || "" : "";
-    const dateTime = format(new Date(), "dd/MM/yy HH:mm a");
-    const patientName = reg.patient_name || "";
-
-    let html = `<!DOCTYPE html><html><head><style>
-      @page { margin: 2mm; size: 50mm 25mm; }
-      body { margin: 0; padding: 0; font-family: 'Arial', sans-serif; }
-      .label { 
-        width: 48mm; height: 23mm; padding: 1.5mm; box-sizing: border-box;
-        page-break-after: always; position: relative; overflow: hidden;
+  // Print barcodes helper — returns a Promise that resolves after print dialog
+  const doPrintBarcodes = (reg: any, toPrint: BarcodeGroup[]): Promise<void> => {
+    return new Promise((resolve) => {
+      const printWindow = window.open("", "_blank", "width=400,height=600");
+      if (!printWindow) {
+        toast.error("Pop-up blocked. Please allow pop-ups.");
+        resolve();
+        return;
       }
-      .label:last-child { page-break-after: auto; }
-      .row1 { display: flex; justify-content: space-between; font-size: 7pt; font-weight: bold; line-height: 1.2; }
-      .row2 { font-size: 6.5pt; font-weight: bold; line-height: 1.2; margin-top: 0.5mm; }
-      .barcode-wrap { text-align: center; margin: 0.5mm 0; }
-      .barcode-wrap svg { width: 42mm; height: 8mm; }
-      .sample-id { text-align: center; font-size: 7pt; font-weight: bold; line-height: 1; }
-      .row-bottom { display: flex; justify-content: space-between; font-size: 6pt; line-height: 1.2; margin-top: 0.5mm; }
-    </style></head><body>`;
 
-    for (const group of toPrint) {
-      const canvas = document.createElement("canvas");
-      try {
-        JsBarcode(canvas, group.sampleId, {
-          format: "CODE128", width: 1.5, height: 30, displayValue: false, margin: 0,
-        });
-      } catch { /* fallback */ }
-      const barcodeDataUrl = canvas.toDataURL("image/png");
+      const age = calcAge(reg.dob);
+      const gender = reg.gender ? reg.gender.charAt(0) : "";
+      const location = reg.pickup_point_id ? ppMap[reg.pickup_point_id] || "" : "";
+      const dateTime = format(new Date(), "dd/MM/yy HH:mm a");
+      const patientName = reg.patient_name || "";
 
-      html += `<div class="label">
-        <div class="row1">
-          <span>${reg.invoice_number}</span>
-          <span>${age}${gender ? `/${gender}` : ""}</span>
-        </div>
-        <div class="row2">${patientName}${location ? ` &nbsp; PH ${location}` : ""}</div>
-        <div class="barcode-wrap">
-          <img src="${barcodeDataUrl}" style="width:42mm;height:8mm;" />
-        </div>
-        <div class="sample-id">${group.sampleId}</div>
-        <div class="row-bottom">
-          <span>${group.sampleType || group.sampleTube}</span>
-          <span>${dateTime}</span>
-        </div>
-      </div>`;
-    }
+      let html = `<!DOCTYPE html><html><head><style>
+        @page { margin: 2mm; size: 50mm 25mm; }
+        body { margin: 0; padding: 0; font-family: 'Arial', sans-serif; }
+        .label { 
+          width: 48mm; height: 23mm; padding: 1.5mm; box-sizing: border-box;
+          page-break-after: always; position: relative; overflow: hidden;
+        }
+        .label:last-child { page-break-after: auto; }
+        .row1 { display: flex; justify-content: space-between; font-size: 7pt; font-weight: bold; line-height: 1.2; }
+        .row2 { font-size: 6.5pt; font-weight: bold; line-height: 1.2; margin-top: 0.5mm; }
+        .barcode-wrap { text-align: center; margin: 0.5mm 0; }
+        .barcode-wrap svg { width: 42mm; height: 8mm; }
+        .sample-id { text-align: center; font-size: 7pt; font-weight: bold; line-height: 1; }
+        .row-bottom { display: flex; justify-content: space-between; font-size: 6pt; line-height: 1.2; margin-top: 0.5mm; }
+      </style></head><body>`;
 
-    html += "</body></html>";
-    printWindow.document.write(html);
-    printWindow.document.close();
-    printWindow.onload = () => { printWindow.print(); };
+      for (const group of toPrint) {
+        const canvas = document.createElement("canvas");
+        try {
+          JsBarcode(canvas, group.sampleId, {
+            format: "CODE128", width: 1.5, height: 30, displayValue: false, margin: 0,
+          });
+        } catch { /* fallback */ }
+        const barcodeDataUrl = canvas.toDataURL("image/png");
+
+        html += `<div class="label">
+          <div class="row1">
+            <span>${reg.invoice_number}</span>
+            <span>${age}${gender ? `/${gender}` : ""}</span>
+          </div>
+          <div class="row2">${patientName}${location ? ` &nbsp; PH ${location}` : ""}</div>
+          <div class="barcode-wrap">
+            <img src="${barcodeDataUrl}" style="width:42mm;height:8mm;" />
+          </div>
+          <div class="sample-id">${group.sampleId}</div>
+          <div class="row-bottom">
+            <span>${group.sampleType || group.sampleTube}</span>
+            <span>${dateTime}</span>
+          </div>
+        </div>`;
+      }
+
+      html += "</body></html>";
+      printWindow.document.write(html);
+      printWindow.document.close();
+
+      let resolved = false;
+      const doResolve = () => { if (!resolved) { resolved = true; resolve(); } };
+
+      printWindow.onafterprint = () => { doResolve(); };
+
+      printWindow.onload = () => {
+        printWindow.print();
+        // Fallback: resolve after 1s in case onafterprint isn't supported
+        setTimeout(doResolve, 1000);
+      };
+
+      // Safety fallback if onload never fires
+      setTimeout(doResolve, 3000);
+    });
   };
 
   // Print barcodes (pending tab)
