@@ -62,6 +62,7 @@ interface TestBlock {
   estimatedHeightMm: number;
   fitToPage?: boolean;
   dedicatedPage?: boolean;
+  isSingleParameter?: boolean;
 }
 
 interface SnipPage {
