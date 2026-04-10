@@ -360,6 +360,78 @@ const LimsReportView = () => {
     setDownloading(false);
   };
 
+  // ── Image-based Print ──
+  const handlePrint = async () => {
+    if (!printRef.current) return;
+    setDownloading(true);
+    try {
+      const pageElements = printRef.current.querySelectorAll("[data-page]");
+      if (pageElements.length === 0) { toast.error("No pages to print"); setDownloading(false); return; }
+
+      const imageUrls: string[] = [];
+      for (let i = 0; i < pageElements.length; i++) {
+        const el = pageElements[i] as HTMLElement;
+        const png = await toPng(el, { quality: 1, pixelRatio: 2, backgroundColor: "#ffffff" });
+        imageUrls.push(png);
+      }
+
+      const printWindow = window.open("", "_blank");
+      if (!printWindow) { toast.error("Pop-up blocked. Please allow pop-ups."); setDownloading(false); return; }
+
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>Print Report</title>
+            <style>
+              @page { size: A4; margin: 0; }
+              * { margin: 0; padding: 0; box-sizing: border-box; }
+              body { width: 210mm; }
+              .print-page {
+                width: 210mm;
+                height: 297mm;
+                overflow: hidden;
+                page-break-after: always;
+                display: block;
+              }
+              .print-page:last-child {
+                page-break-after: auto;
+              }
+              .print-page img {
+                display: block;
+                width: 210mm;
+                height: 297mm;
+              }
+            </style>
+          </head>
+          <body>
+            ${imageUrls.map(url => `<div class="print-page"><img src="${url}" /></div>`).join("")}
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+
+      const images = printWindow.document.querySelectorAll(".print-page img");
+      let loadedCount = 0;
+      const onAllLoaded = () => {
+        setTimeout(() => {
+          printWindow.focus();
+          printWindow.print();
+        }, 300);
+      };
+
+      if (images.length === 0) { onAllLoaded(); }
+      else {
+        images.forEach(img => {
+          (img as HTMLImageElement).onload = () => { loadedCount++; if (loadedCount === images.length) onAllLoaded(); };
+          (img as HTMLImageElement).onerror = () => { loadedCount++; if (loadedCount === images.length) onAllLoaded(); };
+        });
+      }
+    } catch (err: any) {
+      toast.error("Print failed: " + (err.message || "Unknown error"));
+    }
+    setDownloading(false);
+  };
+
   const report = approvedReports[0];
   const topMm = (layoutSettings.top_margin_cm || 2.5) * 10;
   const bottomMm = (layoutSettings.bottom_margin_cm || 1.5) * 10;
@@ -402,7 +474,7 @@ const LimsReportView = () => {
             <Switch id="letterhead-toggle" checked={showLetterhead} onCheckedChange={setShowLetterhead} />
             <Label htmlFor="letterhead-toggle" className="text-sm cursor-pointer">With Letterhead</Label>
           </div>
-          <Button size="sm" variant="outline" onClick={() => window.print()}>
+          <Button size="sm" variant="outline" onClick={handlePrint} disabled={downloading}>
             <Printer className="h-4 w-4 mr-1" />Print
           </Button>
           <Button size="sm" onClick={handleDownloadPdf} disabled={downloading}>
@@ -437,7 +509,7 @@ const LimsReportView = () => {
             )}
 
             {/* Content layer */}
-            <div className="relative" style={{ zIndex: 1, paddingTop: `${topMm}mm`, paddingBottom: `${bottomMm}mm`, paddingLeft: "8mm", paddingRight: "8mm", height: "100%", display: "flex", flexDirection: "column" }}>
+            <div className="relative" style={{ zIndex: 1, paddingTop: `${topMm}mm`, paddingBottom: `${bottomMm}mm`, paddingLeft: "8mm", paddingRight: "8mm", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column" }}>
               {/* Patient Demographics */}
               <LimsReportHeader
                 patientName={report.patient_name}
@@ -548,33 +620,9 @@ const LimsReportView = () => {
         ))}
       </div>
 
-      {/* Print styles */}
+      {/* Print styles - minimal since we use image-based printing */}
       <style>{`
         @media print {
-          body * { visibility: hidden; }
-          #print-container, #print-container * { visibility: visible; }
-          #print-container {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 210mm;
-            gap: 0 !important;
-          }
-          [data-page] {
-            position: relative;
-            display: block;
-            width: 210mm !important;
-            height: 297mm !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            box-shadow: none !important;
-            overflow: hidden;
-          }
-          [data-page]:not(:last-child) {
-            page-break-after: always;
-            break-after: page;
-          }
-          @page { size: A4; margin: 0; }
           .print\\:hidden { display: none !important; }
         }
       `}</style>
