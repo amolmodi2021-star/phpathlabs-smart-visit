@@ -437,7 +437,7 @@ const SampleCollection = () => {
         </div>
 
         <div className="grid gap-2">
-          {groups.map((group, idx) => {
+          {(isPending ? groups : groups.filter(g => g.isCollected)).map((group, idx) => {
             const colorHex = getTubeColorHex(group.tubeColor);
             const isCollected = group.isCollected;
             return (
