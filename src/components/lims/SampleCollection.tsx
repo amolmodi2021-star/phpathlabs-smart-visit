@@ -561,7 +561,14 @@ const SampleCollection = () => {
                   </TableCell>
                   <TableCell className="text-sm">{reg.mobile_number}</TableCell>
                   <TableCell><Badge variant="outline" className="text-xs">{getVisitLabel(reg.visit_type)}</Badge></TableCell>
-                  <TableCell className="text-sm">{activeTests.length} tests • {groups.length} tube(s)</TableCell>
+                  <TableCell className="text-sm">
+                    {activeTests.length} tests • {groups.length} tube(s)
+                    {isPending && groups.some(g => g.isCollected) && (
+                      <span className="text-xs text-green-600 ml-1">
+                        ({groups.filter(g => g.isCollected).length} done)
+                      </span>
+                    )}
+                  </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {format(new Date(isPending ? reg.created_at : reg.updated_at), "dd/MM/yy HH:mm")}
                   </TableCell>
