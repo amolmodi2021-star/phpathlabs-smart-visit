@@ -498,6 +498,9 @@ const SampleCollection = () => {
                           <CheckCircle2 className="h-3 w-3 mr-1" /> Collected
                         </Badge>
                       )}
+                      {isCollected && group.collectedAt && (
+                        <span className="text-xs text-muted-foreground">{formatCollectedAt(group.collectedAt)}</span>
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5 truncate">
                       {group.testNames.join(", ")}
