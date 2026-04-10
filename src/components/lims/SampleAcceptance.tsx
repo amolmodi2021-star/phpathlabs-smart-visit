@@ -215,7 +215,7 @@ const SampleAcceptance = () => {
       const acceptedKeys = new Set(accepted.map(a => a.key));
       for (const g of collectedGroups) {
         if (acceptedKeys.has(g.key)) continue; // skip already-accepted
-        const key = `${reg.id}||${g.sampleId}`;
+        const key = `${reg.id}||${g.key}`;
         map[g.sampleId] = { reg, tubeKey: key, group: g };
       }
     }
