@@ -323,6 +323,17 @@ const LimsReportView = () => {
       let usedHeight = DEPT_HEADER_MM;
 
       blocks.forEach(block => {
+        // Dedicated page: flush current, put this block alone on its own page
+        if (block.dedicatedPage) {
+          if (currentPageBlocks.length > 0) {
+            allPages.push({ type: "structured", departmentName: deptName, testBlocks: currentPageBlocks });
+            currentPageBlocks = [];
+            usedHeight = DEPT_HEADER_MM;
+          }
+          allPages.push({ type: "structured", departmentName: deptName, testBlocks: [block] });
+          return;
+        }
+
         if (currentPageBlocks.length > 0 && (usedHeight + block.estimatedHeightMm) > usableHeight) {
           // Flush current page
           allPages.push({ type: "structured", departmentName: deptName, testBlocks: currentPageBlocks });
