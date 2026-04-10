@@ -281,7 +281,7 @@ const ReportResultsSection = ({
               const isGroupedProfile = profMeta?.enable_test_grouping ?? false;
               const testGroups = groupByTestName(params);
               const hasMultipleTestNames = isGroupedProfile && testGroups.filter(g => g.testName).length >= 1;
-              const hasMetaRow = profMeta && (profMeta.sample_type || profMeta.analyzer || profMeta.method);
+              
               const hasOutsourced = profMeta?.is_outsourced && profMeta?.outsourced_caption;
               const hasInterpretation = profMeta?.interpretation && profMeta.interpretation.replace(/<[^>]*>/g, '').trim().length > 0;
               const totalCols = colCount;
