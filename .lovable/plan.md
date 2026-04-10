@@ -1,26 +1,37 @@
 
 
-# Print Always Without Letterhead
+# Fix: Back Button Should Return to Correct LIMS Tab
 
-## What changes
-When the **Print** button is clicked, the report will always render **without the letterhead background**, regardless of the toggle state. The **With Letterhead** toggle will only affect the **Download PDF** button and the on-screen preview.
+## Problem
+The LIMS page uses `defaultValue="register"` for its tabs. When you navigate from Dispatch → View Report → Back, the browser correctly goes back to `/lims`, but the Tabs component always resets to "New Registration" because the active tab is not persisted in the URL.
 
-## How
+## Solution
+Store the active LIMS tab in a URL search parameter (e.g., `/lims?tab=dispatch`). This way, when `navigate(-1)` returns to `/lims?tab=dispatch`, the correct tab is restored.
 
-In `src/pages/LimsReportView.tsx`:
+### Changes
 
-1. **In `handlePrint`** — Before capturing pages as images, temporarily set `showLetterhead` to `false`, wait for a re-render, capture pages, then restore the original value.
+**`src/pages/Lims.tsx`**
+- Read `tab` from URL search params using `useSearchParams`
+- Use it as the controlled `value` for the `Tabs` component instead of `defaultValue`
+- On tab change, update the search param (using `replace` to avoid polluting history)
 
-   Specifically:
-   - Save current `showLetterhead` value
-   - Set `showLetterhead` to `false`
-   - Use a short `await new Promise(r => setTimeout(r, 100))` to let React re-render without the letterhead background
-   - Capture all `[data-page]` elements as PNGs (existing logic)
-   - Restore `showLetterhead` to its previous value
-   - Continue with iframe print as before
+**`src/components/lims/Dispatch.tsx`**
+- No change needed — it already navigates to `/lims/report/:id` and the browser history will preserve the `?tab=dispatch` on the previous entry
 
-2. No changes to the toggle UI — it remains visible and continues to control the PDF download and on-screen preview.
+**`src/pages/LimsReportView.tsx`**
+- No change needed — already uses `navigate(-1)`
 
-## File
-- `src/pages/LimsReportView.tsx` — modify `handlePrint` function (~5 lines added)
+### Technical Detail
+```typescript
+// Lims.tsx
+const [searchParams, setSearchParams] = useSearchParams();
+const activeTab = searchParams.get("tab") || "register";
+
+<Tabs value={activeTab} onValueChange={(v) => setSearchParams({ tab: v }, { replace: true })}>
+```
+
+Using `{ replace: true }` ensures switching tabs doesn't create extra history entries — only the final tab before leaving the page is remembered.
+
+## Files
+- `src/pages/Lims.tsx`
 
