@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import SnipOnLetterhead from "./SnipOnLetterhead";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
+import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 
@@ -39,6 +40,7 @@ interface OutsourcedPatient {
 
 const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   const qc = useQueryClient();
+  useRealtimeSync("outsourced_test_snips", ["outsourced_snips", "results_outsourced_snips", "outsourced_accepted_regs"]);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [expandedPatient, setExpandedPatient] = useState<string | null>(null);

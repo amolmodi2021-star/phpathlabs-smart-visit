@@ -12,6 +12,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Search, User, Monitor, Save, Calculator, Wifi, WifiOff, ChevronDown, ChevronUp, Check, Loader2, FlaskConical, Package, SendHorizonal, ArrowRightLeft, Eye, Trash2 } from "lucide-react";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
+import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import OutsourcedResults from "./OutsourcedResults";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -91,6 +92,8 @@ const handleResultTabKey = (e: React.KeyboardEvent) => {
 
 const ResultsEntry = () => {
   const qc = useQueryClient();
+  useRealtimeSync("outsourced_test_snips", ["results_outsourced_snips", "outsourced_snips", "outsourced_accepted_regs"]);
+  useRealtimeSync("patient_results", ["patient_results_existing"]);
   const { data: masterMachines = [] } = useMasterLookup("machine_name");
   const [mode, setMode] = useState<"patient" | "machine" | "outsourced">("patient");
   const [search, setSearch] = useState("");
