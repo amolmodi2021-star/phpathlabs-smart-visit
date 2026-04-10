@@ -9,7 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Search, Loader2, CheckCircle2, Send, Eye, Truck, MessageSquare, Circle, Phone, Calendar, FileText, User, Clock } from "lucide-react";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
+import { Search, Loader2, CheckCircle2, Send, Eye, Truck, MessageSquare, Circle, Phone, Calendar, FileText, User, Clock, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -417,15 +418,25 @@ const Dispatch = () => {
                         { label: "Dispatched", timestamp: test.dispatchedAt },
                       ];
 
+                      const latestStep = [...auditSteps].reverse().find(s => s.timestamp);
+
                       return (
-                        <div key={testKey} className="border rounded-lg bg-background">
-                          {/* Test header */}
-                          <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/30">
-                            <div className="flex items-center gap-3">
-                              <span className="font-medium text-sm">{test.testName}</span>
-                              {getStatusBadge(test.status)}
+                        <Collapsible key={testKey} className="border rounded-lg bg-background">
+                          {/* Test header with latest status */}
+                          <div className="flex items-center justify-between px-4 py-3">
+                            <div className="flex-1 min-w-0">
+                              <CollapsibleTrigger className="flex items-center gap-2 group cursor-pointer w-full text-left">
+                                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-90" />
+                                <span className="font-medium text-sm">{test.testName}</span>
+                              </CollapsibleTrigger>
+                              {latestStep && (
+                                <div className="ml-6 mt-0.5 text-xs text-muted-foreground flex items-center gap-1">
+                                  <Clock className="h-3 w-3" />
+                                  {latestStep.label} — {formatDate(latestStep.timestamp)}
+                                </div>
+                              )}
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 shrink-0">
                               {test.status === "approved" && test.snipUrls.length > 0 && (
                                 <Button size="sm" variant="ghost" className="h-8 text-xs gap-1" onClick={() => setViewSnipImages(test.snipUrls)}>
                                   <Eye className="h-3.5 w-3.5" /> Snip ({test.snipUrls.length})
@@ -443,32 +454,34 @@ const Dispatch = () => {
                               )}
                             </div>
                           </div>
-                          {/* Audit trail */}
-                          <div className="px-4 py-2.5">
-                            <div className="space-y-1">
-                              {auditSteps.map((step, idx) => {
-                                const isDone = !!step.timestamp;
-                                return (
-                                  <div key={idx} className="grid grid-cols-[24px_160px_1fr] items-center gap-1 py-0.5">
-                                    <div className="flex justify-center">
-                                      {isDone ? (
-                                        <div className="h-2.5 w-2.5 rounded-full bg-green-500" />
-                                      ) : (
-                                        <div className="h-2.5 w-2.5 rounded-full border-2 border-muted-foreground/30" />
-                                      )}
+                          {/* Collapsible audit trail */}
+                          <CollapsibleContent>
+                            <div className="px-4 py-2.5 border-t">
+                              <div className="space-y-1">
+                                {auditSteps.map((step, idx) => {
+                                  const isDone = !!step.timestamp;
+                                  return (
+                                    <div key={idx} className="grid grid-cols-[24px_160px_1fr] items-center gap-1 py-0.5">
+                                      <div className="flex justify-center">
+                                        {isDone ? (
+                                          <div className="h-2.5 w-2.5 rounded-full bg-green-500" />
+                                        ) : (
+                                          <div className="h-2.5 w-2.5 rounded-full border-2 border-muted-foreground/30" />
+                                        )}
+                                      </div>
+                                      <span className={`text-xs ${isDone ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+                                        {step.label}
+                                      </span>
+                                      <span className={`text-xs ${isDone ? "text-muted-foreground" : "text-muted-foreground/40"}`}>
+                                        {isDone ? formatDate(step.timestamp) : "—"}
+                                      </span>
                                     </div>
-                                    <span className={`text-xs ${isDone ? "text-foreground font-medium" : "text-muted-foreground"}`}>
-                                      {step.label}
-                                    </span>
-                                    <span className={`text-xs ${isDone ? "text-muted-foreground" : "text-muted-foreground/40"}`}>
-                                      {isDone ? formatDate(step.timestamp) : "—"}
-                                    </span>
-                                  </div>
-                                );
-                              })}
+                                  );
+                                })}
+                              </div>
                             </div>
-                          </div>
-                        </div>
+                          </CollapsibleContent>
+                        </Collapsible>
                       );
                     })}
                   </div>
