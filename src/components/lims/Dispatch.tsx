@@ -21,6 +21,12 @@ interface DispatchTest {
   status: TestStatus;
   results: any[];
   snipUrls: string[];
+  collectedAt: string | null;
+  acceptedAt: string | null;
+  enteredAt: string | null;
+  verifiedAt: string | null;
+  approvedAt: string | null;
+  dispatchedAt: string | null;
 }
 
 interface DispatchEntry {
