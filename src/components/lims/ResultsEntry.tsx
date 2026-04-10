@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
@@ -121,8 +122,7 @@ const ResultsEntry = () => {
       let query = supabase
         .from("patient_registrations")
         .select("*")
-        .or("status.eq.sample_accepted,accepted_samples.neq.[]")
-        .not("status", "in", "(approved,dispatched)")
+        .in("status", ["sample_accepted", "partially_accepted", "processing", "partial_processing"])
         .eq("bill_cancelled", false)
         .order("is_stat", { ascending: false })
         .order("updated_at", { ascending: false });
@@ -772,12 +772,15 @@ const ResultsEntry = () => {
       setBlankConfirmTestParams(null);
       // Remove highlight for this reg if no more blank issues
       setHighlightBlanksForRegs(prev => { const next = new Set(prev); next.delete(`${regId}||${testId}`); return next; });
+      // Recalculate registration status
+      recalculateRegistrationStatus(regId).catch(console.error);
       qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
       qc.invalidateQueries({ queryKey: ["verification_results_v2"] });
       qc.invalidateQueries({ queryKey: ["verification_outsourced_v2"] });
       qc.invalidateQueries({ queryKey: ["outsourced_manual_results"] });
       qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
       qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] });
+      qc.invalidateQueries({ queryKey: ["results_accepted_regs"] });
     },
     onError: (err: any) => {
       toast.error(err.message || "Failed to save results");

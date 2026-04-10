@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
@@ -55,7 +56,7 @@ const DoctorApproval = () => {
     queryKey: ["doctor_approval_regs", debouncedSearch],
     queryFn: async () => {
       let query = supabase.from("patient_registrations").select("*")
-        .or("status.in.(sample_accepted,entered,verified),accepted_samples.neq.[]")
+        .in("status", ["partial_verified", "verified", "partially_approved"])
         .eq("bill_cancelled", false).order("is_stat", { ascending: false }).order("updated_at", { ascending: false });
       if (debouncedSearch) query = query.or(`patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%,umr_number.ilike.%${debouncedSearch}%`);
       const { data } = await query;
@@ -290,6 +291,7 @@ const DoctorApproval = () => {
       }
 
       toast.success(`${testName} approved`);
+      recalculateRegistrationStatus(reg.id).catch(console.error);
       setEditedValues(prev => { const next = { ...prev }; testParams.forEach(p => delete next[`${reg.id}||${p.parameterId}`]); return next; });
       invalidateAll();
     } catch (err: any) { toast.error(err.message || "Approval failed"); }
@@ -347,6 +349,7 @@ const DoctorApproval = () => {
       await supabase.from("patient_registrations").update({ status: "approved" } as any).eq("id", reg.id);
 
       toast.success(`All tests approved for ${reg.patient_name}`);
+      recalculateRegistrationStatus(reg.id).catch(console.error);
       invalidateAll();
     } catch (err: any) { toast.error(err.message || "Approval failed"); }
     finally { setActionKey(null); }

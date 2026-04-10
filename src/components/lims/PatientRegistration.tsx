@@ -383,6 +383,65 @@ const PatientRegistration = () => {
       const { data: reg, error } = await supabase.from("patient_registrations").insert(regData as any).select().single();
       if (error) throw new Error(error.message);
 
+      // Create sample_tubes for this registration
+      try {
+        // Fetch test sample tube info
+        const testIds = calculations.testDetails.map((t: any) => t.test_id);
+        const { data: testRows } = await supabase.from("tests").select("id, sample_tube, tube_color, sample_type").in("id", testIds);
+        const testInfoMap: Record<string, any> = {};
+        (testRows || []).forEach((t: any) => { testInfoMap[t.id] = t; });
+
+        // Fetch suffix info
+        const { data: suffixRows } = await supabase
+          .from("test_parameters")
+          .select("test_id, report_test_parameters!inner(custom_sample_suffix_enabled, custom_sample_suffix)")
+          .in("test_id", testIds)
+          .eq("report_test_parameters.custom_sample_suffix_enabled", true);
+        const suffixMap: Record<string, string> = {};
+        (suffixRows || []).forEach((tp: any) => {
+          const suffix = tp.report_test_parameters?.custom_sample_suffix;
+          if (tp.test_id && suffix) suffixMap[tp.test_id] = suffix;
+        });
+
+        // Group tests by tube_type + suffix
+        const groupMap: Record<string, { tubeType: string; tubeColor: string; sampleType: string; suffix: string; testIds: string[]; testNames: string[] }> = {};
+        const cancelledIds = new Set<string>();
+        for (const t of calculations.testDetails) {
+          if (cancelledIds.has(t.test_id)) continue;
+          const info = testInfoMap[t.test_id] || {};
+          const tube = info.sample_tube || "DEFAULT";
+          const suffix = suffixMap[t.test_id] || "";
+          const groupKey = `${tube}||${suffix}`;
+          if (!groupMap[groupKey]) {
+            groupMap[groupKey] = {
+              tubeType: tube, tubeColor: info.tube_color || "", sampleType: info.sample_type || "",
+              suffix, testIds: [], testNames: [],
+            };
+          }
+          groupMap[groupKey].testIds.push(t.test_id);
+          groupMap[groupKey].testNames.push(t.test_name);
+        }
+
+        // Generate sample_uid for each group and insert
+        for (const g of Object.values(groupMap)) {
+          const { data: uid } = await supabase.rpc("generate_sample_uid" as any);
+          await supabase.from("sample_tubes" as any).insert({
+            sample_uid: uid as string,
+            registration_id: reg.id,
+            tube_type: g.tubeType,
+            tube_color: g.tubeColor,
+            sample_type: g.sampleType,
+            suffix: g.suffix,
+            test_ids: g.testIds,
+            test_names: g.testNames,
+            status: "pending",
+          });
+        }
+      } catch (tubeErr: any) {
+        console.error("Failed to create sample_tubes:", tubeErr);
+        // Non-fatal: registration was saved successfully
+      }
+
       // Upsert patient_master
       const { data: existing } = await supabase.from("patient_master").select("id").eq("mobile_number", cleanMobile).limit(1).single();
       const pmData: any = {
