@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
@@ -639,14 +639,14 @@ const SampleAcceptance = () => {
         <TabsList>
           <TabsTrigger value="pending">
             Pending Acceptance
-            {pendingRegs.length > 0 && (
-              <Badge variant="secondary" className="ml-2 text-xs">{pendingRegs.length}</Badge>
+            {filteredPendingCount > 0 && (
+              <Badge variant="secondary" className="ml-2 text-xs">{filteredPendingCount}</Badge>
             )}
           </TabsTrigger>
           <TabsTrigger value="accepted">
             Accepted
-            {acceptedRegs.length > 0 && (
-              <Badge variant="secondary" className="ml-2 text-xs">{acceptedRegs.length}</Badge>
+            {filteredAcceptedCount > 0 && (
+              <Badge variant="secondary" className="ml-2 text-xs">{filteredAcceptedCount}</Badge>
             )}
           </TabsTrigger>
         </TabsList>
