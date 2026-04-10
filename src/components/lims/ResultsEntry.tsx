@@ -1210,17 +1210,30 @@ const ResultsEntry = () => {
               const isTestSaving = saveMutation.isPending && savingTestKey === testKey;
               const isFullTestOutsourced = transferredTestKeys.has(testKey);
               const testSnipDetail = outsourcedSnipDetails[testKey];
+              const isTestExpanded = expandedTests.has(testKey);
+              const filledCount = tg.params.filter(p => {
+                const k = `${reg.id}||${p.parameterId}`;
+                const v = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
+                return v && v.trim() !== "";
+              }).length;
+              const toggleTest = () => {
+                setExpandedTests(prev => {
+                  const next = new Set(prev);
+                  if (next.has(testKey)) next.delete(testKey); else next.add(testKey);
+                  return next;
+                });
+              };
               return (
                 <div key={tg.testId} className="ml-1">
-                  <div className="flex items-center justify-between px-1 py-0.5 bg-muted/40 rounded-t">
+                  <div
+                    className="flex items-center justify-between px-2 py-1.5 bg-muted/40 rounded cursor-pointer hover:bg-muted/60 transition-colors"
+                    onClick={toggleTest}
+                  >
                     <div className="flex items-center gap-2">
+                      {isTestExpanded ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
                       <span className="text-xs font-medium text-muted-foreground">{tg.testName}</span>
+                      <Badge variant="outline" className="text-[10px]">{filledCount}/{tg.params.length}</Badge>
                       {isFullTestOutsourced && (() => {
-                        const hasAnyResult = tg.params.some(p => {
-                          const k = `${reg.id}||${p.parameterId}`;
-                          const v = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
-                          return v && v.trim() !== "";
-                        });
                         const allHaveResults = tg.params.every(p => {
                           const k = `${reg.id}||${p.parameterId}`;
                           const v = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
@@ -1233,7 +1246,7 @@ const ResultsEntry = () => {
                         );
                       })()}
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
                       {!isFullTestOutsourced && (
                         <Button
                           size="sm"
@@ -1266,25 +1279,27 @@ const ResultsEntry = () => {
                       </Button>
                     </div>
                   </div>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="py-1 text-xs w-[80px]">Code</TableHead>
-                        <TableHead className="py-1 text-xs">Parameter</TableHead>
-                        <TableHead className="py-1 text-xs w-[100px]">Prev 2</TableHead>
-                        <TableHead className="py-1 text-xs w-[100px]">Prev 1</TableHead>
-                        <TableHead className="py-1 text-xs w-[200px]">Result</TableHead>
-                        <TableHead className="py-1 text-xs w-[60px]">Unit</TableHead>
-                        <TableHead className="py-1 text-xs w-[120px]">Ref. Range</TableHead>
-                        <TableHead className="py-1 text-xs w-[70px] text-center">Flag</TableHead>
-                        <TableHead className="py-1 text-xs w-[70px] text-center">Status</TableHead>
-                        <TableHead className="py-1 text-xs w-[40px] text-center" title="Outsource"></TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {tg.params.map(p => renderParamRow(entry, p))}
-                    </TableBody>
-                  </Table>
+                  {isTestExpanded && (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="py-1 text-xs w-[80px]">Code</TableHead>
+                          <TableHead className="py-1 text-xs">Parameter</TableHead>
+                          <TableHead className="py-1 text-xs w-[100px]">Prev 2</TableHead>
+                          <TableHead className="py-1 text-xs w-[100px]">Prev 1</TableHead>
+                          <TableHead className="py-1 text-xs w-[200px]">Result</TableHead>
+                          <TableHead className="py-1 text-xs w-[60px]">Unit</TableHead>
+                          <TableHead className="py-1 text-xs w-[120px]">Ref. Range</TableHead>
+                          <TableHead className="py-1 text-xs w-[70px] text-center">Flag</TableHead>
+                          <TableHead className="py-1 text-xs w-[70px] text-center">Status</TableHead>
+                          <TableHead className="py-1 text-xs w-[40px] text-center" title="Outsource"></TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {tg.params.map(p => renderParamRow(entry, p))}
+                      </TableBody>
+                    </Table>
+                  )}
                 </div>
               );
             })}
