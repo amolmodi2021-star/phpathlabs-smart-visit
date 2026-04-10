@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,7 @@ import { Search, Printer, ChevronDown, ChevronUp, CheckCircle2, RotateCcw } from
 import { format } from "date-fns";
 import { toast } from "sonner";
 import JsBarcode from "jsbarcode";
+import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 
 const TUBE_COLOR_MAP: Record<string, string> = {
   red: "#e53e3e", lavender: "#b794f4", purple: "#9f7aea", yellow: "#ecc94b",
@@ -21,40 +22,26 @@ const TUBE_COLOR_MAP: Record<string, string> = {
   white: "#ffffff", orange: "#ed8936", pink: "#ed64a6", black: "#1a202c",
 };
 
-interface CollectedSampleEntry {
-  key: string;
-  collected_at: string;
+interface SampleTubeRow {
+  id: string;
+  sample_uid: string;
+  registration_id: string;
+  tube_type: string | null;
+  tube_color: string | null;
+  sample_type: string | null;
+  suffix: string | null;
+  test_ids: string[];
+  test_names: string[];
+  status: string;
+  collected_at: string | null;
+  accepted_at: string | null;
+  created_at: string;
 }
 
-interface BarcodeGroup {
-  groupKey: string;
-  sampleId: string;
-  sampleTube: string;
-  tubeColor: string;
-  sampleType: string;
-  suffix: string;
-  testNames: string[];
-  selected: boolean;
-  isCollected: boolean;
-  collectedAt: string | null;
+interface GroupedRegistration {
+  registration: any;
+  tubes: SampleTubeRow[];
 }
-
-const parseCollectedSamples = (raw: any[]): CollectedSampleEntry[] => {
-  if (!raw || raw.length === 0) return [];
-  return raw.map(item => {
-    if (typeof item === "string") return { key: item, collected_at: "" };
-    return { key: item.key, collected_at: item.collected_at || "" };
-  });
-};
-
-const getCollectedKeys = (entries: CollectedSampleEntry[]): string[] => entries.map(e => e.key);
-
-const formatCollectedAt = (dt: string): string => {
-  if (!dt) return "";
-  try {
-    return format(new Date(dt), "dd-MM-yyyy hh:mm a");
-  } catch { return ""; }
-};
 
 const SampleCollection = () => {
   const qc = useQueryClient();
@@ -62,13 +49,13 @@ const SampleCollection = () => {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
-  const [selectedBarcodes, setSelectedBarcodes] = useState<Record<string, Record<string, boolean>>>({});
+  const [selectedTubes, setSelectedTubes] = useState<Record<string, Set<string>>>({});
   const printRef = useRef<HTMLDivElement>(null);
 
   // Reprint dialog state
-  const [reprintDialog, setReprintDialog] = useState<{ open: boolean; reg: any; groups: BarcodeGroup[] }>({ open: false, reg: null, groups: [] });
+  const [reprintDialog, setReprintDialog] = useState<{ open: boolean; reg: any; tubes: SampleTubeRow[] }>({ open: false, reg: null, tubes: [] });
   const [reprintReason, setReprintReason] = useState("");
-  const [reprintSelectedBarcodes, setReprintSelectedBarcodes] = useState<Record<number, boolean>>({});
+  const [reprintSelectedTubes, setReprintSelectedTubes] = useState<Set<string>>(new Set());
 
   const handleSearch = (val: string) => {
     setSearch(val);
@@ -76,17 +63,34 @@ const SampleCollection = () => {
     (window as any).__scSearchTimeout = setTimeout(() => setDebouncedSearch(val), 400);
   };
 
-  // Fetch registered patients (pending)
-  const { data: registrations = [], isLoading } = useQuery({
-    queryKey: ["sample_collection_patients", debouncedSearch],
+  // Fetch sample_tubes with pending or collected status
+  const { data: allTubes = [], isLoading } = useQuery({
+    queryKey: ["sample_tubes_collection", debouncedSearch],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("sample_tubes" as any)
+        .select("*")
+        .in("status", ["pending", "collected"])
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data || []) as SampleTubeRow[];
+    },
+  });
+
+  // Get unique registration IDs from tubes
+  const regIds = useMemo(() => [...new Set(allTubes.map(t => t.registration_id))], [allTubes]);
+
+  // Fetch registrations for those IDs
+  const { data: registrations = [] } = useQuery({
+    queryKey: ["sample_collection_regs", regIds.join(",")],
+    enabled: regIds.length > 0,
     queryFn: async () => {
       let query = supabase
         .from("patient_registrations")
         .select("*")
-        .in("status", ["registered", "repeat_collection", "sample_collected", "sample_accepted"])
+        .in("id", regIds)
         .eq("bill_cancelled", false)
         .order("created_at", { ascending: false });
-
       if (debouncedSearch) {
         query = query.or(
           `patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%`
@@ -100,67 +104,6 @@ const SampleCollection = () => {
     },
   });
 
-  // Fetch collected patients
-  const { data: collectedRegistrations = [], isLoading: isLoadingCollected } = useQuery({
-    queryKey: ["sample_collected_patients", debouncedSearch],
-    queryFn: async () => {
-      let query = supabase
-        .from("patient_registrations")
-        .select("*")
-        .in("status", ["registered", "sample_collected", "sample_accepted"])
-        .or("status.eq.sample_collected,status.eq.sample_accepted,collected_samples.neq.[]")
-        .eq("bill_cancelled", false)
-        .order("updated_at", { ascending: false });
-
-      if (debouncedSearch) {
-        query = query.or(
-          `patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%`
-        );
-      }
-      const { data, error } = await query;
-      if (error) throw error;
-      return (data || []) as any[];
-    },
-  });
-
-  // Fetch all tests with sample_tube info
-  const { data: testsMap = {} } = useQuery({
-    queryKey: ["tests_sample_tube_map"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("tests")
-        .select("id, test_name, sample_tube, tube_color, sample_type");
-      const map: Record<string, { sample_tube: string; tube_color: string; sample_type: string }> = {};
-      (data || []).forEach((t: any) => {
-        map[t.id] = {
-          sample_tube: t.sample_tube || "",
-          tube_color: t.tube_color || "",
-          sample_type: t.sample_type || "",
-        };
-      });
-      return map;
-    },
-  });
-
-  // Fetch parameters with custom suffix via test_parameters junction
-  const { data: testSuffixMap = {} } = useQuery({
-    queryKey: ["test_suffix_map"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("test_parameters")
-        .select("test_id, parameter_id, report_test_parameters!inner(custom_sample_suffix_enabled, custom_sample_suffix)")
-        .eq("report_test_parameters.custom_sample_suffix_enabled", true);
-      const map: Record<string, string> = {};
-      (data || []).forEach((tp: any) => {
-        const suffix = tp.report_test_parameters?.custom_sample_suffix;
-        if (tp.test_id && suffix) {
-          map[tp.test_id] = suffix;
-        }
-      });
-      return map;
-    },
-  });
-
   // Fetch pickup points for location display
   const { data: pickupPoints = [] } = useQuery({
     queryKey: ["pickup_points_lookup"],
@@ -171,59 +114,43 @@ const SampleCollection = () => {
   });
   const ppMap = Object.fromEntries(pickupPoints.map(p => [p.id, p.name]));
 
-  // Build barcode groups for a registration
-  const buildBarcodeGroups = useCallback((reg: any): BarcodeGroup[] => {
-    const tests = (reg.tests || []) as any[];
-    const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
-    const activeTests = tests.filter((t: any) => !cancelledIds.has(t.test_id));
-    const collectedEntries = parseCollectedSamples(reg.collected_samples || []);
-    const collectedKeySet = new Set(getCollectedKeys(collectedEntries));
+  // Group tubes by registration
+  const pendingGroups = useMemo((): GroupedRegistration[] => {
+    return registrations.filter(reg => {
+      const tubes = allTubes.filter(t => t.registration_id === reg.id);
+      return tubes.some(t => t.status === "pending");
+    }).map(reg => ({
+      registration: reg,
+      tubes: allTubes.filter(t => t.registration_id === reg.id),
+    }));
+  }, [registrations, allTubes]);
 
-    const groupMap: Record<string, BarcodeGroup> = {};
+  const collectedGroups = useMemo((): GroupedRegistration[] => {
+    return registrations.filter(reg => {
+      const tubes = allTubes.filter(t => t.registration_id === reg.id);
+      return tubes.some(t => t.status === "collected");
+    }).map(reg => ({
+      registration: reg,
+      tubes: allTubes.filter(t => t.registration_id === reg.id && t.status === "collected"),
+    }));
+  }, [registrations, allTubes]);
 
-    for (const t of activeTests) {
-      const testInfo = testsMap[t.test_id] || { sample_tube: "", tube_color: "", sample_type: "" };
-      const tube = testInfo.sample_tube || "DEFAULT";
-      const tubeColor = testInfo.tube_color || "";
-      const sampleType = testInfo.sample_type || "";
-      const suffix = testSuffixMap[t.test_id] || "";
-      const groupKey = `${tube}||${suffix}`;
-
-      if (!groupMap[groupKey]) {
-        const entry = collectedEntries.find(e => e.key === groupKey);
-        const isGroupCollected = collectedKeySet.has(groupKey);
-        groupMap[groupKey] = {
-          groupKey,
-          sampleId: suffix ? `${reg.invoice_number}${suffix}` : reg.invoice_number,
-          sampleTube: tube,
-          tubeColor,
-          sampleType,
-          suffix,
-          testNames: [],
-          selected: false,
-          isCollected: isGroupCollected,
-          collectedAt: entry?.collected_at || (isGroupCollected ? reg.updated_at : null),
-        };
-      }
-      groupMap[groupKey].testNames.push(t.test_name);
-    }
-
-    return Object.values(groupMap);
-  }, [testsMap, testSuffixMap]);
-
-  const toggleBarcode = (regId: string, idx: number) => {
-    setSelectedBarcodes(prev => {
-      const regSel = { ...(prev[regId] || {}) };
-      regSel[idx] = !regSel[idx];
-      return { ...prev, [regId]: regSel };
+  const toggleTube = (regId: string, tubeId: string) => {
+    setSelectedTubes(prev => {
+      const regSet = new Set(prev[regId] || []);
+      if (regSet.has(tubeId)) regSet.delete(tubeId);
+      else regSet.add(tubeId);
+      return { ...prev, [regId]: regSet };
     });
   };
 
-  const toggleAllBarcodes = (regId: string, groups: BarcodeGroup[], selectAll: boolean) => {
-    setSelectedBarcodes(prev => {
-      const regSel: Record<number, boolean> = {};
-      groups.forEach((g, i) => { regSel[i] = g.isCollected ? false : selectAll; });
-      return { ...prev, [regId]: regSel };
+  const toggleAllPendingTubes = (regId: string, tubes: SampleTubeRow[], selectAll: boolean) => {
+    setSelectedTubes(prev => {
+      const regSet = new Set<string>();
+      if (selectAll) {
+        tubes.filter(t => t.status === "pending").forEach(t => regSet.add(t.id));
+      }
+      return { ...prev, [regId]: regSet };
     });
   };
 
@@ -231,19 +158,19 @@ const SampleCollection = () => {
     if (!dob) return "";
     const birth = new Date(dob);
     const now = new Date();
-    const years = now.getFullYear() - birth.getFullYear();
-    return `${years}`;
+    return `${now.getFullYear() - birth.getFullYear()}`;
   };
 
-  // Print barcodes helper — returns a Promise that resolves after print dialog
-  const doPrintBarcodes = (reg: any, toPrint: BarcodeGroup[]): Promise<void> => {
+  const getTubeColorHex = (color: string | null) => {
+    if (!color) return undefined;
+    return TUBE_COLOR_MAP[color.toLowerCase().trim()] || color;
+  };
+
+  // Print barcodes helper
+  const doPrintBarcodes = (reg: any, tubes: SampleTubeRow[]): Promise<void> => {
     return new Promise((resolve) => {
       const printWindow = window.open("", "_blank", "width=400,height=600");
-      if (!printWindow) {
-        toast.error("Pop-up blocked. Please allow pop-ups.");
-        resolve();
-        return;
-      }
+      if (!printWindow) { toast.error("Pop-up blocked. Please allow pop-ups."); resolve(); return; }
 
       const age = calcAge(reg.dob);
       const gender = reg.gender ? reg.gender.charAt(0) : "";
@@ -254,10 +181,7 @@ const SampleCollection = () => {
       let html = `<!DOCTYPE html><html><head><style>
         @page { margin: 2mm; size: 50mm 25mm; }
         body { margin: 0; padding: 0; font-family: 'Arial', sans-serif; }
-        .label { 
-          width: 48mm; height: 23mm; padding: 1.5mm; box-sizing: border-box;
-          page-break-after: always; position: relative; overflow: hidden;
-        }
+        .label { width: 48mm; height: 23mm; padding: 1.5mm; box-sizing: border-box; page-break-after: always; position: relative; overflow: hidden; }
         .label:last-child { page-break-after: auto; }
         .row1 { display: flex; justify-content: space-between; font-size: 7pt; font-weight: bold; line-height: 1.2; }
         .row2 { font-size: 6.5pt; font-weight: bold; line-height: 1.2; margin-top: 0.5mm; }
@@ -267,27 +191,20 @@ const SampleCollection = () => {
         .row-bottom { display: flex; justify-content: space-between; font-size: 6pt; line-height: 1.2; margin-top: 0.5mm; }
       </style></head><body>`;
 
-      for (const group of toPrint) {
+      for (const tube of tubes) {
+        // Barcode uses existing invoice-based sample ID for interfacing
+        const barcodeValue = tube.suffix ? `${reg.invoice_number}${tube.suffix}` : reg.invoice_number;
         const canvas = document.createElement("canvas");
-        try {
-          JsBarcode(canvas, group.sampleId, {
-            format: "CODE128", width: 1.5, height: 30, displayValue: false, margin: 0,
-          });
-        } catch { /* fallback */ }
+        try { JsBarcode(canvas, barcodeValue, { format: "CODE128", width: 1.5, height: 30, displayValue: false, margin: 0 }); } catch { /* fallback */ }
         const barcodeDataUrl = canvas.toDataURL("image/png");
 
         html += `<div class="label">
-          <div class="row1">
-            <span>${reg.invoice_number}</span>
-            <span>${age}${gender ? `/${gender}` : ""}</span>
-          </div>
+          <div class="row1"><span>${reg.invoice_number}</span><span>${age}${gender ? `/${gender}` : ""}</span></div>
           <div class="row2">${patientName}${location ? ` &nbsp; PH ${location}` : ""}</div>
-          <div class="barcode-wrap">
-            <img src="${barcodeDataUrl}" style="width:42mm;height:8mm;" />
-          </div>
-          <div class="sample-id">${group.sampleId}</div>
+          <div class="barcode-wrap"><img src="${barcodeDataUrl}" style="width:42mm;height:8mm;" /></div>
+          <div class="sample-id">${barcodeValue} &nbsp; <small style="color:#888">${tube.sample_uid}</small></div>
           <div class="row-bottom">
-            <span>${group.sampleType || group.sampleTube}</span>
+            <span>${tube.sample_type || tube.tube_type || ""}</span>
             <span>${dateTime}</span>
           </div>
         </div>`;
@@ -296,125 +213,64 @@ const SampleCollection = () => {
       html += "</body></html>";
       printWindow.document.write(html);
       printWindow.document.close();
-
       let resolved = false;
       const doResolve = () => { if (!resolved) { resolved = true; resolve(); } };
-
-      printWindow.onafterprint = () => { doResolve(); };
-
-      printWindow.onload = () => {
-        printWindow.print();
-        // Fallback: resolve after 1s in case onafterprint isn't supported
-        setTimeout(doResolve, 1000);
-      };
-
-      // Safety fallback if onload never fires
+      printWindow.onafterprint = () => doResolve();
+      printWindow.onload = () => { printWindow.print(); setTimeout(doResolve, 1000); };
       setTimeout(doResolve, 3000);
     });
   };
 
-  // Print barcodes (pending tab)
-  const printBarcodes = (reg: any, groups: BarcodeGroup[]) => {
-    const sel = selectedBarcodes[reg.id] || {};
-    const toPrint = groups.filter((_, i) => sel[i]);
-    if (toPrint.length === 0) {
-      toast.error("Please select at least one barcode to print");
-      return;
-    }
-    doPrintBarcodes(reg, toPrint);
-  };
-
-  // Mark sample collected (full)
-  const markCollectedMutation = useMutation({
-    mutationFn: async ({ regId, collectedEntries }: { regId: string; collectedEntries: CollectedSampleEntry[] }) => {
+  // Mark tubes as collected
+  const collectMutation = useMutation({
+    mutationFn: async ({ regId, tubeIds }: { regId: string; tubeIds: string[] }) => {
+      const now = new Date().toISOString();
       const { error } = await supabase
-        .from("patient_registrations")
-        .update({ status: "sample_collected", collected_samples: collectedEntries } as any)
-        .eq("id", regId);
+        .from("sample_tubes" as any)
+        .update({ status: "collected", collected_at: now })
+        .in("id", tubeIds);
       if (error) throw error;
+      await recalculateRegistrationStatus(regId);
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["sample_collection_patients"] });
-      qc.invalidateQueries({ queryKey: ["sample_collected_patients"] });
+      qc.invalidateQueries({ queryKey: ["sample_tubes_collection"] });
+      qc.invalidateQueries({ queryKey: ["sample_collection_regs"] });
       qc.invalidateQueries({ queryKey: ["patient_registrations"] });
-      toast.success("Status updated to Sample Collected");
+      qc.invalidateQueries({ queryKey: ["sample_tubes_acceptance"] });
+      setSelectedTubes({});
+      toast.success("Samples marked as collected");
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
-  // Partial collect mutation
-  const partialCollectMutation = useMutation({
-    mutationFn: async ({ regId, collectedEntries }: { regId: string; collectedEntries: CollectedSampleEntry[] }) => {
-      const { error } = await supabase
-        .from("patient_registrations")
-        .update({ collected_samples: collectedEntries } as any)
-        .eq("id", regId);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["sample_collection_patients"] });
-      qc.invalidateQueries({ queryKey: ["sample_collected_patients"] });
-      qc.invalidateQueries({ queryKey: ["patient_registrations"] });
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  const handlePrintAndCollect = async (reg: any, groups: BarcodeGroup[]) => {
-    const sel = selectedBarcodes[reg.id] || {};
-    const selectedOriginalIndices = groups.map((g, i) => (!g.isCollected && sel[i]) ? i : -1).filter(i => i >= 0);
-    const toPrint = selectedOriginalIndices.map(i => groups[i]);
-    
-    if (toPrint.length === 0) {
-      toast.error("Please select at least one barcode");
-      return;
-    }
-    
-    // Wait for print to finish before mutating
+  const handlePrintAndCollect = async (reg: any, tubes: SampleTubeRow[]) => {
+    const regSel = selectedTubes[reg.id] || new Set();
+    const toPrint = tubes.filter(t => t.status === "pending" && regSel.has(t.id));
+    if (toPrint.length === 0) { toast.error("Please select at least one barcode"); return; }
     await doPrintBarcodes(reg, toPrint);
-    
-    // Merge with existing collected entries
-    const existingEntries = parseCollectedSamples(reg.collected_samples || []);
-    const now = new Date().toISOString();
-    const newEntries: CollectedSampleEntry[] = toPrint.map(g => ({ key: g.groupKey, collected_at: now }));
-    const mergedMap = new Map<string, CollectedSampleEntry>();
-    for (const e of existingEntries) mergedMap.set(e.key, e);
-    for (const e of newEntries) mergedMap.set(e.key, e);
-    const allEntries = Array.from(mergedMap.values());
-    
-    const allGroupKeys = groups.map(g => g.groupKey);
-    const allNowCollected = allGroupKeys.every(k => mergedMap.has(k));
-    
-    if (allNowCollected) {
-      markCollectedMutation.mutate({ regId: reg.id, collectedEntries: allEntries });
-    } else {
-      partialCollectMutation.mutate({ regId: reg.id, collectedEntries: allEntries });
-      toast.success(`${toPrint.length} of ${groups.length} samples collected. ${groups.length - allEntries.length} remaining.`);
-    }
+    collectMutation.mutate({ regId: reg.id, tubeIds: toPrint.map(t => t.id) });
   };
 
-  // Reprint dialog handlers
-  const openReprintDialog = (reg: any) => {
-    const groups = buildBarcodeGroups(reg);
-    const allSel: Record<number, boolean> = {};
-    groups.forEach((_, i) => { allSel[i] = true; });
-    setReprintSelectedBarcodes(allSel);
+  const handleSinglePrintAndCollect = async (reg: any, tube: SampleTubeRow) => {
+    await doPrintBarcodes(reg, [tube]);
+    collectMutation.mutate({ regId: reg.id, tubeIds: [tube.id] });
+  };
+
+  // Reprint
+  const openReprintDialog = (group: GroupedRegistration) => {
+    const allTubesForReg = allTubes.filter(t => t.registration_id === group.registration.id);
+    setReprintSelectedTubes(new Set(allTubesForReg.map(t => t.id)));
     setReprintReason("");
-    setReprintDialog({ open: true, reg, groups });
+    setReprintDialog({ open: true, reg: group.registration, tubes: allTubesForReg });
   };
 
   const handleReprint = () => {
-    if (!reprintReason.trim()) {
-      toast.error("Please provide a reason for reprinting");
-      return;
-    }
-    const toPrint = reprintDialog.groups.filter((_, i) => reprintSelectedBarcodes[i]);
-    if (toPrint.length === 0) {
-      toast.error("Please select at least one barcode");
-      return;
-    }
+    if (!reprintReason.trim()) { toast.error("Please provide a reason for reprinting"); return; }
+    const toPrint = reprintDialog.tubes.filter(t => reprintSelectedTubes.has(t.id));
+    if (toPrint.length === 0) { toast.error("Please select at least one barcode"); return; }
     doPrintBarcodes(reprintDialog.reg, toPrint);
     toast.success(`Reprinted ${toPrint.length} barcode(s). Reason: ${reprintReason.trim()}`);
-    setReprintDialog({ open: false, reg: null, groups: [] });
+    setReprintDialog({ open: false, reg: null, tubes: [] });
   };
 
   const getVisitLabel = (v: string) => {
@@ -426,114 +282,83 @@ const SampleCollection = () => {
     }
   };
 
-  const getTubeColorHex = (color: string) => {
-    if (!color) return undefined;
-    return TUBE_COLOR_MAP[color.toLowerCase().trim()] || color;
-  };
+  const renderTubeExpansion = (group: GroupedRegistration, isPending: boolean) => {
+    const reg = group.registration;
+    const tubes = group.tubes;
+    const pendingTubes = tubes.filter(t => t.status === "pending");
+    const collectedTubes = tubes.filter(t => t.status === "collected");
+    const regSel = selectedTubes[reg.id] || new Set();
+    const selectedPendingCount = pendingTubes.filter(t => regSel.has(t.id)).length;
+    const allPendingSelected = pendingTubes.length > 0 && pendingTubes.every(t => regSel.has(t.id));
 
-  const renderBarcodeExpansion = (reg: any, groups: BarcodeGroup[], isPending: boolean) => {
-    const sel = isPending ? (selectedBarcodes[reg.id] || {}) : {};
-    const pendingGroups = groups.filter(g => !g.isCollected);
-    const collectedGroups = groups.filter(g => g.isCollected);
-    const selectedPendingCount = isPending ? groups.filter((g, i) => !g.isCollected && sel[i]).length : 0;
-    const allPendingSelected = isPending && pendingGroups.length > 0 && pendingGroups.every(g => {
-      const idx = groups.indexOf(g);
-      return sel[idx];
-    });
+    const displayTubes = isPending ? tubes : collectedTubes;
 
     return (
       <div className="bg-muted/30 p-4 space-y-3">
         <div className="flex items-center justify-between">
           <h4 className="text-sm font-semibold">
-            Sample Barcodes
-            {isPending && collectedGroups.length > 0 && (
+            Sample Tubes
+            {isPending && collectedTubes.length > 0 && (
               <span className="text-xs text-muted-foreground font-normal ml-2">
-                ({collectedGroups.length} collected, {pendingGroups.length} remaining)
+                ({collectedTubes.length} collected, {pendingTubes.length} remaining)
               </span>
             )}
           </h4>
-          {isPending && pendingGroups.length > 0 && (
+          {isPending && pendingTubes.length > 0 && (
             <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={() => {
-                const allSel = allPendingSelected;
-                toggleAllBarcodes(reg.id, groups, !allSel);
-              }}>
+              <Button size="sm" variant="outline" onClick={() => toggleAllPendingTubes(reg.id, tubes, !allPendingSelected)}>
                 {allPendingSelected ? "Deselect All" : "Select All"}
               </Button>
               <Button size="sm" variant="default" className="gap-1" disabled={selectedPendingCount === 0}
-                onClick={() => handlePrintAndCollect(reg, groups)}>
-                <Printer className="h-3.5 w-3.5" />
-                Print & Collect ({selectedPendingCount})
+                onClick={() => handlePrintAndCollect(reg, tubes)}>
+                <Printer className="h-3.5 w-3.5" /> Print & Collect ({selectedPendingCount})
               </Button>
             </div>
           )}
         </div>
 
         <div className="grid gap-2">
-          {(isPending ? groups : groups.filter(g => {
-            if (!g.isCollected) return false;
-            const accepted = parseCollectedSamples(reg.accepted_samples || []);
-            const acceptedKeys = new Set(accepted.map((a: any) => a.key));
-            return !acceptedKeys.has(g.groupKey);
-          })).map((group, idx) => {
-            const colorHex = getTubeColorHex(group.tubeColor);
-            const isCollected = group.isCollected;
+          {displayTubes.map((tube) => {
+            const colorHex = getTubeColorHex(tube.tube_color);
+            const isCollected = tube.status === "collected";
+            const isSelected = regSel.has(tube.id);
             return (
-              <Card key={idx} className={`${isCollected ? "opacity-60" : ""} ${isPending && !isCollected && sel[idx] ? "ring-2 ring-primary" : ""}`}>
+              <Card key={tube.id} className={`${isCollected ? "opacity-60" : ""} ${isPending && !isCollected && isSelected ? "ring-2 ring-primary" : ""}`}>
                 <CardContent className="p-3 flex items-center gap-3">
-                  {isPending && (
-                    <Checkbox 
-                      checked={isCollected ? true : !!sel[idx]} 
-                      disabled={isCollected}
-                      onCheckedChange={() => !isCollected && toggleBarcode(reg.id, idx)} 
-                    />
+                  {isPending && !isCollected && (
+                    <Checkbox checked={isSelected} onCheckedChange={() => toggleTube(reg.id, tube.id)} />
                   )}
                   {colorHex && (
                     <span className="inline-block w-5 h-5 rounded-full border-2 border-muted-foreground/30 shrink-0"
-                      style={{ backgroundColor: colorHex }} title={group.tubeColor} />
+                      style={{ backgroundColor: colorHex }} title={tube.tube_color || ""} />
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-sm">{group.sampleId}</span>
+                      <span className="font-mono font-bold text-sm">{tube.sample_uid}</span>
                       <Badge variant="outline" className="text-xs">
-                        {group.sampleTube === "DEFAULT" ? "No Tube" : group.sampleTube}
+                        {(tube.tube_type || "DEFAULT") === "DEFAULT" ? "No Tube" : tube.tube_type}
                       </Badge>
-                      {group.sampleType && (
-                        <span className="text-xs text-muted-foreground">{group.sampleType}</span>
-                      )}
+                      {tube.sample_type && <span className="text-xs text-muted-foreground">{tube.sample_type}</span>}
                       {isCollected && (
-                        <Badge className="text-xs bg-green-100 text-green-800 border-green-300">
-                          <CheckCircle2 className="h-3 w-3 mr-1" /> Collected
-                        </Badge>
-                      )}
-                      {isCollected && (
-                        <span className="text-xs text-muted-foreground">{formatCollectedAt(group.collectedAt)}</span>
+                        <>
+                          <Badge className="text-xs bg-green-100 text-green-800 border-green-300">
+                            <CheckCircle2 className="h-3 w-3 mr-1" /> Collected
+                          </Badge>
+                          {tube.collected_at && (
+                            <span className="text-xs text-muted-foreground">
+                              {format(new Date(tube.collected_at), "dd-MM-yyyy hh:mm a")}
+                            </span>
+                          )}
+                        </>
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                      {group.testNames.join(", ")}
+                      {(tube.test_names || []).join(", ")}
                     </p>
                   </div>
                   {isPending && !isCollected && (
-                    <Button size="sm" variant="ghost" className="shrink-0" onClick={async (e) => {
-                      e.stopPropagation();
-                      await doPrintBarcodes(reg, [group]);
-                      // Mark this single tube as collected after print
-                      const existingEntries = parseCollectedSamples(reg.collected_samples || []);
-                      const now = new Date().toISOString();
-                      const mergedMap = new Map<string, CollectedSampleEntry>();
-                      for (const e of existingEntries) mergedMap.set(e.key, e);
-                      mergedMap.set(group.groupKey, { key: group.groupKey, collected_at: now });
-                      const allEntries = Array.from(mergedMap.values());
-                      const allGroupKeys = groups.map(g => g.groupKey);
-                      const allNowCollected = allGroupKeys.every(k => mergedMap.has(k));
-                      if (allNowCollected) {
-                        markCollectedMutation.mutate({ regId: reg.id, collectedEntries: allEntries });
-                      } else {
-                        partialCollectMutation.mutate({ regId: reg.id, collectedEntries: allEntries });
-                        toast.success(`Sample collected. ${allGroupKeys.length - allEntries.length} remaining.`);
-                      }
-                    }}>
+                    <Button size="sm" variant="ghost" className="shrink-0"
+                      onClick={(e) => { e.stopPropagation(); handleSinglePrintAndCollect(reg, tube); }}>
                       <Printer className="h-3.5 w-3.5" />
                     </Button>
                   )}
@@ -542,26 +367,13 @@ const SampleCollection = () => {
             );
           })}
         </div>
-
-        {isPending && allPendingSelected && pendingGroups.length > 0 && (
-          <Button className="w-full gap-2" onClick={() => {
-            const existingEntries = parseCollectedSamples(reg.collected_samples || []);
-            const now = new Date().toISOString();
-            const mergedMap = new Map<string, CollectedSampleEntry>();
-            for (const e of existingEntries) mergedMap.set(e.key, e);
-            for (const g of groups) mergedMap.set(g.groupKey, { key: g.groupKey, collected_at: now });
-            markCollectedMutation.mutate({ regId: reg.id, collectedEntries: Array.from(mergedMap.values()) });
-          }}>
-            <CheckCircle2 className="h-4 w-4" /> Mark as Sample Collected
-          </Button>
-        )}
       </div>
     );
   };
 
-  const renderTable = (data: any[], isPending: boolean, loading: boolean) => {
+  const renderTable = (groups: GroupedRegistration[], isPending: boolean, loading: boolean) => {
     if (loading) return <p className="text-sm text-muted-foreground">Loading...</p>;
-    if (data.length === 0) return (
+    if (groups.length === 0) return (
       <p className="text-sm text-muted-foreground">
         {isPending ? "No registered patients pending sample collection" : "No collected samples found"}
       </p>
@@ -576,33 +388,16 @@ const SampleCollection = () => {
             <TableHead>Patient Name</TableHead>
             <TableHead>Mobile</TableHead>
             <TableHead>Visit</TableHead>
-            <TableHead>Tests</TableHead>
+            <TableHead>Tubes</TableHead>
             <TableHead>Date</TableHead>
             <TableHead className="text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {data.filter((reg: any) => {
-            const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
-            const hasActiveTests = ((reg.tests || []) as any[]).some((t: any) => !cancelledIds.has(t.test_id));
-            if (!hasActiveTests) return false;
-            if (isPending) {
-              // Only show if at least one tube is NOT yet collected
-              const groups = buildBarcodeGroups(reg);
-              return groups.some(g => !g.isCollected);
-            }
-            // Collected tab: only show if at least one collected tube is NOT yet accepted
-            const collected = parseCollectedSamples(reg.collected_samples || []);
-            const accepted = parseCollectedSamples(reg.accepted_samples || []);
-            const acceptedKeys = new Set(accepted.map((a: any) => a.key));
-            return collected.some((c: any) => !acceptedKeys.has(c.key));
-          }).map((reg: any) => {
-            const groups = buildBarcodeGroups(reg);
+          {groups.map(({ registration: reg, tubes }) => {
             const isExpanded = expandedRow === reg.id;
-            const sel = selectedBarcodes[reg.id] || {};
-            const activeTests = ((reg.tests || []) as any[]).filter(
-              (t: any) => !((reg.cancelled_tests || []) as any[]).some((c: any) => c.test_id === t.test_id)
-            );
+            const pendingTubes = tubes.filter(t => t.status === "pending");
+            const collectedTubes = tubes.filter(t => t.status === "collected");
 
             return (
               <>
@@ -621,47 +416,42 @@ const SampleCollection = () => {
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75"></span>
                           <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive"></span>
                         </span>
-                       )}
-                       {reg.status === "repeat_collection" && (
-                         <Badge variant="destructive" className="ml-2 text-xs">REPEAT</Badge>
-                        )}
-{!isPending && reg.status !== "sample_collected" && groups.some(g => !g.isCollected) && (
-                          <Badge className="ml-2 text-xs bg-amber-500 text-white border-0">PARTIAL</Badge>
-                         )}
-                     </div>
+                      )}
+                      {reg.status === "repeat_collection" && <Badge variant="destructive" className="ml-2 text-xs">REPEAT</Badge>}
+                      {isPending && collectedTubes.length > 0 && pendingTubes.length > 0 && (
+                        <Badge className="ml-2 text-xs bg-amber-500 text-white border-0">PARTIAL</Badge>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell className="text-sm">{reg.mobile_number}</TableCell>
                   <TableCell><Badge variant="outline" className="text-xs">{getVisitLabel(reg.visit_type)}</Badge></TableCell>
                   <TableCell className="text-sm">
-                    {activeTests.length} tests • {groups.length} tube(s)
-                    {isPending && groups.some(g => g.isCollected) && (
-                      <span className="text-xs text-green-600 ml-1">
-                        ({groups.filter(g => g.isCollected).length} done)
-                      </span>
+                    {tubes.length} tube(s)
+                    {isPending && collectedTubes.length > 0 && (
+                      <span className="text-xs text-green-600 ml-1">({collectedTubes.length} done)</span>
                     )}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
-                    {format(new Date(isPending ? reg.created_at : reg.updated_at), "dd/MM/yy HH:mm")}
+                    {format(new Date(reg.created_at), "dd/MM/yy HH:mm")}
                   </TableCell>
                   <TableCell className="text-right">
                     {isPending ? (
                       <Button size="sm" variant="default" className="gap-1"
-                        onClick={(e) => { e.stopPropagation(); toggleAllBarcodes(reg.id, groups, true); setExpandedRow(reg.id); }}>
+                        onClick={(e) => { e.stopPropagation(); toggleAllPendingTubes(reg.id, tubes, true); setExpandedRow(reg.id); }}>
                         <Printer className="h-3.5 w-3.5" /> Print All
                       </Button>
                     ) : (
                       <Button size="sm" variant="outline" className="gap-1"
-                        onClick={(e) => { e.stopPropagation(); openReprintDialog(reg); }}>
+                        onClick={(e) => { e.stopPropagation(); openReprintDialog({ registration: reg, tubes }); }}>
                         <RotateCcw className="h-3.5 w-3.5" /> Reprint
                       </Button>
                     )}
                   </TableCell>
                 </TableRow>
-
                 {isExpanded && (
                   <TableRow key={`${reg.id}-expand`}>
                     <TableCell colSpan={8} className="p-0">
-                      {renderBarcodeExpansion(reg, groups, isPending)}
+                      {renderTubeExpansion({ registration: reg, tubes }, isPending)}
                     </TableCell>
                   </TableRow>
                 )}
@@ -686,30 +476,22 @@ const SampleCollection = () => {
       <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setExpandedRow(null); }}>
         <TabsList>
           <TabsTrigger value="pending" className="gap-1.5">
-            Pending <Badge variant="secondary" className="text-xs ml-1">{registrations.filter((r: any) => {
-              const groups = buildBarcodeGroups(r);
-              return groups.some(g => !g.isCollected);
-            }).length}</Badge>
+            Pending <Badge variant="secondary" className="text-xs ml-1">{pendingGroups.length}</Badge>
           </TabsTrigger>
           <TabsTrigger value="collected" className="gap-1.5">
-            Collected <Badge variant="secondary" className="text-xs ml-1">{collectedRegistrations.filter((r: any) => {
-              const collected = parseCollectedSamples(r.collected_samples || []);
-              const accepted = parseCollectedSamples(r.accepted_samples || []);
-              const acceptedKeys = new Set(accepted.map((a: any) => a.key));
-              return collected.some((c: any) => !acceptedKeys.has(c.key));
-            }).length}</Badge>
+            Collected <Badge variant="secondary" className="text-xs ml-1">{collectedGroups.length}</Badge>
           </TabsTrigger>
         </TabsList>
         <TabsContent value="pending" className="mt-3">
-          {renderTable(registrations, true, isLoading)}
+          {renderTable(pendingGroups, true, isLoading)}
         </TabsContent>
         <TabsContent value="collected" className="mt-3">
-          {renderTable(collectedRegistrations, false, isLoadingCollected)}
+          {renderTable(collectedGroups, false, isLoading)}
         </TabsContent>
       </Tabs>
 
       {/* Reprint Dialog */}
-      <Dialog open={reprintDialog.open} onOpenChange={(open) => { if (!open) setReprintDialog({ open: false, reg: null, groups: [] }); }}>
+      <Dialog open={reprintDialog.open} onOpenChange={(open) => { if (!open) setReprintDialog({ open: false, reg: null, tubes: [] }); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Reprint Barcodes</DialogTitle>
@@ -719,22 +501,26 @@ const SampleCollection = () => {
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-2">
-              {reprintDialog.groups.map((group, idx) => {
-                const colorHex = getTubeColorHex(group.tubeColor);
+              {reprintDialog.tubes.map((tube) => {
+                const colorHex = getTubeColorHex(tube.tube_color);
                 return (
-                  <div key={idx} className="flex items-center gap-3 p-2 rounded border">
-                    <Checkbox checked={!!reprintSelectedBarcodes[idx]}
-                      onCheckedChange={() => setReprintSelectedBarcodes(prev => ({ ...prev, [idx]: !prev[idx] }))} />
+                  <div key={tube.id} className="flex items-center gap-3 p-2 rounded border">
+                    <Checkbox checked={reprintSelectedTubes.has(tube.id)}
+                      onCheckedChange={() => setReprintSelectedTubes(prev => {
+                        const next = new Set(prev);
+                        if (next.has(tube.id)) next.delete(tube.id); else next.add(tube.id);
+                        return next;
+                      })} />
                     {colorHex && (
                       <span className="inline-block w-4 h-4 rounded-full border shrink-0"
                         style={{ backgroundColor: colorHex }} />
                     )}
                     <div className="flex-1 min-w-0">
-                      <span className="font-mono font-bold text-sm">{group.sampleId}</span>
+                      <span className="font-mono font-bold text-sm">{tube.sample_uid}</span>
                       <Badge variant="outline" className="text-xs ml-2">
-                        {group.sampleTube === "DEFAULT" ? "No Tube" : group.sampleTube}
+                        {(tube.tube_type || "DEFAULT") === "DEFAULT" ? "No Tube" : tube.tube_type}
                       </Badge>
-                      <p className="text-xs text-muted-foreground truncate">{group.testNames.join(", ")}</p>
+                      <p className="text-xs text-muted-foreground truncate">{(tube.test_names || []).join(", ")}</p>
                     </div>
                   </div>
                 );
@@ -747,9 +533,9 @@ const SampleCollection = () => {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setReprintDialog({ open: false, reg: null, groups: [] })}>Cancel</Button>
+            <Button variant="outline" onClick={() => setReprintDialog({ open: false, reg: null, tubes: [] })}>Cancel</Button>
             <Button className="gap-1" onClick={handleReprint}
-              disabled={!reprintReason.trim() || !Object.values(reprintSelectedBarcodes).some(Boolean)}>
+              disabled={!reprintReason.trim() || reprintSelectedTubes.size === 0}>
               <Printer className="h-3.5 w-3.5" /> Reprint
             </Button>
           </DialogFooter>
