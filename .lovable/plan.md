@@ -1,13 +1,21 @@
 
 
-# Plan: Use Thinner Border on Test Name Header
+# Plan: Improve Snip Image Quality in Print
 
-## Change — `src/components/report/ReportResultsSection.tsx`
+## Problem
+The `html-to-image` capture uses `pixelRatio: 2`, which produces a 2x resolution image. For text-based report pages this is acceptable, but snip images (which are already raster images) get double-sampled and lose sharpness — appearing blurry when printed.
 
-**Line 304**: Change `border border-gray-600` to `border border-gray-100` to match the parameter table row borders (`border-b border-gray-100`).
+## Solution
+Increase `pixelRatio` from `2` to `4` in both the print and PDF export capture calls. This produces a 4x resolution PNG capture, which preserves much more detail from the snip images when they're rendered at print resolution (~300 DPI on paper). No other functionality changes.
 
-This makes the test name box border the same thin, light gray as the parameter row dividers.
+## Technical Details
+
+### `src/pages/LimsReportView.tsx`
+
+**Line 375** (PDF export) — change `pixelRatio: 2` → `pixelRatio: 4`
+
+**Line 412** (Print) — change `pixelRatio: 2` → `pixelRatio: 4`
 
 ### Files Modified
-- `src/components/report/ReportResultsSection.tsx` — 1 line changed
+- `src/pages/LimsReportView.tsx` — 2 lines changed
 
