@@ -2003,7 +2003,10 @@ export type Database = {
       }
       patient_results: {
         Row: {
+          approved_at: string | null
           created_at: string
+          dispatched_at: string | null
+          entered_at: string | null
           entered_by: string | null
           flag: string | null
           id: string
@@ -2021,9 +2024,13 @@ export type Database = {
           test_id: string
           unit: string | null
           updated_at: string
+          verified_at: string | null
         }
         Insert: {
+          approved_at?: string | null
           created_at?: string
+          dispatched_at?: string | null
+          entered_at?: string | null
           entered_by?: string | null
           flag?: string | null
           id?: string
@@ -2041,9 +2048,13 @@ export type Database = {
           test_id: string
           unit?: string | null
           updated_at?: string
+          verified_at?: string | null
         }
         Update: {
+          approved_at?: string | null
           created_at?: string
+          dispatched_at?: string | null
+          entered_at?: string | null
           entered_by?: string | null
           flag?: string | null
           id?: string
@@ -2061,6 +2072,7 @@ export type Database = {
           test_id?: string
           unit?: string | null
           updated_at?: string
+          verified_at?: string | null
         }
         Relationships: []
       }
