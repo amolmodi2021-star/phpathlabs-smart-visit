@@ -239,12 +239,12 @@ const ReportResultsSection = ({
                               )}
                               {hasParamMeta && (
                                 <tr>
-                                  <td colSpan={totalCols} className="px-3 py-1 text-gray-500 border-t border-gray-100" style={{ fontSize: metaFontSize }}>
-                                    <div className="flex gap-4 flex-wrap">
-                                      {paramMeta.sample_type && <span><strong>Sample Type:</strong> {paramMeta.sample_type}</span>}
-                                      {paramMeta.analyzer && <span><strong>Instrument:</strong> {paramMeta.analyzer}</span>}
-                                      {paramMeta.method && <span><strong>Method:</strong> {paramMeta.method}</span>}
-                                    </div>
+                                  <td colSpan={totalCols} className="px-3 py-0.5 text-gray-500 border-t border-gray-100" style={{ fontSize: metaFontSize }}>
+                                    ({[
+                                      paramMeta.sample_type && `Sample: ${paramMeta.sample_type}`,
+                                      paramMeta.analyzer && `Instrument: ${paramMeta.analyzer}`,
+                                      paramMeta.method && `Method: ${paramMeta.method}`,
+                                    ].filter(Boolean).join(' | ')})
                                   </td>
                                 </tr>
                               )}
@@ -297,7 +297,15 @@ const ReportResultsSection = ({
                       <div style={{ height: '1mm' }} />
                       <div className="px-3 py-1 font-semibold bg-blue-50 print:bg-transparent border-b-2 border-gray-600" style={{ color: '#2E3192', fontSize: profileFontSize }}>
                         {profName}
-                        {profMeta?.sample_type && <span className="font-normal text-gray-500 ml-2" style={{ fontSize: metaFontSize }}>(Sample: {profMeta.sample_type})</span>}
+                        {(profMeta?.sample_type || profMeta?.analyzer || profMeta?.method) && (
+                          <span className="font-normal text-gray-500 ml-2" style={{ fontSize: metaFontSize }}>
+                            ({[
+                              profMeta?.sample_type && `Sample: ${profMeta.sample_type}`,
+                              profMeta?.analyzer && `Instrument: ${profMeta.analyzer}`,
+                              profMeta?.method && `Method: ${profMeta.method}`,
+                            ].filter(Boolean).join(' | ')})
+                          </span>
+                        )}
                       </div>
                     </>
                   )}
@@ -339,13 +347,6 @@ const ReportResultsSection = ({
                     </tbody>
                   </table>
 
-                  {hasMetaRow && (
-                    <div className="px-3 py-1 text-gray-500 border-t border-gray-100 flex gap-4 flex-wrap" style={{ fontSize: metaFontSize }}>
-                      {profMeta!.sample_type && <span><strong>Sample Type:</strong> {profMeta!.sample_type}</span>}
-                      {profMeta!.analyzer && <span><strong>Instrument:</strong> {profMeta!.analyzer}</span>}
-                      {profMeta!.method && <span><strong>Method:</strong> {profMeta!.method}</span>}
-                    </div>
-                  )}
                   {hasInterpretation && (
                     <div className="px-3 py-1.5 border-t border-gray-100">
                       <div className="font-semibold text-gray-600 mb-0.5" style={{ fontSize: metaFontSize }}>Interpretation:</div>
