@@ -1,33 +1,34 @@
 
 
-# Fix: Hide Accepted Tubes from Sample Collection "Collected" Tab
+# Plan: Test Selection Dialog Before Report Generation
 
-## Problem
-The "Collected" tab in Sample Collection continues to show tubes even after they've been accepted in Sample Acceptance. The user wants only tubes that are **collected but not yet accepted** (i.e., pending acceptance) to appear here.
+## What Changes
 
-## Solution — `src/components/lims/SampleCollection.tsx`
+When the user clicks "View Report" in the Dispatch section, instead of navigating directly to the report page, a dialog will appear listing all approved tests for that registration with checkboxes. The user can select/deselect individual tests or use "Select All." Clicking "Generate Report" navigates to the report page with only the selected tests.
 
-### 1. Filter the Collected tab to exclude fully-accepted registrations
+## Implementation
 
-In the `renderTable` filter (line 580), add logic for the `!isPending` (Collected) case: only show registrations where at least one collected tube has NOT yet been accepted.
+### 1. Add Test Selection Dialog to `src/components/lims/Dispatch.tsx`
 
-```typescript
-if (!isPending) {
-  const collected = parseCollectedSamples(reg.collected_samples || []);
-  const accepted = parseCollectedSamples(reg.accepted_samples || []);
-  const acceptedKeys = new Set(accepted.map(a => a.key));
-  // Only show if at least one collected tube is NOT yet accepted
-  return collected.some(c => !acceptedKeys.has(c.key));
-}
-```
+- Add state for: dialog open, selected registration entry, selected test IDs (Set)
+- When "View Report" is clicked, open the dialog instead of navigating
+- Dialog shows:
+  - "Select All" checkbox at the top
+  - Each approved test with a checkbox (test name as label)
+  - All selected by default
+  - "Generate Report" button that navigates to `/lims/report/{regId}?tests=id1,id2,id3`
+- Only show tests that are approved (status === "approved" or "dispatched")
 
-### 2. Update the Collected tab badge count
+### 2. Update `src/pages/LimsReportView.tsx` to Filter by Selected Tests
 
-Update the badge counter (line 686) to use the same filtering logic — count only registrations that have at least one collected-but-not-accepted tube.
+- Read `tests` query parameter from URL (comma-separated test IDs)
+- If present, filter the `approved_reports` test_results array to only include results matching those test IDs
+- Also filter `outsourced_test_snips` to only matching test IDs
+- If no `tests` param, show all tests (backward compatible)
 
-### 3. Hide accepted tubes from the expanded tube list in Collected tab
+### Technical Details
 
-In `renderBarcodeExpansion`, when rendering the Collected tab (`!isPending`), filter out tube groups that are already in `accepted_samples`. This ensures individual accepted tubes disappear from the dropdown/list.
-
-**One file changed. Three small filtering additions.**
+- The `DispatchEntry.tests` array already has `testId` and `testName` per test with status — perfect for populating checkboxes
+- URL query params (`?tests=...`) keep the approach stateless and shareable
+- No database changes needed
 
