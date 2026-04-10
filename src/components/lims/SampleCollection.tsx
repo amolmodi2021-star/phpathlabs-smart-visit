@@ -83,7 +83,7 @@ const SampleCollection = () => {
       let query = supabase
         .from("patient_registrations")
         .select("*")
-        .in("status", ["registered", "repeat_collection"])
+        .in("status", ["registered", "repeat_collection", "sample_collected", "sample_accepted"])
         .eq("bill_cancelled", false)
         .order("created_at", { ascending: false });
 
@@ -107,8 +107,8 @@ const SampleCollection = () => {
       let query = supabase
         .from("patient_registrations")
         .select("*")
-        .in("status", ["registered", "sample_collected"])
-        .or("status.eq.sample_collected,collected_samples.neq.[]")
+        .in("status", ["registered", "sample_collected", "sample_accepted"])
+        .or("status.eq.sample_collected,status.eq.sample_accepted,collected_samples.neq.[]")
         .eq("bill_cancelled", false)
         .order("updated_at", { ascending: false });
 
@@ -579,7 +579,14 @@ const SampleCollection = () => {
         <TableBody>
           {data.filter((reg: any) => {
             const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
-            return ((reg.tests || []) as any[]).some((t: any) => !cancelledIds.has(t.test_id));
+            const hasActiveTests = ((reg.tests || []) as any[]).some((t: any) => !cancelledIds.has(t.test_id));
+            if (!hasActiveTests) return false;
+            if (isPending) {
+              // Only show if at least one tube is NOT yet collected
+              const groups = buildBarcodeGroups(reg);
+              return groups.some(g => !g.isCollected);
+            }
+            return true;
           }).map((reg: any) => {
             const groups = buildBarcodeGroups(reg);
             const isExpanded = expandedRow === reg.id;
@@ -670,10 +677,16 @@ const SampleCollection = () => {
       <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setExpandedRow(null); }}>
         <TabsList>
           <TabsTrigger value="pending" className="gap-1.5">
-            Pending <Badge variant="secondary" className="text-xs ml-1">{registrations.length}</Badge>
+            Pending <Badge variant="secondary" className="text-xs ml-1">{registrations.filter((r: any) => {
+              const groups = buildBarcodeGroups(r);
+              return groups.some(g => !g.isCollected);
+            }).length}</Badge>
           </TabsTrigger>
           <TabsTrigger value="collected" className="gap-1.5">
-            Collected <Badge variant="secondary" className="text-xs ml-1">{collectedRegistrations.length}</Badge>
+            Collected <Badge variant="secondary" className="text-xs ml-1">{collectedRegistrations.filter((r: any) => {
+              const collected = parseCollectedSamples(r.collected_samples || []);
+              return collected.length > 0;
+            }).length}</Badge>
           </TabsTrigger>
         </TabsList>
         <TabsContent value="pending" className="mt-3">
