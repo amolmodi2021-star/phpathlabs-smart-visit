@@ -11,6 +11,7 @@ import * as pdfjsLib from "pdfjs-dist";
 import LimsReportHeader from "@/components/report/LimsReportHeader";
 import ReportSignatureBlock from "@/components/report/ReportSignatureBlock";
 import ReportResultsSection from "@/components/report/ReportResultsSection";
+import AutoScaleContent from "@/components/report/AutoScaleContent";
 import type { TestResult, ProfileMeta } from "@/components/report/ReportResultsSection";
 import { toast } from "sonner";
 
@@ -572,22 +573,30 @@ const LimsReportView = () => {
 
               {/* Main Content Area */}
               <div className="flex-1 overflow-hidden">
-                {page.type === "structured" && page.testBlocks && (
-                  <ReportResultsSection
-                    grouped={transformBlocksToGrouped(page.departmentName || "Results", page.testBlocks, testsMap, testParamsMap)}
-                    shouldShowProfile={() => true}
-                    hideDeptHeader={false}
-                    showFlagText={true}
-                    profileMetaMap={buildProfileMetaMap(page.testBlocks, testsMap)}
-                    fontSize={{
-                      department: "15px",
-                      profile: "14px",
-                      tableHeader: "12px",
-                      row: "13px",
-                      meta: "11px",
-                    }}
-                  />
-                )}
+                {page.type === "structured" && page.testBlocks && (() => {
+                  const hasFitToPage = page.testBlocks.some(b => b.fitToPage);
+                  const resultsContent = (
+                    <ReportResultsSection
+                      grouped={transformBlocksToGrouped(page.departmentName || "Results", page.testBlocks, testsMap, testParamsMap)}
+                      shouldShowProfile={() => true}
+                      hideDeptHeader={false}
+                      showFlagText={true}
+                      profileMetaMap={buildProfileMetaMap(page.testBlocks, testsMap)}
+                      fontSize={{
+                        department: "15px",
+                        profile: "14px",
+                        tableHeader: "12px",
+                        row: "13px",
+                        meta: "11px",
+                      }}
+                    />
+                  );
+                  if (hasFitToPage) {
+                    const availableHeight = PAGE_HEIGHT_MM - topMm - bottomMm - HEADER_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM;
+                    return <AutoScaleContent maxHeightMm={availableHeight}>{resultsContent}</AutoScaleContent>;
+                  }
+                  return resultsContent;
+                })()}
 
                 {page.type === "snip" && page.snipImage && (
                   <div className="flex items-start justify-center h-full pt-1">
