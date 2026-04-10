@@ -293,34 +293,46 @@ const Dispatch = () => {
     try { return format(new Date(dateStr), "dd MMM yyyy, hh:mm a"); } catch { return dateStr; }
   };
 
-  const DatePickerButton = ({ date, onSelect }: { date: Date; onSelect: (d: Date) => void }) => (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="h-9 gap-1.5 text-sm font-normal">
-          <CalendarIcon className="h-3.5 w-3.5" />
-          {format(date, "dd MMM yyyy")}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
-        <Calendar
-          mode="single"
-          selected={date}
-          onSelect={(d) => d && onSelect(d)}
-          initialFocus
-          className={cn("p-3 pointer-events-auto")}
-        />
-      </PopoverContent>
-    </Popover>
-  );
-
   return (
     <div className="space-y-3">
       {/* Date range filter */}
       <div className="flex items-center gap-2">
         <span className="text-sm text-muted-foreground">From</span>
-        <DatePickerButton date={dateFrom} onSelect={(d) => setDateFrom(startOfDay(d))} />
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className="h-9 gap-1.5 text-sm font-normal">
+              <CalendarIcon className="h-3.5 w-3.5" />
+              {format(dateFrom, "dd MMM yyyy")}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0 z-50" align="start">
+            <Calendar
+              mode="single"
+              selected={dateFrom}
+              onSelect={(d) => d && setDateFrom(startOfDay(d))}
+              initialFocus
+              className={cn("p-3 pointer-events-auto")}
+            />
+          </PopoverContent>
+        </Popover>
         <span className="text-sm text-muted-foreground">To</span>
-        <DatePickerButton date={dateTo} onSelect={(d) => setDateTo(endOfDay(d))} />
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className="h-9 gap-1.5 text-sm font-normal">
+              <CalendarIcon className="h-3.5 w-3.5" />
+              {format(dateTo, "dd MMM yyyy")}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0 z-50" align="start">
+            <Calendar
+              mode="single"
+              selected={dateTo}
+              onSelect={(d) => d && setDateTo(endOfDay(d))}
+              initialFocus
+              className={cn("p-3 pointer-events-auto")}
+            />
+          </PopoverContent>
+        </Popover>
         <Button variant="ghost" size="sm" className="text-xs" onClick={() => { setDateFrom(startOfDay(new Date())); setDateTo(endOfDay(new Date())); }}>Today</Button>
         <span className="text-xs text-muted-foreground ml-auto">{dispatchEntries.length} records</span>
       </div>
