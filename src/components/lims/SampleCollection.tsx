@@ -474,10 +474,10 @@ const SampleCollection = () => {
                     </p>
                   </div>
                   {isPending && !isCollected && (
-                    <Button size="sm" variant="ghost" className="shrink-0" onClick={(e) => {
+                    <Button size="sm" variant="ghost" className="shrink-0" onClick={async (e) => {
                       e.stopPropagation();
-                      doPrintBarcodes(reg, [group]);
-                      // Also mark this single tube as collected
+                      await doPrintBarcodes(reg, [group]);
+                      // Mark this single tube as collected after print
                       const existingCollected = (reg.collected_samples || []) as string[];
                       const allCollectedKeys = [...new Set([...existingCollected, group.groupKey])];
                       const allGroupKeys = groups.map(g => g.groupKey);
