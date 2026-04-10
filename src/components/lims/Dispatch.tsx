@@ -467,7 +467,7 @@ const Dispatch = () => {
                                   <Badge
                                     key={idx}
                                     variant="outline"
-                                    className={`text-[9px] px-1.5 py-0 h-5 ${isDone ? badgeColors[idx] : "border-muted text-muted-foreground/40 bg-transparent"}`}
+                                    className={`text-[10px] px-2 py-0.5 h-6 ${isDone ? badgeColors[idx] : "border-muted text-muted-foreground/40 bg-transparent"}`}
                                   >
                                     {shortLabels[idx]}
                                   </Badge>
