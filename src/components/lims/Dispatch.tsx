@@ -398,18 +398,29 @@ const Dispatch = () => {
                   </div>
                 </div>
 
-                {/* Test details list */}
+                {/* Test details list with audit trail */}
                 <ScrollArea className="flex-1">
-                  <div className="p-4 space-y-2">
+                  <div className="p-4 space-y-3">
                     <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
                       Tests ({selectedEntry.tests.length})
                     </div>
                     {selectedEntry.tests.map((test) => {
                       const testKey = `${selectedEntry.registration.id}||${test.testId}`;
                       const isTestDispatching = actionKey === `${testKey}||dispatch`;
+
+                      const auditSteps = [
+                        { label: "Sample Collected", timestamp: test.collectedAt },
+                        { label: "Sample Accepted", timestamp: test.acceptedAt },
+                        { label: "Results Entered", timestamp: test.enteredAt },
+                        { label: "Verified", timestamp: test.verifiedAt },
+                        { label: "Approved", timestamp: test.approvedAt },
+                        { label: "Dispatched", timestamp: test.dispatchedAt },
+                      ];
+
                       return (
                         <div key={testKey} className="border rounded-lg bg-background">
-                          <div className="flex items-center justify-between px-4 py-3">
+                          {/* Test header */}
+                          <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/30">
                             <div className="flex items-center gap-3">
                               <span className="font-medium text-sm">{test.testName}</span>
                               {getStatusBadge(test.status)}
@@ -430,6 +441,31 @@ const Dispatch = () => {
                                   </Button>
                                 </>
                               )}
+                            </div>
+                          </div>
+                          {/* Audit trail */}
+                          <div className="px-4 py-2.5">
+                            <div className="space-y-1">
+                              {auditSteps.map((step, idx) => {
+                                const isDone = !!step.timestamp;
+                                return (
+                                  <div key={idx} className="grid grid-cols-[24px_160px_1fr] items-center gap-1 py-0.5">
+                                    <div className="flex justify-center">
+                                      {isDone ? (
+                                        <div className="h-2.5 w-2.5 rounded-full bg-green-500" />
+                                      ) : (
+                                        <div className="h-2.5 w-2.5 rounded-full border-2 border-muted-foreground/30" />
+                                      )}
+                                    </div>
+                                    <span className={`text-xs ${isDone ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+                                      {step.label}
+                                    </span>
+                                    <span className={`text-xs ${isDone ? "text-muted-foreground" : "text-muted-foreground/40"}`}>
+                                      {isDone ? formatDate(step.timestamp) : "—"}
+                                    </span>
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
                         </div>
