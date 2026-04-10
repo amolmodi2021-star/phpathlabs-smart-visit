@@ -411,6 +411,13 @@ const Dispatch = () => {
                 })}
               </div>
             </ScrollArea>
+            {dispatchTotalPages > 1 && (
+              <div className="p-2 border-t flex items-center justify-between">
+                <Button variant="ghost" size="sm" className="text-xs h-7" disabled={dispatchPage === 0} onClick={() => setDispatchPage(p => p - 1)}>Prev</Button>
+                <span className="text-xs text-muted-foreground">{dispatchPage + 1} / {dispatchTotalPages}</span>
+                <Button variant="ghost" size="sm" className="text-xs h-7" disabled={dispatchPage >= dispatchTotalPages - 1} onClick={() => setDispatchPage(p => p + 1)}>Next</Button>
+              </div>
+            )}
           </Card>
 
           {/* RIGHT PANEL — Selected Patient Details */}
