@@ -1,26 +1,26 @@
 
 
-# Fix: Print Error and Sample Not Marked as Collected
+# Show Partially Collected Samples in Collected Tab
 
-## Root Cause
-In `handlePrintAndCollect`, `doPrintBarcodes()` opens a popup window and schedules `printWindow.print()` via `onload`. Immediately after, the Supabase mutation fires, which invalidates queries and triggers a React re-render. This destroys the print window's callback context before `onload` fires, causing:
-1. "Failed to execute 'print' on 'Window'" error
-2. The mutation failing silently (sample not marked collected)
+## Problem
+When 1 of 3 tubes is collected, the patient stays in "Pending" only (status is still `registered`). The user expects to also see the collected tubes in the "Collected" tab.
 
-## Fix
-Refactor `doPrintBarcodes` to return a `Promise` that resolves after the print dialog completes. Then make `handlePrintAndCollect` `async` and `await` the print before running the mutation.
+## Solution
+Update the "Collected" tab query to include patients that have partial collections (`collected_samples` is a non-empty array) in addition to fully collected patients (`status = sample_collected`).
 
 ### Changes in `src/components/lims/SampleCollection.tsx`
 
-1. **`doPrintBarcodes`** — wrap in a Promise:
-   - Resolve after `printWindow.print()` completes (in the `onload` callback, after `print()`)
-   - Add `printWindow.onafterprint` as an alternative resolution point
-   - Use a `setTimeout` fallback (2s) in case `onafterprint` isn't supported
+1. **Update `collectedRegistrations` query** (line ~84-98):
+   - Change from only `status = "sample_collected"` to also include patients where `collected_samples` has entries (i.e., `collected_samples` array length > 0)
+   - Use `.or('status.eq.sample_collected,collected_samples.neq.[]')` to fetch both fully and partially collected patients
 
-2. **`handlePrintAndCollect`** — make `async`, `await doPrintBarcodes(...)` before running the mutation
+2. **Update Collected tab rendering**:
+   - For partially collected patients (status still `registered`), show a "Partial" badge alongside the collected tubes
+   - Already-collected tubes show as they do now; uncollected tubes are hidden in this view
+   - The existing barcode expansion in the Collected tab already handles showing collected state
 
-3. **Individual tube print button** (line ~468) — same pattern: await print before running partial collect mutation
+3. **Keep patient in Pending tab too** — no change needed there, partially collected patients should appear in both tabs (Pending for remaining tubes, Collected for already-done tubes)
 
-## File
+## Files
 - `src/components/lims/SampleCollection.tsx`
 
