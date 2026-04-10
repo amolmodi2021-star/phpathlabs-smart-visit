@@ -420,6 +420,9 @@ const SampleAcceptance = () => {
                               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive"></span>
                             </span>
                           )}
+                          {reg.status === "registered" && (
+                            <Badge variant="outline" className="ml-2 text-xs border-orange-400 text-orange-600">PARTIAL</Badge>
+                          )}
                         </TableCell>
                         <TableCell>{reg.mobile_number}</TableCell>
                         <TableCell>
