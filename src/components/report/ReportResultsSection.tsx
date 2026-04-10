@@ -77,7 +77,7 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
     <>
       {Object.entries(grouped).map(([dept, profiles]) => (
         <div key={dept} data-pdf-section="department">
-          {!hideDeptHeader && <div className="text-white px-3 py-1.5 rounded-t font-semibold text-base text-center" style={{ backgroundColor: '#2E3192' }}>{dept}</div>}
+          {!hideDeptHeader && <div className="text-white px-3 py-1.5 rounded-t font-semibold text-lg text-center" style={{ backgroundColor: '#2E3192' }}>{dept}</div>}
           <div className={`border ${hideDeptHeader ? 'rounded' : 'border-t-0 rounded-b'}`}>
             {Object.entries(profiles).map(([profName, params], profIdx) => {
               const useCompact = compact || isCompactProfile(profName);
@@ -88,21 +88,14 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                 return (
                   <div key="standalone-group" data-pdf-section="profile" className="print:break-inside-avoid">
                     {profIdx > 0 && <div style={{ height: '2mm' }} />}
-                    <table className="w-full text-sm" style={{ tableLayout: 'fixed' }}>
-                      <colgroup>
-                        <col style={{ width: '36%' }} />
-                        <col style={{ width: '24px' }} />
-                        <col style={{ width: 'auto' }} />
-                        <col style={{ width: '14%' }} />
-                        <col style={{ width: '28%' }} />
-                      </colgroup>
+                    <table className="w-full text-base">
                       <thead>
-                        <tr className="text-gray-500 border-b text-sm">
-                          <th className="text-left py-0.5 px-3">Parameter</th>
-                          <th></th>
-                          <th className="text-center py-0.5">Result</th>
-                          <th className="text-center py-0.5">Unit</th>
-                          <th className="text-center py-0.5">Reference Range</th>
+                        <tr className="text-gray-500 border-b text-base">
+                          <th className="text-left py-0.5 px-3" style={{ width: '36%' }}>Parameter</th>
+                          <th style={{ width: '24px' }}></th>
+                          <th className="text-center py-0.5" style={{ width: '20%' }}>Result</th>
+                          <th className="text-center py-0.5" style={{ width: '14%' }}>Unit</th>
+                          <th className="text-center py-0.5" style={{ width: '22%' }}>Reference Range</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -131,18 +124,18 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                                 <tr><td colSpan={5}><div className="border-t-2 border-gray-400" style={{ marginBottom: '3mm' }} /></td></tr>
                               )}
                               {prevHadInterpretation && (
-                                 <tr className="text-gray-500 border-b text-sm">
-                                  <th className="text-left py-0.5 px-3">Parameter</th>
-                                  <th></th>
-                                  <th className="text-center py-0.5">Result</th>
-                                  <th className="text-center py-0.5">Unit</th>
-                                  <th className="text-center py-0.5">Reference Range</th>
+                                 <tr className="text-gray-500 border-b text-base">
+                                  <th className="text-left py-0.5 px-3" style={{ width: '36%' }}>Parameter</th>
+                                  <th style={{ width: '24px' }}></th>
+                                  <th className="text-center py-0.5" style={{ width: '20%' }}>Result</th>
+                                  <th className="text-center py-0.5" style={{ width: '14%' }}>Unit</th>
+                                  <th className="text-center py-0.5" style={{ width: '22%' }}>Reference Range</th>
                                 </tr>
                               )}
                               <tr className={`border-b border-gray-100 ${isAbnormal ? "bg-red-50" : ""}`}>
                                 <td className="px-3 py-1 font-semibold">{r.parameter_name}</td>
                                 <td className="text-right py-1">
-                                  {isAbnormal && <span className="flag-badge inline-flex items-center justify-center min-w-[14px] h-[14px] rounded bg-red-600 text-white text-[10px] leading-none font-bold">{r.flag}</span>}
+                                   {isAbnormal && <span className="flag-badge inline-flex items-center justify-center min-w-[18px] h-[18px] rounded bg-red-600 text-white text-xs leading-none font-bold">{r.flag}</span>}
                                 </td>
                                  {isMorphRow || (!r.unit && !r.normal_range_text && !r.normal_range_low && !r.normal_range_high) ? (
                                    <td colSpan={3} className="text-left px-2 text-gray-800 py-1" style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>
@@ -161,13 +154,13 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                               {r.remark && (
                                 <tr className="border-b border-gray-100">
                                   <td colSpan={5} className="px-3 py-0.5">
-                                    <span className="text-[10px] italic text-gray-600">* {r.remark}</span>
+                                     <span className="text-xs italic text-gray-600">* {r.remark}</span>
                                   </td>
                                 </tr>
                               )}
                               {hasParamMeta && (
                                 <tr>
-                                  <td colSpan={5} className="px-3 py-1 text-[10px] text-gray-500 border-t border-gray-100">
+                                  <td colSpan={5} className="px-3 py-1 text-xs text-gray-500 border-t border-gray-100">
                                     <div className="flex gap-4 flex-wrap">
                                       {paramMeta.sample_type && <span><strong>Sample Type:</strong> {paramMeta.sample_type}</span>}
                                       {paramMeta.analyzer && <span><strong>Analyzer:</strong> {paramMeta.analyzer}</span>}
@@ -179,9 +172,9 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                               {hasParamInterpretation && (
                                 <tr>
                                   <td colSpan={5} className="px-3 py-1.5 border-t border-gray-100">
-                                    <div className="text-[9px] font-semibold text-gray-600 mb-0.5">Interpretation:</div>
+                                     <div className="text-xs font-semibold text-gray-600 mb-0.5">Interpretation:</div>
                                     <div
-                                      className="text-[9px] text-gray-700 prose prose-xs max-w-none [&_img]:max-h-[60mm] [&_img]:inline-block [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
+                                      className="text-xs text-gray-700 prose prose-xs max-w-none [&_img]:max-h-[60mm] [&_img]:inline-block [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
                                       dangerouslySetInnerHTML={{ __html: paramMeta.interpretation! }}
                                     />
                                   </td>
@@ -189,7 +182,7 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                               )}
                               {hasParamOutsourced && (
                                 <tr>
-                                  <td colSpan={5} className="px-3 py-1 text-[10px] text-gray-500 italic border-t border-gray-100">
+                                  <td colSpan={5} className="px-3 py-1 text-xs text-gray-500 italic border-t border-gray-100">
                                     {paramMeta.outsourced_caption}
                                   </td>
                                 </tr>
@@ -219,24 +212,17 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                   {shouldShowProfile(params) && (
                     <>
                       <div style={{ height: '1mm' }} />
-                      <div className="bg-blue-50 px-3 py-1 font-semibold text-base border-b" style={{ color: '#2E3192' }}>{profName}</div>
+                      <div className="bg-blue-50 px-3 py-1 font-semibold text-lg border-b" style={{ color: '#2E3192' }}>{profName}</div>
                     </>
                   )}
-                  <table className="w-full text-sm" style={{ tableLayout: 'fixed' }}>
-                    <colgroup>
-                      <col style={{ width: '36%' }} />
-                      <col style={{ width: '24px' }} />
-                      <col style={{ width: 'auto' }} />
-                      <col style={{ width: '14%' }} />
-                      <col style={{ width: '28%' }} />
-                    </colgroup>
+                  <table className="w-full text-base">
                     <thead>
-                      <tr className="text-gray-500 border-b text-sm">
-                        <th className="text-left py-0.5 px-3">Parameter</th>
-                        <th></th>
-                        <th className="text-center py-0.5">Result</th>
-                        <th className="text-center py-0.5">Unit</th>
-                        <th className="text-center py-0.5">Reference Range</th>
+                      <tr className="text-gray-500 border-b text-base">
+                        <th className="text-left py-0.5 px-3" style={{ width: '36%' }}>Parameter</th>
+                        <th style={{ width: '24px' }}></th>
+                        <th className="text-center py-0.5" style={{ width: '20%' }}>Result</th>
+                        <th className="text-center py-0.5" style={{ width: '14%' }}>Unit</th>
+                        <th className="text-center py-0.5" style={{ width: '22%' }}>Reference Range</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -244,7 +230,7 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                         <>
                           {hasMultipleTestNames && group.testName && (
                             <tr key={`header-${gIdx}`}>
-                              <td colSpan={5} className="px-3 font-semibold text-gray-700 bg-gray-50 border-b py-0.5 text-sm">
+                              <td colSpan={5} className="px-3 font-semibold text-gray-700 bg-gray-50 border-b py-0.5 text-base">
                                 {group.testName}
                               </td>
                             </tr>
@@ -257,7 +243,7 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                                 <tr key={`${gIdx}-${i}`} className={`border-b border-gray-100 ${isAbnormal ? "bg-red-50" : ""}`} style={useCompact ? { lineHeight: '1.2' } : undefined}>
                                   <td className={`px-3 font-semibold ${useCompact ? 'py-[2px]' : 'py-1'}`}>{r.parameter_name}</td>
                                   <td className={`text-right ${useCompact ? 'py-[2px]' : 'py-1'}`}>
-                                    {isAbnormal && <span className="flag-badge inline-flex items-center justify-center min-w-[14px] h-[14px] rounded bg-red-600 text-white text-[10px] leading-none font-bold">{r.flag}</span>}
+                                    {isAbnormal && <span className="flag-badge inline-flex items-center justify-center min-w-[18px] h-[18px] rounded bg-red-600 text-white text-xs leading-none font-bold">{r.flag}</span>}
                                   </td>
                                   {isMorphRow || (!r.unit && !r.normal_range_text && !r.normal_range_low && !r.normal_range_high) ? (
                                     <td colSpan={3} className={`text-left px-2 text-gray-800 ${useCompact ? 'py-[2px]' : 'py-1'}`} style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>
@@ -276,7 +262,7 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                                 {r.remark && (
                                   <tr key={`${gIdx}-${i}-remark`} className="border-b border-gray-100">
                                     <td colSpan={5} className="px-3 py-0.5">
-                                      <span className="text-[10px] italic text-gray-600">* {r.remark}</span>
+                                      <span className="text-xs italic text-gray-600">* {r.remark}</span>
                                     </td>
                                   </tr>
                                 )}
@@ -289,7 +275,7 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                   </table>
 
                   {hasMetaRow && (
-                    <div className="px-3 py-1 text-[10px] text-gray-500 border-t border-gray-100 flex gap-4 flex-wrap">
+                    <div className="px-3 py-1 text-xs text-gray-500 border-t border-gray-100 flex gap-4 flex-wrap">
                       {meta!.sample_type && <span><strong>Sample Type:</strong> {meta!.sample_type}</span>}
                       {meta!.analyzer && <span><strong>Analyzer:</strong> {meta!.analyzer}</span>}
                       {meta!.method && <span><strong>Method:</strong> {meta!.method}</span>}
@@ -297,15 +283,15 @@ const ReportResultsSection = ({ grouped, shouldShowProfile, compact, hideDeptHea
                   )}
                   {hasInterpretation && (
                     <div className="px-3 py-1.5 border-t border-gray-100">
-                      <div className="text-[9px] font-semibold text-gray-600 mb-0.5">Interpretation:</div>
+                      <div className="text-xs font-semibold text-gray-600 mb-0.5">Interpretation:</div>
                       <div
-                        className="text-[9px] text-gray-700 prose prose-xs max-w-none [&_img]:max-h-[60mm] [&_img]:inline-block [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
+                        className="text-xs text-gray-700 prose prose-xs max-w-none [&_img]:max-h-[60mm] [&_img]:inline-block [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
                         dangerouslySetInnerHTML={{ __html: meta!.interpretation! }}
                       />
                     </div>
                   )}
                   {hasOutsourced && (
-                    <div className="px-3 py-1 text-[10px] text-gray-500 italic border-t border-gray-100">
+                    <div className="px-3 py-1 text-xs text-gray-500 italic border-t border-gray-100">
                       {meta!.outsourced_caption}
                     </div>
                   )}
