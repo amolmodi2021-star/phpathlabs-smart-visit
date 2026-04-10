@@ -37,6 +37,8 @@ const Dispatch = () => {
   const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
   const [actionKey, setActionKey] = useState<string | null>(null);
   const [viewSnipImages, setViewSnipImages] = useState<string[] | null>(null);
+  const [reportSelectEntry, setReportSelectEntry] = useState<DispatchEntry | null>(null);
+  const [selectedTestIds, setSelectedTestIds] = useState<Set<string>>(new Set());
 
   useEffect(() => { const t = setTimeout(() => setDebouncedSearch(search), 400); return () => clearTimeout(t); }, [search]);
 
@@ -224,6 +226,39 @@ const Dispatch = () => {
     }
   };
 
+  const openReportSelectDialog = (entry: DispatchEntry) => {
+    const reportableTests = entry.tests.filter(t => t.status === "approved" || t.status === "dispatched");
+    setSelectedTestIds(new Set(reportableTests.map(t => t.testId)));
+    setReportSelectEntry(entry);
+  };
+
+  const reportableTests = reportSelectEntry?.tests.filter(t => t.status === "approved" || t.status === "dispatched") || [];
+  const allReportableSelected = reportableTests.length > 0 && reportableTests.every(t => selectedTestIds.has(t.testId));
+
+  const toggleTestSelection = (testId: string) => {
+    setSelectedTestIds(prev => {
+      const next = new Set(prev);
+      if (next.has(testId)) next.delete(testId); else next.add(testId);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (allReportableSelected) {
+      setSelectedTestIds(new Set());
+    } else {
+      setSelectedTestIds(new Set(reportableTests.map(t => t.testId)));
+    }
+  };
+
+  const handleGenerateReport = () => {
+    if (!reportSelectEntry || selectedTestIds.size === 0) return;
+    const regId = reportSelectEntry.registration.id;
+    const queryParam = Array.from(selectedTestIds).join(",");
+    navigate(`/lims/report/${regId}?tests=${queryParam}`);
+    setReportSelectEntry(null);
+  };
+
   const getCompletionDot = (status: "all_done" | "partial" | "all_pending") => {
     switch (status) {
       case "all_done": return <Circle className="h-4 w-4 fill-green-500 text-green-500" />;
@@ -277,7 +312,7 @@ const Dispatch = () => {
                   <div className="flex items-center gap-2 shrink-0">
                     {entry.completionStatus !== "all_pending" && (
                       <>
-                        <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={(e) => { e.stopPropagation(); navigate(`/lims/report/${reg.id}`); }}>
+                        <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={(e) => { e.stopPropagation(); openReportSelectDialog(entry); }}>
                           <Eye className="h-3.5 w-3.5" /> View Report
                         </Button>
                         <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={(e) => { e.stopPropagation(); dispatchViaWhatsApp(reg); }}>
@@ -341,6 +376,30 @@ const Dispatch = () => {
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Outsourced Result — Snipped Images</DialogTitle></DialogHeader>
           <div className="space-y-4">{viewSnipImages?.map((url, idx) => (<div key={idx} className="border rounded-lg overflow-hidden"><img src={url} alt={`Snip page ${idx + 1}`} className="w-full object-contain" /></div>))}</div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!reportSelectEntry} onOpenChange={open => { if (!open) setReportSelectEntry(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Select Tests for Report</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <label className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer border-b pb-2">
+              <input type="checkbox" checked={allReportableSelected} onChange={toggleSelectAll} className="h-4 w-4 rounded border-input" />
+              <span className="font-medium text-sm">Select All ({reportableTests.length} tests)</span>
+            </label>
+            <div className="space-y-1 max-h-60 overflow-y-auto">
+              {reportableTests.map(test => (
+                <label key={test.testId} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer">
+                  <input type="checkbox" checked={selectedTestIds.has(test.testId)} onChange={() => toggleTestSelection(test.testId)} className="h-4 w-4 rounded border-input" />
+                  <span className="text-sm">{test.testName}</span>
+                  {getStatusBadge(test.status)}
+                </label>
+              ))}
+            </div>
+            <Button className="w-full" disabled={selectedTestIds.size === 0} onClick={handleGenerateReport}>
+              <Eye className="h-4 w-4 mr-1" /> Generate Report ({selectedTestIds.size} test{selectedTestIds.size !== 1 ? "s" : ""})
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
