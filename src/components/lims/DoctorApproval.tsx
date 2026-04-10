@@ -55,7 +55,7 @@ const DoctorApproval = () => {
     queryKey: ["doctor_approval_regs", debouncedSearch],
     queryFn: async () => {
       let query = supabase.from("patient_registrations").select("*")
-        .in("status", ["sample_accepted", "entered", "verified"])
+        .or("status.in.(sample_accepted,entered,verified),accepted_samples.neq.[]")
         .eq("bill_cancelled", false).order("is_stat", { ascending: false }).order("updated_at", { ascending: false });
       if (debouncedSearch) query = query.or(`patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%,umr_number.ilike.%${debouncedSearch}%`);
       const { data } = await query;
@@ -422,6 +422,9 @@ const DoctorApproval = () => {
       <div className="space-y-3 p-3 bg-muted/20 rounded-lg border">
         <div className="flex items-center gap-3">
           <span className="font-semibold">{reg.patient_name}</span>
+          {!["sample_accepted","entered","verified"].includes(reg.status) && Array.isArray(reg.accepted_samples) && reg.accepted_samples.length > 0 && (
+            <Badge className="bg-amber-100 text-amber-700 text-[10px]">PARTIAL</Badge>
+          )}
           {reg.is_stat && <span className="relative inline-flex h-2.5 w-2.5 ml-1.5 align-middle"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" /><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive" /></span>}
           <span className="text-sm text-muted-foreground">{reg.invoice_number}</span>
         </div>
@@ -563,6 +566,9 @@ const DoctorApproval = () => {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{reg.patient_name}</span>
+                      {!["sample_accepted","entered","verified"].includes(reg.status) && Array.isArray(reg.accepted_samples) && reg.accepted_samples.length > 0 && (
+                        <Badge className="bg-amber-100 text-amber-700 text-[10px]">PARTIAL</Badge>
+                      )}
                       {reg.is_stat && <span className="relative inline-flex h-2.5 w-2.5"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" /><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive" /></span>}
                       <span className="text-sm text-muted-foreground font-mono">{reg.invoice_number}</span>
                     </div>

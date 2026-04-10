@@ -129,7 +129,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       let query = supabase
         .from("patient_registrations")
         .select("*")
-        .eq("status", "sample_accepted")
+        .or("status.eq.sample_accepted,accepted_samples.neq.[]")
         .eq("bill_cancelled", false)
         .order("is_stat", { ascending: false })
         .order("updated_at", { ascending: false });
@@ -1078,6 +1078,9 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{reg.patient_name}</span>
+                      {reg.status !== "sample_accepted" && Array.isArray(reg.accepted_samples) && reg.accepted_samples.length > 0 && (
+                        <Badge className="bg-amber-100 text-amber-700 text-[10px]">PARTIAL</Badge>
+                      )}
                       {reg.is_stat && (
                         <span className="relative inline-flex h-2.5 w-2.5">
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
