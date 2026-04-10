@@ -10,9 +10,12 @@ import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
-import { Search, Loader2, CheckCircle2, Send, Eye, Truck, MessageSquare, Circle, Phone, Calendar, FileText, User, Clock, ChevronRight } from "lucide-react";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Search, Loader2, CheckCircle2, Send, Eye, Truck, MessageSquare, Circle, Phone, Calendar as CalendarIcon, FileText, User, Clock, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
-import { format } from "date-fns";
+import { format, startOfDay, endOfDay } from "date-fns";
+import { cn } from "@/lib/utils";
 
 type TestStatus = "registered" | "sample_collected" | "sample_accepted" | "results_entered" | "verified" | "approved" | "dispatched";
 
@@ -42,20 +45,23 @@ const Dispatch = () => {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState<Date>(startOfDay(new Date()));
+  const [dateTo, setDateTo] = useState<Date>(endOfDay(new Date()));
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [actionKey, setActionKey] = useState<string | null>(null);
   const [viewSnipImages, setViewSnipImages] = useState<string[] | null>(null);
   const [reportSelectEntry, setReportSelectEntry] = useState<DispatchEntry | null>(null);
   const [selectedTestIds, setSelectedTestIds] = useState<Set<string>>(new Set());
-
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   useEffect(() => { const t = setTimeout(() => setDebouncedSearch(search), 400); return () => clearTimeout(t); }, [search]);
 
   const { data: registrations = [], isLoading: loadingRegs } = useQuery({
-    queryKey: ["dispatch_regs", debouncedSearch],
+    queryKey: ["dispatch_regs", debouncedSearch, dateFrom.toISOString(), dateTo.toISOString()],
     queryFn: async () => {
       let query = supabase.from("patient_registrations").select("*")
         .eq("bill_cancelled", false)
+        .gte("created_at", dateFrom.toISOString())
+        .lte("created_at", dateTo.toISOString())
         .order("is_stat", { ascending: false })
         .order("updated_at", { ascending: false });
       if (debouncedSearch) query = query.or(`patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%,umr_number.ilike.%${debouncedSearch}%`);
@@ -192,12 +198,6 @@ const Dispatch = () => {
 
   const selectedEntry = useMemo(() => dispatchEntries.find(e => e.registration.id === selectedPatientId) || null, [dispatchEntries, selectedPatientId]);
 
-  const stats = useMemo(() => ({
-    totalPatients: dispatchEntries.length,
-    readyToDispatch: dispatchEntries.filter(e => e.completionStatus === "all_done" && e.approvedCount > 0).length,
-    partiallyReady: dispatchEntries.filter(e => e.completionStatus === "partial").length,
-  }), [dispatchEntries]);
-
   const dispatchViaWhatsApp = (reg: any) => {
     const phone = (reg.mobile_number || "").replace(/\D/g, "");
     if (!phone) { toast.error("No mobile number available"); return; }
@@ -293,13 +293,36 @@ const Dispatch = () => {
     try { return format(new Date(dateStr), "dd MMM yyyy, hh:mm a"); } catch { return dateStr; }
   };
 
+  const DatePickerButton = ({ date, onSelect }: { date: Date; onSelect: (d: Date) => void }) => (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className="h-9 gap-1.5 text-sm font-normal">
+          <CalendarIcon className="h-3.5 w-3.5" />
+          {format(date, "dd MMM yyyy")}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <Calendar
+          mode="single"
+          selected={date}
+          onSelect={(d) => d && onSelect(d)}
+          initialFocus
+          className={cn("p-3 pointer-events-auto")}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+
   return (
     <div className="space-y-3">
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-3">
-        <Card className="p-3"><div className="text-xs text-muted-foreground">Total</div><div className="text-xl font-bold">{stats.totalPatients}</div></Card>
-        <Card className="p-3"><div className="text-xs text-muted-foreground">Ready</div><div className="text-xl font-bold text-green-600">{stats.readyToDispatch}</div></Card>
-        <Card className="p-3"><div className="text-xs text-muted-foreground">Partial</div><div className="text-xl font-bold text-amber-600">{stats.partiallyReady}</div></Card>
+      {/* Date range filter */}
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-muted-foreground">From</span>
+        <DatePickerButton date={dateFrom} onSelect={(d) => setDateFrom(startOfDay(d))} />
+        <span className="text-sm text-muted-foreground">To</span>
+        <DatePickerButton date={dateTo} onSelect={(d) => setDateTo(endOfDay(d))} />
+        <Button variant="ghost" size="sm" className="text-xs" onClick={() => { setDateFrom(startOfDay(new Date())); setDateTo(endOfDay(new Date())); }}>Today</Button>
+        <span className="text-xs text-muted-foreground ml-auto">{dispatchEntries.length} records</span>
       </div>
 
       {loadingRegs ? (
@@ -311,7 +334,7 @@ const Dispatch = () => {
           <p className="text-sm">All approved reports have been dispatched</p>
         </div>
       ) : (
-        <div className="flex gap-3" style={{ height: "calc(100vh - 240px)" }}>
+        <div className="flex gap-3" style={{ height: "calc(100vh - 180px)" }}>
           {/* LEFT PANEL — Patient List */}
           <Card className="w-[380px] shrink-0 flex flex-col overflow-hidden">
             <div className="p-3 border-b">
