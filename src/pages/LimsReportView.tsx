@@ -76,6 +76,7 @@ const LimsReportView = () => {
   const printRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
+  const [showLetterhead, setShowLetterhead] = useState(true);
 
   // Data
   const [approvedReports, setApprovedReports] = useState<any[]>([]);
