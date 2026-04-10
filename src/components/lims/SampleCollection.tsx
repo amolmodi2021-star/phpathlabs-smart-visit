@@ -508,15 +508,19 @@ const SampleCollection = () => {
                       e.stopPropagation();
                       await doPrintBarcodes(reg, [group]);
                       // Mark this single tube as collected after print
-                      const existingCollected = (reg.collected_samples || []) as string[];
-                      const allCollectedKeys = [...new Set([...existingCollected, group.groupKey])];
+                      const existingEntries = parseCollectedSamples(reg.collected_samples || []);
+                      const now = new Date().toISOString();
+                      const mergedMap = new Map<string, CollectedSampleEntry>();
+                      for (const e of existingEntries) mergedMap.set(e.key, e);
+                      mergedMap.set(group.groupKey, { key: group.groupKey, collected_at: now });
+                      const allEntries = Array.from(mergedMap.values());
                       const allGroupKeys = groups.map(g => g.groupKey);
-                      const allNowCollected = allGroupKeys.every(k => allCollectedKeys.includes(k));
+                      const allNowCollected = allGroupKeys.every(k => mergedMap.has(k));
                       if (allNowCollected) {
-                        markCollectedMutation.mutate({ regId: reg.id, collectedKeys: allCollectedKeys });
+                        markCollectedMutation.mutate({ regId: reg.id, collectedEntries: allEntries });
                       } else {
-                        partialCollectMutation.mutate({ regId: reg.id, collectedKeys: allCollectedKeys });
-                        toast.success(`Sample collected. ${allGroupKeys.length - allCollectedKeys.length} remaining.`);
+                        partialCollectMutation.mutate({ regId: reg.id, collectedEntries: allEntries });
+                        toast.success(`Sample collected. ${allGroupKeys.length - allEntries.length} remaining.`);
                       }
                     }}>
                       <Printer className="h-3.5 w-3.5" />
