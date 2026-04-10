@@ -954,8 +954,8 @@ const ResultsEntry = () => {
           {p.parameterName}
           {p.isCalculated && <Calculator className="inline h-3 w-3 ml-1 text-primary" />}
         </TableCell>
-        {renderHistoryCell(p.parameterId, 0)}
         {renderHistoryCell(p.parameterId, 1)}
+        {renderHistoryCell(p.parameterId, 0)}
         <TableCell className="py-1.5 w-[180px]">
           {isInterfaceParameter ? (
             <div className="flex items-center gap-1">
@@ -1270,8 +1270,8 @@ const ResultsEntry = () => {
                       <TableRow>
                         <TableHead className="py-1 text-xs w-[80px]">Code</TableHead>
                         <TableHead className="py-1 text-xs">Parameter</TableHead>
-                        <TableHead className="py-1 text-xs w-[100px]">Prev 1</TableHead>
                         <TableHead className="py-1 text-xs w-[100px]">Prev 2</TableHead>
+                        <TableHead className="py-1 text-xs w-[100px]">Prev 1</TableHead>
                         <TableHead className="py-1 text-xs w-[200px]">Result</TableHead>
                         <TableHead className="py-1 text-xs w-[60px]">Unit</TableHead>
                         <TableHead className="py-1 text-xs w-[120px]">Ref. Range</TableHead>
