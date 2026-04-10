@@ -413,7 +413,7 @@ const LimsReportView = () => {
       </div>
 
       {/* Rendered Pages */}
-      <div ref={printRef} className="flex flex-col items-center gap-4">
+      <div ref={printRef} id="print-container" className="flex flex-col items-center gap-4">
         {pages.map((page, pageIdx) => (
           <div
             key={pageIdx}
@@ -552,11 +552,16 @@ const LimsReportView = () => {
       <style>{`
         @media print {
           body * { visibility: hidden; }
-          [data-page], [data-page] * { visibility: visible; }
-          [data-page] {
+          #print-container, #print-container * { visibility: visible; }
+          #print-container {
             position: absolute;
             left: 0;
             top: 0;
+            width: 210mm;
+          }
+          [data-page] {
+            position: relative;
+            display: block;
             width: 210mm !important;
             height: 297mm !important;
             page-break-after: always;
