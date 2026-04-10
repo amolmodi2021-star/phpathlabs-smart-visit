@@ -197,21 +197,30 @@ const SampleAcceptance = () => {
     return Object.values(groupMap);
   }, [testsMap, testParamData]);
 
+  // Helper: filter tube groups to only those actually collected
+  const getCollectedGroups = useCallback((reg: any, groups: TubeGroup[]): TubeGroup[] => {
+    const collectedKeys = new Set(
+      ((reg.collected_samples || []) as any[]).map((s: any) => s.key)
+    );
+    return groups.filter(g => collectedKeys.has(g.key));
+  }, []);
+
   // Build a map of all sample IDs across pending regs for barcode scanning
   const sampleIdToRegMap = useCallback((): Record<string, { reg: any; tubeKey: string; group: TubeGroup }> => {
     const map: Record<string, { reg: any; tubeKey: string; group: TubeGroup }> = {};
     for (const reg of pendingRegs) {
       const groups = buildTubeGroups(reg);
+      const collectedGroups = getCollectedGroups(reg, groups);
       const accepted = parseAcceptedSamples((reg as any).accepted_samples);
       const acceptedKeys = new Set(accepted.map(a => a.key));
-      for (const g of groups) {
+      for (const g of collectedGroups) {
         if (acceptedKeys.has(g.key)) continue; // skip already-accepted
         const key = `${reg.id}||${g.sampleId}`;
         map[g.sampleId] = { reg, tubeKey: key, group: g };
       }
     }
     return map;
-  }, [pendingRegs, buildTubeGroups]);
+  }, [pendingRegs, buildTubeGroups, getCollectedGroups]);
 
   // Toggle tube selection
   const toggleTube = (key: string) => {
@@ -223,12 +232,13 @@ const SampleAcceptance = () => {
     });
   };
 
-  // Toggle all unaccepted tubes for a registration
+  // Toggle all unaccepted collected tubes for a registration
   const toggleAllForReg = (reg: any) => {
     const groups = buildTubeGroups(reg);
+    const collectedGroups = getCollectedGroups(reg, groups);
     const accepted = parseAcceptedSamples((reg as any).accepted_samples);
     const acceptedKeys = new Set(accepted.map(a => a.key));
-    const keys = groups.filter(g => !acceptedKeys.has(g.key)).map(g => `${reg.id}||${g.sampleId}`);
+    const keys = collectedGroups.filter(g => !acceptedKeys.has(g.key)).map(g => `${reg.id}||${g.sampleId}`);
     setSelectedTubes(prev => {
       const next = new Set(prev);
       const allSelected = keys.length > 0 && keys.every(k => next.has(k));
@@ -429,30 +439,35 @@ const SampleAcceptance = () => {
                     const accepted = parseAcceptedSamples((reg as any).accepted_samples);
                     return accepted.length > 0;
                   } else {
-                    // Only show if at least one tube is NOT yet accepted
+                    // Only show if at least one collected tube is NOT yet accepted
                     const groups = buildTubeGroups(reg);
+                    const collectedGroups = getCollectedGroups(reg, groups);
+                    if (collectedGroups.length === 0) return false;
                     const accepted = parseAcceptedSamples((reg as any).accepted_samples);
                     const acceptedKeys = new Set(accepted.map(a => a.key));
-                    return groups.some(g => !acceptedKeys.has(g.key));
+                    return collectedGroups.some(g => !acceptedKeys.has(g.key));
                   }
                 }).map((reg: any) => {
                   const groups = buildTubeGroups(reg);
+                  const collectedGroups = getCollectedGroups(reg, groups);
                   const accepted = parseAcceptedSamples((reg as any).accepted_samples);
                   const acceptedKeysMap = new Map(accepted.map(a => [a.key, a.accepted_at]));
                   const isExpanded = expandedRow === reg.id;
 
-                  // For pending: unaccepted tubes; for accepted: accepted tubes
-                  const pendingGroups = groups.filter(g => !acceptedKeysMap.has(g.key));
-                  const acceptedGroupsList = groups.filter(g => acceptedKeysMap.has(g.key));
+                  // For pending: only collected & unaccepted tubes; for accepted: accepted tubes
+                  const effectiveGroups = isAccepted ? groups : collectedGroups;
+                  const pendingGroups = effectiveGroups.filter(g => !acceptedKeysMap.has(g.key));
+                  const acceptedGroupsList = effectiveGroups.filter(g => acceptedKeysMap.has(g.key));
                   const isPartiallyAccepted = accepted.length > 0 && accepted.length < groups.length;
+                  const uncollectedCount = isAccepted ? 0 : (groups.length - collectedGroups.length);
 
-                  // For pending tab: selection keys are only for unaccepted tubes
+                  // For pending tab: selection keys are only for collected & unaccepted tubes
                   const selectableKeys = pendingGroups.map(g => `${reg.id}||${g.sampleId}`);
                   const allSelected = selectableKeys.length > 0 && selectableKeys.every(k => selectedTubes.has(k));
                   const someSelected = selectableKeys.some(k => selectedTubes.has(k));
 
                   // Which groups to show in expanded detail
-                  const displayGroups = isAccepted ? acceptedGroupsList : groups;
+                  const displayGroups = isAccepted ? acceptedGroupsList : collectedGroups;
 
                   return (
                     <>
@@ -485,8 +500,13 @@ const SampleAcceptance = () => {
                           {!isAccepted && reg.status === "registered" && (
                             <Badge variant="outline" className="ml-2 text-xs border-orange-400 text-orange-600">PARTIAL COLLECTION</Badge>
                           )}
-                          {!isAccepted && isPartiallyAccepted && (
+                         {!isAccepted && isPartiallyAccepted && (
                             <Badge variant="outline" className="ml-2 text-xs border-blue-400 text-blue-600">PARTIAL ACCEPTED</Badge>
+                          )}
+                          {!isAccepted && uncollectedCount > 0 && (
+                            <Badge variant="outline" className="ml-2 text-xs border-amber-400 text-amber-600">
+                              {uncollectedCount} PENDING COLLECTION
+                            </Badge>
                           )}
                           {isAccepted && reg.status !== "sample_accepted" && (
                             <Badge variant="outline" className="ml-2 text-xs border-orange-400 text-orange-600">PARTIAL</Badge>
@@ -495,7 +515,7 @@ const SampleAcceptance = () => {
                         <TableCell>{reg.mobile_number}</TableCell>
                         <TableCell>
                           <div className="flex gap-1 flex-wrap">
-                            {(isAccepted ? acceptedGroupsList : groups).map((g, i) => {
+                            {(isAccepted ? acceptedGroupsList : collectedGroups).map((g, i) => {
                               const hex = getTubeColorHex(g.tubeColor);
                               return (
                                 <Badge key={i} variant="outline" className="text-xs gap-1">
@@ -626,9 +646,11 @@ const SampleAcceptance = () => {
       const hasActiveTests = ((reg.tests || []) as any[]).some((t: any) => !cancelledIds.has(t.test_id));
       if (!hasActiveTests) return false;
       const groups = buildTubeGroups(reg);
+      const collectedGroups = getCollectedGroups(reg, groups);
+      if (collectedGroups.length === 0) return false;
       const accepted = parseAcceptedSamples(reg.accepted_samples);
       const acceptedKeys = new Set(accepted.map(a => a.key));
-      return groups.some(g => !acceptedKeys.has(g.key));
+      return collectedGroups.some(g => !acceptedKeys.has(g.key));
     }).length;
   }, [pendingRegs]);
 
