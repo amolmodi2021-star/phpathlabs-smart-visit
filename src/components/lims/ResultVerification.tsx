@@ -355,6 +355,7 @@ const ResultVerification = () => {
             isOutsourced: !!isParamOutsourced, outsourceLabName: isParamOutsourced ? (snipDetail?.labName || null) : null,
             outsourceStatus: isParamOutsourced ? (snipDetail?.status || "pending") : "",
             isSnipMode: isParamOutsourced && snipDetail?.resultMode === "snip",
+            enteredAt: existing?.entered_at || null,
           });
         }
       }
