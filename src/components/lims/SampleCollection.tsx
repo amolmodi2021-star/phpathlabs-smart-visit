@@ -330,14 +330,8 @@ const SampleCollection = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const handlePrintAndCollect = (reg: any, groups: BarcodeGroup[]) => {
+  const handlePrintAndCollect = async (reg: any, groups: BarcodeGroup[]) => {
     const sel = selectedBarcodes[reg.id] || {};
-    const pendingGroups = groups.filter(g => !g.isCollected);
-    const selectedPending = pendingGroups.filter((_, i) => {
-      const origIdx = groups.indexOf(pendingGroups[i]!);
-      return sel[origIdx];
-    });
-    // Recalculate using original indices
     const selectedOriginalIndices = groups.map((g, i) => (!g.isCollected && sel[i]) ? i : -1).filter(i => i >= 0);
     const toPrint = selectedOriginalIndices.map(i => groups[i]);
     
@@ -346,15 +340,14 @@ const SampleCollection = () => {
       return;
     }
     
-    // Print selected barcodes
-    doPrintBarcodes(reg, toPrint);
+    // Wait for print to finish before mutating
+    await doPrintBarcodes(reg, toPrint);
     
     // Merge with existing collected keys
     const existingCollected = (reg.collected_samples || []) as string[];
     const newKeys = toPrint.map(g => g.groupKey);
     const allCollectedKeys = [...new Set([...existingCollected, ...newKeys])];
     
-    // Check if all groups are now collected
     const allGroupKeys = groups.map(g => g.groupKey);
     const allNowCollected = allGroupKeys.every(k => allCollectedKeys.includes(k));
     
