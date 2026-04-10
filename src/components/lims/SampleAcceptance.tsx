@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Search, ShieldCheck, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, ScanBarcode } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 
 const TUBE_COLOR_MAP: Record<string, string> = {
   red: "#e53e3e", lavender: "#b794f4", purple: "#9f7aea", yellow: "#ecc94b",
@@ -20,36 +21,25 @@ const TUBE_COLOR_MAP: Record<string, string> = {
   white: "#ffffff", orange: "#ed8936", pink: "#ed64a6", black: "#1a202c",
 };
 
-interface TubeGroup {
-  key: string;
-  sampleId: string;
-  sampleTube: string;
-  tubeColor: string;
-  sampleType: string;
-  suffix: string;
-  testNames: string[];
-  testIds: string[];
-  testCodes: string[];
-  machineIds: string[];
+interface SampleTubeRow {
+  id: string;
+  sample_uid: string;
+  registration_id: string;
+  tube_type: string | null;
+  tube_color: string | null;
+  sample_type: string | null;
+  suffix: string | null;
+  test_ids: string[];
+  test_names: string[];
+  status: string;
+  collected_at: string | null;
+  accepted_at: string | null;
+  created_at: string;
 }
 
-interface AcceptedSampleEntry {
-  key: string;
-  accepted_at: string;
-}
-
-/** Parse accepted_samples JSONB — handles both legacy string[] and new object[] */
-function parseAcceptedSamples(raw: any): AcceptedSampleEntry[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.map((item: any) => {
-    if (typeof item === "string") return { key: item, accepted_at: "" };
-    return { key: item.key || "", accepted_at: item.accepted_at || "" };
-  }).filter(e => e.key);
-}
-
-function formatAcceptedAt(dt: string): string {
-  if (!dt) return "";
-  try { return format(new Date(dt), "dd-MM-yyyy hh:mm a"); } catch { return dt; }
+interface GroupedRegistration {
+  registration: any;
+  tubes: SampleTubeRow[];
 }
 
 const SampleAcceptance = () => {
@@ -59,10 +49,8 @@ const SampleAcceptance = () => {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [selectedTubes, setSelectedTubes] = useState<Set<string>>(new Set());
-
-  const [rejectDialog, setRejectDialog] = useState<{ open: boolean; reg: any; tubeKeys: string[] }>({ open: false, reg: null, tubeKeys: [] });
+  const [rejectDialog, setRejectDialog] = useState<{ open: boolean; reg: any; tubeIds: string[] }>({ open: false, reg: null, tubeIds: [] });
   const [rejectRemarks, setRejectRemarks] = useState("");
-
   const searchRef = useRef<HTMLInputElement>(null);
 
   const handleSearch = (val: string) => {
@@ -71,16 +59,49 @@ const SampleAcceptance = () => {
     (window as any).__saSearchTimeout = setTimeout(() => setDebouncedSearch(val), 400);
   };
 
-  // Fetch pending acceptance patients (sample_collected OR partially collected OR partially accepted)
-  const { data: pendingRegs = [], isLoading } = useQuery({
-    queryKey: ["sample_acceptance_pending", debouncedSearch],
+  // Fetch collected tubes (pending acceptance)
+  const { data: collectedTubes = [], isLoading } = useQuery({
+    queryKey: ["sample_tubes_acceptance_pending"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("sample_tubes" as any)
+        .select("*")
+        .eq("status", "collected")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data || []) as unknown as SampleTubeRow[];
+    },
+  });
+
+  // Fetch accepted tubes (for accepted tab) — show until registration dispatched
+  const { data: acceptedTubes = [], isLoading: isLoadingAccepted } = useQuery({
+    queryKey: ["sample_tubes_acceptance_accepted"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("sample_tubes" as any)
+        .select("*")
+        .eq("status", "accepted")
+        .order("accepted_at", { ascending: false });
+      if (error) throw error;
+      return (data || []) as unknown as SampleTubeRow[];
+    },
+  });
+
+  // Get registration IDs
+  const allTubes = useMemo(() => [...collectedTubes, ...acceptedTubes], [collectedTubes, acceptedTubes]);
+  const regIds = useMemo(() => [...new Set(allTubes.map(t => t.registration_id))], [allTubes]);
+
+  // Fetch registrations
+  const { data: registrations = [] } = useQuery({
+    queryKey: ["sample_acceptance_regs", regIds.join(","), debouncedSearch],
+    enabled: regIds.length > 0,
     queryFn: async () => {
       let query = supabase
         .from("patient_registrations")
         .select("*")
-        .in("status", ["registered", "sample_collected", "sample_accepted"])
-        .or("status.eq.sample_collected,status.eq.sample_accepted,collected_samples.neq.[]")
+        .in("id", regIds)
         .eq("bill_cancelled", false)
+        .neq("status", "dispatched")
         .order("updated_at", { ascending: false });
       if (debouncedSearch) {
         query = query.or(
@@ -95,62 +116,33 @@ const SampleAcceptance = () => {
     },
   });
 
-  // Fetch accepted patients (fully accepted OR partially accepted)
-  const { data: acceptedRegs = [], isLoading: isLoadingAccepted } = useQuery({
-    queryKey: ["sample_acceptance_accepted", debouncedSearch],
-    queryFn: async () => {
-      let query = supabase
-        .from("patient_registrations")
-        .select("*")
-        .or("status.eq.sample_accepted,accepted_samples.neq.[]")
-        .eq("bill_cancelled", false)
-        .order("updated_at", { ascending: false });
-      if (debouncedSearch) {
-        query = query.or(
-          `patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%`
-        );
-      }
-      const { data, error } = await query;
-      if (error) throw error;
-      return (data || []) as any[];
-    },
-  });
-
-  // Fetch tests master
+  // Fetch tests master for LIMS order generation
   const { data: testsMap = {} } = useQuery({
     queryKey: ["tests_sample_tube_map"],
     queryFn: async () => {
-      const { data } = await supabase
-        .from("tests")
-        .select("id, test_name, test_code, sample_tube, tube_color, sample_type, machine_id, machine_name");
+      const { data } = await supabase.from("tests").select("id, test_name, test_code, sample_tube, tube_color, sample_type, machine_id");
       const map: Record<string, any> = {};
       (data || []).forEach((t: any) => { map[t.id] = t; });
       return map;
     },
   });
 
-  // Fetch parameters with suffix and interfacing info
+  // Fetch parameters with interfacing info
   const { data: testParamData = {} } = useQuery({
     queryKey: ["test_param_interface_map"],
     queryFn: async () => {
       const { data } = await supabase
         .from("test_parameters")
-        .select("test_id, parameter_id, report_test_parameters(param_code, parameter_name, custom_sample_suffix_enabled, custom_sample_suffix, send_for_interface, machine_id, machine_name, unit)");
-      const map: Record<string, { suffix: string; params: any[] }> = {};
+        .select("test_id, parameter_id, report_test_parameters(param_code, parameter_name, send_for_interface, machine_id, unit)");
+      const map: Record<string, { params: any[] }> = {};
       (data || []).forEach((tp: any) => {
         const p = tp.report_test_parameters;
         if (!p || !tp.test_id) return;
-        if (!map[tp.test_id]) map[tp.test_id] = { suffix: "", params: [] };
-        if (p.custom_sample_suffix_enabled && p.custom_sample_suffix) {
-          map[tp.test_id].suffix = p.custom_sample_suffix;
-        }
+        if (!map[tp.test_id]) map[tp.test_id] = { params: [] };
         if (p.send_for_interface) {
           map[tp.test_id].params.push({
-            code: p.param_code,
-            name: p.parameter_name,
-            machine_id: p.machine_id || "",
-            machine_name: p.machine_name || "",
-            unit: p.unit || "",
+            code: p.param_code, name: p.parameter_name,
+            machine_id: p.machine_id || "", unit: p.unit || "",
           });
         }
       });
@@ -158,109 +150,69 @@ const SampleAcceptance = () => {
     },
   });
 
-  // Build tube groups for a registration
-  const buildTubeGroups = useCallback((reg: any): TubeGroup[] => {
-    const tests = (reg.tests || []) as any[];
-    const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
-    const activeTests = tests.filter((t: any) => !cancelledIds.has(t.test_id));
+  // Group by registration
+  const pendingGroups = useMemo((): GroupedRegistration[] => {
+    return registrations.filter(reg => collectedTubes.some(t => t.registration_id === reg.id)).map(reg => ({
+      registration: reg,
+      tubes: collectedTubes.filter(t => t.registration_id === reg.id),
+    }));
+  }, [registrations, collectedTubes]);
 
-    const groupMap: Record<string, TubeGroup> = {};
-    for (const t of activeTests) {
-      const testInfo = testsMap[t.test_id] || {};
-      const tube = testInfo.sample_tube || "DEFAULT";
-      const tubeColor = testInfo.tube_color || "";
-      const sampleType = testInfo.sample_type || "";
-      const paramData = testParamData[t.test_id];
-      const suffix = paramData?.suffix || "";
-      const groupKey = `${tube}||${suffix}`;
+  const acceptedGroups = useMemo((): GroupedRegistration[] => {
+    return registrations.filter(reg => acceptedTubes.some(t => t.registration_id === reg.id)).map(reg => ({
+      registration: reg,
+      tubes: acceptedTubes.filter(t => t.registration_id === reg.id),
+    }));
+  }, [registrations, acceptedTubes]);
 
-      if (!groupMap[groupKey]) {
-        groupMap[groupKey] = {
-          key: groupKey,
-          sampleId: suffix ? `${reg.invoice_number}${suffix}` : reg.invoice_number,
-          sampleTube: tube,
-          tubeColor,
-          sampleType,
-          suffix,
-          testNames: [],
-          testIds: [],
-          testCodes: [],
-          machineIds: [],
-        };
-      }
-      groupMap[groupKey].testNames.push(t.test_name);
-      groupMap[groupKey].testIds.push(t.test_id);
-      groupMap[groupKey].testCodes.push(testInfo.test_code || "");
-      if (testInfo.machine_id) groupMap[groupKey].machineIds.push(testInfo.machine_id);
-    }
-
-    return Object.values(groupMap);
-  }, [testsMap, testParamData]);
-
-  // Helper: filter tube groups to only those actually collected
-  const getCollectedGroups = useCallback((reg: any, groups: TubeGroup[]): TubeGroup[] => {
-    const collectedKeys = new Set(
-      ((reg.collected_samples || []) as any[]).map((s: any) => s.key)
-    );
-    return groups.filter(g => collectedKeys.has(g.key));
-  }, []);
-
-  // Build a map of all sample IDs across pending regs for barcode scanning
-  const sampleIdToRegMap = useCallback((): Record<string, { reg: any; tubeKey: string; group: TubeGroup }> => {
-    const map: Record<string, { reg: any; tubeKey: string; group: TubeGroup }> = {};
-    for (const reg of pendingRegs) {
-      const groups = buildTubeGroups(reg);
-      const collectedGroups = getCollectedGroups(reg, groups);
-      const accepted = parseAcceptedSamples((reg as any).accepted_samples);
-      const acceptedKeys = new Set(accepted.map(a => a.key));
-      for (const g of collectedGroups) {
-        if (acceptedKeys.has(g.key)) continue; // skip already-accepted
-        const key = `${reg.id}||${g.key}`;
-        map[g.sampleId] = { reg, tubeKey: key, group: g };
+  // Build sample ID map for barcode scanning
+  const sampleIdToTubeMap = useMemo(() => {
+    const map: Record<string, { reg: any; tube: SampleTubeRow }> = {};
+    for (const group of pendingGroups) {
+      for (const tube of group.tubes) {
+        map[tube.sample_uid] = { reg: group.registration, tube };
       }
     }
     return map;
-  }, [pendingRegs, buildTubeGroups, getCollectedGroups]);
+  }, [pendingGroups]);
 
-  // Toggle tube selection
-  const toggleTube = (key: string) => {
+  const toggleTube = (tubeId: string) => {
     setSelectedTubes(prev => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      if (next.has(tubeId)) next.delete(tubeId); else next.add(tubeId);
       return next;
     });
   };
 
-  // Toggle all unaccepted collected tubes for a registration
-  const toggleAllForReg = (reg: any) => {
-    const groups = buildTubeGroups(reg);
-    const collectedGroups = getCollectedGroups(reg, groups);
-    const accepted = parseAcceptedSamples((reg as any).accepted_samples);
-    const acceptedKeys = new Set(accepted.map(a => a.key));
-    const keys = collectedGroups.filter(g => !acceptedKeys.has(g.key)).map(g => `${reg.id}||${g.key}`);
+  const toggleAllForReg = (tubes: SampleTubeRow[]) => {
     setSelectedTubes(prev => {
       const next = new Set(prev);
-      const allSelected = keys.length > 0 && keys.every(k => next.has(k));
-      if (allSelected) {
-        keys.forEach(k => next.delete(k));
-      } else {
-        keys.forEach(k => next.add(k));
-      }
+      const allSelected = tubes.every(t => next.has(t.id));
+      if (allSelected) { tubes.forEach(t => next.delete(t.id)); }
+      else { tubes.forEach(t => next.add(t.id)); }
       return next;
     });
   };
 
-  // Accept selected tubes for a patient — now stores per-tube timestamps
+  // Accept mutation
   const acceptMutation = useMutation({
-    mutationFn: async ({ reg, acceptedKeys: incomingKeys }: { reg: any; acceptedKeys: string[] }) => {
-      const groups = buildTubeGroups(reg);
-      const acceptedGroups = groups.filter(g => incomingKeys.includes(g.key));
+    mutationFn: async ({ reg, tubeIds }: { reg: any; tubeIds: string[] }) => {
+      const now = new Date().toISOString();
 
-      // Generate LIMS orders for accepted groups
-      for (const group of acceptedGroups) {
+      // Update tube status
+      const { error } = await supabase
+        .from("sample_tubes" as any)
+        .update({ status: "accepted", accepted_at: now })
+        .in("id", tubeIds);
+      if (error) throw error;
+
+      // Get accepted tubes for LIMS order generation
+      const acceptedTubesData = collectedTubes.filter(t => tubeIds.includes(t.id));
+      
+      // Generate LIMS orders for accepted tubes
+      for (const tube of acceptedTubesData) {
         const orderTests: any[] = [];
-        for (const testId of group.testIds) {
+        for (const testId of (tube.test_ids || [])) {
           const testInfo = testsMap[testId] || {};
           const paramData = testParamData[testId];
           if (paramData && paramData.params.length > 0) {
@@ -273,70 +225,52 @@ const SampleAcceptance = () => {
             }
           } else {
             orderTests.push({
-              code: testInfo.test_code || "", name: testInfo.test_name || group.testNames[0] || "",
+              code: testInfo.test_code || "", name: testInfo.test_name || "",
               unit: "", machine_id: testInfo.machine_id || "", status: "pending",
             });
           }
         }
         if (orderTests.length > 0) {
-          const { error } = await supabase.from("lims_test_orders").insert({
-            sample_id: group.sampleId, patient_name: reg.patient_name,
+          const sampleId = tube.suffix ? `${reg.invoice_number}${tube.suffix}` : reg.invoice_number;
+          await supabase.from("lims_test_orders").insert({
+            sample_id: sampleId, patient_name: reg.patient_name,
             tests: orderTests, status: "pending",
           });
-          if (error) throw error;
         }
       }
 
-      // Build new accepted_samples array
-      const existing = parseAcceptedSamples((reg as any).accepted_samples);
-      const existingKeys = new Set(existing.map(e => e.key));
-      const now = new Date().toISOString();
-      const newEntries: AcceptedSampleEntry[] = acceptedGroups
-        .filter(g => !existingKeys.has(g.key))
-        .map(g => ({ key: g.key, accepted_at: now }));
-      const updatedAccepted = [...existing, ...newEntries];
-
-      // Check if all COLLECTED groups are now accepted
-      const collectedGroups = getCollectedGroups(reg, groups);
-      const allCollectedKeys = new Set(collectedGroups.map(g => g.key));
-      const allAcceptedKeys = new Set(updatedAccepted.map(e => e.key));
-      const allGroupsAccepted = collectedGroups.length > 0 && [...allCollectedKeys].every(k => allAcceptedKeys.has(k));
-
-      const updatePayload: any = { accepted_samples: updatedAccepted };
-      if (allGroupsAccepted) {
-        updatePayload.status = "sample_accepted";
-      }
-
-      const { error } = await supabase
-        .from("patient_registrations")
-        .update(updatePayload)
-        .eq("id", reg.id);
-      if (error) throw error;
+      await recalculateRegistrationStatus(reg.id);
     },
-    onSuccess: (_, { acceptedKeys: keys }) => {
-      toast.success(`${keys.length} sample(s) accepted & LIMS orders generated`);
+    onSuccess: (_, { tubeIds }) => {
+      toast.success(`${tubeIds.length} sample(s) accepted & LIMS orders generated`);
       setSelectedTubes(new Set());
-      qc.invalidateQueries({ queryKey: ["sample_acceptance_pending"] });
-      qc.invalidateQueries({ queryKey: ["sample_acceptance_accepted"] });
+      qc.invalidateQueries({ queryKey: ["sample_tubes_acceptance"] });
+      qc.invalidateQueries({ queryKey: ["sample_tubes_acceptance_pending"] });
+      qc.invalidateQueries({ queryKey: ["sample_tubes_acceptance_accepted"] });
+      qc.invalidateQueries({ queryKey: ["sample_acceptance_regs"] });
+      qc.invalidateQueries({ queryKey: ["patient_registrations"] });
     },
     onError: (err: any) => toast.error(err.message || "Failed to accept"),
   });
 
-  // Reject selected tubes
+  // Reject mutation — sends back for repeat collection
   const rejectMutation = useMutation({
-    mutationFn: async ({ regId, remarks }: { regId: string; remarks: string }) => {
-      const { error } = await supabase
-        .from("patient_registrations")
-        .update({ status: "repeat_collection", remarks: `Repeat Collection: ${remarks}` })
-        .eq("id", regId);
-      if (error) throw error;
+    mutationFn: async ({ reg, tubeIds, remarks }: { reg: any; tubeIds: string[]; remarks: string }) => {
+      // Set tubes back to pending
+      await supabase.from("sample_tubes" as any).update({ status: "pending", collected_at: null }).in("id", tubeIds);
+      // Update registration
+      await supabase.from("patient_registrations").update({ 
+        status: "repeat_collection", 
+        remarks: `Repeat Collection: ${remarks}` 
+      } as any).eq("id", reg.id);
     },
     onSuccess: () => {
       toast.success("Sample sent back for repeat collection");
       setSelectedTubes(new Set());
-      qc.invalidateQueries({ queryKey: ["sample_acceptance_pending"] });
-      qc.invalidateQueries({ queryKey: ["sample_collection_patients"] });
-      setRejectDialog({ open: false, reg: null, tubeKeys: [] });
+      qc.invalidateQueries({ queryKey: ["sample_tubes_acceptance_pending"] });
+      qc.invalidateQueries({ queryKey: ["sample_tubes_collection"] });
+      qc.invalidateQueries({ queryKey: ["patient_registrations"] });
+      setRejectDialog({ open: false, reg: null, tubeIds: [] });
       setRejectRemarks("");
     },
     onError: (err: any) => toast.error(err.message || "Failed"),
@@ -344,58 +278,58 @@ const SampleAcceptance = () => {
 
   const handleReject = () => {
     if (!rejectRemarks.trim()) { toast.error("Please provide remarks"); return; }
-    rejectMutation.mutate({ regId: rejectDialog.reg.id, remarks: rejectRemarks.trim() });
+    rejectMutation.mutate({ reg: rejectDialog.reg, tubeIds: rejectDialog.tubeIds, remarks: rejectRemarks.trim() });
   };
 
-  // Accept all selected tubes across registrations
   const handleAcceptSelected = () => {
     if (selectedTubes.size === 0) { toast.error("Select at least one sample tube"); return; }
+    // Group by registration
     const regMap: Record<string, string[]> = {};
-    selectedTubes.forEach(key => {
-      const [regId, ...rest] = key.split("||");
-      const tubeKey = rest.join("||"); // e.g. "EDTA||" or "PLAIN||suffix"
-      if (!regMap[regId]) regMap[regId] = [];
-      regMap[regId].push(tubeKey);
+    selectedTubes.forEach(tubeId => {
+      const tube = collectedTubes.find(t => t.id === tubeId);
+      if (tube) {
+        if (!regMap[tube.registration_id]) regMap[tube.registration_id] = [];
+        regMap[tube.registration_id].push(tubeId);
+      }
     });
     for (const regId of Object.keys(regMap)) {
-      const reg = pendingRegs.find((r: any) => r.id === regId);
-      if (reg) acceptMutation.mutate({ reg, acceptedKeys: regMap[regId] });
+      const reg = registrations.find((r: any) => r.id === regId);
+      if (reg) acceptMutation.mutate({ reg, tubeIds: regMap[regId] });
     }
   };
 
-  // Reject selected tubes
-  const handleRejectSelected = () => {
-    if (selectedTubes.size === 0) { toast.error("Select at least one sample tube"); return; }
-    const regIds = new Set<string>();
-    const tubeKeys: string[] = [];
-    selectedTubes.forEach(key => { regIds.add(key.split("||")[0]); tubeKeys.push(key); });
-    if (regIds.size > 1) { toast.error("Select tubes from one patient at a time for repeat"); return; }
-    const regId = [...regIds][0];
-    const reg = pendingRegs.find((r: any) => r.id === regId);
-    if (reg) setRejectDialog({ open: true, reg, tubeKeys });
-  };
-
-  // Barcode scan: when search matches a sample ID exactly, auto-accept it
+  // Barcode scan auto-accept
   useEffect(() => {
     if (!search.trim()) return;
     const trimmed = search.trim().toUpperCase();
-    const map = sampleIdToRegMap();
-    const match = map[trimmed];
+    const match = sampleIdToTubeMap[trimmed];
     if (match) {
-      acceptMutation.mutate({ reg: match.reg, acceptedKeys: [match.group.key] });
+      acceptMutation.mutate({ reg: match.reg, tubeIds: [match.tube.id] });
       setSearch("");
       setDebouncedSearch("");
-      toast.info(`Scanned: ${match.group.sampleId} → Accepting…`);
+      toast.info(`Scanned: ${match.tube.sample_uid} → Accepting…`);
     }
   }, [debouncedSearch]);
 
-  const getTubeColorHex = (colorName: string) => {
+  const getTubeColorHex = (colorName: string | null) => {
     if (!colorName) return "";
     if (colorName.startsWith("#")) return colorName;
     return TUBE_COLOR_MAP[colorName.toLowerCase()] || "";
   };
 
-  const renderTable = (regs: any[], isAccepted: boolean, loading: boolean) => {
+  const statusLabel = (status: string) => {
+    const labels: Record<string, string> = {
+      registered: "Registered", partially_collected: "Partial Collection", sample_collected: "Collected",
+      partially_accepted: "Partial Accepted", sample_accepted: "Accepted",
+      processing: "Processing", partial_processing: "Partial Processing", processed: "Processed",
+      partial_verified: "Partial Verified", verified: "Verified",
+      partially_approved: "Partial Approved", approved: "Approved",
+      partially_dispatched: "Partial Dispatched", dispatched: "Dispatched",
+    };
+    return labels[status] || status;
+  };
+
+  const renderTable = (groups: GroupedRegistration[], isAccepted: boolean, loading: boolean) => {
     const hasSelected = selectedTubes.size > 0;
     return (
       <Card>
@@ -406,14 +340,22 @@ const SampleAcceptance = () => {
               <Button size="sm" onClick={handleAcceptSelected} disabled={acceptMutation.isPending}>
                 <ShieldCheck className="h-4 w-4 mr-1" /> Accept Selected
               </Button>
-              <Button size="sm" variant="destructive" onClick={handleRejectSelected}>
+              <Button size="sm" variant="destructive" onClick={() => {
+                if (selectedTubes.size === 0) return;
+                // Get first reg for reject dialog
+                const firstTubeId = [...selectedTubes][0];
+                const tube = collectedTubes.find(t => t.id === firstTubeId);
+                if (!tube) return;
+                const reg = registrations.find((r: any) => r.id === tube.registration_id);
+                if (reg) setRejectDialog({ open: true, reg, tubeIds: [...selectedTubes] });
+              }}>
                 <RotateCcw className="h-4 w-4 mr-1" /> Repeat Selected
               </Button>
             </div>
           )}
           {loading ? (
             <div className="p-8 text-center text-muted-foreground">Loading…</div>
-          ) : regs.length === 0 ? (
+          ) : groups.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">No samples found</div>
           ) : (
             <Table>
@@ -431,63 +373,23 @@ const SampleAcceptance = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {regs.filter((reg: any) => {
-                  const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
-                  const hasActiveTests = ((reg.tests || []) as any[]).some((t: any) => !cancelledIds.has(t.test_id));
-                  if (!hasActiveTests) return false;
-
-                  if (isAccepted) {
-                    // Only show if at least one tube is accepted
-                    const accepted = parseAcceptedSamples((reg as any).accepted_samples);
-                    return accepted.length > 0;
-                  } else {
-                    // Only show if at least one collected tube is NOT yet accepted
-                    const groups = buildTubeGroups(reg);
-                    const collectedGroups = getCollectedGroups(reg, groups);
-                    if (collectedGroups.length === 0) return false;
-                    const accepted = parseAcceptedSamples((reg as any).accepted_samples);
-                    const acceptedKeys = new Set(accepted.map(a => a.key));
-                    return collectedGroups.some(g => !acceptedKeys.has(g.key));
-                  }
-                }).map((reg: any) => {
-                  const groups = buildTubeGroups(reg);
-                  const collectedGroups = getCollectedGroups(reg, groups);
-                  const accepted = parseAcceptedSamples((reg as any).accepted_samples);
-                  const acceptedKeysMap = new Map(accepted.map(a => [a.key, a.accepted_at]));
+                {groups.map(({ registration: reg, tubes }) => {
                   const isExpanded = expandedRow === reg.id;
-
-                  // For pending: only collected & unaccepted tubes; for accepted: accepted tubes
-                  const effectiveGroups = isAccepted ? groups : collectedGroups;
-                  const pendingGroups = effectiveGroups.filter(g => !acceptedKeysMap.has(g.key));
-                  const acceptedGroupsList = effectiveGroups.filter(g => acceptedKeysMap.has(g.key));
-                  const isPartiallyAccepted = accepted.length > 0 && accepted.length < groups.length;
-                  const uncollectedCount = isAccepted ? 0 : (groups.length - collectedGroups.length);
-
-                  // For pending tab: selection keys are only for collected & unaccepted tubes
-                  const selectableKeys = pendingGroups.map(g => `${reg.id}||${g.key}`);
-                  const allSelected = selectableKeys.length > 0 && selectableKeys.every(k => selectedTubes.has(k));
-                  const someSelected = selectableKeys.some(k => selectedTubes.has(k));
-
-                  // Which groups to show in expanded detail
-                  const displayGroups = isAccepted ? acceptedGroupsList : collectedGroups;
+                  const allSelected = tubes.every(t => selectedTubes.has(t.id));
+                  const someSelected = tubes.some(t => selectedTubes.has(t.id));
 
                   return (
                     <>
-                      <TableRow
-                        key={reg.id}
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => setExpandedRow(isExpanded ? null : reg.id)}
-                      >
+                      <TableRow key={reg.id} className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => setExpandedRow(isExpanded ? null : reg.id)}>
                         <TableCell>
                           {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                         </TableCell>
                         {!isAccepted && (
                           <TableCell onClick={e => e.stopPropagation()}>
-                            <Checkbox
-                              checked={allSelected}
-                              onCheckedChange={() => toggleAllForReg(reg)}
-                              className={someSelected && !allSelected ? "data-[state=unchecked]:bg-primary/30" : ""}
-                            />
+                            <Checkbox checked={allSelected}
+                              onCheckedChange={() => toggleAllForReg(tubes)}
+                              className={someSelected && !allSelected ? "data-[state=unchecked]:bg-primary/30" : ""} />
                           </TableCell>
                         )}
                         <TableCell className="font-mono font-medium">{reg.invoice_number}</TableCell>
@@ -499,33 +401,20 @@ const SampleAcceptance = () => {
                               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive"></span>
                             </span>
                           )}
-                          {!isAccepted && reg.status === "registered" && (
-                            <Badge variant="outline" className="ml-2 text-xs border-orange-400 text-orange-600">PARTIAL COLLECTION</Badge>
-                          )}
-                         {!isAccepted && isPartiallyAccepted && (
-                            <Badge variant="outline" className="ml-2 text-xs border-blue-400 text-blue-600">PARTIAL ACCEPTED</Badge>
-                          )}
-                          {!isAccepted && uncollectedCount > 0 && (
-                            <Badge variant="outline" className="ml-2 text-xs border-amber-400 text-amber-600">
-                              {uncollectedCount} PENDING COLLECTION
-                            </Badge>
-                          )}
-                          {isAccepted && reg.status !== "sample_accepted" && (
-                            <Badge variant="outline" className="ml-2 text-xs border-orange-400 text-orange-600">PARTIAL</Badge>
+                          {isAccepted && reg.status !== "sample_accepted" && reg.status !== "dispatched" && (
+                            <Badge variant="outline" className="ml-2 text-xs">{statusLabel(reg.status)}</Badge>
                           )}
                         </TableCell>
                         <TableCell>{reg.mobile_number}</TableCell>
                         <TableCell>
                           <div className="flex gap-1 flex-wrap">
-                            {(isAccepted ? acceptedGroupsList : collectedGroups).map((g, i) => {
-                              const hex = getTubeColorHex(g.tubeColor);
+                            {tubes.map((t, i) => {
+                              const hex = getTubeColorHex(t.tube_color);
                               return (
                                 <Badge key={i} variant="outline" className="text-xs gap-1">
-                                  {hex && (
-                                    <span className="inline-block w-2.5 h-2.5 rounded-full border"
-                                      style={{ backgroundColor: hex, borderColor: hex === "#ffffff" ? "#ccc" : hex }} />
-                                  )}
-                                  {g.sampleTube}{g.suffix ? ` (${g.suffix})` : ""}
+                                  {hex && <span className="inline-block w-2.5 h-2.5 rounded-full border"
+                                    style={{ backgroundColor: hex, borderColor: hex === "#ffffff" ? "#ccc" : hex }} />}
+                                  {t.tube_type || "DEFAULT"}{t.suffix ? ` (${t.suffix})` : ""}
                                 </Badge>
                               );
                             })}
@@ -535,15 +424,12 @@ const SampleAcceptance = () => {
                         {!isAccepted && (
                           <TableCell className="text-right" onClick={e => e.stopPropagation()}>
                             <div className="flex gap-2 justify-end">
-                              <Button size="sm" onClick={() => {
-                                const tubeKeys = pendingGroups.map(g => g.key);
-                                if (tubeKeys.length === 0) { toast.info("All tubes already accepted"); return; }
-                                acceptMutation.mutate({ reg, acceptedKeys: tubeKeys });
-                              }} disabled={acceptMutation.isPending}>
+                              <Button size="sm" onClick={() => acceptMutation.mutate({ reg, tubeIds: tubes.map(t => t.id) })}
+                                disabled={acceptMutation.isPending}>
                                 <ShieldCheck className="h-4 w-4 mr-1" /> Accept All
                               </Button>
                               <Button size="sm" variant="destructive"
-                                onClick={() => setRejectDialog({ open: true, reg, tubeKeys: selectableKeys })}>
+                                onClick={() => setRejectDialog({ open: true, reg, tubeIds: tubes.map(t => t.id) })}>
                                 <RotateCcw className="h-4 w-4 mr-1" /> Repeat
                               </Button>
                             </div>
@@ -551,7 +437,7 @@ const SampleAcceptance = () => {
                         )}
                         {isAccepted && (
                           <TableCell className="text-sm text-muted-foreground">
-                            {reg.status === "sample_accepted" ? "Fully Accepted" : "Partially Accepted"}
+                            {statusLabel(reg.status)}
                           </TableCell>
                         )}
                       </TableRow>
@@ -560,61 +446,51 @@ const SampleAcceptance = () => {
                           <TableCell colSpan={isAccepted ? 7 : 8} className="bg-muted/30 p-4">
                             <div className="space-y-2">
                               <div className="text-sm font-medium">Sample Details</div>
-                              {displayGroups.map((g, i) => {
-                                const tubeKey = `${reg.id}||${g.key}`;
-                                const isChecked = selectedTubes.has(tubeKey);
-                                const acceptedAt = acceptedKeysMap.get(g.key);
-                                const isAlreadyAccepted = !!acceptedAt;
+                              {tubes.map((tube) => {
+                                const isChecked = selectedTubes.has(tube.id);
                                 return (
-                                  <div key={i} className="flex items-start gap-3 p-2 bg-background rounded border">
-                                    {!isAccepted && !isAlreadyAccepted && (
+                                  <div key={tube.id} className="flex items-start gap-3 p-2 bg-background rounded border">
+                                    {!isAccepted && (
                                       <div className="pt-1">
-                                        <Checkbox checked={isChecked} onCheckedChange={() => toggleTube(tubeKey)} />
+                                        <Checkbox checked={isChecked} onCheckedChange={() => toggleTube(tube.id)} />
                                       </div>
                                     )}
                                     <div className="flex items-center gap-2 min-w-[140px]">
-                                      {getTubeColorHex(g.tubeColor) && (
+                                      {getTubeColorHex(tube.tube_color) && (
                                         <span className="inline-block w-3 h-3 rounded-full border"
                                           style={{
-                                            backgroundColor: getTubeColorHex(g.tubeColor),
-                                            borderColor: getTubeColorHex(g.tubeColor) === "#ffffff" ? "#ccc" : getTubeColorHex(g.tubeColor),
+                                            backgroundColor: getTubeColorHex(tube.tube_color),
+                                            borderColor: getTubeColorHex(tube.tube_color) === "#ffffff" ? "#ccc" : getTubeColorHex(tube.tube_color),
                                           }} />
                                       )}
-                                      <span className="font-medium text-sm">{g.sampleTube}</span>
-                                      {g.suffix && <Badge variant="secondary" className="text-xs">{g.suffix}</Badge>}
+                                      <span className="font-medium text-sm">{tube.tube_type || "DEFAULT"}</span>
+                                      {tube.suffix && <Badge variant="secondary" className="text-xs">{tube.suffix}</Badge>}
                                     </div>
                                     <div className="flex-1">
                                       <div className="text-xs text-muted-foreground mb-1">
-                                        Sample ID: <span className="font-mono font-medium">{g.sampleId}</span>
-                                        {g.sampleType && <> • {g.sampleType}</>}
+                                        Sample UID: <span className="font-mono font-medium">{tube.sample_uid}</span>
+                                        {tube.sample_type && <> • {tube.sample_type}</>}
                                       </div>
                                       <div className="flex flex-wrap gap-1">
-                                        {g.testNames.map((name, j) => (
+                                        {(tube.test_names || []).map((name, j) => (
                                           <Badge key={j} variant="outline" className="text-xs">{name}</Badge>
                                         ))}
                                       </div>
                                     </div>
-                                    {/* Show ACCEPTED badge with timestamp for already-accepted tubes in pending tab */}
-                                    {!isAccepted && isAlreadyAccepted && (
+                                    {isAccepted && tube.accepted_at && (
                                       <Badge className="text-xs bg-green-100 text-green-700 border-green-300 whitespace-nowrap">
-                                        ACCEPTED {acceptedAt ? formatAcceptedAt(acceptedAt) : ""}
+                                        {format(new Date(tube.accepted_at), "dd-MM-yyyy hh:mm a")}
                                       </Badge>
                                     )}
-                                    {/* Show accepted timestamp in accepted tab */}
-                                    {isAccepted && acceptedAt && (
-                                      <Badge className="text-xs bg-green-100 text-green-700 border-green-300 whitespace-nowrap">
-                                        {formatAcceptedAt(acceptedAt)}
-                                      </Badge>
-                                    )}
-                                    {!isAccepted && !isAlreadyAccepted && (
+                                    {!isAccepted && (
                                       <div className="flex gap-1" onClick={e => e.stopPropagation()}>
                                         <Button size="sm" variant="outline" className="h-7 text-xs"
-                                          onClick={() => acceptMutation.mutate({ reg, acceptedKeys: [g.key] })}
+                                          onClick={() => acceptMutation.mutate({ reg, tubeIds: [tube.id] })}
                                           disabled={acceptMutation.isPending}>
                                           <ShieldCheck className="h-3 w-3 mr-1" /> Accept
                                         </Button>
                                         <Button size="sm" variant="outline" className="h-7 text-xs text-destructive border-destructive/50"
-                                          onClick={() => setRejectDialog({ open: true, reg, tubeKeys: [tubeKey] })}>
+                                          onClick={() => setRejectDialog({ open: true, reg, tubeIds: [tube.id] })}>
                                           <RotateCcw className="h-3 w-3 mr-1" /> Repeat
                                         </Button>
                                       </div>
@@ -642,42 +518,13 @@ const SampleAcceptance = () => {
     );
   };
 
-  const filteredPendingCount = useMemo(() => {
-    return pendingRegs.filter((reg: any) => {
-      const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
-      const hasActiveTests = ((reg.tests || []) as any[]).some((t: any) => !cancelledIds.has(t.test_id));
-      if (!hasActiveTests) return false;
-      const groups = buildTubeGroups(reg);
-      const collectedGroups = getCollectedGroups(reg, groups);
-      if (collectedGroups.length === 0) return false;
-      const accepted = parseAcceptedSamples(reg.accepted_samples);
-      const acceptedKeys = new Set(accepted.map(a => a.key));
-      return collectedGroups.some(g => !acceptedKeys.has(g.key));
-    }).length;
-  }, [pendingRegs]);
-
-  const filteredAcceptedCount = useMemo(() => {
-    return acceptedRegs.filter((reg: any) => {
-      const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
-      const hasActiveTests = ((reg.tests || []) as any[]).some((t: any) => !cancelledIds.has(t.test_id));
-      if (!hasActiveTests) return false;
-      const accepted = parseAcceptedSamples(reg.accepted_samples);
-      return accepted.length > 0;
-    }).length;
-  }, [acceptedRegs]);
-
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-4">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            ref={searchRef}
-            placeholder="Scan barcode or search by name, mobile, invoice…"
-            value={search}
-            onChange={(e) => handleSearch(e.target.value)}
-            className="pl-9"
-          />
+          <Input ref={searchRef} placeholder="Scan barcode or search by name, mobile, invoice…"
+            value={search} onChange={(e) => handleSearch(e.target.value)} className="pl-9" />
           <ScanBarcode className="absolute right-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
         </div>
       </div>
@@ -686,23 +533,19 @@ const SampleAcceptance = () => {
         <TabsList>
           <TabsTrigger value="pending">
             Pending Acceptance
-            {filteredPendingCount > 0 && (
-              <Badge variant="secondary" className="ml-2 text-xs">{filteredPendingCount}</Badge>
-            )}
+            {pendingGroups.length > 0 && <Badge variant="secondary" className="ml-2 text-xs">{pendingGroups.length}</Badge>}
           </TabsTrigger>
           <TabsTrigger value="accepted">
             Accepted
-            {filteredAcceptedCount > 0 && (
-              <Badge variant="secondary" className="ml-2 text-xs">{filteredAcceptedCount}</Badge>
-            )}
+            {acceptedGroups.length > 0 && <Badge variant="secondary" className="ml-2 text-xs">{acceptedGroups.length}</Badge>}
           </TabsTrigger>
         </TabsList>
-        <TabsContent value="pending">{renderTable(pendingRegs, false, isLoading)}</TabsContent>
-        <TabsContent value="accepted">{renderTable(acceptedRegs, true, isLoadingAccepted)}</TabsContent>
+        <TabsContent value="pending">{renderTable(pendingGroups, false, isLoading)}</TabsContent>
+        <TabsContent value="accepted">{renderTable(acceptedGroups, true, isLoadingAccepted)}</TabsContent>
       </Tabs>
 
       {/* Reject / Repeat Collection Dialog */}
-      <Dialog open={rejectDialog.open} onOpenChange={(o) => { if (!o) { setRejectDialog({ open: false, reg: null, tubeKeys: [] }); setRejectRemarks(""); } }}>
+      <Dialog open={rejectDialog.open} onOpenChange={(o) => { if (!o) { setRejectDialog({ open: false, reg: null, tubeIds: [] }); setRejectRemarks(""); } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Request Repeat Collection</DialogTitle>
@@ -717,15 +560,10 @@ const SampleAcceptance = () => {
             </div>
             <Textarea
               placeholder="Enter reason for repeat collection (e.g., hemolyzed, clotted, insufficient quantity)…"
-              value={rejectRemarks}
-              onChange={(e) => setRejectRemarks(e.target.value)}
-              rows={3}
-            />
+              value={rejectRemarks} onChange={(e) => setRejectRemarks(e.target.value)} rows={3} />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setRejectDialog({ open: false, reg: null, tubeKeys: [] }); setRejectRemarks(""); }}>
-              Cancel
-            </Button>
+            <Button variant="outline" onClick={() => { setRejectDialog({ open: false, reg: null, tubeIds: [] }); setRejectRemarks(""); }}>Cancel</Button>
             <Button variant="destructive" onClick={handleReject} disabled={rejectMutation.isPending}>
               <RotateCcw className="h-4 w-4 mr-1" /> Confirm Repeat
             </Button>
