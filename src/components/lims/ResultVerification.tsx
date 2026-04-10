@@ -1065,6 +1065,13 @@ const ResultVerification = () => {
           </div>
         </DialogContent>
       </Dialog>
+      {rvTotalPages > 1 && (
+        <div className="flex items-center justify-between mt-4">
+          <Button variant="outline" size="sm" disabled={rvPage === 0} onClick={() => setRvPage(p => p - 1)}>Prev</Button>
+          <span className="text-sm text-muted-foreground">Page {rvPage + 1} of {rvTotalPages} ({rvCount} total)</span>
+          <Button variant="outline" size="sm" disabled={rvPage >= rvTotalPages - 1} onClick={() => setRvPage(p => p + 1)}>Next</Button>
+        </div>
+      )}
     </div>
   );
 };
