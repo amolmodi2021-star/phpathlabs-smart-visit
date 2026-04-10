@@ -280,12 +280,12 @@ const SampleCollection = () => {
     doPrintBarcodes(reg, toPrint);
   };
 
-  // Mark sample collected
+  // Mark sample collected (full)
   const markCollectedMutation = useMutation({
-    mutationFn: async (regId: string) => {
+    mutationFn: async ({ regId, collectedKeys }: { regId: string; collectedKeys: string[] }) => {
       const { error } = await supabase
         .from("patient_registrations")
-        .update({ status: "sample_collected" })
+        .update({ status: "sample_collected", collected_samples: collectedKeys })
         .eq("id", regId);
       if (error) throw error;
     },
@@ -298,17 +298,55 @@ const SampleCollection = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Partial collect mutation
+  const partialCollectMutation = useMutation({
+    mutationFn: async ({ regId, collectedKeys }: { regId: string; collectedKeys: string[] }) => {
+      const { error } = await supabase
+        .from("patient_registrations")
+        .update({ collected_samples: collectedKeys })
+        .eq("id", regId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sample_collection_patients"] });
+      qc.invalidateQueries({ queryKey: ["patient_registrations"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const handlePrintAndCollect = (reg: any, groups: BarcodeGroup[]) => {
     const sel = selectedBarcodes[reg.id] || {};
-    const selectedCount = groups.filter((_, i) => sel[i]).length;
-    if (selectedCount === 0) {
+    const pendingGroups = groups.filter(g => !g.isCollected);
+    const selectedPending = pendingGroups.filter((_, i) => {
+      const origIdx = groups.indexOf(pendingGroups[i]!);
+      return sel[origIdx];
+    });
+    // Recalculate using original indices
+    const selectedOriginalIndices = groups.map((g, i) => (!g.isCollected && sel[i]) ? i : -1).filter(i => i >= 0);
+    const toPrint = selectedOriginalIndices.map(i => groups[i]);
+    
+    if (toPrint.length === 0) {
       toast.error("Please select at least one barcode");
       return;
     }
-    const allSelected = groups.every((_, i) => sel[i]);
-    printBarcodes(reg, groups);
-    if (allSelected) {
-      markCollectedMutation.mutate(reg.id);
+    
+    // Print selected barcodes
+    doPrintBarcodes(reg, toPrint);
+    
+    // Merge with existing collected keys
+    const existingCollected = (reg.collected_samples || []) as string[];
+    const newKeys = toPrint.map(g => g.groupKey);
+    const allCollectedKeys = [...new Set([...existingCollected, ...newKeys])];
+    
+    // Check if all groups are now collected
+    const allGroupKeys = groups.map(g => g.groupKey);
+    const allNowCollected = allGroupKeys.every(k => allCollectedKeys.includes(k));
+    
+    if (allNowCollected) {
+      markCollectedMutation.mutate({ regId: reg.id, collectedKeys: allCollectedKeys });
+    } else {
+      partialCollectMutation.mutate({ regId: reg.id, collectedKeys: allCollectedKeys });
+      toast.success(`${toPrint.length} of ${groups.length} samples collected. ${groups.length - allCollectedKeys.length} remaining.`);
     }
   };
 
