@@ -677,10 +677,16 @@ const SampleCollection = () => {
       <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setExpandedRow(null); }}>
         <TabsList>
           <TabsTrigger value="pending" className="gap-1.5">
-            Pending <Badge variant="secondary" className="text-xs ml-1">{registrations.length}</Badge>
+            Pending <Badge variant="secondary" className="text-xs ml-1">{registrations.filter((r: any) => {
+              const groups = buildBarcodeGroups(r);
+              return groups.some(g => !g.isCollected);
+            }).length}</Badge>
           </TabsTrigger>
           <TabsTrigger value="collected" className="gap-1.5">
-            Collected <Badge variant="secondary" className="text-xs ml-1">{collectedRegistrations.length}</Badge>
+            Collected <Badge variant="secondary" className="text-xs ml-1">{collectedRegistrations.filter((r: any) => {
+              const collected = parseCollectedSamples(r.collected_samples || []);
+              return collected.length > 0;
+            }).length}</Badge>
           </TabsTrigger>
         </TabsList>
         <TabsContent value="pending" className="mt-3">
