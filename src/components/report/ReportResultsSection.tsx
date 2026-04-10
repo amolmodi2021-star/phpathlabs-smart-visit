@@ -11,7 +11,6 @@ export interface TestResult {
   normal_range_high?: string;
   normal_range_text?: string;
   flag?: string;
-  // Master data fields
   sample_type?: string;
   analyzer?: string;
   method?: string;
@@ -19,7 +18,6 @@ export interface TestResult {
   outsourced_caption?: string;
   interpretation?: string;
   remark?: string;
-  // Subheader support
   is_subheader?: boolean;
   subheader_text?: string;
 }
@@ -40,9 +38,7 @@ export interface ReportResultsSectionProps {
   compact?: boolean;
   hideDeptHeader?: boolean;
   profileMetaMap?: Record<string, ProfileMeta>;
-  /** LIMS mode: show Flag as text column (HIGH/LOW) instead of badge */
   showFlagText?: boolean;
-  /** Font size overrides for LIMS vs uploaded report contexts */
   fontSize?: {
     department?: string;
     profile?: string;
@@ -58,7 +54,7 @@ const groupByTestName = (params: TestResult[]): { testName: string | null; param
   const groups: { testName: string | null; params: TestResult[] }[] = [];
   const seen = new Map<string, TestResult[]>();
   params.forEach((r) => {
-    if (r.is_subheader) return; // subheaders handled separately
+    if (r.is_subheader) return;
     const tn = r.test_name || null;
     const key = tn || "__none__";
     if (!seen.has(key)) {
@@ -89,6 +85,10 @@ const isDescriptiveResult = (r: TestResult): boolean => {
     && (!r.flag || r.flag === "N" || r.flag === "Normal");
 };
 
+const isAbnormalFlag = (flag?: string): boolean => {
+  return flag === "H" || flag === "L" || flag === "High" || flag === "Low";
+};
+
 // ── Sub-components ──
 
 interface ParamRowProps {
@@ -102,16 +102,21 @@ interface ParamRowProps {
 }
 
 const ParamRow = ({ r, rowKey, compact, isMorph, showFlagText, rowFontSize, colCount }: ParamRowProps) => {
-  const isAbnormal = r.flag === "H" || r.flag === "L" || r.flag === "High" || r.flag === "Low";
+  const isAbnormal = isAbnormalFlag(r.flag);
   const isDescriptive = isDescriptiveResult(r) || isMorph;
   const py = compact ? 'py-[2px]' : 'py-0.5';
 
-  // How many cols does the right side span when descriptive?
-  const rightSpan = showFlagText ? 4 : 3;
+  // Bold styling only for abnormal rows
+  const nameWeight = isAbnormal ? 'font-bold text-red-600' : 'font-normal';
+  const resultWeight = isAbnormal ? 'font-bold text-red-600' : 'font-normal';
+  const rangeWeight = isAbnormal ? 'font-bold' : 'font-normal';
+
+  // Descriptive right span: Result + RefRange + Flag (if shown) = 2 or 3
+  const rightSpan = showFlagText ? 3 : 2;
 
   return (
-    <tr key={rowKey} className={`border-b border-gray-100 ${isAbnormal ? "bg-red-50" : ""}`} style={{ fontSize: rowFontSize }}>
-      <td className={`px-3 font-semibold ${py}`}>{r.parameter_name}</td>
+    <tr key={rowKey} className={`border-b border-gray-100`} style={{ fontSize: rowFontSize }}>
+      <td className={`px-3 ${nameWeight} ${py}`}>{r.parameter_name}</td>
       {!showFlagText && (
         <td className={`text-right ${py}`} style={{ width: '24px' }}>
           {isAbnormal && <span className="flag-badge inline-flex items-center justify-center min-w-[18px] h-[18px] rounded bg-red-600 text-white text-xs leading-none font-bold">{r.flag}</span>}
@@ -123,12 +128,11 @@ const ParamRow = ({ r, rowKey, compact, isMorph, showFlagText, rowFontSize, colC
         </td>
       ) : (
         <>
-          <td className={`text-center font-semibold ${py} ${isAbnormal ? "text-red-600 font-bold" : ""}`}>
+          <td className={`text-center ${resultWeight} ${py}`}>
             {r.result_value}
           </td>
-          <td className={`text-center text-gray-600 ${py}`}>{r.unit}</td>
-          <td className={`text-center text-gray-600 ${py}`}>
-            {r.normal_range_text || `${r.normal_range_low || ""} - ${r.normal_range_high || ""}`}
+          <td className={`text-center text-gray-600 ${rangeWeight} ${py}`}>
+            {r.normal_range_text || `${r.normal_range_low || ""} - ${r.normal_range_high || ""}${r.unit ? ` ${r.unit}` : ''}`}
           </td>
           {showFlagText && (
             <td className={`text-center ${py}`}>
@@ -145,17 +149,16 @@ const ParamRow = ({ r, rowKey, compact, isMorph, showFlagText, rowFontSize, colC
   );
 };
 
-// ── Table header ──
+// ── Table header (no Unit column) ──
 
 const TableHeader = ({ showFlagText, fontSize }: { showFlagText: boolean; fontSize: string }) => (
   <thead>
     <tr className="text-gray-500 border-b" style={{ fontSize }}>
-      <th className="text-left py-0.5 px-3" style={{ width: showFlagText ? '35%' : '36%' }}>Parameter</th>
+      <th className="text-left py-0.5 px-3" style={{ width: showFlagText ? '40%' : '42%' }}>Parameter</th>
       {!showFlagText && <th style={{ width: '24px' }}></th>}
       <th className="text-center py-0.5" style={{ width: '20%' }}>Result</th>
-      <th className="text-center py-0.5" style={{ width: showFlagText ? '10%' : '14%' }}>Unit</th>
-      <th className="text-center py-0.5" style={{ width: '22%' }}>Reference Range</th>
-      {showFlagText && <th className="text-center py-0.5" style={{ width: '13%' }}>Flag</th>}
+      <th className="text-center py-0.5" style={{ width: showFlagText ? '25%' : '30%' }}>Reference Range</th>
+      {showFlagText && <th className="text-center py-0.5" style={{ width: '15%' }}>Flag</th>}
     </tr>
   </thead>
 );
@@ -176,7 +179,7 @@ const ReportResultsSection = ({
   const headerFontSize = fontSize?.tableHeader || '14px';
   const rowFontSize = fontSize?.row || '14px';
   const metaFontSize = fontSize?.meta || '12px';
-  const colCount = showFlagText ? 5 : 5; // always 5 cols but layout differs
+  const colCount = showFlagText ? 4 : 4;
 
   return (
     <>
@@ -184,8 +187,8 @@ const ReportResultsSection = ({
         <div key={dept} data-pdf-section="department">
           {!hideDeptHeader && (
             <div
-              className="text-white px-3 py-1.5 rounded-t font-semibold text-center"
-              style={{ backgroundColor: '#2E3192', fontSize: deptFontSize }}
+              className="px-3 py-1.5 rounded-t font-bold text-center border-2 border-gray-800 text-gray-900"
+              style={{ fontSize: deptFontSize }}
             >
               {dept}
             </div>
@@ -218,7 +221,7 @@ const ReportResultsSection = ({
                           const hasParamInterpretation = paramMeta.interpretation && paramMeta.interpretation.replace(/<[^>]*>/g, '').trim().length > 0;
                           const prevParam = pIdx > 0 ? params[pIdx - 1] : null;
                           const prevHadInterpretation = prevParam?.interpretation && prevParam.interpretation.replace(/<[^>]*>/g, '').trim().length > 0;
-                          const totalCols = showFlagText ? 5 : 5;
+                          const totalCols = colCount;
 
                           return (
                             <React.Fragment key={`standalone-${pIdx}`}>
@@ -239,7 +242,7 @@ const ReportResultsSection = ({
                                   <td colSpan={totalCols} className="px-3 py-1 text-gray-500 border-t border-gray-100" style={{ fontSize: metaFontSize }}>
                                     <div className="flex gap-4 flex-wrap">
                                       {paramMeta.sample_type && <span><strong>Sample Type:</strong> {paramMeta.sample_type}</span>}
-                                      {paramMeta.analyzer && <span><strong>Analyzer:</strong> {paramMeta.analyzer}</span>}
+                                      {paramMeta.analyzer && <span><strong>Instrument:</strong> {paramMeta.analyzer}</span>}
                                       {paramMeta.method && <span><strong>Method:</strong> {paramMeta.method}</span>}
                                     </div>
                                   </td>
@@ -281,9 +284,8 @@ const ReportResultsSection = ({
               const hasMetaRow = profMeta && (profMeta.sample_type || profMeta.analyzer || profMeta.method);
               const hasOutsourced = profMeta?.is_outsourced && profMeta?.outsourced_caption;
               const hasInterpretation = profMeta?.interpretation && profMeta.interpretation.replace(/<[^>]*>/g, '').trim().length > 0;
-              const totalCols = showFlagText ? 5 : 5;
+              const totalCols = colCount;
 
-              // Collect subheaders from params for ordered rendering
               const subheaders = params.filter(p => p.is_subheader);
               const nonSubheaderParams = params.filter(p => !p.is_subheader);
 
@@ -293,7 +295,7 @@ const ReportResultsSection = ({
                   {shouldShowProfile(nonSubheaderParams) && (
                     <>
                       <div style={{ height: '1mm' }} />
-                      <div className="bg-blue-50 px-3 py-1 font-semibold border-b" style={{ color: '#2E3192', fontSize: profileFontSize }}>
+                      <div className="px-3 py-1 font-semibold border-b-2 border-gray-600" style={{ color: '#2E3192', fontSize: profileFontSize }}>
                         {profName}
                         {profMeta?.sample_type && <span className="font-normal text-gray-500 ml-2" style={{ fontSize: metaFontSize }}>(Sample: {profMeta.sample_type})</span>}
                       </div>
@@ -302,12 +304,11 @@ const ReportResultsSection = ({
                   <table className="w-full" style={{ fontSize: rowFontSize }}>
                     <TableHeader showFlagText={showFlagText} fontSize={headerFontSize} />
                     <tbody>
-                      {/* Render params preserving subheader insertion order */}
                       {params.map((r, i) => {
                         if (r.is_subheader) {
                           return (
                             <tr key={`sh-${i}`}>
-                              <td colSpan={totalCols} className="font-semibold pt-1 pb-0.5 text-gray-700 border-b px-3" style={{ fontSize: rowFontSize }}>
+                              <td colSpan={totalCols} className="font-semibold pt-3 pb-0.5 text-gray-700 border-b px-3" style={{ fontSize: rowFontSize }}>
                                 {r.subheader_text || r.parameter_name}
                               </td>
                             </tr>
@@ -319,7 +320,7 @@ const ReportResultsSection = ({
                           <React.Fragment key={`p-${i}`}>
                             {hasMultipleTestNames && r.test_name && (i === 0 || r.test_name !== params[i - 1]?.test_name) && !params[i - 1]?.is_subheader && (
                               <tr>
-                                <td colSpan={totalCols} className="px-3 font-semibold text-gray-700 bg-gray-50 border-b py-0.5" style={{ fontSize: rowFontSize }}>
+                                <td colSpan={totalCols} className="px-3 font-semibold text-gray-700 border-b py-0.5" style={{ fontSize: rowFontSize }}>
                                   {r.test_name}
                                 </td>
                               </tr>
@@ -341,7 +342,7 @@ const ReportResultsSection = ({
                   {hasMetaRow && (
                     <div className="px-3 py-1 text-gray-500 border-t border-gray-100 flex gap-4 flex-wrap" style={{ fontSize: metaFontSize }}>
                       {profMeta!.sample_type && <span><strong>Sample Type:</strong> {profMeta!.sample_type}</span>}
-                      {profMeta!.analyzer && <span><strong>Analyzer:</strong> {profMeta!.analyzer}</span>}
+                      {profMeta!.analyzer && <span><strong>Instrument:</strong> {profMeta!.analyzer}</span>}
                       {profMeta!.method && <span><strong>Method:</strong> {profMeta!.method}</span>}
                     </div>
                   )}
