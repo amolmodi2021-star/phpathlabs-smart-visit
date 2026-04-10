@@ -150,53 +150,50 @@ const LimsReportView = () => {
         test_results: ((r.test_results || []) as any[]).filter((tr: any) => selectedTestIds.has(tr.test_id)),
       };
     });
-    setApprovedReports(filteredReports);
-    setRegistration(regData);
-    setDepartments(depts || []);
 
     // Tests map
     const tMap: Record<string, any> = {};
     (allTests || []).forEach((t: any) => { tMap[t.id] = t; });
-    setTestsMap(tMap);
 
     // Layout
+    let computedLayout = { top_margin_cm: 2.5, bottom_margin_cm: 1.5, letterhead_pdf_path: null as string | null };
+    let computedLetterhead: string | null = null;
     if (layout) {
-      const ls = {
+      computedLayout = {
         top_margin_cm: Number(layout.top_margin_cm) || 2.5,
         bottom_margin_cm: Number(layout.bottom_margin_cm) || 1.5,
         letterhead_pdf_path: layout.letterhead_pdf_path || null,
       };
-      setLayoutSettings(ls);
-      if (ls.letterhead_pdf_path) {
-        const { data: urlData } = supabase.storage.from("letterheads").getPublicUrl(ls.letterhead_pdf_path);
-        const img = await convertPdfToImage(urlData.publicUrl);
-        setLetterheadImageUrl(img);
+      if (computedLayout.letterhead_pdf_path) {
+        const { data: urlData } = supabase.storage.from("letterheads").getPublicUrl(computedLayout.letterhead_pdf_path);
+        computedLetterhead = await convertPdfToImage(urlData.publicUrl);
       }
     }
 
     // Signature - use first approved_by name match
+    let computedSignature: any = null;
     const approvedBy = reports?.[0]?.approved_by;
     if (approvedBy && signatures) {
       const sig = signatures.find((s: any) => s.pathologist_name.toLowerCase() === approvedBy.toLowerCase());
       if (sig && sig.signature_image_path) {
         const { data: sigUrl } = supabase.storage.from("signatures").getPublicUrl(sig.signature_image_path);
-        setSignatureData({ ...sig, signatureUrl: sigUrl.publicUrl });
+        computedSignature = { ...sig, signatureUrl: sigUrl.publicUrl };
       } else if (sig) {
-        setSignatureData(sig);
+        computedSignature = sig;
       } else {
-        setSignatureData(signatures[0] ? { ...signatures[0] } : null);
+        computedSignature = signatures[0] ? { ...signatures[0] } : null;
       }
     } else if (signatures && signatures.length > 0) {
       const first = signatures[0];
       if (first.signature_image_path) {
         const { data: sigUrl } = supabase.storage.from("signatures").getPublicUrl(first.signature_image_path);
-        setSignatureData({ ...first, signatureUrl: sigUrl.publicUrl });
+        computedSignature = { ...first, signatureUrl: sigUrl.publicUrl };
       } else {
-        setSignatureData(first);
+        computedSignature = first;
       }
     }
 
-    // Snip images - collect all snip-only tests (tests with snip images), filtered by selected test IDs
+    // Snip images
     const snipPages: SnipPage[] = [];
     (snips || []).forEach((s: any) => {
       if (selectedTestIds && !selectedTestIds.has(s.test_id)) return;
@@ -205,9 +202,9 @@ const LimsReportView = () => {
         urls.forEach((url: string) => snipPages.push({ imageUrl: url }));
       }
     });
-    setSnipImages(snipPages);
 
     // Fetch test_parameters for hierarchy
+    let computedTpMap: Record<string, any[]> = {};
     const uniqueTestIds = [...new Set((reports || []).flatMap((r: any) =>
       ((r.test_results || []) as TestResultEntry[]).map(tr => tr.test_id)
     ))];
@@ -217,14 +214,22 @@ const LimsReportView = () => {
         .select("test_id, parameter_id, display_order, is_subheader, subheader_text")
         .in("test_id", uniqueTestIds)
         .order("display_order", { ascending: true });
-      const tpMap: Record<string, any[]> = {};
       (tpData || []).forEach((tp: any) => {
-        if (!tpMap[tp.test_id]) tpMap[tp.test_id] = [];
-        tpMap[tp.test_id].push(tp);
+        if (!computedTpMap[tp.test_id]) computedTpMap[tp.test_id] = [];
+        computedTpMap[tp.test_id].push(tp);
       });
-      setTestParamsMap(tpMap);
     }
 
+    // Batch all state updates together to prevent intermediate renders
+    setApprovedReports(filteredReports);
+    setRegistration(regData);
+    setDepartments(depts || []);
+    setTestsMap(tMap);
+    setLayoutSettings(computedLayout);
+    setLetterheadImageUrl(computedLetterhead);
+    setSignatureData(computedSignature);
+    setSnipImages(snipPages);
+    setTestParamsMap(computedTpMap);
     setLoading(false);
   };
 
