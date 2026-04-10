@@ -122,6 +122,7 @@ const LimsReportView = () => {
 
   const loadAllData = async () => {
     setLoading(true);
+    try {
 
     // Parallel fetches
     const [
