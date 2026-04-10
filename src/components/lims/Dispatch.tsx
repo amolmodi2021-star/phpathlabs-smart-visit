@@ -306,7 +306,7 @@ const Dispatch = () => {
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0 z-50" align="start">
-            <Calendar
+            <DatePickerCalendar
               mode="single"
               selected={dateFrom}
               onSelect={(d) => d && setDateFrom(startOfDay(d))}
@@ -324,7 +324,7 @@ const Dispatch = () => {
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0 z-50" align="start">
-            <Calendar
+            <DatePickerCalendar
               mode="single"
               selected={dateTo}
               onSelect={(d) => d && setDateTo(endOfDay(d))}
@@ -381,7 +381,7 @@ const Dispatch = () => {
                             <span className="text-[10px] text-muted-foreground">{entry.approvedCount}A / {entry.pendingCount}P</span>
                           </div>
                           <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1">
-                            <Calendar className="h-3 w-3" />
+                            <CalendarIcon className="h-3 w-3" />
                             {formatDate(reg.created_at)}
                           </div>
                         </div>
@@ -411,7 +411,7 @@ const Dispatch = () => {
                         <span className="flex items-center gap-1"><Phone className="h-3.5 w-3.5" />{selectedEntry.registration.mobile_number}</span>
                         <span className="flex items-center gap-1"><FileText className="h-3.5 w-3.5" />{selectedEntry.registration.invoice_number}</span>
                         {selectedEntry.registration.umr_number && <span>UMR: {selectedEntry.registration.umr_number}</span>}
-                        <span className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" />{formatDate(selectedEntry.registration.created_at)}</span>
+                        <span className="flex items-center gap-1"><CalendarIcon className="h-3.5 w-3.5" />{formatDate(selectedEntry.registration.created_at)}</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
