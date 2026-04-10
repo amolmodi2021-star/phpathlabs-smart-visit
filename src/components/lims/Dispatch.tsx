@@ -453,10 +453,9 @@ const Dispatch = () => {
                                   </Badge>
                                 );
                               })}
-                            <div className="flex items-center gap-2 shrink-0">
                               {test.status === "approved" && test.snipUrls.length > 0 && (
                                 <Button size="sm" variant="ghost" className="h-8 text-xs gap-1" onClick={() => setViewSnipImages(test.snipUrls)}>
-                                  <Eye className="h-3.5 w-3.5" /> Snip ({test.snipUrls.length})
+                                  <Eye className="h-3.5 w-3.5" /> Snip
                                 </Button>
                               )}
                               {test.status === "approved" && (
