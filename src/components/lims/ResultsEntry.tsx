@@ -1728,6 +1728,13 @@ const ResultsEntry = () => {
           </div>
         </DialogContent>
       </Dialog>
+      {reTotalPages > 1 && (
+        <div className="flex items-center justify-between mt-4">
+          <Button variant="outline" size="sm" disabled={rePage === 0} onClick={() => setRePage(p => p - 1)}>Prev</Button>
+          <span className="text-sm text-muted-foreground">Page {rePage + 1} of {reTotalPages} ({reCount} total)</span>
+          <Button variant="outline" size="sm" disabled={rePage >= reTotalPages - 1} onClick={() => setRePage(p => p + 1)}>Next</Button>
+        </div>
+      )}
     </div>
   );
 };
