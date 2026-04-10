@@ -80,10 +80,11 @@ Deno.serve(async (req) => {
           .eq("id", order.id);
       }
 
-      // Enrich tests with machine_id: prefer order JSON, fallback to tests table
+      // Enrich tests with machine_id: prefer order JSON, fallback to tests table then parameters table
       const testCodes = pendingTests.map((t: any) => t.code).filter(Boolean);
       let machineMap: Record<string, string> = {};
       if (testCodes.length > 0) {
+        // Fallback 1: tests table (for test codes like TSTxxxx)
         const { data: testRows } = await supabase
           .from("tests")
           .select("test_code, machine_id")
@@ -91,6 +92,19 @@ Deno.serve(async (req) => {
         if (testRows) {
           for (const row of testRows) {
             if (row.test_code && row.machine_id) machineMap[row.test_code] = row.machine_id;
+          }
+        }
+        // Fallback 2: report_test_parameters table (for param codes like PRMxxxx)
+        const missingCodes = testCodes.filter((c: string) => !machineMap[c]);
+        if (missingCodes.length > 0) {
+          const { data: paramRows } = await supabase
+            .from("report_test_parameters")
+            .select("param_code, machine_id")
+            .in("param_code", missingCodes);
+          if (paramRows) {
+            for (const row of paramRows) {
+              if (row.param_code && row.machine_id) machineMap[row.param_code] = row.machine_id;
+            }
           }
         }
       }
