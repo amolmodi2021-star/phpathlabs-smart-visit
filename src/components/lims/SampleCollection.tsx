@@ -607,9 +607,9 @@ const SampleCollection = () => {
                        {reg.status === "repeat_collection" && (
                          <Badge variant="destructive" className="ml-2 text-xs">REPEAT</Badge>
                         )}
-                       {!isPending && reg.status !== "sample_collected" && (
-                         <Badge className="ml-2 text-xs bg-amber-500 text-white border-0">PARTIAL</Badge>
-                        )}
+{!isPending && reg.status !== "sample_collected" && groups.some(g => !g.isCollected) && (
+                          <Badge className="ml-2 text-xs bg-amber-500 text-white border-0">PARTIAL</Badge>
+                         )}
                      </div>
                   </TableCell>
                   <TableCell className="text-sm">{reg.mobile_number}</TableCell>
