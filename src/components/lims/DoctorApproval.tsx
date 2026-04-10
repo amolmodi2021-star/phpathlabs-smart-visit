@@ -55,7 +55,7 @@ const DoctorApproval = () => {
     queryKey: ["doctor_approval_regs", debouncedSearch],
     queryFn: async () => {
       let query = supabase.from("patient_registrations").select("*")
-        .or("status.in.(sample_accepted,entered,verified),accepted_samples.neq.[]")
+        .in("status", ["partial_verified", "verified", "partially_approved"])
         .eq("bill_cancelled", false).order("is_stat", { ascending: false }).order("updated_at", { ascending: false });
       if (debouncedSearch) query = query.or(`patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%,umr_number.ilike.%${debouncedSearch}%`);
       const { data } = await query;

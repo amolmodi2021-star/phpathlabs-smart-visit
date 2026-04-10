@@ -88,8 +88,7 @@ const ResultVerification = () => {
       let query = supabase
         .from("patient_registrations")
         .select("*")
-        .or("status.in.(sample_accepted,entered),accepted_samples.neq.[]")
-        .not("status", "in", "(approved,dispatched)")
+        .in("status", ["processing", "partial_processing", "processed", "partial_verified"])
         .eq("bill_cancelled", false)
         .order("is_stat", { ascending: false })
         .order("updated_at", { ascending: false });
