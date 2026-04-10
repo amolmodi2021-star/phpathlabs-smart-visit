@@ -78,8 +78,8 @@ const SampleAcceptance = () => {
       let query = supabase
         .from("patient_registrations")
         .select("*")
-        .in("status", ["registered", "sample_collected"])
-        .or("status.eq.sample_collected,collected_samples.neq.[]")
+        .in("status", ["registered", "sample_collected", "sample_accepted"])
+        .or("status.eq.sample_collected,status.eq.sample_accepted,collected_samples.neq.[]")
         .eq("bill_cancelled", false)
         .order("updated_at", { ascending: false });
       if (debouncedSearch) {
