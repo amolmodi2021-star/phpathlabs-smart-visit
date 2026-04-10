@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -389,7 +391,11 @@ const LimsReportView = () => {
         <h1 className="text-xl font-bold">
           Report — {report.patient_name} ({report.invoice_number})
         </h1>
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Switch id="letterhead-toggle" checked={showLetterhead} onCheckedChange={setShowLetterhead} />
+            <Label htmlFor="letterhead-toggle" className="text-sm cursor-pointer">With Letterhead</Label>
+          </div>
           <Button size="sm" variant="outline" onClick={() => window.print()}>
             <Printer className="h-4 w-4 mr-1" />Print
           </Button>
@@ -415,7 +421,7 @@ const LimsReportView = () => {
             }}
           >
             {/* Background letterhead */}
-            {letterheadImageUrl && (
+            {letterheadImageUrl && showLetterhead && (
               <img
                 src={letterheadImageUrl}
                 alt=""
