@@ -21,6 +21,11 @@ const TUBE_COLOR_MAP: Record<string, string> = {
   white: "#ffffff", orange: "#ed8936", pink: "#ed64a6", black: "#1a202c",
 };
 
+interface CollectedSampleEntry {
+  key: string;
+  collected_at: string;
+}
+
 interface BarcodeGroup {
   groupKey: string;
   sampleId: string;
@@ -31,7 +36,25 @@ interface BarcodeGroup {
   testNames: string[];
   selected: boolean;
   isCollected: boolean;
+  collectedAt: string | null;
 }
+
+const parseCollectedSamples = (raw: any[]): CollectedSampleEntry[] => {
+  if (!raw || raw.length === 0) return [];
+  return raw.map(item => {
+    if (typeof item === "string") return { key: item, collected_at: "" };
+    return { key: item.key, collected_at: item.collected_at || "" };
+  });
+};
+
+const getCollectedKeys = (entries: CollectedSampleEntry[]): string[] => entries.map(e => e.key);
+
+const formatCollectedAt = (dt: string): string => {
+  if (!dt) return "";
+  try {
+    return format(new Date(dt), "dd-MM-yyyy hh:mm a");
+  } catch { return ""; }
+};
 
 const SampleCollection = () => {
   const qc = useQueryClient();
