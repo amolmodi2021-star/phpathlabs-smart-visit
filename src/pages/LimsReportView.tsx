@@ -618,74 +618,83 @@ const LimsReportView = () => {
   );
 };
 
-function renderParamsWithSubheaders(block: TestBlock, tpOrder: any[]) {
-  const rows: JSX.Element[] = [];
-  const paramById: Record<string, TestResultEntry> = {};
-  block.params.forEach(p => { paramById[p.parameter_id] = p; });
+/** Transform LIMS TestBlock[] into the grouped format for ReportResultsSection */
+function transformBlocksToGrouped(
+  deptName: string,
+  blocks: TestBlock[],
+  testsMap: Record<string, any>,
+  testParamsMap: Record<string, any[]>
+): Record<string, Record<string, TestResult[]>> {
+  const profiles: Record<string, TestResult[]> = {};
 
-  if (tpOrder.length > 0) {
-    tpOrder.forEach((tp, i) => {
-      if (tp.is_subheader && tp.subheader_text) {
-        rows.push(
-          <tr key={`sh-${i}`}>
-            <td colSpan={5} className="font-semibold pt-1 pb-0.5 text-gray-700 border-b" style={{ fontSize: "13px" }}>
-              {tp.subheader_text}
-            </td>
-          </tr>
-        );
-      } else {
-        const param = paramById[tp.parameter_id];
-        if (param) {
-          rows.push(renderParamRow(param, `tp-${i}`));
-          delete paramById[tp.parameter_id]; // Mark as used
+  blocks.forEach(block => {
+    const profName = block.testName;
+    const tpOrder = testParamsMap[block.testId] || [];
+    const paramById: Record<string, TestResultEntry> = {};
+    block.params.forEach(p => { paramById[p.parameter_id] = p; });
+
+    const results: TestResult[] = [];
+
+    if (tpOrder.length > 0) {
+      tpOrder.forEach((tp: any) => {
+        if (tp.is_subheader && tp.subheader_text) {
+          results.push({
+            parameter_name: tp.subheader_text,
+            result_value: '',
+            is_subheader: true,
+            subheader_text: tp.subheader_text,
+          });
+        } else {
+          const param = paramById[tp.parameter_id];
+          if (param) {
+            results.push(mapParamToTestResult(param));
+            delete paramById[tp.parameter_id];
+          }
         }
-      }
-    });
-    // Render any remaining params not in test_parameters
-    Object.values(paramById).forEach((param, i) => {
-      rows.push(renderParamRow(param, `extra-${i}`));
-    });
-  } else {
-    block.params.forEach((param, i) => {
-      rows.push(renderParamRow(param, `p-${i}`));
-    });
-  }
+      });
+      // Remaining params not in test_parameters
+      Object.values(paramById).forEach(param => {
+        results.push(mapParamToTestResult(param));
+      });
+    } else {
+      block.params.forEach(param => {
+        results.push(mapParamToTestResult(param));
+      });
+    }
 
-  return rows;
+    profiles[profName] = results;
+  });
+
+  return { [deptName]: profiles };
 }
 
-function renderParamRow(param: TestResultEntry, key: string) {
-  const isAbnormal = param.flag && param.flag !== "N" && param.flag !== "Normal";
-  const isDescriptive = !param.unit && !param.reference_range && !param.normal_range_low && !param.normal_range_high && (!param.flag || param.flag === "N" || param.flag === "Normal");
+function mapParamToTestResult(param: TestResultEntry): TestResult {
+  return {
+    parameter_name: param.parameter_name,
+    result_value: param.result_value,
+    unit: param.unit || undefined,
+    normal_range_text: param.reference_range || undefined,
+    normal_range_low: param.normal_range_low?.toString() || undefined,
+    normal_range_high: param.normal_range_high?.toString() || undefined,
+    flag: param.flag || undefined,
+    test_name: param.test_name,
+  };
+}
 
-  if (isDescriptive) {
-    return (
-      <tr key={key} className="border-b border-gray-100">
-        <td className="py-0.5 pl-1" style={{ fontSize: "13px" }}>{param.parameter_name}</td>
-        <td colSpan={4} className="py-0.5 pl-1" style={{ fontSize: "13px", wordBreak: "break-word" }}>
-          {param.result_value}
-        </td>
-      </tr>
-    );
-  }
-
-  return (
-    <tr key={key} className={`border-b border-gray-100 ${isAbnormal ? "font-bold" : ""}`} style={{ fontSize: "13px" }}>
-      <td className="py-0.5 pl-1">{param.parameter_name}</td>
-      <td className={`text-center py-0.5 ${isAbnormal ? "text-red-600" : ""}`}>
-        {param.result_value}
-      </td>
-      <td className="text-center py-0.5 text-gray-500">{param.unit || ""}</td>
-      <td className="text-center py-0.5 text-gray-500">{param.reference_range || ""}</td>
-      <td className="text-center py-0.5">
-        {param.flag && param.flag !== "N" && param.flag !== "Normal" && (
-          <span className={`font-bold ${param.flag === "H" || param.flag === "High" ? "text-red-600" : "text-blue-600"}`} style={{ fontSize: "12px" }}>
-            {param.flag === "H" ? "HIGH" : param.flag === "L" ? "LOW" : param.flag}
-          </span>
-        )}
-      </td>
-    </tr>
-  );
+function buildProfileMetaMap(
+  blocks: TestBlock[],
+  testsMap: Record<string, any>
+): Record<string, ProfileMeta> {
+  const map: Record<string, ProfileMeta> = {};
+  blocks.forEach(block => {
+    map[block.testName] = {
+      sample_type: block.sampleType || undefined,
+      analyzer: block.instrument || undefined,
+      method: block.method || undefined,
+      interpretation: block.interpretation || undefined,
+    };
+  });
+  return map;
 }
 
 export default LimsReportView;
