@@ -1,53 +1,32 @@
 
-Goal: fix the report preview so the letterhead actually appears when the toggle is ON.
 
-What I found
-- The toggle logic is already correct in `src/pages/LimsReportView.tsx`.
-- The real failure is in PDF.js worker loading:
-  - `LimsReportView.tsx` uses `pdf.worker.min.mjs`
-  - the project is pinned to `pdfjs-dist 3.11.174`
-  - the working implementation in `src/components/lims/SnipOnLetterhead.tsx` uses `pdf.worker.min.js`
-- Your runtime logs confirm this exact error:
-  - `Cannot load script at: .../pdf.worker.min.mjs`
-- Because of that, `convertPdfToImage()` fails, `letterheadImageUrl` stays `null`, and nothing is shown even when the toggle is on.
+# Fix: Print Misalignment Due to Letterhead Spacing
 
-Implementation plan
+## Problem
+The report reserves a large top margin (`top_margin_cm`, likely ~2.5cm = 25mm) to position content below the letterhead. When printing via the browser's Print dialog, background images are hidden by default — so the letterhead disappears but the blank space remains, pushing content far down the page.
 
-1. Update the PDF.js worker path in `src/pages/LimsReportView.tsx`
-- Change:
-  - `pdf.worker.min.mjs`
-- To:
-  - `pdf.worker.min.js`
-- This will match the installed PDF.js version and the existing working pattern already used elsewhere in the app.
+## Solution
+Make the top/bottom padding conditional on the `showLetterhead` toggle:
+- **Letterhead ON**: Use the configured `top_margin_cm` / `bottom_margin_cm` (current behavior)
+- **Letterhead OFF**: Use a minimal print margin (e.g., 10mm top, 10mm bottom)
 
-2. Keep the current `fetch -> ArrayBuffer -> getDocument({ data })` approach
-- That part is fine and can stay.
-- The missing piece is the correct worker file, not the fetch logic.
+This affects two places in `src/pages/LimsReportView.tsx`:
 
-3. Improve failure handling in `convertPdfToImage()`
-- Keep the `console.error`
-- Add a small visible fallback state/message only if conversion fails, so future breakage is easier to spot instead of silently rendering no letterhead.
+### Changes
 
-4. Verify the render path in the report page
-- Confirm `letterheadImageUrl && showLetterhead` now resolves truthy after the worker fix.
-- Confirm the preview and downloaded PDF both include the letterhead when the toggle is ON and exclude it when OFF.
+1. **Pagination logic** (line ~217): Use conditional margins when calculating `usableHeight` so content is paginated correctly for both modes
+2. **Render padding** (line ~364, ~440): Apply the same conditional margins to the rendered page padding
 
-Optional cleanup I recommend while touching this file
-- The console also shows React ref warnings for:
-  - `LimsReportHeader`
-  - `ReportSignatureBlock`
-- These are not the cause of the missing letterhead, but I can clean them up in the same pass if needed by removing/refactoring any invalid ref usage around those components.
+```
+// Conceptual change:
+const topMm = showLetterhead ? layoutSettings.top_margin_cm * 10 : 10;
+const bottomMm = showLetterhead ? layoutSettings.bottom_margin_cm * 10 : 10;
+```
 
-Files to update
-- `src/pages/LimsReportView.tsx`
+Both the `useMemo` pagination calculation and the render section use `topMm`/`bottomMm`, so both must reference `showLetterhead`.
 
-Expected result
-- Refreshing the report page will show the letterhead by default.
-- Turning the toggle OFF will hide it.
-- Downloaded PDF will match the selected toggle state.
+### Files
+- `src/pages/LimsReportView.tsx` — conditional margins based on `showLetterhead` state
 
-Technical note
-- Root cause is version/worker mismatch, not a storage or toggle bug.
-- `pdfjs-dist@3.11.174` should use the classic worker file:
-  - `pdf.worker.min.js`
-- The current `.mjs` URL is what is breaking runtime worker initialization.
+No database changes needed.
+
