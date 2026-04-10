@@ -194,7 +194,7 @@ const SampleCollection = () => {
   const toggleAllBarcodes = (regId: string, groups: BarcodeGroup[], selectAll: boolean) => {
     setSelectedBarcodes(prev => {
       const regSel: Record<number, boolean> = {};
-      groups.forEach((_, i) => { regSel[i] = selectAll; });
+      groups.forEach((g, i) => { regSel[i] = g.isCollected ? false : selectAll; });
       return { ...prev, [regId]: regSel };
     });
   };
