@@ -85,3 +85,15 @@ input[type="number"] {
     visibility: hidden !important;
   }
 }
+
+.print-strip-colors,
+.print-strip-colors * {
+  background-color: transparent !important;
+  background: transparent !important;
+  color: black !important;
+}
+.print-strip-colors table,
+.print-strip-colors th,
+.print-strip-colors td {
+  border-color: #d1d5db !important;
+}
