@@ -45,7 +45,7 @@ const Dispatch = () => {
     queryKey: ["dispatch_regs", debouncedSearch],
     queryFn: async () => {
       let query = supabase.from("patient_registrations").select("*")
-        .in("status", ["sample_accepted", "entered", "verified", "approved", "dispatched"])
+        .or("status.in.(sample_accepted,entered,verified,approved,dispatched),accepted_samples.neq.[]")
         .eq("bill_cancelled", false)
         .order("is_stat", { ascending: false })
         .order("updated_at", { ascending: false });
@@ -268,7 +268,7 @@ const Dispatch = () => {
                     {isExpanded ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
                     {reg.is_stat && <span className="relative flex h-2.5 w-2.5 shrink-0"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" /><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive" /></span>}
                     <div className="min-w-0">
-                      <div className="font-medium text-sm truncate">{reg.patient_name}<span className="text-xs text-muted-foreground ml-2">{reg.invoice_number}</span></div>
+                      <div className="font-medium text-sm truncate">{reg.patient_name}{!["sample_accepted","entered","verified","approved","dispatched"].includes(reg.status) && Array.isArray(reg.accepted_samples) && reg.accepted_samples.length > 0 && <Badge className="bg-amber-100 text-amber-700 text-[10px] ml-1">PARTIAL</Badge>}<span className="text-xs text-muted-foreground ml-2">{reg.invoice_number}</span></div>
                       <div className="text-xs text-muted-foreground">
                         {reg.mobile_number} • {entry.approvedCount} approved, {entry.pendingCount} pending
                       </div>

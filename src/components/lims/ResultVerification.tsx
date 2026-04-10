@@ -88,7 +88,7 @@ const ResultVerification = () => {
       let query = supabase
         .from("patient_registrations")
         .select("*")
-        .in("status", ["sample_accepted", "entered"])
+        .or("status.in.(sample_accepted,entered),accepted_samples.neq.[]")
         .eq("bill_cancelled", false)
         .order("is_stat", { ascending: false })
         .order("updated_at", { ascending: false });
@@ -748,6 +748,9 @@ const ResultVerification = () => {
         <div className="flex items-center gap-3">
           <div>
             <span className="font-semibold">{reg.patient_name}</span>
+            {reg.status !== "sample_accepted" && reg.status !== "entered" && Array.isArray(reg.accepted_samples) && reg.accepted_samples.length > 0 && (
+              <Badge className="bg-amber-100 text-amber-700 text-[10px] ml-1">PARTIAL</Badge>
+            )}
             {reg.is_stat && (
               <span className="relative inline-flex h-2.5 w-2.5 ml-1.5 align-middle">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" />
