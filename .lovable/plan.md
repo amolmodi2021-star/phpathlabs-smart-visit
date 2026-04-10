@@ -1,21 +1,19 @@
 
 
-# Hide Pending Samples in Collected Tab Dropdown
+# Show Collection Date/Time for Every Collected Tube
 
 ## Problem
-In the Collected tab, expanding a partially-collected patient shows ALL tube groups — including ones not yet collected. Only collected tubes should appear.
+Tubes collected before the recent timestamp feature was added have no `collected_at` stored, so the collection time doesn't display for those tubes. The timestamp display code exists (line 501-503) but only renders when `collectedAt` is non-empty.
 
 ## Fix
-In `src/components/lims/SampleCollection.tsx`, line 440: when `!isPending`, filter the groups to only show collected ones.
+In `src/components/lims/SampleCollection.tsx`:
 
-Change the `groups.map(...)` loop (line 440) to iterate over a filtered list:
+1. **Fallback timestamp for old data**: When building barcode groups (line 192-204), if a tube is marked collected but has no `collected_at`, fall back to `reg.updated_at` as an approximate collection time.
 
-```typescript
-const displayGroups = isPending ? groups : groups.filter(g => g.isCollected);
-```
+2. **Always show timestamp for collected tubes**: Remove the `&& group.collectedAt` condition at line 501 — since every collected tube will now have a timestamp (either real or fallback), the date/time will always display.
 
-Then use `displayGroups` in the `.map()` at line 440. The header text and all rendering below will use this filtered list, so uncollected tubes are simply hidden in the Collected view.
+3. **Pass `reg.updated_at` into `buildBarcodeGroups`**: Update the function signature to accept the registration's `updated_at` so it can use it as a fallback.
 
 ## File
-- `src/components/lims/SampleCollection.tsx` — one small change around line 439-440
+- `src/components/lims/SampleCollection.tsx`
 
