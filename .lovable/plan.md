@@ -1,17 +1,21 @@
 
 
-# Fix: Print Pages Stacking On Top Of Each Other
+# Fix: Blank Page Between Print Pages
 
 ## Problem
-The print CSS sets `position: absolute; top: 0;` on every `[data-page]` element. This places ALL pages at the exact same position (top-left), causing them to overlap into a single printed page.
+Two issues causing the blank middle page:
+1. `page-break-after: always` on every `[data-page]` forces a break after the LAST page too, creating a trailing blank page
+2. The `gap-4` class on `#print-container` adds visible spacing between pages during print, which can push content and create extra pages
 
-## Solution
-Remove `position: absolute` and `top: 0` from the print CSS. Instead, use `position: relative` and `display: block` so pages flow naturally one after another, each triggering a page break.
+## Changes in `src/pages/LimsReportView.tsx`
 
-## Change in `src/pages/LimsReportView.tsx` (lines 552-571)
+### 1. Remove gap from container in print (line 416)
+The `gap-4` class is fine for screen display but must be zeroed out in print CSS.
 
-Replace the current print styles with:
+### 2. Use `page-break-after` only on non-last pages (lines 562-573)
+Replace `page-break-after: always` with `:not(:last-child)` selector so the last page doesn't force an extra blank page.
 
+Updated print CSS:
 ```css
 @media print {
   body * { visibility: hidden; }
@@ -21,25 +25,26 @@ Replace the current print styles with:
     left: 0;
     top: 0;
     width: 210mm;
+    gap: 0 !important;
   }
   [data-page] {
     position: relative;
     display: block;
     width: 210mm !important;
     height: 297mm !important;
-    page-break-after: always;
-    break-after: page;
     margin: 0 !important;
     padding: 0 !important;
     box-shadow: none !important;
     overflow: hidden;
   }
+  [data-page]:not(:last-child) {
+    page-break-after: always;
+    break-after: page;
+  }
   @page { size: A4; margin: 0; }
   .print\\:hidden { display: none !important; }
 }
 ```
-
-Also add `id="print-container"` to the wrapping `div ref={printRef}` (line 416) so the print container itself is positioned absolutely but its children (pages) flow naturally within it.
 
 ## Files
 - `src/pages/LimsReportView.tsx`
