@@ -334,7 +334,7 @@ const Dispatch = () => {
           <p className="text-sm">All approved reports have been dispatched</p>
         </div>
       ) : (
-        <div className="flex gap-3" style={{ height: "calc(100vh - 240px)" }}>
+        <div className="flex gap-3" style={{ height: "calc(100vh - 180px)" }}>
           {/* LEFT PANEL — Patient List */}
           <Card className="w-[380px] shrink-0 flex flex-col overflow-hidden">
             <div className="p-3 border-b">
