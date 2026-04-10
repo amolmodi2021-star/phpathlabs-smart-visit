@@ -200,6 +200,32 @@ const ResultsEntry = () => {
     },
   });
 
+  // ─── Fetch accepted sample_tubes to filter results by accepted tests only ───
+  const { data: acceptedTubes = [] } = useQuery({
+    queryKey: ["results_accepted_tubes", regIds.join(",")],
+    enabled: regIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("sample_tubes" as any)
+        .select("registration_id, test_ids")
+        .in("registration_id", regIds)
+        .eq("status", "accepted");
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+  });
+
+  // Build set of accepted test_ids per registration
+  const acceptedTestIdsByReg = useMemo(() => {
+    const map: Record<string, Set<string>> = {};
+    for (const tube of acceptedTubes) {
+      if (!map[tube.registration_id]) map[tube.registration_id] = new Set();
+      const ids = Array.isArray(tube.test_ids) ? tube.test_ids : [];
+      ids.forEach((id: string) => map[tube.registration_id].add(id));
+    }
+    return map;
+  }, [acceptedTubes]);
+
   // ─── Fetch outsourced_test_snips to know which inhouse tests/params have been transferred ───
   const { data: outsourcedSnips = [] } = useQuery({
     queryKey: ["results_outsourced_snips", regIds.join(",")],
@@ -467,7 +493,8 @@ const ResultsEntry = () => {
     return acceptedRegs.map((reg: any) => {
       const tests = (reg.tests || []) as any[];
       const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
-      const activeTests = tests.filter((t: any) => !cancelledIds.has(t.test_id));
+      const acceptedTestIds = acceptedTestIdsByReg[reg.id];
+      const activeTests = tests.filter((t: any) => !cancelledIds.has(t.test_id) && acceptedTestIds?.has(t.test_id));
 
       const parameters: ParameterResult[] = [];
       const incompleteTests: IncompleteTest[] = [];
@@ -554,7 +581,7 @@ const ResultsEntry = () => {
       }
       return { registration: reg, parameters, incompleteTests, snipOnlyTests };
     }).filter(entry => entry.parameters.length > 0 || entry.incompleteTests.length > 0 || entry.snipOnlyTests.length > 0);
-  }, [acceptedRegs, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails]);
+  }, [acceptedRegs, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails, acceptedTestIdsByReg]);
 
   // ─── Calculate flag ───
   const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string): string => {
