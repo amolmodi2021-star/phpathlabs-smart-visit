@@ -1,0 +1,1 @@
+ALTER TABLE public.patient_registrations ADD COLUMN accepted_samples jsonb NOT NULL DEFAULT '[]'::jsonb;

@@ -1855,6 +1855,7 @@ export type Database = {
       }
       patient_registrations: {
         Row: {
+          accepted_samples: Json
           address: string | null
           bill_cancelled: boolean
           cancelled_tests: Json
@@ -1895,6 +1896,7 @@ export type Database = {
           visit_type: string
         }
         Insert: {
+          accepted_samples?: Json
           address?: string | null
           bill_cancelled?: boolean
           cancelled_tests?: Json
@@ -1935,6 +1937,7 @@ export type Database = {
           visit_type?: string
         }
         Update: {
+          accepted_samples?: Json
           address?: string | null
           bill_cancelled?: boolean
           cancelled_tests?: Json
