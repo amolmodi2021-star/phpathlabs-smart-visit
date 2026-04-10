@@ -342,10 +342,10 @@ const SampleCollection = () => {
 
   // Partial collect mutation
   const partialCollectMutation = useMutation({
-    mutationFn: async ({ regId, collectedKeys }: { regId: string; collectedKeys: string[] }) => {
+    mutationFn: async ({ regId, collectedEntries }: { regId: string; collectedEntries: CollectedSampleEntry[] }) => {
       const { error } = await supabase
         .from("patient_registrations")
-        .update({ collected_samples: collectedKeys } as any)
+        .update({ collected_samples: collectedEntries } as any)
         .eq("id", regId);
       if (error) throw error;
     },
