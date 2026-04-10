@@ -424,22 +424,38 @@ const Dispatch = () => {
                         <Collapsible key={testKey} className="border rounded-lg bg-background">
                           {/* Test header with latest status */}
                           <div className="flex items-center justify-between px-4 py-3">
-                            <div className="flex-1 min-w-0">
-                              <CollapsibleTrigger className="flex items-center gap-2 group cursor-pointer w-full text-left">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <CollapsibleTrigger className="flex items-center gap-2 group cursor-pointer text-left">
                                 <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-90" />
                                 <span className="font-medium text-sm">{test.testName}</span>
                               </CollapsibleTrigger>
-                              {latestStep && (
-                                <div className="ml-6 mt-0.5 text-xs text-muted-foreground flex items-center gap-1">
-                                  <Clock className="h-3 w-3" />
-                                  {latestStep.label} — {formatDate(latestStep.timestamp)}
-                                </div>
-                              )}
                             </div>
-                            <div className="flex items-center gap-2 shrink-0">
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {/* Step badges */}
+                              {auditSteps.map((step, idx) => {
+                                const isDone = !!step.timestamp;
+                                const badgeColors = [
+                                  "border-orange-400 text-orange-600 bg-orange-50",
+                                  "border-yellow-500 text-yellow-700 bg-yellow-50",
+                                  "border-indigo-400 text-indigo-600 bg-indigo-50",
+                                  "border-purple-400 text-purple-600 bg-purple-50",
+                                  "border-green-500 text-green-700 bg-green-50",
+                                  "border-blue-500 text-blue-700 bg-blue-50",
+                                ];
+                                const shortLabels = ["Collected", "Accepted", "Entered", "Verified", "Approved", "Dispatched"];
+                                return (
+                                  <Badge
+                                    key={idx}
+                                    variant="outline"
+                                    className={`text-[9px] px-1.5 py-0 h-5 ${isDone ? badgeColors[idx] : "border-muted text-muted-foreground/40 bg-transparent"}`}
+                                  >
+                                    {shortLabels[idx]}
+                                  </Badge>
+                                );
+                              })}
                               {test.status === "approved" && test.snipUrls.length > 0 && (
                                 <Button size="sm" variant="ghost" className="h-8 text-xs gap-1" onClick={() => setViewSnipImages(test.snipUrls)}>
-                                  <Eye className="h-3.5 w-3.5" /> Snip ({test.snipUrls.length})
+                                  <Eye className="h-3.5 w-3.5" /> Snip
                                 </Button>
                               )}
                               {test.status === "approved" && (
