@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
-import { logout, getCurrentUser, isTabAllowed } from "@/lib/auth";
+import { logout, getCurrentUser, isTabAllowed, isActionAllowed } from "@/lib/auth";
 import {
   FileText, LayoutDashboard, Home, Users, TestTubes, MessageSquare,
   Menu, X, LogOut, FlaskConical, AlertTriangle, BarChart3, CreditCard,
@@ -143,8 +143,12 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
           <aside className="flex w-56 shrink-0 flex-col border-r bg-card h-[calc(100vh-3.5rem)] sticky top-14 overflow-hidden">
             <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
               <NavSection items={navItems} />
-              <Separator className="my-2" />
-              <StorageCleanupButton />
+              {isActionAllowed("storage_cleanup") && (
+                <>
+                  <Separator className="my-2" />
+                  <StorageCleanupButton />
+                </>
+              )}
             </nav>
           </aside>
         )}
@@ -154,8 +158,12 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
             <div className="absolute inset-0 bg-foreground/20" onClick={() => setOpen(false)} />
             <aside className="absolute left-0 top-14 bottom-0 w-64 bg-card border-r p-3 space-y-1 animate-fade-in overflow-y-auto">
               <NavSection items={navItems} onClick={() => setOpen(false)} />
-              <Separator className="my-2" />
-              <StorageCleanupButton onClick={() => setOpen(false)} />
+              {isActionAllowed("storage_cleanup") && (
+                <>
+                  <Separator className="my-2" />
+                  <StorageCleanupButton onClick={() => setOpen(false)} />
+                </>
+              )}
             </aside>
           </div>
         )}

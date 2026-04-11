@@ -49,6 +49,13 @@ export function getAllowedSections(route: string): string[] | null {
   return null; // null means all sections allowed
 }
 
+export function isActionAllowed(actionKey: string): boolean {
+  const user = getCurrentUser();
+  const actions = user?.permissions?.actions || {};
+  if (Object.keys(actions).length === 0) return true; // no restrictions if no actions set
+  return actions[actionKey] === true;
+}
+
 export function getFirstAllowedRoute(): string {
   const tabs = getUserPermissions();
   const allRoutes = ["/", "/dashboard", "/home-visits", "/phlebotomists", "/tests", "/templates",
