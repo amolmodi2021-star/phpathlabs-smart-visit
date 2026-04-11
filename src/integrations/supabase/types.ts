@@ -1647,6 +1647,33 @@ export type Database = {
         }
         Relationships: []
       }
+      message_send_log: {
+        Row: {
+          created_at: string
+          id: string
+          message_type: string
+          mobile_number: string
+          patient_name: string | null
+          sent_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message_type: string
+          mobile_number: string
+          patient_name?: string | null
+          sent_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message_type?: string
+          mobile_number?: string
+          patient_name?: string | null
+          sent_at?: string
+        }
+        Relationships: []
+      }
       message_templates: {
         Row: {
           created_at: string
