@@ -55,6 +55,7 @@ const LOCATIONS = ["ALL", "PH VESU", "NON PHPL"];
 // Module-level state so it survives component unmount/remount
 let _moduleAbort = false;
 let _moduleSending = false;
+let _modulePaused = false;
 let _moduleProgress = 0;
 let _modulePhase = "";
 
@@ -98,6 +99,7 @@ const AutomatedMarketing = () => {
   const [previewing, setPreviewing] = useState(false);
   const [previewResults, setPreviewResults] = useState<PreviewResult[] | null>(null);
   const [sending, setSending] = useState(_moduleSending);
+  const [paused, setPaused] = useState(_modulePaused);
   const [sendProgress, setSendProgress] = useState(_moduleProgress);
   const [sendPhase, setSendPhase] = useState(_modulePhase);
   const abortRef = useRef(_moduleAbort);
@@ -113,10 +115,12 @@ const AutomatedMarketing = () => {
     const interval = setInterval(() => {
       if (_moduleSending) {
         setSending(true);
+        setPaused(_modulePaused);
         setSendProgress(_moduleProgress);
         setSendPhase(_modulePhase);
       } else {
         setSending(false);
+        setPaused(false);
       }
     }, 500);
     return () => clearInterval(interval);
@@ -895,17 +899,24 @@ const AutomatedMarketing = () => {
     const { data: abnTmpl } = await supabase.from("marketing_templates").select("whatsapp_template_name, body_mapping, api_base_url, from_number").eq("template_name", "Abnormal PNG").maybeSingle();
 
     _moduleAbort = false;
+    _modulePaused = false;
     abortRef.current = false;
     _moduleSending = true;
     _moduleProgress = 0;
     _modulePhase = "";
     setSending(true);
+    setPaused(false);
     setSendProgress(0);
 
     // Wrap state setters to also update module-level vars for cross-navigation persistence
     const _setSendProgress = (v: number) => { _moduleProgress = v; setSendProgress(v); };
     const _setSendPhase = (v: string) => { _modulePhase = v; setSendPhase(v); };
     const _checkAbort = () => abortRef.current || _moduleAbort;
+    const _waitWhilePaused = async () => {
+      while (_modulePaused && !_checkAbort()) {
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    };
 
     let totalMessages = previewResults.reduce((sum, r) => sum + r.eligible, 0);
     if (trial) totalMessages = Math.min(totalMessages, trialMax);
@@ -917,6 +928,7 @@ const AutomatedMarketing = () => {
 
     for (const preview of previewResults) {
       if (preview.eligible === 0) continue;
+      await _waitWhilePaused();
       if (_checkAbort()) break;
       const filter = enabledFilters.find((f) => f.id === preview.filterId);
       if (!filter) continue;
@@ -981,6 +993,7 @@ const AutomatedMarketing = () => {
         const { bgImg, canvas, ctx, placeholders } = templateAssets;
 
         for (let i = 0; i < preview.records.length; i++) {
+          await _waitWhilePaused();
           if (_checkAbort()) break;
           if (trial && trialSentCount >= trialMax) break;
           const r = preview.records[i];
@@ -1097,6 +1110,7 @@ const AutomatedMarketing = () => {
         }
 
         for (let i = 0; i < preview.records.length; i++) {
+          await _waitWhilePaused();
           if (_checkAbort()) break;
           if (trial && trialSentCount >= trialMax) break;
           const r = preview.records[i];
@@ -1197,6 +1211,7 @@ const AutomatedMarketing = () => {
         const delayMs = 3000;
 
         for (let i = 0; i < preview.records.length; i++) {
+          await _waitWhilePaused();
           if (_checkAbort()) break;
           if (trial && trialSentCount >= trialMax) break;
           const r = preview.records[i];
@@ -1268,7 +1283,7 @@ const AutomatedMarketing = () => {
       }
     }
 
-    _moduleSending = false; _moduleProgress = 0; _modulePhase = ''; setSending(false);
+    _moduleSending = false; _modulePaused = false; _moduleProgress = 0; _modulePhase = ''; setSending(false); setPaused(false);
     _setSendPhase("");
     setPreviewResults(null);
     if (!trial) {
@@ -1708,14 +1723,27 @@ const AutomatedMarketing = () => {
       {sending && (
         <div className="space-y-2 p-3 border rounded-lg bg-muted/50">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-medium">{sendPhase}</p>
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={() => { abortRef.current = true; _moduleAbort = true; toast.warning("Stopping after current message..."); }}
-            >
-              ⛔ STOP NOW
-            </Button>
+            <p className="text-sm font-medium">{paused ? "⏸️ PAUSED — " : ""}{sendPhase}</p>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant={paused ? "default" : "outline"}
+                onClick={() => {
+                  _modulePaused = !_modulePaused;
+                  setPaused(_modulePaused);
+                  toast.info(_modulePaused ? "Paused — will resume when you click Resume" : "Resumed sending...");
+                }}
+              >
+                {paused ? "▶️ Resume" : "⏸️ Pause"}
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() => { abortRef.current = true; _moduleAbort = true; toast.warning("Stopping after current message..."); }}
+              >
+                ⛔ STOP
+              </Button>
+            </div>
           </div>
           <Progress value={sendProgress} />
           <p className="text-xs text-muted-foreground">{sendProgress}% complete</p>
@@ -1869,12 +1897,24 @@ const AutomatedMarketing = () => {
                   {isTrialMode ? "Send Trial" : "Send Messages"}
                 </Button>
                 {sending && (
-                  <Button
-                    onClick={() => { abortRef.current = true; _moduleAbort = true; toast.warning("Stopping after current message..."); }}
-                    variant="destructive"
-                  >
-                    ⛔ STOP NOW
-                  </Button>
+                  <>
+                    <Button
+                      onClick={() => {
+                        _modulePaused = !_modulePaused;
+                        setPaused(_modulePaused);
+                        toast.info(_modulePaused ? "Paused" : "Resumed");
+                      }}
+                      variant={paused ? "default" : "outline"}
+                    >
+                      {paused ? "▶️ Resume" : "⏸️ Pause"}
+                    </Button>
+                    <Button
+                      onClick={() => { abortRef.current = true; _moduleAbort = true; toast.warning("Stopping after current message..."); }}
+                      variant="destructive"
+                    >
+                      ⛔ STOP
+                    </Button>
+                  </>
                 )}
               </div>
             </div>
