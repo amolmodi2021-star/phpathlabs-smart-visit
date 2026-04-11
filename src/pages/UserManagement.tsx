@@ -529,7 +529,7 @@ const UserManagement = () => {
 
             <div>
               <Label className="text-base font-semibold">Tab & Section Permissions</Label>
-              <div className="mt-2 space-y-1 border rounded-md p-3 max-h-[50vh] overflow-y-auto">
+              <div className="mt-2 space-y-1 border rounded-md p-3 max-h-[40vh] overflow-y-auto">
                 {ALL_TABS.map((tab) => {
                   const hasSections = !!tab.sections && tab.sections.length > 0;
                   const enabled = isTabEnabled(tab.route);
@@ -557,6 +557,30 @@ const UserManagement = () => {
                         </div>
                       )}
                     </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-base font-semibold">Action Permissions</Label>
+              <div className="mt-2 space-y-1 border rounded-md p-3">
+                {ALL_ACTIONS.map((action) => {
+                  const checked = roleForm.permissions?.actions?.[action.key] === true;
+                  return (
+                    <label key={action.key} className="flex items-center gap-2 py-1">
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={() => {
+                          const perms = { ...roleForm.permissions };
+                          const actions = { ...(perms.actions || {}) };
+                          actions[action.key] = !checked;
+                          perms.actions = actions;
+                          setRoleForm({ ...roleForm, permissions: perms });
+                        }}
+                      />
+                      <span className="text-sm font-medium">{action.label}</span>
+                    </label>
                   );
                 })}
               </div>
