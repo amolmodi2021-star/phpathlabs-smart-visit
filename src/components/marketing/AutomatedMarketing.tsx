@@ -1238,8 +1238,10 @@ const AutomatedMarketing = () => {
       qc.invalidateQueries({ queryKey: ["drip-campaign-logs"] });
       qc.invalidateQueries({ queryKey: ["crm-contacts"] });
     }
-    const modeLabel = trial ? "Trial complete!" : "Campaign complete!";
-    toast.success(`${modeLabel} Sent: ${totalSent}, Failed: ${totalFailed}, Skipped: ${totalSkipped}`);
+    const aborted = abortRef.current;
+    abortRef.current = false;
+    const modeLabel = aborted ? "⛔ STOPPED!" : trial ? "Trial complete!" : "Campaign complete!";
+    toast[aborted ? "warning" : "success"](`${modeLabel} Sent: ${totalSent}, Failed: ${totalFailed}, Skipped: ${totalSkipped}`);
   };
 
   const logDripAction = async (filter: DripFilter, contact: any, status: string, skipReason?: string) => {
