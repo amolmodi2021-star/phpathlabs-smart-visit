@@ -1,40 +1,99 @@
 
 
-# Plan: Consolidate Min-Interval Check to CRM & Confirm CRM Updates on Send
+# Plan: Loop Backfill + Dedup Until Quotas Are Fulfilled
 
-## Current State
-- CRM `last_sent_date` and `last_sent_type` are **already updated** after each successful send (ABC at line 757, Abnormal at line 867, Promotion at line 956). No changes needed there.
-- However, the `recentSentMobiles` cooldown set is still built from `drip_campaign_log` timestamps instead of CRM. This needs to switch to CRM as the single source of truth.
+## Problem
+The current approach runs backfill once and dedup once. But each dedup pass can remove records that were just backfilled, leaving quota unfilled again. We need to **loop** the backfill→dedup cycle until either quotas are full or no more eligible records exist.
 
 ## Changes
 
 ### File: `src/components/marketing/AutomatedMarketing.tsx`
 
-**1. Remove `created_at` from drip log query (line ~302)**
-Change the select back to:
-```
-.select("filter_id,mobile_number,contact_primary_key,cycle_number")
-```
+**After line 569 (after the min-interval recheck), before "Build results" (line 571), insert a looping backfill+dedup block:**
 
-**2. Switch `recentSentMobiles` source from logs to CRM (lines 332–341)**
-Replace the current drip-log-based loop with CRM-based logic:
 ```typescript
-const intervalDate = new Date();
-intervalDate.setDate(intervalDate.getDate() - minInterval);
-const recentSentMobiles = new Set<string>();
-for (const c of allContacts) {
-  if (c.last_sent_date && new Date(c.last_sent_date) >= intervalDate) {
-    const mob = (c.mobile_number || "").replace(/\D/g, "").slice(-10);
-    if (mob) recentSentMobiles.add(mob);
+// Iterative backfill + dedup loop until quota is stable
+let backfillIterations = 0;
+const MAX_BACKFILL_ITERATIONS = 10; // safety cap
+
+while (backfillIterations < MAX_BACKFILL_ITERATIONS) {
+  backfillIterations++;
+  
+  // Calculate free slots
+  let totalKeptNow = filterCapped.reduce((s: number, f: any) => s + f.kept.length, 0);
+  let freeSlots = maxPerDay - totalKeptNow;
+  if (freeSlots <= 0) break;
+
+  // Backfill: pull from each filter's eligible pool in priority order
+  let backfilled = 0;
+  for (const entry of filterCapped) {
+    if (freeSlots <= 0) break;
+    const alreadyKeptPks = new Set(entry.kept.map((r: any) => r.primary_key));
+    const pool = entry.fc.eligible.filter((r: any) => !alreadyKeptPks.has(r.primary_key));
+    
+    for (const record of pool) {
+      if (freeSlots <= 0) break;
+      const mob = (record.mobile_number || "").replace(/\D/g, "").slice(-10);
+      if (!mob) continue;
+      if (finalClaimed.has(mob)) continue;
+      if (recentSentMobiles.has(mob)) continue;
+      
+      entry.kept.push(record);
+      finalClaimed.add(mob);
+      freeSlots--;
+      backfilled++;
+    }
   }
+
+  // If nothing was backfilled, no point continuing
+  if (backfilled === 0) break;
+
+  // Re-run deduplication pass on all kept records
+  const recheck = new Set<string>();
+  let removedThisPass = 0;
+  for (const entry of filterCapped) {
+    entry.kept = entry.kept.filter((record: any) => {
+      const mob = (record.mobile_number || "").replace(/\D/g, "").slice(-10);
+      if (!mob) return true;
+      if (recheck.has(mob)) {
+        entry.fc.skips["final_dedup"] = (entry.fc.skips["final_dedup"] || 0) + 1;
+        removedThisPass++;
+        return false;
+      }
+      if (recentSentMobiles.has(mob)) {
+        entry.fc.skips["final_interval_check"] = (entry.fc.skips["final_interval_check"] || 0) + 1;
+        removedThisPass++;
+        return false;
+      }
+      recheck.add(mob);
+      return true;
+    });
+  }
+
+  // Rebuild finalClaimed from current state
+  finalClaimed.clear();
+  for (const entry of filterCapped) {
+    for (const record of entry.kept) {
+      const mob = (record.mobile_number || "").replace(/\D/g, "").slice(-10);
+      if (mob) finalClaimed.add(mob);
+    }
+  }
+
+  // If dedup removed nothing, quota is stable — done
+  if (removedThisPass === 0) break;
 }
 ```
 
-**No other changes needed** — CRM updates on send are already implemented for all three message types.
+## How It Works
+1. After initial dedup + interval checks, enter a loop
+2. **Backfill**: pull unclaimed, interval-safe records from each filter's eligible pool
+3. **Dedup**: re-run dedup + interval check on all kept records
+4. **Rebuild** `finalClaimed` from current state so next iteration is accurate
+5. **Exit** when: quota full, nothing backfilled, nothing removed, or 10 iterations reached
 
 ## Summary
 - **1 file modified**: `src/components/marketing/AutomatedMarketing.tsx`
-- ~6 lines changed across 2 locations
+- ~50 lines added after line 569
 - No database changes
-- Single source of truth: `crm_contacts.last_sent_date`
+- Guarantees both filters reach their quota cap if enough eligible records exist
 
