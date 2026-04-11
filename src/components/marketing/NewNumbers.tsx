@@ -61,6 +61,7 @@ const NewNumbers = () => {
         const mob = (log.mobile_number || "").replace(/\D/g, "").slice(-10);
         if (!mob || mob.length !== 10) continue;
         if (crmSet.has(mob)) continue;
+        if (blacklistSet.has(mob)) continue;
 
         if (!grouped.has(mob)) {
           grouped.set(mob, {
