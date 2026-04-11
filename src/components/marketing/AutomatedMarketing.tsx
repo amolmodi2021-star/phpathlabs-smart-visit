@@ -220,7 +220,7 @@ const AutomatedMarketing = () => {
       };
 
       const [allContacts, abnormalPks, cyclesData, allLogs] = await Promise.all([
-        fetchAllPg(supabase.from("crm_contacts").select("primary_key,mobile_number,umr_number,last_sent_type")),
+        fetchAllPg(supabase.from("crm_contacts").select("primary_key,mobile_number,umr_number,patient_name,last_sent_type,last_sent_date")),
         fetchAllPg(supabase.from("crm_abnormal_tests").select("contact_primary_key")),
         fetchAllPg(supabase.from("drip_mobile_cycles").select("mobile_number,current_cycle")),
         fetchAllPg(supabase.from("drip_campaign_log").select("filter_id,mobile_number,contact_primary_key,cycle_number").eq("status", "sent")),
@@ -257,6 +257,13 @@ const AutomatedMarketing = () => {
         return contacts.length;
       };
 
+      const getEligibleContacts = (f: DripFilter, mob: string) => {
+        const contacts = contactsByMobile[mob] || [];
+        if (f.message_type === "abc_card") return contacts.filter(c => c.umr_number && c.umr_number.trim());
+        if (f.message_type === "abnormal_card") return contacts.filter(c => abnormalPkSet.has(c.primary_key));
+        return contacts;
+      };
+
       const getSent = (f: DripFilter, mob: string) => {
         const dripSent = sentByMobileFilter[mob]?.[f.id] || new Set();
         if (f.message_type === "abc_card") {
@@ -267,13 +274,24 @@ const AutomatedMarketing = () => {
         return dripSent.size;
       };
 
-      // For each mobile, find locked priority
+      const getSentPks = (f: DripFilter, mob: string) => {
+        const dripSent = sentByMobileFilter[mob]?.[f.id] || new Set();
+        if (f.message_type === "abc_card") {
+          const contacts = contactsByMobile[mob] || [];
+          const crmSentPks = new Set(contacts.filter(c => c.last_sent_type === "ABC" && c.umr_number && c.umr_number.trim()).map((c: any) => c.primary_key));
+          return new Set([...dripSent, ...crmSentPks]);
+        }
+        return dripSent;
+      };
+
       const allMobiles = Object.keys(contactsByMobile);
       let pendingAbc = 0;
       let pendingAbnormal = 0;
+      const pendingAbcRecords: any[] = [];
+      const pendingAbnormalRecords: any[] = [];
+      const now = new Date();
 
       for (const mob of allMobiles) {
-        // Find lowest incomplete priority
         let lockedPriority = Infinity;
         for (const f of enabledFilters) {
           const eligible = getEligible(f, mob);
@@ -281,20 +299,54 @@ const AutomatedMarketing = () => {
           const sent = getSent(f, mob);
           if (sent < eligible) { lockedPriority = f.priority; break; }
         }
-        if (lockedPriority === Infinity) continue; // all complete
+        if (lockedPriority === Infinity) continue;
 
-        // Count unsent for filters at this priority
+        const cycle = mobileCycles[mob] || 1;
+
         for (const f of enabledFilters) {
           if (f.priority !== lockedPriority) continue;
-          const eligible = getEligible(f, mob);
-          const sent = getSent(f, mob);
-          const unsent = Math.max(0, eligible - sent);
-          if (f.message_type === "abc_card") pendingAbc += unsent;
-          if (f.message_type === "abnormal_card") pendingAbnormal += unsent;
+          const eligibleContacts = getEligibleContacts(f, mob);
+          const sentPks = getSentPks(f, mob);
+          const unsent = eligibleContacts.filter(c => !sentPks.has(c.primary_key));
+
+          if (f.message_type === "abc_card") {
+            pendingAbc += unsent.length;
+            for (const c of unsent) {
+              const lastDate = c.last_sent_date ? new Date(c.last_sent_date) : null;
+              const daysAgo = lastDate ? Math.floor((now.getTime() - lastDate.getTime()) / 86400000) : null;
+              pendingAbcRecords.push({
+                "Primary Key": c.primary_key,
+                "UMR Number": c.umr_number || "",
+                "Patient Name": c.patient_name || "",
+                "Mobile Number": c.mobile_number || "",
+                "Cycle Number": cycle,
+                "Last Sent Type": c.last_sent_type || "",
+                "Last Sent Date": lastDate ? `${String(lastDate.getDate()).padStart(2,"0")}-${String(lastDate.getMonth()+1).padStart(2,"0")}-${lastDate.getFullYear()}` : "",
+                "Days Ago": daysAgo ?? "",
+              });
+            }
+          }
+          if (f.message_type === "abnormal_card") {
+            pendingAbnormal += unsent.length;
+            for (const c of unsent) {
+              const lastDate = c.last_sent_date ? new Date(c.last_sent_date) : null;
+              const daysAgo = lastDate ? Math.floor((now.getTime() - lastDate.getTime()) / 86400000) : null;
+              pendingAbnormalRecords.push({
+                "Primary Key": c.primary_key,
+                "UMR Number": c.umr_number || "",
+                "Patient Name": c.patient_name || "",
+                "Mobile Number": c.mobile_number || "",
+                "Cycle Number": cycle,
+                "Last Sent Type": c.last_sent_type || "",
+                "Last Sent Date": lastDate ? `${String(lastDate.getDate()).padStart(2,"0")}-${String(lastDate.getMonth()+1).padStart(2,"0")}-${lastDate.getFullYear()}` : "",
+                "Days Ago": daysAgo ?? "",
+              });
+            }
+          }
         }
       }
 
-      return { pendingAbc, pendingAbnormal };
+      return { pendingAbc, pendingAbnormal, pendingAbcRecords, pendingAbnormalRecords };
     },
   });
 
@@ -1552,7 +1604,7 @@ const AutomatedMarketing = () => {
         <Card>
           <CardContent className="py-4 flex items-center gap-3">
             <CreditCard className="h-7 w-7 text-primary" />
-            <div>
+            <div className="flex-1">
               <p className="text-xs text-muted-foreground">Pending ABC Cards</p>
               {pendingLoading ? (
                 <Skeleton className="h-7 w-16 mt-1" />
@@ -1560,12 +1612,18 @@ const AutomatedMarketing = () => {
                 <p className="text-2xl font-bold">{pendingCounts?.pendingAbc ?? 0}</p>
               )}
             </div>
+            <Button variant="outline" size="sm" disabled={pendingLoading || !(pendingCounts?.pendingAbcRecords?.length)} onClick={() => {
+              exportToExcel(pendingCounts!.pendingAbcRecords, `Pending_ABC_Cards_${new Date().toISOString().slice(0,10)}`);
+              toast.success(`Exported ${pendingCounts!.pendingAbcRecords.length} records`);
+            }}>
+              <Download className="h-4 w-4 mr-1" /> Export
+            </Button>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="py-4 flex items-center gap-3">
             <Activity className="h-7 w-7 text-primary" />
-            <div>
+            <div className="flex-1">
               <p className="text-xs text-muted-foreground">Pending Abnormal History</p>
               {pendingLoading ? (
                 <Skeleton className="h-7 w-16 mt-1" />
@@ -1573,6 +1631,12 @@ const AutomatedMarketing = () => {
                 <p className="text-2xl font-bold">{pendingCounts?.pendingAbnormal ?? 0}</p>
               )}
             </div>
+            <Button variant="outline" size="sm" disabled={pendingLoading || !(pendingCounts?.pendingAbnormalRecords?.length)} onClick={() => {
+              exportToExcel(pendingCounts!.pendingAbnormalRecords, `Pending_Abnormal_History_${new Date().toISOString().slice(0,10)}`);
+              toast.success(`Exported ${pendingCounts!.pendingAbnormalRecords.length} records`);
+            }}>
+              <Download className="h-4 w-4 mr-1" /> Export
+            </Button>
           </CardContent>
         </Card>
       </div>
