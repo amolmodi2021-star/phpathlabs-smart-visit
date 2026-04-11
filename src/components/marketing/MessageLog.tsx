@@ -67,24 +67,28 @@ const MessageLog = () => {
               <TableHead>Message Type</TableHead>
               <TableHead>Sent Date</TableHead>
               <TableHead>Sent Time</TableHead>
+              <TableHead>Days Ago</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                   Loading...
                 </TableCell>
               </TableRow>
             ) : rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                   No messages logged yet
                 </TableCell>
               </TableRow>
             ) : (
               rows.map((row: any, idx: number) => {
                 const sentDate = new Date(row.sent_at);
+                const now = new Date();
+                const diffMs = now.getTime() - sentDate.getTime();
+                const daysAgo = Math.floor(diffMs / (1000 * 60 * 60 * 24));
                 return (
                   <TableRow key={row.id}>
                     <TableCell className="text-muted-foreground">
@@ -98,6 +102,8 @@ const MessageLog = () => {
                     <TableCell className="text-xs max-w-[200px] truncate">{row.primary_key || "—"}</TableCell>
                     <TableCell>{row.message_type}</TableCell>
                     <TableCell>{format(sentDate, "dd-MM-yyyy")}</TableCell>
+                    <TableCell>{format(sentDate, "hh:mm a")}</TableCell>
+                    <TableCell className="text-center">{daysAgo}</TableCell>
                     <TableCell>{format(sentDate, "hh:mm a")}</TableCell>
                   </TableRow>
                 );
