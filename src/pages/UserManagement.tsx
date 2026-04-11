@@ -73,6 +73,11 @@ const ALL_TABS = [
   { route: "/users", label: "Users" },
 ];
 
+const ALL_ACTIONS = [
+  { key: "storage_cleanup", label: "Storage Cleanup" },
+  { key: "clear_data", label: "Clear All Data (LIMS)" },
+];
+
 interface AppRole {
   id: string;
   role_name: string;
