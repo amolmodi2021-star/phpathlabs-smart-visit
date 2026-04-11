@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { shareOnWhatsApp } from "@/lib/whatsapp";
+import { logMessageSend } from "@/lib/messageLog";
 import { toast } from "sonner";
 
 const normalizeMobile = (value: string) => value.replace(/\D/g, "").slice(-10);
@@ -33,6 +34,7 @@ export function useAbnormalHistory(mobiles: string[] = []) {
   const sendMutation = useMutation({
     mutationFn: async ({ id, mobile, message, context }: { id: string; mobile: string; message: string; context: string }) => {
       shareOnWhatsApp(mobile, message);
+      logMessageSend(mobile, "", "Abnormal History");
       const { error } = await supabase
         .from("abnormal_history")
         .update({ sent: true, sent_at: new Date().toISOString(), sent_context: context })
