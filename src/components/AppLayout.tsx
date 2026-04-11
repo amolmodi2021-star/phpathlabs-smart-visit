@@ -113,6 +113,7 @@ const NavSection = ({ items, onClick }: { items: typeof navItems; onClick?: () =
 const AppLayout = ({ children }: { children: React.ReactNode }) => {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   useHomeVisitNotifications();
 
   const handleLogout = () => {
@@ -123,9 +124,11 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-50 flex h-14 items-center gap-3 border-b bg-card px-4">
-        <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setOpen(!open)}>
-          {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </Button>
+        {isMobile && (
+          <Button variant="ghost" size="icon" onClick={() => setOpen(!open)}>
+            {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </Button>
+        )}
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
             <FlaskConical className="h-4 w-4 text-primary-foreground" />
@@ -140,16 +143,18 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
       </header>
 
       <div className="flex">
-        <aside className="hidden md:flex w-56 shrink-0 flex-col border-r bg-card h-[calc(100vh-3.5rem)] sticky top-14 overflow-hidden">
-          <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-            <NavSection items={navItems} />
-            <Separator className="my-2" />
-            <StorageCleanupButton />
-          </nav>
-        </aside>
+        {!isMobile && (
+          <aside className="flex w-56 shrink-0 flex-col border-r bg-card h-[calc(100vh-3.5rem)] sticky top-14 overflow-hidden">
+            <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+              <NavSection items={navItems} />
+              <Separator className="my-2" />
+              <StorageCleanupButton />
+            </nav>
+          </aside>
+        )}
 
-        {open && (
-          <div className="fixed inset-0 z-40 md:hidden">
+        {isMobile && open && (
+          <div className="fixed inset-0 z-40">
             <div className="absolute inset-0 bg-foreground/20" onClick={() => setOpen(false)} />
             <aside className="absolute left-0 top-14 bottom-0 w-64 bg-card border-r p-3 space-y-1 animate-fade-in overflow-y-auto">
               <NavSection items={navItems} onClick={() => setOpen(false)} />
