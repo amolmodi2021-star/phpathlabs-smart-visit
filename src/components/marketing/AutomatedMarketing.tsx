@@ -1267,7 +1267,7 @@ const AutomatedMarketing = () => {
     }
 
     _moduleSending = false; _moduleProgress = 0; _modulePhase = ''; setSending(false);
-    __setSendPhase("");
+    _setSendPhase("");
     setPreviewResults(null);
     if (!trial) {
       qc.invalidateQueries({ queryKey: ["drip-campaign-logs"] });
