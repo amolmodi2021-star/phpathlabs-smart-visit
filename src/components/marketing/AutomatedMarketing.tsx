@@ -55,6 +55,7 @@ const LOCATIONS = ["ALL", "PH VESU", "NON PHPL"];
 // Module-level state so it survives component unmount/remount
 let _moduleAbort = false;
 let _moduleSending = false;
+let _modulePaused = false;
 let _moduleProgress = 0;
 let _modulePhase = "";
 
