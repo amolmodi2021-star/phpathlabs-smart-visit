@@ -1,56 +1,38 @@
 
 
-# Plan: Complete Message Logging Coverage + New Numbers Tab
+# Plan: Add message_send_log Check to Drip Engine Min-Interval Filter
 
 ## Problem
-Several send points are missing `logMessageSend` calls:
-- **CRMContacts.tsx** — bulk ABC sends (no logging)
-- **CRMAbnormalTests.tsx** — single + bulk Abnormal History sends (no logging)
-- **CRMImportReview.tsx** — import review ABC sends (no logging)
-- **send-loyalty-whatsapp** edge function — Loyalty Card sends (no logging)
-
-Also: MessageLog.tsx has a duplicate Sent Time column (line 107).
+The drip engine only checks `crm_contacts.last_sent_date` for the cooling-down period. Messages sent from other modules (estimates, loyalty cards, LIMS, etc.) are logged in `message_send_log` but not considered. Since `message_send_log` allows duplicates, we must use the **latest** `sent_at` per mobile number.
 
 ## Changes
 
-### 1. Add logging to CRM send points (3 files)
+### File: `src/components/marketing/AutomatedMarketing.tsx`
 
-**CRMContacts.tsx** (~line 800): After successful send, add:
+**1. Add a 6th parallel fetch (~line 294)**
+
+Add to the `Promise.all` block:
 ```typescript
-await logMessageSend(destMob, r.patient_name, "ABC", r.umr_number, r.primary_key);
+fetchAll(supabase.from("message_send_log")
+  .select("mobile_number,sent_at")
+  .gte("sent_at", intervalDate.toISOString()))
 ```
 
-**CRMAbnormalTests.tsx** (~line 660 single send + ~line 783 bulk send): After successful sends, add:
+Note: `intervalDate` must be computed before the Promise.all block (move lines 332-333 above line 294).
+
+**2. Merge into recentSentMobiles (~line 334-340)**
+
+After building `recentSentMobiles` from CRM contacts, iterate message log results, normalize each mobile to 10 digits, and add to `recentSentMobiles`. Since there are duplicates, any entry within the interval window means the mobile should be skipped — no need to find the max date, just the existence of any log entry within the window is sufficient (the `.gte` filter already handles this).
+
 ```typescript
-await logMessageSend(normalizedMobile, group.patientName, "Abnormal History", group.umrNumber, group.primaryKey);
+for (const log of recentLogEntries) {
+  const mob = (log.mobile_number || "").replace(/\D/g, "").slice(-10);
+  if (mob && mob.length === 10) recentSentMobiles.add(mob);
+}
 ```
 
-**CRMImportReview.tsx** (~line 319): After successful send, add:
-```typescript
-await logMessageSend(mobile10, r.patient_name, "ABC", r.umr_number, r.primary_key);
-```
+This automatically makes all existing min-interval checks (initial collection, backfill loop) respect message_send_log data.
 
-### 2. Add logging to Loyalty Card edge function
-
-Update `supabase/functions/send-loyalty-whatsapp/index.ts` to insert into `message_send_log` for each successfully sent card, with message_type "Loyalty Card".
-
-### 3. Fix duplicate column in MessageLog.tsx
-
-Remove the extra `<TableCell>` on line 107.
-
-### 4. Add "New Numbers" tab
-
-Add a new tab in `src/pages/Marketing.tsx` called "New Numbers" that shows mobile numbers from `message_send_log` that do NOT exist in `crm_contacts`. This will be a new component `src/components/marketing/NewNumbers.tsx` with:
-- Query: select distinct mobile numbers from `message_send_log` where mobile_number NOT IN (select mobile_number from crm_contacts)
-- Table: Mobile Number, Patient Name (from last log entry), Last Message Type, Last Sent Date, count of messages sent
-- Search bar
-
-## Files Modified
-- `src/components/crm/CRMContacts.tsx` — add logMessageSend import + call
-- `src/components/crm/CRMAbnormalTests.tsx` — add logMessageSend import + 2 calls
-- `src/components/crm/CRMImportReview.tsx` — add logMessageSend import + call
-- `supabase/functions/send-loyalty-whatsapp/index.ts` — add server-side logging
-- `src/components/marketing/MessageLog.tsx` — fix duplicate column
-- `src/components/marketing/NewNumbers.tsx` — new component
-- `src/pages/Marketing.tsx` — add New Numbers tab
+## Single file modified
+- `src/components/marketing/AutomatedMarketing.tsx`
 
