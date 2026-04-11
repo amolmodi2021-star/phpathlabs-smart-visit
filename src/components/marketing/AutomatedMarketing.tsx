@@ -933,7 +933,7 @@ const AutomatedMarketing = () => {
                   last_sent_type: "Abnormal History",
                   last_sent_date: new Date().toISOString(),
                 }).eq("id", r.id);
-                await logMessageSend(destMob, r.patient_name, "Abnormal History");
+                await logMessageSend(destMob, r.patient_name, "Abnormal History", r.umr_number, r.primary_key);
               }
               totalSent++;
               if (trial) trialSentCount++;
@@ -1023,7 +1023,7 @@ const AutomatedMarketing = () => {
                   last_sent_type: "Promotion",
                   last_sent_date: new Date().toISOString(),
                 }).eq("id", r.id);
-                await logMessageSend(destMob, r.patient_name, "Promotion");
+                await logMessageSend(destMob, r.patient_name, "Promotion", r.umr_number, r.primary_key);
               }
               totalSent++;
               if (trial) trialSentCount++;
