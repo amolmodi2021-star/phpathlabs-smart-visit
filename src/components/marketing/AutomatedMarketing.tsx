@@ -198,7 +198,7 @@ const AutomatedMarketing = () => {
 
   // Pending counters for ABC cards and Abnormal History
   const { data: pendingCounts, isLoading: pendingLoading } = useQuery({
-    queryKey: ["drip-pending-counts", filters.map(f => f.id).join(",")],
+    queryKey: ["drip-pending-counts", filters.map(f => f.id).join(","), excludeBlacklist],
     enabled: filters.length > 0,
     refetchInterval: 120000,
     queryFn: async () => {
