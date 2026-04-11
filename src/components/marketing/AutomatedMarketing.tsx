@@ -759,6 +759,7 @@ const AutomatedMarketing = () => {
           if (!mob) continue;
           if (finalClaimed.has(mob)) continue;
           if (recentSentMobiles.has(mob)) continue;
+          if (excludeBlacklist && blacklistSet.has(mob)) continue;
 
           entry.kept.push(record);
           finalClaimed.add(mob);
