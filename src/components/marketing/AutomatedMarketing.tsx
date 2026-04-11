@@ -1670,7 +1670,16 @@ const AutomatedMarketing = () => {
 
       {sending && (
         <div className="space-y-2 p-3 border rounded-lg bg-muted/50">
-          <p className="text-sm font-medium">{sendPhase}</p>
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium">{sendPhase}</p>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={() => { abortRef.current = true; toast.warning("Stopping after current message..."); }}
+            >
+              ⛔ STOP NOW
+            </Button>
+          </div>
           <Progress value={sendProgress} />
           <p className="text-xs text-muted-foreground">{sendProgress}% complete</p>
         </div>
