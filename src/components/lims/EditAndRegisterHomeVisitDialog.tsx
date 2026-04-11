@@ -51,6 +51,7 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
   const [globalDiscountValue, setGlobalDiscountValue] = useState(0);
   const [homeVisitCharges, setHomeVisitCharges] = useState("0");
   const [testSearch, setTestSearch] = useState("");
+  const [testHighlightIndex, setTestHighlightIndex] = useState(-1);
   const [attempted, setAttempted] = useState(false);
   const [genderConfirmOpen, setGenderConfirmOpen] = useState(false);
   const [pendingGender, setPendingGender] = useState<"Male" | "Female" | "">("");

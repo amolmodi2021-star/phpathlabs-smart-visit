@@ -48,6 +48,7 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
   const [globalDiscountValue, setGlobalDiscountValue] = useState(0);
   const [homeVisitCharges, setHomeVisitCharges] = useState(0);
   const [testSearch, setTestSearch] = useState("");
+  const [testHighlightIndex, setTestHighlightIndex] = useState(-1);
   const [phlebotomistId, setPhlebotomistId] = useState("");
 
   const { data: phlebotomists = [] } = useQuery({

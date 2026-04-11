@@ -67,6 +67,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
   const [globalDiscountValue, setGlobalDiscountValue] = useState(0);
   const [homeVisitCharges, setHomeVisitCharges] = useState<string>("0");
   const [testSearch, setTestSearch] = useState("");
+  const [testHighlightIndex, setTestHighlightIndex] = useState(-1);
   const [genderConfirmOpen, setGenderConfirmOpen] = useState(false);
   const [pendingGender, setPendingGender] = useState<"Male" | "Female" | "">("");
   const [attempted, setAttempted] = useState(false);

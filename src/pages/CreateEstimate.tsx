@@ -36,6 +36,7 @@ const CreateEstimate = () => {
   const [globalDiscountValue, setGlobalDiscountValue] = useState(0);
   const [homeVisitCharges, setHomeVisitCharges] = useState(0);
   const [testSearch, setTestSearch] = useState("");
+  const [testHighlightIndex, setTestHighlightIndex] = useState(-1);
   const [scanOpen, setScanOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 

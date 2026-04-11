@@ -42,6 +42,7 @@ const EditEstimateDialog = ({ estimate, open, onClose }: EditEstimateDialogProps
   const [globalDiscountValue, setGlobalDiscountValue] = useState(0);
   const [homeVisitCharges, setHomeVisitCharges] = useState(0);
   const [testSearch, setTestSearch] = useState("");
+  const [testHighlightIndex, setTestHighlightIndex] = useState(-1);
 
   const { data: allTests = [] } = useQuery({
     queryKey: ["all_selectable_tests"],
