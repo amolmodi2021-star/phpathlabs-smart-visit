@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { logMessageSend } from "@/lib/messageLog";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { generateAndUploadCard, getTemplateAssets, type CardData } from "@/lib/cardRenderer";
@@ -822,6 +823,7 @@ const AutomatedMarketing = () => {
                   last_sent_date: new Date().toISOString(),
                   record_tag: null,
                 }).eq("id", r.id);
+                await logMessageSend(destMob, r.patient_name, "ABC");
               }
               totalSent++;
               if (trial) trialSentCount++;
@@ -931,6 +933,7 @@ const AutomatedMarketing = () => {
                   last_sent_type: "Abnormal History",
                   last_sent_date: new Date().toISOString(),
                 }).eq("id", r.id);
+                await logMessageSend(destMob, r.patient_name, "Abnormal History");
               }
               totalSent++;
               if (trial) trialSentCount++;
@@ -1020,6 +1023,7 @@ const AutomatedMarketing = () => {
                   last_sent_type: "Promotion",
                   last_sent_date: new Date().toISOString(),
                 }).eq("id", r.id);
+                await logMessageSend(destMob, r.patient_name, "Promotion");
               }
               totalSent++;
               if (trial) trialSentCount++;
