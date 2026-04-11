@@ -29,6 +29,17 @@ const NewNumbers = () => {
           .filter((m: string) => m.length === 10)
       );
 
+      // Get all blacklisted numbers
+      const { data: blacklisted } = await supabase
+        .from("crm_blacklist")
+        .select("mobile_number");
+
+      const blacklistSet = new Set(
+        (blacklisted || [])
+          .map((b: any) => (b.mobile_number || "").replace(/\D/g, "").slice(-10))
+          .filter((m: string) => m.length === 10)
+      );
+
       // Get all log entries
       let query = supabase
         .from("message_send_log")
@@ -50,6 +61,7 @@ const NewNumbers = () => {
         const mob = (log.mobile_number || "").replace(/\D/g, "").slice(-10);
         if (!mob || mob.length !== 10) continue;
         if (crmSet.has(mob)) continue;
+        if (blacklistSet.has(mob)) continue;
 
         if (!grouped.has(mob)) {
           grouped.set(mob, {
