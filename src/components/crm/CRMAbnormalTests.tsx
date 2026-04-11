@@ -658,7 +658,7 @@ const CRMAbnormalTests = () => {
       if (proxyRes.error || proxyRes.data?.status >= 400) {
         toast.error("Failed to send WhatsApp");
       } else {
-        await logMessageSend(normalizedMobile, previewGroup.patientName, "Abnormal History", previewGroup.umrNumber, previewGroup.primaryKey);
+        await logMessageSend(normalizedMobile, previewGroup.patientName, "Abnormal History", previewGroup.umr, previewGroup.primaryKey);
         // Only update CRM if sent to original mobile (not a trial override)
         const originalMobile = previewGroup.mobile.replace(/\D/g, "").slice(-10);
         if (normalizedMobile === originalMobile) {
@@ -783,7 +783,7 @@ const CRMAbnormalTests = () => {
           failed++;
         } else {
           sent++;
-          await logMessageSend(normalizedMobile, group.patientName, "Abnormal History", group.umrNumber, group.primaryKey);
+          await logMessageSend(normalizedMobile, group.patientName, "Abnormal History", group.umr, group.primaryKey);
           await supabase
             .from("crm_contacts")
             .update({
