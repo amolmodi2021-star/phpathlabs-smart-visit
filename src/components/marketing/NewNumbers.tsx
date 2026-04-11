@@ -18,13 +18,23 @@ const NewNumbers = () => {
   const { data, isLoading } = useQuery({
     queryKey: ["new_numbers", search, page],
     queryFn: async () => {
-      // Get all CRM mobile numbers
-      const { data: crmMobiles } = await supabase
-        .from("crm_contacts")
-        .select("mobile_number");
+      // Get ALL CRM mobile numbers (paginate past 1000-row limit)
+      let allCrmMobiles: any[] = [];
+      let crmFrom = 0;
+      const CRM_PAGE = 1000;
+      while (true) {
+        const { data: batch } = await supabase
+          .from("crm_contacts")
+          .select("mobile_number")
+          .range(crmFrom, crmFrom + CRM_PAGE - 1);
+        if (!batch || batch.length === 0) break;
+        allCrmMobiles = allCrmMobiles.concat(batch);
+        if (batch.length < CRM_PAGE) break;
+        crmFrom += CRM_PAGE;
+      }
 
       const crmSet = new Set(
-        (crmMobiles || [])
+        allCrmMobiles
           .map((c: any) => (c.mobile_number || "").replace(/\D/g, "").slice(-10))
           .filter((m: string) => m.length === 10)
       );
@@ -40,13 +50,21 @@ const NewNumbers = () => {
           .filter((m: string) => m.length === 10)
       );
 
-      // Get all log entries
-      let query = supabase
-        .from("message_send_log")
-        .select("*")
-        .order("sent_at", { ascending: false });
-
-      const { data: allLogs } = await query;
+      // Get ALL log entries (paginate past 1000-row limit)
+      let allLogs: any[] = [];
+      let logFrom = 0;
+      const LOG_PAGE = 1000;
+      while (true) {
+        const { data: batch } = await supabase
+          .from("message_send_log")
+          .select("*")
+          .order("sent_at", { ascending: false })
+          .range(logFrom, logFrom + LOG_PAGE - 1);
+        if (!batch || batch.length === 0) break;
+        allLogs = allLogs.concat(batch);
+        if (batch.length < LOG_PAGE) break;
+        logFrom += LOG_PAGE;
+      }
 
       // Filter to numbers not in CRM and group
       const grouped = new Map<string, {
