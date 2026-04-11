@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { logMessageSend } from "@/lib/messageLog";
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -94,6 +94,7 @@ const AutomatedMarketing = () => {
   const [sending, setSending] = useState(false);
   const [sendProgress, setSendProgress] = useState(0);
   const [sendPhase, setSendPhase] = useState("");
+  const abortRef = useRef(false);
 
   // Test mode
   const [testMobile, setTestMobile] = useState("");
@@ -865,6 +866,7 @@ const AutomatedMarketing = () => {
     const { data: abcTmpl } = await supabase.from("marketing_templates").select("whatsapp_template_name, body_mapping, api_base_url, from_number").eq("template_name", "ABC Card").maybeSingle();
     const { data: abnTmpl } = await supabase.from("marketing_templates").select("whatsapp_template_name, body_mapping, api_base_url, from_number").eq("template_name", "Abnormal PNG").maybeSingle();
 
+    abortRef.current = false;
     setSending(true);
     setSendProgress(0);
 
@@ -878,6 +880,7 @@ const AutomatedMarketing = () => {
 
     for (const preview of previewResults) {
       if (preview.eligible === 0) continue;
+      if (abortRef.current) break;
       const filter = enabledFilters.find((f) => f.id === preview.filterId);
       if (!filter) continue;
 
@@ -941,6 +944,7 @@ const AutomatedMarketing = () => {
         const { bgImg, canvas, ctx, placeholders } = templateAssets;
 
         for (let i = 0; i < preview.records.length; i++) {
+          if (abortRef.current) break;
           if (trial && trialSentCount >= trialMax) break;
           const r = preview.records[i];
           const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
@@ -1056,6 +1060,7 @@ const AutomatedMarketing = () => {
         }
 
         for (let i = 0; i < preview.records.length; i++) {
+          if (abortRef.current) break;
           if (trial && trialSentCount >= trialMax) break;
           const r = preview.records[i];
           const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
@@ -1155,6 +1160,7 @@ const AutomatedMarketing = () => {
         const delayMs = 3000;
 
         for (let i = 0; i < preview.records.length; i++) {
+          if (abortRef.current) break;
           if (trial && trialSentCount >= trialMax) break;
           const r = preview.records[i];
           const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
@@ -1232,8 +1238,10 @@ const AutomatedMarketing = () => {
       qc.invalidateQueries({ queryKey: ["drip-campaign-logs"] });
       qc.invalidateQueries({ queryKey: ["crm-contacts"] });
     }
-    const modeLabel = trial ? "Trial complete!" : "Campaign complete!";
-    toast.success(`${modeLabel} Sent: ${totalSent}, Failed: ${totalFailed}, Skipped: ${totalSkipped}`);
+    const aborted = abortRef.current;
+    abortRef.current = false;
+    const modeLabel = aborted ? "⛔ STOPPED!" : trial ? "Trial complete!" : "Campaign complete!";
+    toast[aborted ? "warning" : "success"](`${modeLabel} Sent: ${totalSent}, Failed: ${totalFailed}, Skipped: ${totalSkipped}`);
   };
 
   const logDripAction = async (filter: DripFilter, contact: any, status: string, skipReason?: string) => {
@@ -1814,6 +1822,14 @@ const AutomatedMarketing = () => {
                   {isTrialMode ? <FlaskConical className="h-4 w-4 mr-1" /> : <Send className="h-4 w-4 mr-1" />}
                   {isTrialMode ? "Send Trial" : "Send Messages"}
                 </Button>
+                {sending && (
+                  <Button
+                    onClick={() => { abortRef.current = true; toast.warning("Stopping after current message..."); }}
+                    variant="destructive"
+                  >
+                    ⛔ STOP NOW
+                  </Button>
+                )}
               </div>
             </div>
           )}
