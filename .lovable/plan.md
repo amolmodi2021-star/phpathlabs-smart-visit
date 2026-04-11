@@ -1,78 +1,56 @@
 
 
-# Plan: Create Universal Message Log Table & Log Viewer
+# Plan: Complete Message Logging Coverage + New Numbers Tab
 
-## Overview
-Create a new `message_send_log` table to track every message sent from any module. Replace the current multi-table counting in `fetchSentCount` with a single query on this table. Add a "Message Log" tab in the Marketing page with search, showing all sends in descending date order.
+## Problem
+Several send points are missing `logMessageSend` calls:
+- **CRMContacts.tsx** — bulk ABC sends (no logging)
+- **CRMAbnormalTests.tsx** — single + bulk Abnormal History sends (no logging)
+- **CRMImportReview.tsx** — import review ABC sends (no logging)
+- **send-loyalty-whatsapp** edge function — Loyalty Card sends (no logging)
 
-## Database Changes
+Also: MessageLog.tsx has a duplicate Sent Time column (line 107).
 
-### New table: `message_send_log`
-```sql
-CREATE TABLE public.message_send_log (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  mobile_number text NOT NULL,
-  patient_name text,
-  message_type text NOT NULL,  -- 'ABC', 'Abnormal History', 'Promotion', 'Marketing', 'Loyalty', 'Estimate', 'Invoice', 'Report', 'Receipt', etc.
-  sent_at timestamptz NOT NULL DEFAULT now(),
-  created_at timestamptz NOT NULL DEFAULT now()
-);
+## Changes
 
-ALTER TABLE public.message_send_log ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow all on message_send_log" ON public.message_send_log FOR ALL USING (true) WITH CHECK (true);
-CREATE INDEX idx_message_send_log_sent_at ON public.message_send_log(sent_at DESC);
-CREATE INDEX idx_message_send_log_mobile ON public.message_send_log(mobile_number);
-```
+### 1. Add logging to CRM send points (3 files)
 
-## Code Changes
-
-### 1. Create helper: `src/lib/messageLog.ts`
-A small utility function `logMessageSend(mobile, name, type)` that inserts into `message_send_log`. All modules will call this after a successful send.
-
-### 2. Add logging calls to all send points (~13 locations)
-
-**API-based sends (via edge functions):**
-- `AutomatedMarketing.tsx` — after successful ABC send (~line 820), Abnormal send (~line 930), Promotion send (~line 1020)
-- `MarketingSender.tsx` — after successful send (~line 152)
-- `LoyaltyCardHistory.tsx` — after successful loyalty send
-
-**Browser-based sends (shareOnWhatsApp):**
-- `CreateEstimate.tsx`, `EditEstimateDialog.tsx`, `EstimateDashboard.tsx` — estimate shares
-- `AddHomeVisitDialog.tsx`, `EditHomeVisitDialog.tsx` — visit confirmations
-- `InvoicePreview.tsx` — invoice shares
-- `ViewReport.tsx` — report shares
-- `PaymentDetailsDialog.tsx`, `ReceiptViewDialog.tsx` — receipt shares
-- `AbnormalHistory.tsx`, `useAbnormalHistory.ts` — abnormal history sends
-- `DirectAI.tsx` — AI report sends
-
-Each location: add `logMessageSend(mobile, patientName, "TypeName")` right after the successful send.
-
-### 3. Update `fetchSentCount` in `AutomatedMarketing.tsx`
-Replace the 4-table query (lines 120-127) with a single count from `message_send_log`:
+**CRMContacts.tsx** (~line 800): After successful send, add:
 ```typescript
-const res = await supabase.from("message_send_log")
-  .select("id", { count: "exact", head: true })
-  .gte("sent_at", since);
-const total = res.count || 0;
+await logMessageSend(destMob, r.patient_name, "ABC", r.umr_number, r.primary_key);
 ```
-This eliminates the double-counting issue entirely.
 
-### 4. Create `src/components/marketing/MessageLog.tsx`
-A new tab component showing all logged messages:
-- Search bar filtering by patient name, mobile number, or message type
-- Table columns: #, Patient Name, Mobile Number, Message Type, Sent Date (dd-MM-yyyy), Sent Time (hh:mm AM/PM)
-- No grouping — duplicates shown as separate rows
-- Sorted descending by `sent_at`
-- Paginated fetch (batched like CRMSentHistory)
+**CRMAbnormalTests.tsx** (~line 660 single send + ~line 783 bulk send): After successful sends, add:
+```typescript
+await logMessageSend(normalizedMobile, group.patientName, "Abnormal History", group.umrNumber, group.primaryKey);
+```
 
-### 5. Update `src/pages/Marketing.tsx`
-Add a third tab "Message Log" alongside "Send Messages" and "Automated".
+**CRMImportReview.tsx** (~line 319): After successful send, add:
+```typescript
+await logMessageSend(mobile10, r.patient_name, "ABC", r.umr_number, r.primary_key);
+```
 
-## Summary
-- **1 new table**: `message_send_log`
-- **1 new file**: `src/lib/messageLog.ts`
-- **1 new component**: `src/components/marketing/MessageLog.tsx`
-- **~15 files modified**: add log calls at each send point + update Marketing page + fix fetchSentCount
-- Fixes double-counting by using a single source of truth
-- All sends tracked with duplicates preserved
+### 2. Add logging to Loyalty Card edge function
+
+Update `supabase/functions/send-loyalty-whatsapp/index.ts` to insert into `message_send_log` for each successfully sent card, with message_type "Loyalty Card".
+
+### 3. Fix duplicate column in MessageLog.tsx
+
+Remove the extra `<TableCell>` on line 107.
+
+### 4. Add "New Numbers" tab
+
+Add a new tab in `src/pages/Marketing.tsx` called "New Numbers" that shows mobile numbers from `message_send_log` that do NOT exist in `crm_contacts`. This will be a new component `src/components/marketing/NewNumbers.tsx` with:
+- Query: select distinct mobile numbers from `message_send_log` where mobile_number NOT IN (select mobile_number from crm_contacts)
+- Table: Mobile Number, Patient Name (from last log entry), Last Message Type, Last Sent Date, count of messages sent
+- Search bar
+
+## Files Modified
+- `src/components/crm/CRMContacts.tsx` — add logMessageSend import + call
+- `src/components/crm/CRMAbnormalTests.tsx` — add logMessageSend import + 2 calls
+- `src/components/crm/CRMImportReview.tsx` — add logMessageSend import + call
+- `supabase/functions/send-loyalty-whatsapp/index.ts` — add server-side logging
+- `src/components/marketing/MessageLog.tsx` — fix duplicate column
+- `src/components/marketing/NewNumbers.tsx` — new component
+- `src/pages/Marketing.tsx` — add New Numbers tab
 
