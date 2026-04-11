@@ -117,14 +117,12 @@ const AutomatedMarketing = () => {
     setCountLoading(true);
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     
-    const [loyaltyRes, dripRes, crmRes, abnormalRes] = await Promise.all([
-      supabase.from("loyalty_cards").select("id", { count: "exact", head: true }).gte("sent_at", since).not("sent_at", "is", null),
-      supabase.from("drip_campaign_log").select("id", { count: "exact", head: true }).gte("created_at", since).eq("status", "sent"),
-      supabase.from("crm_contacts").select("id", { count: "exact", head: true }).gte("last_sent_date", since).not("last_sent_type", "is", null),
-      supabase.from("abnormal_history").select("id", { count: "exact", head: true }).gte("sent_at", since).not("sent_at", "is", null),
-    ]);
-    
-    const total = (loyaltyRes.count || 0) + (dripRes.count || 0) + (crmRes.count || 0) + (abnormalRes.count || 0);
+    const res = await supabase
+      .from("message_send_log")
+      .select("id", { count: "exact", head: true })
+      .gte("sent_at", since);
+
+    const total = res.count || 0;
     setSentLast24h(total);
     setCountLoading(false);
   }, []);

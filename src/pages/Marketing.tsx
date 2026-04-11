@@ -2,6 +2,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import PasswordGate from "@/components/PasswordGate";
 import MarketingSender from "@/components/marketing/MarketingSender";
 import AutomatedMarketing from "@/components/marketing/AutomatedMarketing";
+import MessageLog from "@/components/marketing/MessageLog";
 
 const Marketing = () => {
   return (
@@ -12,12 +13,16 @@ const Marketing = () => {
           <TabsList>
             <TabsTrigger value="send">Send Messages</TabsTrigger>
             <TabsTrigger value="automated">Automated</TabsTrigger>
+            <TabsTrigger value="log">Message Log</TabsTrigger>
           </TabsList>
           <TabsContent value="send">
             <MarketingSender />
           </TabsContent>
           <TabsContent value="automated">
             <AutomatedMarketing />
+          </TabsContent>
+          <TabsContent value="log">
+            <MessageLog />
           </TabsContent>
         </Tabs>
       </div>
