@@ -1283,7 +1283,7 @@ const AutomatedMarketing = () => {
       }
     }
 
-    _moduleSending = false; _moduleProgress = 0; _modulePhase = ''; setSending(false);
+    _moduleSending = false; _modulePaused = false; _moduleProgress = 0; _modulePhase = ''; setSending(false); setPaused(false);
     _setSendPhase("");
     setPreviewResults(null);
     if (!trial) {
