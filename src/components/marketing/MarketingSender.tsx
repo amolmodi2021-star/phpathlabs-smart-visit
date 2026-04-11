@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { logMessageSend } from "@/lib/messageLog";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -150,6 +151,7 @@ const MarketingSender = () => {
           failedCount++;
         } else {
           sentCount++;
+          await logMessageSend(mobile10, String(row["Name"] || row["name"] || ""), "Marketing");
           // Update CRM with last sent info
           if (mobile10) {
             await supabase.from("crm_contacts").update({
