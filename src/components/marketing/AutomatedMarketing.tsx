@@ -299,7 +299,7 @@ const AutomatedMarketing = () => {
         : Promise.resolve([]),
       fetchAll(supabase.from("crm_abnormal_tests").select("contact_primary_key")),
       fetchAll(supabase.from("drip_mobile_cycles").select("mobile_number,current_cycle")),
-      fetchAll(supabase.from("drip_campaign_log").select("filter_id,mobile_number,contact_primary_key,cycle_number").eq("status", "sent")),
+      fetchAll(supabase.from("drip_campaign_log").select("filter_id,mobile_number,contact_primary_key,cycle_number,created_at").eq("status", "sent")),
     ]);
 
     const blacklistSet = new Set(blacklistData.map((b: any) => b.mobile_number));
@@ -334,7 +334,10 @@ const AutomatedMarketing = () => {
     intervalDate.setDate(intervalDate.getDate() - minInterval);
     const recentSentMobiles = new Set<string>();
     for (const log of allLogs) {
-      // allLogs doesn't have created_at, so we check crm_contacts last_sent_date instead
+      if (log.created_at && new Date(log.created_at) >= intervalDate) {
+        const mob = (log.mobile_number || "").replace(/\D/g, "").slice(-10);
+        if (mob) recentSentMobiles.add(mob);
+      }
     }
 
     const getEligibleCount = (filter: DripFilter, mob: string): number => {
@@ -548,6 +551,19 @@ const AutomatedMarketing = () => {
           return false;
         }
         finalClaimed.add(mob);
+        return true;
+      });
+    }
+
+    // Second-pass min-interval recheck using drip_campaign_log timestamps
+    for (const entry of filterCapped) {
+      entry.kept = entry.kept.filter((record: any) => {
+        const mob = (record.mobile_number || "").replace(/\D/g, "").slice(-10);
+        if (!mob) return true;
+        if (recentSentMobiles.has(mob)) {
+          entry.fc.skips["min_interval_recheck"] = (entry.fc.skips["min_interval_recheck"] || 0) + 1;
+          return false;
+        }
         return true;
       });
     }
