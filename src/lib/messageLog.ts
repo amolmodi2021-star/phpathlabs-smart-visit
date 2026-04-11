@@ -8,6 +8,8 @@ export async function logMessageSend(
   mobile: string,
   patientName: string | null | undefined,
   messageType: string,
+  umrNumber?: string | null,
+  primaryKey?: string | null,
 ) {
   const mobile10 = (mobile || "").replace(/\D/g, "").slice(-10);
   if (!mobile10) return;
@@ -17,6 +19,8 @@ export async function logMessageSend(
       mobile_number: mobile10,
       patient_name: patientName || null,
       message_type: messageType,
+      umr_number: umrNumber || null,
+      primary_key: primaryKey || null,
     });
   } catch {
     // silently ignore — logging must never break the send flow

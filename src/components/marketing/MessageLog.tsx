@@ -26,7 +26,7 @@ const MessageLog = () => {
 
       if (search.trim()) {
         query = query.or(
-          `patient_name.ilike.%${search.trim()}%,mobile_number.ilike.%${search.trim()}%,message_type.ilike.%${search.trim()}%`
+          `patient_name.ilike.%${search.trim()}%,mobile_number.ilike.%${search.trim()}%,message_type.ilike.%${search.trim()}%,umr_number.ilike.%${search.trim()}%,primary_key.ilike.%${search.trim()}%`
         );
       }
 
@@ -46,7 +46,7 @@ const MessageLog = () => {
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search name, mobile, or type..."
+            placeholder="Search name, mobile, UMR, or type..."
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
             className="pl-9"
@@ -62,6 +62,8 @@ const MessageLog = () => {
               <TableHead className="w-12">#</TableHead>
               <TableHead>Patient Name</TableHead>
               <TableHead>Mobile Number</TableHead>
+              <TableHead>UMR Number</TableHead>
+              <TableHead>Primary Key</TableHead>
               <TableHead>Message Type</TableHead>
               <TableHead>Sent Date</TableHead>
               <TableHead>Sent Time</TableHead>
@@ -70,13 +72,13 @@ const MessageLog = () => {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                   Loading...
                 </TableCell>
               </TableRow>
             ) : rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                   No messages logged yet
                 </TableCell>
               </TableRow>
@@ -92,6 +94,8 @@ const MessageLog = () => {
                       {row.patient_name || "—"}
                     </TableCell>
                     <TableCell>{row.mobile_number}</TableCell>
+                    <TableCell>{row.umr_number || "—"}</TableCell>
+                    <TableCell className="text-xs max-w-[200px] truncate">{row.primary_key || "—"}</TableCell>
                     <TableCell>{row.message_type}</TableCell>
                     <TableCell>{format(sentDate, "dd-MM-yyyy")}</TableCell>
                     <TableCell>{format(sentDate, "hh:mm a")}</TableCell>

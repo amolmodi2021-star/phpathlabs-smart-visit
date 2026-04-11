@@ -571,7 +571,7 @@ const ViewReport = () => {
         const patientName = extracted?.patient_name || "Patient";
         const message = `Dear ${patientName},\n\nYour lab report is ready. Please find the report shared with this message.\n\nThank you.`;
         shareOnWhatsApp(cleaned, message);
-        logMessageSend(cleaned, patientName, "Report");
+        logMessageSend(cleaned, patientName, "Report", extracted?.umr_id);
 
         toast({ title: "Report shared on WhatsApp" });
       }
