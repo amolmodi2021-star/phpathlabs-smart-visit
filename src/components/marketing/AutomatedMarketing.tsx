@@ -892,7 +892,11 @@ const AutomatedMarketing = () => {
     const { data: abcTmpl } = await supabase.from("marketing_templates").select("whatsapp_template_name, body_mapping, api_base_url, from_number").eq("template_name", "ABC Card").maybeSingle();
     const { data: abnTmpl } = await supabase.from("marketing_templates").select("whatsapp_template_name, body_mapping, api_base_url, from_number").eq("template_name", "Abnormal PNG").maybeSingle();
 
+    _moduleAbort = false;
     abortRef.current = false;
+    _moduleSending = true;
+    _moduleProgress = 0;
+    _modulePhase = "";
     setSending(true);
     setSendProgress(0);
 
