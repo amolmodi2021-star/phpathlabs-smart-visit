@@ -1822,6 +1822,14 @@ const AutomatedMarketing = () => {
                   {isTrialMode ? <FlaskConical className="h-4 w-4 mr-1" /> : <Send className="h-4 w-4 mr-1" />}
                   {isTrialMode ? "Send Trial" : "Send Messages"}
                 </Button>
+                {sending && (
+                  <Button
+                    onClick={() => { abortRef.current = true; toast.warning("Stopping after current message..."); }}
+                    variant="destructive"
+                  >
+                    ⛔ STOP NOW
+                  </Button>
+                )}
               </div>
             </div>
           )}
