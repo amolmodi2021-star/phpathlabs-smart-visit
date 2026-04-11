@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { logMessageSend } from "@/lib/messageLog";
+import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { generateAndUploadCard, getTemplateAssets, type CardData } from "@/lib/cardRenderer";
