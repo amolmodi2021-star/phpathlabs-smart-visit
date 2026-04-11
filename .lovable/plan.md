@@ -1,99 +1,78 @@
 
 
-# Plan: Loop Backfill + Dedup Until Quotas Are Fulfilled
+# Plan: Create Universal Message Log Table & Log Viewer
 
-## Problem
-The current approach runs backfill once and dedup once. But each dedup pass can remove records that were just backfilled, leaving quota unfilled again. We need to **loop** the backfill→dedup cycle until either quotas are full or no more eligible records exist.
+## Overview
+Create a new `message_send_log` table to track every message sent from any module. Replace the current multi-table counting in `fetchSentCount` with a single query on this table. Add a "Message Log" tab in the Marketing page with search, showing all sends in descending date order.
 
-## Changes
+## Database Changes
 
-### File: `src/components/marketing/AutomatedMarketing.tsx`
+### New table: `message_send_log`
+```sql
+CREATE TABLE public.message_send_log (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  mobile_number text NOT NULL,
+  patient_name text,
+  message_type text NOT NULL,  -- 'ABC', 'Abnormal History', 'Promotion', 'Marketing', 'Loyalty', 'Estimate', 'Invoice', 'Report', 'Receipt', etc.
+  sent_at timestamptz NOT NULL DEFAULT now(),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
 
-**After line 569 (after the min-interval recheck), before "Build results" (line 571), insert a looping backfill+dedup block:**
-
-```typescript
-// Iterative backfill + dedup loop until quota is stable
-let backfillIterations = 0;
-const MAX_BACKFILL_ITERATIONS = 10; // safety cap
-
-while (backfillIterations < MAX_BACKFILL_ITERATIONS) {
-  backfillIterations++;
-  
-  // Calculate free slots
-  let totalKeptNow = filterCapped.reduce((s: number, f: any) => s + f.kept.length, 0);
-  let freeSlots = maxPerDay - totalKeptNow;
-  if (freeSlots <= 0) break;
-
-  // Backfill: pull from each filter's eligible pool in priority order
-  let backfilled = 0;
-  for (const entry of filterCapped) {
-    if (freeSlots <= 0) break;
-    const alreadyKeptPks = new Set(entry.kept.map((r: any) => r.primary_key));
-    const pool = entry.fc.eligible.filter((r: any) => !alreadyKeptPks.has(r.primary_key));
-    
-    for (const record of pool) {
-      if (freeSlots <= 0) break;
-      const mob = (record.mobile_number || "").replace(/\D/g, "").slice(-10);
-      if (!mob) continue;
-      if (finalClaimed.has(mob)) continue;
-      if (recentSentMobiles.has(mob)) continue;
-      
-      entry.kept.push(record);
-      finalClaimed.add(mob);
-      freeSlots--;
-      backfilled++;
-    }
-  }
-
-  // If nothing was backfilled, no point continuing
-  if (backfilled === 0) break;
-
-  // Re-run deduplication pass on all kept records
-  const recheck = new Set<string>();
-  let removedThisPass = 0;
-  for (const entry of filterCapped) {
-    entry.kept = entry.kept.filter((record: any) => {
-      const mob = (record.mobile_number || "").replace(/\D/g, "").slice(-10);
-      if (!mob) return true;
-      if (recheck.has(mob)) {
-        entry.fc.skips["final_dedup"] = (entry.fc.skips["final_dedup"] || 0) + 1;
-        removedThisPass++;
-        return false;
-      }
-      if (recentSentMobiles.has(mob)) {
-        entry.fc.skips["final_interval_check"] = (entry.fc.skips["final_interval_check"] || 0) + 1;
-        removedThisPass++;
-        return false;
-      }
-      recheck.add(mob);
-      return true;
-    });
-  }
-
-  // Rebuild finalClaimed from current state
-  finalClaimed.clear();
-  for (const entry of filterCapped) {
-    for (const record of entry.kept) {
-      const mob = (record.mobile_number || "").replace(/\D/g, "").slice(-10);
-      if (mob) finalClaimed.add(mob);
-    }
-  }
-
-  // If dedup removed nothing, quota is stable — done
-  if (removedThisPass === 0) break;
-}
+ALTER TABLE public.message_send_log ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all on message_send_log" ON public.message_send_log FOR ALL USING (true) WITH CHECK (true);
+CREATE INDEX idx_message_send_log_sent_at ON public.message_send_log(sent_at DESC);
+CREATE INDEX idx_message_send_log_mobile ON public.message_send_log(mobile_number);
 ```
 
-## How It Works
-1. After initial dedup + interval checks, enter a loop
-2. **Backfill**: pull unclaimed, interval-safe records from each filter's eligible pool
-3. **Dedup**: re-run dedup + interval check on all kept records
-4. **Rebuild** `finalClaimed` from current state so next iteration is accurate
-5. **Exit** when: quota full, nothing backfilled, nothing removed, or 10 iterations reached
+## Code Changes
+
+### 1. Create helper: `src/lib/messageLog.ts`
+A small utility function `logMessageSend(mobile, name, type)` that inserts into `message_send_log`. All modules will call this after a successful send.
+
+### 2. Add logging calls to all send points (~13 locations)
+
+**API-based sends (via edge functions):**
+- `AutomatedMarketing.tsx` — after successful ABC send (~line 820), Abnormal send (~line 930), Promotion send (~line 1020)
+- `MarketingSender.tsx` — after successful send (~line 152)
+- `LoyaltyCardHistory.tsx` — after successful loyalty send
+
+**Browser-based sends (shareOnWhatsApp):**
+- `CreateEstimate.tsx`, `EditEstimateDialog.tsx`, `EstimateDashboard.tsx` — estimate shares
+- `AddHomeVisitDialog.tsx`, `EditHomeVisitDialog.tsx` — visit confirmations
+- `InvoicePreview.tsx` — invoice shares
+- `ViewReport.tsx` — report shares
+- `PaymentDetailsDialog.tsx`, `ReceiptViewDialog.tsx` — receipt shares
+- `AbnormalHistory.tsx`, `useAbnormalHistory.ts` — abnormal history sends
+- `DirectAI.tsx` — AI report sends
+
+Each location: add `logMessageSend(mobile, patientName, "TypeName")` right after the successful send.
+
+### 3. Update `fetchSentCount` in `AutomatedMarketing.tsx`
+Replace the 4-table query (lines 120-127) with a single count from `message_send_log`:
+```typescript
+const res = await supabase.from("message_send_log")
+  .select("id", { count: "exact", head: true })
+  .gte("sent_at", since);
+const total = res.count || 0;
+```
+This eliminates the double-counting issue entirely.
+
+### 4. Create `src/components/marketing/MessageLog.tsx`
+A new tab component showing all logged messages:
+- Search bar filtering by patient name, mobile number, or message type
+- Table columns: #, Patient Name, Mobile Number, Message Type, Sent Date (dd-MM-yyyy), Sent Time (hh:mm AM/PM)
+- No grouping — duplicates shown as separate rows
+- Sorted descending by `sent_at`
+- Paginated fetch (batched like CRMSentHistory)
+
+### 5. Update `src/pages/Marketing.tsx`
+Add a third tab "Message Log" alongside "Send Messages" and "Automated".
 
 ## Summary
-- **1 file modified**: `src/components/marketing/AutomatedMarketing.tsx`
-- ~50 lines added after line 569
-- No database changes
-- Guarantees both filters reach their quota cap if enough eligible records exist
+- **1 new table**: `message_send_log`
+- **1 new file**: `src/lib/messageLog.ts`
+- **1 new component**: `src/components/marketing/MessageLog.tsx`
+- **~15 files modified**: add log calls at each send point + update Marketing page + fix fetchSentCount
+- Fixes double-counting by using a single source of truth
+- All sends tracked with duplicates preserved
 
