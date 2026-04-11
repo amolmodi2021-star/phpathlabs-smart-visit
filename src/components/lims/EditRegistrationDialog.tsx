@@ -132,10 +132,8 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         dob: dob || null,
         email: email || null,
         doctor_name: (doctorName || "SELF").toUpperCase(),
-        umr_number: umrNumber || null,
         address: address.toUpperCase(),
         mobile_number: mobileNumber.replace(/\D/g, "").slice(-10),
-        status,
         remarks: remarks.trim() || null,
         is_stat: isStat,
         payments,
@@ -273,31 +271,13 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
                 <Input value={email} onChange={e => setEmail(e.target.value)} disabled={isBillCancelled} />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Doctor Name</Label>
-                <Input value={doctorName} onChange={e => setDoctorName(e.target.value.toUpperCase())} disabled={isBillCancelled} />
-              </div>
-              <div>
-                <Label>UMR Number</Label>
-                <Input value={umrNumber} onChange={e => setUmrNumber(e.target.value)} disabled={isBillCancelled} />
-              </div>
+            <div>
+              <Label>Doctor Name</Label>
+              <Input value={doctorName} onChange={e => setDoctorName(e.target.value.toUpperCase())} disabled={isBillCancelled} />
             </div>
             <div>
               <Label>Address</Label>
               <Input value={address} onChange={e => setAddress(e.target.value.toUpperCase())} disabled={isBillCancelled} />
-            </div>
-            <div>
-              <Label>Status</Label>
-              <Select value={status} onValueChange={setStatus} disabled={isBillCancelled}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="registered">Registered</SelectItem>
-                  <SelectItem value="sample_collected">Sample Collected</SelectItem>
-                  <SelectItem value="processing">Processing</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
             <div>
               <Label>Remarks</Label>
