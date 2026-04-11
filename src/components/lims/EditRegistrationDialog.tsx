@@ -249,7 +249,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Patient Name</Label>
-                <Input value={patientName} onChange={e => setPatientName(e.target.value)} disabled={isBillCancelled} />
+                <Input value={patientName} onChange={e => setPatientName(e.target.value.toUpperCase())} disabled={isBillCancelled} />
               </div>
               <div>
                 <Label>Gender</Label>
@@ -276,7 +276,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Doctor Name</Label>
-                <Input value={doctorName} onChange={e => setDoctorName(e.target.value)} disabled={isBillCancelled} />
+                <Input value={doctorName} onChange={e => setDoctorName(e.target.value.toUpperCase())} disabled={isBillCancelled} />
               </div>
               <div>
                 <Label>UMR Number</Label>
@@ -285,7 +285,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
             </div>
             <div>
               <Label>Address</Label>
-              <Input value={address} onChange={e => setAddress(e.target.value)} disabled={isBillCancelled} />
+              <Input value={address} onChange={e => setAddress(e.target.value.toUpperCase())} disabled={isBillCancelled} />
             </div>
             <div>
               <Label>Status</Label>
