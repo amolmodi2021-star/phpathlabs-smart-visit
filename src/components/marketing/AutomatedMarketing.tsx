@@ -880,6 +880,7 @@ const AutomatedMarketing = () => {
 
     for (const preview of previewResults) {
       if (preview.eligible === 0) continue;
+      if (abortRef.current) break;
       const filter = enabledFilters.find((f) => f.id === preview.filterId);
       if (!filter) continue;
 
