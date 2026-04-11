@@ -870,6 +870,8 @@ const AutomatedMarketing = () => {
   };
 
   const handleSend = async () => {
+    // Prevent double-click: guard with module-level flag
+    if (_moduleSending) return;
     if (!previewResults || previewResults.every((r) => r.eligible === 0)) {
       return toast.error("Run preview first and ensure there are eligible records");
     }
