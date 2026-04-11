@@ -12,26 +12,32 @@ import ResultVerification from "@/components/lims/ResultVerification";
 import DoctorApproval from "@/components/lims/DoctorApproval";
 import Dispatch from "@/components/lims/Dispatch";
 
+const allLimsTabs = [
+  { key: "register", label: "New Registration" },
+  { key: "patients", label: "Registered Patients" },
+  { key: "sample_collection", label: "Sample Collection" },
+  { key: "sample_acceptance", label: "Sample Acceptance" },
+  { key: "results", label: "Results" },
+  { key: "verification", label: "Result Verification" },
+  { key: "doctor_approval", label: "Doctor Approval" },
+  { key: "dispatch", label: "Dispatch" },
+  { key: "completed_hv", label: "Completed Home Visits" },
+  { key: "pickup", label: "Pickup Points" },
+  { key: "channels", label: "Channels" },
+];
+
 const Lims = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get("tab") || "register";
+  const allowed = getAllowedSections("/lims");
+  const visibleTabs = allowed ? allLimsTabs.filter((t) => allowed.includes(t.key)) : allLimsTabs;
+  const activeTab = searchParams.get("tab") || (visibleTabs[0]?.key ?? "register");
 
   return (
     <div className="space-y-4 animate-fade-in">
       <h1 className="text-xl font-bold">LIMS</h1>
       <Tabs value={activeTab} onValueChange={(v) => setSearchParams({ tab: v }, { replace: true })} className="w-full">
         <TabsList className="w-full justify-start flex-wrap h-auto gap-1">
-          <TabsTrigger value="register">New Registration</TabsTrigger>
-          <TabsTrigger value="patients">Registered Patients</TabsTrigger>
-          <TabsTrigger value="sample_collection">Sample Collection</TabsTrigger>
-          <TabsTrigger value="sample_acceptance">Sample Acceptance</TabsTrigger>
-          <TabsTrigger value="results">Results</TabsTrigger>
-          <TabsTrigger value="verification">Result Verification</TabsTrigger>
-          <TabsTrigger value="doctor_approval">Doctor Approval</TabsTrigger>
-          <TabsTrigger value="dispatch">Dispatch</TabsTrigger>
-          <TabsTrigger value="completed_hv">Completed Home Visits</TabsTrigger>
-          <TabsTrigger value="pickup">Pickup Points</TabsTrigger>
-          <TabsTrigger value="channels">Channels</TabsTrigger>
+          {visibleTabs.map((t) => <TabsTrigger key={t.key} value={t.key}>{t.label}</TabsTrigger>)}
         </TabsList>
         <TabsContent value="register">
           <PatientRegistration />
