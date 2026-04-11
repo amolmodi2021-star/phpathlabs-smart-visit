@@ -290,8 +290,12 @@ const AutomatedMarketing = () => {
       return all;
     };
 
+    // Compute interval date BEFORE parallel queries so we can use it in the message_send_log filter
+    const intervalDate = new Date();
+    intervalDate.setDate(intervalDate.getDate() - minInterval);
+
     // Run ALL queries in parallel for speed
-    const [allContacts, blacklistData, abnormalPks, cyclesData, allLogs] = await Promise.all([
+    const [allContacts, blacklistData, abnormalPks, cyclesData, allLogs, recentLogEntries] = await Promise.all([
       fetchAll(supabase.from("crm_contacts").select("id,primary_key,mobile_number,patient_name,umr_number,location,last_sent_date,last_sent_type,record_tag,default_discount_pct,visit_date")),
       excludeBlacklist
         ? supabase.from("crm_blacklist").select("mobile_number").then(r => r.data || [])
@@ -299,6 +303,7 @@ const AutomatedMarketing = () => {
       fetchAll(supabase.from("crm_abnormal_tests").select("contact_primary_key")),
       fetchAll(supabase.from("drip_mobile_cycles").select("mobile_number,current_cycle")),
       fetchAll(supabase.from("drip_campaign_log").select("filter_id,mobile_number,contact_primary_key,cycle_number").eq("status", "sent")),
+      fetchAll(supabase.from("message_send_log").select("mobile_number,sent_at").gte("sent_at", intervalDate.toISOString())),
     ]);
 
     const blacklistSet = new Set(blacklistData.map((b: any) => b.mobile_number));
@@ -328,15 +333,19 @@ const AutomatedMarketing = () => {
       if (log.contact_primary_key) sentByMobileFilter[mob][log.filter_id].add(log.contact_primary_key);
     }
 
-    // Build set of mobiles that were sent ANY message within minInterval days (from CRM last_sent_date)
-    const intervalDate = new Date();
-    intervalDate.setDate(intervalDate.getDate() - minInterval);
+    // Build set of mobiles that were sent ANY message within minInterval days
+    // Check both CRM last_sent_date AND message_send_log (latest sent_at per mobile)
     const recentSentMobiles = new Set<string>();
     for (const c of allContacts) {
       if (c.last_sent_date && new Date(c.last_sent_date) >= intervalDate) {
         const mob = (c.mobile_number || "").replace(/\D/g, "").slice(-10);
         if (mob) recentSentMobiles.add(mob);
       }
+    }
+    // Merge message_send_log entries — any log within the interval window means skip
+    for (const log of recentLogEntries) {
+      const mob = (log.mobile_number || "").replace(/\D/g, "").slice(-10);
+      if (mob && mob.length === 10) recentSentMobiles.add(mob);
     }
 
     const getEligibleCount = (filter: DripFilter, mob: string): number => {
