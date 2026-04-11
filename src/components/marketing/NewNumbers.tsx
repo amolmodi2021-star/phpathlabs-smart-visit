@@ -18,13 +18,23 @@ const NewNumbers = () => {
   const { data, isLoading } = useQuery({
     queryKey: ["new_numbers", search, page],
     queryFn: async () => {
-      // Get all CRM mobile numbers
-      const { data: crmMobiles } = await supabase
-        .from("crm_contacts")
-        .select("mobile_number");
+      // Get ALL CRM mobile numbers (paginate past 1000-row limit)
+      let allCrmMobiles: any[] = [];
+      let crmFrom = 0;
+      const CRM_PAGE = 1000;
+      while (true) {
+        const { data: batch } = await supabase
+          .from("crm_contacts")
+          .select("mobile_number")
+          .range(crmFrom, crmFrom + CRM_PAGE - 1);
+        if (!batch || batch.length === 0) break;
+        allCrmMobiles = allCrmMobiles.concat(batch);
+        if (batch.length < CRM_PAGE) break;
+        crmFrom += CRM_PAGE;
+      }
 
       const crmSet = new Set(
-        (crmMobiles || [])
+        allCrmMobiles
           .map((c: any) => (c.mobile_number || "").replace(/\D/g, "").slice(-10))
           .filter((m: string) => m.length === 10)
       );
