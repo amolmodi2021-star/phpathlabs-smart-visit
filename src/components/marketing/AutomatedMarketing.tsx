@@ -298,6 +298,7 @@ const AutomatedMarketing = () => {
     },
   });
 
+  const openNewFilter = () => {
     setEditingFilter(null);
     setFilterForm({
       name: "",
