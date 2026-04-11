@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { logMessageSend } from "@/lib/messageLog";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { generateAndUploadCard, getTemplateAssets, type CardData } from "@/lib/cardRenderer";
@@ -117,14 +118,12 @@ const AutomatedMarketing = () => {
     setCountLoading(true);
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     
-    const [loyaltyRes, dripRes, crmRes, abnormalRes] = await Promise.all([
-      supabase.from("loyalty_cards").select("id", { count: "exact", head: true }).gte("sent_at", since).not("sent_at", "is", null),
-      supabase.from("drip_campaign_log").select("id", { count: "exact", head: true }).gte("created_at", since).eq("status", "sent"),
-      supabase.from("crm_contacts").select("id", { count: "exact", head: true }).gte("last_sent_date", since).not("last_sent_type", "is", null),
-      supabase.from("abnormal_history").select("id", { count: "exact", head: true }).gte("sent_at", since).not("sent_at", "is", null),
-    ]);
-    
-    const total = (loyaltyRes.count || 0) + (dripRes.count || 0) + (crmRes.count || 0) + (abnormalRes.count || 0);
+    const res = await supabase
+      .from("message_send_log")
+      .select("id", { count: "exact", head: true })
+      .gte("sent_at", since);
+
+    const total = res.count || 0;
     setSentLast24h(total);
     setCountLoading(false);
   }, []);
@@ -824,6 +823,7 @@ const AutomatedMarketing = () => {
                   last_sent_date: new Date().toISOString(),
                   record_tag: null,
                 }).eq("id", r.id);
+                await logMessageSend(destMob, r.patient_name, "ABC");
               }
               totalSent++;
               if (trial) trialSentCount++;
@@ -933,6 +933,7 @@ const AutomatedMarketing = () => {
                   last_sent_type: "Abnormal History",
                   last_sent_date: new Date().toISOString(),
                 }).eq("id", r.id);
+                await logMessageSend(destMob, r.patient_name, "Abnormal History");
               }
               totalSent++;
               if (trial) trialSentCount++;
@@ -1022,6 +1023,7 @@ const AutomatedMarketing = () => {
                   last_sent_type: "Promotion",
                   last_sent_date: new Date().toISOString(),
                 }).eq("id", r.id);
+                await logMessageSend(destMob, r.patient_name, "Promotion");
               }
               totalSent++;
               if (trial) trialSentCount++;

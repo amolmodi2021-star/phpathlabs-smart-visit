@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { Upload, Send, Trash2, Search, RotateCcw } from "lucide-react";
 import { parseExcelFile } from "@/lib/excel";
 import { shareOnWhatsApp } from "@/lib/whatsapp";
+import { logMessageSend } from "@/lib/messageLog";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 
 const AbnormalHistory = () => {
@@ -87,6 +88,7 @@ const AbnormalHistory = () => {
   const sendMessage = useMutation({
     mutationFn: async ({ id, mobile, message }: { id: string; mobile: string; message: string }) => {
       shareOnWhatsApp(mobile, message);
+      logMessageSend(mobile, "", "Abnormal History");
       const { error } = await supabase
         .from("abnormal_history")
         .update({ sent: true, sent_at: new Date().toISOString(), sent_context: "manual" })

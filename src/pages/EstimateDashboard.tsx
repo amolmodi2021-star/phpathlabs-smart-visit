@@ -17,6 +17,7 @@ import { exportToExcel } from "@/lib/excel";
 import { useMessageTemplates } from "@/hooks/useMessageTemplates";
 import { usePhlebotomistAvailability } from "@/hooks/usePhlebotomistAvailability";
 import { buildEstimateMessage, buildVisitMessage, shareOnWhatsApp } from "@/lib/whatsapp";
+import { logMessageSend } from "@/lib/messageLog";
 import MessagePreviewDialog from "@/components/MessagePreviewDialog";
 import { useAbnormalHistory } from "@/hooks/useAbnormalHistory";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
@@ -104,6 +105,7 @@ const EstimateDashboard = () => {
           patientName: est.patient_name ? est.patient_name.toUpperCase() : undefined,
         });
         shareOnWhatsApp(est.whatsapp_number, msg);
+        logMessageSend(est.whatsapp_number, est.patient_name, "Estimate");
       }
     },
     onSuccess: () => {

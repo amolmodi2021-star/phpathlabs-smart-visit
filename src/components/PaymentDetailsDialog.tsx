@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { format, addDays } from "date-fns";
 import html2canvas from "html2canvas";
 import { shareOnWhatsApp } from "@/lib/whatsapp";
+import { logMessageSend } from "@/lib/messageLog";
 import { formatDateDDMMYYYY, formatDateShort } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -321,6 +322,7 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
             if (phone) {
               const textMsg = buildReceiptText();
               shareOnWhatsApp(phone, textMsg);
+              logMessageSend(phone, est?.patient_name, "Receipt");
             }
           }
         }, "image/jpeg", 0.95);

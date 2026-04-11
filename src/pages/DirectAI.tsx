@@ -13,6 +13,7 @@ import jsPDF from "jspdf";
 import * as pdfjsLib from "pdfjs-dist";
 import { Switch } from "@/components/ui/switch";
 import { shareOnWhatsApp } from "@/lib/whatsapp";
+import { logMessageSend } from "@/lib/messageLog";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs";
 
@@ -315,6 +316,7 @@ const DirectAI = () => {
       msg += `✅ All results normal`;
     }
     shareOnWhatsApp(mobileInput, msg);
+    logMessageSend(mobileInput, patient?.name, "Report");
     setSendDialogOpen(false);
     toast({ title: "WhatsApp opened" });
   };

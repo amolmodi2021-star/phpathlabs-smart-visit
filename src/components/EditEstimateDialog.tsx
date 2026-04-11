@@ -11,6 +11,7 @@ import { X, Search, Send } from "lucide-react";
 import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import { useMessageTemplates } from "@/hooks/useMessageTemplates";
 import { buildEstimateMessage, shareOnWhatsApp } from "@/lib/whatsapp";
+import { logMessageSend } from "@/lib/messageLog";
 
 interface EditTest {
   id?: string;
@@ -176,6 +177,7 @@ const EditEstimateDialog = ({ estimate, open, onClose }: EditEstimateDialogProps
           patientName: patientName || undefined,
         });
         shareOnWhatsApp(cleanNumber, msg);
+        logMessageSend(cleanNumber, patientName, "Estimate");
       }
     },
     onSuccess: () => {
