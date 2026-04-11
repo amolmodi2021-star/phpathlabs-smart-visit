@@ -1,43 +1,31 @@
 
 
-# Plan: Prioritize First-Cycle Mobiles Over Repeat-Cycle Mobiles
+# Plan: Mobile-Responsive Dispatch Page
 
 ## Problem
-When a mobile has no abnormal history, the abnormal filter is skipped and the cycle completes immediately after ABC cards. The cycle resets to 1, and ABC cards are resent. These fast-cycling mobiles consume the daily quota (`maxPerDay`), starving mobiles that haven't even received their first ABC card.
+The Dispatch page uses a fixed side-by-side split layout (`w-[380px]` left panel + flex-1 right panel) that doesn't adapt to mobile screens. On small screens, the patient list and detail panel are cramped/invisible, and the horizontal badge rows overflow.
 
-## Solution
-Add **cycle-aware sorting** so that mobiles in lower cycles (especially cycle 1 = never sent) are always prioritized over mobiles in higher cycles (repeat sends). This ensures every mobile gets their first round of cards before any mobile gets a second round.
+## Approach
+Convert to a single-column stacked layout on mobile using the existing `useIsMobile` hook. On mobile, show only one panel at a time — patient list by default, then detail view when a patient is tapped (with a back button to return).
 
-## Changes — Single file: `src/components/marketing/AutomatedMarketing.tsx`
+## Changes (single file: `src/components/lims/Dispatch.tsx`)
 
-### 1. Sort candidates by cycle number (ascending) before processing
+1. **Import `useIsMobile`** hook.
 
-In the collection loop (~line 628-633), after the existing "never-sent patients first" sort, add a secondary sort by `mobileCycles[mob]` ascending. This ensures cycle-1 mobiles are picked before cycle-2+ mobiles.
+2. **Add `mobileShowDetail` state** — tracks whether mobile is showing the detail panel. Set to `true` when a patient is tapped, `false` when back is pressed.
 
-```typescript
-// Sort: lowest cycle first, then never-sent patients first within same cycle
-candidates.sort((a, b) => {
-  const aMob = (a.mobile_number || "").replace(/\D/g, "").slice(-10);
-  const bMob = (b.mobile_number || "").replace(/\D/g, "").slice(-10);
-  const aCycle = mobileCycles[aMob] || 1;
-  const bCycle = mobileCycles[bMob] || 1;
-  if (aCycle !== bCycle) return aCycle - bCycle;
-  const aHas = a.last_sent_type ? 1 : 0;
-  const bHas = b.last_sent_type ? 1 : 0;
-  return aHas - bHas;
-});
-```
+3. **Date filter row** — wrap in `flex-wrap` so it stacks on small screens.
 
-### 2. Apply same cycle-priority in backfill loop
+4. **Mobile layout** — when `isMobile`:
+   - If `!mobileShowDetail`: show only the patient list card at full width (`w-full`) instead of `w-[380px]`, remove the right panel from DOM.
+   - If `mobileShowDetail`: hide the patient list, show only the detail card at full width with a "← Back" button in the header.
+   - On patient tap: set `mobileShowDetail = true`.
 
-The backfill loop (~line 745+) also pulls unclaimed records. Sort the eligible pool by cycle before backfilling so the same priority applies there too.
+5. **Desktop layout** — unchanged (current side-by-side).
 
-### 3. Update pending counters export
+6. **Right panel header** — on mobile, stack the patient info and action buttons vertically. Wrap action buttons in a scrollable row.
 
-Add a "Cycle"-aware note: the counters already show cycle number. No structural change needed, but the ordering change means cycle-1 records appear first in exports.
+7. **Test card badges** — on mobile, hide the 6 step-badges row (they overflow). Show only the current status badge and TAT. The full audit trail is still available via the collapsible.
 
-## Result
-- Every mobile gets ABC card (and abnormal if applicable) at least once before any mobile enters cycle 2
-- Fast-cycling mobiles (no abnormal history) still eventually get resent, but only after all other mobiles have been served
-- Daily quota is used efficiently for maximum coverage
+8. **Test card action buttons** — stack vertically or use icon-only buttons on mobile.
 
