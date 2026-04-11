@@ -52,6 +52,12 @@ const MESSAGE_TYPES = [
 
 const LOCATIONS = ["ALL", "PH VESU", "NON PHPL"];
 
+// Module-level state so it survives component unmount/remount
+let _moduleAbort = false;
+let _moduleSending = false;
+let _moduleProgress = 0;
+let _modulePhase = "";
+
 const SEQUENCE_OPTIONS = [
   { value: "__none__", label: "No sequencing (any)" },
   { value: "ABC", label: "Last sent was ABC" },
