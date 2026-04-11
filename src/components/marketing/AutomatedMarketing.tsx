@@ -625,8 +625,13 @@ const AutomatedMarketing = () => {
         });
       }
 
-      // Sort: never-sent patients first
+      // Sort: lowest cycle first, then never-sent patients first within same cycle
       candidates.sort((a, b) => {
+        const aMob = (a.mobile_number || "").replace(/\D/g, "").slice(-10);
+        const bMob = (b.mobile_number || "").replace(/\D/g, "").slice(-10);
+        const aCycle = mobileCycles[aMob] || 1;
+        const bCycle = mobileCycles[bMob] || 1;
+        if (aCycle !== bCycle) return aCycle - bCycle;
         const aHas = a.last_sent_type ? 1 : 0;
         const bHas = b.last_sent_type ? 1 : 0;
         return aHas - bHas;
@@ -753,7 +758,13 @@ const AutomatedMarketing = () => {
       for (const entry of filterCapped) {
         if (freeSlots <= 0) break;
         const alreadyKeptPks = new Set(entry.kept.map((r: any) => r.primary_key));
-        const pool = entry.fc.eligible.filter((r: any) => !alreadyKeptPks.has(r.primary_key));
+        const pool = entry.fc.eligible
+          .filter((r: any) => !alreadyKeptPks.has(r.primary_key))
+          .sort((a: any, b: any) => {
+            const aMob = (a.mobile_number || "").replace(/\D/g, "").slice(-10);
+            const bMob = (b.mobile_number || "").replace(/\D/g, "").slice(-10);
+            return (mobileCycles[aMob] || 1) - (mobileCycles[bMob] || 1);
+          });
 
         for (const record of pool) {
           if (freeSlots <= 0) break;
