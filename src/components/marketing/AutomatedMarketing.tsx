@@ -61,6 +61,7 @@ const SEQUENCE_OPTIONS = [
 
 const AutomatedMarketing = () => {
   const qc = useQueryClient();
+  useRealtimeSync("message_send_log", ["drip-pending-counts", "wa-usage-24h"]);
 
   // Global settings
   const [maxPerDay, setMaxPerDay] = useState(200);
