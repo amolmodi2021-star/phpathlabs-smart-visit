@@ -1,5 +1,6 @@
 import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { getAllowedSections } from "@/lib/auth";
 import PatientRegistration from "@/components/lims/PatientRegistration";
 import RegisteredPatients from "@/components/lims/RegisteredPatients";
 import PickupPointManager from "@/components/lims/PickupPointManager";

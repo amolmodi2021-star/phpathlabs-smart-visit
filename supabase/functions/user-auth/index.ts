@@ -1,5 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
-import { corsHeaders } from "https://esm.sh/@supabase/supabase-js@2.49.1/cors";
+import * as bcrypt from "https://deno.land/x/bcrypt@v0.4.1/mod.ts";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
 import * as bcrypt from "https://deno.land/x/bcrypt@v0.4.1/mod.ts";
 
 const supabase = createClient(
