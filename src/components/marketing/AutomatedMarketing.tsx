@@ -14,7 +14,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Pencil, Trash2, Eye, Send, Settings, MessageCircle, Download, AlertTriangle, FlaskConical } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Plus, Pencil, Trash2, Eye, Send, Settings, MessageCircle, Download, AlertTriangle, FlaskConical, CreditCard, Activity } from "lucide-react";
 import { exportToExcel } from "@/lib/excel";
 import { sortAbnormalTestsByDateDesc } from "@/lib/abnormalTests";
 import { toast } from "sonner";
