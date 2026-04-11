@@ -17,6 +17,7 @@ import ReportResultsSection from "@/components/report/ReportResultsSection";
 import ReportSignatureBlock from "@/components/report/ReportSignatureBlock";
 import AutoScaleContent from "@/components/report/AutoScaleContent";
 import { shareOnWhatsApp } from "@/lib/whatsapp";
+import { logMessageSend } from "@/lib/messageLog";
 import { useToast } from "@/hooks/use-toast";
 import { normalizeTestResultFlags } from "@/lib/reportFlags";
 
@@ -570,6 +571,7 @@ const ViewReport = () => {
         const patientName = extracted?.patient_name || "Patient";
         const message = `Dear ${patientName},\n\nYour lab report is ready. Please find the report shared with this message.\n\nThank you.`;
         shareOnWhatsApp(cleaned, message);
+        logMessageSend(cleaned, patientName, "Report");
 
         toast({ title: "Report shared on WhatsApp" });
       }

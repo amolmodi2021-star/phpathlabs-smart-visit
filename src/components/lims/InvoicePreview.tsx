@@ -6,6 +6,7 @@ import { Printer, Send, X } from "lucide-react";
 import { format } from "date-fns";
 import html2canvas from "html2canvas";
 import { shareOnWhatsApp } from "@/lib/whatsapp";
+import { logMessageSend } from "@/lib/messageLog";
 import { toast } from "sonner";
 
 interface InvoicePreviewProps {
@@ -86,6 +87,7 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
     if (data.mobile_number) {
       const msg = `📋 *PH PathLabs — Invoice*\nInvoice No: ${data.invoice_number}\nPatient: ${data.title || ""} ${data.patient_name}\nAmount: ₹${data.final_amount}`;
       shareOnWhatsApp(data.mobile_number, msg);
+      logMessageSend(data.mobile_number, data.patient_name, "Invoice");
     }
   };
 

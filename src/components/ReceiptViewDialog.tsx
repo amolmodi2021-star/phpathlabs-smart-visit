@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import html2canvas from "html2canvas";
 import { shareOnWhatsApp } from "@/lib/whatsapp";
+import { logMessageSend } from "@/lib/messageLog";
 import { formatDateDDMMYYYY, formatDateShort } from "@/lib/utils";
 import { Download, Share2 } from "lucide-react";
 
@@ -92,12 +93,12 @@ const ReceiptViewDialog = ({ open, onClose, visitData }: ReceiptViewDialogProps)
           // Fallback: download + WhatsApp text
           handleDownload();
           const phone = est?.whatsapp_number || "";
-          if (phone) shareOnWhatsApp(phone, buildReceiptText());
+          if (phone) { shareOnWhatsApp(phone, buildReceiptText()); logMessageSend(phone, est?.patient_name, "Receipt"); }
         });
       } else {
         handleDownload();
         const phone = est?.whatsapp_number || "";
-        if (phone) shareOnWhatsApp(phone, buildReceiptText());
+        if (phone) { shareOnWhatsApp(phone, buildReceiptText()); logMessageSend(phone, est?.patient_name, "Receipt"); }
       }
     }, "image/jpeg", 0.95);
   }, [generateCanvas, est, handleDownload]);
