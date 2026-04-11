@@ -389,234 +389,246 @@ const Dispatch = () => {
           <p className="text-sm">All approved reports have been dispatched</p>
         </div>
       ) : (
-        <div className="flex gap-3" style={{ height: "calc(100vh - 180px)" }}>
+        <div className={cn("flex gap-3", isMobile && "flex-col")} style={{ height: "calc(100vh - 180px)" }}>
           {/* LEFT PANEL — Patient List */}
-          <Card className="w-[380px] shrink-0 flex flex-col overflow-hidden">
-            <div className="p-3 border-b">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input placeholder="Search name, mobile, invoice..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8 h-9 text-sm" />
+          {(!isMobile || !mobileShowDetail) && (
+            <Card className={cn("flex flex-col overflow-hidden", isMobile ? "w-full" : "w-[380px] shrink-0")}>
+              <div className="p-3 border-b">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input placeholder="Search name, mobile, invoice..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8 h-9 text-sm" />
+                </div>
               </div>
-            </div>
-            <ScrollArea className="flex-1">
-              <div className="divide-y">
-                {dispatchEntries.map((entry) => {
-                  const reg = entry.registration;
-                  const isSelected = selectedPatientId === reg.id;
-                  return (
-                    <div
-                      key={reg.id}
-                      className={`px-3 py-2.5 cursor-pointer transition-colors hover:bg-muted/50 ${isSelected ? "bg-primary/5 border-l-2 border-l-primary" : "border-l-2 border-l-transparent"}`}
-                      onClick={() => setSelectedPatientId(reg.id)}
-                    >
-                      <div className="flex items-start gap-2">
-                        <div className="mt-1 shrink-0">{getCompletionDot(entry.completionStatus)}</div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5">
-                            {reg.is_stat && <span className="relative flex h-2 w-2 shrink-0"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-destructive" /></span>}
-                            <span className="font-medium text-sm truncate">{reg.patient_name}</span>
+              <ScrollArea className="flex-1">
+                <div className="divide-y">
+                  {dispatchEntries.map((entry) => {
+                    const reg = entry.registration;
+                    const isSelected = selectedPatientId === reg.id;
+                    return (
+                      <div
+                        key={reg.id}
+                        className={`px-3 py-2.5 cursor-pointer transition-colors hover:bg-muted/50 ${isSelected ? "bg-primary/5 border-l-2 border-l-primary" : "border-l-2 border-l-transparent"}`}
+                        onClick={() => { setSelectedPatientId(reg.id); if (isMobile) setMobileShowDetail(true); }}
+                      >
+                        <div className="flex items-start gap-2">
+                          <div className="mt-1 shrink-0">{getCompletionDot(entry.completionStatus)}</div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              {reg.is_stat && <span className="relative flex h-2 w-2 shrink-0"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-destructive" /></span>}
+                              <span className="font-medium text-sm truncate">{reg.patient_name}</span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className="text-xs text-muted-foreground flex items-center gap-1"><Phone className="h-3 w-3" />{reg.mobile_number}</span>
+                            </div>
+                            <div className="flex items-center justify-between mt-0.5">
+                              <span className="text-xs text-muted-foreground flex items-center gap-1"><FileText className="h-3 w-3" />{reg.invoice_number}</span>
+                              <span className="text-[10px] text-muted-foreground">{entry.approvedCount}A / {entry.pendingCount}P</span>
+                            </div>
+                            <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1">
+                              <CalendarIcon className="h-3 w-3" />
+                              {formatDate(reg.created_at)}
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-xs text-muted-foreground flex items-center gap-1"><Phone className="h-3 w-3" />{reg.mobile_number}</span>
-                          </div>
-                          <div className="flex items-center justify-between mt-0.5">
-                            <span className="text-xs text-muted-foreground flex items-center gap-1"><FileText className="h-3 w-3" />{reg.invoice_number}</span>
-                            <span className="text-[10px] text-muted-foreground">{entry.approvedCount}A / {entry.pendingCount}P</span>
-                          </div>
-                          <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1">
-                            <CalendarIcon className="h-3 w-3" />
-                            {formatDate(reg.created_at)}
-                          </div>
+                          {isMobile && <ChevronRight className="h-4 w-4 text-muted-foreground mt-2 shrink-0" />}
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </ScrollArea>
-            {dispatchTotalPages > 1 && (
-              <div className="p-2 border-t flex items-center justify-between">
-                <Button variant="ghost" size="sm" className="text-xs h-7" disabled={dispatchPage === 0} onClick={() => setDispatchPage(p => p - 1)}>Prev</Button>
-                <span className="text-xs text-muted-foreground">{dispatchPage + 1} / {dispatchTotalPages}</span>
-                <Button variant="ghost" size="sm" className="text-xs h-7" disabled={dispatchPage >= dispatchTotalPages - 1} onClick={() => setDispatchPage(p => p + 1)}>Next</Button>
-              </div>
-            )}
-          </Card>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
+              {dispatchTotalPages > 1 && (
+                <div className="p-2 border-t flex items-center justify-between">
+                  <Button variant="ghost" size="sm" className="text-xs h-7" disabled={dispatchPage === 0} onClick={() => setDispatchPage(p => p - 1)}>Prev</Button>
+                  <span className="text-xs text-muted-foreground">{dispatchPage + 1} / {dispatchTotalPages}</span>
+                  <Button variant="ghost" size="sm" className="text-xs h-7" disabled={dispatchPage >= dispatchTotalPages - 1} onClick={() => setDispatchPage(p => p + 1)}>Next</Button>
+                </div>
+              )}
+            </Card>
+          )}
 
           {/* RIGHT PANEL — Selected Patient Details */}
-          <Card className="flex-1 flex flex-col overflow-hidden">
-            {selectedEntry ? (
-              <>
-                {/* Patient header */}
-                <div className="p-4 border-b bg-muted/20">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <User className="h-5 w-5 text-muted-foreground" />
-                        <h3 className="font-semibold text-lg">{selectedEntry.registration.patient_name}</h3>
-                        {selectedEntry.registration.is_stat && <Badge variant="destructive" className="text-[10px]">STAT</Badge>}
-                        {getCompletionDot(selectedEntry.completionStatus)}
+          {(!isMobile || mobileShowDetail) && (
+            <Card className={cn("flex flex-col overflow-hidden", isMobile ? "w-full flex-1" : "flex-1")}>
+              {selectedEntry ? (
+                <>
+                  {/* Patient header */}
+                  <div className="p-4 border-b bg-muted/20">
+                    <div className={cn("flex items-start justify-between", isMobile && "flex-col gap-3")}>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          {isMobile && (
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setMobileShowDetail(false)}>
+                              <ArrowLeft className="h-4 w-4" />
+                            </Button>
+                          )}
+                          <User className="h-5 w-5 text-muted-foreground" />
+                          <h3 className={cn("font-semibold", isMobile ? "text-base" : "text-lg")}>{selectedEntry.registration.patient_name}</h3>
+                          {selectedEntry.registration.is_stat && <Badge variant="destructive" className="text-[10px]">STAT</Badge>}
+                          {getCompletionDot(selectedEntry.completionStatus)}
+                        </div>
+                        <div className={cn("flex items-center gap-4 mt-1 text-sm text-muted-foreground", isMobile && "flex-wrap gap-2 text-xs")}>
+                          <span className="flex items-center gap-1"><Phone className="h-3.5 w-3.5" />{selectedEntry.registration.mobile_number}</span>
+                          <span className="flex items-center gap-1"><FileText className="h-3.5 w-3.5" />{selectedEntry.registration.invoice_number}</span>
+                          {selectedEntry.registration.umr_number && <span>UMR: {selectedEntry.registration.umr_number}</span>}
+                          {!isMobile && <span className="flex items-center gap-1"><CalendarIcon className="h-3.5 w-3.5" />{formatDate(selectedEntry.registration.created_at)}</span>}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
-                        <span className="flex items-center gap-1"><Phone className="h-3.5 w-3.5" />{selectedEntry.registration.mobile_number}</span>
-                        <span className="flex items-center gap-1"><FileText className="h-3.5 w-3.5" />{selectedEntry.registration.invoice_number}</span>
-                        {selectedEntry.registration.umr_number && <span>UMR: {selectedEntry.registration.umr_number}</span>}
-                        <span className="flex items-center gap-1"><CalendarIcon className="h-3.5 w-3.5" />{formatDate(selectedEntry.registration.created_at)}</span>
+                      <div className={cn("flex items-center gap-2", isMobile && "w-full overflow-x-auto")}>
+                        {selectedEntry.tests.some(t => t.status === "approved" || t.status === "dispatched") && (
+                          <>
+                            <Button size="sm" variant="outline" className="gap-1 shrink-0" onClick={() => openReportSelectDialog(selectedEntry)}>
+                              <Eye className="h-4 w-4" /> {!isMobile && "View"} Report
+                            </Button>
+                            <Button size="sm" variant="outline" className="gap-1 shrink-0" onClick={() => dispatchViaWhatsApp(selectedEntry.registration)}>
+                              <MessageSquare className="h-4 w-4" /> {!isMobile && "WhatsApp"}
+                            </Button>
+                          </>
+                        )}
+                        {selectedEntry.approvedCount > 0 && (
+                          <Button size="sm" className="gap-1 shrink-0" disabled={actionKey === `${selectedEntry.registration.id}||dispatch`} onClick={() => markAsDispatched(selectedEntry)}>
+                            {actionKey === `${selectedEntry.registration.id}||dispatch` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Dispatch All
+                          </Button>
+                        )}
                       </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {selectedEntry.tests.some(t => t.status === "approved" || t.status === "dispatched") && (
-                        <>
-                          <Button size="sm" variant="outline" className="gap-1" onClick={() => openReportSelectDialog(selectedEntry)}>
-                            <Eye className="h-4 w-4" /> View Report
-                          </Button>
-                          <Button size="sm" variant="outline" className="gap-1" onClick={() => dispatchViaWhatsApp(selectedEntry.registration)}>
-                            <MessageSquare className="h-4 w-4" /> WhatsApp
-                          </Button>
-                        </>
-                      )}
-                      {selectedEntry.approvedCount > 0 && (
-                        <Button size="sm" className="gap-1" disabled={actionKey === `${selectedEntry.registration.id}||dispatch`} onClick={() => markAsDispatched(selectedEntry)}>
-                          {actionKey === `${selectedEntry.registration.id}||dispatch` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Dispatch All
-                        </Button>
-                      )}
                     </div>
                   </div>
-                </div>
 
-                {/* Test details list with audit trail */}
-                <ScrollArea className="flex-1">
-                  <div className="p-4 space-y-3">
-                    <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
-                      Tests ({selectedEntry.tests.length})
-                    </div>
-                    {selectedEntry.tests.map((test) => {
-                      const testKey = `${selectedEntry.registration.id}||${test.testId}`;
-                      const isTestDispatching = actionKey === `${testKey}||dispatch`;
+                  {/* Test details list with audit trail */}
+                  <ScrollArea className="flex-1">
+                    <div className="p-4 space-y-3">
+                      <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                        Tests ({selectedEntry.tests.length})
+                      </div>
+                      {selectedEntry.tests.map((test) => {
+                        const testKey = `${selectedEntry.registration.id}||${test.testId}`;
+                        const isTestDispatching = actionKey === `${testKey}||dispatch`;
 
-                      const auditSteps = [
-                        { label: "Sample Collected", timestamp: test.collectedAt },
-                        { label: "Sample Accepted", timestamp: test.acceptedAt },
-                        { label: "Results Entered", timestamp: test.enteredAt },
-                        { label: "Verified", timestamp: test.verifiedAt },
-                        { label: "Approved", timestamp: test.approvedAt },
-                        { label: "Dispatched", timestamp: test.dispatchedAt },
-                      ];
+                        const auditSteps = [
+                          { label: "Sample Collected", timestamp: test.collectedAt },
+                          { label: "Sample Accepted", timestamp: test.acceptedAt },
+                          { label: "Results Entered", timestamp: test.enteredAt },
+                          { label: "Verified", timestamp: test.verifiedAt },
+                          { label: "Approved", timestamp: test.approvedAt },
+                          { label: "Dispatched", timestamp: test.dispatchedAt },
+                        ];
 
-                      const latestStep = [...auditSteps].reverse().find(s => s.timestamp);
-
-                      return (
-                        <Collapsible key={testKey} className="border rounded-lg bg-background">
-                          {/* Test header with latest status */}
-                          <div className="flex items-center justify-between px-4 py-3">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <CollapsibleTrigger className="flex items-center gap-2 group cursor-pointer text-left">
-                                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-90" />
-                                <span className="font-medium text-sm">{test.testName}</span>
-                              </CollapsibleTrigger>
-                            </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              {/* TAT badge */}
-                              {(() => {
-                                const startTime = test.collectedAt;
-                                const endTime = test.dispatchedAt;
-                                if (startTime) {
-                                  const start = new Date(startTime).getTime();
-                                  const end = endTime ? new Date(endTime).getTime() : Date.now();
-                                  const diffMs = end - start;
-                                  const totalMins = Math.floor(diffMs / 60000);
-                                  const hrs = Math.floor(totalMins / 60);
-                                  const mins = totalMins % 60;
-                                  const label = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
-                                  return (
-                                    <Badge variant="outline" className={`text-xs px-2 py-0.5 h-6 font-mono ${endTime ? "border-emerald-500 text-emerald-700 bg-emerald-50" : "border-sky-400 text-sky-600 bg-sky-50"}`}>
-                                      <Clock className="h-3 w-3 mr-1" />{label}
-                                    </Badge>
-                                  );
-                                }
-                                return null;
-                              })()}
-                              {/* Step badges */}
-                              {auditSteps.map((step, idx) => {
-                                const isDone = !!step.timestamp;
-                                const badgeColors = [
-                                  "border-orange-400 text-orange-600 bg-orange-50",
-                                  "border-yellow-500 text-yellow-700 bg-yellow-50",
-                                  "border-indigo-400 text-indigo-600 bg-indigo-50",
-                                  "border-purple-400 text-purple-600 bg-purple-50",
-                                  "border-green-500 text-green-700 bg-green-50",
-                                  "border-blue-500 text-blue-700 bg-blue-50",
-                                ];
-                                const shortLabels = ["Collected", "Accepted", "Entered", "Verified", "Approved", "Dispatched"];
-                                return (
-                                  <Badge
-                                    key={idx}
-                                    variant="outline"
-                                    className={`text-[10px] px-2 py-0.5 h-6 ${isDone ? badgeColors[idx] : "border-muted text-muted-foreground/40 bg-transparent"}`}
-                                  >
-                                    {shortLabels[idx]}
-                                  </Badge>
-                                );
-                              })}
-                              {test.status === "approved" && test.snipUrls.length > 0 && (
-                                <Button size="sm" variant="ghost" className="h-8 text-xs gap-1" onClick={() => setViewSnipImages(test.snipUrls)}>
-                                  <Eye className="h-3.5 w-3.5" /> Snip
-                                </Button>
-                              )}
-                              {test.status === "approved" && (
-                                <>
-                                  <Button size="sm" variant="outline" className="h-8 text-xs gap-1" onClick={() => dispatchViaWhatsApp(selectedEntry.registration)}>
-                                    <MessageSquare className="h-3.5 w-3.5" />
+                        return (
+                          <Collapsible key={testKey} className="border rounded-lg bg-background">
+                            {/* Test header */}
+                            <div className={cn("flex items-center justify-between px-4 py-3", isMobile && "flex-wrap gap-2 px-3 py-2")}>
+                              <div className="flex items-center gap-2 min-w-0">
+                                <CollapsibleTrigger className="flex items-center gap-2 group cursor-pointer text-left">
+                                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-90" />
+                                  <span className="font-medium text-sm">{test.testName}</span>
+                                </CollapsibleTrigger>
+                              </div>
+                              <div className={cn("flex items-center gap-1.5 shrink-0", isMobile && "flex-wrap w-full justify-end")}>
+                                {/* TAT badge */}
+                                {(() => {
+                                  const startTime = test.collectedAt;
+                                  const endTime = test.dispatchedAt;
+                                  if (startTime) {
+                                    const start = new Date(startTime).getTime();
+                                    const end = endTime ? new Date(endTime).getTime() : Date.now();
+                                    const diffMs = end - start;
+                                    const totalMins = Math.floor(diffMs / 60000);
+                                    const hrs = Math.floor(totalMins / 60);
+                                    const mins = totalMins % 60;
+                                    const label = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+                                    return (
+                                      <Badge variant="outline" className={`text-xs px-2 py-0.5 h-6 font-mono ${endTime ? "border-emerald-500 text-emerald-700 bg-emerald-50" : "border-sky-400 text-sky-600 bg-sky-50"}`}>
+                                        <Clock className="h-3 w-3 mr-1" />{label}
+                                      </Badge>
+                                    );
+                                  }
+                                  return null;
+                                })()}
+                                {/* Status badge - on mobile show only current status, on desktop show all steps */}
+                                {isMobile ? (
+                                  getStatusBadge(test.status)
+                                ) : (
+                                  auditSteps.map((step, idx) => {
+                                    const isDone = !!step.timestamp;
+                                    const badgeColors = [
+                                      "border-orange-400 text-orange-600 bg-orange-50",
+                                      "border-yellow-500 text-yellow-700 bg-yellow-50",
+                                      "border-indigo-400 text-indigo-600 bg-indigo-50",
+                                      "border-purple-400 text-purple-600 bg-purple-50",
+                                      "border-green-500 text-green-700 bg-green-50",
+                                      "border-blue-500 text-blue-700 bg-blue-50",
+                                    ];
+                                    const shortLabels = ["Collected", "Accepted", "Entered", "Verified", "Approved", "Dispatched"];
+                                    return (
+                                      <Badge
+                                        key={idx}
+                                        variant="outline"
+                                        className={`text-[10px] px-2 py-0.5 h-6 ${isDone ? badgeColors[idx] : "border-muted text-muted-foreground/40 bg-transparent"}`}
+                                      >
+                                        {shortLabels[idx]}
+                                      </Badge>
+                                    );
+                                  })
+                                )}
+                                {test.status === "approved" && test.snipUrls.length > 0 && (
+                                  <Button size="sm" variant="ghost" className="h-8 text-xs gap-1" onClick={() => setViewSnipImages(test.snipUrls)}>
+                                    <Eye className="h-3.5 w-3.5" /> Snip
                                   </Button>
-                                  <Button size="sm" className="h-8 text-xs gap-1" disabled={isTestDispatching} onClick={() => markTestDispatched(selectedEntry.registration.id, test.testId, test.testName)}>
-                                    {isTestDispatching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />} Dispatch
-                                  </Button>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                          {/* Collapsible audit trail */}
-                          <CollapsibleContent>
-                            <div className="px-4 py-2.5 border-t">
-                              <div className="space-y-1">
-                                {auditSteps.map((step, idx) => {
-                                  const isDone = !!step.timestamp;
-                                  return (
-                                    <div key={idx} className="grid grid-cols-[24px_160px_1fr] items-center gap-1 py-0.5">
-                                      <div className="flex justify-center">
-                                        {isDone ? (
-                                          <div className="h-2.5 w-2.5 rounded-full bg-green-500" />
-                                        ) : (
-                                          <div className="h-2.5 w-2.5 rounded-full border-2 border-muted-foreground/30" />
-                                        )}
-                                      </div>
-                                      <span className={`text-xs ${isDone ? "text-foreground font-medium" : "text-muted-foreground"}`}>
-                                        {step.label}
-                                      </span>
-                                      <span className={`text-xs ${isDone ? "text-muted-foreground" : "text-muted-foreground/40"}`}>
-                                        {isDone ? formatDate(step.timestamp) : "—"}
-                                      </span>
-                                    </div>
-                                  );
-                                })}
+                                )}
+                                {test.status === "approved" && (
+                                  <>
+                                    <Button size="sm" variant="outline" className="h-8 text-xs gap-1" onClick={() => dispatchViaWhatsApp(selectedEntry.registration)}>
+                                      <MessageSquare className="h-3.5 w-3.5" />
+                                    </Button>
+                                    <Button size="sm" className="h-8 text-xs gap-1" disabled={isTestDispatching} onClick={() => markTestDispatched(selectedEntry.registration.id, test.testId, test.testName)}>
+                                      {isTestDispatching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />} Dispatch
+                                    </Button>
+                                  </>
+                                )}
                               </div>
                             </div>
-                          </CollapsibleContent>
-                        </Collapsible>
-                      );
-                    })}
+                            {/* Collapsible audit trail */}
+                            <CollapsibleContent>
+                              <div className="px-4 py-2.5 border-t">
+                                <div className="space-y-1">
+                                  {auditSteps.map((step, idx) => {
+                                    const isDone = !!step.timestamp;
+                                    return (
+                                      <div key={idx} className={cn("grid items-center gap-1 py-0.5", isMobile ? "grid-cols-[20px_120px_1fr]" : "grid-cols-[24px_160px_1fr]")}>
+                                        <div className="flex justify-center">
+                                          {isDone ? (
+                                            <div className="h-2.5 w-2.5 rounded-full bg-green-500" />
+                                          ) : (
+                                            <div className="h-2.5 w-2.5 rounded-full border-2 border-muted-foreground/30" />
+                                          )}
+                                        </div>
+                                        <span className={`text-xs ${isDone ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+                                          {step.label}
+                                        </span>
+                                        <span className={`text-xs ${isDone ? "text-muted-foreground" : "text-muted-foreground/40"}`}>
+                                          {isDone ? formatDate(step.timestamp) : "—"}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </CollapsibleContent>
+                          </Collapsible>
+                        );
+                      })}
+                    </div>
+                  </ScrollArea>
+                </>
+              ) : (
+                <div className="flex-1 flex items-center justify-center text-muted-foreground">
+                  <div className="text-center">
+                    <User className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                    <p className="text-sm">Select a patient to view details</p>
                   </div>
-                </ScrollArea>
-              </>
-            ) : (
-              <div className="flex-1 flex items-center justify-center text-muted-foreground">
-                <div className="text-center">
-                  <User className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                  <p className="text-sm">Select a patient to view details</p>
                 </div>
-              </div>
-            )}
-          </Card>
+              )}
+            </Card>
+          )}
         </div>
       )}
 
