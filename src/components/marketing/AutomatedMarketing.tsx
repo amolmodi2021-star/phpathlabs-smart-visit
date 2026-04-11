@@ -219,13 +219,17 @@ const AutomatedMarketing = () => {
         return all;
       };
 
-      const [allContacts, abnormalPks, cyclesData, allLogs] = await Promise.all([
+      const [allContacts, abnormalPks, cyclesData, allLogs, blacklistData] = await Promise.all([
         fetchAllPg(supabase.from("crm_contacts").select("primary_key,mobile_number,umr_number,patient_name,last_sent_type,last_sent_date")),
         fetchAllPg(supabase.from("crm_abnormal_tests").select("contact_primary_key")),
         fetchAllPg(supabase.from("drip_mobile_cycles").select("mobile_number,current_cycle")),
         fetchAllPg(supabase.from("drip_campaign_log").select("filter_id,mobile_number,contact_primary_key,cycle_number").eq("status", "sent")),
+        excludeBlacklist
+          ? supabase.from("crm_blacklist").select("mobile_number").then(r => r.data || [])
+          : Promise.resolve([]),
       ]);
 
+      const blacklistSet = new Set(blacklistData.map((b: any) => b.mobile_number));
       const abnormalPkSet = new Set(abnormalPks.map((a: any) => a.contact_primary_key));
       const mobileCycles: Record<string, number> = {};
       (cyclesData || []).forEach((c: any) => { mobileCycles[c.mobile_number] = c.current_cycle; });
@@ -234,6 +238,7 @@ const AutomatedMarketing = () => {
       for (const c of allContacts) {
         const mob = (c.mobile_number || "").replace(/\D/g, "").slice(-10);
         if (mob && mob.length === 10) {
+          if (excludeBlacklist && blacklistSet.has(mob)) continue;
           if (!contactsByMobile[mob]) contactsByMobile[mob] = [];
           contactsByMobile[mob].push(c);
         }
