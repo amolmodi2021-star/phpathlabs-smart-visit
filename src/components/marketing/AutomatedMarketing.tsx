@@ -568,6 +568,71 @@ const AutomatedMarketing = () => {
       });
     }
 
+    // Iterative backfill + dedup loop until quota is stable
+    let backfillIterations = 0;
+    const MAX_BACKFILL_ITERATIONS = 10;
+
+    while (backfillIterations < MAX_BACKFILL_ITERATIONS) {
+      backfillIterations++;
+
+      let totalKeptNow = filterCapped.reduce((s: number, f: any) => s + f.kept.length, 0);
+      let freeSlots = maxPerDay - totalKeptNow;
+      if (freeSlots <= 0) break;
+
+      let backfilled = 0;
+      for (const entry of filterCapped) {
+        if (freeSlots <= 0) break;
+        const alreadyKeptPks = new Set(entry.kept.map((r: any) => r.primary_key));
+        const pool = entry.fc.eligible.filter((r: any) => !alreadyKeptPks.has(r.primary_key));
+
+        for (const record of pool) {
+          if (freeSlots <= 0) break;
+          const mob = (record.mobile_number || "").replace(/\D/g, "").slice(-10);
+          if (!mob) continue;
+          if (finalClaimed.has(mob)) continue;
+          if (recentSentMobiles.has(mob)) continue;
+
+          entry.kept.push(record);
+          finalClaimed.add(mob);
+          freeSlots--;
+          backfilled++;
+        }
+      }
+
+      if (backfilled === 0) break;
+
+      const recheck = new Set<string>();
+      let removedThisPass = 0;
+      for (const entry of filterCapped) {
+        entry.kept = entry.kept.filter((record: any) => {
+          const mob = (record.mobile_number || "").replace(/\D/g, "").slice(-10);
+          if (!mob) return true;
+          if (recheck.has(mob)) {
+            entry.fc.skips["final_dedup"] = (entry.fc.skips["final_dedup"] || 0) + 1;
+            removedThisPass++;
+            return false;
+          }
+          if (recentSentMobiles.has(mob)) {
+            entry.fc.skips["final_interval_check"] = (entry.fc.skips["final_interval_check"] || 0) + 1;
+            removedThisPass++;
+            return false;
+          }
+          recheck.add(mob);
+          return true;
+        });
+      }
+
+      finalClaimed.clear();
+      for (const entry of filterCapped) {
+        for (const record of entry.kept) {
+          const mob = (record.mobile_number || "").replace(/\D/g, "").slice(-10);
+          if (mob) finalClaimed.add(mob);
+        }
+      }
+
+      if (removedThisPass === 0) break;
+    }
+
     // Build results from capped collections
     for (const entry of filterCapped) {
       results.push({
