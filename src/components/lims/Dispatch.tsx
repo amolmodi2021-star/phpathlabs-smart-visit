@@ -340,9 +340,7 @@ const Dispatch = () => {
 
   return (
     <div className="space-y-3">
-      {/* Date range filter */}
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-muted-foreground">From</span>
+      <div className="flex flex-wrap items-center gap-2">
         <Popover>
           <PopoverTrigger asChild>
             <Button variant="outline" size="sm" className="h-9 gap-1.5 text-sm font-normal">
@@ -379,7 +377,7 @@ const Dispatch = () => {
           </PopoverContent>
         </Popover>
         <Button variant="ghost" size="sm" className="text-xs" onClick={() => { setDateFrom(startOfDay(new Date())); setDateTo(endOfDay(new Date())); }}>Today</Button>
-        <span className="text-xs text-muted-foreground ml-auto">{dispatchCount} records{dispatchTotalPages > 1 ? ` (page ${dispatchPage + 1}/${dispatchTotalPages})` : ""}</span>
+        <span className="text-xs text-muted-foreground ml-auto whitespace-nowrap">{dispatchCount} records{dispatchTotalPages > 1 ? ` (pg ${dispatchPage + 1}/${dispatchTotalPages})` : ""}</span>
       </div>
 
       {loadingRegs ? (
