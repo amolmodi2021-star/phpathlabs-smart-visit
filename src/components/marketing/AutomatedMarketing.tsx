@@ -899,17 +899,24 @@ const AutomatedMarketing = () => {
     const { data: abnTmpl } = await supabase.from("marketing_templates").select("whatsapp_template_name, body_mapping, api_base_url, from_number").eq("template_name", "Abnormal PNG").maybeSingle();
 
     _moduleAbort = false;
+    _modulePaused = false;
     abortRef.current = false;
     _moduleSending = true;
     _moduleProgress = 0;
     _modulePhase = "";
     setSending(true);
+    setPaused(false);
     setSendProgress(0);
 
     // Wrap state setters to also update module-level vars for cross-navigation persistence
     const _setSendProgress = (v: number) => { _moduleProgress = v; setSendProgress(v); };
     const _setSendPhase = (v: string) => { _modulePhase = v; setSendPhase(v); };
     const _checkAbort = () => abortRef.current || _moduleAbort;
+    const _waitWhilePaused = async () => {
+      while (_modulePaused && !_checkAbort()) {
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    };
 
     let totalMessages = previewResults.reduce((sum, r) => sum + r.eligible, 0);
     if (trial) totalMessages = Math.min(totalMessages, trialMax);
