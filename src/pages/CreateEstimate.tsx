@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { useMessageTemplates } from "@/hooks/useMessageTemplates";
 import { buildEstimateMessage, shareOnWhatsApp } from "@/lib/whatsapp";
+import { logMessageSend } from "@/lib/messageLog";
 import { Send, X, Search, ScanLine } from "lucide-react";
 import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import PrescriptionScanDialog from "@/components/PrescriptionScanDialog";
@@ -141,6 +142,7 @@ const CreateEstimate = () => {
           patientName: patientName || undefined,
         });
         shareOnWhatsApp(cleanNumber, msg);
+        logMessageSend(cleanNumber, patientName, "Estimate");
       }
 
       try {
