@@ -904,7 +904,7 @@ const AutomatedMarketing = () => {
 
     // Wrap state setters to also update module-level vars for cross-navigation persistence
     const _setSendProgress = (v: number) => { _moduleProgress = v; setSendProgress(v); };
-    const _setSendPhase = (v: string) => { _modulePhase = v; _setSendPhase(v); };
+    const _setSendPhase = (v: string) => { _modulePhase = v; setSendPhase(v); };
     const _checkAbort = () => abortRef.current || _moduleAbort;
 
     let totalMessages = previewResults.reduce((sum, r) => sum + r.eligible, 0);
