@@ -52,6 +52,12 @@ const MESSAGE_TYPES = [
 
 const LOCATIONS = ["ALL", "PH VESU", "NON PHPL"];
 
+// Module-level state so it survives component unmount/remount
+let _moduleAbort = false;
+let _moduleSending = false;
+let _moduleProgress = 0;
+let _modulePhase = "";
+
 const SEQUENCE_OPTIONS = [
   { value: "__none__", label: "No sequencing (any)" },
   { value: "ABC", label: "Last sent was ABC" },
@@ -91,10 +97,30 @@ const AutomatedMarketing = () => {
   // Execution state
   const [previewing, setPreviewing] = useState(false);
   const [previewResults, setPreviewResults] = useState<PreviewResult[] | null>(null);
-  const [sending, setSending] = useState(false);
-  const [sendProgress, setSendProgress] = useState(0);
-  const [sendPhase, setSendPhase] = useState("");
-  const abortRef = useRef(false);
+  const [sending, setSending] = useState(_moduleSending);
+  const [sendProgress, setSendProgress] = useState(_moduleProgress);
+  const [sendPhase, setSendPhase] = useState(_modulePhase);
+  const abortRef = useRef(_moduleAbort);
+
+  // Sync module-level vars on mount
+  useEffect(() => {
+    if (_moduleSending) {
+      setSending(true);
+      setSendProgress(_moduleProgress);
+      setSendPhase(_modulePhase);
+    }
+    // Poll module-level state while sending
+    const interval = setInterval(() => {
+      if (_moduleSending) {
+        setSending(true);
+        setSendProgress(_moduleProgress);
+        setSendPhase(_modulePhase);
+      } else {
+        setSending(false);
+      }
+    }, 500);
+    return () => clearInterval(interval);
+  }, []);
 
   // Test mode
   const [testMobile, setTestMobile] = useState("");
@@ -866,9 +892,18 @@ const AutomatedMarketing = () => {
     const { data: abcTmpl } = await supabase.from("marketing_templates").select("whatsapp_template_name, body_mapping, api_base_url, from_number").eq("template_name", "ABC Card").maybeSingle();
     const { data: abnTmpl } = await supabase.from("marketing_templates").select("whatsapp_template_name, body_mapping, api_base_url, from_number").eq("template_name", "Abnormal PNG").maybeSingle();
 
+    _moduleAbort = false;
     abortRef.current = false;
+    _moduleSending = true;
+    _moduleProgress = 0;
+    _modulePhase = "";
     setSending(true);
     setSendProgress(0);
+
+    // Wrap state setters to also update module-level vars for cross-navigation persistence
+    const _setSendProgress = (v: number) => { _moduleProgress = v; setSendProgress(v); };
+    const _setSendPhase = (v: string) => { _modulePhase = v; _setSendPhase(v); };
+    const _checkAbort = () => abortRef.current || _moduleAbort;
 
     let totalMessages = previewResults.reduce((sum, r) => sum + r.eligible, 0);
     if (trial) totalMessages = Math.min(totalMessages, trialMax);
@@ -880,11 +915,11 @@ const AutomatedMarketing = () => {
 
     for (const preview of previewResults) {
       if (preview.eligible === 0) continue;
-      if (abortRef.current) break;
+      if (_checkAbort()) break;
       const filter = enabledFilters.find((f) => f.id === preview.filterId);
       if (!filter) continue;
 
-      setSendPhase(`Processing filter: ${filter.name} (${preview.eligible} records)`);
+      _setSendPhase(`Processing filter: ${filter.name} (${preview.eligible} records)`);
 
       if (filter.message_type === "abc_card") {
         // Send ABC loyalty cards
@@ -905,7 +940,7 @@ const AutomatedMarketing = () => {
             await logDripAction(filter, c, "failed", "wa_not_configured");
             totalFailed++;
             processedCount++;
-            setSendProgress(Math.round((processedCount / totalMessages) * 100));
+            _setSendProgress(Math.round((processedCount / totalMessages) * 100));
           }
           continue;
         }
@@ -921,7 +956,7 @@ const AutomatedMarketing = () => {
             await logDripAction(filter, c, "failed", "no_template");
             totalFailed++;
             processedCount++;
-            setSendProgress(Math.round((processedCount / totalMessages) * 100));
+            _setSendProgress(Math.round((processedCount / totalMessages) * 100));
           }
           continue;
         }
@@ -936,7 +971,7 @@ const AutomatedMarketing = () => {
             await logDripAction(filter, c, "failed", "template_load_error");
             totalFailed++;
             processedCount++;
-            setSendProgress(Math.round((processedCount / totalMessages) * 100));
+            _setSendProgress(Math.round((processedCount / totalMessages) * 100));
           }
           continue;
         }
@@ -944,12 +979,12 @@ const AutomatedMarketing = () => {
         const { bgImg, canvas, ctx, placeholders } = templateAssets;
 
         for (let i = 0; i < preview.records.length; i++) {
-          if (abortRef.current) break;
+          if (_checkAbort()) break;
           if (trial && trialSentCount >= trialMax) break;
           const r = preview.records[i];
           const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
           const destMob = trial ? trialMob : mob;
-          setSendPhase(`${trial ? "🧪 TRIAL " : ""}[${filter.name}] Generating & sending ${i + 1}/${preview.eligible}...`);
+          _setSendPhase(`${trial ? "🧪 TRIAL " : ""}[${filter.name}] Generating & sending ${i + 1}/${preview.eligible}...`);
 
           const cardData: CardData = {
             Name: r.patient_name || "",
@@ -964,7 +999,7 @@ const AutomatedMarketing = () => {
             await logDripAction(filter, r, "failed", "card_generation_error");
             totalFailed++;
             processedCount++;
-            setSendProgress(Math.round((processedCount / totalMessages) * 100));
+            _setSendProgress(Math.round((processedCount / totalMessages) * 100));
             continue;
           }
 
@@ -1021,7 +1056,7 @@ const AutomatedMarketing = () => {
           }
 
           processedCount++;
-          setSendProgress(Math.round((processedCount / totalMessages) * 100));
+          _setSendProgress(Math.round((processedCount / totalMessages) * 100));
           if (delayMs > 0 && i < preview.records.length - 1) {
             await new Promise((res) => setTimeout(res, delayMs));
           }
@@ -1047,7 +1082,7 @@ const AutomatedMarketing = () => {
             totalFailed++;
             processedCount++;
           }
-          setSendProgress(Math.round((processedCount / totalMessages) * 100));
+          _setSendProgress(Math.round((processedCount / totalMessages) * 100));
           continue;
         }
 
@@ -1060,12 +1095,12 @@ const AutomatedMarketing = () => {
         }
 
         for (let i = 0; i < preview.records.length; i++) {
-          if (abortRef.current) break;
+          if (_checkAbort()) break;
           if (trial && trialSentCount >= trialMax) break;
           const r = preview.records[i];
           const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
           const destMob = trial ? trialMob : mob;
-          setSendPhase(`${trial ? "🧪 TRIAL " : ""}[${filter.name}] Processing ${i + 1}/${preview.eligible}...`);
+          _setSendPhase(`${trial ? "🧪 TRIAL " : ""}[${filter.name}] Processing ${i + 1}/${preview.eligible}...`);
 
           // Fetch abnormal tests for this contact
           const { data: tests } = await supabase
@@ -1078,7 +1113,7 @@ const AutomatedMarketing = () => {
             if (!trial) await logDripAction(filter, r, "skipped", "no_abnormal_history");
             totalSkipped++;
             processedCount++;
-            setSendProgress(Math.round((processedCount / totalMessages) * 100));
+            _setSendProgress(Math.round((processedCount / totalMessages) * 100));
             continue;
           }
 
@@ -1088,7 +1123,7 @@ const AutomatedMarketing = () => {
             if (!trial) await logDripAction(filter, r, "failed", "card_generation_error");
             totalFailed++;
             processedCount++;
-            setSendProgress(Math.round((processedCount / totalMessages) * 100));
+            _setSendProgress(Math.round((processedCount / totalMessages) * 100));
             continue;
           }
 
@@ -1132,7 +1167,7 @@ const AutomatedMarketing = () => {
           }
 
           processedCount++;
-          setSendProgress(Math.round((processedCount / totalMessages) * 100));
+          _setSendProgress(Math.round((processedCount / totalMessages) * 100));
           if (delayMs > 0 && i < preview.records.length - 1) {
             await new Promise((res) => setTimeout(res, delayMs));
           }
@@ -1147,7 +1182,7 @@ const AutomatedMarketing = () => {
             totalFailed++;
             processedCount++;
           }
-          setSendProgress(Math.round((processedCount / totalMessages) * 100));
+          _setSendProgress(Math.round((processedCount / totalMessages) * 100));
           continue;
         }
 
@@ -1160,12 +1195,12 @@ const AutomatedMarketing = () => {
         const delayMs = 3000;
 
         for (let i = 0; i < preview.records.length; i++) {
-          if (abortRef.current) break;
+          if (_checkAbort()) break;
           if (trial && trialSentCount >= trialMax) break;
           const r = preview.records[i];
           const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
           const destMob = trial ? trialMob : mob;
-          setSendPhase(`${trial ? "🧪 TRIAL " : ""}[${filter.name}] Sending promo ${i + 1}/${preview.eligible}...`);
+          _setSendPhase(`${trial ? "🧪 TRIAL " : ""}[${filter.name}] Sending promo ${i + 1}/${preview.eligible}...`);
 
           const toNumber = `+91${destMob}`;
           const payload: Record<string, unknown> = {
@@ -1223,7 +1258,7 @@ const AutomatedMarketing = () => {
           }
 
           processedCount++;
-          setSendProgress(Math.round((processedCount / totalMessages) * 100));
+          _setSendProgress(Math.round((processedCount / totalMessages) * 100));
           if (delayMs > 0 && i < preview.records.length - 1) {
             await new Promise((res) => setTimeout(res, delayMs));
           }
@@ -1231,8 +1266,8 @@ const AutomatedMarketing = () => {
       }
     }
 
-    setSending(false);
-    setSendPhase("");
+    _moduleSending = false; _moduleProgress = 0; _modulePhase = ''; setSending(false);
+    _setSendPhase("");
     setPreviewResults(null);
     if (!trial) {
       qc.invalidateQueries({ queryKey: ["drip-campaign-logs"] });
@@ -1675,7 +1710,7 @@ const AutomatedMarketing = () => {
             <Button
               size="sm"
               variant="destructive"
-              onClick={() => { abortRef.current = true; toast.warning("Stopping after current message..."); }}
+              onClick={() => { abortRef.current = true; _moduleAbort = true; toast.warning("Stopping after current message..."); }}
             >
               ⛔ STOP NOW
             </Button>
@@ -1833,7 +1868,7 @@ const AutomatedMarketing = () => {
                 </Button>
                 {sending && (
                   <Button
-                    onClick={() => { abortRef.current = true; toast.warning("Stopping after current message..."); }}
+                    onClick={() => { abortRef.current = true; _moduleAbort = true; toast.warning("Stopping after current message..."); }}
                     variant="destructive"
                   >
                     ⛔ STOP NOW
