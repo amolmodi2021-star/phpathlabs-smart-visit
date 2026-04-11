@@ -944,6 +944,7 @@ const AutomatedMarketing = () => {
         const { bgImg, canvas, ctx, placeholders } = templateAssets;
 
         for (let i = 0; i < preview.records.length; i++) {
+          if (abortRef.current) break;
           if (trial && trialSentCount >= trialMax) break;
           const r = preview.records[i];
           const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
