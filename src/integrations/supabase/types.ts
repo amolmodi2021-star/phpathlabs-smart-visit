@@ -1654,7 +1654,9 @@ export type Database = {
           message_type: string
           mobile_number: string
           patient_name: string | null
+          primary_key: string | null
           sent_at: string
+          umr_number: string | null
         }
         Insert: {
           created_at?: string
@@ -1662,7 +1664,9 @@ export type Database = {
           message_type: string
           mobile_number: string
           patient_name?: string | null
+          primary_key?: string | null
           sent_at?: string
+          umr_number?: string | null
         }
         Update: {
           created_at?: string
@@ -1670,7 +1674,9 @@ export type Database = {
           message_type?: string
           mobile_number?: string
           patient_name?: string | null
+          primary_key?: string | null
           sent_at?: string
+          umr_number?: string | null
         }
         Relationships: []
       }
