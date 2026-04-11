@@ -14,7 +14,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Pencil, Trash2, Eye, Send, Settings, MessageCircle, Download, AlertTriangle, FlaskConical } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Plus, Pencil, Trash2, Eye, Send, Settings, MessageCircle, Download, AlertTriangle, FlaskConical, CreditCard, Activity } from "lucide-react";
 import { exportToExcel } from "@/lib/excel";
 import { sortAbnormalTestsByDateDesc } from "@/lib/abnormalTests";
 import { toast } from "sonner";
@@ -192,6 +193,108 @@ const AutomatedMarketing = () => {
         .limit(500);
       if (error) throw error;
       return data || [];
+    },
+  });
+
+  // Pending counters for ABC cards and Abnormal History
+  const { data: pendingCounts, isLoading: pendingLoading } = useQuery({
+    queryKey: ["drip-pending-counts", filters.map(f => f.id).join(",")],
+    enabled: filters.length > 0,
+    refetchInterval: 120000,
+    queryFn: async () => {
+      const enabledFilters = filters.filter(f => f.enabled).sort((a, b) => a.priority - b.priority);
+      if (enabledFilters.length === 0) return { pendingAbc: 0, pendingAbnormal: 0 };
+
+      const BATCH = 1000;
+      const fetchAllPg = async (query: any) => {
+        let all: any[] = [];
+        let from = 0;
+        while (true) {
+          const { data } = await query.range(from, from + BATCH - 1);
+          if (!data || data.length === 0) break;
+          all = all.concat(data);
+          if (data.length < BATCH) break;
+          from += BATCH;
+        }
+        return all;
+      };
+
+      const [allContacts, abnormalPks, cyclesData, allLogs] = await Promise.all([
+        fetchAllPg(supabase.from("crm_contacts").select("primary_key,mobile_number,umr_number,last_sent_type")),
+        fetchAllPg(supabase.from("crm_abnormal_tests").select("contact_primary_key")),
+        fetchAllPg(supabase.from("drip_mobile_cycles").select("mobile_number,current_cycle")),
+        fetchAllPg(supabase.from("drip_campaign_log").select("filter_id,mobile_number,contact_primary_key,cycle_number").eq("status", "sent")),
+      ]);
+
+      const abnormalPkSet = new Set(abnormalPks.map((a: any) => a.contact_primary_key));
+      const mobileCycles: Record<string, number> = {};
+      (cyclesData || []).forEach((c: any) => { mobileCycles[c.mobile_number] = c.current_cycle; });
+
+      const contactsByMobile: Record<string, any[]> = {};
+      for (const c of allContacts) {
+        const mob = (c.mobile_number || "").replace(/\D/g, "").slice(-10);
+        if (mob && mob.length === 10) {
+          if (!contactsByMobile[mob]) contactsByMobile[mob] = [];
+          contactsByMobile[mob].push(c);
+        }
+      }
+
+      const sentByMobileFilter: Record<string, Record<string, Set<string>>> = {};
+      for (const log of allLogs) {
+        const mob = log.mobile_number;
+        const cycle = log.cycle_number || 1;
+        const mobileCycle = mobileCycles[mob] || 1;
+        if (cycle !== mobileCycle) continue;
+        if (!sentByMobileFilter[mob]) sentByMobileFilter[mob] = {};
+        if (!sentByMobileFilter[mob][log.filter_id]) sentByMobileFilter[mob][log.filter_id] = new Set();
+        if (log.contact_primary_key) sentByMobileFilter[mob][log.filter_id].add(log.contact_primary_key);
+      }
+
+      const getEligible = (f: DripFilter, mob: string) => {
+        const contacts = contactsByMobile[mob] || [];
+        if (f.message_type === "abc_card") return contacts.filter(c => c.umr_number && c.umr_number.trim()).length;
+        if (f.message_type === "abnormal_card") return contacts.filter(c => abnormalPkSet.has(c.primary_key)).length;
+        return contacts.length;
+      };
+
+      const getSent = (f: DripFilter, mob: string) => {
+        const dripSent = sentByMobileFilter[mob]?.[f.id] || new Set();
+        if (f.message_type === "abc_card") {
+          const contacts = contactsByMobile[mob] || [];
+          const crmSentPks = new Set(contacts.filter(c => c.last_sent_type === "ABC" && c.umr_number && c.umr_number.trim()).map((c: any) => c.primary_key));
+          return new Set([...dripSent, ...crmSentPks]).size;
+        }
+        return dripSent.size;
+      };
+
+      // For each mobile, find locked priority
+      const allMobiles = Object.keys(contactsByMobile);
+      let pendingAbc = 0;
+      let pendingAbnormal = 0;
+
+      for (const mob of allMobiles) {
+        // Find lowest incomplete priority
+        let lockedPriority = Infinity;
+        for (const f of enabledFilters) {
+          const eligible = getEligible(f, mob);
+          if (eligible === 0) continue;
+          const sent = getSent(f, mob);
+          if (sent < eligible) { lockedPriority = f.priority; break; }
+        }
+        if (lockedPriority === Infinity) continue; // all complete
+
+        // Count unsent for filters at this priority
+        for (const f of enabledFilters) {
+          if (f.priority !== lockedPriority) continue;
+          const eligible = getEligible(f, mob);
+          const sent = getSent(f, mob);
+          const unsent = Math.max(0, eligible - sent);
+          if (f.message_type === "abc_card") pendingAbc += unsent;
+          if (f.message_type === "abnormal_card") pendingAbnormal += unsent;
+        }
+      }
+
+      return { pendingAbc, pendingAbnormal };
     },
   });
 
@@ -1444,7 +1547,36 @@ const AutomatedMarketing = () => {
         </CardContent>
       </Card>
 
-      {/* Progress */}
+      {/* Pending Counters */}
+      <div className="grid grid-cols-2 gap-4">
+        <Card>
+          <CardContent className="py-4 flex items-center gap-3">
+            <CreditCard className="h-7 w-7 text-primary" />
+            <div>
+              <p className="text-xs text-muted-foreground">Pending ABC Cards</p>
+              {pendingLoading ? (
+                <Skeleton className="h-7 w-16 mt-1" />
+              ) : (
+                <p className="text-2xl font-bold">{pendingCounts?.pendingAbc ?? 0}</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="py-4 flex items-center gap-3">
+            <Activity className="h-7 w-7 text-primary" />
+            <div>
+              <p className="text-xs text-muted-foreground">Pending Abnormal History</p>
+              {pendingLoading ? (
+                <Skeleton className="h-7 w-16 mt-1" />
+              ) : (
+                <p className="text-2xl font-bold">{pendingCounts?.pendingAbnormal ?? 0}</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {sending && (
         <div className="space-y-2 p-3 border rounded-lg bg-muted/50">
           <p className="text-sm font-medium">{sendPhase}</p>
