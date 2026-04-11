@@ -3,7 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { isAuthenticated } from "@/lib/auth";
+import { isAuthenticated, isTabAllowed, getFirstAllowedRoute } from "@/lib/auth";
 import AppLayout from "@/components/AppLayout";
 import Login from "./pages/Login";
 import CreateEstimate from "./pages/CreateEstimate";
@@ -33,12 +33,14 @@ import LimsDemo from "./pages/LimsDemo";
 import Lims from "./pages/Lims";
 import WhatsAppSettingsPage from "./pages/WhatsAppSettingsPage";
 import LimsReportView from "./pages/LimsReportView";
+import UserManagement from "./pages/UserManagement";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
+function ProtectedRoute({ children, route }: { children: React.ReactNode; route?: string }) {
   if (!isAuthenticated()) return <Navigate to="/login" replace />;
+  if (route && !isTabAllowed(route)) return <Navigate to={getFirstAllowedRoute()} replace />;
   return <AppLayout>{children}</AppLayout>;
 }
 
@@ -50,26 +52,27 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="/" element={<ProtectedRoute><CreateEstimate /></ProtectedRoute>} />
-          <Route path="/dashboard" element={<ProtectedRoute><EstimateDashboard /></ProtectedRoute>} />
-          <Route path="/home-visits" element={<ProtectedRoute><HomeVisits /></ProtectedRoute>} />
-          <Route path="/phlebotomists" element={<ProtectedRoute><PhlebotomistManagement /></ProtectedRoute>} />
-          <Route path="/tests" element={<ProtectedRoute><TestManagement /></ProtectedRoute>} />
-          <Route path="/parameters" element={<ProtectedRoute><ReportParameters /></ProtectedRoute>} />
-          <Route path="/departments" element={<ProtectedRoute><ReportDepartments /></ProtectedRoute>} />
-          <Route path="/templates" element={<ProtectedRoute><MessageTemplates /></ProtectedRoute>} />
-          <Route path="/abnormal-history" element={<ProtectedRoute><AbnormalHistory /></ProtectedRoute>} />
-          <Route path="/phlebo-dashboard" element={<ProtectedRoute><PhleboDashboard /></ProtectedRoute>} />
-          <Route path="/loyalty-cards" element={<ProtectedRoute><LoyaltyCards /></ProtectedRoute>} />
-          <Route path="/marketing" element={<ProtectedRoute><Marketing /></ProtectedRoute>} />
-          <Route path="/crm" element={<ProtectedRoute><CRM /></ProtectedRoute>} />
-          <Route path="/lims" element={<ProtectedRoute><Lims /></ProtectedRoute>} />
-          <Route path="/lims-demo" element={<ProtectedRoute><LimsDemo /></ProtectedRoute>} />
-          <Route path="/whatsapp-webhook" element={<ProtectedRoute><WhatsAppWebhook /></ProtectedRoute>} />
-          <Route path="/whatsapp-settings" element={<ProtectedRoute><WhatsAppSettingsPage /></ProtectedRoute>} />
-          <Route path="/report-layout" element={<ProtectedRoute><ReportLayoutSettings /></ProtectedRoute>} />
-          <Route path="/signature-management" element={<ProtectedRoute><SignatureManagement /></ProtectedRoute>} />
-          <Route path="/lims/report/:registrationId" element={<ProtectedRoute><LimsReportView /></ProtectedRoute>} />
+          <Route path="/" element={<ProtectedRoute route="/"><CreateEstimate /></ProtectedRoute>} />
+          <Route path="/dashboard" element={<ProtectedRoute route="/dashboard"><EstimateDashboard /></ProtectedRoute>} />
+          <Route path="/home-visits" element={<ProtectedRoute route="/home-visits"><HomeVisits /></ProtectedRoute>} />
+          <Route path="/phlebotomists" element={<ProtectedRoute route="/phlebotomists"><PhlebotomistManagement /></ProtectedRoute>} />
+          <Route path="/tests" element={<ProtectedRoute route="/tests"><TestManagement /></ProtectedRoute>} />
+          <Route path="/parameters" element={<ProtectedRoute route="/tests"><ReportParameters /></ProtectedRoute>} />
+          <Route path="/departments" element={<ProtectedRoute route="/tests"><ReportDepartments /></ProtectedRoute>} />
+          <Route path="/templates" element={<ProtectedRoute route="/templates"><MessageTemplates /></ProtectedRoute>} />
+          <Route path="/abnormal-history" element={<ProtectedRoute route="/abnormal-history"><AbnormalHistory /></ProtectedRoute>} />
+          <Route path="/phlebo-dashboard" element={<ProtectedRoute route="/phlebo-dashboard"><PhleboDashboard /></ProtectedRoute>} />
+          <Route path="/loyalty-cards" element={<ProtectedRoute route="/loyalty-cards"><LoyaltyCards /></ProtectedRoute>} />
+          <Route path="/marketing" element={<ProtectedRoute route="/marketing"><Marketing /></ProtectedRoute>} />
+          <Route path="/crm" element={<ProtectedRoute route="/crm"><CRM /></ProtectedRoute>} />
+          <Route path="/lims" element={<ProtectedRoute route="/lims"><Lims /></ProtectedRoute>} />
+          <Route path="/lims-demo" element={<ProtectedRoute route="/lims-demo"><LimsDemo /></ProtectedRoute>} />
+          <Route path="/whatsapp-webhook" element={<ProtectedRoute route="/whatsapp-webhook"><WhatsAppWebhook /></ProtectedRoute>} />
+          <Route path="/whatsapp-settings" element={<ProtectedRoute route="/whatsapp-settings"><WhatsAppSettingsPage /></ProtectedRoute>} />
+          <Route path="/report-layout" element={<ProtectedRoute route="/report-layout"><ReportLayoutSettings /></ProtectedRoute>} />
+          <Route path="/signature-management" element={<ProtectedRoute route="/signature-management"><SignatureManagement /></ProtectedRoute>} />
+          <Route path="/users" element={<ProtectedRoute route="/users"><UserManagement /></ProtectedRoute>} />
+          <Route path="/lims/report/:registrationId" element={<ProtectedRoute route="/lims"><LimsReportView /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
-import { logout } from "@/lib/auth";
+import { logout, getCurrentUser, isTabAllowed } from "@/lib/auth";
 import {
   FileText, LayoutDashboard, Home, Users, TestTubes, MessageSquare,
   Menu, X, LogOut, FlaskConical, AlertTriangle, BarChart3, CreditCard,
-  FileUp, ClipboardList, Building2, Layers, Microscope, PenTool, BookOpen, Zap, Webhook, Megaphone, Contact, Activity, Settings, Trash2, Loader2,
+  Layers, PenTool, Zap, Webhook, Megaphone, Contact, Activity, Settings, Trash2, Loader2, UserCog,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -14,7 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-const navItems = [
+const allNavItems = [
   { to: "/", label: "Create Estimate", icon: FileText },
   { to: "/dashboard", label: "Estimate Dashboard", icon: LayoutDashboard },
   { to: "/home-visits", label: "Home Visits", icon: Home },
@@ -32,20 +32,8 @@ const navItems = [
   { to: "/lims-demo", label: "LIMS Interface", icon: Webhook },
   { to: "/report-layout", label: "Report Layout", icon: Layers },
   { to: "/signature-management", label: "Doctor & Signatures", icon: PenTool },
+  { to: "/users", label: "Users", icon: UserCog },
 ];
-
-// Report System modules archived — uncomment to restore
-// const reportNavItems = [
-//   { to: "/reports", label: "Reports Dashboard", icon: ClipboardList },
-//   { to: "/reports/upload", label: "Upload Report", icon: FileUp },
-//   { to: "/report-admin/departments", label: "Departments", icon: Building2 },
-//   { to: "/report-admin/profiles", label: "Profiles", icon: Layers },
-//   { to: "/report-admin/parameters", label: "Parameters", icon: Microscope },
-//   { to: "/report-admin/signatures", label: "Signatures", icon: PenTool },
-//   { to: "/report-admin/layout", label: "Report Layout", icon: Layers },
-//   { to: "/report-admin/corrections", label: "AI Corrections", icon: BookOpen },
-//   { to: "/direct-ai", label: "Direct AI", icon: Zap },
-// ];
 
 const StorageCleanupButton = ({ onClick }: { onClick?: () => void }) => {
   const [cleaning, setCleaning] = useState(false);
@@ -88,7 +76,7 @@ const StorageCleanupButton = ({ onClick }: { onClick?: () => void }) => {
   );
 };
 
-const NavSection = ({ items, onClick }: { items: typeof navItems; onClick?: () => void }) => (
+const NavSection = ({ items, onClick }: { items: typeof allNavItems; onClick?: () => void }) => (
   <>
     {items.map((item) => (
       <NavLink
@@ -116,6 +104,9 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
   const isMobile = useIsMobile();
   useHomeVisitNotifications();
 
+  const user = getCurrentUser();
+  const navItems = allNavItems.filter((item) => isTabAllowed(item.to));
+
   const handleLogout = () => {
     logout();
     navigate("/login");
@@ -135,6 +126,11 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
           </div>
           <span className="font-semibold text-sm">PH PathLabs</span>
         </div>
+        {user && (
+          <span className="text-xs text-muted-foreground hidden sm:block ml-2">
+            {user.display_name || user.username}
+          </span>
+        )}
         <div className="ml-auto">
           <Button variant="ghost" size="icon" onClick={handleLogout} title="Logout">
             <LogOut className="h-4 w-4" />
