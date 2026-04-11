@@ -1710,7 +1710,7 @@ const AutomatedMarketing = () => {
             <Button
               size="sm"
               variant="destructive"
-              onClick={() => { abortRef.current = true; toast.warning("Stopping after current message..."); }}
+              onClick={() => { abortRef.current = true; _moduleAbort = true; toast.warning("Stopping after current message..."); }}
             >
               ⛔ STOP NOW
             </Button>
@@ -1868,7 +1868,7 @@ const AutomatedMarketing = () => {
                 </Button>
                 {sending && (
                   <Button
-                    onClick={() => { abortRef.current = true; toast.warning("Stopping after current message..."); }}
+                    onClick={() => { abortRef.current = true; _moduleAbort = true; toast.warning("Stopping after current message..."); }}
                     variant="destructive"
                   >
                     ⛔ STOP NOW
