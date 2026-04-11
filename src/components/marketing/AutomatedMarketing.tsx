@@ -99,6 +99,7 @@ const AutomatedMarketing = () => {
   const [previewing, setPreviewing] = useState(false);
   const [previewResults, setPreviewResults] = useState<PreviewResult[] | null>(null);
   const [sending, setSending] = useState(_moduleSending);
+  const [paused, setPaused] = useState(_modulePaused);
   const [sendProgress, setSendProgress] = useState(_moduleProgress);
   const [sendPhase, setSendPhase] = useState(_modulePhase);
   const abortRef = useRef(_moduleAbort);
