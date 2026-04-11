@@ -823,7 +823,7 @@ const AutomatedMarketing = () => {
                   last_sent_date: new Date().toISOString(),
                   record_tag: null,
                 }).eq("id", r.id);
-                await logMessageSend(destMob, r.patient_name, "ABC");
+                await logMessageSend(destMob, r.patient_name, "ABC", r.umr_number, r.primary_key);
               }
               totalSent++;
               if (trial) trialSentCount++;
