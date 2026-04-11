@@ -1060,6 +1060,7 @@ const AutomatedMarketing = () => {
         }
 
         for (let i = 0; i < preview.records.length; i++) {
+          if (abortRef.current) break;
           if (trial && trialSentCount >= trialMax) break;
           const r = preview.records[i];
           const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
@@ -1159,6 +1160,7 @@ const AutomatedMarketing = () => {
         const delayMs = 3000;
 
         for (let i = 0; i < preview.records.length; i++) {
+          if (abortRef.current) break;
           if (trial && trialSentCount >= trialMax) break;
           const r = preview.records[i];
           const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
