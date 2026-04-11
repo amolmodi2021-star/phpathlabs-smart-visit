@@ -544,21 +544,29 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
               <Input
                 ref={searchRef}
                 value={testSearch}
-                onChange={(e) => setTestSearch(e.target.value)}
-                placeholder="Search & add tests..."
+                onChange={(e) => { setTestSearch(e.target.value); setTestHighlightIndex(0); }}
+                placeholder="Search tests... (↑↓ to navigate, Enter to select)"
                 className="pl-8"
+                onKeyDown={(e) => {
+                  const visible = testSearch ? availableTests.slice(0, 20) : [];
+                  if (visible.length === 0) return;
+                  if (e.key === "ArrowDown") { e.preventDefault(); setTestHighlightIndex(prev => Math.min(prev + 1, visible.length - 1)); }
+                  else if (e.key === "ArrowUp") { e.preventDefault(); setTestHighlightIndex(prev => Math.max(prev - 1, 0)); }
+                  else if (e.key === "Enter") { e.preventDefault(); const idx = testHighlightIndex >= 0 && testHighlightIndex < visible.length ? testHighlightIndex : 0; addTest(visible[idx].id); setTestHighlightIndex(0); }
+                }}
               />
             </div>
             {testSearch && availableTests.length > 0 && (
-              <div className="border rounded-md mt-1 max-h-36 overflow-y-auto">
-                {availableTests.map((t: any) => (
+              <div className="border rounded-md mt-1 max-h-48 overflow-y-auto">
+                {availableTests.slice(0, 20).map((t: any, i: number) => (
                   <button
                     key={t.id}
                     type="button"
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors"
-                    onClick={() => addTest(t.id)}
+                    className={`w-full text-left px-3 py-2 text-sm transition-colors ${i === testHighlightIndex ? "bg-accent" : "hover:bg-accent"}`}
+                    onClick={() => { addTest(t.id); setTestHighlightIndex(0); }}
+                    onMouseEnter={() => setTestHighlightIndex(i)}
                   >
-                    {t.test_name} - ₹{t.price}{t.item_type === "package" ? " 📦" : t.item_type === "profile" ? " 📋" : ""}
+                    {t.test_name} — ₹{t.price}{t.item_type === "package" ? " 📦" : t.item_type === "profile" ? " 📋" : ""}
                   </button>
                 ))}
               </div>
@@ -567,30 +575,26 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
 
           {/* Selected Tests */}
           {selectedTests.length > 0 && (
-            <div className="space-y-2">
+            <div className="space-y-1">
               {selectedTests.map(t => (
-                <div key={t.test_id} className="rounded-lg border p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-sm font-medium">{t.test_name}</span>
-                      <span className="text-sm text-muted-foreground ml-2">₹{t.price}</span>
-                      {t.fasting_required && <span className="text-xs text-warning ml-2">Fasting</span>}
-                    </div>
-                    <Button size="icon" variant="ghost" onClick={() => removeTest(t.test_id)}><X className="h-3.5 w-3.5" /></Button>
+                <div key={t.test_id} className="flex items-center gap-2 rounded-lg border px-3 py-1.5">
+                  <span className="text-sm font-medium whitespace-nowrap">{t.test_name}</span>
+                  <span className="text-sm text-muted-foreground">₹{t.price}</span>
+                  {t.fasting_required && <span className="text-xs text-destructive">Fasting</span>}
+                  <div className="ml-auto flex items-center gap-1.5">
+                    {t.discount_applicable && (
+                      <>
+                        <Select value={t.individual_discount_type || ""} onValueChange={(v) => updateTestDiscount(t.test_id, "individual_discount_type", v || null)}>
+                          <SelectTrigger className="w-16 h-7 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
+                          <SelectContent><SelectItem value="percent">%</SelectItem><SelectItem value="amount">₹</SelectItem></SelectContent>
+                        </Select>
+                        {t.individual_discount_type && (
+                          <Input type="number" className="w-16 h-7 text-xs" value={t.individual_discount_value || ""} onChange={(e) => updateTestDiscount(t.test_id, "individual_discount_value", parseFloat(e.target.value) || 0)} />
+                        )}
+                      </>
+                    )}
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => removeTest(t.test_id)}><X className="h-3.5 w-3.5" /></Button>
                   </div>
-                  {t.discount_applicable && (
-                    <div className="flex items-center gap-2 text-sm">
-                      <Label className="text-xs">Discount:</Label>
-                      <Select value={t.individual_discount_type || ""} onValueChange={(v) => updateTestDiscount(t.test_id, "individual_discount_type", v || null)}>
-                        <SelectTrigger className="w-20 h-8 text-xs"><SelectValue placeholder="None" /></SelectTrigger>
-                        <SelectContent><SelectItem value="percent">%</SelectItem><SelectItem value="amount">₹</SelectItem></SelectContent>
-                      </Select>
-                      {t.individual_discount_type && (
-                        <Input type="number" className="w-20 h-8 text-xs" value={t.individual_discount_value || ""} onChange={(e) => updateTestDiscount(t.test_id, "individual_discount_value", parseFloat(e.target.value) || 0)} />
-                      )}
-                    </div>
-                  )}
-                  {!t.discount_applicable && <p className="text-xs text-destructive">No discount allowed</p>}
                 </div>
               ))}
             </div>
