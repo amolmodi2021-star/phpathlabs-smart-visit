@@ -537,6 +537,21 @@ const AutomatedMarketing = () => {
       }
     }
 
+    // === Second-pass deduplication: remove any mobile that appears in multiple filters ===
+    const finalClaimed = new Set<string>();
+    for (const entry of filterCapped) {
+      entry.kept = entry.kept.filter((record: any) => {
+        const mob = (record.mobile_number || "").replace(/\D/g, "").slice(-10);
+        if (!mob) return true;
+        if (finalClaimed.has(mob)) {
+          entry.fc.skips["second_pass_duplicate"] = (entry.fc.skips["second_pass_duplicate"] || 0) + 1;
+          return false;
+        }
+        finalClaimed.add(mob);
+        return true;
+      });
+    }
+
     // Build results from capped collections
     for (const entry of filterCapped) {
       results.push({
