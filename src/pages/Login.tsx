@@ -1,24 +1,29 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { login } from "@/lib/auth";
+import { login, getFirstAllowedRoute } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { FlaskConical } from "lucide-react";
+import { FlaskConical, Loader2 } from "lucide-react";
 
 const Login = () => {
   const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (login(userId, password)) {
-      navigate("/");
+    setError("");
+    setLoading(true);
+    const result = await login(userId, password);
+    setLoading(false);
+    if (result.success) {
+      navigate(getFirstAllowedRoute());
     } else {
-      setError("Invalid credentials. Please try again.");
+      setError(result.error || "Invalid credentials. Please try again.");
     }
   };
 
@@ -43,7 +48,9 @@ const Login = () => {
               <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter Password" required />
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button type="submit" className="w-full">Sign In</Button>
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Signing In...</> : "Sign In"}
+            </Button>
           </form>
         </CardContent>
       </Card>
