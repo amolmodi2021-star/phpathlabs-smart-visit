@@ -1723,14 +1723,27 @@ const AutomatedMarketing = () => {
       {sending && (
         <div className="space-y-2 p-3 border rounded-lg bg-muted/50">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-medium">{sendPhase}</p>
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={() => { abortRef.current = true; _moduleAbort = true; toast.warning("Stopping after current message..."); }}
-            >
-              ⛔ STOP NOW
-            </Button>
+            <p className="text-sm font-medium">{paused ? "⏸️ PAUSED — " : ""}{sendPhase}</p>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant={paused ? "default" : "outline"}
+                onClick={() => {
+                  _modulePaused = !_modulePaused;
+                  setPaused(_modulePaused);
+                  toast.info(_modulePaused ? "Paused — will resume when you click Resume" : "Resumed sending...");
+                }}
+              >
+                {paused ? "▶️ Resume" : "⏸️ Pause"}
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() => { abortRef.current = true; _moduleAbort = true; toast.warning("Stopping after current message..."); }}
+              >
+                ⛔ STOP
+              </Button>
+            </div>
           </div>
           <Progress value={sendProgress} />
           <p className="text-xs text-muted-foreground">{sendProgress}% complete</p>
@@ -1884,12 +1897,24 @@ const AutomatedMarketing = () => {
                   {isTrialMode ? "Send Trial" : "Send Messages"}
                 </Button>
                 {sending && (
-                  <Button
-                    onClick={() => { abortRef.current = true; _moduleAbort = true; toast.warning("Stopping after current message..."); }}
-                    variant="destructive"
-                  >
-                    ⛔ STOP NOW
-                  </Button>
+                  <>
+                    <Button
+                      onClick={() => {
+                        _modulePaused = !_modulePaused;
+                        setPaused(_modulePaused);
+                        toast.info(_modulePaused ? "Paused" : "Resumed");
+                      }}
+                      variant={paused ? "default" : "outline"}
+                    >
+                      {paused ? "▶️ Resume" : "⏸️ Pause"}
+                    </Button>
+                    <Button
+                      onClick={() => { abortRef.current = true; _moduleAbort = true; toast.warning("Stopping after current message..."); }}
+                      variant="destructive"
+                    >
+                      ⛔ STOP
+                    </Button>
+                  </>
                 )}
               </div>
             </div>
