@@ -94,6 +94,7 @@ const AutomatedMarketing = () => {
   const [sending, setSending] = useState(false);
   const [sendProgress, setSendProgress] = useState(0);
   const [sendPhase, setSendPhase] = useState("");
+  const abortRef = useRef(false);
 
   // Test mode
   const [testMobile, setTestMobile] = useState("");
