@@ -1838,8 +1838,10 @@ const AutomatedMarketing = () => {
                       "Mobile": r.mobile_number || "",
                       "UMR": r.umr_number || "",
                       "Location": r.location || "",
+                      "Cycle": r._cycle || 1,
                       "Last Sent Type": r.last_sent_type || "Never",
                       "Last Sent Date": r.last_sent_date ? new Date(r.last_sent_date).toLocaleDateString("en-GB") : "",
+                      "Days Ago": r.last_sent_date ? Math.floor((Date.now() - new Date(r.last_sent_date).getTime()) / 86400000) : "",
                     });
                   });
                   pr.skipped.forEach((s) => {
@@ -1882,22 +1884,29 @@ const AutomatedMarketing = () => {
                             <TableHead className="text-xs">Mobile</TableHead>
                             <TableHead className="text-xs">UMR</TableHead>
                             <TableHead className="text-xs">Location</TableHead>
-                            <TableHead className="text-xs">Last Sent</TableHead>
+                            <TableHead className="text-xs">Cycle</TableHead>
+                            <TableHead className="text-xs">Last Sent Type</TableHead>
+                            <TableHead className="text-xs">Last Sent Date</TableHead>
+                            <TableHead className="text-xs">Days Ago</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {pr.records.map((r: any, idx: number) => (
+                          {pr.records.map((r: any, idx: number) => {
+                            const daysAgo = r.last_sent_date ? Math.floor((Date.now() - new Date(r.last_sent_date).getTime()) / 86400000) : null;
+                            return (
                             <TableRow key={r.id || idx}>
                               <TableCell className="text-xs">{idx + 1}</TableCell>
                               <TableCell className="text-xs">{r.patient_name || "-"}</TableCell>
                               <TableCell className="text-xs">{r.mobile_number || "-"}</TableCell>
                               <TableCell className="text-xs">{r.umr_number || "-"}</TableCell>
                               <TableCell className="text-xs">{r.location || "-"}</TableCell>
-                              <TableCell className="text-xs">
-                                {r.last_sent_type ? `${r.last_sent_type} (${r.last_sent_date ? new Date(r.last_sent_date).toLocaleDateString("en-GB") : "-"})` : "Never"}
-                              </TableCell>
+                              <TableCell className="text-xs">{r._cycle || 1}</TableCell>
+                              <TableCell className="text-xs">{r.last_sent_type || "Never"}</TableCell>
+                              <TableCell className="text-xs">{r.last_sent_date ? new Date(r.last_sent_date).toLocaleDateString("en-GB") : "-"}</TableCell>
+                              <TableCell className="text-xs">{daysAgo !== null ? daysAgo : "-"}</TableCell>
                             </TableRow>
-                          ))}
+                            );
+                          })}
                         </TableBody>
                       </Table>
                     </div>
@@ -1928,6 +1937,7 @@ const AutomatedMarketing = () => {
                 "Status": l.status || "",
                 "Skip Reason": l.skip_reason ? skipReasonLabel(l.skip_reason) : "",
                 "Cycle": l.cycle_number || 1,
+                "Days Ago": l.created_at ? Math.floor((Date.now() - new Date(l.created_at).getTime()) / 86400000) : "",
               }));
               exportToExcel(rows, `drip_execution_log_${new Date().toISOString().slice(0, 10)}`);
               toast.success("Execution log exported");
