@@ -97,10 +97,30 @@ const AutomatedMarketing = () => {
   // Execution state
   const [previewing, setPreviewing] = useState(false);
   const [previewResults, setPreviewResults] = useState<PreviewResult[] | null>(null);
-  const [sending, setSending] = useState(false);
-  const [sendProgress, setSendProgress] = useState(0);
-  const [sendPhase, setSendPhase] = useState("");
-  const abortRef = useRef(false);
+  const [sending, setSending] = useState(_moduleSending);
+  const [sendProgress, setSendProgress] = useState(_moduleProgress);
+  const [sendPhase, setSendPhase] = useState(_modulePhase);
+  const abortRef = useRef(_moduleAbort);
+
+  // Sync module-level vars on mount
+  useEffect(() => {
+    if (_moduleSending) {
+      setSending(true);
+      setSendProgress(_moduleProgress);
+      setSendPhase(_modulePhase);
+    }
+    // Poll module-level state while sending
+    const interval = setInterval(() => {
+      if (_moduleSending) {
+        setSending(true);
+        setSendProgress(_moduleProgress);
+        setSendPhase(_modulePhase);
+      } else {
+        setSending(false);
+      }
+    }, 500);
+    return () => clearInterval(interval);
+  }, []);
 
   // Test mode
   const [testMobile, setTestMobile] = useState("");
