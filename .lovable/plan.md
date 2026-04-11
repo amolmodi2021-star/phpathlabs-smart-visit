@@ -1,70 +1,155 @@
 
-Goal: make the app reliably switch back to mobile layout on real phones after Chrome’s “Desktop site” is turned off, even when the browser keeps a stale desktop-sized viewport.
 
-What I found
-- `index.html` already has a correct viewport meta tag, so this is not caused by a missing viewport setting.
-- The app currently decides “mobile vs desktop” mainly from viewport width:
-  - `src/hooks/use-mobile.tsx` uses `window.innerWidth < 768`
-  - layout classes like `md:hidden` / `hidden md:flex` in `src/components/AppLayout.tsx` also depend on viewport width
-- The Dispatch page also uses that `useIsMobile()` hook, so if Chrome keeps reporting a wide viewport after desktop mode was toggled, the app stays in desktop layout.
+# Plan: User Management with Roles, Rights & Access Control
 
-Likely root cause
-- On some Android/Chrome flows, turning off “Desktop site” does not immediately restore the expected viewport width for the tab.
-- Because both CSS breakpoints and the hook rely on width alone, the UI can remain stuck in desktop mode.
+## Overview
+Build a full user management system where an admin can create users, define reusable role templates with granular permissions (which sidebar tabs and which sub-tabs/sections within each tab a user can access), and enforce those permissions at login and throughout the app.
 
-Implementation plan
-1. Strengthen device detection
-- Update `src/hooks/use-mobile.tsx` so it does not rely only on `window.innerWidth`.
-- Use a more resilient mobile heuristic combining:
-  - `matchMedia("(max-width: 767px)")`
-  - touch/coarse pointer checks such as `(pointer: coarse)`
-  - a mobile user-agent fallback
-  - `visualViewport?.width` when available
-- Recompute on:
-  - `resize`
-  - `orientationchange`
-  - `visualViewport.resize`
+## Current State
+- Authentication uses hardcoded credentials (`PHPATHLABS` / `PHPL6699`) stored in `src/lib/auth.ts`
+- No user table, no roles, no per-user access control
+- All 17 sidebar nav items are visible to everyone
+- Some modules (Loyalty Cards, Marketing, CRM, WhatsApp Webhook) have a secondary PasswordGate
 
-2. Add a “real mobile device” signal
-- Return a stable result that treats phones as mobile even if Chrome temporarily reports a desktop-like width after toggling desktop mode.
-- Keep desktop/laptop behavior unchanged.
+## Database Schema (4 new tables via migration)
 
-3. Make the main app shell follow the same logic
-- Refactor `src/components/AppLayout.tsx` so the mobile menu and desktop sidebar are controlled with `isMobile` instead of only `md:hidden` / `hidden md:flex`.
-- This prevents the shell from being stuck in desktop mode when CSS breakpoints still think the viewport is wide.
+### 1. `app_users`
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid PK | |
+| username | text UNIQUE NOT NULL | Login ID |
+| password_hash | text NOT NULL | bcrypt hash (hashed in edge function) |
+| display_name | text | |
+| role_id | uuid FK → app_roles.id | Assigned role template |
+| is_active | boolean DEFAULT true | Active/inactive toggle |
+| last_login_at | timestamptz | |
+| created_at / updated_at | timestamptz | |
 
-4. Align Dispatch page with the improved detection
-- Keep the existing mobile detail/list flow in `src/components/lims/Dispatch.tsx`.
-- Ensure it reacts correctly once the stronger hook reports mobile again.
+### 2. `app_roles`
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid PK | |
+| role_name | text UNIQUE NOT NULL | e.g. "Receptionist", "Lab Technician", "Admin" |
+| description | text | |
+| permissions | jsonb NOT NULL DEFAULT '{}' | Full permissions map (see below) |
+| created_at / updated_at | timestamptz | |
 
-5. Add a recovery safeguard
-- On mount and on visibility/orientation changes, force a fresh detection pass so returning to the tab after browser setting changes updates the layout quickly.
+### 3. `app_user_login_history`
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid PK | |
+| user_id | uuid FK → app_users.id | |
+| login_at | timestamptz DEFAULT now() | |
+| ip_address | text | |
+| user_agent | text | |
 
-Technical notes
-- Files likely to update:
-  - `src/hooks/use-mobile.tsx`
-  - `src/components/AppLayout.tsx`
-  - possibly small follow-up adjustments in `src/components/lims/Dispatch.tsx`
-- I will avoid changing backend/data logic; this is a frontend responsive-state fix.
-- I’ll keep the behavior conservative so tablets/desktops do not accidentally collapse into mobile layout.
+### 4. Permissions JSON structure (stored in `app_roles.permissions`)
+```json
+{
+  "tabs": {
+    "/": true,
+    "/dashboard": true,
+    "/home-visits": true,
+    "/lims": {
+      "enabled": true,
+      "sections": ["register", "patients", "sample_collection"]
+    },
+    "/crm": false,
+    "/tests": false
+    // ... all 17 tabs listed
+  }
+}
+```
+Each sidebar route is a key. Value is `true`/`false` for simple tabs, or an object with `enabled` + `sections` array for tabs that have sub-tabs (LIMS, CRM, Marketing).
 
-Expected result
-- If a user disables Chrome desktop mode on a phone, the app should return to mobile layout without staying stuck in desktop view.
-- The mobile hamburger/menu shell should reappear correctly.
-- The Dispatch page should again show the mobile single-panel experience.
+## All Tabs & Their Sections
 
-Validation after implementation
-- Check on a phone-sized viewport that:
-  - header shows the mobile menu button
-  - desktop sidebar is hidden
-  - Dispatch opens patient detail in the mobile single-panel flow
-- Specifically verify the recovery flow:
-  - emulate/use desktop mode
-  - disable desktop mode
-  - return to the app and confirm it switches back to mobile layout
+| Sidebar Tab | Route | Sections (sub-tabs) |
+|------------|-------|---------------------|
+| Create Estimate | `/` | — (single page) |
+| Estimate Dashboard | `/dashboard` | — |
+| Home Visits | `/home-visits` | — |
+| Phlebotomists | `/phlebotomists` | — |
+| Test Management | `/tests` | — |
+| Message Templates | `/templates` | — |
+| Abnormal History | `/abnormal-history` | — |
+| Phlebo Dashboard | `/phlebo-dashboard` | — |
+| Loyalty Cards | `/loyalty-cards` | — |
+| Marketing | `/marketing` | Sender, Templates, History, Message Log, New Numbers, Automated |
+| CRM | `/crm` | Contacts, Import, Sequences, Abnormal Tests, Abnormal WhatsApp, Blacklist, Sent History, Settings |
+| LIMS | `/lims` | New Registration, Registered Patients, Sample Collection, Sample Acceptance, Results, Result Verification, Doctor Approval, Dispatch, Completed Home Visits, Pickup Points, Channels |
+| WhatsApp Webhook | `/whatsapp-webhook` | — |
+| WhatsApp Settings | `/whatsapp-settings` | — |
+| LIMS Interface | `/lims-demo` | — |
+| Report Layout | `/report-layout` | — |
+| Doctor & Signatures | `/signature-management` | — |
+| **Users (NEW)** | `/users` | User List, Roles & Rights |
 
-<lov-actions>
-<lov-suggestion message="Test the mobile layout end-to-end after disabling Chrome desktop mode and confirm the Dispatch page returns to the single-panel mobile view.">Verify that it works</lov-suggestion>
-<lov-suggestion message="Implement the responsive detection fix now by updating the mobile hook and AppLayout so real phones are not stuck in desktop view after Chrome desktop mode is turned off.">Implement responsive fix</lov-suggestion>
-<lov-suggestion message="Add a small in-app 'Refresh mobile layout' fallback action for users in case their browser keeps a stale viewport after changing Chrome desktop mode.">Add recovery button</lov-suggestion>
-</lov-actions>
+## Implementation Steps
+
+### Step 1: Database migration
+- Create `app_roles`, `app_users`, `app_user_login_history` tables with permissive RLS (matching existing pattern).
+- Seed a default "Admin" role with all permissions enabled.
+- Seed a default admin user (username: `PHPATHLABS`, matching current credentials).
+
+### Step 2: Edge function `user-auth`
+- Handles login: validates username + bcrypt password, returns user data + permissions, logs login history.
+- Handles password reset (admin resets another user's password).
+- No JWT/Supabase Auth needed — keeps the existing session model but stores the logged-in user info (id, username, role, permissions) in localStorage after server-side validation.
+
+### Step 3: Update `src/lib/auth.ts`
+- Replace hardcoded credential check with a call to the `user-auth` edge function.
+- Store user session (id, username, permissions) in localStorage on successful login.
+- Add `getCurrentUser()` and `getUserPermissions()` helper functions.
+
+### Step 4: Update Login page (`src/pages/Login.tsx`)
+- Call the edge function instead of the local `login()` function.
+- Show error if user is inactive.
+
+### Step 5: New page `src/pages/UserManagement.tsx`
+Two tabs:
+
+**Tab 1: User List**
+- Table of all users (username, display name, role, active/inactive, last login)
+- Add User dialog (username, display name, password, assign role, active toggle)
+- Edit user, reset password, toggle active/inactive
+- View login history per user
+
+**Tab 2: Roles & Rights**
+- List of role templates
+- Add/Edit Role dialog with:
+  - Role name, description
+  - Checkbox tree for all tabs and their sections
+  - Visual grouping by module area
+- Delete role (only if no users assigned)
+- Duplicate role for quick creation
+
+### Step 6: Update `AppLayout.tsx`
+- Filter `navItems` based on current user's permissions before rendering.
+- Hide tabs the user has no access to.
+- Add "Users" nav item (only visible to admin role).
+
+### Step 7: Update `ProtectedRoute` in `App.tsx`
+- Check if current user has permission for the current route.
+- Redirect to first allowed route if accessing a forbidden page.
+
+### Step 8: Update LIMS, CRM, Marketing pages
+- Filter sub-tab triggers based on user's section-level permissions.
+- Hide sections the user cannot access.
+
+### Step 9: Remove PasswordGate dependency
+- The PasswordGate on Loyalty Cards, Marketing, CRM, WhatsApp Webhook can be removed since access is now controlled by role permissions. (Or keep it as an optional extra layer — will confirm with you.)
+
+## Files to Create/Modify
+- **New**: `src/pages/UserManagement.tsx`
+- **New**: `supabase/functions/user-auth/index.ts`
+- **Modify**: `src/lib/auth.ts`, `src/pages/Login.tsx`, `src/App.tsx`, `src/components/AppLayout.tsx`
+- **Modify**: `src/pages/Lims.tsx`, `src/pages/CRM.tsx`, `src/pages/Marketing.tsx` (filter sub-tabs)
+- **Migration**: 3 new tables + seed data
+
+## Security Notes
+- Passwords are hashed server-side (bcrypt in edge function), never stored in plaintext.
+- Permissions are validated both client-side (UI filtering) and checked on login.
+- The admin user cannot be deactivated or deleted.
+- Only users with the "Users" tab permission can manage users and roles.
+
