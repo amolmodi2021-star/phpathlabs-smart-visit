@@ -1,37 +1,31 @@
 
 
-# Plan: Add message_send_log Check to Drip Engine Min-Interval Filter
+# Plan: Add Pending Counters for ABC Cards & Abnormal History
 
-## Problem
-The drip engine only checks `crm_contacts.last_sent_date` for the cooling-down period. Messages sent from other modules (estimates, loyalty cards, LIMS, etc.) are logged in `message_send_log` but not considered. Since `message_send_log` allows duplicates, we must use the **latest** `sent_at` per mobile number.
+## What
+Add two counters at the top of the Automated tab (below the 24h usage card) showing:
+1. **Pending ABC Cards** — count of CRM contact records locked to ABC card filters that haven't been sent yet in the current cycle
+2. **Pending Abnormal History** — count of CRM contact records locked to Abnormal History filters that haven't been sent yet in the current cycle
 
-## Changes
+## How
 
 ### File: `src/components/marketing/AutomatedMarketing.tsx`
 
-**1. Add a 6th parallel fetch (~line 294)**
+**1. Add a new query hook for pending counts**
 
-Add to the `Promise.all` block:
-```typescript
-fetchAll(supabase.from("message_send_log")
-  .select("mobile_number,sent_at")
-  .gte("sent_at", intervalDate.toISOString()))
-```
+Create a `useQuery` that runs the same logic as the preview engine but only computes counts:
+- Fetch all CRM contacts, drip campaign logs, drip mobile cycles, enabled filters, and abnormal test PKs
+- For each mobile, determine which priority level it's locked to
+- For ABC filters: count contacts with UMR numbers that haven't been sent yet (in current cycle) where the mobile is locked to that ABC filter's priority
+- For Abnormal filters: count contacts with abnormal test data that haven't been sent yet where the mobile is locked to that Abnormal filter's priority
+- Return `{ pendingAbc: number, pendingAbnormal: number }`
 
-Note: `intervalDate` must be computed before the Promise.all block (move lines 332-333 above line 294).
+**2. Add counter UI**
 
-**2. Merge into recentSentMobiles (~line 334-340)**
-
-After building `recentSentMobiles` from CRM contacts, iterate message log results, normalize each mobile to 10 digits, and add to `recentSentMobiles`. Since there are duplicates, any entry within the interval window means the mobile should be skipped — no need to find the max date, just the existence of any log entry within the window is sufficient (the `.gte` filter already handles this).
-
-```typescript
-for (const log of recentLogEntries) {
-  const mob = (log.mobile_number || "").replace(/\D/g, "").slice(-10);
-  if (mob && mob.length === 10) recentSentMobiles.add(mob);
-}
-```
-
-This automatically makes all existing min-interval checks (initial collection, backfill loop) respect message_send_log data.
+Insert a row of two small stat cards between the 24h usage card and the Global Settings card:
+- Card 1: "Pending ABC Cards" with the count and a badge icon
+- Card 2: "Pending Abnormal History" with the count and a badge icon
+- Both show a loading skeleton while computing
 
 ## Single file modified
 - `src/components/marketing/AutomatedMarketing.tsx`
