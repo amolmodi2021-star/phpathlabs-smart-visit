@@ -14,6 +14,7 @@ import TimeSlotPicker from "@/components/TimeSlotPicker";
 import { useMessageTemplates } from "@/hooks/useMessageTemplates";
 import { usePhlebotomistAvailability } from "@/hooks/usePhlebotomistAvailability";
 import { buildVisitMessage, shareOnWhatsApp } from "@/lib/whatsapp";
+import { logMessageSend } from "@/lib/messageLog";
 import { format, addDays } from "date-fns";
 
 interface SelectedTest {
@@ -228,6 +229,7 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
           patientName: patientName ? patientName.toUpperCase() : undefined,
         });
         shareOnWhatsApp(cleanNumber, msg);
+        logMessageSend(cleanNumber, patientName, "Home Visit");
       }
     },
     onSuccess: () => {
