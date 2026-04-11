@@ -115,10 +115,12 @@ const AutomatedMarketing = () => {
     const interval = setInterval(() => {
       if (_moduleSending) {
         setSending(true);
+        setPaused(_modulePaused);
         setSendProgress(_moduleProgress);
         setSendPhase(_modulePhase);
       } else {
         setSending(false);
+        setPaused(false);
       }
     }, 500);
     return () => clearInterval(interval);
