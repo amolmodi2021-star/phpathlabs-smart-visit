@@ -45,6 +45,7 @@ interface DispatchEntry {
 }
 
 const Dispatch = () => {
+  const isMobile = useIsMobile();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
