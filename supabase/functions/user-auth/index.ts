@@ -1,10 +1,30 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
-import * as bcrypt from "https://deno.land/x/bcrypt@v0.4.1/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+// Simple password hashing using Web Crypto (SHA-256 + salt)
+async function hashPassword(password: string): Promise<string> {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const saltHex = Array.from(salt).map(b => b.toString(16).padStart(2, "0")).join("");
+  const data = new TextEncoder().encode(saltHex + password);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+  return `sha256:${saltHex}:${hashHex}`;
+}
+
+async function verifyPassword(password: string, stored: string): Promise<boolean> {
+  if (!stored.startsWith("sha256:")) return false;
+  const parts = stored.split(":");
+  if (parts.length !== 3) return false;
+  const salt = parts[1];
+  const data = new TextEncoder().encode(salt + password);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+  return hashHex === parts[2];
+}
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -19,19 +39,12 @@ Deno.serve(async (req) => {
   try {
     const { action, ...params } = await req.json();
 
-    if (action === "login") {
-      return await handleLogin(params, req);
-    } else if (action === "reset_password") {
-      return await handleResetPassword(params);
-    } else if (action === "create_user") {
-      return await handleCreateUser(params);
-    } else if (action === "update_user") {
-      return await handleUpdateUser(params);
-    } else if (action === "init_admin_password") {
-      return await handleInitAdminPassword(params);
-    } else {
-      return json({ error: "Unknown action" }, 400);
-    }
+    if (action === "login") return await handleLogin(params, req);
+    if (action === "reset_password") return await handleResetPassword(params);
+    if (action === "create_user") return await handleCreateUser(params);
+    if (action === "update_user") return await handleUpdateUser(params);
+    if (action === "init_admin_password") return await handleInitAdminPassword(params);
+    return json({ error: "Unknown action" }, 400);
   } catch (err: any) {
     return json({ error: err.message }, 500);
   }
@@ -52,15 +65,9 @@ async function handleLogin(
   if (error || !user) return json({ error: "Invalid credentials" }, 401);
   if (!user.is_active) return json({ error: "Account is inactive. Contact administrator." }, 403);
 
-  // Check if password hash is a placeholder (initial setup)
-  let valid = false;
-  if (user.password_hash.startsWith("$2")) {
-    valid = await bcrypt.compare(password, user.password_hash);
-  }
-
+  const valid = await verifyPassword(password, user.password_hash);
   if (!valid) return json({ error: "Invalid credentials" }, 401);
 
-  // Get role permissions
   let permissions = {};
   if (user.role_id) {
     const { data: role } = await supabase
@@ -71,17 +78,11 @@ async function handleLogin(
     if (role) permissions = role.permissions;
   }
 
-  // Update last login
   await supabase.from("app_users").update({ last_login_at: new Date().toISOString() }).eq("id", user.id);
 
-  // Log login history
   const ip = req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || "unknown";
   const ua = req.headers.get("user-agent") || "unknown";
-  await supabase.from("app_user_login_history").insert({
-    user_id: user.id,
-    ip_address: ip,
-    user_agent: ua,
-  });
+  await supabase.from("app_user_login_history").insert({ user_id: user.id, ip_address: ip, user_agent: ua });
 
   return json({
     user: {
@@ -98,10 +99,9 @@ async function handleResetPassword({ user_id, new_password }: { user_id: string;
   if (!user_id || !new_password) return json({ error: "user_id and new_password required" }, 400);
   if (new_password.length < 4) return json({ error: "Password must be at least 4 characters" }, 400);
 
-  const hash = await bcrypt.hash(new_password);
+  const hash = await hashPassword(new_password);
   const { error } = await supabase.from("app_users").update({ password_hash: hash }).eq("id", user_id);
   if (error) return json({ error: error.message }, 500);
-
   return json({ success: true });
 }
 
@@ -114,7 +114,7 @@ async function handleCreateUser(params: {
 }) {
   if (!params.username || !params.password) return json({ error: "Username and password required" }, 400);
 
-  const hash = await bcrypt.hash(params.password);
+  const hash = await hashPassword(params.password);
   const { data, error } = await supabase
     .from("app_users")
     .insert({
@@ -131,7 +131,6 @@ async function handleCreateUser(params: {
     if (error.code === "23505") return json({ error: "Username already exists" }, 409);
     return json({ error: error.message }, 500);
   }
-
   return json({ user: data });
 }
 
@@ -150,14 +149,13 @@ async function handleUpdateUser(params: {
 
   const { error } = await supabase.from("app_users").update(updates).eq("id", params.user_id);
   if (error) return json({ error: error.message }, 500);
-
   return json({ success: true });
 }
 
 async function handleInitAdminPassword({ password }: { password: string }) {
   if (!password) return json({ error: "password required" }, 400);
 
-  const hash = await bcrypt.hash(password);
+  const hash = await hashPassword(password);
   const { error } = await supabase
     .from("app_users")
     .update({ password_hash: hash })
