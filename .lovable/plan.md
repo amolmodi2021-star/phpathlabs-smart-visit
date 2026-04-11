@@ -1,46 +1,55 @@
 
 
-# Plan: Add Double-Layer Deduplication Filter for Claimed Mobiles
+# Plan: Add Min-Interval Recheck to Post-Collection Deduplication Pass
 
 ## Problem
-A mobile number could theoretically slip through the current single-pass claiming mechanism due to edge cases in cycle resets or priority reassignment, leading to duplicate sends across filters.
+The current min-interval check only looks at `crm_contacts.last_sent_date`, which may not reflect drip campaign sends accurately. The `recentSentMobiles` set in the code is declared but never populated (empty loop body). A second-layer check using the actual `drip_campaign_log.created_at` timestamps is needed.
 
-## Solution
-Add a **post-collection deduplication pass** after all filters have collected their eligible records, ensuring no mobile number appears in more than one filter's final list. If a duplicate is found, keep it only in the filter matching its correct priority/cycle category.
-
-## Implementation
+## Changes
 
 ### File: `src/components/marketing/AutomatedMarketing.tsx`
 
-**After the quota enforcement section (around line 538) and before building the final results (line 541):**
+**1. Fetch `created_at` in drip log query (line 302)**
+Add `created_at` to the select columns for `drip_campaign_log`:
+```
+.select("filter_id,mobile_number,contact_primary_key,cycle_number,created_at")
+```
 
-1. **Second-pass deduplication**: Iterate through all `filterCapped` entries in priority order. Build a `finalClaimedMobiles` set. For each record in each filter's `kept` list, extract the mobile number. If it already exists in `finalClaimedMobiles`, remove it from the current (lower-priority) filter. Otherwise, add it to the set.
+**2. Build `recentSentMobiles` properly (lines 332-338)**
+Replace the empty loop with actual logic that populates `recentSentMobiles` from `allLogs` using `created_at`:
+```
+for (const log of allLogs) {
+  if (log.created_at && new Date(log.created_at) >= intervalDate) {
+    const mob = (log.mobile_number || "").replace(/\D/g, "").slice(-10);
+    if (mob) recentSentMobiles.add(mob);
+  }
+}
+```
 
-2. **Logging**: Track how many records were removed in this second pass and include that count in the skip reasons as `"second_pass_duplicate"`.
+**3. Add min-interval recheck in the second-pass deduplication (after line 553)**
+After the existing duplicate removal loop, add a second filter that removes any mobile found in `recentSentMobiles` — this catches records that passed the first-pass `crm_contacts.last_sent_date` check but have a more recent drip log entry:
 
-### Pseudocode
-```text
-// After quota redistribution, before building results:
-const finalClaimed = new Set<string>();
+```
+// Second-pass min-interval recheck using drip_campaign_log timestamps
 for (const entry of filterCapped) {
-  entry.kept = entry.kept.filter(record => {
+  entry.kept = entry.kept.filter((record: any) => {
     const mob = (record.mobile_number || "").replace(/\D/g, "").slice(-10);
-    if (finalClaimed.has(mob)) {
-      // Count as second-pass duplicate in skips
-      entry.fc.skips["second_pass_duplicate"] = 
-        (entry.fc.skips["second_pass_duplicate"] || 0) + 1;
+    if (!mob) return true;
+    if (recentSentMobiles.has(mob)) {
+      entry.fc.skips["min_interval_recheck"] = 
+        (entry.fc.skips["min_interval_recheck"] || 0) + 1;
       return false;
     }
-    finalClaimed.add(mob);
     return true;
   });
 }
 ```
 
-This adds a safety net without changing the existing first-pass logic. Priority order is preserved since `filterCapped` is already sorted by priority — the highest-priority filter keeps the mobile, lower-priority filters lose it.
+To make `recentSentMobiles` accessible in the second pass, it needs to be declared at a scope visible to both — move its construction to just after log processing (it's already there) and pass it through or keep it in the outer closure.
 
-### Changes Summary
+## Summary
 - **1 file modified**: `src/components/marketing/AutomatedMarketing.tsx`
-- ~15 lines added between quota enforcement and result building
+- ~20 lines changed/added across 3 locations
 - No database changes needed
+- Skip reason `min_interval_recheck` will appear in preview for transparency
 
