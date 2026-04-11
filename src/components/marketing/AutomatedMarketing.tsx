@@ -928,6 +928,7 @@ const AutomatedMarketing = () => {
 
     for (const preview of previewResults) {
       if (preview.eligible === 0) continue;
+      await _waitWhilePaused();
       if (_checkAbort()) break;
       const filter = enabledFilters.find((f) => f.id === preview.filterId);
       if (!filter) continue;
@@ -992,6 +993,7 @@ const AutomatedMarketing = () => {
         const { bgImg, canvas, ctx, placeholders } = templateAssets;
 
         for (let i = 0; i < preview.records.length; i++) {
+          await _waitWhilePaused();
           if (_checkAbort()) break;
           if (trial && trialSentCount >= trialMax) break;
           const r = preview.records[i];
@@ -1108,6 +1110,7 @@ const AutomatedMarketing = () => {
         }
 
         for (let i = 0; i < preview.records.length; i++) {
+          await _waitWhilePaused();
           if (_checkAbort()) break;
           if (trial && trialSentCount >= trialMax) break;
           const r = preview.records[i];
@@ -1208,6 +1211,7 @@ const AutomatedMarketing = () => {
         const delayMs = 3000;
 
         for (let i = 0; i < preview.records.length; i++) {
+          await _waitWhilePaused();
           if (_checkAbort()) break;
           if (trial && trialSentCount >= trialMax) break;
           const r = preview.records[i];
