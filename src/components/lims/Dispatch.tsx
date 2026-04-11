@@ -57,6 +57,7 @@ const Dispatch = () => {
   const [reportSelectEntry, setReportSelectEntry] = useState<DispatchEntry | null>(null);
   const [selectedTestIds, setSelectedTestIds] = useState<Set<string>>(new Set());
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [mobileShowDetail, setMobileShowDetail] = useState(false);
   const [dispatchPage, setDispatchPage] = useState(0);
   useEffect(() => { const t = setTimeout(() => { setDebouncedSearch(search); setDispatchPage(0); }, 400); return () => clearTimeout(t); }, [search]);
 
