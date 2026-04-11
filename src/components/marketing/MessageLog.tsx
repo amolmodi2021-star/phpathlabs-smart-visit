@@ -104,7 +104,6 @@ const MessageLog = () => {
                     <TableCell>{format(sentDate, "dd-MM-yyyy")}</TableCell>
                     <TableCell>{format(sentDate, "hh:mm a")}</TableCell>
                     <TableCell className="text-center">{daysAgo}</TableCell>
-                    <TableCell>{format(sentDate, "hh:mm a")}</TableCell>
                   </TableRow>
                 );
               })

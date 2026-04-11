@@ -120,6 +120,16 @@ Deno.serve(async (req) => {
           sentCount++;
           results.push({ id: card.id, status: "sent", mobile: normalizedLocalMobile });
 
+          // Log to universal message_send_log
+          if (normalizedLocalMobile) {
+            await supabase.from("message_send_log").insert({
+              mobile_number: normalizedLocalMobile,
+              patient_name: card.patient_name || null,
+              message_type: "Loyalty Card",
+              umr_number: card.umr || null,
+            });
+          }
+
           // Update CRM contacts with last sent info
           if (normalizedLocalMobile) {
             await supabase.from("crm_contacts").update({
