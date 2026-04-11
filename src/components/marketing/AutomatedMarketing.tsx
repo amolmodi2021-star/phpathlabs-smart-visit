@@ -299,7 +299,7 @@ const AutomatedMarketing = () => {
         : Promise.resolve([]),
       fetchAll(supabase.from("crm_abnormal_tests").select("contact_primary_key")),
       fetchAll(supabase.from("drip_mobile_cycles").select("mobile_number,current_cycle")),
-      fetchAll(supabase.from("drip_campaign_log").select("filter_id,mobile_number,contact_primary_key,cycle_number,created_at").eq("status", "sent")),
+      fetchAll(supabase.from("drip_campaign_log").select("filter_id,mobile_number,contact_primary_key,cycle_number").eq("status", "sent")),
     ]);
 
     const blacklistSet = new Set(blacklistData.map((b: any) => b.mobile_number));
@@ -329,13 +329,13 @@ const AutomatedMarketing = () => {
       if (log.contact_primary_key) sentByMobileFilter[mob][log.filter_id].add(log.contact_primary_key);
     }
 
-    // Build set of mobiles that were sent ANY message within minInterval days (from drip log)
+    // Build set of mobiles that were sent ANY message within minInterval days (from CRM last_sent_date)
     const intervalDate = new Date();
     intervalDate.setDate(intervalDate.getDate() - minInterval);
     const recentSentMobiles = new Set<string>();
-    for (const log of allLogs) {
-      if (log.created_at && new Date(log.created_at) >= intervalDate) {
-        const mob = (log.mobile_number || "").replace(/\D/g, "").slice(-10);
+    for (const c of allContacts) {
+      if (c.last_sent_date && new Date(c.last_sent_date) >= intervalDate) {
+        const mob = (c.mobile_number || "").replace(/\D/g, "").slice(-10);
         if (mob) recentSentMobiles.add(mob);
       }
     }
