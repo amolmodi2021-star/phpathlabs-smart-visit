@@ -29,3 +29,6 @@ verify_jwt = false
 
 [functions.lims-interface]
 verify_jwt = false
+
+[functions.user-auth]
+verify_jwt = false
