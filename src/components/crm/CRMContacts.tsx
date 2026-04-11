@@ -15,6 +15,7 @@ import { generateAndUploadCard, getTemplateAssets, type CardData } from "@/lib/c
 import { Download, Search, Pencil, Upload, Trash2, Send } from "lucide-react";
 import { toast } from "sonner";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
+import { logMessageSend } from "@/lib/messageLog";
 
 const normalizePrimaryKeyName = (value: unknown) =>
   String(value || "")
@@ -798,6 +799,8 @@ const CRMContacts = () => {
           failed++;
         } else {
           sent++;
+          const destMob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
+          await logMessageSend(destMob, r.patient_name, "ABC", r.umr_number, r.primary_key);
           await supabase.from("crm_contacts").update({
             last_sent_type: "ABC",
             last_sent_date: new Date().toISOString(),

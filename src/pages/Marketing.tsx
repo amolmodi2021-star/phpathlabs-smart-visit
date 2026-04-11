@@ -3,6 +3,7 @@ import PasswordGate from "@/components/PasswordGate";
 import MarketingSender from "@/components/marketing/MarketingSender";
 import AutomatedMarketing from "@/components/marketing/AutomatedMarketing";
 import MessageLog from "@/components/marketing/MessageLog";
+import NewNumbers from "@/components/marketing/NewNumbers";
 
 const Marketing = () => {
   return (
@@ -14,6 +15,7 @@ const Marketing = () => {
             <TabsTrigger value="send">Send Messages</TabsTrigger>
             <TabsTrigger value="automated">Automated</TabsTrigger>
             <TabsTrigger value="log">Message Log</TabsTrigger>
+            <TabsTrigger value="new">New Numbers</TabsTrigger>
           </TabsList>
           <TabsContent value="send">
             <MarketingSender />
@@ -23,6 +25,9 @@ const Marketing = () => {
           </TabsContent>
           <TabsContent value="log">
             <MessageLog />
+          </TabsContent>
+          <TabsContent value="new">
+            <NewNumbers />
           </TabsContent>
         </Tabs>
       </div>
