@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { logMessageSend } from "@/lib/messageLog";
+import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { generateAndUploadCard, getTemplateAssets, type CardData } from "@/lib/cardRenderer";
@@ -60,6 +61,7 @@ const SEQUENCE_OPTIONS = [
 
 const AutomatedMarketing = () => {
   const qc = useQueryClient();
+  useRealtimeSync("message_send_log", ["drip-pending-counts", "wa-usage-24h"]);
 
   // Global settings
   const [maxPerDay, setMaxPerDay] = useState(200);
