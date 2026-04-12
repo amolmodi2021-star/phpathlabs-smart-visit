@@ -104,6 +104,7 @@ export default function WhatsAppChat() {
   const [selectedMobile, setSelectedMobile] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filterUnread, setFilterUnread] = useState(false);
+  const [manualUnreadMobiles, setManualUnreadMobiles] = useState<Set<string>>(new Set());
   const queryClient = useQueryClient();
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -240,6 +241,11 @@ export default function WhatsAppChat() {
   // Mark conversation as read only when switching to it
   useEffect(() => {
     if (selectedMobile) {
+      setManualUnreadMobiles((prev) => {
+        const next = new Set(prev);
+        next.delete(selectedMobile);
+        return next;
+      });
       markConversationRead(selectedMobile).then(() => {
         queryClient.invalidateQueries({ queryKey: ["wa-chat-webhook"] });
       });
@@ -320,17 +326,25 @@ export default function WhatsAppChat() {
     // Second pass: count unread inbound messages per contact
     webhookMessages.forEach((m: any) => {
       if (m.direction !== "inbound") return;
-      if (m.is_read) return;
       const mobile = norm10(m.sender_number || "");
       if (!mobile) return;
       const contact = contactMap.get(mobile);
       if (!contact) return;
-      contact.unread += 1;
+      if (!m.is_read) {
+        contact.unread += 1;
+      }
+    });
+
+    manualUnreadMobiles.forEach((mobile) => {
+      const contact = contactMap.get(mobile);
+      if (contact && contact.unread === 0) {
+        contact.unread = 1;
+      }
     });
 
     return Array.from(contactMap.values())
       .sort((a, b) => b.lastTime.localeCompare(a.lastTime));
-  }, [webhookMessages, sendLogs, nameMap, profileNameMap]);
+  }, [webhookMessages, sendLogs, nameMap, profileNameMap, manualUnreadMobiles]);
 
   // Total unread count for filter badge
   const totalUnread = useMemo(() => contacts.reduce((s, c) => s + c.unread, 0), [contacts]);
@@ -795,6 +809,7 @@ export default function WhatsAppChat() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
                   <DropdownMenuItem onClick={async () => {
+                    setManualUnreadMobiles((prev) => new Set(prev).add(c.mobile));
                     await markConversationUnread(c.mobile);
                     queryClient.invalidateQueries({ queryKey: ["wa-chat-webhook"] });
                     toast.success("Marked as unread");
