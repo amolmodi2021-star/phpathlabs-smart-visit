@@ -353,18 +353,42 @@ export default function WhatsAppChat() {
       }
     });
 
+    // Collect webhook message_ids to deduplicate against sendLogs
+    const webhookMsgIds = new Set(
+      webhookMessages.filter((m: any) => m.message_id).map((m: any) => m.message_id)
+    );
+
     sendLogs.forEach((l: any) => {
-      if (norm10(l.mobile_number || "") === selectedMobile) {
-        msgs.push({
-          id: l.id,
-          source: "log",
-          direction: "outbound",
-          message: l.message_content || `${l.message_type || "Message"} Sent`,
-          messageType: l.message_type || "log",
-          deliveryStatus: l.delivery_status || "sent",
-          timestamp: l.sent_at,
-        });
+      if (norm10(l.mobile_number || "") !== selectedMobile) return;
+      // Skip if already represented in webhook_messages
+      if (l.message_id && webhookMsgIds.has(l.message_id)) return;
+
+      const logMsgType = (l.message_type || "").toLowerCase();
+      let messageType = l.message_type || "log";
+      let mediaUrl: string | undefined;
+      const content = l.message_content || "";
+
+      // Detect image/document messages from sendLog and extract media URL
+      if (logMsgType.includes("image")) {
+        messageType = "image";
+        const urlMatch = content.match(/https?:\/\/\S+/);
+        if (urlMatch) mediaUrl = urlMatch[0];
+      } else if (logMsgType.includes("document")) {
+        messageType = "document";
+        const urlMatch = content.match(/https?:\/\/\S+/);
+        if (urlMatch) mediaUrl = urlMatch[0];
       }
+
+      msgs.push({
+        id: l.id,
+        source: "log",
+        direction: "outbound",
+        message: content || `${l.message_type || "Message"} Sent`,
+        messageType,
+        mediaUrl,
+        deliveryStatus: l.delivery_status || "sent",
+        timestamp: l.sent_at,
+      });
     });
 
     msgs.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
