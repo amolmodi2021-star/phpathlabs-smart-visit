@@ -40,9 +40,16 @@ Deno.serve(async (req) => {
         const updatePayload: Record<string, any> = { delivery_status: status };
         if (errorInfo) updatePayload.error_info = errorInfo;
 
+        // Update webhook_messages
         await supabase
           .from("webhook_messages")
           .update(updatePayload)
+          .eq("message_id", messageId);
+
+        // Also update message_send_log for outbound messages
+        await supabase
+          .from("message_send_log")
+          .update({ delivery_status: status } as any)
           .eq("message_id", messageId);
 
         console.log(`Updated message ${messageId} status to ${status}`);
@@ -195,6 +202,13 @@ Deno.serve(async (req) => {
         const resText = await res.text();
         console.log("Auto-reply response:", res.status, resText);
 
+        // Try to extract messageId from auto-reply response
+        let replyMessageId: string | null = null;
+        try {
+          const parsed = JSON.parse(resText);
+          replyMessageId = parsed?.messageId || parsed?.message_id || null;
+        } catch {}
+
         await supabase.from("webhook_messages").insert({
           sender_number: senderNumber,
           sender_name: senderName,
@@ -204,6 +218,7 @@ Deno.serve(async (req) => {
           raw_payload: { response: resText, statusCode: res.status },
           message_type: "text",
           delivery_status: res.ok ? "sent" : "failed",
+          message_id: replyMessageId,
         });
       } catch (replyErr) {
         console.error("Auto-reply failed:", replyErr);

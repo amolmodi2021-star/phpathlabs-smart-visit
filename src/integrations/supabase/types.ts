@@ -1753,8 +1753,10 @@ export type Database = {
       message_send_log: {
         Row: {
           created_at: string
+          delivery_status: string | null
           id: string
           message_content: string | null
+          message_id: string | null
           message_type: string
           mobile_number: string
           patient_name: string | null
@@ -1764,8 +1766,10 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          delivery_status?: string | null
           id?: string
           message_content?: string | null
+          message_id?: string | null
           message_type: string
           mobile_number: string
           patient_name?: string | null
@@ -1775,8 +1779,10 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          delivery_status?: string | null
           id?: string
           message_content?: string | null
+          message_id?: string | null
           message_type?: string
           mobile_number?: string
           patient_name?: string | null

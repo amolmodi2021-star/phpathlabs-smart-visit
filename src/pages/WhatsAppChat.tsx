@@ -77,7 +77,7 @@ export default function WhatsAppChat() {
     queryFn: async () => {
       const { data } = await supabase
         .from("message_send_log")
-        .select("id, mobile_number, patient_name, message_type, sent_at, message_content")
+        .select("id, mobile_number, patient_name, message_type, sent_at, message_content, message_id, delivery_status")
         .order("sent_at", { ascending: false })
         .limit(5000);
       return data || [];
@@ -151,11 +151,11 @@ export default function WhatsAppChat() {
     return () => { supabase.removeChannel(channel); };
   }, [queryClient]);
 
-  // Also subscribe to message_send_log changes
+  // Also subscribe to message_send_log changes (INSERT + UPDATE for status)
   useEffect(() => {
     const channel = supabase
       .channel("wa-chat-sendlog-rt")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "message_send_log" }, () => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "message_send_log" }, () => {
         queryClient.invalidateQueries({ queryKey: ["wa-chat-sendlog"] });
       })
       .subscribe();
@@ -276,6 +276,7 @@ export default function WhatsAppChat() {
           direction: "outbound",
           message: l.message_content || `${l.message_type || "Message"} Sent`,
           messageType: l.message_type || "log",
+          deliveryStatus: l.delivery_status || "sent",
           timestamp: l.sent_at,
         });
       }
