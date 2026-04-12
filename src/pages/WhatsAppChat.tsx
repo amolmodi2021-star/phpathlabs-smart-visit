@@ -45,13 +45,31 @@ const formatFullTimestamp = (d: string) => {
 const markConversationRead = async (mobile: string) => {
   const mobile10 = mobile.replace(/\D/g, "").slice(-10);
   if (!mobile10) return;
-  // Match sender_number ending with the 10 digits
   await supabase
     .from("webhook_messages")
     .update({ is_read: true } as any)
     .eq("direction", "inbound")
     .eq("is_read", false)
     .like("sender_number", `%${mobile10}`);
+};
+
+const markConversationUnread = async (mobile: string) => {
+  const mobile10 = mobile.replace(/\D/g, "").slice(-10);
+  if (!mobile10) return;
+  // Mark the latest inbound message as unread
+  const { data } = await supabase
+    .from("webhook_messages")
+    .select("id")
+    .eq("direction", "inbound")
+    .like("sender_number", `%${mobile10}`)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (data && data.length > 0) {
+    await supabase
+      .from("webhook_messages")
+      .update({ is_read: false } as any)
+      .eq("id", data[0].id);
+  }
 };
 
 interface ConversationContact {
