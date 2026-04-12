@@ -40,7 +40,7 @@ const formatFullTimestamp = (d: string) => {
   } catch { return ""; }
 };
 
-// localStorage helpers for read tracking
+// localStorage helpers for manual unread overrides
 // Mark all inbound messages from a mobile as read in the database
 const markConversationRead = async (mobile: string) => {
   const mobile10 = mobile.replace(/\D/g, "").slice(-10);
