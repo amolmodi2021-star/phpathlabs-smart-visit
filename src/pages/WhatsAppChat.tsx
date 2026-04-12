@@ -77,7 +77,7 @@ export default function WhatsAppChat() {
     queryFn: async () => {
       const { data } = await supabase
         .from("message_send_log")
-        .select("id, mobile_number, patient_name, message_type, sent_at, message_content")
+        .select("id, mobile_number, patient_name, message_type, sent_at, message_content, message_id, delivery_status")
         .order("sent_at", { ascending: false })
         .limit(5000);
       return data || [];
