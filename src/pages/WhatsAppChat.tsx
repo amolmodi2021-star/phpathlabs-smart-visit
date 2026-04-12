@@ -807,6 +807,85 @@ export default function WhatsAppChat() {
         ))}
         <div ref={chatEndRef} />
       </div>
+
+      {/* Compose bar */}
+      <div className="px-3 py-2 flex items-center gap-2" style={{ backgroundColor: "#F0F0F0" }}>
+        {/* Hidden file inputs */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleFileUpload(file, "image");
+            e.target.value = "";
+          }}
+        />
+        <input
+          ref={docInputRef}
+          type="file"
+          accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleFileUpload(file, "document");
+            e.target.value = "";
+          }}
+        />
+
+        {/* Attachment button */}
+        <Popover open={showAttachMenu} onOpenChange={setShowAttachMenu}>
+          <PopoverTrigger asChild>
+            <button
+              className="p-2 rounded-full hover:bg-black/5 transition-colors"
+              disabled={sending}
+            >
+              <Paperclip className="h-5 w-5 text-muted-foreground" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="w-40 p-1" side="top" align="start">
+            <button
+              className="flex items-center gap-2 w-full px-3 py-2 text-sm rounded hover:bg-accent transition-colors"
+              onClick={() => { fileInputRef.current?.click(); setShowAttachMenu(false); }}
+            >
+              <ImageIcon className="h-4 w-4 text-purple-500" /> Image
+            </button>
+            <button
+              className="flex items-center gap-2 w-full px-3 py-2 text-sm rounded hover:bg-accent transition-colors"
+              onClick={() => { docInputRef.current?.click(); setShowAttachMenu(false); }}
+            >
+              <FileText className="h-4 w-4 text-blue-500" /> Document
+            </button>
+          </PopoverContent>
+        </Popover>
+
+        {/* Text input */}
+        <input
+          ref={composeInputRef}
+          type="text"
+          placeholder="Type a message"
+          value={composeText}
+          onChange={(e) => setComposeText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendText(); } }}
+          disabled={sending}
+          className="flex-1 rounded-full px-4 py-2 text-sm bg-white border-0 outline-none focus:ring-1 focus:ring-green-300"
+        />
+
+        {/* Send button */}
+        <button
+          onClick={handleSendText}
+          disabled={sending || !composeText.trim()}
+          className="p-2 rounded-full transition-colors disabled:opacity-40"
+          style={{ backgroundColor: "#075E54" }}
+        >
+          {sending ? (
+            <Loader2 className="h-5 w-5 text-white animate-spin" />
+          ) : (
+            <Send className="h-5 w-5 text-white" />
+          )}
+        </button>
+      </div>
     </div>
   );
 
