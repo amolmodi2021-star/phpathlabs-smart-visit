@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { ArrowLeft, Search, Check, CheckCheck, X, MapPin, Image as ImageIcon, MessageCircle, Info, Filter, Send, Paperclip, FileText, Loader2, AlertCircle } from "lucide-react";
+import { ArrowLeft, Search, Check, CheckCheck, X, MapPin, Image as ImageIcon, MessageCircle, Info, Filter, Send, Paperclip, FileText, Loader2, AlertCircle, MailOpen } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { format, isToday, isYesterday, parseISO } from "date-fns";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -44,13 +45,31 @@ const formatFullTimestamp = (d: string) => {
 const markConversationRead = async (mobile: string) => {
   const mobile10 = mobile.replace(/\D/g, "").slice(-10);
   if (!mobile10) return;
-  // Match sender_number ending with the 10 digits
   await supabase
     .from("webhook_messages")
     .update({ is_read: true } as any)
     .eq("direction", "inbound")
     .eq("is_read", false)
     .like("sender_number", `%${mobile10}`);
+};
+
+const markConversationUnread = async (mobile: string) => {
+  const mobile10 = mobile.replace(/\D/g, "").slice(-10);
+  if (!mobile10) return;
+  // Mark the latest inbound message as unread
+  const { data } = await supabase
+    .from("webhook_messages")
+    .select("id")
+    .eq("direction", "inbound")
+    .like("sender_number", `%${mobile10}`)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (data && data.length > 0) {
+    await supabase
+      .from("webhook_messages")
+      .update({ is_read: false } as any)
+      .eq("id", data[0].id);
+  }
 };
 
 interface ConversationContact {
@@ -725,7 +744,7 @@ export default function WhatsAppChat() {
           <div
             key={c.mobile}
             onClick={() => setSelectedMobile(c.mobile)}
-            className={`flex items-center gap-3 px-4 py-3 cursor-pointer border-b border-gray-100 hover:bg-gray-50 transition-colors ${
+            className={`group flex items-center gap-3 px-4 py-3 cursor-pointer border-b border-gray-100 hover:bg-gray-50 transition-colors ${
               selectedMobile === c.mobile ? "bg-gray-100" : ""
             }`}
           >
@@ -765,6 +784,27 @@ export default function WhatsAppChat() {
                 <p className="text-[10px] text-muted-foreground">{c.mobile}</p>
               )}
             </div>
+
+            {/* Mark as unread button */}
+            {c.unread === 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                  <button className="shrink-0 p-1 rounded hover:bg-gray-200 transition-colors opacity-0 group-hover:opacity-100">
+                    <MailOpen className="h-4 w-4 text-muted-foreground" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                  <DropdownMenuItem onClick={async () => {
+                    await markConversationUnread(c.mobile);
+                    queryClient.invalidateQueries({ queryKey: ["wa-chat-webhook"] });
+                    toast.success("Marked as unread");
+                  }}>
+                    <MailOpen className="h-4 w-4 mr-2" />
+                    Mark as unread
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
         ))}
       </div>
