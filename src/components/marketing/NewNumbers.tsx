@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Search } from "lucide-react";
 import { format } from "date-fns";
 
@@ -13,108 +14,39 @@ const PAGE_SIZE = 50;
 
 const NewNumbers = () => {
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(0);
 
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedSearch(search.trim());
+      setPage(0);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
   const { data, isLoading } = useQuery({
-    queryKey: ["new_numbers", search, page],
+    queryKey: ["new_numbers", debouncedSearch, page],
     queryFn: async () => {
-      // Get ALL CRM mobile numbers (paginate past 1000-row limit)
-      let allCrmMobiles: any[] = [];
-      let crmFrom = 0;
-      const CRM_PAGE = 1000;
-      while (true) {
-        const { data: batch } = await supabase
-          .from("crm_contacts")
-          .select("mobile_number")
-          .range(crmFrom, crmFrom + CRM_PAGE - 1);
-        if (!batch || batch.length === 0) break;
-        allCrmMobiles = allCrmMobiles.concat(batch);
-        if (batch.length < CRM_PAGE) break;
-        crmFrom += CRM_PAGE;
-      }
-
-      const crmSet = new Set(
-        allCrmMobiles
-          .map((c: any) => (c.mobile_number || "").replace(/\D/g, "").slice(-10))
-          .filter((m: string) => m.length === 10)
-      );
-
-      // Get all blacklisted numbers
-      const { data: blacklisted } = await supabase
-        .from("crm_blacklist")
-        .select("mobile_number");
-
-      const blacklistSet = new Set(
-        (blacklisted || [])
-          .map((b: any) => (b.mobile_number || "").replace(/\D/g, "").slice(-10))
-          .filter((m: string) => m.length === 10)
-      );
-
-      // Get ALL log entries (paginate past 1000-row limit)
-      let allLogs: any[] = [];
-      let logFrom = 0;
-      const LOG_PAGE = 1000;
-      while (true) {
-        const { data: batch } = await supabase
-          .from("message_send_log")
-          .select("*")
-          .order("sent_at", { ascending: false })
-          .range(logFrom, logFrom + LOG_PAGE - 1);
-        if (!batch || batch.length === 0) break;
-        allLogs = allLogs.concat(batch);
-        if (batch.length < LOG_PAGE) break;
-        logFrom += LOG_PAGE;
-      }
-
-      // Filter to numbers not in CRM and group
-      const grouped = new Map<string, {
+      const { data, error } = await supabase.rpc("get_new_numbers_paginated", {
+        p_search: debouncedSearch,
+        p_limit: PAGE_SIZE,
+        p_offset: page * PAGE_SIZE,
+      });
+      if (error) throw error;
+      return data as Array<{
         mobile: string;
-        patientName: string | null;
-        lastType: string;
-        lastSent: string;
-        count: number;
-      }>();
-
-      for (const log of allLogs || []) {
-        const mob = (log.mobile_number || "").replace(/\D/g, "").slice(-10);
-        if (!mob || mob.length !== 10) continue;
-        if (crmSet.has(mob)) continue;
-        if (blacklistSet.has(mob)) continue;
-
-        if (!grouped.has(mob)) {
-          grouped.set(mob, {
-            mobile: mob,
-            patientName: log.patient_name,
-            lastType: log.message_type,
-            lastSent: log.sent_at,
-            count: 1,
-          });
-        } else {
-          grouped.get(mob)!.count++;
-        }
-      }
-
-      let rows = Array.from(grouped.values());
-
-      // Apply search filter
-      if (search.trim()) {
-        const s = search.trim().toLowerCase();
-        rows = rows.filter(
-          (r) =>
-            r.mobile.includes(s) ||
-            (r.patientName || "").toLowerCase().includes(s) ||
-            r.lastType.toLowerCase().includes(s)
-        );
-      }
-
-      const total = rows.length;
-      const paged = rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-      return { rows: paged, total };
+        patient_name: string | null;
+        last_message_type: string;
+        last_sent_at: string;
+        message_count: number;
+        total_count: number;
+      }>;
     },
   });
 
-  const rows = data?.rows || [];
-  const total = data?.total || 0;
+  const rows = data || [];
+  const total = rows.length > 0 ? rows[0].total_count : 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
   return (
@@ -125,7 +57,7 @@ const NewNumbers = () => {
           <Input
             placeholder="Search mobile, name, or type..."
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+            onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
           />
         </div>
@@ -146,11 +78,13 @@ const NewNumbers = () => {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                  Loading...
-                </TableCell>
-              </TableRow>
+              Array.from({ length: 8 }).map((_, i) => (
+                <TableRow key={i}>
+                  {Array.from({ length: 6 }).map((_, j) => (
+                    <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
+                  ))}
+                </TableRow>
+              ))
             ) : rows.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
@@ -164,10 +98,10 @@ const NewNumbers = () => {
                     {page * PAGE_SIZE + idx + 1}
                   </TableCell>
                   <TableCell className="font-medium">{row.mobile}</TableCell>
-                  <TableCell>{row.patientName || "—"}</TableCell>
-                  <TableCell>{row.lastType}</TableCell>
-                  <TableCell>{format(new Date(row.lastSent), "dd-MM-yyyy hh:mm a")}</TableCell>
-                  <TableCell className="text-center">{row.count}</TableCell>
+                  <TableCell>{row.patient_name || "—"}</TableCell>
+                  <TableCell>{row.last_message_type}</TableCell>
+                  <TableCell>{format(new Date(row.last_sent_at), "dd-MM-yyyy hh:mm a")}</TableCell>
+                  <TableCell className="text-center">{row.message_count}</TableCell>
                 </TableRow>
               ))
             )}
