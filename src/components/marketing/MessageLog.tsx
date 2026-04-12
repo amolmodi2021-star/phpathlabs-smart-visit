@@ -32,7 +32,38 @@ const MessageLog = () => {
 
       const { data: rows, count, error } = await query;
       if (error) throw error;
-      return { rows: rows || [], total: count || 0 };
+
+      // Fetch delivered/read timestamps from webhook_messages for message_ids
+      const messageIds = (rows || [])
+        .map((r: any) => r.message_id)
+        .filter(Boolean);
+
+      let statusMap: Record<string, { delivered_at?: string; read_at?: string }> = {};
+      if (messageIds.length > 0) {
+        const { data: statuses } = await supabase
+          .from("webhook_messages")
+          .select("message_id, delivery_status, created_at")
+          .in("message_id", messageIds)
+          .eq("direction", "outbound")
+          .in("delivery_status", ["delivered", "read"]);
+
+        for (const s of statuses || []) {
+          if (!statusMap[s.message_id]) statusMap[s.message_id] = {};
+          if (s.delivery_status === "delivered") {
+            statusMap[s.message_id].delivered_at = s.created_at;
+          } else if (s.delivery_status === "read") {
+            statusMap[s.message_id].read_at = s.created_at;
+          }
+        }
+      }
+
+      const enrichedRows = (rows || []).map((r: any) => ({
+        ...r,
+        delivered_at: r.message_id ? statusMap[r.message_id]?.delivered_at : null,
+        read_at: r.message_id ? statusMap[r.message_id]?.read_at : null,
+      }));
+
+      return { rows: enrichedRows, total: count || 0 };
     },
   });
 
@@ -65,21 +96,22 @@ const MessageLog = () => {
               <TableHead>UMR Number</TableHead>
               <TableHead>Primary Key</TableHead>
               <TableHead>Message Type</TableHead>
-              <TableHead>Sent Date</TableHead>
-              <TableHead>Sent Time</TableHead>
+              <TableHead>Sent Date & Time</TableHead>
+              <TableHead>Delivered Date & Time</TableHead>
+              <TableHead>Read Date & Time</TableHead>
               <TableHead>Days Ago</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
                   Loading...
                 </TableCell>
               </TableRow>
             ) : rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
                   No messages logged yet
                 </TableCell>
               </TableRow>
@@ -101,8 +133,13 @@ const MessageLog = () => {
                     <TableCell>{row.umr_number || "—"}</TableCell>
                     <TableCell className="text-xs max-w-[200px] truncate">{row.primary_key || "—"}</TableCell>
                     <TableCell>{row.message_type}</TableCell>
-                    <TableCell>{format(sentDate, "dd-MM-yyyy")}</TableCell>
-                    <TableCell>{format(sentDate, "hh:mm a")}</TableCell>
+                    <TableCell className="whitespace-nowrap">{format(sentDate, "dd-MM-yyyy hh:mm a")}</TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {row.delivered_at ? format(new Date(row.delivered_at), "dd-MM-yyyy hh:mm a") : "—"}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {row.read_at ? format(new Date(row.read_at), "dd-MM-yyyy hh:mm a") : "—"}
+                    </TableCell>
                     <TableCell className="text-center">{daysAgo}</TableCell>
                   </TableRow>
                 );
