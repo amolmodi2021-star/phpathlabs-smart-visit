@@ -98,7 +98,7 @@ const ReceiptViewDialog = ({ open, onClose, visitData }: ReceiptViewDialogProps)
       } else {
         handleDownload();
         const phone = est?.whatsapp_number || "";
-        if (phone) { shareOnWhatsApp(phone, buildReceiptText()); logMessageSend(phone, est?.patient_name, "Receipt"); }
+        if (phone) { const _txt = buildReceiptText(); shareOnWhatsApp(phone, _txt); logMessageSend(phone, est?.patient_name, "Receipt", undefined, undefined, _txt); }
       }
     }, "image/jpeg", 0.95);
   }, [generateCanvas, est, handleDownload]);
