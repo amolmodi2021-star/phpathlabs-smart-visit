@@ -305,7 +305,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
 
       return cleanNumber;
     },
-    onSuccess: (cleanNumber) => {
+    onSuccess: async (cleanNumber) => {
       qc.invalidateQueries({ queryKey: ["home_visits"] });
       qc.invalidateQueries({ queryKey: ["estimates"] });
 
@@ -344,8 +344,8 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
             address: address.toUpperCase(),
             patientName: patientName ? patientName.toUpperCase() : undefined,
           });
+          await logMessageSend(cleanNumber, patientName, "Home Visit", undefined, undefined, msg);
           shareOnWhatsApp(cleanNumber, msg);
-          logMessageSend(cleanNumber, patientName, "Home Visit", undefined, undefined, msg);
         }
       }
     },

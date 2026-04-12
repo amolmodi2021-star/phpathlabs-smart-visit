@@ -142,8 +142,8 @@ const CreateEstimate = () => {
           footer: templates.footer_text,
           patientName: patientName || undefined,
         });
+        await logMessageSend(cleanNumber, patientName, "Estimate", undefined, undefined, msg);
         shareOnWhatsApp(cleanNumber, msg);
-        logMessageSend(cleanNumber, patientName, "Estimate", undefined, undefined, msg);
       }
 
       try {
