@@ -784,6 +784,27 @@ export default function WhatsAppChat() {
                 <p className="text-[10px] text-muted-foreground">{c.mobile}</p>
               )}
             </div>
+
+            {/* Mark as unread button */}
+            {c.unread === 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                  <button className="shrink-0 p-1 rounded hover:bg-gray-200 transition-colors opacity-0 group-hover:opacity-100">
+                    <MailOpen className="h-4 w-4 text-muted-foreground" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                  <DropdownMenuItem onClick={async () => {
+                    await markConversationUnread(c.mobile);
+                    queryClient.invalidateQueries({ queryKey: ["wa-chat-webhook"] });
+                    toast.success("Marked as unread");
+                  }}>
+                    <MailOpen className="h-4 w-4 mr-2" />
+                    Mark as unread
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
         ))}
       </div>
