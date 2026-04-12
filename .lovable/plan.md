@@ -1,58 +1,42 @@
 
 
-# Plan: Fix Message Status Updates (Delivery Ticks)
+# Plan: Fix Message ID Capture for Delivery Status Updates
+
+## Problem
+The `message_id` column in `message_send_log` is NULL for every single row. The extraction code runs inside a try/catch that silently returns null on any error. Without a stored `message_id`, the webhook cannot match incoming status events (delivered/read) to log entries, so ticks never update.
 
 ## Root Cause
-When outbound messages are sent via the `whatsapp-proxy` edge function, the WhatsApp API returns a `messageId` in its response. This `messageId` is **never captured or stored**. When status webhooks later arrive with that `messageId` (delivered/read/failed), the webhook handler tries to update `webhook_messages` by `message_id` but finds no matching row.
+The messageId extraction logic is likely failing silently. Two possible issues:
+1. The `supabase.functions.invoke` SDK may structure `proxyRes.data` differently than expected (e.g., nested parsing)
+2. The AOC API may return the messageId under a variant key or nested structure
 
 ## Solution
 
-### 1. Update `whatsapp-proxy` to return the `messageId`
-The proxy already returns the raw API response body. The callers just need to parse it and extract the `messageId`.
+### 1. Add debug logging to the proxy to capture the actual API response
+Temporarily add `console.log` in `whatsapp-proxy/index.ts` to log the raw response body from the AOC API, so we can see the exact structure and key name.
 
-### 2. Add `message_id` column to `message_send_log`
-```sql
-ALTER TABLE public.message_send_log ADD COLUMN message_id text;
-```
+### 2. Fix the messageId extraction in `src/lib/messageLog.ts`
+Update `extractMessageId` to handle more response shapes and add a fallback. Also make it more robust by checking additional possible key paths (`messages[0].id`, `message_id`, etc.).
 
-### 3. Update all send callers to capture and store `messageId`
-After each `whatsapp-proxy` call, parse the response body to extract `messageId`, then:
-- Store it in `message_send_log.message_id` via the `logMessageSend` function
-- This applies to: `CreateEstimate`, `EstimateDashboard`, `AddHomeVisitDialog`, `EditEstimateDialog`, `EditHomeVisitDialog`, `CRMContacts`, `CRMImportReview`, `CRMAbnormalTests`, `AutomatedMarketing`, `ViewReport`, `DirectAI`, `InvoicePreview`, `ReceiptViewDialog`, `PaymentDetailsDialog`
+### 3. Update all callers to await and log the messageId properly
+The current pattern extracts messageId inline with an IIFE. Refactor to use the shared `extractMessageId` helper consistently, and add a `console.log` so we can debug extraction in the browser console.
 
-### 4. Update webhook status handler to also check `message_send_log`
-Currently the webhook only updates `webhook_messages.delivery_status`. Extend it to also update `message_send_log` when a matching `message_id` is found:
+### 4. Update the webhook to match with `:N` suffix variants
+The AOC API appends `:1` (or `:N`) to messageIds in status callbacks. When looking up in `message_send_log`, also try matching without the suffix:
 ```typescript
-// In whatsapp-webhook, after updating webhook_messages:
-await supabase
-  .from("message_send_log")
+// In whatsapp-webhook, when updating message_send_log:
+const baseId = messageId.includes(":") ? messageId.split(":")[0] : messageId;
+await supabase.from("message_send_log")
   .update({ delivery_status: status })
-  .eq("message_id", messageId);
+  .or(`message_id.eq.${messageId},message_id.eq.${baseId}`);
 ```
-
-### 5. Add `delivery_status` column to `message_send_log`
-```sql
-ALTER TABLE public.message_send_log ADD COLUMN delivery_status text DEFAULT 'sent';
-```
-
-### 6. Update webhook auto-reply to capture `messageId`
-Parse the API response in the webhook's auto-reply section and store the returned `messageId` on the outbound `webhook_messages` row.
-
-### 7. Update WhatsApp Chat UI
-- For `message_send_log` messages: read `delivery_status` from the log table
-- Ensure ticks render correctly: single grey tick (sent), double grey tick (delivered), double blue tick (read), red X (failed)
-
-### 8. Enable realtime on `message_send_log` (if not already)
-So status changes propagate live to the chat UI.
 
 ## Files to Modify
-- **Migration**: add `message_id` and `delivery_status` to `message_send_log`, enable realtime
-- **`src/lib/messageLog.ts`**: accept `messageId` parameter
-- **`supabase/functions/whatsapp-webhook/index.ts`**: update status handler to also check `message_send_log`, capture `messageId` on auto-reply
-- **`src/pages/WhatsAppChat.tsx`**: fetch and display `delivery_status` from log messages
-- **All send callers** (~14 files): parse proxy response to extract `messageId` and pass to `logMessageSend`
-
-## Technical Notes
-- The AOC API response format typically returns `messageId` in the JSON body — we'll parse `proxyRes.data.body` (which is a JSON string) to extract it
-- Status updates will work for both `webhook_messages` and `message_send_log` tables via dual-update in the webhook
+- `supabase/functions/whatsapp-proxy/index.ts` — add response logging
+- `supabase/functions/whatsapp-webhook/index.ts` — fuzzy messageId matching (with/without `:N` suffix)
+- `src/lib/messageLog.ts` — make `extractMessageId` more robust with logging
+- `src/components/crm/CRMContacts.tsx` — use `extractMessageId` helper
+- `src/components/crm/CRMImportReview.tsx` — use `extractMessageId` helper
+- `src/components/crm/CRMAbnormalTests.tsx` — use `extractMessageId` helper
+- `src/components/marketing/AutomatedMarketing.tsx` — use `extractMessageId` helper
 
