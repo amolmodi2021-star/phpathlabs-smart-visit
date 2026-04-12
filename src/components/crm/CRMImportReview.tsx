@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Trash2, CheckCircle, Send, Search } from "lucide-react";
 import { toast } from "sonner";
 import { generateAndUploadCard, getTemplateAssets, type CardData } from "@/lib/cardRenderer";
-import { logMessageSend } from "@/lib/messageLog";
+import { logMessageSend, extractMessageId } from "@/lib/messageLog";
 
 const CRMImportReview = () => {
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -319,7 +319,7 @@ const CRMImportReview = () => {
         } else {
           sent++;
           const mobile10 = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
-          const _msgId = (() => { try { const b = typeof proxyRes.data?.body === "string" ? JSON.parse(proxyRes.data.body) : proxyRes.data?.body; return b?.messageId || null; } catch { return null; } })();
+          const _msgId = extractMessageId(proxyRes.data);
           await logMessageSend(mobile10, r.patient_name, "ABC", r.umr_number, r.primary_key, undefined, _msgId);
           const pk = r.primary_key;
           if (pk) {

@@ -15,7 +15,7 @@ import { generateAndUploadCard, getTemplateAssets, type CardData } from "@/lib/c
 import { Download, Search, Pencil, Upload, Trash2, Send } from "lucide-react";
 import { toast } from "sonner";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
-import { logMessageSend } from "@/lib/messageLog";
+import { logMessageSend, extractMessageId } from "@/lib/messageLog";
 
 const normalizePrimaryKeyName = (value: unknown) =>
   String(value || "")
@@ -800,7 +800,7 @@ const CRMContacts = () => {
         } else {
           sent++;
           const destMob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
-          const _msgId = (() => { try { const b = typeof proxyRes.data?.body === "string" ? JSON.parse(proxyRes.data.body) : proxyRes.data?.body; return b?.messageId || null; } catch { return null; } })();
+          const _msgId = extractMessageId(proxyRes.data);
           await logMessageSend(destMob, r.patient_name, "ABC", r.umr_number, r.primary_key, undefined, _msgId);
           await supabase.from("crm_contacts").update({
             last_sent_type: "ABC",
