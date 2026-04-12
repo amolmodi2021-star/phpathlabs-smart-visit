@@ -87,7 +87,6 @@ export default function WhatsAppChat() {
   const [filterUnread, setFilterUnread] = useState(false);
   const queryClient = useQueryClient();
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const [lastReadMap, setLastReadMap] = useState<Record<string, string>>(getLastReadMap);
 
   // Compose bar state
   const [composeText, setComposeText] = useState("");
