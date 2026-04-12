@@ -2,13 +2,14 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { ArrowLeft, Search, Check, CheckCheck, X, MapPin, Image as ImageIcon, MessageCircle, Info, Filter } from "lucide-react";
+import { ArrowLeft, Search, Check, CheckCheck, X, MapPin, Image as ImageIcon, MessageCircle, Info, Filter, Send, Paperclip, FileText, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { format, isToday, isYesterday, parseISO } from "date-fns";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 
 // Normalize to 10 digit number
 const norm10 = (n: string) => (n || "").replace(/\D/g, "").slice(-10);
@@ -87,6 +88,17 @@ export default function WhatsAppChat() {
   const queryClient = useQueryClient();
   const chatEndRef = useRef<HTMLDivElement>(null);
   const [lastReadMap, setLastReadMap] = useState<Record<string, string>>(getLastReadMap);
+
+  // Compose bar state
+  const [composeText, setComposeText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const docInputRef = useRef<HTMLInputElement>(null);
+  const composeInputRef = useRef<HTMLInputElement>(null);
+
+  // WA global settings
+  const [waSettings, setWaSettings] = useState<Record<string, string>>({});
 
   // Fetch all webhook messages
   const { data: webhookMessages = [] } = useQuery({
@@ -191,6 +203,21 @@ export default function WhatsAppChat() {
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [queryClient]);
+
+  // Load global WA settings
+  useEffect(() => {
+    const load = async () => {
+      const { data } = await supabase
+        .from("app_settings")
+        .select("setting_key, setting_value")
+        .like("setting_key", "wa_global_%");
+      if (!data) return;
+      const m: Record<string, string> = {};
+      data.forEach((r: any) => { m[r.setting_key] = r.setting_value; });
+      setWaSettings(m);
+    };
+    load();
+  }, []);
 
   // Mark conversation as read when selected
   useEffect(() => {
@@ -364,6 +391,106 @@ export default function WhatsAppChat() {
       dayGroups.push({ date: day, messages: [m] });
     }
   });
+
+  // Send message helper
+  const sendMessage = async (type: "text" | "image" | "document", body?: string, mediaUrl?: string, caption?: string) => {
+    if (!selectedMobile) return;
+    const baseUrl = waSettings["wa_global_baseUrl"] || "https://api.aoc-portal.com/v1/whatsapp";
+    const apiKey = waSettings["wa_global_apiKey"];
+    const authHeaderName = waSettings["wa_global_authHeaderName"] || "apikey";
+    const authHeaderPrefix = waSettings["wa_global_authHeaderPrefix"] || "";
+    const fromNumber = waSettings["wa_global_fromNumber"] || "";
+
+    if (!apiKey) { toast.error("WhatsApp API key not configured. Go to WhatsApp Settings."); return; }
+    if (!fromNumber) { toast.error("From number not configured. Go to WhatsApp Settings."); return; }
+
+    const to = selectedMobile.length === 10 ? `+91${selectedMobile}` : `+${selectedMobile}`;
+    
+    let payload: any = {
+      recipient_type: "individual",
+      from: fromNumber,
+      to,
+      type,
+    };
+    if (type === "text") {
+      payload.text = { body: body || "" };
+    } else if (type === "image") {
+      payload.image = { link: mediaUrl || "", caption: caption || "" };
+    } else if (type === "document") {
+      payload.document = { link: mediaUrl || "", caption: caption || "" };
+    }
+
+    setSending(true);
+    try {
+      const { data: proxyRes, error } = await supabase.functions.invoke("whatsapp-proxy", {
+        body: { apiBaseUrl: baseUrl, apiKey, authHeaderName, authHeaderPrefix, payload },
+      });
+
+      if (error) throw error;
+
+      let messageId = "";
+      try {
+        const parsed = typeof proxyRes?.body === "string" ? JSON.parse(proxyRes.body) : proxyRes?.body;
+        messageId = parsed?.messageId || parsed?.message_id || parsed?.messages?.[0]?.id || "";
+      } catch {}
+
+      const msgContent = type === "text" ? (body || "") : `[${type}] ${caption || mediaUrl || ""}`;
+
+      // Insert into webhook_messages for immediate display
+      await supabase.from("webhook_messages").insert({
+        sender_number: fromNumber,
+        message: msgContent,
+        direction: "outbound",
+        message_type: type,
+        media_url: type !== "text" ? mediaUrl : null,
+        message_id: messageId || null,
+        delivery_status: "sent",
+      });
+
+      // Insert into message_send_log for tracking
+      await supabase.from("message_send_log").insert({
+        mobile_number: selectedMobile,
+        patient_name: selectedContact?.name || selectedContact?.profileName || null,
+        message_type: type === "text" ? "Chat Reply" : `Chat ${type.charAt(0).toUpperCase() + type.slice(1)}`,
+        message_content: msgContent,
+        message_id: messageId || null,
+        delivery_status: "sent",
+      });
+
+      queryClient.invalidateQueries({ queryKey: ["wa-chat-webhook"] });
+      queryClient.invalidateQueries({ queryKey: ["wa-chat-sendlog"] });
+      setComposeText("");
+      toast.success("Message sent!");
+    } catch (err: any) {
+      toast.error("Failed to send: " + (err.message || "Unknown error"));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleSendText = () => {
+    if (!composeText.trim() || sending) return;
+    sendMessage("text", composeText.trim());
+  };
+
+  const handleFileUpload = async (file: File, type: "image" | "document") => {
+    setSending(true);
+    try {
+      const ext = file.name.split(".").pop() || "bin";
+      const path = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+      const { error: uploadErr } = await supabase.storage.from("chat-attachments").upload(path, file);
+      if (uploadErr) throw uploadErr;
+
+      const { data: urlData } = supabase.storage.from("chat-attachments").getPublicUrl(path);
+      const publicUrl = urlData.publicUrl;
+
+      const caption = type === "image" ? "" : file.name;
+      await sendMessage(type, undefined, publicUrl, caption);
+    } catch (err: any) {
+      toast.error("Upload failed: " + (err.message || "Unknown error"));
+      setSending(false);
+    }
+  };
 
   const getStatusLabel = (status: string | null | undefined) => {
     if (!status) return "Sent";
@@ -679,6 +806,85 @@ export default function WhatsAppChat() {
           </div>
         ))}
         <div ref={chatEndRef} />
+      </div>
+
+      {/* Compose bar */}
+      <div className="px-3 py-2 flex items-center gap-2" style={{ backgroundColor: "#F0F0F0" }}>
+        {/* Hidden file inputs */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleFileUpload(file, "image");
+            e.target.value = "";
+          }}
+        />
+        <input
+          ref={docInputRef}
+          type="file"
+          accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.zip"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleFileUpload(file, "document");
+            e.target.value = "";
+          }}
+        />
+
+        {/* Attachment button */}
+        <Popover open={showAttachMenu} onOpenChange={setShowAttachMenu}>
+          <PopoverTrigger asChild>
+            <button
+              className="p-2 rounded-full hover:bg-black/5 transition-colors"
+              disabled={sending}
+            >
+              <Paperclip className="h-5 w-5 text-muted-foreground" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="w-40 p-1" side="top" align="start">
+            <button
+              className="flex items-center gap-2 w-full px-3 py-2 text-sm rounded hover:bg-accent transition-colors"
+              onClick={() => { fileInputRef.current?.click(); setShowAttachMenu(false); }}
+            >
+              <ImageIcon className="h-4 w-4 text-purple-500" /> Image
+            </button>
+            <button
+              className="flex items-center gap-2 w-full px-3 py-2 text-sm rounded hover:bg-accent transition-colors"
+              onClick={() => { docInputRef.current?.click(); setShowAttachMenu(false); }}
+            >
+              <FileText className="h-4 w-4 text-blue-500" /> Document
+            </button>
+          </PopoverContent>
+        </Popover>
+
+        {/* Text input */}
+        <input
+          ref={composeInputRef}
+          type="text"
+          placeholder="Type a message"
+          value={composeText}
+          onChange={(e) => setComposeText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendText(); } }}
+          disabled={sending}
+          className="flex-1 rounded-full px-4 py-2 text-sm bg-white border-0 outline-none focus:ring-1 focus:ring-green-300"
+        />
+
+        {/* Send button */}
+        <button
+          onClick={handleSendText}
+          disabled={sending || !composeText.trim()}
+          className="p-2 rounded-full transition-colors disabled:opacity-40"
+          style={{ backgroundColor: "#075E54" }}
+        >
+          {sending ? (
+            <Loader2 className="h-5 w-5 text-white animate-spin" />
+          ) : (
+            <Send className="h-5 w-5 text-white" />
+          )}
+        </button>
       </div>
     </div>
   );
