@@ -423,6 +423,30 @@ export default function WhatsAppChat() {
 
     setSending(true);
     try {
+      const msgContent = type === "text" ? (body || "") : `[${type}] ${caption || mediaUrl || ""}`;
+      const tempId = crypto.randomUUID();
+
+      // Pre-insert rows with temp ID so webhook can find them when status arrives
+      const [wmInsert, mslInsert] = await Promise.all([
+        supabase.from("webhook_messages").insert({
+          sender_number: `+91${selectedMobile}`,
+          message: msgContent,
+          direction: "outbound",
+          message_type: type,
+          media_url: type !== "text" ? mediaUrl : null,
+          message_id: tempId,
+          delivery_status: "pending",
+        }).select("id").single(),
+        supabase.from("message_send_log").insert({
+          mobile_number: selectedMobile,
+          patient_name: selectedContact?.name || selectedContact?.profileName || null,
+          message_type: type === "text" ? "Chat Reply" : `Chat ${type.charAt(0).toUpperCase() + type.slice(1)}`,
+          message_content: msgContent,
+          message_id: tempId,
+          delivery_status: "pending",
+        }).select("id").single(),
+      ]);
+
       const { data: proxyRes, error } = await supabase.functions.invoke("whatsapp-proxy", {
         body: { apiBaseUrl: baseUrl, apiKey, authHeaderName, authHeaderPrefix, payload },
       });
@@ -431,28 +455,19 @@ export default function WhatsAppChat() {
 
       const messageId = extractMessageId(proxyRes) || "";
 
-      const msgContent = type === "text" ? (body || "") : `[${type}] ${caption || mediaUrl || ""}`;
-
-      // Insert into webhook_messages for immediate display
-      await supabase.from("webhook_messages").insert({
-        sender_number: `+91${selectedMobile}`,
-        message: msgContent,
-        direction: "outbound",
-        message_type: type,
-        media_url: type !== "text" ? mediaUrl : null,
-        message_id: messageId || null,
-        delivery_status: "sent",
-      });
-
-      // Insert into message_send_log for tracking
-      await supabase.from("message_send_log").insert({
-        mobile_number: selectedMobile,
-        patient_name: selectedContact?.name || selectedContact?.profileName || null,
-        message_type: type === "text" ? "Chat Reply" : `Chat ${type.charAt(0).toUpperCase() + type.slice(1)}`,
-        message_content: msgContent,
-        message_id: messageId || null,
-        delivery_status: "sent",
-      });
+      // Update rows with real message ID so webhook status updates match
+      if (messageId) {
+        await Promise.all([
+          supabase.from("webhook_messages").update({ message_id: messageId, delivery_status: "sent" }).eq("message_id", tempId),
+          supabase.from("message_send_log").update({ message_id: messageId, delivery_status: "sent" } as any).eq("message_id", tempId),
+        ]);
+      } else {
+        // No message ID returned, just mark as sent
+        await Promise.all([
+          supabase.from("webhook_messages").update({ delivery_status: "sent" }).eq("message_id", tempId),
+          supabase.from("message_send_log").update({ delivery_status: "sent" } as any).eq("message_id", tempId),
+        ]);
+      }
 
       queryClient.invalidateQueries({ queryKey: ["wa-chat-webhook"] });
       queryClient.invalidateQueries({ queryKey: ["wa-chat-sendlog"] });
