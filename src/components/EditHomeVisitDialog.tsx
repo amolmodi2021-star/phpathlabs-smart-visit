@@ -305,7 +305,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
 
       return cleanNumber;
     },
-    onSuccess: (cleanNumber) => {
+    onSuccess: async (cleanNumber) => {
       qc.invalidateQueries({ queryKey: ["home_visits"] });
       qc.invalidateQueries({ queryKey: ["estimates"] });
 
