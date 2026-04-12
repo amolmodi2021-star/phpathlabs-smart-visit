@@ -105,7 +105,7 @@ const EstimateDashboard = () => {
           patientName: est.patient_name ? est.patient_name.toUpperCase() : undefined,
         });
         shareOnWhatsApp(est.whatsapp_number, msg);
-        logMessageSend(est.whatsapp_number, est.patient_name, "Estimate");
+        logMessageSend(est.whatsapp_number, est.patient_name, "Estimate", undefined, undefined, msg);
       }
     },
     onSuccess: () => {

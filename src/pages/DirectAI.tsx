@@ -316,7 +316,7 @@ const DirectAI = () => {
       msg += `✅ All results normal`;
     }
     shareOnWhatsApp(mobileInput, msg);
-    logMessageSend(mobileInput, patient?.name, "Report");
+    logMessageSend(mobileInput, patient?.name, "Report", undefined, undefined, msg);
     setSendDialogOpen(false);
     toast({ title: "WhatsApp opened" });
   };
