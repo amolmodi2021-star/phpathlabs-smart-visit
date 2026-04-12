@@ -435,7 +435,7 @@ export default function WhatsAppChat() {
 
       // Insert into webhook_messages for immediate display
       await supabase.from("webhook_messages").insert({
-        sender_number: fromNumber,
+        sender_number: `+91${selectedMobile}`,
         message: msgContent,
         direction: "outbound",
         message_type: type,
