@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { ArrowLeft, Search, Check, CheckCheck, X, MapPin, Image as ImageIcon, MessageCircle, Info, Filter, Send, Paperclip, FileText, Loader2 } from "lucide-react";
+import { ArrowLeft, Search, Check, CheckCheck, X, MapPin, Image as ImageIcon, MessageCircle, Info, Filter, Send, Paperclip, FileText, Loader2, AlertCircle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { format, isToday, isYesterday, parseISO } from "date-fns";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -799,11 +799,21 @@ export default function WhatsAppChat() {
                     msg.direction === "outbound"
                       ? "rounded-tr-none"
                       : "rounded-tl-none"
-                  }`}
+                  } ${msg.deliveryStatus === "failed" ? "ring-1 ring-red-400" : ""}`}
                   style={{
-                    backgroundColor: msg.direction === "outbound" ? "#DCF8C6" : "#FFFFFF",
+                    backgroundColor: msg.direction === "outbound"
+                      ? (msg.deliveryStatus === "failed" ? "#FEE2E2" : "#DCF8C6")
+                      : "#FFFFFF",
                   }}
                 >
+                  {msg.deliveryStatus === "failed" && (
+                    <div className="flex items-center gap-1 mb-1">
+                      <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4 font-medium">
+                        <AlertCircle className="h-2.5 w-2.5 mr-0.5" />
+                        Failed
+                      </Badge>
+                    </div>
+                  )}
                   {renderMessageContent(msg)}
                   <div className="flex items-center justify-end gap-1 mt-0.5">
                     <span className="text-[10px] text-muted-foreground">
