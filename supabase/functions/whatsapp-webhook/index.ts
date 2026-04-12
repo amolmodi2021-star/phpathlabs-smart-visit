@@ -217,7 +217,14 @@ Deno.serve(async (req) => {
         let replyMessageId: string | null = null;
         try {
           const parsed = JSON.parse(resText);
-          replyMessageId = parsed?.messageId || parsed?.message_id || null;
+          replyMessageId = parsed?.messageId
+            || parsed?.message_id
+            || parsed?.id
+            || parsed?.data?.[0]?.messageId
+            || parsed?.data?.[0]?.id
+            || parsed?.messages?.[0]?.id
+            || null;
+          console.log("Extracted auto-reply messageId:", replyMessageId);
         } catch {}
 
         await supabase.from("webhook_messages").insert({
