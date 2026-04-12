@@ -241,6 +241,11 @@ export default function WhatsAppChat() {
   // Mark conversation as read only when switching to it
   useEffect(() => {
     if (selectedMobile) {
+      setManualUnreadMobiles((prev) => {
+        const next = new Set(prev);
+        next.delete(selectedMobile);
+        return next;
+      });
       markConversationRead(selectedMobile).then(() => {
         queryClient.invalidateQueries({ queryKey: ["wa-chat-webhook"] });
       });
