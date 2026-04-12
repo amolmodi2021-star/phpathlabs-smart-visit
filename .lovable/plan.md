@@ -1,41 +1,44 @@
 
 
-# Plan: Fix Message ID Extraction in Chat Reply Section
+# Plan: Fix Outbound Chat Messages Appearing Under Wrong Contact
 
 ## Problem
-Messages sent from the reply compose bar have `message_id = NULL` in the database. The webhook receives status updates (sent/delivered) with the correct IDs but finds 0 matching rows in both tables. The logs confirm: `wm_exact: 0, msl_exact: 0`.
+When you send a message from the reply section to 9552000200, the outbound message is stored in `webhook_messages` with `sender_number = +919574556699` (your business "from" number). The chat groups conversations by `sender_number`, so the message appears under 9574556699 instead of 9552000200.
 
 ## Root Cause
-The AOC API response structure is:
-```json
-{"id":"fd52bb2e-...","data":[{"recipient":"919552000200","messageId":"fd52bb2e-...:1"}],"message":"Message Sent Successfully!"}
+Line 438 in `WhatsAppChat.tsx`:
+```typescript
+sender_number: fromNumber,  // ← stores YOUR number, not the recipient
 ```
 
-The current extraction code checks `parsed.messageId` and `parsed.message_id` but misses:
-- `parsed.id` (the base UUID without suffix — this is what we want to store)
-- `parsed.data[0].messageId` (contains the suffixed version)
-
-The `extractMessageId` helper in `src/lib/messageLog.ts` already handles all these paths correctly, but the chat reply code duplicates the logic instead of using the helper.
+For inbound messages, `sender_number` correctly holds the customer's number. But for outbound messages sent from the compose bar, it should also store the **customer's** number (the recipient) so the conversation groups correctly.
 
 ## Fix
 
 ### File: `src/pages/WhatsAppChat.tsx`
-- Replace the inline messageId extraction (lines 431-435) with a call to `extractMessageId(proxyRes)` from `src/lib/messageLog.ts`
-- This helper already handles `body.id`, `body.messageId`, `body.data[0].messageId`, and string parsing — exactly the paths needed
+Change the `webhook_messages` insert to use the recipient's number instead of the "from" number:
 
-### Change
 ```typescript
-// Before (broken):
-let messageId = "";
-try {
-  const parsed = typeof proxyRes?.body === "string" ? JSON.parse(proxyRes.body) : proxyRes?.body;
-  messageId = parsed?.messageId || parsed?.message_id || parsed?.messages?.[0]?.id || "";
-} catch {}
+// Before:
+sender_number: fromNumber,
 
-// After (using existing helper):
-import { extractMessageId } from "@/lib/messageLog";
-const messageId = extractMessageId(proxyRes) || "";
+// After:
+sender_number: `+91${selectedMobile}`,
 ```
 
-One file change, no database migration needed.
+This makes outbound messages group under the same contact as inbound messages from that customer.
+
+### Database cleanup
+Run a one-time update to fix the two existing broken records:
+```sql
+UPDATE webhook_messages
+SET sender_number = '+919552000200'
+WHERE sender_number = '+919574556699'
+  AND direction = 'outbound'
+  AND message_id IS NULL;
+```
+
+## Files to Modify
+- `src/pages/WhatsAppChat.tsx` — one line change (sender_number in the insert)
+- Database migration — fix the two existing misattributed records
 
