@@ -216,8 +216,8 @@ export default function WhatsAppChat() {
   // Flatten & reverse: RPC returns DESC, we need ASC for display
   const chatMessages: ChatMessage[] = (() => {
     const pages = messagesData?.pages ?? [];
-    // pages[0] = newest, pages[N] = oldest. Flatten oldest-first.
-    const all = [...pages].reverse().flat();
+    // pages[0] = newest, pages[N] = oldest. Reverse page order AND each page's internal order.
+    const all = [...pages].reverse().flatMap((page) => [...page].reverse());
     return all.map((m) => ({
       id: m.id,
       source: m.source as "webhook" | "log",
