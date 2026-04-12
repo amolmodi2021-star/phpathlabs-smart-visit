@@ -744,7 +744,7 @@ export default function WhatsAppChat() {
           <div
             key={c.mobile}
             onClick={() => setSelectedMobile(c.mobile)}
-            className={`flex items-center gap-3 px-4 py-3 cursor-pointer border-b border-gray-100 hover:bg-gray-50 transition-colors ${
+            className={`group flex items-center gap-3 px-4 py-3 cursor-pointer border-b border-gray-100 hover:bg-gray-50 transition-colors ${
               selectedMobile === c.mobile ? "bg-gray-100" : ""
             }`}
           >
