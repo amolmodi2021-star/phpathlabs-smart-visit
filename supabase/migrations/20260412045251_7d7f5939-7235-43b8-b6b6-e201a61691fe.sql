@@ -1,0 +1,1 @@
+ALTER TABLE public.message_send_log ADD COLUMN message_content text;
