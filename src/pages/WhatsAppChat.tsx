@@ -809,6 +809,7 @@ export default function WhatsAppChat() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
                   <DropdownMenuItem onClick={async () => {
+                    setManualUnreadMobiles((prev) => new Set(prev).add(c.mobile));
                     await markConversationUnread(c.mobile);
                     queryClient.invalidateQueries({ queryKey: ["wa-chat-webhook"] });
                     toast.success("Marked as unread");
