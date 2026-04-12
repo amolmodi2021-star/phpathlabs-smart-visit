@@ -40,18 +40,17 @@ const formatFullTimestamp = (d: string) => {
 };
 
 // localStorage helpers for read tracking
-const LAST_READ_KEY = "wa_chat_last_read";
-
-const getLastReadMap = (): Record<string, string> => {
-  try {
-    return JSON.parse(localStorage.getItem(LAST_READ_KEY) || "{}");
-  } catch { return {}; }
-};
-
-const setLastRead = (mobile: string, timestamp: string) => {
-  const map = getLastReadMap();
-  map[mobile] = timestamp;
-  localStorage.setItem(LAST_READ_KEY, JSON.stringify(map));
+// Mark all inbound messages from a mobile as read in the database
+const markConversationRead = async (mobile: string) => {
+  const mobile10 = mobile.replace(/\D/g, "").slice(-10);
+  if (!mobile10) return;
+  // Match sender_number ending with the 10 digits
+  await supabase
+    .from("webhook_messages")
+    .update({ is_read: true } as any)
+    .eq("direction", "inbound")
+    .eq("is_read", false)
+    .like("sender_number", `%${mobile10}`);
 };
 
 interface ConversationContact {
@@ -88,7 +87,6 @@ export default function WhatsAppChat() {
   const [filterUnread, setFilterUnread] = useState(false);
   const queryClient = useQueryClient();
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const [lastReadMap, setLastReadMap] = useState<Record<string, string>>(getLastReadMap);
 
   // Compose bar state
   const [composeText, setComposeText] = useState("");
@@ -107,7 +105,7 @@ export default function WhatsAppChat() {
     queryFn: async () => {
       const { data } = await supabase
         .from("webhook_messages")
-        .select("id, sender_number, sender_name, message, direction, created_at, message_type, media_url, message_id, location_lat, location_lng, delivery_status, error_info")
+        .select("id, sender_number, sender_name, message, direction, created_at, message_type, media_url, message_id, location_lat, location_lng, delivery_status, error_info, is_read")
         .order("created_at", { ascending: false })
         .limit(5000);
       return data || [];
@@ -223,9 +221,9 @@ export default function WhatsAppChat() {
   // Mark conversation as read when selected
   useEffect(() => {
     if (selectedMobile) {
-      const now = new Date().toISOString();
-      setLastRead(selectedMobile, now);
-      setLastReadMap((prev) => ({ ...prev, [selectedMobile]: now }));
+      markConversationRead(selectedMobile).then(() => {
+        queryClient.invalidateQueries({ queryKey: ["wa-chat-webhook"] });
+      });
     }
   }, [selectedMobile, webhookMessages]);
 
@@ -303,19 +301,17 @@ export default function WhatsAppChat() {
     // Second pass: count unread inbound messages per contact
     webhookMessages.forEach((m: any) => {
       if (m.direction !== "inbound") return;
+      if (m.is_read) return;
       const mobile = norm10(m.sender_number || "");
       if (!mobile) return;
       const contact = contactMap.get(mobile);
       if (!contact) return;
-      const lastRead = lastReadMap[mobile];
-      if (!lastRead || m.created_at > lastRead) {
-        contact.unread += 1;
-      }
+      contact.unread += 1;
     });
 
     return Array.from(contactMap.values())
       .sort((a, b) => b.lastTime.localeCompare(a.lastTime));
-  }, [webhookMessages, sendLogs, nameMap, profileNameMap, lastReadMap]);
+  }, [webhookMessages, sendLogs, nameMap, profileNameMap]);
 
   // Total unread count for filter badge
   const totalUnread = useMemo(() => contacts.reduce((s, c) => s + c.unread, 0), [contacts]);
