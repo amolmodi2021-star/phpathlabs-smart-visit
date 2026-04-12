@@ -1,11 +1,14 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { ArrowLeft, Search, Check, CheckCheck, X, MapPin, Image as ImageIcon, MessageCircle } from "lucide-react";
+import { ArrowLeft, Search, Check, CheckCheck, X, MapPin, Image as ImageIcon, MessageCircle, Info, Filter } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { format, isToday, isYesterday, parseISO } from "date-fns";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 
 // Normalize to 10 digit number
 const norm10 = (n: string) => (n || "").replace(/\D/g, "").slice(-10);
@@ -26,6 +29,27 @@ const formatDayHeader = (d: string) => {
     if (isYesterday(dt)) return "Yesterday";
     return format(dt, "dd MMMM yyyy");
   } catch { return d; }
+};
+
+const formatFullTimestamp = (d: string) => {
+  try {
+    return format(parseISO(d), "dd-MM-yyyy hh:mm a");
+  } catch { return ""; }
+};
+
+// localStorage helpers for read tracking
+const LAST_READ_KEY = "wa_chat_last_read";
+
+const getLastReadMap = (): Record<string, string> => {
+  try {
+    return JSON.parse(localStorage.getItem(LAST_READ_KEY) || "{}");
+  } catch { return {}; }
+};
+
+const setLastRead = (mobile: string, timestamp: string) => {
+  const map = getLastReadMap();
+  map[mobile] = timestamp;
+  localStorage.setItem(LAST_READ_KEY, JSON.stringify(map));
 };
 
 interface ConversationContact {
@@ -49,14 +73,20 @@ interface ChatMessage {
   deliveryStatus?: string | null;
   errorInfo?: any;
   timestamp: string;
+  // For status tracking
+  sentAt?: string | null;
+  deliveredAt?: string | null;
+  readAt?: string | null;
 }
 
 export default function WhatsAppChat() {
   const isMobile = useIsMobile();
   const [selectedMobile, setSelectedMobile] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [filterUnread, setFilterUnread] = useState(false);
   const queryClient = useQueryClient();
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const [lastReadMap, setLastReadMap] = useState<Record<string, string>>(getLastReadMap);
 
   // Fetch all webhook messages
   const { data: webhookMessages = [] } = useQuery({
@@ -162,6 +192,15 @@ export default function WhatsAppChat() {
     return () => { supabase.removeChannel(channel); };
   }, [queryClient]);
 
+  // Mark conversation as read when selected
+  useEffect(() => {
+    if (selectedMobile) {
+      const now = new Date().toISOString();
+      setLastRead(selectedMobile, now);
+      setLastReadMap((prev) => ({ ...prev, [selectedMobile]: now }));
+    }
+  }, [selectedMobile, webhookMessages]);
+
   // Build name resolution map: mobile -> name
   const nameMap = useCallback((): Map<string, string> => {
     const map = new Map<string, string>();
@@ -191,13 +230,13 @@ export default function WhatsAppChat() {
     return map;
   }, [webhookMessages]);
 
-  // Build contact list
-  const contacts: ConversationContact[] = (() => {
+  // Build contact list with unread counts
+  const contacts: ConversationContact[] = useMemo(() => {
     const nMap = nameMap();
     const pMap = profileNameMap();
     const contactMap = new Map<string, ConversationContact>();
 
-    // Process webhook messages
+    // First pass: build contacts with latest message
     webhookMessages.forEach((m: any) => {
       const mobile = norm10(m.sender_number || "");
       if (!mobile) return;
@@ -209,12 +248,11 @@ export default function WhatsAppChat() {
           profileName: pMap.get(mobile) || "",
           lastMessage: m.direction === "inbound" ? (m.message || "") : `You: ${m.message || ""}`,
           lastTime: m.created_at,
-          unread: (existing?.unread || 0) + (m.direction === "inbound" ? 0 : 0),
+          unread: 0,
         });
       }
     });
 
-    // Process send logs
     sendLogs.forEach((l: any) => {
       const mobile = norm10(l.mobile_number || "");
       if (!mobile) return;
@@ -227,26 +265,45 @@ export default function WhatsAppChat() {
           profileName: existing?.profileName || "",
           lastMessage: msgPreview,
           lastTime: l.sent_at,
-          unread: existing?.unread || 0,
+          unread: 0,
         });
       } else if (existing && !existing.name && l.patient_name) {
         existing.name = l.patient_name;
       }
     });
 
+    // Second pass: count unread inbound messages per contact
+    webhookMessages.forEach((m: any) => {
+      if (m.direction !== "inbound") return;
+      const mobile = norm10(m.sender_number || "");
+      if (!mobile) return;
+      const contact = contactMap.get(mobile);
+      if (!contact) return;
+      const lastRead = lastReadMap[mobile];
+      if (!lastRead || m.created_at > lastRead) {
+        contact.unread += 1;
+      }
+    });
+
     return Array.from(contactMap.values())
       .sort((a, b) => b.lastTime.localeCompare(a.lastTime));
-  })();
+  }, [webhookMessages, sendLogs, nameMap, profileNameMap, lastReadMap]);
 
-  // Filter contacts by search
-  const filteredContacts = contacts.filter((c) => {
-    if (!search) return true;
-    const s = search.toLowerCase();
-    return c.mobile.includes(s) || c.name.toLowerCase().includes(s) || c.profileName.toLowerCase().includes(s);
-  });
+  // Total unread count for filter badge
+  const totalUnread = useMemo(() => contacts.reduce((s, c) => s + c.unread, 0), [contacts]);
+
+  // Filter contacts by search and unread filter
+  const filteredContacts = useMemo(() => {
+    return contacts.filter((c) => {
+      if (filterUnread && c.unread === 0) return false;
+      if (!search) return true;
+      const s = search.toLowerCase();
+      return c.mobile.includes(s) || c.name.toLowerCase().includes(s) || c.profileName.toLowerCase().includes(s);
+    });
+  }, [contacts, search, filterUnread]);
 
   // Build messages for selected conversation
-  const chatMessages: ChatMessage[] = (() => {
+  const chatMessages: ChatMessage[] = useMemo(() => {
     if (!selectedMobile) return [];
     const msgs: ChatMessage[] = [];
 
@@ -284,7 +341,7 @@ export default function WhatsAppChat() {
 
     msgs.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
     return msgs;
-  })();
+  }, [selectedMobile, webhookMessages, sendLogs]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -308,6 +365,17 @@ export default function WhatsAppChat() {
     }
   });
 
+  const getStatusLabel = (status: string | null | undefined) => {
+    if (!status) return "Sent";
+    switch (status) {
+      case "read": return "Read";
+      case "delivered": return "Delivered";
+      case "failed": return "Failed";
+      case "received": return "Received";
+      default: return "Sent";
+    }
+  };
+
   const renderStatusTicks = (msg: ChatMessage) => {
     if (msg.direction !== "outbound") return null;
     const status = msg.deliveryStatus || (msg.source === "log" ? "sent" : "sent");
@@ -327,6 +395,75 @@ export default function WhatsAppChat() {
     if (status === "read") return <CheckCheck className="h-3 w-3 text-blue-500 inline ml-1" />;
     if (status === "delivered") return <CheckCheck className="h-3 w-3 text-muted-foreground inline ml-1" />;
     return <Check className="h-3 w-3 text-muted-foreground inline ml-1" />;
+  };
+
+  const renderMessageInfo = (msg: ChatMessage) => {
+    return (
+      <Popover>
+        <PopoverTrigger asChild>
+          <button className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-black/5">
+            <Info className="h-3 w-3 text-muted-foreground" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent className="w-56 p-3 text-xs" side="left">
+          <div className="space-y-2">
+            <p className="font-semibold text-sm mb-2">Message Info</p>
+            {msg.direction === "outbound" ? (
+              <>
+                <div className="flex items-center gap-2">
+                  <Check className="h-3 w-3 text-muted-foreground shrink-0" />
+                  <div>
+                    <p className="font-medium">Sent</p>
+                    <p className="text-muted-foreground">{formatFullTimestamp(msg.timestamp)}</p>
+                  </div>
+                </div>
+                {(msg.deliveryStatus === "delivered" || msg.deliveryStatus === "read") && (
+                  <div className="flex items-center gap-2">
+                    <CheckCheck className="h-3 w-3 text-muted-foreground shrink-0" />
+                    <div>
+                      <p className="font-medium">Delivered</p>
+                      <p className="text-muted-foreground">{formatFullTimestamp(msg.timestamp)}</p>
+                    </div>
+                  </div>
+                )}
+                {msg.deliveryStatus === "read" && (
+                  <div className="flex items-center gap-2">
+                    <CheckCheck className="h-3 w-3 text-blue-500 shrink-0" />
+                    <div>
+                      <p className="font-medium">Read</p>
+                      <p className="text-muted-foreground">{formatFullTimestamp(msg.timestamp)}</p>
+                    </div>
+                  </div>
+                )}
+                {msg.deliveryStatus === "failed" && (
+                  <div className="flex items-center gap-2">
+                    <X className="h-3 w-3 text-red-500 shrink-0" />
+                    <div>
+                      <p className="font-medium text-red-600">Failed</p>
+                      <p className="text-muted-foreground">{msg.errorInfo?.title || "Delivery failed"}</p>
+                    </div>
+                  </div>
+                )}
+                {!msg.deliveryStatus || msg.deliveryStatus === "sent" ? (
+                  <p className="text-muted-foreground italic">Awaiting delivery confirmation</p>
+                ) : null}
+              </>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Check className="h-3 w-3 text-green-600 shrink-0" />
+                <div>
+                  <p className="font-medium">Received</p>
+                  <p className="text-muted-foreground">{formatFullTimestamp(msg.timestamp)}</p>
+                </div>
+              </div>
+            )}
+            <div className="pt-1 border-t mt-2">
+              <p className="text-muted-foreground">Status: <span className="font-medium">{getStatusLabel(msg.deliveryStatus)}</span></p>
+            </div>
+          </div>
+        </PopoverContent>
+      </Popover>
+    );
   };
 
   const renderMessageContent = (msg: ChatMessage) => {
@@ -361,7 +498,6 @@ export default function WhatsAppChat() {
       );
     }
     if (msg.source === "log") {
-      // If we have actual message content, show it with a type badge
       if (msg.message && msg.message !== `${msg.messageType} Sent`) {
         return (
           <div>
@@ -384,9 +520,22 @@ export default function WhatsAppChat() {
       <div className="px-4 py-3 flex items-center gap-2" style={{ backgroundColor: "#075E54" }}>
         <MessageCircle className="h-5 w-5 text-white" />
         <h1 className="text-white font-semibold text-lg flex-1">Chats</h1>
+        {/* Unread filter toggle */}
+        <button
+          onClick={() => setFilterUnread(!filterUnread)}
+          className={`relative p-1.5 rounded-full transition-colors ${filterUnread ? "bg-white/20" : "hover:bg-white/10"}`}
+          title={filterUnread ? "Show all chats" : "Show unread only"}
+        >
+          <Filter className="h-4 w-4 text-white" />
+          {totalUnread > 0 && !filterUnread && (
+            <span className="absolute -top-1 -right-1 bg-green-500 text-white text-[9px] font-bold rounded-full h-4 min-w-[16px] flex items-center justify-center px-0.5">
+              {totalUnread}
+            </span>
+          )}
+        </button>
       </div>
 
-      {/* Search */}
+      {/* Search + filter indicator */}
       <div className="px-3 py-2" style={{ backgroundColor: "#F6F6F6" }}>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -397,12 +546,21 @@ export default function WhatsAppChat() {
             className="pl-9 bg-white border-0 rounded-full h-9 text-sm"
           />
         </div>
+        {filterUnread && (
+          <div className="flex items-center gap-2 mt-1.5">
+            <Badge variant="secondary" className="text-[10px] gap-1 cursor-pointer" onClick={() => setFilterUnread(false)}>
+              Unread only <X className="h-3 w-3" />
+            </Badge>
+          </div>
+        )}
       </div>
 
       {/* Contact list */}
       <div className="flex-1 overflow-y-auto">
         {filteredContacts.length === 0 && (
-          <p className="text-center text-muted-foreground py-8 text-sm">No conversations yet</p>
+          <p className="text-center text-muted-foreground py-8 text-sm">
+            {filterUnread ? "No unread conversations" : "No conversations yet"}
+          </p>
         )}
         {filteredContacts.map((c) => (
           <div
@@ -413,23 +571,28 @@ export default function WhatsAppChat() {
             }`}
           >
             {/* Avatar */}
-            <div className="h-12 w-12 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: "#DFE5E7" }}>
+            <div className="h-12 w-12 rounded-full flex items-center justify-center shrink-0 relative" style={{ backgroundColor: "#DFE5E7" }}>
               <span className="text-lg font-semibold" style={{ color: "#54656F" }}>
                 {(c.name || c.profileName || c.mobile).charAt(0).toUpperCase()}
               </span>
+              {c.unread > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 bg-green-500 text-white text-[10px] font-bold rounded-full h-5 min-w-[20px] flex items-center justify-center px-1 shadow">
+                  {c.unread}
+                </span>
+              )}
             </div>
 
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between">
-                <span className="font-medium text-sm truncate">
+                <span className={`font-medium text-sm truncate ${c.unread > 0 ? "font-bold" : ""}`}>
                   {c.name || c.profileName || c.mobile}
                 </span>
-                <span className="text-xs text-muted-foreground whitespace-nowrap ml-2">
+                <span className={`text-xs whitespace-nowrap ml-2 ${c.unread > 0 ? "text-green-600 font-semibold" : "text-muted-foreground"}`}>
                   {formatTime(c.lastTime)}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <p className="text-xs text-muted-foreground truncate">
+                <p className={`text-xs truncate ${c.unread > 0 ? "text-foreground font-medium" : "text-muted-foreground"}`}>
                   {c.lastMessage}
                 </p>
               </div>
@@ -493,7 +656,7 @@ export default function WhatsAppChat() {
                 className={`flex mb-1 ${msg.direction === "outbound" ? "justify-end" : "justify-start"}`}
               >
                 <div
-                  className={`max-w-[75%] px-3 py-1.5 rounded-lg shadow-sm text-sm relative ${
+                  className={`group max-w-[75%] px-3 py-1.5 rounded-lg shadow-sm text-sm relative ${
                     msg.direction === "outbound"
                       ? "rounded-tr-none"
                       : "rounded-tl-none"
@@ -508,6 +671,7 @@ export default function WhatsAppChat() {
                       {(() => { try { return format(parseISO(msg.timestamp), "hh:mm a"); } catch { return ""; } })()}
                     </span>
                     {renderStatusTicks(msg)}
+                    {renderMessageInfo(msg)}
                   </div>
                 </div>
               </div>
