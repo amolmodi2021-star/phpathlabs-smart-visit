@@ -229,8 +229,8 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
           address: address,
           patientName: patientName ? patientName.toUpperCase() : undefined,
         });
+        await logMessageSend(cleanNumber, patientName, "Home Visit", undefined, undefined, msg);
         shareOnWhatsApp(cleanNumber, msg);
-        logMessageSend(cleanNumber, patientName, "Home Visit", undefined, undefined, msg);
       }
     },
     onSuccess: () => {

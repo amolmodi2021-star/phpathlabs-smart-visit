@@ -344,8 +344,8 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
             address: address.toUpperCase(),
             patientName: patientName ? patientName.toUpperCase() : undefined,
           });
+          await logMessageSend(cleanNumber, patientName, "Home Visit", undefined, undefined, msg);
           shareOnWhatsApp(cleanNumber, msg);
-          logMessageSend(cleanNumber, patientName, "Home Visit", undefined, undefined, msg);
         }
       }
     },
