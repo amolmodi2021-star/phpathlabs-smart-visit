@@ -204,6 +204,21 @@ export default function WhatsAppChat() {
     return () => { supabase.removeChannel(channel); };
   }, [queryClient]);
 
+  // Load global WA settings
+  useEffect(() => {
+    const load = async () => {
+      const { data } = await supabase
+        .from("app_settings")
+        .select("setting_key, setting_value")
+        .like("setting_key", "wa_global_%");
+      if (!data) return;
+      const m: Record<string, string> = {};
+      data.forEach((r: any) => { m[r.setting_key] = r.setting_value; });
+      setWaSettings(m);
+    };
+    load();
+  }, []);
+
   // Mark conversation as read when selected
   useEffect(() => {
     if (selectedMobile) {
