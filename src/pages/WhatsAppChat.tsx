@@ -104,6 +104,7 @@ export default function WhatsAppChat() {
   const [selectedMobile, setSelectedMobile] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filterUnread, setFilterUnread] = useState(false);
+  const [manualUnreadMobiles, setManualUnreadMobiles] = useState<Set<string>>(new Set());
   const queryClient = useQueryClient();
   const chatEndRef = useRef<HTMLDivElement>(null);
 
