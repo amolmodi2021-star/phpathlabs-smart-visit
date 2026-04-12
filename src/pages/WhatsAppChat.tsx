@@ -40,18 +40,17 @@ const formatFullTimestamp = (d: string) => {
 };
 
 // localStorage helpers for read tracking
-const LAST_READ_KEY = "wa_chat_last_read";
-
-const getLastReadMap = (): Record<string, string> => {
-  try {
-    return JSON.parse(localStorage.getItem(LAST_READ_KEY) || "{}");
-  } catch { return {}; }
-};
-
-const setLastRead = (mobile: string, timestamp: string) => {
-  const map = getLastReadMap();
-  map[mobile] = timestamp;
-  localStorage.setItem(LAST_READ_KEY, JSON.stringify(map));
+// Mark all inbound messages from a mobile as read in the database
+const markConversationRead = async (mobile: string) => {
+  const mobile10 = mobile.replace(/\D/g, "").slice(-10);
+  if (!mobile10) return;
+  // Match sender_number ending with the 10 digits
+  await supabase
+    .from("webhook_messages")
+    .update({ is_read: true } as any)
+    .eq("direction", "inbound")
+    .eq("is_read", false)
+    .like("sender_number", `%${mobile10}`);
 };
 
 interface ConversationContact {
