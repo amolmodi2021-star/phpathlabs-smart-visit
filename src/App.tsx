@@ -32,6 +32,7 @@ import CRM from "./pages/CRM";
 import LimsDemo from "./pages/LimsDemo";
 import Lims from "./pages/Lims";
 import WhatsAppSettingsPage from "./pages/WhatsAppSettingsPage";
+import WhatsAppChat from "./pages/WhatsAppChat";
 import LimsReportView from "./pages/LimsReportView";
 import UserManagement from "./pages/UserManagement";
 import NotFound from "./pages/NotFound";
@@ -69,6 +70,7 @@ const App = () => (
           <Route path="/lims-demo" element={<ProtectedRoute route="/lims-demo"><LimsDemo /></ProtectedRoute>} />
           <Route path="/whatsapp-webhook" element={<ProtectedRoute route="/whatsapp-webhook"><WhatsAppWebhook /></ProtectedRoute>} />
           <Route path="/whatsapp-settings" element={<ProtectedRoute route="/whatsapp-settings"><WhatsAppSettingsPage /></ProtectedRoute>} />
+          <Route path="/whatsapp-chat" element={<ProtectedRoute route="/whatsapp-chat"><WhatsAppChat /></ProtectedRoute>} />
           <Route path="/report-layout" element={<ProtectedRoute route="/report-layout"><ReportLayoutSettings /></ProtectedRoute>} />
           <Route path="/signature-management" element={<ProtectedRoute route="/signature-management"><SignatureManagement /></ProtectedRoute>} />
           <Route path="/users" element={<ProtectedRoute route="/users"><UserManagement /></ProtectedRoute>} />

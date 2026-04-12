@@ -60,7 +60,7 @@ export function getFirstAllowedRoute(): string {
   const tabs = getUserPermissions();
   const allRoutes = ["/", "/dashboard", "/home-visits", "/phlebotomists", "/tests", "/templates",
     "/abnormal-history", "/phlebo-dashboard", "/loyalty-cards", "/marketing", "/crm", "/lims",
-    "/whatsapp-webhook", "/whatsapp-settings", "/lims-demo", "/report-layout", "/signature-management", "/users"];
+    "/whatsapp-webhook", "/whatsapp-settings", "/whatsapp-chat", "/lims-demo", "/report-layout", "/signature-management", "/users"];
   for (const r of allRoutes) {
     if (isTabAllowed(r)) return r;
   }
