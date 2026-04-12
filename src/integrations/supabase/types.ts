@@ -3052,9 +3052,16 @@ export type Database = {
       webhook_messages: {
         Row: {
           created_at: string
+          delivery_status: string | null
           direction: string
+          error_info: Json | null
           id: string
+          location_lat: number | null
+          location_lng: number | null
+          media_url: string | null
           message: string | null
+          message_id: string | null
+          message_type: string | null
           raw_payload: Json | null
           sender_name: string | null
           sender_number: string | null
@@ -3062,9 +3069,16 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          delivery_status?: string | null
           direction?: string
+          error_info?: Json | null
           id?: string
+          location_lat?: number | null
+          location_lng?: number | null
+          media_url?: string | null
           message?: string | null
+          message_id?: string | null
+          message_type?: string | null
           raw_payload?: Json | null
           sender_name?: string | null
           sender_number?: string | null
@@ -3072,9 +3086,16 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          delivery_status?: string | null
           direction?: string
+          error_info?: Json | null
           id?: string
+          location_lat?: number | null
+          location_lng?: number | null
+          media_url?: string | null
           message?: string | null
+          message_id?: string | null
+          message_type?: string | null
           raw_payload?: Json | null
           sender_name?: string | null
           sender_number?: string | null

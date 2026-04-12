@@ -4,7 +4,7 @@ import { logout, getCurrentUser, isTabAllowed, isActionAllowed } from "@/lib/aut
 import {
   FileText, LayoutDashboard, Home, Users, TestTubes, MessageSquare,
   Menu, X, LogOut, FlaskConical, AlertTriangle, BarChart3, CreditCard,
-  Layers, PenTool, Zap, Webhook, Megaphone, Contact, Activity, Settings, Trash2, Loader2, UserCog,
+  Layers, PenTool, Zap, Webhook, Megaphone, Contact, Activity, Settings, Trash2, Loader2, UserCog, MessageCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -29,6 +29,7 @@ const allNavItems = [
   { to: "/lims", label: "LIMS", icon: Activity },
   { to: "/whatsapp-webhook", label: "WhatsApp Webhook", icon: Webhook },
   { to: "/whatsapp-settings", label: "WhatsApp Settings", icon: Settings },
+  { to: "/whatsapp-chat", label: "WhatsApp Chat", icon: MessageCircle },
   { to: "/lims-demo", label: "LIMS Interface", icon: Webhook },
   { to: "/report-layout", label: "Report Layout", icon: Layers },
   { to: "/signature-management", label: "Doctor & Signatures", icon: PenTool },
