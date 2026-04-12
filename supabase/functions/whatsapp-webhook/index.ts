@@ -15,10 +15,9 @@ Deno.serve(async (req) => {
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-  // GET = webhook verification (some providers send a GET to verify the endpoint)
+  // GET = webhook verification
   if (req.method === "GET") {
     const url = new URL(req.url);
-    // Echo back any challenge token for verification
     const challenge = url.searchParams.get("hub.challenge") || url.searchParams.get("challenge") || "ok";
     return new Response(challenge, {
       status: 200,
@@ -30,9 +29,26 @@ Deno.serve(async (req) => {
     const body = await req.json();
     console.log("Webhook received:", JSON.stringify(body));
 
-    // Skip message_status events (delivery receipts) — only process actual messages
+    // Handle message_status events — update delivery status
     if (body.event === "message_status" || body.statuses) {
-      return new Response(JSON.stringify({ success: true, skipped: "status_event" }), {
+      const statusData = body.statuses || {};
+      const messageId = body.messageId || "";
+      const status = statusData.status || "";
+      const errorInfo = statusData.error || null;
+
+      if (messageId && status) {
+        const updatePayload: Record<string, any> = { delivery_status: status };
+        if (errorInfo) updatePayload.error_info = errorInfo;
+
+        await supabase
+          .from("webhook_messages")
+          .update(updatePayload)
+          .eq("message_id", messageId);
+
+        console.log(`Updated message ${messageId} status to ${status}`);
+      }
+
+      return new Response(JSON.stringify({ success: true, status_updated: status }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -68,40 +84,65 @@ Deno.serve(async (req) => {
     const authHeaderPrefix = settingsMap["loyalty_wa_authHeaderPrefix"] || "";
     const fromNumber = settingsMap["loyalty_wa_fromNumber"] || "";
 
-    // Extract sender info from inbound payload
-    // Support AOC Portal structure (messages is an object, not array)
+    // Extract sender info
     let senderNumber = "";
     let inboundMessage = "";
     let senderName = "";
+    let messageType = "text";
+    let mediaUrl: string | null = null;
+    let locationLat: number | null = null;
+    let locationLng: number | null = null;
+    const messageId = body.messageId || "";
 
-    // Sender number: AOC uses contacts.recipient (the customer who sent the message)
-    // body.from is the business number in AOC Portal
+    // Sender number
     if (body.contacts?.recipient) {
       senderNumber = body.contacts.recipient;
-      // Ensure it has + prefix
-      if (!senderNumber.startsWith("+")) {
-        senderNumber = `+${senderNumber}`;
-      }
+      if (!senderNumber.startsWith("+")) senderNumber = `+${senderNumber}`;
     } else if (body.payload?.sender?.phone) {
       senderNumber = body.payload.sender.phone;
     } else if (body.from) {
       senderNumber = body.from;
     }
 
-    // Message text: AOC uses messages.text.body (object) not messages[0]
-    if (body.messages?.text?.body) {
-      inboundMessage = body.messages.text.body;
-    } else if (body.text?.body) {
-      inboundMessage = body.text.body;
-    } else if (body.payload?.text) {
-      inboundMessage = body.payload.text;
-    } else if (Array.isArray(body.messages) && body.messages[0]?.text?.body) {
-      inboundMessage = body.messages[0].text.body;
-    } else if (body.message) {
-      inboundMessage = typeof body.message === "string" ? body.message : JSON.stringify(body.message);
+    // Determine message type and extract content
+    const messages = body.messages || {};
+    const msgType = messages.type || body.type || "text";
+    messageType = msgType;
+
+    if (msgType === "text") {
+      if (messages.text?.body) {
+        inboundMessage = messages.text.body;
+      } else if (body.text?.body) {
+        inboundMessage = body.text.body;
+      } else if (body.payload?.text) {
+        inboundMessage = body.payload.text;
+      } else if (Array.isArray(body.messages) && body.messages[0]?.text?.body) {
+        inboundMessage = body.messages[0].text.body;
+      } else if (body.message) {
+        inboundMessage = typeof body.message === "string" ? body.message : JSON.stringify(body.message);
+      }
+    } else if (msgType === "image") {
+      mediaUrl = messages.image?.url || null;
+      inboundMessage = "[Image]";
+    } else if (msgType === "location") {
+      const loc = messages.location?.text || messages.location || {};
+      locationLat = loc.latitude || null;
+      locationLng = loc.longitude || null;
+      inboundMessage = `[Location: ${locationLat}, ${locationLng}]`;
+    } else if (msgType === "button") {
+      inboundMessage = messages.button?.text || messages.button?.payload || "[Button Reply]";
+    } else if (msgType === "interactive") {
+      const interactive = messages.interactive?.text || messages.interactive || {};
+      if (interactive.list_reply) {
+        inboundMessage = interactive.list_reply.title || "[List Reply]";
+      } else if (interactive.button_reply) {
+        inboundMessage = interactive.button_reply.title || "[Button Reply]";
+      } else {
+        inboundMessage = "[Interactive Reply]";
+      }
     }
 
-    // Sender name: AOC uses contacts.profileName (object, not array)
+    // Sender name
     if (body.contacts?.profileName) {
       senderName = body.contacts.profileName;
     } else if (body.senderName) {
@@ -112,13 +153,19 @@ Deno.serve(async (req) => {
       senderName = body.contacts[0].profile.name;
     }
 
-    // Log inbound message to database
+    // Log inbound message
     await supabase.from("webhook_messages").insert({
       sender_number: senderNumber,
       sender_name: senderName,
       message: inboundMessage,
       direction: "inbound",
       raw_payload: body,
+      message_type: messageType,
+      media_url: mediaUrl,
+      message_id: messageId || null,
+      location_lat: locationLat,
+      location_lng: locationLng,
+      delivery_status: "received",
     });
 
     // Send auto-reply if enabled
@@ -148,7 +195,6 @@ Deno.serve(async (req) => {
         const resText = await res.text();
         console.log("Auto-reply response:", res.status, resText);
 
-        // Log outbound reply
         await supabase.from("webhook_messages").insert({
           sender_number: senderNumber,
           sender_name: senderName,
@@ -156,6 +202,8 @@ Deno.serve(async (req) => {
           direction: "outbound",
           status: res.ok ? "sent" : "failed",
           raw_payload: { response: resText, statusCode: res.status },
+          message_type: "text",
+          delivery_status: res.ok ? "sent" : "failed",
         });
       } catch (replyErr) {
         console.error("Auto-reply failed:", replyErr);
