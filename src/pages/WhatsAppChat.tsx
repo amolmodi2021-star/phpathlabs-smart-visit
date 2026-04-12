@@ -326,17 +326,25 @@ export default function WhatsAppChat() {
     // Second pass: count unread inbound messages per contact
     webhookMessages.forEach((m: any) => {
       if (m.direction !== "inbound") return;
-      if (m.is_read) return;
       const mobile = norm10(m.sender_number || "");
       if (!mobile) return;
       const contact = contactMap.get(mobile);
       if (!contact) return;
-      contact.unread += 1;
+      if (!m.is_read) {
+        contact.unread += 1;
+      }
+    });
+
+    manualUnreadMobiles.forEach((mobile) => {
+      const contact = contactMap.get(mobile);
+      if (contact && contact.unread === 0) {
+        contact.unread = 1;
+      }
     });
 
     return Array.from(contactMap.values())
       .sort((a, b) => b.lastTime.localeCompare(a.lastTime));
-  }, [webhookMessages, sendLogs, nameMap, profileNameMap]);
+  }, [webhookMessages, sendLogs, nameMap, profileNameMap, manualUnreadMobiles]);
 
   // Total unread count for filter badge
   const totalUnread = useMemo(() => contacts.reduce((s, c) => s + c.unread, 0), [contacts]);
