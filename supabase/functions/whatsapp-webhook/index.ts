@@ -40,35 +40,39 @@ Deno.serve(async (req) => {
         const updatePayload: Record<string, any> = { delivery_status: status };
         if (errorInfo) updatePayload.error_info = errorInfo;
 
-        const baseId = messageId.includes(":") ? messageId.split(":")[0] : null;
+        // Only derive baseId if messageId matches AOC pattern: UUID:digit(s)
+        const aocSuffixPattern = /^[0-9a-f-]{36}:\d+$/;
+        const baseId = aocSuffixPattern.test(messageId) ? messageId.split(":")[0] : null;
 
-        // Update webhook_messages (exact match, then fuzzy)
-        await supabase
+        // --- webhook_messages: exact match first, fallback only if 0 rows ---
+        const exactWm = await supabase
           .from("webhook_messages")
           .update(updatePayload)
-          .eq("message_id", messageId);
+          .eq("message_id", messageId)
+          .select("id");
 
-        if (baseId) {
+        if (baseId && (!exactWm.data || exactWm.data.length === 0)) {
           await supabase
             .from("webhook_messages")
             .update(updatePayload)
             .eq("message_id", baseId);
         }
 
-        // Update message_send_log (exact match, then fuzzy)
-        await supabase
+        // --- message_send_log: exact match first, fallback only if 0 rows ---
+        const exactMsl = await supabase
           .from("message_send_log")
           .update({ delivery_status: status } as any)
-          .eq("message_id", messageId);
+          .eq("message_id", messageId)
+          .select("id");
 
-        if (baseId) {
+        if (baseId && (!exactMsl.data || exactMsl.data.length === 0)) {
           await supabase
             .from("message_send_log")
             .update({ delivery_status: status } as any)
             .eq("message_id", baseId);
         }
 
-        console.log(`Updated message ${messageId} (base: ${baseId}) status to ${status}`);
+        console.log(`Status update: ${messageId} (base: ${baseId}) → ${status} | wm_exact: ${exactWm.data?.length ?? 0}, msl_exact: ${exactMsl.data?.length ?? 0}`);
       }
 
       return new Response(JSON.stringify({ success: true, status_updated: status }), {
