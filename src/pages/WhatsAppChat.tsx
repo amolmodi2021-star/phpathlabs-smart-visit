@@ -40,7 +40,7 @@ const formatFullTimestamp = (d: string) => {
   } catch { return ""; }
 };
 
-// localStorage helpers for read tracking
+// localStorage helpers for manual unread overrides
 // Mark all inbound messages from a mobile as read in the database
 const markConversationRead = async (mobile: string) => {
   const mobile10 = mobile.replace(/\D/g, "").slice(-10);
@@ -104,7 +104,15 @@ export default function WhatsAppChat() {
   const [selectedMobile, setSelectedMobile] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filterUnread, setFilterUnread] = useState(false);
-  const [manualUnreadMobiles, setManualUnreadMobiles] = useState<Set<string>>(new Set());
+  const [manualUnreadMobiles, setManualUnreadMobiles] = useState<Set<string>>(() => {
+    if (typeof window === "undefined") return new Set();
+    try {
+      const raw = window.localStorage.getItem("wa-manual-unread-mobiles");
+      return new Set(raw ? JSON.parse(raw) : []);
+    } catch {
+      return new Set();
+    }
+  });
   const queryClient = useQueryClient();
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -251,6 +259,11 @@ export default function WhatsAppChat() {
       });
     }
   }, [selectedMobile, queryClient]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("wa-manual-unread-mobiles", JSON.stringify(Array.from(manualUnreadMobiles)));
+  }, [manualUnreadMobiles]);
 
   // Build name resolution map: mobile -> name
   const nameMap = useCallback((): Map<string, string> => {
