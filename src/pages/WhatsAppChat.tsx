@@ -221,9 +221,9 @@ export default function WhatsAppChat() {
   // Mark conversation as read when selected
   useEffect(() => {
     if (selectedMobile) {
-      const now = new Date().toISOString();
-      setLastRead(selectedMobile, now);
-      setLastReadMap((prev) => ({ ...prev, [selectedMobile]: now }));
+      markConversationRead(selectedMobile).then(() => {
+        queryClient.invalidateQueries({ queryKey: ["wa-chat-webhook"] });
+      });
     }
   }, [selectedMobile, webhookMessages]);
 
