@@ -133,8 +133,13 @@ const MessageLog = () => {
                     <TableCell>{row.umr_number || "—"}</TableCell>
                     <TableCell className="text-xs max-w-[200px] truncate">{row.primary_key || "—"}</TableCell>
                     <TableCell>{row.message_type}</TableCell>
-                    <TableCell>{format(sentDate, "dd-MM-yyyy")}</TableCell>
-                    <TableCell>{format(sentDate, "hh:mm a")}</TableCell>
+                    <TableCell className="whitespace-nowrap">{format(sentDate, "dd-MM-yyyy hh:mm a")}</TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {row.delivered_at ? format(new Date(row.delivered_at), "dd-MM-yyyy hh:mm a") : "—"}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {row.read_at ? format(new Date(row.read_at), "dd-MM-yyyy hh:mm a") : "—"}
+                    </TableCell>
                     <TableCell className="text-center">{daysAgo}</TableCell>
                   </TableRow>
                 );
