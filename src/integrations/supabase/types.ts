@@ -3065,6 +3065,7 @@ export type Database = {
           direction: string
           error_info: Json | null
           id: string
+          is_read: boolean
           location_lat: number | null
           location_lng: number | null
           media_url: string | null
@@ -3082,6 +3083,7 @@ export type Database = {
           direction?: string
           error_info?: Json | null
           id?: string
+          is_read?: boolean
           location_lat?: number | null
           location_lng?: number | null
           media_url?: string | null
@@ -3099,6 +3101,7 @@ export type Database = {
           direction?: string
           error_info?: Json | null
           id?: string
+          is_read?: boolean
           location_lat?: number | null
           location_lng?: number | null
           media_url?: string | null
