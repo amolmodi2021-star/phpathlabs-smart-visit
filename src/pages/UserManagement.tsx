@@ -67,6 +67,7 @@ const ALL_TABS = [
   },
   { route: "/whatsapp-webhook", label: "WhatsApp Webhook" },
   { route: "/whatsapp-settings", label: "WhatsApp Settings" },
+  { route: "/whatsapp-chat", label: "WhatsApp Chat" },
   { route: "/lims-demo", label: "LIMS Interface" },
   { route: "/report-layout", label: "Report Layout" },
   { route: "/signature-management", label: "Doctor & Signatures" },
