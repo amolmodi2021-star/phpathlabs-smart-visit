@@ -10,6 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { extractMessageId } from "@/lib/messageLog";
 
 // Normalize to 10 digit number
 const norm10 = (n: string) => (n || "").replace(/\D/g, "").slice(-10);
@@ -428,11 +429,7 @@ export default function WhatsAppChat() {
 
       if (error) throw error;
 
-      let messageId = "";
-      try {
-        const parsed = typeof proxyRes?.body === "string" ? JSON.parse(proxyRes.body) : proxyRes?.body;
-        messageId = parsed?.messageId || parsed?.message_id || parsed?.messages?.[0]?.id || "";
-      } catch {}
+      const messageId = extractMessageId(proxyRes) || "";
 
       const msgContent = type === "text" ? (body || "") : `[${type}] ${caption || mediaUrl || ""}`;
 
