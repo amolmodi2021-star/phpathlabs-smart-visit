@@ -3220,6 +3220,17 @@ export type Database = {
           visit_type: string
         }[]
       }
+      get_new_numbers_paginated: {
+        Args: { p_limit?: number; p_offset?: number; p_search?: string }
+        Returns: {
+          last_message_type: string
+          last_sent_at: string
+          message_count: number
+          mobile: string
+          patient_name: string
+          total_count: number
+        }[]
+      }
       get_patient_registrations_count: {
         Args: { p_search?: string }
         Returns: number
