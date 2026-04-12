@@ -800,7 +800,8 @@ const CRMContacts = () => {
         } else {
           sent++;
           const destMob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
-          await logMessageSend(destMob, r.patient_name, "ABC", r.umr_number, r.primary_key);
+          const _msgId = (() => { try { const b = typeof proxyRes.data?.body === "string" ? JSON.parse(proxyRes.data.body) : proxyRes.data?.body; return b?.messageId || null; } catch { return null; } })();
+          await logMessageSend(destMob, r.patient_name, "ABC", r.umr_number, r.primary_key, undefined, _msgId);
           await supabase.from("crm_contacts").update({
             last_sent_type: "ABC",
             last_sent_date: new Date().toISOString(),

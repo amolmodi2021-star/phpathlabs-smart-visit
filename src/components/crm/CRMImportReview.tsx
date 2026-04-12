@@ -319,7 +319,8 @@ const CRMImportReview = () => {
         } else {
           sent++;
           const mobile10 = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
-          await logMessageSend(mobile10, r.patient_name, "ABC", r.umr_number, r.primary_key);
+          const _msgId = (() => { try { const b = typeof proxyRes.data?.body === "string" ? JSON.parse(proxyRes.data.body) : proxyRes.data?.body; return b?.messageId || null; } catch { return null; } })();
+          await logMessageSend(mobile10, r.patient_name, "ABC", r.umr_number, r.primary_key, undefined, _msgId);
           const pk = r.primary_key;
           if (pk) {
             await supabase.from("crm_contacts").update({

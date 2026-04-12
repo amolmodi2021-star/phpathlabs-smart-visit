@@ -1060,7 +1060,8 @@ const AutomatedMarketing = () => {
                   last_sent_date: new Date().toISOString(),
                   record_tag: null,
                 }).eq("id", r.id);
-                await logMessageSend(destMob, r.patient_name, "ABC", r.umr_number, r.primary_key);
+                const _msgId1 = (() => { try { const b = typeof proxyRes.data?.body === "string" ? JSON.parse(proxyRes.data.body) : proxyRes.data?.body; return b?.messageId || null; } catch { return null; } })();
+                await logMessageSend(destMob, r.patient_name, "ABC", r.umr_number, r.primary_key, undefined, _msgId1);
               }
               totalSent++;
               if (trial) trialSentCount++;
@@ -1172,7 +1173,8 @@ const AutomatedMarketing = () => {
                   last_sent_type: "Abnormal History",
                   last_sent_date: new Date().toISOString(),
                 }).eq("id", r.id);
-                await logMessageSend(destMob, r.patient_name, "Abnormal History", r.umr_number, r.primary_key);
+                const _msgId2 = (() => { try { const b = typeof proxyRes.data?.body === "string" ? JSON.parse(proxyRes.data.body) : proxyRes.data?.body; return b?.messageId || null; } catch { return null; } })();
+                await logMessageSend(destMob, r.patient_name, "Abnormal History", r.umr_number, r.primary_key, undefined, _msgId2);
               }
               totalSent++;
               if (trial) trialSentCount++;
