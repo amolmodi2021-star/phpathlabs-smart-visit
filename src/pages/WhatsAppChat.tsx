@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { ArrowLeft, Search, Check, CheckCheck, X, MapPin, Image as ImageIcon, MessageCircle, Info, Filter, Send, Paperclip, FileText, Loader2, AlertCircle, MailOpen } from "lucide-react";
+import { ArrowLeft, Search, Check, CheckCheck, X, MapPin, Image as ImageIcon, MessageCircle, Info, Filter, Send, Paperclip, FileText, Loader2, AlertCircle, MailOpen, ChevronUp } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { format, isToday, isYesterday, parseISO } from "date-fns";
@@ -12,6 +12,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { extractMessageId } from "@/lib/messageLog";
+
+const CONTACTS_PAGE_SIZE = 30;
+const MESSAGES_PAGE_SIZE = 50;
 
 // Normalize to 10 digit number
 const norm10 = (n: string) => (n || "").replace(/\D/g, "").slice(-10);
@@ -40,8 +43,6 @@ const formatFullTimestamp = (d: string) => {
   } catch { return ""; }
 };
 
-// localStorage helpers for manual unread overrides
-// Mark all inbound messages from a mobile as read in the database
 const markConversationRead = async (mobile: string) => {
   const mobile10 = mobile.replace(/\D/g, "").slice(-10);
   if (!mobile10) return;
@@ -56,7 +57,6 @@ const markConversationRead = async (mobile: string) => {
 const markConversationUnread = async (mobile: string) => {
   const mobile10 = mobile.replace(/\D/g, "").slice(-10);
   if (!mobile10) return;
-  // Mark the latest inbound message as unread
   const { data } = await supabase
     .from("webhook_messages")
     .select("id")
@@ -93,16 +93,13 @@ interface ChatMessage {
   deliveryStatus?: string | null;
   errorInfo?: any;
   timestamp: string;
-  // For status tracking
-  sentAt?: string | null;
-  deliveredAt?: string | null;
-  readAt?: string | null;
 }
 
 export default function WhatsAppChat() {
   const isMobile = useIsMobile();
   const [selectedMobile, setSelectedMobile] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filterUnread, setFilterUnread] = useState(false);
   const [manualUnreadMobiles, setManualUnreadMobiles] = useState<Set<string>>(() => {
     if (typeof window === "undefined") return new Set();
@@ -115,6 +112,7 @@ export default function WhatsAppChat() {
   });
   const queryClient = useQueryClient();
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
 
   // Compose bar state
   const [composeText, setComposeText] = useState("");
@@ -127,66 +125,133 @@ export default function WhatsAppChat() {
   // WA global settings
   const [waSettings, setWaSettings] = useState<Record<string, string>>({});
 
-  // Fetch all webhook messages
-  const { data: webhookMessages = [] } = useQuery({
-    queryKey: ["wa-chat-webhook"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("webhook_messages")
-        .select("id, sender_number, sender_name, message, direction, created_at, message_type, media_url, message_id, location_lat, location_lng, delivery_status, error_info, is_read")
-        .order("created_at", { ascending: false })
-        .limit(5000);
-      return data || [];
+  // Debounce search
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // ─── PAGINATED CONTACTS via RPC ───
+  const {
+    data: contactsData,
+    fetchNextPage: fetchNextContacts,
+    hasNextPage: hasMoreContacts,
+    isFetchingNextPage: isFetchingMoreContacts,
+  } = useInfiniteQuery({
+    queryKey: ["wa-contacts", debouncedSearch, filterUnread],
+    queryFn: async ({ pageParam = 0 }) => {
+      const { data, error } = await supabase.rpc("get_wa_contacts_paginated", {
+        p_search: debouncedSearch,
+        p_offset: pageParam * CONTACTS_PAGE_SIZE,
+        p_limit: CONTACTS_PAGE_SIZE,
+        p_unread_only: filterUnread,
+      });
+      if (error) throw error;
+      return (data || []) as Array<{
+        mobile: string;
+        contact_name: string;
+        profile_name: string;
+        last_message: string;
+        last_time: string;
+        unread_count: number;
+      }>;
+    },
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      if (lastPage.length < CONTACTS_PAGE_SIZE) return undefined;
+      return allPages.length;
     },
   });
 
-  // Fetch all message_send_log
-  const { data: sendLogs = [] } = useQuery({
-    queryKey: ["wa-chat-sendlog"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("message_send_log")
-        .select("id, mobile_number, patient_name, message_type, sent_at, message_content, message_id, delivery_status")
-        .order("sent_at", { ascending: false })
-        .limit(5000);
-      return data || [];
+  const contacts: ConversationContact[] = (contactsData?.pages ?? []).flat().map((c) => ({
+    mobile: c.mobile,
+    name: c.contact_name || "",
+    profileName: c.profile_name || "",
+    lastMessage: c.last_message || "",
+    lastTime: c.last_time || "",
+    unread: manualUnreadMobiles.has(c.mobile) && c.unread_count === 0 ? 1 : c.unread_count,
+  }));
+
+  const totalUnread = contacts.reduce((s, c) => s + c.unread, 0);
+
+  // ─── PAGINATED MESSAGES via RPC ───
+  const {
+    data: messagesData,
+    fetchNextPage: fetchOlderMessages,
+    hasNextPage: hasOlderMessages,
+    isFetchingNextPage: isFetchingOlderMessages,
+  } = useInfiniteQuery({
+    queryKey: ["wa-messages", selectedMobile],
+    queryFn: async ({ pageParam = 0 }) => {
+      if (!selectedMobile) return [];
+      const { data, error } = await supabase.rpc("get_wa_chat_messages", {
+        p_mobile_10: selectedMobile,
+        p_limit: MESSAGES_PAGE_SIZE,
+        p_offset: pageParam * MESSAGES_PAGE_SIZE,
+      });
+      if (error) throw error;
+      return (data || []) as Array<{
+        id: string;
+        source: string;
+        direction: string;
+        message: string;
+        message_type: string;
+        media_url: string | null;
+        location_lat: number | null;
+        location_lng: number | null;
+        delivery_status: string | null;
+        error_info: any;
+        message_id: string | null;
+        ts: string;
+      }>;
     },
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      if (lastPage.length < MESSAGES_PAGE_SIZE) return undefined;
+      return allPages.length;
+    },
+    enabled: !!selectedMobile,
   });
 
-  // Fetch CRM contacts for name resolution
-  const { data: crmContacts = [] } = useQuery({
-    queryKey: ["wa-chat-crm"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("crm_contacts")
-        .select("mobile_number, patient_name, updated_at")
-        .not("mobile_number", "is", null)
-        .order("updated_at", { ascending: false })
-        .limit(5000);
-      return data || [];
-    },
-  });
+  // Flatten & reverse: RPC returns DESC, we need ASC for display
+  const chatMessages: ChatMessage[] = (() => {
+    const pages = messagesData?.pages ?? [];
+    // pages[0] = newest, pages[N] = oldest. Flatten oldest-first.
+    const all = [...pages].reverse().flat();
+    return all.map((m) => ({
+      id: m.id,
+      source: m.source as "webhook" | "log",
+      direction: m.direction as "inbound" | "outbound",
+      message: m.message || "",
+      messageType: m.message_type || "text",
+      mediaUrl: m.media_url,
+      locationLat: m.location_lat,
+      locationLng: m.location_lng,
+      deliveryStatus: m.delivery_status,
+      errorInfo: m.error_info,
+      timestamp: m.ts,
+    }));
+  })();
 
-  // Fetch estimates for name resolution
-  const { data: estimates = [] } = useQuery({
-    queryKey: ["wa-chat-estimates"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("estimates")
-        .select("whatsapp_number, patient_name, created_at")
-        .not("patient_name", "is", null)
-        .order("created_at", { ascending: false })
-        .limit(2000);
-      return data || [];
-    },
-  });
-
-  // Realtime subscription for webhook_messages
+  // ─── REALTIME ───
   useEffect(() => {
     const channel = supabase
       .channel("wa-chat-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "webhook_messages" }, (payload) => {
-        queryClient.invalidateQueries({ queryKey: ["wa-chat-webhook"] });
+        // Invalidate contacts to update last message & unread counts
+        queryClient.invalidateQueries({ queryKey: ["wa-contacts"] });
+
+        // If viewing a conversation, also refresh messages
+        if (selectedMobile) {
+          const newMsg = payload.new as any;
+          if (newMsg?.sender_number && norm10(newMsg.sender_number) === selectedMobile) {
+            queryClient.invalidateQueries({ queryKey: ["wa-messages", selectedMobile] });
+          }
+          // Also refresh for status updates on outbound
+          if (payload.eventType === "UPDATE") {
+            queryClient.invalidateQueries({ queryKey: ["wa-messages", selectedMobile] });
+          }
+        }
 
         // Notification for inbound
         if (payload.eventType === "INSERT" && (payload.new as any)?.direction === "inbound") {
@@ -212,24 +277,26 @@ export default function WhatsAppChat() {
       })
       .subscribe();
 
-    // Request notification permission
     if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission();
     }
 
     return () => { supabase.removeChannel(channel); };
-  }, [queryClient]);
+  }, [queryClient, selectedMobile]);
 
-  // Also subscribe to message_send_log changes (INSERT + UPDATE for status)
+  // Also subscribe to message_send_log changes
   useEffect(() => {
     const channel = supabase
       .channel("wa-chat-sendlog-rt")
       .on("postgres_changes", { event: "*", schema: "public", table: "message_send_log" }, () => {
-        queryClient.invalidateQueries({ queryKey: ["wa-chat-sendlog"] });
+        queryClient.invalidateQueries({ queryKey: ["wa-contacts"] });
+        if (selectedMobile) {
+          queryClient.invalidateQueries({ queryKey: ["wa-messages", selectedMobile] });
+        }
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [queryClient]);
+  }, [queryClient, selectedMobile]);
 
   // Load global WA settings
   useEffect(() => {
@@ -246,7 +313,7 @@ export default function WhatsAppChat() {
     load();
   }, []);
 
-  // Mark conversation as read only when switching to it
+  // Mark conversation as read when selected
   useEffect(() => {
     if (selectedMobile) {
       setManualUnreadMobiles((prev) => {
@@ -255,7 +322,7 @@ export default function WhatsAppChat() {
         return next;
       });
       markConversationRead(selectedMobile).then(() => {
-        queryClient.invalidateQueries({ queryKey: ["wa-chat-webhook"] });
+        queryClient.invalidateQueries({ queryKey: ["wa-contacts"] });
       });
     }
   }, [selectedMobile, queryClient]);
@@ -265,184 +332,22 @@ export default function WhatsAppChat() {
     window.localStorage.setItem("wa-manual-unread-mobiles", JSON.stringify(Array.from(manualUnreadMobiles)));
   }, [manualUnreadMobiles]);
 
-  // Build name resolution map: mobile -> name
-  const nameMap = useCallback((): Map<string, string> => {
-    const map = new Map<string, string>();
-
-    // Estimates (lowest priority, add first so CRM overwrites)
-    estimates.forEach((e: any) => {
-      const m = norm10(e.whatsapp_number || "");
-      if (m && e.patient_name && !map.has(m)) map.set(m, e.patient_name);
-    });
-
-    // CRM (highest priority, overwrites)
-    crmContacts.forEach((c: any) => {
-      const m = norm10(c.mobile_number || "");
-      if (m && c.patient_name) map.set(m, c.patient_name);
-    });
-
-    return map;
-  }, [crmContacts, estimates]);
-
-  // Build profile name map from webhook
-  const profileNameMap = useCallback((): Map<string, string> => {
-    const map = new Map<string, string>();
-    webhookMessages.forEach((m: any) => {
-      const mobile = norm10(m.sender_number || "");
-      if (mobile && m.sender_name && !map.has(mobile)) map.set(mobile, m.sender_name);
-    });
-    return map;
-  }, [webhookMessages]);
-
-  // Build contact list with unread counts
-  const contacts: ConversationContact[] = useMemo(() => {
-    const nMap = nameMap();
-    const pMap = profileNameMap();
-    const contactMap = new Map<string, ConversationContact>();
-
-    // First pass: build contacts with latest message
-    webhookMessages.forEach((m: any) => {
-      const mobile = norm10(m.sender_number || "");
-      if (!mobile) return;
-      const existing = contactMap.get(mobile);
-      if (!existing || m.created_at > existing.lastTime) {
-        contactMap.set(mobile, {
-          mobile,
-          name: nMap.get(mobile) || "",
-          profileName: pMap.get(mobile) || "",
-          lastMessage: m.direction === "inbound" ? (m.message || "") : `You: ${m.message || ""}`,
-          lastTime: m.created_at,
-          unread: 0,
-        });
-      }
-    });
-
-    sendLogs.forEach((l: any) => {
-      const mobile = norm10(l.mobile_number || "");
-      if (!mobile) return;
-      const existing = contactMap.get(mobile);
-      const msgPreview = `You: ${l.message_type || "Message"} Sent`;
-      if (!existing || l.sent_at > existing.lastTime) {
-        contactMap.set(mobile, {
-          mobile,
-          name: nMap.get(mobile) || existing?.name || l.patient_name || "",
-          profileName: existing?.profileName || "",
-          lastMessage: msgPreview,
-          lastTime: l.sent_at,
-          unread: 0,
-        });
-      } else if (existing && !existing.name && l.patient_name) {
-        existing.name = l.patient_name;
-      }
-    });
-
-    // Second pass: count unread inbound messages per contact
-    webhookMessages.forEach((m: any) => {
-      if (m.direction !== "inbound") return;
-      const mobile = norm10(m.sender_number || "");
-      if (!mobile) return;
-      const contact = contactMap.get(mobile);
-      if (!contact) return;
-      if (!m.is_read) {
-        contact.unread += 1;
-      }
-    });
-
-    manualUnreadMobiles.forEach((mobile) => {
-      const contact = contactMap.get(mobile);
-      if (contact && contact.unread === 0) {
-        contact.unread = 1;
-      }
-    });
-
-    return Array.from(contactMap.values())
-      .sort((a, b) => b.lastTime.localeCompare(a.lastTime));
-  }, [webhookMessages, sendLogs, nameMap, profileNameMap, manualUnreadMobiles]);
-
-  // Total unread count for filter badge
-  const totalUnread = useMemo(() => contacts.reduce((s, c) => s + c.unread, 0), [contacts]);
-
-  // Filter contacts by search and unread filter
-  const filteredContacts = useMemo(() => {
-    return contacts.filter((c) => {
-      if (filterUnread && c.unread === 0) return false;
-      if (!search) return true;
-      const s = search.toLowerCase();
-      return c.mobile.includes(s) || c.name.toLowerCase().includes(s) || c.profileName.toLowerCase().includes(s);
-    });
-  }, [contacts, search, filterUnread]);
-
-  // Build messages for selected conversation
-  const chatMessages: ChatMessage[] = useMemo(() => {
-    if (!selectedMobile) return [];
-    const msgs: ChatMessage[] = [];
-
-    webhookMessages.forEach((m: any) => {
-      if (norm10(m.sender_number || "") === selectedMobile) {
-        msgs.push({
-          id: m.id,
-          source: "webhook",
-          direction: m.direction === "inbound" ? "inbound" : "outbound",
-          message: m.message || "",
-          messageType: m.message_type || "text",
-          mediaUrl: m.media_url,
-          locationLat: m.location_lat,
-          locationLng: m.location_lng,
-          deliveryStatus: m.delivery_status,
-          errorInfo: m.error_info,
-          timestamp: m.created_at,
-        });
-      }
-    });
-
-    // Collect webhook message_ids to deduplicate against sendLogs
-    const webhookMsgIds = new Set(
-      webhookMessages.filter((m: any) => m.message_id).map((m: any) => m.message_id)
-    );
-
-    sendLogs.forEach((l: any) => {
-      if (norm10(l.mobile_number || "") !== selectedMobile) return;
-      // Skip if already represented in webhook_messages
-      if (l.message_id && webhookMsgIds.has(l.message_id)) return;
-
-      const logMsgType = (l.message_type || "").toLowerCase();
-      let messageType = l.message_type || "log";
-      let mediaUrl: string | undefined;
-      const content = l.message_content || "";
-
-      // Detect image/document messages from sendLog and extract media URL
-      if (logMsgType.includes("image")) {
-        messageType = "image";
-        const urlMatch = content.match(/https?:\/\/\S+/);
-        if (urlMatch) mediaUrl = urlMatch[0];
-      } else if (logMsgType.includes("document")) {
-        messageType = "document";
-        const urlMatch = content.match(/https?:\/\/\S+/);
-        if (urlMatch) mediaUrl = urlMatch[0];
-      }
-
-      msgs.push({
-        id: l.id,
-        source: "log",
-        direction: "outbound",
-        message: content || `${l.message_type || "Message"} Sent`,
-        messageType,
-        mediaUrl,
-        deliveryStatus: l.delivery_status || "sent",
-        timestamp: l.sent_at,
-      });
-    });
-
-    msgs.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-    return msgs;
-  }, [selectedMobile, webhookMessages, sendLogs]);
-
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom on new messages (only first page load or new message)
+  const prevMsgCount = useRef(0);
   useEffect(() => {
-    if (selectedMobile && chatEndRef.current) {
-      chatEndRef.current.scrollIntoView({ behavior: "smooth" });
+    if (!selectedMobile) return;
+    const currentCount = chatMessages.length;
+    // Scroll to bottom on initial load or when new messages arrive (count increases from first page)
+    if (prevMsgCount.current === 0 || currentCount > prevMsgCount.current) {
+      setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: prevMsgCount.current === 0 ? "auto" : "smooth" }), 50);
     }
+    prevMsgCount.current = currentCount;
   }, [chatMessages.length, selectedMobile]);
+
+  // Reset message count when switching conversations
+  useEffect(() => {
+    prevMsgCount.current = 0;
+  }, [selectedMobile]);
 
   const selectedContact = contacts.find((c) => c.mobile === selectedMobile);
   const displayName = selectedContact?.name || selectedContact?.profileName || selectedMobile || "";
@@ -492,7 +397,6 @@ export default function WhatsAppChat() {
       const msgContent = type === "text" ? (body || "") : `[${type}] ${caption || mediaUrl || ""}`;
       const tempId = crypto.randomUUID();
 
-      // Pre-insert rows with temp ID so webhook can find them when status arrives
       const [wmInsert, mslInsert] = await Promise.all([
         supabase.from("webhook_messages").insert({
           sender_number: `+91${selectedMobile}`,
@@ -521,22 +425,20 @@ export default function WhatsAppChat() {
 
       const messageId = extractMessageId(proxyRes) || "";
 
-      // Update rows with real message ID so webhook status updates match
       if (messageId) {
         await Promise.all([
           supabase.from("webhook_messages").update({ message_id: messageId, delivery_status: "sent" }).eq("message_id", tempId),
           supabase.from("message_send_log").update({ message_id: messageId, delivery_status: "sent" } as any).eq("message_id", tempId),
         ]);
       } else {
-        // No message ID returned, just mark as sent
         await Promise.all([
           supabase.from("webhook_messages").update({ delivery_status: "sent" }).eq("message_id", tempId),
           supabase.from("message_send_log").update({ delivery_status: "sent" } as any).eq("message_id", tempId),
         ]);
       }
 
-      queryClient.invalidateQueries({ queryKey: ["wa-chat-webhook"] });
-      queryClient.invalidateQueries({ queryKey: ["wa-chat-sendlog"] });
+      queryClient.invalidateQueries({ queryKey: ["wa-messages", selectedMobile] });
+      queryClient.invalidateQueries({ queryKey: ["wa-contacts"] });
       setComposeText("");
       toast.success("Message sent!");
     } catch (err: any) {
@@ -583,7 +485,7 @@ export default function WhatsAppChat() {
 
   const renderStatusTicks = (msg: ChatMessage) => {
     if (msg.direction !== "outbound") return null;
-    const status = msg.deliveryStatus || (msg.source === "log" ? "sent" : "sent");
+    const status = msg.deliveryStatus || "sent";
 
     if (status === "failed") {
       return (
@@ -718,6 +620,14 @@ export default function WhatsAppChat() {
     return <span className="whitespace-pre-wrap break-words">{msg.message}</span>;
   };
 
+  // Infinite scroll handler for contacts
+  const handleContactsScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 100 && hasMoreContacts && !isFetchingMoreContacts) {
+      fetchNextContacts();
+    }
+  }, [hasMoreContacts, isFetchingMoreContacts, fetchNextContacts]);
+
   // Contact list panel
   const contactListPanel = (
     <div className="flex flex-col h-full" style={{ backgroundColor: "#FFFFFF" }}>
@@ -725,7 +635,6 @@ export default function WhatsAppChat() {
       <div className="px-4 py-3 flex items-center gap-2" style={{ backgroundColor: "#075E54" }}>
         <MessageCircle className="h-5 w-5 text-white" />
         <h1 className="text-white font-semibold text-lg flex-1">Chats</h1>
-        {/* Unread filter toggle */}
         <button
           onClick={() => setFilterUnread(!filterUnread)}
           className={`relative p-1.5 rounded-full transition-colors ${filterUnread ? "bg-white/20" : "hover:bg-white/10"}`}
@@ -740,7 +649,7 @@ export default function WhatsAppChat() {
         </button>
       </div>
 
-      {/* Search + filter indicator */}
+      {/* Search */}
       <div className="px-3 py-2" style={{ backgroundColor: "#F6F6F6" }}>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -760,14 +669,14 @@ export default function WhatsAppChat() {
         )}
       </div>
 
-      {/* Contact list */}
-      <div className="flex-1 overflow-y-auto">
-        {filteredContacts.length === 0 && (
+      {/* Contact list with infinite scroll */}
+      <div className="flex-1 overflow-y-auto" onScroll={handleContactsScroll}>
+        {contacts.length === 0 && (
           <p className="text-center text-muted-foreground py-8 text-sm">
             {filterUnread ? "No unread conversations" : "No conversations yet"}
           </p>
         )}
-        {filteredContacts.map((c) => (
+        {contacts.map((c) => (
           <div
             key={c.mobile}
             onClick={() => setSelectedMobile(c.mobile)}
@@ -775,7 +684,6 @@ export default function WhatsAppChat() {
               selectedMobile === c.mobile ? "bg-gray-100" : ""
             }`}
           >
-            {/* Avatar */}
             <div className="h-12 w-12 rounded-full flex items-center justify-center shrink-0 relative" style={{ backgroundColor: "#DFE5E7" }}>
               <span className="text-lg font-semibold" style={{ color: "#54656F" }}>
                 {(c.name || c.profileName || c.mobile).charAt(0).toUpperCase()}
@@ -812,7 +720,6 @@ export default function WhatsAppChat() {
               )}
             </div>
 
-            {/* Mark as unread button */}
             {c.unread === 0 && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
@@ -824,7 +731,7 @@ export default function WhatsAppChat() {
                   <DropdownMenuItem onClick={async () => {
                     setManualUnreadMobiles((prev) => new Set(prev).add(c.mobile));
                     await markConversationUnread(c.mobile);
-                    queryClient.invalidateQueries({ queryKey: ["wa-chat-webhook"] });
+                    queryClient.invalidateQueries({ queryKey: ["wa-contacts"] });
                     toast.success("Marked as unread");
                   }}>
                     <MailOpen className="h-4 w-4 mr-2" />
@@ -835,6 +742,11 @@ export default function WhatsAppChat() {
             )}
           </div>
         ))}
+        {isFetchingMoreContacts && (
+          <div className="flex justify-center py-3">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -865,12 +777,32 @@ export default function WhatsAppChat() {
 
       {/* Messages */}
       <div
+        ref={chatScrollRef}
         className="flex-1 overflow-y-auto px-4 py-2"
         style={{ backgroundColor: "#ECE5DD", backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23d4cfc6' fill-opacity='0.3'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E\")" }}
       >
+        {/* Load older messages button */}
+        {hasOlderMessages && (
+          <div className="flex justify-center my-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => fetchOlderMessages()}
+              disabled={isFetchingOlderMessages}
+              className="text-xs gap-1 rounded-full shadow-sm"
+            >
+              {isFetchingOlderMessages ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <ChevronUp className="h-3 w-3" />
+              )}
+              Load older messages
+            </Button>
+          </div>
+        )}
+
         {dayGroups.map((group) => (
           <div key={group.date}>
-            {/* Day header */}
             <div className="flex justify-center my-3">
               <span className="bg-white/80 text-xs text-muted-foreground px-3 py-1 rounded-lg shadow-sm">
                 {formatDayHeader(group.date)}
@@ -920,7 +852,6 @@ export default function WhatsAppChat() {
 
       {/* Compose bar */}
       <div className="px-3 py-2 flex items-center gap-2" style={{ backgroundColor: "#F0F0F0" }}>
-        {/* Hidden file inputs */}
         <input
           ref={fileInputRef}
           type="file"
@@ -944,7 +875,6 @@ export default function WhatsAppChat() {
           }}
         />
 
-        {/* Attachment button */}
         <Popover open={showAttachMenu} onOpenChange={setShowAttachMenu}>
           <PopoverTrigger asChild>
             <button
@@ -970,7 +900,6 @@ export default function WhatsAppChat() {
           </PopoverContent>
         </Popover>
 
-        {/* Text input */}
         <input
           ref={composeInputRef}
           type="text"
@@ -982,7 +911,6 @@ export default function WhatsAppChat() {
           className="flex-1 rounded-full px-4 py-2 text-sm bg-white border-0 outline-none focus:ring-1 focus:ring-green-300"
         />
 
-        {/* Send button */}
         <button
           onClick={handleSendText}
           disabled={sending || !composeText.trim()}
@@ -999,7 +927,6 @@ export default function WhatsAppChat() {
     </div>
   );
 
-  // Empty state for desktop when no chat selected
   const emptyChat = (
     <div className="flex flex-col items-center justify-center h-full" style={{ backgroundColor: "#F0F2F5" }}>
       <MessageCircle className="h-16 w-16 text-muted-foreground mb-4" />
@@ -1008,7 +935,6 @@ export default function WhatsAppChat() {
     </div>
   );
 
-  // Mobile: show one panel at a time
   if (isMobile) {
     return (
       <div className="h-[calc(100vh-3.5rem)] -m-4 md:-m-6">
@@ -1017,7 +943,6 @@ export default function WhatsAppChat() {
     );
   }
 
-  // Desktop: two-panel layout
   return (
     <div className="h-[calc(100vh-3.5rem)] -m-4 md:-m-6 flex">
       <div className="w-[350px] border-r border-gray-200 flex flex-col">
