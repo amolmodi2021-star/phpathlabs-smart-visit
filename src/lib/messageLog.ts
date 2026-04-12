@@ -11,6 +11,7 @@ export async function logMessageSend(
   umrNumber?: string | null,
   primaryKey?: string | null,
   messageContent?: string | null,
+  messageId?: string | null,
 ) {
   const mobile10 = (mobile || "").replace(/\D/g, "").slice(-10);
   if (!mobile10) return;
@@ -23,8 +24,25 @@ export async function logMessageSend(
       umr_number: umrNumber || null,
       primary_key: primaryKey || null,
       message_content: messageContent || null,
+      message_id: messageId || null,
+      delivery_status: "sent",
     } as any);
   } catch {
     // silently ignore — logging must never break the send flow
+  }
+}
+
+/**
+ * Extract messageId from a whatsapp-proxy response.
+ * The proxy returns { status, body } where body is a JSON string from the API.
+ * The AOC API typically returns { messageId: "..." } in the body.
+ */
+export function extractMessageId(proxyData: any): string | null {
+  try {
+    if (!proxyData?.body) return null;
+    const parsed = typeof proxyData.body === "string" ? JSON.parse(proxyData.body) : proxyData.body;
+    return parsed?.messageId || parsed?.message_id || parsed?.id || null;
+  } catch {
+    return null;
   }
 }
