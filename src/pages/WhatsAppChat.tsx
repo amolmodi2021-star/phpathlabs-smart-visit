@@ -237,14 +237,14 @@ export default function WhatsAppChat() {
     load();
   }, []);
 
-  // Mark conversation as read when selected
+  // Mark conversation as read only when switching to it
   useEffect(() => {
     if (selectedMobile) {
       markConversationRead(selectedMobile).then(() => {
         queryClient.invalidateQueries({ queryKey: ["wa-chat-webhook"] });
       });
     }
-  }, [selectedMobile, webhookMessages]);
+  }, [selectedMobile, queryClient]);
 
   // Build name resolution map: mobile -> name
   const nameMap = useCallback((): Map<string, string> => {
