@@ -96,8 +96,9 @@ const MessageLog = () => {
               <TableHead>UMR Number</TableHead>
               <TableHead>Primary Key</TableHead>
               <TableHead>Message Type</TableHead>
-              <TableHead>Sent Date</TableHead>
-              <TableHead>Sent Time</TableHead>
+              <TableHead>Sent Date & Time</TableHead>
+              <TableHead>Delivered Date & Time</TableHead>
+              <TableHead>Read Date & Time</TableHead>
               <TableHead>Days Ago</TableHead>
             </TableRow>
           </TableHeader>
