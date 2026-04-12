@@ -89,6 +89,17 @@ export default function WhatsAppChat() {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const [lastReadMap, setLastReadMap] = useState<Record<string, string>>(getLastReadMap);
 
+  // Compose bar state
+  const [composeText, setComposeText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const docInputRef = useRef<HTMLInputElement>(null);
+  const composeInputRef = useRef<HTMLInputElement>(null);
+
+  // WA global settings
+  const [waSettings, setWaSettings] = useState<Record<string, string>>({});
+
   // Fetch all webhook messages
   const { data: webhookMessages = [] } = useQuery({
     queryKey: ["wa-chat-webhook"],
