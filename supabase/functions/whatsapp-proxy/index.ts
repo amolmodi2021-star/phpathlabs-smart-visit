@@ -30,6 +30,8 @@ Deno.serve(async (req) => {
     });
 
     const text = await res.text();
+    console.log("[whatsapp-proxy] API response:", res.status, text.slice(0, 500));
+
     return new Response(JSON.stringify({ status: res.status, body: text }), {
       status: res.ok ? 200 : 502,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

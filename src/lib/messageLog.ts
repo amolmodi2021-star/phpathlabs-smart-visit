@@ -34,14 +34,42 @@ export async function logMessageSend(
 
 /**
  * Extract messageId from a whatsapp-proxy response.
- * The proxy returns { status, body } where body is a JSON string from the API.
+ * 
+ * supabase.functions.invoke returns { data, error }.
+ * Pass proxyRes.data here — it contains { status, body } where body is a JSON string.
  * The AOC API typically returns { messageId: "..." } in the body.
  */
 export function extractMessageId(proxyData: any): string | null {
   try {
-    if (!proxyData?.body) return null;
-    const parsed = typeof proxyData.body === "string" ? JSON.parse(proxyData.body) : proxyData.body;
-    return parsed?.messageId || parsed?.message_id || parsed?.id || null;
+    if (!proxyData) return null;
+
+    // proxyData might be { status, body } from our proxy
+    let body = proxyData.body ?? proxyData;
+
+    // body might be a JSON string that needs parsing
+    if (typeof body === "string") {
+      try {
+        body = JSON.parse(body);
+      } catch {
+        return null;
+      }
+    }
+
+    // Check common key paths for messageId
+    const id =
+      body?.messageId ||
+      body?.message_id ||
+      body?.id ||
+      body?.messages?.[0]?.id ||
+      null;
+
+    if (id) {
+      console.log("[extractMessageId] Captured:", id);
+    } else {
+      console.warn("[extractMessageId] No messageId found in:", JSON.stringify(proxyData).slice(0, 300));
+    }
+
+    return id;
   } catch {
     return null;
   }
