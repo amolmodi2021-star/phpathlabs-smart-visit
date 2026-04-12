@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { sortAbnormalTestsByDateDesc } from "@/lib/abnormalTests";
-import { logMessageSend } from "@/lib/messageLog";
+import { logMessageSend, extractMessageId } from "@/lib/messageLog";
 
 interface AbnormalTest {
   id: string;
@@ -658,7 +658,7 @@ const CRMAbnormalTests = () => {
       if (proxyRes.error || proxyRes.data?.status >= 400) {
         toast.error("Failed to send WhatsApp");
       } else {
-        const _msgId = (() => { try { const b = typeof proxyRes.data?.body === "string" ? JSON.parse(proxyRes.data.body) : proxyRes.data?.body; return b?.messageId || null; } catch { return null; } })();
+        const _msgId = extractMessageId(proxyRes.data);
         await logMessageSend(normalizedMobile, previewGroup.patientName, "Abnormal History", previewGroup.umr, previewGroup.primaryKey, undefined, _msgId);
         // Only update CRM if sent to original mobile (not a trial override)
         const originalMobile = previewGroup.mobile.replace(/\D/g, "").slice(-10);
@@ -784,7 +784,7 @@ const CRMAbnormalTests = () => {
           failed++;
         } else {
           sent++;
-          const _msgId = (() => { try { const b = typeof proxyRes.data?.body === "string" ? JSON.parse(proxyRes.data.body) : proxyRes.data?.body; return b?.messageId || null; } catch { return null; } })();
+          const _msgId = extractMessageId(proxyRes.data);
           await logMessageSend(normalizedMobile, group.patientName, "Abnormal History", group.umr, group.primaryKey, undefined, _msgId);
           await supabase
             .from("crm_contacts")

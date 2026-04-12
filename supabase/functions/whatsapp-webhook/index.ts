@@ -40,17 +40,28 @@ Deno.serve(async (req) => {
         const updatePayload: Record<string, any> = { delivery_status: status };
         if (errorInfo) updatePayload.error_info = errorInfo;
 
-        // Update webhook_messages
+        // Update webhook_messages (exact match)
         await supabase
           .from("webhook_messages")
           .update(updatePayload)
           .eq("message_id", messageId);
 
-        // Also update message_send_log for outbound messages
-        await supabase
+        // Also update message_send_log — try exact match first,
+        // then try without `:N` suffix (AOC appends `:1` etc. in status callbacks)
+        const logUpdate = await supabase
           .from("message_send_log")
           .update({ delivery_status: status } as any)
           .eq("message_id", messageId);
+
+        // If no rows matched and messageId contains ":", try base ID
+        const baseId = messageId.includes(":") ? messageId.split(":")[0] : null;
+        if (baseId && (!logUpdate.data || (logUpdate as any).count === 0)) {
+          await supabase
+            .from("message_send_log")
+            .update({ delivery_status: status } as any)
+            .eq("message_id", baseId);
+          console.log(`Fuzzy-matched base ID ${baseId} for status ${status}`);
+        }
 
         console.log(`Updated message ${messageId} status to ${status}`);
       }

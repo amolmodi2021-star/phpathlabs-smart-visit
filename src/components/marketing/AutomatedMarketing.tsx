@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { logMessageSend } from "@/lib/messageLog";
+import { logMessageSend, extractMessageId } from "@/lib/messageLog";
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -1060,7 +1060,7 @@ const AutomatedMarketing = () => {
                   last_sent_date: new Date().toISOString(),
                   record_tag: null,
                 }).eq("id", r.id);
-                const _msgId1 = (() => { try { const b = typeof proxyRes.data?.body === "string" ? JSON.parse(proxyRes.data.body) : proxyRes.data?.body; return b?.messageId || null; } catch { return null; } })();
+                const _msgId1 = extractMessageId(proxyRes.data);
                 await logMessageSend(destMob, r.patient_name, "ABC", r.umr_number, r.primary_key, undefined, _msgId1);
               }
               totalSent++;
@@ -1173,7 +1173,7 @@ const AutomatedMarketing = () => {
                   last_sent_type: "Abnormal History",
                   last_sent_date: new Date().toISOString(),
                 }).eq("id", r.id);
-                const _msgId2 = (() => { try { const b = typeof proxyRes.data?.body === "string" ? JSON.parse(proxyRes.data.body) : proxyRes.data?.body; return b?.messageId || null; } catch { return null; } })();
+                const _msgId2 = extractMessageId(proxyRes.data);
                 await logMessageSend(destMob, r.patient_name, "Abnormal History", r.umr_number, r.primary_key, undefined, _msgId2);
               }
               totalSent++;
@@ -1266,7 +1266,8 @@ const AutomatedMarketing = () => {
                   last_sent_type: "Promotion",
                   last_sent_date: new Date().toISOString(),
                 }).eq("id", r.id);
-                await logMessageSend(destMob, r.patient_name, "Promotion", r.umr_number, r.primary_key);
+                const _msgId3 = extractMessageId(proxyRes.data);
+                await logMessageSend(destMob, r.patient_name, "Promotion", r.umr_number, r.primary_key, undefined, _msgId3);
               }
               totalSent++;
               if (trial) trialSentCount++;
