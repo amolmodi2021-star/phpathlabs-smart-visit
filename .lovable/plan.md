@@ -1,155 +1,99 @@
 
 
-# Plan: User Management with Roles, Rights & Access Control
+# Plan: WhatsApp-Style Chat Page
 
 ## Overview
-Build a full user management system where an admin can create users, define reusable role templates with granular permissions (which sidebar tabs and which sub-tabs/sections within each tab a user can access), and enforce those permissions at login and throughout the app.
+Build a full WhatsApp-like messaging interface that unifies outbound messages (from `message_send_log`) and inbound messages (from `webhook_messages`) into a single conversation view, grouped by mobile number. Desktop shows a two-panel layout (contact list + chat); mobile shows a single-panel flow.
 
-## Current State
-- Authentication uses hardcoded credentials (`PHPATHLABS` / `PHPL6699`) stored in `src/lib/auth.ts`
-- No user table, no roles, no per-user access control
-- All 17 sidebar nav items are visible to everyone
-- Some modules (Loyalty Cards, Marketing, CRM, WhatsApp Webhook) have a secondary PasswordGate
+## Database Changes
 
-## Database Schema (4 new tables via migration)
+### 1. Add columns to `webhook_messages`
+- `message_type` text (text/image/location/button/interactive/status)
+- `media_url` text (for images)
+- `message_id` text (for correlating status updates)
+- `location_lat` numeric, `location_lng` numeric
+- `delivery_status` text (sent/delivered/read/failed)
+- `error_info` jsonb (for failed status details)
 
-### 1. `app_users`
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid PK | |
-| username | text UNIQUE NOT NULL | Login ID |
-| password_hash | text NOT NULL | bcrypt hash (hashed in edge function) |
-| display_name | text | |
-| role_id | uuid FK → app_roles.id | Assigned role template |
-| is_active | boolean DEFAULT true | Active/inactive toggle |
-| last_login_at | timestamptz | |
-| created_at / updated_at | timestamptz | |
-
-### 2. `app_roles`
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid PK | |
-| role_name | text UNIQUE NOT NULL | e.g. "Receptionist", "Lab Technician", "Admin" |
-| description | text | |
-| permissions | jsonb NOT NULL DEFAULT '{}' | Full permissions map (see below) |
-| created_at / updated_at | timestamptz | |
-
-### 3. `app_user_login_history`
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid PK | |
-| user_id | uuid FK → app_users.id | |
-| login_at | timestamptz DEFAULT now() | |
-| ip_address | text | |
-| user_agent | text | |
-
-### 4. Permissions JSON structure (stored in `app_roles.permissions`)
-```json
-{
-  "tabs": {
-    "/": true,
-    "/dashboard": true,
-    "/home-visits": true,
-    "/lims": {
-      "enabled": true,
-      "sections": ["register", "patients", "sample_collection"]
-    },
-    "/crm": false,
-    "/tests": false
-    // ... all 17 tabs listed
-  }
-}
+### 2. Enable realtime on `webhook_messages`
+```sql
+ALTER PUBLICATION supabase_realtime ADD TABLE public.webhook_messages;
 ```
-Each sidebar route is a key. Value is `true`/`false` for simple tabs, or an object with `enabled` + `sections` array for tabs that have sub-tabs (LIMS, CRM, Marketing).
 
-## All Tabs & Their Sections
+## Edge Function: Update `whatsapp-webhook`
+Currently only handles text messages and skips status events. Update to:
+- **Image**: extract `messages.image.url`, store in `media_url`, set `message_type = 'image'`
+- **Location**: extract lat/lng from `messages.location.text`, store in `location_lat`/`location_lng`
+- **Button reply**: extract `messages.button.text`
+- **Interactive/list reply**: extract `messages.interactive.text.list_reply.title`
+- **Status events** (currently skipped): instead of skipping, find the original message by `messageId` and update its `delivery_status` (delivered/read/failed) and `error_info`
+- Store `messageId` on every inbound/outbound insert for correlation
+- Also log outbound auto-replies with their `messageId`
 
-| Sidebar Tab | Route | Sections (sub-tabs) |
-|------------|-------|---------------------|
-| Create Estimate | `/` | — (single page) |
-| Estimate Dashboard | `/dashboard` | — |
-| Home Visits | `/home-visits` | — |
-| Phlebotomists | `/phlebotomists` | — |
-| Test Management | `/tests` | — |
-| Message Templates | `/templates` | — |
-| Abnormal History | `/abnormal-history` | — |
-| Phlebo Dashboard | `/phlebo-dashboard` | — |
-| Loyalty Cards | `/loyalty-cards` | — |
-| Marketing | `/marketing` | Sender, Templates, History, Message Log, New Numbers, Automated |
-| CRM | `/crm` | Contacts, Import, Sequences, Abnormal Tests, Abnormal WhatsApp, Blacklist, Sent History, Settings |
-| LIMS | `/lims` | New Registration, Registered Patients, Sample Collection, Sample Acceptance, Results, Result Verification, Doctor Approval, Dispatch, Completed Home Visits, Pickup Points, Channels |
-| WhatsApp Webhook | `/whatsapp-webhook` | — |
-| WhatsApp Settings | `/whatsapp-settings` | — |
-| LIMS Interface | `/lims-demo` | — |
-| Report Layout | `/report-layout` | — |
-| Doctor & Signatures | `/signature-management` | — |
-| **Users (NEW)** | `/users` | User List, Roles & Rights |
+## New Page: `src/pages/WhatsAppChat.tsx`
 
-## Implementation Steps
+### Contact List Panel (left / main on mobile)
+- Query: aggregate both tables by 10-digit mobile number
+  - `webhook_messages`: group by `sender_number` (strip to 10 digits)
+  - `message_send_log`: group by `mobile_number`
+  - Union and pick latest message timestamp per number
+- Sort descending by last message time
+- Show for each contact:
+  - Profile name (from webhook `sender_name`) or resolved name from CRM > Home Visits > Estimates
+  - 10-digit mobile number
+  - Last message preview (truncated)
+  - Timestamp (relative: "Today 10:30 AM", "Yesterday", date)
+  - Unread indicator for new inbound messages
+- Search bar to filter contacts by name or number
 
-### Step 1: Database migration
-- Create `app_roles`, `app_users`, `app_user_login_history` tables with permissive RLS (matching existing pattern).
-- Seed a default "Admin" role with all permissions enabled.
-- Seed a default admin user (username: `PHPATHLABS`, matching current credentials).
+### Conversation Panel (right / pushed view on mobile)
+- Header: contact name, number, back arrow (mobile)
+- Message bubbles:
+  - **Outbound** (from `message_send_log`): right-aligned, green bubble. Show message type badge since no content is stored (e.g., "Estimate Sent", "Marketing Message", "Home Visit")
+  - **Outbound auto-reply** (from `webhook_messages` direction=outbound): right-aligned, show actual message
+  - **Inbound text**: left-aligned, white bubble with message text
+  - **Inbound image**: show thumbnail with link
+  - **Inbound location**: show Google Maps link with lat/lng
+  - **Inbound button/list reply**: show the reply text in a styled chip
+  - **Status ticks**: single tick (sent), double tick (delivered), blue double tick (read), red X (failed with error tooltip)
+- Timestamp grouping by day ("Today", "Yesterday", "12 April 2026")
+- Sorted ascending (oldest on top, newest at bottom, auto-scroll)
 
-### Step 2: Edge function `user-auth`
-- Handles login: validates username + bcrypt password, returns user data + permissions, logs login history.
-- Handles password reset (admin resets another user's password).
-- No JWT/Supabase Auth needed — keeps the existing session model but stores the logged-in user info (id, username, role, permissions) in localStorage after server-side validation.
+### Name Resolution Logic
+For each 10-digit mobile number, resolve display name with priority:
+1. `crm_contacts.patient_name` (latest by `updated_at`) 
+2. `home_visits` via `estimates` (join estimates on mobile, latest)
+3. `estimates.patient_name` (latest by `created_at`)
+4. `webhook_messages.sender_name` (WhatsApp profile name)
+5. Fallback: show mobile number only
 
-### Step 3: Update `src/lib/auth.ts`
-- Replace hardcoded credential check with a call to the `user-auth` edge function.
-- Store user session (id, username, permissions) in localStorage on successful login.
-- Add `getCurrentUser()` and `getUserPermissions()` helper functions.
+### UI Design
+- **Desktop**: WhatsApp Web layout -- left sidebar (30% width) with contact list, right panel (70%) with chat. Green header bar (#075E54), chat background pattern (#ECE5DD)
+- **Mobile**: Full-screen contact list; tapping opens full-screen chat with back button. Native WhatsApp look with same colors
+- Use the existing `useIsMobile` hook for responsive switching
 
-### Step 4: Update Login page (`src/pages/Login.tsx`)
-- Call the edge function instead of the local `login()` function.
-- Show error if user is inactive.
+### Notifications
+- Subscribe to `webhook_messages` via Supabase Realtime (INSERT events where direction = 'inbound')
+- On new inbound message:
+  - Play notification sound (`/notification.mp3` already exists)
+  - Show browser Notification with sender name + message preview
+  - Clicking notification navigates to the chat with that contact open
+- Request Notification permission on page load
 
-### Step 5: New page `src/pages/UserManagement.tsx`
-Two tabs:
-
-**Tab 1: User List**
-- Table of all users (username, display name, role, active/inactive, last login)
-- Add User dialog (username, display name, password, assign role, active toggle)
-- Edit user, reset password, toggle active/inactive
-- View login history per user
-
-**Tab 2: Roles & Rights**
-- List of role templates
-- Add/Edit Role dialog with:
-  - Role name, description
-  - Checkbox tree for all tabs and their sections
-  - Visual grouping by module area
-- Delete role (only if no users assigned)
-- Duplicate role for quick creation
-
-### Step 6: Update `AppLayout.tsx`
-- Filter `navItems` based on current user's permissions before rendering.
-- Hide tabs the user has no access to.
-- Add "Users" nav item (only visible to admin role).
-
-### Step 7: Update `ProtectedRoute` in `App.tsx`
-- Check if current user has permission for the current route.
-- Redirect to first allowed route if accessing a forbidden page.
-
-### Step 8: Update LIMS, CRM, Marketing pages
-- Filter sub-tab triggers based on user's section-level permissions.
-- Hide sections the user cannot access.
-
-### Step 9: Remove PasswordGate dependency
-- The PasswordGate on Loyalty Cards, Marketing, CRM, WhatsApp Webhook can be removed since access is now controlled by role permissions. (Or keep it as an optional extra layer — will confirm with you.)
+## Sidebar Addition
+- Add nav item `{ to: "/whatsapp-chat", label: "WhatsApp Chat", icon: MessageCircle }` to `allNavItems` in `AppLayout.tsx`
+- Add route in `App.tsx`
+- Add to role permissions structure (add `/whatsapp-chat` key)
 
 ## Files to Create/Modify
-- **New**: `src/pages/UserManagement.tsx`
-- **New**: `supabase/functions/user-auth/index.ts`
-- **Modify**: `src/lib/auth.ts`, `src/pages/Login.tsx`, `src/App.tsx`, `src/components/AppLayout.tsx`
-- **Modify**: `src/pages/Lims.tsx`, `src/pages/CRM.tsx`, `src/pages/Marketing.tsx` (filter sub-tabs)
-- **Migration**: 3 new tables + seed data
+- **Create**: `src/pages/WhatsAppChat.tsx` (main page with both panels)
+- **Modify**: `supabase/functions/whatsapp-webhook/index.ts` (handle all message types + status updates)
+- **Modify**: `src/components/AppLayout.tsx` (add nav item)
+- **Modify**: `src/App.tsx` (add route)
+- **Migration**: add columns to `webhook_messages`, enable realtime
 
-## Security Notes
-- Passwords are hashed server-side (bcrypt in edge function), never stored in plaintext.
-- Permissions are validated both client-side (UI filtering) and checked on login.
-- The admin user cannot be deactivated or deleted.
-- Only users with the "Users" tab permission can manage users and roles.
+## Technical Notes
+- Conversations are built by merging queries from both tables client-side, normalized to 10-digit numbers
+- Status updates use `messageId` correlation -- webhook receives status event, finds matching row, updates `delivery_status`
+- The page will use `useQuery` with realtime cache invalidation (existing `useRealtimeSync` pattern)
 
