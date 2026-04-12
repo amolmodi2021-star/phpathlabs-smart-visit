@@ -34,7 +34,7 @@ export function useAbnormalHistory(mobiles: string[] = []) {
   const sendMutation = useMutation({
     mutationFn: async ({ id, mobile, message, context }: { id: string; mobile: string; message: string; context: string }) => {
       shareOnWhatsApp(mobile, message);
-      logMessageSend(mobile, "", "Abnormal History");
+      logMessageSend(mobile, "", "Abnormal History", undefined, undefined, message);
       const { error } = await supabase
         .from("abnormal_history")
         .update({ sent: true, sent_at: new Date().toISOString(), sent_context: context })

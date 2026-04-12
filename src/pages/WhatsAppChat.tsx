@@ -77,7 +77,7 @@ export default function WhatsAppChat() {
     queryFn: async () => {
       const { data } = await supabase
         .from("message_send_log")
-        .select("id, mobile_number, patient_name, message_type, sent_at")
+        .select("id, mobile_number, patient_name, message_type, sent_at, message_content")
         .order("sent_at", { ascending: false })
         .limit(5000);
       return data || [];
@@ -274,8 +274,8 @@ export default function WhatsAppChat() {
           id: l.id,
           source: "log",
           direction: "outbound",
-          message: `${l.message_type || "Message"} Sent`,
-          messageType: "log",
+          message: l.message_content || `${l.message_type || "Message"} Sent`,
+          messageType: l.message_type || "log",
           timestamp: l.sent_at,
         });
       }
@@ -360,6 +360,15 @@ export default function WhatsAppChat() {
       );
     }
     if (msg.source === "log") {
+      // If we have actual message content, show it with a type badge
+      if (msg.message && msg.message !== `${msg.messageType} Sent`) {
+        return (
+          <div>
+            <span className="text-[10px] font-medium opacity-60 uppercase">{msg.messageType}</span>
+            <p className="whitespace-pre-wrap break-words text-sm mt-0.5">{msg.message}</p>
+          </div>
+        );
+      }
       return (
         <span className="italic text-xs opacity-80">📤 {msg.message}</span>
       );

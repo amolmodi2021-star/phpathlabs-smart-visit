@@ -322,7 +322,7 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
             if (phone) {
               const textMsg = buildReceiptText();
               shareOnWhatsApp(phone, textMsg);
-              logMessageSend(phone, est?.patient_name, "Receipt");
+              logMessageSend(phone, est?.patient_name, "Receipt", undefined, undefined, textMsg);
             }
           }
         }, "image/jpeg", 0.95);

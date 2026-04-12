@@ -1754,6 +1754,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          message_content: string | null
           message_type: string
           mobile_number: string
           patient_name: string | null
@@ -1764,6 +1765,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          message_content?: string | null
           message_type: string
           mobile_number: string
           patient_name?: string | null
@@ -1774,6 +1776,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          message_content?: string | null
           message_type?: string
           mobile_number?: string
           patient_name?: string | null

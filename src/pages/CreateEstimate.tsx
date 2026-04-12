@@ -143,7 +143,7 @@ const CreateEstimate = () => {
           patientName: patientName || undefined,
         });
         shareOnWhatsApp(cleanNumber, msg);
-        logMessageSend(cleanNumber, patientName, "Estimate");
+        logMessageSend(cleanNumber, patientName, "Estimate", undefined, undefined, msg);
       }
 
       try {
