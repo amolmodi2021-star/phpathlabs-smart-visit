@@ -3260,6 +3260,39 @@ export type Database = {
           visit_type: string
         }[]
       }
+      get_wa_chat_messages: {
+        Args: { p_limit?: number; p_mobile_10: string; p_offset?: number }
+        Returns: {
+          delivery_status: string
+          direction: string
+          error_info: Json
+          id: string
+          location_lat: number
+          location_lng: number
+          media_url: string
+          message: string
+          message_id: string
+          message_type: string
+          source: string
+          ts: string
+        }[]
+      }
+      get_wa_contacts_paginated: {
+        Args: {
+          p_limit?: number
+          p_offset?: number
+          p_search?: string
+          p_unread_only?: boolean
+        }
+        Returns: {
+          contact_name: string
+          last_message: string
+          last_time: string
+          mobile: string
+          profile_name: string
+          unread_count: number
+        }[]
+      }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
     }
