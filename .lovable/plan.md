@@ -1,44 +1,75 @@
 
 
-# Plan: Fix Outbound Chat Messages Appearing Under Wrong Contact
+# WhatsApp Chat Performance Optimization Plan
 
 ## Problem
-When you send a message from the reply section to 9552000200, the outbound message is stored in `webhook_messages` with `sender_number = +919574556699` (your business "from" number). The chat groups conversations by `sender_number`, so the message appears under 9574556699 instead of 9552000200.
+Currently, the WhatsApp Chat loads up to 5,000 webhook messages, 5,000 send logs, 5,000 CRM contacts, and 2,000 estimates all at once. As data grows, this will become slow and unresponsive.
 
-## Root Cause
-Line 438 in `WhatsAppChat.tsx`:
-```typescript
-sender_number: fromNumber,  // ← stores YOUR number, not the recipient
-```
+## Solution Overview
+Implement server-side pagination for both the contact list and the message thread, and move heavy computations (name resolution, unread counts, contact building) to a database function.
 
-For inbound messages, `sender_number` correctly holds the customer's number. But for outbound messages sent from the compose bar, it should also store the **customer's** number (the recipient) so the conversation groups correctly.
+---
 
-## Fix
+## Step 1: Create a database function for paginated contacts
 
-### File: `src/pages/WhatsAppChat.tsx`
-Change the `webhook_messages` insert to use the recipient's number instead of the "from" number:
+Build an RPC `get_wa_contacts_paginated` that:
+- Unions `webhook_messages` and `message_send_log` to find distinct mobile numbers
+- Joins against `crm_contacts` and `estimates` for name resolution (server-side)
+- Computes unread count per contact from `webhook_messages.is_read = false`
+- Returns: mobile, name, profile_name, last_message, last_time, unread_count
+- Accepts: `p_search`, `p_offset`, `p_limit`, `p_unread_only`
+- Ordered by last_time DESC
 
-```typescript
-// Before:
-sender_number: fromNumber,
+This eliminates loading thousands of rows client-side just to build the sidebar.
 
-// After:
-sender_number: `+91${selectedMobile}`,
-```
+## Step 2: Create a database function for paginated messages
 
-This makes outbound messages group under the same contact as inbound messages from that customer.
+Build an RPC `get_wa_chat_messages` that:
+- Takes `p_mobile_10` (the contact's normalized number), `p_limit`, `p_offset`
+- Unions `webhook_messages` and `message_send_log` for that contact, deduplicating by message_id
+- Returns messages ordered by timestamp DESC (newest first), paginated
+- Client reverses the order for display
 
-### Database cleanup
-Run a one-time update to fix the two existing broken records:
-```sql
-UPDATE webhook_messages
-SET sender_number = '+919552000200'
-WHERE sender_number = '+919574556699'
-  AND direction = 'outbound'
-  AND message_id IS NULL;
-```
+This replaces the current approach of loading 10,000 rows and filtering client-side.
 
-## Files to Modify
-- `src/pages/WhatsAppChat.tsx` — one line change (sender_number in the insert)
-- Database migration — fix the two existing misattributed records
+## Step 3: Refactor the WhatsApp Chat component
+
+**Contact list sidebar:**
+- Replace the two 5,000-row queries + client-side contact building with a single RPC call
+- Add "load more" infinite scroll or a simple pagination button at the bottom
+- Page size: 30 contacts at a time
+- Search triggers the RPC with `p_search`
+
+**Message thread:**
+- Load latest 50 messages initially via the new RPC
+- Add a "Load older messages" button at the top of the chat
+- Keep the auto-scroll-to-bottom behavior for new messages
+
+**Remove bulk queries:**
+- Remove the `wa-chat-crm` and `wa-chat-estimates` queries entirely (name resolution is now server-side)
+- Remove the `wa-chat-webhook` and `wa-chat-sendlog` bulk queries
+- Replace with targeted paginated RPC calls
+
+**Realtime updates:**
+- Keep realtime subscriptions, but on new message arrival, just prepend to the current message list or invalidate the current page query
+- On new inbound from a new contact, invalidate the contacts query
+
+## Step 4: Add database indexes
+
+Create indexes to support the new queries:
+- `webhook_messages(sender_number, created_at DESC)`
+- `message_send_log(mobile_number, sent_at DESC)`
+- `webhook_messages(is_read)` where direction = 'inbound'
+
+---
+
+## Files to modify
+- **New migration**: Database function `get_wa_contacts_paginated`, `get_wa_chat_messages`, and indexes
+- **`src/pages/WhatsAppChat.tsx`**: Major refactor to use paginated RPCs instead of bulk loading
+
+## What stays the same
+- Compose bar, file upload, send logic
+- Realtime subscriptions (adjusted to work with paginated data)
+- Mark as read/unread functionality
+- Message rendering (ticks, media, etc.)
 
