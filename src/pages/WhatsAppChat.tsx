@@ -392,6 +392,106 @@ export default function WhatsAppChat() {
     }
   });
 
+  // Send message helper
+  const sendMessage = async (type: "text" | "image" | "document", body?: string, mediaUrl?: string, caption?: string) => {
+    if (!selectedMobile) return;
+    const baseUrl = waSettings["wa_global_baseUrl"] || "https://api.aoc-portal.com/v1/whatsapp";
+    const apiKey = waSettings["wa_global_apiKey"];
+    const authHeaderName = waSettings["wa_global_authHeaderName"] || "apikey";
+    const authHeaderPrefix = waSettings["wa_global_authHeaderPrefix"] || "";
+    const fromNumber = waSettings["wa_global_fromNumber"] || "";
+
+    if (!apiKey) { toast.error("WhatsApp API key not configured. Go to WhatsApp Settings."); return; }
+    if (!fromNumber) { toast.error("From number not configured. Go to WhatsApp Settings."); return; }
+
+    const to = selectedMobile.length === 10 ? `+91${selectedMobile}` : `+${selectedMobile}`;
+    
+    let payload: any = {
+      recipient_type: "individual",
+      from: fromNumber,
+      to,
+      type,
+    };
+    if (type === "text") {
+      payload.text = { body: body || "" };
+    } else if (type === "image") {
+      payload.image = { link: mediaUrl || "", caption: caption || "" };
+    } else if (type === "document") {
+      payload.document = { link: mediaUrl || "", caption: caption || "" };
+    }
+
+    setSending(true);
+    try {
+      const { data: proxyRes, error } = await supabase.functions.invoke("whatsapp-proxy", {
+        body: { apiBaseUrl: baseUrl, apiKey, authHeaderName, authHeaderPrefix, payload },
+      });
+
+      if (error) throw error;
+
+      let messageId = "";
+      try {
+        const parsed = typeof proxyRes?.body === "string" ? JSON.parse(proxyRes.body) : proxyRes?.body;
+        messageId = parsed?.messageId || parsed?.message_id || parsed?.messages?.[0]?.id || "";
+      } catch {}
+
+      const msgContent = type === "text" ? (body || "") : `[${type}] ${caption || mediaUrl || ""}`;
+
+      // Insert into webhook_messages for immediate display
+      await supabase.from("webhook_messages").insert({
+        sender_number: fromNumber,
+        message: msgContent,
+        direction: "outbound",
+        message_type: type,
+        media_url: type !== "text" ? mediaUrl : null,
+        message_id: messageId || null,
+        delivery_status: "sent",
+      });
+
+      // Insert into message_send_log for tracking
+      await supabase.from("message_send_log").insert({
+        mobile_number: selectedMobile,
+        patient_name: selectedContact?.name || selectedContact?.profileName || null,
+        message_type: type === "text" ? "Chat Reply" : `Chat ${type.charAt(0).toUpperCase() + type.slice(1)}`,
+        message_content: msgContent,
+        message_id: messageId || null,
+        delivery_status: "sent",
+      });
+
+      queryClient.invalidateQueries({ queryKey: ["wa-chat-webhook"] });
+      queryClient.invalidateQueries({ queryKey: ["wa-chat-sendlog"] });
+      setComposeText("");
+      toast.success("Message sent!");
+    } catch (err: any) {
+      toast.error("Failed to send: " + (err.message || "Unknown error"));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleSendText = () => {
+    if (!composeText.trim() || sending) return;
+    sendMessage("text", composeText.trim());
+  };
+
+  const handleFileUpload = async (file: File, type: "image" | "document") => {
+    setSending(true);
+    try {
+      const ext = file.name.split(".").pop() || "bin";
+      const path = `${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+      const { error: uploadErr } = await supabase.storage.from("chat-attachments").upload(path, file);
+      if (uploadErr) throw uploadErr;
+
+      const { data: urlData } = supabase.storage.from("chat-attachments").getPublicUrl(path);
+      const publicUrl = urlData.publicUrl;
+
+      const caption = type === "image" ? "" : file.name;
+      await sendMessage(type, undefined, publicUrl, caption);
+    } catch (err: any) {
+      toast.error("Upload failed: " + (err.message || "Unknown error"));
+      setSending(false);
+    }
+  };
+
   const getStatusLabel = (status: string | null | undefined) => {
     if (!status) return "Sent";
     switch (status) {
