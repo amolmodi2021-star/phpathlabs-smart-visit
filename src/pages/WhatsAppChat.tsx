@@ -105,7 +105,7 @@ export default function WhatsAppChat() {
     queryFn: async () => {
       const { data } = await supabase
         .from("webhook_messages")
-        .select("id, sender_number, sender_name, message, direction, created_at, message_type, media_url, message_id, location_lat, location_lng, delivery_status, error_info")
+        .select("id, sender_number, sender_name, message, direction, created_at, message_type, media_url, message_id, location_lat, location_lng, delivery_status, error_info, is_read")
         .order("created_at", { ascending: false })
         .limit(5000);
       return data || [];
