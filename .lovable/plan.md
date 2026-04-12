@@ -1,41 +1,53 @@
 
 
-# Plan: Ensure Safe Message ID Matching (Remove Fuzzy Match Risk)
+# Plan: Add Reply Section to WhatsApp Chat
 
-## Current Situation
-The "fuzzy match" is just stripping the `:1` suffix that the AOC API appends to message IDs in status callbacks. For example:
-- We store: `a88477a1-35cb-4aa1-a2ee-2bf621185944`
-- Status webhook arrives with: `a88477a1-35cb-4aa1-a2ee-2bf621185944:1`
+## What
+Add a WhatsApp-style compose bar at the bottom of the chat panel, supporting text replies, image sharing, and document sharing. Messages are sent via the AOC API through the existing `whatsapp-proxy` edge function.
 
-Since these are UUIDs, two different messages will never share the same base ID, so it's safe. I verified there are zero duplicate message IDs in the database.
+## How It Works
+1. **Text replies**: User types message, hits send → calls whatsapp-proxy with `type: "text"` payload
+2. **Image replies**: User clicks attachment icon → picks image file → uploads to Supabase storage → sends image URL via `type: "image"` payload
+3. **Document replies**: Same flow but with `type: "document"` payload
 
-**Good news**: The latest messages ARE working correctly. The ABC message to 9552000200 at 05:22 shows `delivered` status, and the auto-reply at 05:39 also shows `delivered`. The fix from the previous round is working.
+API credentials (`apiKey`, `fromNumber`, `baseUrl`, `authHeaderName`) are loaded from `app_settings` (global `wa_global_*` keys).
 
-## What I Will Do
-
-### 1. Make matching safer and more precise
-Instead of blindly stripping `:N` and doing a second broad update, I will change the webhook to use a **single query** with an `OR` filter, and add a safeguard: only strip the suffix if the format matches `UUID:digit` exactly.
-
-### 2. Prevent accidental cross-updates
-Add a check that ensures only ONE row gets updated per status event. If the exact ID matches, skip the base-ID fallback entirely.
+Sent replies are logged to `message_send_log` and also inserted into `webhook_messages` (as outbound) so they appear immediately in the chat.
 
 ## Files to Modify
-- `supabase/functions/whatsapp-webhook/index.ts` — tighten the matching logic with regex validation and single-row safeguards
 
-## Technical Detail
-```typescript
-// Only strip suffix if it matches the AOC pattern: UUID:digit(s)
-const aocSuffixPattern = /^[0-9a-f-]{36}:\d+$/;
-const baseId = aocSuffixPattern.test(messageId) ? messageId.split(":")[0] : null;
+### 1. `src/pages/WhatsAppChat.tsx`
+- Add a compose bar below the messages area with: text input, send button, attachment menu (image/document)
+- Load global WA settings from `app_settings` on mount
+- On send: call `supabase.functions.invoke("whatsapp-proxy", ...)` with the appropriate payload format
+- After successful send: insert into `webhook_messages` (direction: outbound) and `message_send_log` for tracking
+- Extract `messageId` from proxy response for delivery status tracking
+- Add a storage bucket upload flow for image/document attachments
 
-// Try exact match first; only fall back to baseId if exact found 0 rows
-const exactResult = await supabase.from("webhook_messages")
-  .update(updatePayload).eq("message_id", messageId);
-if (baseId && (exactResult.count === 0 || !exactResult.data?.length)) {
-  await supabase.from("webhook_messages")
-    .update(updatePayload).eq("message_id", baseId);
-}
+### 2. Database migration
+- Create a `chat-attachments` storage bucket for uploaded images/documents (public, with RLS)
+
+## Payload Formats (from AOC API docs)
+
+**Text:**
+```json
+{ "recipient_type": "individual", "from": "+91...", "to": "+91{mobile}", "type": "text", "text": { "body": "message" } }
 ```
 
-This ensures no accidental matches — only the exact AOC UUID pattern triggers fallback.
+**Image:**
+```json
+{ "recipient_type": "individual", "from": "+91...", "to": "+91{mobile}", "type": "image", "image": { "link": "https://...", "caption": "optional" } }
+```
+
+**Document:**
+```json
+{ "recipient_type": "individual", "from": "+91...", "to": "+91{mobile}", "type": "document", "document": { "link": "https://...", "caption": "optional" } }
+```
+
+## UI Design
+- Compose bar pinned at bottom of chat panel, matching WhatsApp's green/white styling
+- Attachment icon (paperclip) opens a small menu: "Image" and "Document"
+- File picker opens native file dialog; after upload, shows preview before sending
+- Send button (green arrow icon) on the right
+- Loading spinner while message is being sent
 
