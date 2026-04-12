@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { ArrowLeft, Search, Check, CheckCheck, X, MapPin, Image as ImageIcon, MessageCircle, Info, Filter, Send, Paperclip, FileText, Loader2 } from "lucide-react";
+import { ArrowLeft, Search, Check, CheckCheck, X, MapPin, Image as ImageIcon, MessageCircle, Info, Filter, Send, Paperclip, FileText, Loader2, AlertCircle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { format, isToday, isYesterday, parseISO } from "date-fns";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
