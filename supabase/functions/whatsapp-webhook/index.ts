@@ -89,6 +89,7 @@ Deno.serve(async (req) => {
         "webhook_auto_reply_message",
         "webhook_auto_reply_enabled",
         "webhook_wa_me_url",
+        "webhook_max_auto_replies_24h",
         "loyalty_wa_baseUrl",
         "loyalty_wa_apiKey",
         "loyalty_wa_authHeaderName",
@@ -104,6 +105,7 @@ Deno.serve(async (req) => {
     const autoReplyEnabled = settingsMap["webhook_auto_reply_enabled"] !== "false";
     const baseReplyMessage = settingsMap["webhook_auto_reply_message"] || "Thank you for your message. We will get back to you shortly.";
     const waMeUrl = settingsMap["webhook_wa_me_url"] || "";
+    const maxAutoReplies = Number(settingsMap["webhook_max_auto_replies_24h"] || "0");
     const autoReplyMessage = waMeUrl ? `${baseReplyMessage}\n\n${waMeUrl}` : baseReplyMessage;
     const apiBaseUrl = settingsMap["loyalty_wa_baseUrl"] || "";
     const apiKey = settingsMap["loyalty_wa_apiKey"] || "";
@@ -197,6 +199,23 @@ Deno.serve(async (req) => {
 
     // Send auto-reply if enabled
     if (autoReplyEnabled && senderNumber && apiBaseUrl && apiKey) {
+      // Check rate limit
+      let rateLimited = false;
+      if (maxAutoReplies > 0) {
+        const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const { count } = await supabase
+          .from("webhook_messages")
+          .select("id", { count: "exact", head: true })
+          .eq("sender_number", senderNumber)
+          .eq("direction", "outbound")
+          .gte("created_at", since);
+        if ((count ?? 0) >= maxAutoReplies) {
+          rateLimited = true;
+          console.log(`Rate limited: ${senderNumber} has ${count} auto-replies in 24h (max: ${maxAutoReplies})`);
+        }
+      }
+
+      if (!rateLimited) {
       const authHeaderValue = authHeaderPrefix ? `${authHeaderPrefix} ${apiKey}` : apiKey;
 
       const replyPayload = {
