@@ -1,45 +1,39 @@
 
-# Per-Test Approver Signatures on Reports
 
-## Problem
-Currently, `approved_by` is stored once per registration in the `approved_reports` table. The report shows a single signature on every page. If Dr. Hemang approves some tests and Dr. Patel approves others, only the last approver's signature appears everywhere.
+# Ensure Report Signature Immutability
 
-## Solution
-Store `approved_by` inside each test result entry in the `test_results` JSONB. On the report, each page resolves signatures from the approvers of the tests on that page.
+## Current State
+- `approved_by` (doctor's display name) is stored per-test inside the `test_results` JSONB snapshot — this is immutable and correct.
+- However, qualification, designation, and signature image are **fetched live** from `pathologist_signatures` at report view time.
+- If a doctor's signature, qualification, or designation is later changed or deleted, **old reports would show the new/missing data** instead of what was valid at approval time.
 
-## Changes
+## Solution: Snapshot Signature Details at Approval Time
 
-### 1. DoctorApproval.tsx — Store `approved_by` per test result
-When building the `test_results` snapshot entries, add `approved_by: getCurrentUser()?.display_name || "Doctor"` to each individual test result object (alongside `test_id`, `parameter_id`, etc.). This way each test knows who approved it.
+Store the full signature details (name, qualification, designation, signature image URL) inside the `approved_reports` snapshot alongside `approved_by`, so reports are **100% self-contained** and never affected by future changes.
 
-### 2. LimsReportView.tsx — Per-page signature resolution
-- Remove the single `signatureData` state. Instead, store all signatures + their resolved image URLs in a map.
-- Fetch all `pathologist_signatures` and all `app_users` for mapped entries. Build a lookup: `display_name → signature data`.
-- For each page, collect unique `approved_by` values from the test blocks on that page.
-- Render one `ReportSignatureBlock` per unique approver on that page, displayed side by side (flex row).
+### Changes
 
-### 3. ReportSignatureBlock.tsx — Support multiple signatures
-Update the component to optionally render multiple signatures side by side, or the parent will simply render multiple instances in a flex row.
+#### 1. `DoctorApproval.tsx` — Snapshot signature details per test
+- When approving, look up the current user's mapped signature from `pathologist_signatures` (by `mapped_user_id` matching the logged-in user).
+- Store in each test result entry:
+  - `approved_by` (display name) — already done
+  - `approved_by_qualification` (string)
+  - `approved_by_designation` (string)
+  - `approved_by_signature_url` (full public URL of signature image)
 
-### 4. PageContent type — Track approvers per page
-Add `approvers` field to the `PageContent` type so each page knows which doctors' signatures to show.
+#### 2. `LimsReportView.tsx` — Prefer snapshot data, fall back to live lookup
+- When resolving signatures for each page, first check if the test results contain `approved_by_qualification`, `approved_by_designation`, `approved_by_signature_url`.
+- If present, use those (immutable snapshot).
+- If absent (older reports before this change), fall back to the current live lookup from `pathologist_signatures` — maintaining backward compatibility.
 
-## Technical Flow
-```text
-Approval:
-  test_results[i].approved_by = "Dr. Hemang"   ← per-test
+### Files to modify
+- **`src/components/lims/DoctorApproval.tsx`** — Fetch and embed signature details at approval time
+- **`src/pages/LimsReportView.tsx`** — Prefer embedded signature data, fall back to live lookup
 
-Report View:
-  Page has blocks [Test A (approved_by: Dr. Hemang), Test B (approved_by: Dr. Patel)]
-  → Show both Dr. Hemang's and Dr. Patel's signatures on that page
+### No database migration needed
+All data is stored in existing JSONB columns.
 
-  Page has blocks [Test C (approved_by: Dr. Hemang)]
-  → Show only Dr. Hemang's signature
-```
+### Result
+- Reports approved after this change will **always** show the exact signature, qualification, and designation from the moment of approval — even if the doctor's details are later updated or the signature record is deleted.
+- Old reports continue to work via the existing live lookup.
 
-## Files to modify
-- **`src/components/lims/DoctorApproval.tsx`** — Add `approved_by` to each test result snapshot entry
-- **`src/pages/LimsReportView.tsx`** — Replace single signature with per-page multi-signature resolution
-- **`src/components/report/ReportSignatureBlock.tsx`** — Minor layout adjustment for multiple signatures
-
-No database migration needed — `approved_by` is stored inside existing JSONB `test_results` column.
