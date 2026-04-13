@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Search, User, Monitor, Calculator, ChevronDown, ChevronUp, Loader2, CheckCircle2, Undo2, RotateCcw, Eye, Stethoscope, FileCheck } from "lucide-react";
+import { Search, User, Monitor, Calculator, ChevronDown, ChevronUp, Loader2, CheckCircle2, Undo2, RotateCcw, Eye, Stethoscope, FileCheck, StickyNote, Trash2 } from "lucide-react";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { toast } from "sonner";
 import { formatDateDDMMYYYY } from "@/lib/utils";
@@ -24,6 +24,7 @@ interface ParameterResult {
   displayOrder: number; rangeType: string; descriptiveOptions: string[]; expectedValue: string;
   isOutsourced: boolean; outsourceLabName: string | null; outsourceStatus: string; isSnipMode: boolean;
   enteredAt: string | null; verifiedAt: string | null;
+  note: string;
 }
 
 interface SnipOnlyTest {
@@ -54,6 +55,8 @@ const DoctorApproval = () => {
   const [viewSnipImages, setViewSnipImages] = useState<string[] | null>(null);
   const [actionKey, setActionKey] = useState<string | null>(null);
   const [daPage, setDaPage] = useState(0);
+  const [editedNotes, setEditedNotes] = useState<Record<string, string>>({});
+  const [activeNoteKey, setActiveNoteKey] = useState<string | null>(null);
 
   useEffect(() => { const t = setTimeout(() => { setDebouncedSearch(search); setDaPage(0); }, 400); return () => clearTimeout(t); }, [search]);
 
