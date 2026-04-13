@@ -432,7 +432,7 @@ const Dispatch = () => {
               </div>
               <ScrollArea className="flex-1">
                 <div className="divide-y">
-                  {dispatchEntries.map((entry) => {
+                  {sortedDispatchEntries.map((entry) => {
                     const reg = entry.registration;
                     const isSelected = selectedPatientId === reg.id;
                     return (
