@@ -116,6 +116,7 @@ const ResultsEntry = () => {
   const [blankParamCount, setBlankParamCount] = useState(0);
   const [highlightBlanksForRegs, setHighlightBlanksForRegs] = useState<Set<string>>(new Set());
   const autoSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  useEffect(() => { editedNotesRef.current = editedNotes; }, [editedNotes]);
   const [rePage, setRePage] = useState(0);
 
   useEffect(() => {
