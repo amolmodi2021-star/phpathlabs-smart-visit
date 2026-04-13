@@ -35,12 +35,12 @@ const WhatsAppWebhook = () => {
       const { data } = await supabase
         .from("app_settings")
         .select("setting_key, setting_value")
-        .in("setting_key", ["webhook_auto_reply_enabled", "webhook_auto_reply_message", "webhook_wa_me_url"]);
+        .in("setting_key", ["webhook_auto_reply_enabled", "webhook_auto_reply_message", "webhook_wa_me_url", "webhook_max_auto_replies_24h"]);
       (data || []).forEach((s) => {
         if (s.setting_key === "webhook_auto_reply_enabled") setAutoReplyEnabled(s.setting_value !== "false");
         if (s.setting_key === "webhook_auto_reply_message") setAutoReplyMessage(s.setting_value);
         if (s.setting_key === "webhook_wa_me_url" && s.setting_value) setWaMeUrl(s.setting_value);
-      });
+        if (s.setting_key === "webhook_max_auto_replies_24h") setMaxAutoReplies(Number(s.setting_value) || 0);
     })();
   }, []);
 
@@ -57,6 +57,7 @@ const WhatsAppWebhook = () => {
       saveSetting("webhook_auto_reply_enabled", String(autoReplyEnabled)),
       saveSetting("webhook_auto_reply_message", autoReplyMessage),
       saveSetting("webhook_wa_me_url", waMeUrl),
+      saveSetting("webhook_max_auto_replies_24h", String(maxAutoReplies)),
     ]);
     setSaving(false);
     toast({ title: "Settings saved" });
@@ -214,7 +215,11 @@ const WhatsAppWebhook = () => {
             <Label>wa.me Contact URL (for quick chat button)</Label>
             <Input value={waMeUrl} onChange={(e) => setWaMeUrl(e.target.value)} placeholder="https://wa.me/+916356556699" className="mt-1" />
           </div>
-          <div className="flex gap-2">
+          <div>
+            <Label>Max auto-replies per number in 24 hours (0 = unlimited)</Label>
+            <Input type="number" value={maxAutoReplies} onChange={(e) => setMaxAutoReplies(Number(e.target.value))} min={0} className="mt-1 w-40" placeholder="0" />
+            <p className="text-xs text-muted-foreground mt-1">Limits how many auto-replies a single number receives within 24 hours. Set to 0 for unlimited.</p>
+          </div>
             <Button onClick={handleSave} disabled={saving}>{saving ? "Saving..." : "Save Settings"}</Button>
             {waMeUrl && (
               <Button variant="outline" onClick={() => window.open(waMeUrl, "_blank")}>
