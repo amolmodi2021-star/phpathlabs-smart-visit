@@ -1,43 +1,36 @@
 
 
-# Advisory/Multi-Category Reference Ranges (e.g. HbA1c)
+# Fix Missing Audit Trail "By" Fields in LIMS Workflow
 
-## The Problem
-For parameters like HbA1c, there are multiple clinical categories (Normal: <5.7, Pre-Diabetic: 5.7–6.4, Diabetic: ≥6.5). You want to:
-1. Flag anything outside "Normal" as abnormal (H)
-2. Show **all** categories in the report's Reference Range column
+## Problem
+The dispatch section shows timestamps for each stage but the "by" names (who collected, accepted, entered, verified) are blank. Investigation of the database confirms:
+- `collected_by`, `accepted_by` on `sample_tubes` = always null
+- `entered_by`, `verified_by` on `patient_results` = always null
+- `approved_by` works correctly
 
-## How It Already Works (Almost)
-Your system already supports this — you just need to use the fields correctly:
+## Root Causes
 
-- **Low / High** → Set to the "Normal" bounds (e.g., Low = blank, High = 5.6). This drives the H/L flag logic.
-- **Display Text** → Enter the full multi-line reference text that shows all categories. This is what appears in the report.
+**Cause 1 — Delete+Reinsert loses previous stage data:**
+- When Result Verification saves, it deletes existing results and reinserts new ones with `verified_by` but does NOT carry forward `entered_by` from the previous stage
+- When Doctor Approval saves, it deletes and reinserts with `approved_by` but does NOT carry forward `entered_by` or `verified_by`
 
-The flag engine (`reportFlags.ts`) already uses Low/High for flagging, and the report renders `normal_range_text` (Display Text) in the Reference Range column.
+**Cause 2 — Sample tube "by" fields:**
+- The `.update()` calls in SampleCollection and SampleAcceptance include `collected_by` and `accepted_by` correctly, but data shows all null. This may be due to a stale browser cache from before the code was added. The code itself is correct.
 
-## What's Missing
-The current numeric range UI auto-generates Display Text from Low/High, which doesn't work for advisory ranges. We need a small enhancement:
+## Fix
 
-### Change: `src/pages/ReportParameters.tsx`
-- Add a toggle **"Advisory Range"** (or "Multi-category Range") checkbox on numeric range type parameters.
-- When enabled:
-  - Low/High fields remain (used for flagging the "normal" bounds)
-  - Display Text becomes a **multi-line textarea** instead of a single-line input, so you can enter:
-    ```
-    Non-Diabetic: < 5.7%
-    Pre-Diabetic: 5.7 - 6.4%
-    Diabetic: ≥ 6.5%
-    ```
-  - Display Text is NOT auto-populated from Low/High — it stays manual.
+### File: `src/components/lims/ResultVerification.tsx`
+- In the verify upsert object (~line 568), add `entered_by: p.enteredBy || null` to carry forward the entered_by from the loaded result data
+- Ensure the parameter data type includes `enteredBy` (check if it's already loaded from the query)
 
-### Change: `src/components/report/ReportResultsSection.tsx`
-- In the Reference Range column, if `normal_range_text` contains newlines, render each line on its own line (using `whitespace-pre-line` or `<br/>` splits) so the multi-category ranges display neatly in the report.
+### File: `src/components/lims/DoctorApproval.tsx`
+- In both approve upsert paths (~lines 290, 397), add:
+  - `entered_by: p.enteredBy || null`
+  - `verified_by: p.verifiedBy || null`
+- Ensure the parameter data type includes both fields from the query
 
-### No changes needed to:
-- Flag logic (`reportFlags.ts`) — already uses Low/High for numeric flagging
-- Result Entry / Verification / Approval — they already display `referenceRange` text as-is
-- Database schema — `normal_range_text` is already a text field that can hold multi-line content
+### File: `src/components/lims/ResultsEntry.tsx`, `ResultVerification.tsx`, `DoctorApproval.tsx`
+- Verify that the data-loading queries for parameters include `entered_by` and `verified_by` from `patient_results` and map them into the parameter objects so they're available to carry forward during re-insertion.
 
-## Summary
-Two small UI changes: a toggle + textarea in parameter management, and multi-line rendering in the report. The existing flag engine handles the rest.
+### No database changes needed — all columns already exist.
 
