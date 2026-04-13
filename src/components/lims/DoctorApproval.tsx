@@ -593,6 +593,13 @@ const DoctorApproval = () => {
                   <div className="flex items-center justify-between px-1 py-0.5 bg-muted/40 rounded-t">
                     <span className="text-xs font-medium text-muted-foreground">{tg.testName}</span>
                     <div className="flex items-center gap-1">
+                      <Button size="sm" variant="ghost" className="h-6 text-[11px] gap-1 text-amber-600" onClick={() => {
+                        const newNotes = { ...editedNotes };
+                        tg.params.forEach(p => { const k = `${reg.id}||${p.parameterId}`; if (editedNotes[k] === undefined && !p.note) newNotes[k] = "Kindly correlate clinically"; });
+                        setEditedNotes(newNotes);
+                      }}>
+                        <StickyNote className="h-3 w-3" /> Add Note
+                      </Button>
                       <Button size="sm" variant="ghost" className="h-6 text-[11px] gap-1 text-orange-600" disabled={isSendingBack} onClick={() => sendBackForVerification(reg.id, tg.testId, tg.testName)}>
                         {isSendingBack ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />} Send Back
                       </Button>
