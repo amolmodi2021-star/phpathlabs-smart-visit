@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Search, User, Monitor, Calculator, ChevronDown, ChevronUp, Loader2, CheckCircle2, Undo2, RotateCcw, Eye, Stethoscope, FileCheck } from "lucide-react";
+import { Search, User, Monitor, Calculator, ChevronDown, ChevronUp, Loader2, CheckCircle2, Undo2, RotateCcw, Eye, Stethoscope, FileCheck, StickyNote, Trash2 } from "lucide-react";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { toast } from "sonner";
 import { formatDateDDMMYYYY } from "@/lib/utils";
@@ -24,6 +24,7 @@ interface ParameterResult {
   displayOrder: number; rangeType: string; descriptiveOptions: string[]; expectedValue: string;
   isOutsourced: boolean; outsourceLabName: string | null; outsourceStatus: string; isSnipMode: boolean;
   enteredAt: string | null; verifiedAt: string | null;
+  note: string;
 }
 
 interface SnipOnlyTest {
@@ -54,6 +55,8 @@ const DoctorApproval = () => {
   const [viewSnipImages, setViewSnipImages] = useState<string[] | null>(null);
   const [actionKey, setActionKey] = useState<string | null>(null);
   const [daPage, setDaPage] = useState(0);
+  const [editedNotes, setEditedNotes] = useState<Record<string, string>>({});
+  const [activeNoteKey, setActiveNoteKey] = useState<string | null>(null);
 
   useEffect(() => { const t = setTimeout(() => { setDebouncedSearch(search); setDaPage(0); }, 400); return () => clearTimeout(t); }, [search]);
 
@@ -201,6 +204,7 @@ const DoctorApproval = () => {
             outsourceStatus: isParamOutsourced ? (snipDetail?.status || "pending") : "",
             isSnipMode: isParamOutsourced && snipDetail?.resultMode === "snip",
             enteredAt: existing?.entered_at || null, verifiedAt: existing?.verified_at || null,
+            note: existing?.note || "",
           });
         }
       }
@@ -269,7 +273,8 @@ const DoctorApproval = () => {
         const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
         const unit = p.isOutsourced && editedUnits[k] !== undefined ? editedUnits[k] : p.unit;
         const refRange = p.isOutsourced && editedRefRanges[k] !== undefined ? editedRefRanges[k] : p.referenceRange;
-        upserts.push({ registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId, param_code: p.paramCode, parameter_name: p.parameterName, result_value: value || null, unit, reference_range: refRange, normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh, flag: flag || null, status: "approved", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, approved_at: new Date().toISOString(), entered_at: p.enteredAt || null, verified_at: p.verifiedAt || null, approved_by: getCurrentUser()?.display_name || "Doctor" });
+         const noteVal = editedNotes[k] !== undefined ? editedNotes[k] : p.note;
+         upserts.push({ registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId, param_code: p.paramCode, parameter_name: p.parameterName, result_value: value || null, unit, reference_range: refRange, normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh, flag: flag || null, status: "approved", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, approved_at: new Date().toISOString(), entered_at: p.enteredAt || null, verified_at: p.verifiedAt || null, approved_by: getCurrentUser()?.display_name || "Doctor", note: noteVal || null });
       }
       if (upserts.length > 0) {
         await supabase.from("patient_results").delete().eq("registration_id", reg.id).eq("test_id", testId).eq("status", "verified");
@@ -309,6 +314,7 @@ const DoctorApproval = () => {
         approved_by_qualification: approverQualification,
         approved_by_designation: approverDesignation,
         approved_by_signature_url: approverSignatureUrl,
+        note: u.note || null,
       }));
       // Fetch existing approved_reports to merge
       const { data: existingReport } = await supabase.from("approved_reports").select("test_results, outsourced_snip_urls").eq("registration_id", reg.id).maybeSingle();
@@ -374,7 +380,8 @@ const DoctorApproval = () => {
           const value = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
           const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
           const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
-          upserts.push({ registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId, param_code: p.paramCode, parameter_name: p.parameterName, result_value: value || null, unit: p.unit, reference_range: p.referenceRange, normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh, flag: flag || null, status: "approved", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, approved_at: new Date().toISOString(), entered_at: p.enteredAt || null, verified_at: p.verifiedAt || null, approved_by: getCurrentUser()?.display_name || "Doctor" });
+          const noteVal = editedNotes[k] !== undefined ? editedNotes[k] : p.note;
+          upserts.push({ registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId, param_code: p.paramCode, parameter_name: p.parameterName, result_value: value || null, unit: p.unit, reference_range: p.referenceRange, normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh, flag: flag || null, status: "approved", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, approved_at: new Date().toISOString(), entered_at: p.enteredAt || null, verified_at: p.verifiedAt || null, approved_by: getCurrentUser()?.display_name || "Doctor", note: noteVal || null });
         }
         if (upserts.length > 0) {
           await supabase.from("patient_results").delete().eq("registration_id", reg.id).eq("test_id", testId).eq("status", "verified");
@@ -397,6 +404,7 @@ const DoctorApproval = () => {
           approved_by_qualification: approverQualAll,
           approved_by_designation: approverDesigAll,
           approved_by_signature_url: approverSigUrlAll,
+          note: u.note || null,
         }));
       }
       // Archive combined snapshot
@@ -465,7 +473,27 @@ const DoctorApproval = () => {
     return (
       <TableRow key={key} className={rowBg}>
         <TableCell className="py-1.5 text-xs font-mono text-muted-foreground">{p.paramCode}</TableCell>
-        <TableCell className="py-1.5 text-sm font-medium">{p.parameterName}{p.isCalculated && <Calculator className="inline h-3 w-3 ml-1 text-primary" />}</TableCell>
+        <TableCell className="py-1.5 text-sm font-medium">
+          <div className="flex items-center gap-1">
+            {p.parameterName}{p.isCalculated && <Calculator className="inline h-3 w-3 ml-1 text-primary" />}
+            <StickyNote
+              className={`inline h-3 w-3 cursor-pointer shrink-0 ${(editedNotes[key] !== undefined ? editedNotes[key] : p.note) ? 'text-amber-600' : 'text-muted-foreground hover:text-primary'}`}
+              onClick={(e) => { e.stopPropagation(); if (activeNoteKey === key) { setActiveNoteKey(null); } else { setActiveNoteKey(key); if (editedNotes[key] === undefined && !p.note) setEditedNotes(prev => ({ ...prev, [key]: "Kindly correlate clinically" })); } }}
+            />
+          </div>
+          {activeNoteKey === key && (
+            <div className="flex items-center gap-1 mt-1">
+              <Input value={editedNotes[key] ?? p.note ?? ""} onChange={e => setEditedNotes(prev => ({ ...prev, [key]: e.target.value }))} className="h-6 text-xs w-full" placeholder="Kindly correlate clinically" autoFocus onClick={e => e.stopPropagation()} />
+              <Trash2 className="h-3.5 w-3.5 text-destructive cursor-pointer shrink-0" onClick={(e) => { e.stopPropagation(); setEditedNotes(prev => ({ ...prev, [key]: "" })); setActiveNoteKey(null); }} />
+            </div>
+          )}
+          {(editedNotes[key] ?? p.note) && activeNoteKey !== key && (
+            <div className="flex items-center gap-1 mt-0.5">
+              <div className="text-xs font-bold text-amber-700 cursor-pointer" onClick={(e) => { e.stopPropagation(); setActiveNoteKey(key); }}>📝 {editedNotes[key] ?? p.note}</div>
+              <Trash2 className="h-3 w-3 text-destructive/60 hover:text-destructive cursor-pointer shrink-0" onClick={(e) => { e.stopPropagation(); setEditedNotes(prev => ({ ...prev, [key]: "" })); }} />
+            </div>
+          )}
+        </TableCell>
         {renderHistoryCell(p.parameterId, 0)}{renderHistoryCell(p.parameterId, 1)}
         <TableCell className="py-1.5 w-[180px]">
           {p.isCalculated ? (<Input value={currentValue} readOnly className="h-7 text-sm bg-muted/50 w-[120px] font-mono" />) :
@@ -565,6 +593,13 @@ const DoctorApproval = () => {
                   <div className="flex items-center justify-between px-1 py-0.5 bg-muted/40 rounded-t">
                     <span className="text-xs font-medium text-muted-foreground">{tg.testName}</span>
                     <div className="flex items-center gap-1">
+                      <Button size="sm" variant="ghost" className="h-6 text-[11px] gap-1 text-amber-600" onClick={() => {
+                        const newNotes = { ...editedNotes };
+                        tg.params.forEach(p => { const k = `${reg.id}||${p.parameterId}`; if (editedNotes[k] === undefined && !p.note) newNotes[k] = "Kindly correlate clinically"; });
+                        setEditedNotes(newNotes);
+                      }}>
+                        <StickyNote className="h-3 w-3" /> Add Note
+                      </Button>
                       <Button size="sm" variant="ghost" className="h-6 text-[11px] gap-1 text-orange-600" disabled={isSendingBack} onClick={() => sendBackForVerification(reg.id, tg.testId, tg.testName)}>
                         {isSendingBack ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />} Send Back
                       </Button>

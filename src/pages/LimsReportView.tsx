@@ -50,6 +50,7 @@ interface TestResultEntry {
   approved_by_qualification?: string | null;
   approved_by_designation?: string | null;
   approved_by_signature_url?: string | null;
+  note?: string | null;
 }
 
 interface TestBlock {
@@ -804,6 +805,7 @@ function mapParamToTestResult(param: TestResultEntry): TestResult {
     normal_range_high: param.normal_range_high?.toString() || undefined,
     flag: param.flag || undefined,
     test_name: param.test_name,
+    remark: (param as any).note || undefined,
   };
 }
 
