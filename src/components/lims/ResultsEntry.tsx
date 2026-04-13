@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Search, User, Monitor, Save, Calculator, Wifi, WifiOff, ChevronDown, ChevronUp, Check, Loader2, FlaskConical, Package, SendHorizonal, ArrowRightLeft, Eye, Trash2 } from "lucide-react";
+import { Search, User, Monitor, Save, Calculator, Wifi, WifiOff, ChevronDown, ChevronUp, Check, Loader2, FlaskConical, Package, SendHorizonal, ArrowRightLeft, Eye, Trash2, StickyNote } from "lucide-react";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import OutsourcedResults from "./OutsourcedResults";
@@ -48,6 +48,7 @@ interface ParameterResult {
   outsourceLabName: string | null; // lab name if sent
   outsourceStatus: string; // pending | sent | results_entered
   isSnipMode: boolean; // true if results were added via snip/image
+  note: string;
 }
 
 interface IncompleteTest {
@@ -108,6 +109,8 @@ const ResultsEntry = () => {
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
   const [editedUnits, setEditedUnits] = useState<Record<string, string>>({});
   const [editedRefRanges, setEditedRefRanges] = useState<Record<string, string>>({});
+  const [editedNotes, setEditedNotes] = useState<Record<string, string>>({});
+  const [activeNoteKey, setActiveNoteKey] = useState<string | null>(null);
   const [editedFlags, setEditedFlags] = useState<Record<string, string>>({});
   const [blankParamCount, setBlankParamCount] = useState(0);
   const [highlightBlanksForRegs, setHighlightBlanksForRegs] = useState<Set<string>>(new Set());
@@ -595,6 +598,7 @@ const ResultsEntry = () => {
             outsourceLabName: isParamOutsourced ? (snipDetail?.labName || null) : null,
             outsourceStatus: isParamOutsourced ? (snipDetail?.status || "pending") : "",
             isSnipMode: isParamOutsourced && snipDetail?.resultMode === "snip",
+            note: existing?.note || "",
           });
         }
       }
@@ -723,8 +727,9 @@ const ResultsEntry = () => {
         status: "pending",
         is_calculated: p.isCalculated,
         is_from_interface: p.isFromInterface,
-        entered_by: getCurrentUser()?.display_name || null,
-      });
+         entered_by: getCurrentUser()?.display_name || null,
+         note: editedNotes[key] !== undefined ? (editedNotes[key] || null) : (p.note || null),
+        });
     }
     if (upserts.length === 0) return;
     try {
@@ -780,6 +785,7 @@ const ResultsEntry = () => {
           is_calculated: p.isCalculated,
           is_from_interface: p.isFromInterface,
           entered_by: getCurrentUser()?.display_name || null,
+          note: editedNotes[key] !== undefined ? (editedNotes[key] || null) : (p.note || null),
         });
       }
 
@@ -1008,8 +1014,29 @@ const ResultsEntry = () => {
       <TableRow key={key} className={rowBg}>
         <TableCell className="py-1.5 text-xs font-mono text-muted-foreground">{p.paramCode}</TableCell>
         <TableCell className="py-1.5 text-sm font-medium">
-          {p.parameterName}
-          {p.isCalculated && <Calculator className="inline h-3 w-3 ml-1 text-primary" />}
+          <div className="flex items-center gap-1">
+            {p.parameterName}
+            {p.isCalculated && <Calculator className="inline h-3 w-3 ml-1 text-primary" />}
+            <StickyNote
+              className={`inline h-3 w-3 cursor-pointer shrink-0 ${(editedNotes[key] !== undefined ? editedNotes[key] : p.note) ? 'text-amber-600' : 'text-muted-foreground hover:text-primary'}`}
+              onClick={(e) => { e.stopPropagation(); if (activeNoteKey === key) { setActiveNoteKey(null); } else { setActiveNoteKey(key); if (editedNotes[key] === undefined && !p.note) setEditedNotes(prev => ({ ...prev, [key]: "Kindly correlate clinically" })); } }}
+            />
+          </div>
+          {activeNoteKey === key && (
+            <Input
+              value={editedNotes[key] ?? p.note ?? ""}
+              onChange={e => setEditedNotes(prev => ({ ...prev, [key]: e.target.value }))}
+              className="h-6 text-xs mt-1 w-full"
+              placeholder="Kindly correlate clinically"
+              autoFocus
+              onClick={e => e.stopPropagation()}
+            />
+          )}
+          {(editedNotes[key] ?? p.note) && activeNoteKey !== key && (
+            <div className="text-xs font-bold text-amber-700 mt-0.5 cursor-pointer" onClick={(e) => { e.stopPropagation(); setActiveNoteKey(key); }}>
+              📝 {editedNotes[key] ?? p.note}
+            </div>
+          )}
         </TableCell>
         {renderHistoryCell(p.parameterId, 1)}
         {renderHistoryCell(p.parameterId, 0)}
@@ -1319,6 +1346,21 @@ const ResultsEntry = () => {
                           Transfer to Outsourced
                         </Button>
                       )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 text-[11px] gap-1 text-amber-600"
+                        onClick={() => {
+                          const newNotes = { ...editedNotes };
+                          tg.params.forEach(p => {
+                            const k = `${reg.id}||${p.parameterId}`;
+                            if (editedNotes[k] === undefined && !p.note) newNotes[k] = "Kindly correlate clinically";
+                          });
+                          setEditedNotes(newNotes);
+                        }}
+                      >
+                        <StickyNote className="h-3 w-3" /> Add Note
+                      </Button>
                       <Button
                         size="sm"
                         variant="outline"
