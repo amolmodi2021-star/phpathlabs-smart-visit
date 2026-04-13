@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Search, User, Monitor, Calculator, Wifi, ChevronDown, ChevronUp, Loader2, FlaskConical, CheckCircle2, SendHorizonal, Eye, Undo2, ClipboardCheck, StickyNote } from "lucide-react";
+import { Search, User, Monitor, Calculator, Wifi, ChevronDown, ChevronUp, Loader2, FlaskConical, CheckCircle2, SendHorizonal, Eye, Undo2, ClipboardCheck, StickyNote, Trash2 } from "lucide-react";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { toast } from "sonner";
 import { formatDateDDMMYYYY } from "@/lib/utils";
