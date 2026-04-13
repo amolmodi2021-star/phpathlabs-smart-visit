@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Search, X, Save, Printer, Send, ChevronDown, ChevronUp } from "lucide-react";
 import { getTests, TestItem } from "@/lib/tests";
+import { getCurrentUser } from "@/lib/auth";
 import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import InvoicePreview from "./InvoicePreview";
 
