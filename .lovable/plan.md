@@ -1,39 +1,66 @@
 
 
-# Ensure Report Signature Immutability
+# Audit Trail: Capture Usernames at Every LIMS Stage
 
-## Current State
-- `approved_by` (doctor's display name) is stored per-test inside the `test_results` JSONB snapshot — this is immutable and correct.
-- However, qualification, designation, and signature image are **fetched live** from `pathologist_signatures` at report view time.
-- If a doctor's signature, qualification, or designation is later changed or deleted, **old reports would show the new/missing data** instead of what was valid at approval time.
+## Problem
+Currently, no username is captured at registration, sample collection, sample acceptance, results entry, verification, or dispatch. Only the approval stage captures `approved_by`. The Dispatch audit trail shows timestamps but not who performed each action.
 
-## Solution: Snapshot Signature Details at Approval Time
+## Solution
 
-Store the full signature details (name, qualification, designation, signature image URL) inside the `approved_reports` snapshot alongside `approved_by`, so reports are **100% self-contained** and never affected by future changes.
+### 1. Database Migration — Add `_by` columns
 
-### Changes
+**`sample_tubes` table:**
+- `collected_by TEXT` (nullable)
+- `accepted_by TEXT` (nullable)
 
-#### 1. `DoctorApproval.tsx` — Snapshot signature details per test
-- When approving, look up the current user's mapped signature from `pathologist_signatures` (by `mapped_user_id` matching the logged-in user).
-- Store in each test result entry:
-  - `approved_by` (display name) — already done
-  - `approved_by_qualification` (string)
-  - `approved_by_designation` (string)
-  - `approved_by_signature_url` (full public URL of signature image)
+**`patient_results` table** (already has `entered_by` column but it's never populated):
+- `verified_by TEXT` (nullable) — new column
+- `approved_by TEXT` (nullable) — new column
+- `dispatched_by TEXT` (nullable) — new column
 
-#### 2. `LimsReportView.tsx` — Prefer snapshot data, fall back to live lookup
-- When resolving signatures for each page, first check if the test results contain `approved_by_qualification`, `approved_by_designation`, `approved_by_signature_url`.
-- If present, use those (immutable snapshot).
-- If absent (older reports before this change), fall back to the current live lookup from `pathologist_signatures` — maintaining backward compatibility.
+**`patient_registrations` table:**
+- `registered_by TEXT` (nullable) — new column
+
+### 2. Capture username at each stage
+
+Each module already calls `getCurrentUser()` or can import it from `@/lib/auth`.
+
+| Stage | File | Change |
+|---|---|---|
+| Registration | `PatientRegistration.tsx` | Add `registered_by: getCurrentUser()?.display_name` when inserting registration |
+| Collection | `SampleCollection.tsx` | Add `collected_by: getCurrentUser()?.display_name` when updating tube status to "collected" |
+| Acceptance | `SampleAcceptance.tsx` | Add `accepted_by: getCurrentUser()?.display_name` when updating tube status to "accepted" |
+| Results Entry | `ResultsEntry.tsx` | Set `entered_by: getCurrentUser()?.display_name` in the upsert (column exists, just unused) |
+| Verification | `ResultVerification.tsx` | Add `verified_by: getCurrentUser()?.display_name` in the upsert |
+| Approval | `DoctorApproval.tsx` | Add `approved_by: getCurrentUser()?.display_name` to patient_results update (already done for snapshot) |
+| Dispatch | `Dispatch.tsx` | Add `dispatched_by: getCurrentUser()?.display_name` when marking dispatched |
+
+### 3. Display in Dispatch audit trail
+
+**`Dispatch.tsx`:**
+- Fetch the new `_by` columns from `sample_tubes` and `patient_results` queries
+- Add `_by` fields to `DispatchTest` interface (e.g., `collectedBy`, `acceptedBy`, `enteredBy`, `verifiedBy`, `approvedBy`, `dispatchedBy`)
+- In `DispatchTest` computation, extract earliest `_by` values alongside timestamps
+- In the audit trail grid, add a third column showing the username next to each timestamp
+
+The audit trail row will change from:
+```
+● Sample Collected    13 Apr 2026, 10:30 AM
+```
+to:
+```
+● Sample Collected    13 Apr 2026, 10:30 AM    by Dr. Hemang
+```
+
+Also add "Registered" as the first audit step with `registered_by` from the registration record.
 
 ### Files to modify
-- **`src/components/lims/DoctorApproval.tsx`** — Fetch and embed signature details at approval time
-- **`src/pages/LimsReportView.tsx`** — Prefer embedded signature data, fall back to live lookup
-
-### No database migration needed
-All data is stored in existing JSONB columns.
-
-### Result
-- Reports approved after this change will **always** show the exact signature, qualification, and designation from the moment of approval — even if the doctor's details are later updated or the signature record is deleted.
-- Old reports continue to work via the existing live lookup.
+- **New migration**: Add columns to `sample_tubes`, `patient_results`, `patient_registrations`
+- **`src/components/lims/PatientRegistration.tsx`** — Set `registered_by`
+- **`src/components/lims/SampleCollection.tsx`** — Set `collected_by`
+- **`src/components/lims/SampleAcceptance.tsx`** — Set `accepted_by`
+- **`src/components/lims/ResultsEntry.tsx`** — Set `entered_by`
+- **`src/components/lims/ResultVerification.tsx`** — Set `verified_by`
+- **`src/components/lims/DoctorApproval.tsx`** — Set `approved_by` on patient_results
+- **`src/components/lims/Dispatch.tsx`** — Set `dispatched_by`, display all `_by` fields in audit trail
 
