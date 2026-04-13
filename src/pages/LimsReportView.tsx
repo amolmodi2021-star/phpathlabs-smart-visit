@@ -47,6 +47,9 @@ interface TestResultEntry {
   param_code?: string;
   is_calculated?: boolean;
   approved_by?: string;
+  approved_by_qualification?: string | null;
+  approved_by_designation?: string | null;
+  approved_by_signature_url?: string | null;
 }
 
 interface TestBlock {
@@ -664,8 +667,30 @@ const LimsReportView = () => {
                   const pageApprovers = page.approvers && page.approvers.length > 0
                     ? page.approvers
                     : Object.keys(signatureMap).length > 0 ? [Object.keys(signatureMap)[0]] : [];
+                  
+                  // Collect snapshot signature data from test results on this page
+                  const snapshotSigMap: Record<string, SignatureInfo> = {};
+                  if (page.testBlocks) {
+                    page.testBlocks.forEach(block => {
+                      block.params.forEach(p => {
+                        if (p.approved_by && p.approved_by_qualification !== undefined) {
+                          snapshotSigMap[p.approved_by.toLowerCase()] = {
+                            pathologist_name: p.approved_by,
+                            qualification: p.approved_by_qualification || null,
+                            designation: p.approved_by_designation || null,
+                            signatureUrl: p.approved_by_signature_url || null,
+                          };
+                        }
+                      });
+                    });
+                  }
+
                   const resolvedSigs = pageApprovers
-                    .map(name => signatureMap[name.toLowerCase()])
+                    .map(name => {
+                      const key = name.toLowerCase();
+                      // Prefer immutable snapshot data, fall back to live lookup
+                      return snapshotSigMap[key] || signatureMap[key];
+                    })
                     .filter(Boolean);
                   // Deduplicate by pathologist_name
                   const uniqueSigs = resolvedSigs.filter((s, i, arr) => arr.findIndex(x => x.pathologist_name === s.pathologist_name) === i);

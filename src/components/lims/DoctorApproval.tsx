@@ -281,7 +281,23 @@ const DoctorApproval = () => {
       const snipKey = `${reg.id}||${testId}`;
       const snipDetail = outsourcedSnipDetails[snipKey];
       const snipUrls = snipDetail?.snipImageUrls || [];
-      const currentApprover = getCurrentUser()?.display_name || "Doctor";
+      const currentUser = getCurrentUser();
+      const currentApprover = currentUser?.display_name || "Doctor";
+      // Fetch approver's signature details for immutable snapshot
+      let approverQualification: string | null = null;
+      let approverDesignation: string | null = null;
+      let approverSignatureUrl: string | null = null;
+      if (currentUser?.id) {
+        const { data: sigData } = await supabase.from("pathologist_signatures").select("qualification, designation, signature_image_path").eq("mapped_user_id", currentUser.id).maybeSingle();
+        if (sigData) {
+          approverQualification = sigData.qualification || null;
+          approverDesignation = sigData.designation || null;
+          if (sigData.signature_image_path) {
+            const { data: sigUrlData } = supabase.storage.from("signatures").getPublicUrl(sigData.signature_image_path);
+            approverSignatureUrl = sigUrlData.publicUrl;
+          }
+        }
+      }
       const testResultsSnapshot = upserts.map((u: any) => ({
         test_id: u.test_id, test_name: testName,
         parameter_id: u.parameter_id, param_code: u.param_code, parameter_name: u.parameter_name,
@@ -290,6 +306,9 @@ const DoctorApproval = () => {
         flag: u.flag, is_calculated: u.is_calculated, is_outsourced: testParams[0]?.isOutsourced || false,
         outsource_lab_name: snipDetail?.labName || null,
         approved_by: currentApprover,
+        approved_by_qualification: approverQualification,
+        approved_by_designation: approverDesignation,
+        approved_by_signature_url: approverSignatureUrl,
       }));
       // Fetch existing approved_reports to merge
       const { data: existingReport } = await supabase.from("approved_reports").select("test_results, outsourced_snip_urls").eq("registration_id", reg.id).maybeSingle();
@@ -329,6 +348,23 @@ const DoctorApproval = () => {
       const testIds = [...new Set(entry.parameters.map(p => p.testId))];
       const allTestResults: any[] = [];
       const allSnipUrls: string[] = [];
+      // Fetch approver's signature details once for all tests
+      const currentUserAll = getCurrentUser();
+      const approverNameAll = currentUserAll?.display_name || "Doctor";
+      let approverQualAll: string | null = null;
+      let approverDesigAll: string | null = null;
+      let approverSigUrlAll: string | null = null;
+      if (currentUserAll?.id) {
+        const { data: sigDataAll } = await supabase.from("pathologist_signatures").select("qualification, designation, signature_image_path").eq("mapped_user_id", currentUserAll.id).maybeSingle();
+        if (sigDataAll) {
+          approverQualAll = sigDataAll.qualification || null;
+          approverDesigAll = sigDataAll.designation || null;
+          if (sigDataAll.signature_image_path) {
+            const { data: sigUrlDataAll } = supabase.storage.from("signatures").getPublicUrl(sigDataAll.signature_image_path);
+            approverSigUrlAll = sigUrlDataAll.publicUrl;
+          }
+        }
+      }
       for (const testId of testIds) {
         const testParams = entry.parameters.filter(p => p.testId === testId);
         const testName = testParams[0]?.testName || testId;
@@ -350,7 +386,6 @@ const DoctorApproval = () => {
         const snipDetail = outsourcedSnipDetails[snipKey];
         const snipUrls = snipDetail?.snipImageUrls || [];
         allSnipUrls.push(...snipUrls);
-        const currentApproverAll = getCurrentUser()?.display_name || "Doctor";
         upserts.forEach((u: any) => allTestResults.push({
           test_id: u.test_id, test_name: testName,
           parameter_id: u.parameter_id, param_code: u.param_code, parameter_name: u.parameter_name,
@@ -358,7 +393,10 @@ const DoctorApproval = () => {
           normal_range_low: u.normal_range_low, normal_range_high: u.normal_range_high,
           flag: u.flag, is_calculated: u.is_calculated, is_outsourced: testParams[0]?.isOutsourced || false,
           outsource_lab_name: snipDetail?.labName || null,
-          approved_by: currentApproverAll,
+          approved_by: approverNameAll,
+          approved_by_qualification: approverQualAll,
+          approved_by_designation: approverDesigAll,
+          approved_by_signature_url: approverSigUrlAll,
         }));
       }
       // Archive combined snapshot
