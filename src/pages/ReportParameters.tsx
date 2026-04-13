@@ -18,6 +18,12 @@ import { exportToExcel, parseExcelFile } from "@/lib/excel";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 import MasterLookupSelect from "@/components/MasterLookupSelect";
 
+const QUALITATIVE_PAIRS = [
+  { label: "Absent / Present", values: ["Absent", "Present"] },
+  { label: "Reactive / Non Reactive", values: ["Reactive", "Non Reactive"] },
+  { label: "Positive / Negative", values: ["Positive", "Negative"] },
+];
+
 interface NormalRange {
   id?: string;
   gender: string;
@@ -810,11 +816,47 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
                           <div className="grid grid-cols-2 gap-2">
                             <div>
                               <Label className="text-xs">Expected Normal Value</Label>
-                              <Input value={r.expected_value || ""} onChange={(e) => updateRange(r._idx, "expected_value", e.target.value)} placeholder="e.g. Absent, Negative" />
+                              <Select
+                                value={r.expected_value || ""}
+                                onValueChange={(val) => {
+                                  updateRange(r._idx, "expected_value", val);
+                                  const pair = QUALITATIVE_PAIRS.find(p => p.label === val);
+                                  if (pair) {
+                                    const currentDisplay = r.normal_range_text;
+                                    if (!currentDisplay || !pair.values.includes(currentDisplay)) {
+                                      updateRange(r._idx, "normal_range_text", pair.values[0]);
+                                    }
+                                  }
+                                }}
+                              >
+                                <SelectTrigger><SelectValue placeholder="Select pair" /></SelectTrigger>
+                                <SelectContent>
+                                  {QUALITATIVE_PAIRS.map(p => (
+                                    <SelectItem key={p.label} value={p.label}>{p.label}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
                             </div>
                             <div>
                               <Label className="text-xs">Display Text</Label>
-                              <Input value={r.normal_range_text} onChange={(e) => updateRange(r._idx, "normal_range_text", e.target.value)} placeholder="e.g. Absent" />
+                              {(() => {
+                                const activePair = QUALITATIVE_PAIRS.find(p => p.label === r.expected_value);
+                                const displayOptions = activePair ? activePair.values : [];
+                                return (
+                                  <Select
+                                    value={r.normal_range_text || ""}
+                                    onValueChange={(val) => updateRange(r._idx, "normal_range_text", val)}
+                                    disabled={displayOptions.length === 0}
+                                  >
+                                    <SelectTrigger><SelectValue placeholder="Select display text" /></SelectTrigger>
+                                    <SelectContent>
+                                      {displayOptions.map(v => (
+                                        <SelectItem key={v} value={v}>{v}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                );
+                              })()}
                             </div>
                           </div>
                         ) : (
