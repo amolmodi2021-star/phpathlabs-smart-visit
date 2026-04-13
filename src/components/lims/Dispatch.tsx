@@ -484,7 +484,7 @@ const Dispatch = () => {
                           )}
                           <User className="h-5 w-5 text-muted-foreground" />
                           <h3 className={cn("font-semibold", isMobile ? "text-base" : "text-lg")}>{selectedEntry.registration.patient_name}</h3>
-                          {selectedEntry.registration.is_stat && <Badge variant="destructive" className="text-[10px]">STAT</Badge>}
+                          {selectedEntry.registration.is_stat && selectedEntry.completionStatus !== "all_done" && <Badge variant="destructive" className="text-[10px]">STAT</Badge>}
                           {getCompletionDot(selectedEntry.completionStatus)}
                         </div>
                         <div className={cn("flex items-center gap-4 mt-1 text-sm text-muted-foreground", isMobile && "flex-wrap gap-2 text-xs")}>
