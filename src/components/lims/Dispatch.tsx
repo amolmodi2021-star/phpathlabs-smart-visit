@@ -255,14 +255,24 @@ const Dispatch = () => {
     }).filter(Boolean) as DispatchEntry[];
   }, [registrations, allResults, allSnips, allTubes, testsMap, heldSet]);
 
+  // Re-sort: active STAT on top, completed STAT loses priority
+  const sortedDispatchEntries = useMemo(() => {
+    return [...dispatchEntries].sort((a, b) => {
+      const aActivestat = a.registration.is_stat && a.completionStatus !== "all_done" ? 1 : 0;
+      const bActivestat = b.registration.is_stat && b.completionStatus !== "all_done" ? 1 : 0;
+      if (bActivestat !== aActivestat) return bActivestat - aActivestat;
+      return new Date(b.registration.updated_at).getTime() - new Date(a.registration.updated_at).getTime();
+    });
+  }, [dispatchEntries]);
+
   // Auto-select first patient when entries change
   useEffect(() => {
-    if (dispatchEntries.length > 0 && (!selectedPatientId || !dispatchEntries.find(e => e.registration.id === selectedPatientId))) {
-      setSelectedPatientId(dispatchEntries[0].registration.id);
+    if (sortedDispatchEntries.length > 0 && (!selectedPatientId || !sortedDispatchEntries.find(e => e.registration.id === selectedPatientId))) {
+      setSelectedPatientId(sortedDispatchEntries[0].registration.id);
     }
-  }, [dispatchEntries, selectedPatientId]);
+  }, [sortedDispatchEntries, selectedPatientId]);
 
-  const selectedEntry = useMemo(() => dispatchEntries.find(e => e.registration.id === selectedPatientId) || null, [dispatchEntries, selectedPatientId]);
+  const selectedEntry = useMemo(() => sortedDispatchEntries.find(e => e.registration.id === selectedPatientId) || null, [sortedDispatchEntries, selectedPatientId]);
 
   const dispatchViaWhatsApp = (reg: any) => {
     const phone = (reg.mobile_number || "").replace(/\D/g, "");
@@ -403,7 +413,7 @@ const Dispatch = () => {
 
       {loadingRegs ? (
         <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
-      ) : dispatchEntries.length === 0 ? (
+      ) : sortedDispatchEntries.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <Truck className="h-12 w-12 mx-auto mb-3 opacity-30" />
           <p className="text-lg font-medium">No reports pending dispatch</p>
@@ -422,7 +432,7 @@ const Dispatch = () => {
               </div>
               <ScrollArea className="flex-1">
                 <div className="divide-y">
-                  {dispatchEntries.map((entry) => {
+                  {sortedDispatchEntries.map((entry) => {
                     const reg = entry.registration;
                     const isSelected = selectedPatientId === reg.id;
                     return (
@@ -435,7 +445,7 @@ const Dispatch = () => {
                           <div className="mt-1 shrink-0">{getCompletionDot(entry.completionStatus)}</div>
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-1.5">
-                              {reg.is_stat && <span className="relative flex h-2 w-2 shrink-0"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-destructive" /></span>}
+                              {reg.is_stat && entry.completionStatus !== "all_done" && <span className="relative flex h-2 w-2 shrink-0"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-destructive" /></span>}
                               <span className="font-medium text-sm truncate">{reg.patient_name}</span>
                             </div>
                             <div className="flex items-center gap-2 mt-0.5">
@@ -484,7 +494,7 @@ const Dispatch = () => {
                           )}
                           <User className="h-5 w-5 text-muted-foreground" />
                           <h3 className={cn("font-semibold", isMobile ? "text-base" : "text-lg")}>{selectedEntry.registration.patient_name}</h3>
-                          {selectedEntry.registration.is_stat && <Badge variant="destructive" className="text-[10px]">STAT</Badge>}
+                          {selectedEntry.registration.is_stat && selectedEntry.completionStatus !== "all_done" && <Badge variant="destructive" className="text-[10px]">STAT</Badge>}
                           {getCompletionDot(selectedEntry.completionStatus)}
                         </div>
                         <div className={cn("flex items-center gap-4 mt-1 text-sm text-muted-foreground", isMobile && "flex-wrap gap-2 text-xs")}>
