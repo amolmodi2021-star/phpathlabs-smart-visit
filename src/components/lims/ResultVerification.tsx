@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Search, User, Monitor, Calculator, Wifi, ChevronDown, ChevronUp, Loader2, FlaskConical, CheckCircle2, SendHorizonal, Eye, Undo2, ClipboardCheck } from "lucide-react";
+import { Search, User, Monitor, Calculator, Wifi, ChevronDown, ChevronUp, Loader2, FlaskConical, CheckCircle2, SendHorizonal, Eye, Undo2, ClipboardCheck, StickyNote } from "lucide-react";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { toast } from "sonner";
 import { formatDateDDMMYYYY } from "@/lib/utils";
@@ -44,6 +44,7 @@ interface ParameterResult {
   outsourceStatus: string;
   isSnipMode: boolean;
   enteredAt: string | null;
+  note: string;
 }
 
 interface SnipOnlyTest {
@@ -76,6 +77,8 @@ const ResultVerification = () => {
   const [editedFlags, setEditedFlags] = useState<Record<string, string>>({});
   const [viewSnipImages, setViewSnipImages] = useState<string[] | null>(null);
   const autoSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const [editedNotes, setEditedNotes] = useState<Record<string, string>>({});
+  const [activeNoteKey, setActiveNoteKey] = useState<string | null>(null);
   const [blankConfirmTestParams, setBlankConfirmTestParams] = useState<{ entry: PatientEntry; testId: string; testName: string } | null>(null);
   const [blankParamCount, setBlankParamCount] = useState(0);
   const [blankParamIds, setBlankParamIds] = useState<Set<string>>(new Set());
@@ -358,6 +361,7 @@ const ResultVerification = () => {
             outsourceStatus: isParamOutsourced ? (snipDetail?.status || "pending") : "",
             isSnipMode: isParamOutsourced && snipDetail?.resultMode === "snip",
             enteredAt: existing?.entered_at || null,
+            note: existing?.note || "",
           });
         }
       }
@@ -549,7 +553,7 @@ const ResultVerification = () => {
           param_code: p.paramCode, parameter_name: p.parameterName,
           result_value: value || null, unit, reference_range: refRange,
           normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh,
-           flag: flag || null, status: "verified", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, verified_at: new Date().toISOString(), entered_at: p.enteredAt || new Date().toISOString(), verified_by: getCurrentUser()?.display_name || null,
+           flag: flag || null, status: "verified", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, verified_at: new Date().toISOString(), entered_at: p.enteredAt || new Date().toISOString(), verified_by: getCurrentUser()?.display_name || null, note: editedNotes[k] !== undefined ? (editedNotes[k] || null) : (p.note || null),
         });
       }
       if (upserts.length > 0) {
@@ -598,7 +602,7 @@ const ResultVerification = () => {
             param_code: p.paramCode, parameter_name: p.parameterName,
             result_value: value || null, unit, reference_range: refRange,
             normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh,
-            flag: flag || null, status: "verified", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, verified_at: new Date().toISOString(), entered_at: p.enteredAt || new Date().toISOString(), verified_by: getCurrentUser()?.display_name || null,
+            flag: flag || null, status: "verified", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, verified_at: new Date().toISOString(), entered_at: p.enteredAt || new Date().toISOString(), verified_by: getCurrentUser()?.display_name || null, note: editedNotes[k] !== undefined ? (editedNotes[k] || null) : (p.note || null),
           });
         }
         if (upserts.length > 0) {
@@ -677,8 +681,20 @@ const ResultVerification = () => {
       <TableRow key={key} className={rowBg}>
         <TableCell className="py-1.5 text-xs font-mono text-muted-foreground">{p.paramCode}</TableCell>
         <TableCell className="py-1.5 text-sm font-medium">
-          {p.parameterName}
-          {p.isCalculated && <Calculator className="inline h-3 w-3 ml-1 text-primary" />}
+          <div className="flex items-center gap-1">
+            {p.parameterName}
+            {p.isCalculated && <Calculator className="inline h-3 w-3 ml-1 text-primary" />}
+            <StickyNote
+              className={`inline h-3 w-3 cursor-pointer shrink-0 ${(editedNotes[key] !== undefined ? editedNotes[key] : p.note) ? 'text-amber-600' : 'text-muted-foreground hover:text-primary'}`}
+              onClick={(e) => { e.stopPropagation(); if (activeNoteKey === key) { setActiveNoteKey(null); } else { setActiveNoteKey(key); if (editedNotes[key] === undefined && !p.note) setEditedNotes(prev => ({ ...prev, [key]: "Kindly correlate clinically" })); } }}
+            />
+          </div>
+          {activeNoteKey === key && (
+            <Input value={editedNotes[key] ?? p.note ?? ""} onChange={e => setEditedNotes(prev => ({ ...prev, [key]: e.target.value }))} className="h-6 text-xs mt-1 w-full" placeholder="Kindly correlate clinically" autoFocus onClick={e => e.stopPropagation()} />
+          )}
+          {(editedNotes[key] ?? p.note) && activeNoteKey !== key && (
+            <div className="text-xs font-bold text-amber-700 mt-0.5 cursor-pointer" onClick={(e) => { e.stopPropagation(); setActiveNoteKey(key); }}>📝 {editedNotes[key] ?? p.note}</div>
+          )}
         </TableCell>
         {renderHistoryCell(p.parameterId, 0)}
         {renderHistoryCell(p.parameterId, 1)}
@@ -827,6 +843,13 @@ const ResultVerification = () => {
                     <div className="flex items-center gap-1">
                       <Button size="sm" variant="ghost" className="h-6 text-[11px] gap-1 text-orange-600" onClick={() => sendBackTest(reg.id, tg.testId, tg.testName)}>
                         <Undo2 className="h-3 w-3" /> Send Back
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-6 text-[11px] gap-1 text-amber-600" onClick={() => {
+                        const newNotes = { ...editedNotes };
+                        tg.params.forEach(p => { const k = `${reg.id}||${p.parameterId}`; if (editedNotes[k] === undefined && !p.note) newNotes[k] = "Kindly correlate clinically"; });
+                        setEditedNotes(newNotes);
+                      }}>
+                        <StickyNote className="h-3 w-3" /> Add Note
                       </Button>
                       <Button size="sm" variant="outline" className="h-6 text-[11px] gap-1" disabled={isVerifying} onClick={() => handleVerifyTest(entry, tg.testId, tg.testName)}>
                         {isVerifying ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
