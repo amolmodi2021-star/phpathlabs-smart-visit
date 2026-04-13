@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Search, Loader2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import InvoicePreview from "./InvoicePreview";
 
 const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card", "UPI", "Online"];
 
@@ -23,13 +24,14 @@ const DuePayments = () => {
   const [payAmount, setPayAmount] = useState("");
   const [saving, setSaving] = useState(false);
   const [badDebtConfirm, setBadDebtConfirm] = useState<any>(null);
+  const [invoiceData, setInvoiceData] = useState<any>(null);
 
   const { data: patients = [], isLoading } = useQuery({
     queryKey: ["lims-due-payments", search],
     queryFn: async () => {
       let q = supabase
         .from("patient_registrations")
-        .select("id, invoice_number, patient_name, mobile_number, doctor_name, created_at, net_amount, paid_amount, due_amount, payments, is_bad_debt, bill_cancelled")
+        .select("id, invoice_number, patient_name, mobile_number, doctor_name, created_at, net_amount, paid_amount, due_amount, payments, is_bad_debt, bill_cancelled, title, gender, dob, email, address, umr_number, visit_type, tests, gross_amount, discount_amount, home_visit_charges, final_amount, refund_amount, refund_mode, refund_date, cancelled_tests, global_discount_type, global_discount_value, remarks, registered_by")
         .gt("due_amount", 0)
         .eq("is_bad_debt", false)
         .eq("bill_cancelled", false)
@@ -78,6 +80,13 @@ const DuePayments = () => {
       if (error) throw error;
       toast.success("Payment collected successfully");
       setCollectOpen(false);
+      // Show updated invoice
+      setInvoiceData({
+        ...selected,
+        payments: newPayments,
+        paid_amount: newPaid,
+        due_amount: Math.max(0, newDue),
+      });
       queryClient.invalidateQueries({ queryKey: ["lims-due-payments"] });
       queryClient.invalidateQueries({ queryKey: ["lims-dispatch"] });
       queryClient.invalidateQueries({ queryKey: ["lims-registrations"] });
@@ -229,6 +238,12 @@ const DuePayments = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Invoice Preview after payment */}
+      <InvoicePreview
+        data={invoiceData}
+        open={!!invoiceData}
+        onClose={() => setInvoiceData(null)}
+      />
     </div>
   );
 };
