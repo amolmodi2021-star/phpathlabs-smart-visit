@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
+import { getCurrentUser } from "@/lib/auth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
