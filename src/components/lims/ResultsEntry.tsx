@@ -1094,6 +1094,20 @@ const ResultsEntry = () => {
                 <Calculator className="h-3 w-3" /> Calc
               </Badge>
             </div>
+          ) : p.rangeType === "qualitative" && getQualitativeOptions(p.expectedValue).length > 0 ? (
+            <Select
+              value={currentValue || undefined}
+              onValueChange={(v) => handleValueChange(regId, p.parameterId, v, entry)}
+            >
+              <SelectTrigger className="h-7 text-sm !w-[180px] min-w-[180px] max-w-[180px]" data-result-input="" data-result-value={currentValue || ""} onKeyDown={handleResultTabKey}>
+                <SelectValue placeholder="Select..." />
+              </SelectTrigger>
+              <SelectContent>
+                {getQualitativeOptions(p.expectedValue).map((opt: string) => (
+                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           ) : p.rangeType === "descriptive" && p.descriptiveOptions.length > 0 ? (
             <Select
               value={currentValue || undefined}
@@ -1633,7 +1647,21 @@ const ResultsEntry = () => {
                           <TableCell className="py-2 text-xs font-mono text-muted-foreground">{p.paramCode}</TableCell>
                           <TableCell className="py-2 text-sm font-medium">{p.parameterName}</TableCell>
                           <TableCell className="py-2">
-                            {p.rangeType === "descriptive" && p.descriptiveOptions.length > 0 ? (
+                            {p.rangeType === "qualitative" && getQualitativeOptions(p.expectedValue).length > 0 ? (
+                              <Select
+                                value={currentValue || undefined}
+                                onValueChange={(v) => handleValueChange(reg.id, p.parameterId, v, entry)}
+                              >
+                                <SelectTrigger className="h-7 text-sm w-full" data-result-input="" data-result-value={currentValue || ""} onKeyDown={handleResultTabKey}>
+                                  <SelectValue placeholder="Select..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {getQualitativeOptions(p.expectedValue).map((opt: string) => (
+                                    <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : p.rangeType === "descriptive" && p.descriptiveOptions.length > 0 ? (
                               <Select
                                 value={currentValue || undefined}
                                 onValueChange={(v) => handleValueChange(reg.id, p.parameterId, v, entry)}
