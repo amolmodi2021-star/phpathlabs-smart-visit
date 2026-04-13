@@ -18,6 +18,12 @@ import { exportToExcel, parseExcelFile } from "@/lib/excel";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 import MasterLookupSelect from "@/components/MasterLookupSelect";
 
+const QUALITATIVE_PAIRS = [
+  { label: "Absent / Present", values: ["Absent", "Present"] },
+  { label: "Reactive / Non Reactive", values: ["Reactive", "Non Reactive"] },
+  { label: "Positive / Negative", values: ["Positive", "Negative"] },
+];
+
 interface NormalRange {
   id?: string;
   gender: string;
