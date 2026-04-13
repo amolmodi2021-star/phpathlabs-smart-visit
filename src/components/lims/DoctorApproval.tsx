@@ -348,6 +348,23 @@ const DoctorApproval = () => {
       const testIds = [...new Set(entry.parameters.map(p => p.testId))];
       const allTestResults: any[] = [];
       const allSnipUrls: string[] = [];
+      // Fetch approver's signature details once for all tests
+      const currentUserAll = getCurrentUser();
+      const approverNameAll = currentUserAll?.display_name || "Doctor";
+      let approverQualAll: string | null = null;
+      let approverDesigAll: string | null = null;
+      let approverSigUrlAll: string | null = null;
+      if (currentUserAll?.id) {
+        const { data: sigDataAll } = await supabase.from("pathologist_signatures").select("qualification, designation, signature_image_path").eq("mapped_user_id", currentUserAll.id).maybeSingle();
+        if (sigDataAll) {
+          approverQualAll = sigDataAll.qualification || null;
+          approverDesigAll = sigDataAll.designation || null;
+          if (sigDataAll.signature_image_path) {
+            const { data: sigUrlDataAll } = supabase.storage.from("signatures").getPublicUrl(sigDataAll.signature_image_path);
+            approverSigUrlAll = sigUrlDataAll.publicUrl;
+          }
+        }
+      }
       for (const testId of testIds) {
         const testParams = entry.parameters.filter(p => p.testId === testId);
         const testName = testParams[0]?.testName || testId;
