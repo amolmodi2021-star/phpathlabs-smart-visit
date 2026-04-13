@@ -1356,21 +1356,6 @@ const ResultsEntry = () => {
                       )}
                       <Button
                         size="sm"
-                        variant="ghost"
-                        className="h-6 text-[11px] gap-1 text-amber-600"
-                        onClick={() => {
-                          const newNotes = { ...editedNotes };
-                          tg.params.forEach(p => {
-                            const k = `${reg.id}||${p.parameterId}`;
-                            if (editedNotes[k] === undefined && !p.note) newNotes[k] = "Kindly correlate clinically";
-                          });
-                          setEditedNotes(newNotes);
-                        }}
-                      >
-                        <StickyNote className="h-3 w-3" /> Add Note
-                      </Button>
-                      <Button
-                        size="sm"
                         variant="outline"
                         className="h-6 text-[11px] gap-1"
                         disabled={isTestSaving}
