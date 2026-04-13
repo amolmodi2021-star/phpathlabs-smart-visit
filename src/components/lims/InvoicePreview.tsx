@@ -153,7 +153,7 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
               <div style={{ marginTop: 4 }}>
                 {payments.map((p: any, i: number) => (
                   <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
-                    <span>{p.mode}:</span><span>₹{p.amount}</span>
+                    <span>{p.mode}{p.date ? ` (${format(new Date(p.date), "dd-MM-yyyy hh:mm a")})` : ""}:</span><span>₹{p.amount}</span>
                   </div>
                 ))}
               </div>
