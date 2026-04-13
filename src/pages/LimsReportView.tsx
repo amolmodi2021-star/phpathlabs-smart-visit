@@ -46,6 +46,7 @@ interface TestResultEntry {
   outsource_lab_name?: string | null;
   param_code?: string;
   is_calculated?: boolean;
+  approved_by?: string;
 }
 
 interface TestBlock {
@@ -63,6 +64,7 @@ interface TestBlock {
   fitToPage?: boolean;
   dedicatedPage?: boolean;
   isSingleParameter?: boolean;
+  approvers?: string[];
 }
 
 interface SnipPage {
@@ -74,6 +76,14 @@ interface PageContent {
   departmentName?: string;
   testBlocks?: TestBlock[];
   snipImage?: string;
+  approvers?: string[];
+}
+
+interface SignatureInfo {
+  pathologist_name: string;
+  qualification: string | null;
+  designation: string | null;
+  signatureUrl: string | null;
 }
 
 const LimsReportView = () => {
@@ -92,7 +102,7 @@ const LimsReportView = () => {
   const [registration, setRegistration] = useState<any>(null);
   const [layoutSettings, setLayoutSettings] = useState({ top_margin_cm: 2.5, bottom_margin_cm: 1.5, letterhead_pdf_path: null as string | null });
   const [letterheadImageUrl, setLetterheadImageUrl] = useState<string | null>(null);
-  const [signatureData, setSignatureData] = useState<any>(null);
+  const [signatureMap, setSignatureMap] = useState<Record<string, SignatureInfo>>({});
   const [departments, setDepartments] = useState<any[]>([]);
   const [testsMap, setTestsMap] = useState<Record<string, any>>({});
   const [testParamsMap, setTestParamsMap] = useState<Record<string, any[]>>({});
@@ -171,41 +181,40 @@ const LimsReportView = () => {
       }
     }
 
-    // Signature - match approved_by against pathologist_name OR mapped user's display_name
-    let computedSignature: any = null;
-    const approvedBy = reports?.[0]?.approved_by;
-    if (approvedBy && signatures) {
-      // First try direct pathologist_name match
-      let sig = signatures.find((s: any) => s.pathologist_name.toLowerCase() === approvedBy.toLowerCase());
-      // If no match, try mapped_user_id: fetch app_users to resolve display_name
-      if (!sig) {
-        const mappedSigs = signatures.filter((s: any) => s.mapped_user_id);
-        if (mappedSigs.length > 0) {
-          const { data: mappedUsers } = await supabase
-            .from("app_users")
-            .select("id, display_name")
-            .in("id", mappedSigs.map((s: any) => s.mapped_user_id));
-          if (mappedUsers) {
-            const userMap = Object.fromEntries(mappedUsers.map((u: any) => [u.id, u.display_name]));
-            sig = mappedSigs.find((s: any) => userMap[s.mapped_user_id]?.toLowerCase() === approvedBy.toLowerCase());
-          }
+    // Build signature map: approver display_name → signature info
+    const sigMap: Record<string, SignatureInfo> = {};
+    if (signatures && signatures.length > 0) {
+      // Build mapped user lookup
+      const mappedSigs = signatures.filter((s: any) => s.mapped_user_id);
+      let userDisplayMap: Record<string, string> = {};
+      if (mappedSigs.length > 0) {
+        const { data: mappedUsers } = await supabase
+          .from("app_users")
+          .select("id, display_name")
+          .in("id", mappedSigs.map((s: any) => s.mapped_user_id));
+        if (mappedUsers) {
+          userDisplayMap = Object.fromEntries(mappedUsers.map((u: any) => [u.id, u.display_name]));
         }
       }
-      if (sig && sig.signature_image_path) {
-        const { data: sigUrl } = supabase.storage.from("signatures").getPublicUrl(sig.signature_image_path);
-        computedSignature = { ...sig, signatureUrl: sigUrl.publicUrl };
-      } else if (sig) {
-        computedSignature = sig;
-      } else {
-        computedSignature = signatures[0] ? { ...signatures[0] } : null;
-      }
-    } else if (signatures && signatures.length > 0) {
-      const first = signatures[0];
-      if (first.signature_image_path) {
-        const { data: sigUrl } = supabase.storage.from("signatures").getPublicUrl(first.signature_image_path);
-        computedSignature = { ...first, signatureUrl: sigUrl.publicUrl };
-      } else {
-        computedSignature = first;
+
+      for (const sig of signatures) {
+        let sigUrl: string | null = null;
+        if (sig.signature_image_path) {
+          const { data: sigUrlData } = supabase.storage.from("signatures").getPublicUrl(sig.signature_image_path);
+          sigUrl = sigUrlData.publicUrl;
+        }
+        const info: SignatureInfo = {
+          pathologist_name: sig.pathologist_name,
+          qualification: sig.qualification,
+          designation: sig.designation,
+          signatureUrl: sigUrl,
+        };
+        // Index by pathologist_name
+        sigMap[sig.pathologist_name.toLowerCase()] = info;
+        // Also index by mapped user's display_name
+        if (sig.mapped_user_id && userDisplayMap[sig.mapped_user_id]) {
+          sigMap[userDisplayMap[sig.mapped_user_id].toLowerCase()] = info;
+        }
       }
     }
 
@@ -243,7 +252,7 @@ const LimsReportView = () => {
     setTestsMap(tMap);
     setLayoutSettings(computedLayout);
     setLetterheadImageUrl(computedLetterhead);
-    setSignatureData(computedSignature);
+    setSignatureMap(sigMap);
     setSnipImages(snipPages);
     setTestParamsMap(computedTpMap);
     setLoading(false);
@@ -314,6 +323,9 @@ const LimsReportView = () => {
       if (testInfo?.interpretation) heightMm += INTERPRETATION_MM;
       if (testInfo?.instrument_name || testInfo?.method || testInfo?.sample_type) heightMm += META_LINE_MM;
 
+      // Collect unique approvers for this test block
+      const blockApprovers = [...new Set(sortedParams.map(p => p.approved_by).filter(Boolean))] as string[];
+
       testBlocks.push({
         testId,
         testName: testInfo?.display_name || params[0]?.test_name || testInfo?.test_name || "Unknown Test",
@@ -329,6 +341,7 @@ const LimsReportView = () => {
         fitToPage: testInfo?.fit_to_page ?? false,
         dedicatedPage: testInfo?.dedicated_page ?? false,
         isSingleParameter: testInfo?.is_single_parameter ?? false,
+        approvers: blockApprovers,
       });
     });
 
@@ -352,21 +365,23 @@ const LimsReportView = () => {
       let currentPageBlocks: TestBlock[] = [];
       let usedHeight = DEPT_HEADER_MM;
 
+      const collectApprovers = (blocks: TestBlock[]) => [...new Set(blocks.flatMap(b => b.approvers || []))];
+
       blocks.forEach(block => {
         // Dedicated page: flush current, put this block alone on its own page
         if (block.dedicatedPage) {
           if (currentPageBlocks.length > 0) {
-            allPages.push({ type: "structured", departmentName: deptName, testBlocks: currentPageBlocks });
+            allPages.push({ type: "structured", departmentName: deptName, testBlocks: currentPageBlocks, approvers: collectApprovers(currentPageBlocks) });
             currentPageBlocks = [];
             usedHeight = DEPT_HEADER_MM;
           }
-          allPages.push({ type: "structured", departmentName: deptName, testBlocks: [block] });
+          allPages.push({ type: "structured", departmentName: deptName, testBlocks: [block], approvers: collectApprovers([block]) });
           return;
         }
 
         if (currentPageBlocks.length > 0 && (usedHeight + block.estimatedHeightMm) > usableHeight) {
           // Flush current page
-          allPages.push({ type: "structured", departmentName: deptName, testBlocks: currentPageBlocks });
+          allPages.push({ type: "structured", departmentName: deptName, testBlocks: currentPageBlocks, approvers: collectApprovers(currentPageBlocks) });
           currentPageBlocks = [];
           usedHeight = DEPT_HEADER_MM;
         }
@@ -375,7 +390,7 @@ const LimsReportView = () => {
       });
 
       if (currentPageBlocks.length > 0) {
-        allPages.push({ type: "structured", departmentName: deptName, testBlocks: currentPageBlocks });
+        allPages.push({ type: "structured", departmentName: deptName, testBlocks: currentPageBlocks, approvers: collectApprovers(currentPageBlocks) });
       }
     });
 
@@ -645,16 +660,42 @@ const LimsReportView = () => {
 
               {/* Signature */}
               <div className="mt-auto">
-                {signatureData && (
-                  <ReportSignatureBlock
-                    signatureUrl={signatureData.signatureUrl || null}
-                    pathologistName={signatureData.pathologist_name}
-                    qualification={signatureData.qualification}
-                    designation={signatureData.designation}
-                  />
-                )}
+                {(() => {
+                  const pageApprovers = page.approvers && page.approvers.length > 0
+                    ? page.approvers
+                    : Object.keys(signatureMap).length > 0 ? [Object.keys(signatureMap)[0]] : [];
+                  const resolvedSigs = pageApprovers
+                    .map(name => signatureMap[name.toLowerCase()])
+                    .filter(Boolean);
+                  // Deduplicate by pathologist_name
+                  const uniqueSigs = resolvedSigs.filter((s, i, arr) => arr.findIndex(x => x.pathologist_name === s.pathologist_name) === i);
+                  if (uniqueSigs.length === 0 && Object.keys(signatureMap).length > 0) {
+                    // Fallback: show first signature
+                    const fallback = Object.values(signatureMap)[0];
+                    return (
+                      <ReportSignatureBlock
+                        signatureUrl={fallback.signatureUrl}
+                        pathologistName={fallback.pathologist_name}
+                        qualification={fallback.qualification || undefined}
+                        designation={fallback.designation || undefined}
+                      />
+                    );
+                  }
+                  return (
+                    <div className="pt-1 border-t flex justify-end gap-8 print:break-inside-avoid">
+                      {uniqueSigs.map((sig, idx) => (
+                        <div key={idx} className="text-center">
+                          {sig.signatureUrl && <img src={sig.signatureUrl} alt="Signature" className="h-8 mx-auto mb-0" />}
+                          <p className="font-semibold text-[10px] leading-tight">{sig.pathologist_name}</p>
+                          {sig.qualification && <p className="text-[9px] leading-tight" style={{ color: "hsl(var(--muted-foreground))" }}>{sig.qualification}</p>}
+                          {sig.designation && <p className="text-[9px] leading-tight" style={{ color: "hsl(var(--muted-foreground))" }}>{sig.designation}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
                 {/* Page Number */}
-                <div className="text-center text-gray-400 mt-0.5" style={{ fontSize: "7px" }}>
+                <div className="text-center mt-0.5" style={{ fontSize: "7px", color: "hsl(var(--muted-foreground))" }}>
                   Page {pageIdx + 1} of {totalPages}
                 </div>
               </div>

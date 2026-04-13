@@ -281,6 +281,7 @@ const DoctorApproval = () => {
       const snipKey = `${reg.id}||${testId}`;
       const snipDetail = outsourcedSnipDetails[snipKey];
       const snipUrls = snipDetail?.snipImageUrls || [];
+      const currentApprover = getCurrentUser()?.display_name || "Doctor";
       const testResultsSnapshot = upserts.map((u: any) => ({
         test_id: u.test_id, test_name: testName,
         parameter_id: u.parameter_id, param_code: u.param_code, parameter_name: u.parameter_name,
@@ -288,6 +289,7 @@ const DoctorApproval = () => {
         normal_range_low: u.normal_range_low, normal_range_high: u.normal_range_high,
         flag: u.flag, is_calculated: u.is_calculated, is_outsourced: testParams[0]?.isOutsourced || false,
         outsource_lab_name: snipDetail?.labName || null,
+        approved_by: currentApprover,
       }));
       // Fetch existing approved_reports to merge
       const { data: existingReport } = await supabase.from("approved_reports").select("test_results, outsourced_snip_urls").eq("registration_id", reg.id).maybeSingle();
@@ -348,6 +350,7 @@ const DoctorApproval = () => {
         const snipDetail = outsourcedSnipDetails[snipKey];
         const snipUrls = snipDetail?.snipImageUrls || [];
         allSnipUrls.push(...snipUrls);
+        const currentApproverAll = getCurrentUser()?.display_name || "Doctor";
         upserts.forEach((u: any) => allTestResults.push({
           test_id: u.test_id, test_name: testName,
           parameter_id: u.parameter_id, param_code: u.param_code, parameter_name: u.parameter_name,
@@ -355,6 +358,7 @@ const DoctorApproval = () => {
           normal_range_low: u.normal_range_low, normal_range_high: u.normal_range_high,
           flag: u.flag, is_calculated: u.is_calculated, is_outsourced: testParams[0]?.isOutsourced || false,
           outsource_lab_name: snipDetail?.labName || null,
+          approved_by: currentApproverAll,
         }));
       }
       // Archive combined snapshot
@@ -495,7 +499,8 @@ const DoctorApproval = () => {
                     const { data: existSnipReport } = await supabase.from("approved_reports").select("test_results, outsourced_snip_urls").eq("registration_id", reg.id).maybeSingle();
                     const prevResults = Array.isArray((existSnipReport as any)?.test_results) ? (existSnipReport as any).test_results : [];
                     const prevSnipUrls = Array.isArray((existSnipReport as any)?.outsourced_snip_urls) ? (existSnipReport as any).outsourced_snip_urls : [];
-                    const newResults = prevResults.filter((r: any) => r.test_id !== st.testId).concat([{ test_id: st.testId, test_name: st.testName, is_outsourced: true, outsource_lab_name: st.labName }]);
+                    const snipApprover = getCurrentUser()?.display_name || "Doctor";
+                    const newResults = prevResults.filter((r: any) => r.test_id !== st.testId).concat([{ test_id: st.testId, test_name: st.testName, is_outsourced: true, outsource_lab_name: st.labName, approved_by: snipApprover }]);
                     const newSnipUrls = [...new Set([...prevSnipUrls.filter((u: string) => !u.includes(st.testId)), ...st.snipUrls])];
                     await supabase.from("approved_reports").upsert({ registration_id: reg.id, invoice_number: reg.invoice_number, umr_number: reg.umr_number, patient_name: reg.patient_name, title: reg.title, gender: reg.gender, dob: reg.dob, mobile_number: reg.mobile_number, email: reg.email, address: reg.address, doctor_name: reg.doctor_name, visit_type: reg.visit_type, is_stat: reg.is_stat, report_language: reg.report_language, approved_by: getCurrentUser()?.display_name || "Doctor", registration_date: reg.created_at, approval_date: new Date().toISOString(), test_results: newResults, outsourced_snip_urls: newSnipUrls } as any, { onConflict: "registration_id" as any, ignoreDuplicates: false });
                     toast.success(`${st.testName} approved`);
