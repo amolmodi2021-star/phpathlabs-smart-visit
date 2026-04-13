@@ -314,6 +314,7 @@ const DoctorApproval = () => {
         approved_by_qualification: approverQualification,
         approved_by_designation: approverDesignation,
         approved_by_signature_url: approverSignatureUrl,
+        note: u.note || null,
       }));
       // Fetch existing approved_reports to merge
       const { data: existingReport } = await supabase.from("approved_reports").select("test_results, outsourced_snip_urls").eq("registration_id", reg.id).maybeSingle();
@@ -379,7 +380,8 @@ const DoctorApproval = () => {
           const value = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
           const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
           const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
-          upserts.push({ registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId, param_code: p.paramCode, parameter_name: p.parameterName, result_value: value || null, unit: p.unit, reference_range: p.referenceRange, normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh, flag: flag || null, status: "approved", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, approved_at: new Date().toISOString(), entered_at: p.enteredAt || null, verified_at: p.verifiedAt || null, approved_by: getCurrentUser()?.display_name || "Doctor" });
+          const noteVal = editedNotes[k] !== undefined ? editedNotes[k] : p.note;
+          upserts.push({ registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId, param_code: p.paramCode, parameter_name: p.parameterName, result_value: value || null, unit: p.unit, reference_range: p.referenceRange, normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh, flag: flag || null, status: "approved", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, approved_at: new Date().toISOString(), entered_at: p.enteredAt || null, verified_at: p.verifiedAt || null, approved_by: getCurrentUser()?.display_name || "Doctor", note: noteVal || null });
         }
         if (upserts.length > 0) {
           await supabase.from("patient_results").delete().eq("registration_id", reg.id).eq("test_id", testId).eq("status", "verified");
