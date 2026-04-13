@@ -110,6 +110,7 @@ const ResultsEntry = () => {
   const [editedUnits, setEditedUnits] = useState<Record<string, string>>({});
   const [editedRefRanges, setEditedRefRanges] = useState<Record<string, string>>({});
   const [editedNotes, setEditedNotes] = useState<Record<string, string>>({});
+  const editedNotesRef = useRef<Record<string, string>>({});
   const [activeNoteKey, setActiveNoteKey] = useState<string | null>(null);
   const [editedFlags, setEditedFlags] = useState<Record<string, string>>({});
   const [blankParamCount, setBlankParamCount] = useState(0);
