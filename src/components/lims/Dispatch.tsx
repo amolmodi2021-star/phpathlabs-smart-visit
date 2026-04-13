@@ -255,6 +255,16 @@ const Dispatch = () => {
     }).filter(Boolean) as DispatchEntry[];
   }, [registrations, allResults, allSnips, allTubes, testsMap, heldSet]);
 
+  // Re-sort: active STAT on top, completed STAT loses priority
+  const sortedDispatchEntries = useMemo(() => {
+    return [...dispatchEntries].sort((a, b) => {
+      const aActivestat = a.registration.is_stat && a.completionStatus !== "all_done" ? 1 : 0;
+      const bActivestat = b.registration.is_stat && b.completionStatus !== "all_done" ? 1 : 0;
+      if (bActivestat !== aActivestat) return bActivestat - aActivestat;
+      return new Date(b.registration.updated_at).getTime() - new Date(a.registration.updated_at).getTime();
+    });
+  }, [dispatchEntries]);
+
   // Auto-select first patient when entries change
   useEffect(() => {
     if (dispatchEntries.length > 0 && (!selectedPatientId || !dispatchEntries.find(e => e.registration.id === selectedPatientId))) {
