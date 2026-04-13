@@ -41,6 +41,7 @@ Deno.serve(async (req) => {
 
     if (action === "login") return await handleLogin(params, req);
     if (action === "reset_password") return await handleResetPassword(params);
+    if (action === "change_password") return await handleChangePassword(params);
     if (action === "create_user") return await handleCreateUser(params);
     if (action === "update_user") return await handleUpdateUser(params);
     if (action === "init_admin_password") return await handleInitAdminPassword(params);

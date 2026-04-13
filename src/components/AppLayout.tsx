@@ -4,8 +4,9 @@ import { logout, getCurrentUser, isTabAllowed, isActionAllowed } from "@/lib/aut
 import {
   FileText, LayoutDashboard, Home, Users, TestTubes, MessageSquare,
   Menu, X, LogOut, FlaskConical, AlertTriangle, BarChart3, CreditCard,
-  Layers, PenTool, Zap, Webhook, Megaphone, Contact, Activity, Settings, Trash2, Loader2, UserCog, MessageCircle,
+  Layers, PenTool, Zap, Webhook, Megaphone, Contact, Activity, Settings, Trash2, Loader2, UserCog, MessageCircle, KeyRound,
 } from "lucide-react";
+import ChangePasswordDialog from "@/components/ChangePasswordDialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useHomeVisitNotifications } from "@/hooks/useHomeVisitNotifications";
@@ -101,6 +102,7 @@ const NavSection = ({ items, onClick }: { items: typeof allNavItems; onClick?: (
 
 const AppLayout = ({ children }: { children: React.ReactNode }) => {
   const [open, setOpen] = useState(false);
+  const [pwDialogOpen, setPwDialogOpen] = useState(false);
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   useHomeVisitNotifications();
@@ -132,12 +134,16 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
             {user.display_name || user.username}
           </span>
         )}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1">
+          <Button variant="ghost" size="icon" onClick={() => setPwDialogOpen(true)} title="Change Password">
+            <KeyRound className="h-4 w-4" />
+          </Button>
           <Button variant="ghost" size="icon" onClick={handleLogout} title="Logout">
             <LogOut className="h-4 w-4" />
           </Button>
         </div>
       </header>
+      <ChangePasswordDialog open={pwDialogOpen} onOpenChange={setPwDialogOpen} />
 
       <div className="flex">
         {!isMobile && (
