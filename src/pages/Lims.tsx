@@ -24,6 +24,8 @@ const allLimsTabs = [
   { key: "verification", label: "Result Verification" },
   { key: "doctor_approval", label: "Doctor Approval" },
   { key: "dispatch", label: "Dispatch" },
+  { key: "due_payments", label: "Due Payments" },
+  { key: "bad_debts", label: "Bad Debts" },
   { key: "completed_hv", label: "Completed Home Visits" },
   { key: "pickup", label: "Pickup Points" },
   { key: "channels", label: "Channels" },
@@ -65,6 +67,12 @@ const Lims = () => {
         </TabsContent>
         <TabsContent value="dispatch">
           <Dispatch />
+        </TabsContent>
+        <TabsContent value="due_payments">
+          <DuePayments />
+        </TabsContent>
+        <TabsContent value="bad_debts">
+          <BadDebts />
         </TabsContent>
         <TabsContent value="completed_hv">
           <CompletedHomeVisits />
