@@ -16,6 +16,19 @@ import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { toast } from "sonner";
 import { formatDateDDMMYYYY } from "@/lib/utils";
 import ModifiedApproval from "./ModifiedApproval";
+
+const QUALITATIVE_PAIRS = [
+  { label: "Absent / Present", values: ["Absent", "Present"] },
+  { label: "Reactive / Non Reactive", values: ["Reactive", "Non Reactive"] },
+  { label: "Positive / Negative", values: ["Positive", "Negative"] },
+];
+const getQualitativeOptions = (expectedValue: string): string[] => {
+  const pair = QUALITATIVE_PAIRS.find(p => p.label === expectedValue);
+  if (pair) return pair.values;
+  for (const p of QUALITATIVE_PAIRS) { if (p.values.some(v => v.toLowerCase() === expectedValue.toLowerCase())) return p.values; }
+  return [];
+};
+
 interface ParameterResult {
   parameterId: string; paramCode: string; parameterName: string; unit: string; referenceRange: string;
   normalRangeLow: number | null; normalRangeHigh: number | null; resultValue: string; flag: string;
