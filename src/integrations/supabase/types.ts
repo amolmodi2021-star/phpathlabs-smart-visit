@@ -2170,6 +2170,7 @@ export type Database = {
           is_from_interface: boolean
           normal_range_high: number | null
           normal_range_low: number | null
+          note: string | null
           param_code: string | null
           parameter_id: string
           parameter_name: string | null
@@ -2197,6 +2198,7 @@ export type Database = {
           is_from_interface?: boolean
           normal_range_high?: number | null
           normal_range_low?: number | null
+          note?: string | null
           param_code?: string | null
           parameter_id: string
           parameter_name?: string | null
@@ -2224,6 +2226,7 @@ export type Database = {
           is_from_interface?: boolean
           normal_range_high?: number | null
           normal_range_low?: number | null
+          note?: string | null
           param_code?: string | null
           parameter_id?: string
           parameter_name?: string | null
