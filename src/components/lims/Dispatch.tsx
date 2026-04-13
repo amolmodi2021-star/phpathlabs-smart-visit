@@ -525,12 +525,13 @@ const Dispatch = () => {
                         const isTestDispatching = actionKey === `${testKey}||dispatch`;
 
                         const auditSteps = [
-                          { label: "Sample Collected", timestamp: test.collectedAt },
-                          { label: "Sample Accepted", timestamp: test.acceptedAt },
-                          { label: "Results Entered", timestamp: test.enteredAt },
-                          { label: "Verified", timestamp: test.verifiedAt },
-                          { label: "Approved", timestamp: test.approvedAt },
-                          { label: "Dispatched", timestamp: test.dispatchedAt },
+                          { label: "Registered", timestamp: selectedEntry.registration.created_at, by: test.registeredBy },
+                          { label: "Sample Collected", timestamp: test.collectedAt, by: test.collectedBy },
+                          { label: "Sample Accepted", timestamp: test.acceptedAt, by: test.acceptedBy },
+                          { label: "Results Entered", timestamp: test.enteredAt, by: test.enteredBy },
+                          { label: "Verified", timestamp: test.verifiedAt, by: test.verifiedBy },
+                          { label: "Approved", timestamp: test.approvedAt, by: test.approvedBy },
+                          { label: "Dispatched", timestamp: test.dispatchedAt, by: test.dispatchedBy },
                         ];
 
                         return (
