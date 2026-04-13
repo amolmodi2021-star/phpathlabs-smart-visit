@@ -1,0 +1,1 @@
+ALTER TABLE public.pathologist_signatures ADD COLUMN mapped_user_id UUID;

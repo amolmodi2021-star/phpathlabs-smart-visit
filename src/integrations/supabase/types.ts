@@ -1925,6 +1925,7 @@ export type Database = {
           created_at: string | null
           designation: string | null
           id: string
+          mapped_user_id: string | null
           pathologist_name: string
           qualification: string | null
           signature_image_path: string | null
@@ -1934,6 +1935,7 @@ export type Database = {
           created_at?: string | null
           designation?: string | null
           id?: string
+          mapped_user_id?: string | null
           pathologist_name: string
           qualification?: string | null
           signature_image_path?: string | null
@@ -1943,6 +1945,7 @@ export type Database = {
           created_at?: string | null
           designation?: string | null
           id?: string
+          mapped_user_id?: string | null
           pathologist_name?: string
           qualification?: string | null
           signature_image_path?: string | null
