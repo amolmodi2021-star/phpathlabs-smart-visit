@@ -365,21 +365,23 @@ const LimsReportView = () => {
       let currentPageBlocks: TestBlock[] = [];
       let usedHeight = DEPT_HEADER_MM;
 
+      const collectApprovers = (blocks: TestBlock[]) => [...new Set(blocks.flatMap(b => b.approvers || []))];
+
       blocks.forEach(block => {
         // Dedicated page: flush current, put this block alone on its own page
         if (block.dedicatedPage) {
           if (currentPageBlocks.length > 0) {
-            allPages.push({ type: "structured", departmentName: deptName, testBlocks: currentPageBlocks });
+            allPages.push({ type: "structured", departmentName: deptName, testBlocks: currentPageBlocks, approvers: collectApprovers(currentPageBlocks) });
             currentPageBlocks = [];
             usedHeight = DEPT_HEADER_MM;
           }
-          allPages.push({ type: "structured", departmentName: deptName, testBlocks: [block] });
+          allPages.push({ type: "structured", departmentName: deptName, testBlocks: [block], approvers: collectApprovers([block]) });
           return;
         }
 
         if (currentPageBlocks.length > 0 && (usedHeight + block.estimatedHeightMm) > usableHeight) {
           // Flush current page
-          allPages.push({ type: "structured", departmentName: deptName, testBlocks: currentPageBlocks });
+          allPages.push({ type: "structured", departmentName: deptName, testBlocks: currentPageBlocks, approvers: collectApprovers(currentPageBlocks) });
           currentPageBlocks = [];
           usedHeight = DEPT_HEADER_MM;
         }
@@ -388,7 +390,7 @@ const LimsReportView = () => {
       });
 
       if (currentPageBlocks.length > 0) {
-        allPages.push({ type: "structured", departmentName: deptName, testBlocks: currentPageBlocks });
+        allPages.push({ type: "structured", departmentName: deptName, testBlocks: currentPageBlocks, approvers: collectApprovers(currentPageBlocks) });
       }
     });
 
