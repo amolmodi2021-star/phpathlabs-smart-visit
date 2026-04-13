@@ -435,7 +435,7 @@ const Dispatch = () => {
                           <div className="mt-1 shrink-0">{getCompletionDot(entry.completionStatus)}</div>
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-1.5">
-                              {reg.is_stat && <span className="relative flex h-2 w-2 shrink-0"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-destructive" /></span>}
+                              {reg.is_stat && entry.completionStatus !== "all_done" && <span className="relative flex h-2 w-2 shrink-0"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-destructive" /></span>}
                               <span className="font-medium text-sm truncate">{reg.patient_name}</span>
                             </div>
                             <div className="flex items-center gap-2 mt-0.5">
