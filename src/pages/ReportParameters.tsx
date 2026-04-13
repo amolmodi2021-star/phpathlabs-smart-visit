@@ -146,18 +146,24 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
       .order("gender")
       .order("age_min");
     if (data && data.length > 0) {
-      setNormalRanges(data.map((r: any) => ({
-        id: r.id,
-        gender: r.gender,
-        age_min: r.age_min,
-        age_max: r.age_max,
-        normal_range_low: r.normal_range_low,
-        normal_range_high: r.normal_range_high,
-        normal_range_text: r.normal_range_text || "",
-        range_type: r.range_type || "numeric",
-        expected_value: r.expected_value || "",
-        descriptive_options: Array.isArray(r.descriptive_options) ? r.descriptive_options : [],
-      })));
+      setNormalRanges(data.map((r: any) => {
+        const rangeType = r.range_type || "numeric";
+        const text = r.normal_range_text || "";
+        const isAdvisory = rangeType === "numeric" && text.includes("\n");
+        return {
+          id: r.id,
+          gender: r.gender,
+          age_min: r.age_min,
+          age_max: r.age_max,
+          normal_range_low: r.normal_range_low,
+          normal_range_high: r.normal_range_high,
+          normal_range_text: text,
+          range_type: rangeType,
+          expected_value: r.expected_value || "",
+          descriptive_options: Array.isArray(r.descriptive_options) ? r.descriptive_options : [],
+          advisory_range: isAdvisory,
+        };
+      }));
     }
   };
 
