@@ -730,7 +730,7 @@ const ResultsEntry = () => {
         is_calculated: p.isCalculated,
         is_from_interface: p.isFromInterface,
          entered_by: getCurrentUser()?.display_name || null,
-         note: editedNotes[key] !== undefined ? (editedNotes[key] || null) : (p.note || null),
+         note: editedNotesRef.current[key] !== undefined ? (editedNotesRef.current[key] || null) : (p.note || null),
         });
     }
     if (upserts.length === 0) return;
@@ -787,7 +787,7 @@ const ResultsEntry = () => {
           is_calculated: p.isCalculated,
           is_from_interface: p.isFromInterface,
           entered_by: getCurrentUser()?.display_name || null,
-          note: editedNotes[key] !== undefined ? (editedNotes[key] || null) : (p.note || null),
+          note: editedNotesRef.current[key] !== undefined ? (editedNotesRef.current[key] || null) : (p.note || null),
         });
       }
 
