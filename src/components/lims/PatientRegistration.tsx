@@ -350,7 +350,7 @@ const PatientRegistration = () => {
       const regData = {
         invoice_number: invoiceNum as string,
         mobile_number: cleanMobile,
-        patient_name: patientName.toUpperCase(),
+        patient_name: patientName.replace(/\s+/g, ' ').trim().toUpperCase(),
         title,
         gender,
         dob: dob || null,
@@ -447,7 +447,7 @@ const PatientRegistration = () => {
       // Upsert patient_master
       const { data: existing } = await supabase.from("patient_master").select("id").eq("mobile_number", cleanMobile).limit(1).single();
       const pmData: any = {
-        patient_name: patientName.toUpperCase(),
+        patient_name: patientName.replace(/\s+/g, ' ').trim().toUpperCase(),
         mobile_number: cleanMobile,
         gender,
         date_of_birth: dob || null,
