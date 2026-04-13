@@ -323,6 +323,9 @@ const LimsReportView = () => {
       if (testInfo?.interpretation) heightMm += INTERPRETATION_MM;
       if (testInfo?.instrument_name || testInfo?.method || testInfo?.sample_type) heightMm += META_LINE_MM;
 
+      // Collect unique approvers for this test block
+      const blockApprovers = [...new Set(sortedParams.map(p => p.approved_by).filter(Boolean))] as string[];
+
       testBlocks.push({
         testId,
         testName: testInfo?.display_name || params[0]?.test_name || testInfo?.test_name || "Unknown Test",
@@ -338,6 +341,7 @@ const LimsReportView = () => {
         fitToPage: testInfo?.fit_to_page ?? false,
         dedicatedPage: testInfo?.dedicated_page ?? false,
         isSingleParameter: testInfo?.is_single_parameter ?? false,
+        approvers: blockApprovers,
       });
     });
 
