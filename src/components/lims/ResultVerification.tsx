@@ -719,6 +719,11 @@ const ResultVerification = () => {
         <TableCell className="py-1.5 w-[180px]">
           {p.isCalculated ? (
             <Input value={currentValue} readOnly className="h-7 text-sm bg-muted/50 w-[120px] font-mono" placeholder="Auto" />
+          ) : p.rangeType === "qualitative" && getQualitativeOptions(p.expectedValue).length > 0 ? (
+            <Select value={currentValue || undefined} onValueChange={(v) => handleValueChange(regId, p.parameterId, v, entry)}>
+              <SelectTrigger className="h-7 text-sm !w-[180px] min-w-[180px] max-w-[180px]"><SelectValue placeholder="Select..." /></SelectTrigger>
+              <SelectContent>{getQualitativeOptions(p.expectedValue).map((opt: string) => (<SelectItem key={opt} value={opt}>{opt}</SelectItem>))}</SelectContent>
+            </Select>
           ) : p.rangeType === "descriptive" && p.descriptiveOptions.length > 0 ? (
             <Select value={currentValue || undefined} onValueChange={(v) => handleValueChange(regId, p.parameterId, v, entry)}>
               <SelectTrigger className="h-7 text-sm !w-[180px] min-w-[180px] max-w-[180px]"><SelectValue placeholder="Select..." /></SelectTrigger>
