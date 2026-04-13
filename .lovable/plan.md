@@ -1,23 +1,20 @@
 
 
-# Block Dispatch Actions for Patients with Due Payments
+# Trim Extra Spaces from Patient Name
 
 ## Problem
-Patients with outstanding dues can still have their reports viewed, downloaded, shared via WhatsApp, and dispatched. The system should block all dispatch actions and clearly show the due amount.
+Patient names can contain leading, trailing, or multiple consecutive spaces, leading to messy records.
 
 ## Solution
+Apply `.replace(/\s+/g, ' ').trim()` before `.toUpperCase()` on `patientName` in three files:
 
-### Changes in `src/components/lims/Dispatch.tsx`
+### Files to modify
 
-1. **Fetch `due_amount`**: Add `due_amount` to the select query (line 89) so each registration carries its due balance.
+1. **`src/components/lims/PatientRegistration.tsx`** — Two occurrences (insert into `patient_registrations` and `patient_master` upsert): change `patientName.toUpperCase()` to `patientName.replace(/\s+/g, ' ').trim().toUpperCase()`
 
-2. **Left panel — DUE indicator on patient card** (lines 454-457 area): When `reg.due_amount > 0`, show a red `DUE ₹{amount}` badge below the invoice number line.
+2. **`src/components/lims/EditRegistrationDialog.tsx`** — One occurrence (update `patient_registrations`): same transformation
 
-3. **Right panel header — Disable all action buttons** (lines 507-523): Wrap the View Report, WhatsApp, and Dispatch All buttons in a condition: if `due_amount > 0`, disable all buttons and show a prominent "DUE ₹{amount}" badge instead.
+3. **`src/components/lims/EditAndRegisterHomeVisitDialog.tsx`** — Two occurrences (update `estimates` and insert `patient_registrations`): same transformation
 
-4. **Per-test row — Disable View Snip, WhatsApp, Dispatch buttons** (lines 557-596): When `due_amount > 0`, disable the View Snip button, WhatsApp button, and individual Dispatch button. Keep status and TAT badges visible but make action buttons non-functional.
-
-5. **Report select dialog** (line 674): Disable the Generate Report button if the selected entry has a due amount.
-
-This is a UI-only enforcement — the `due_amount` column already exists in `patient_registrations`.
+This ensures all extra spaces are collapsed to a single space and leading/trailing spaces are removed before saving.
 
