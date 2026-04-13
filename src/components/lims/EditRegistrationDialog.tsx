@@ -126,7 +126,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         .map(m => ({ mode: m, amount: modeAmounts[m] || 0 }));
 
       const { error } = await supabase.from("patient_registrations").update({
-        patient_name: patientName.toUpperCase(),
+        patient_name: patientName.replace(/\s+/g, ' ').trim().toUpperCase(),
         title,
         gender,
         dob: dob || null,

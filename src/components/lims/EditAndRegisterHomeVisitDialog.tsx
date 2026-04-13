@@ -236,7 +236,7 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
       // Update estimate
       await supabase.from("estimates").update({
         title: title || null,
-        patient_name: patientName.toUpperCase(),
+        patient_name: patientName.replace(/\s+/g, ' ').trim().toUpperCase(),
         gender: gender || null,
         email: email || null,
         doctor_name: doctorName ? doctorName.toUpperCase() : "SELF",
@@ -288,7 +288,7 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
 
       const { error } = await supabase.from("patient_registrations").insert({
         invoice_number: invNum,
-        patient_name: patientName.toUpperCase(),
+        patient_name: patientName.replace(/\s+/g, ' ').trim().toUpperCase(),
         mobile_number: cleanNumber,
         title: title || null,
         gender: gender || null,
