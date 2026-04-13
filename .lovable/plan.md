@@ -1,49 +1,26 @@
 
 
-# Due Payments & Bad Debts Tabs in LIMS
+# Regenerate Invoice After Due Payment Collection
 
-## Overview
-Add two new tabs to the LIMS section: **Due Payments** (after Dispatch) and **Bad Debts** (after Due Payments), both before Completed Home Visits. These tabs manage outstanding patient balances with options to collect payments or write off as bad debt.
+## Problem
+After collecting a due payment, the invoice is not shown/regenerated. The user needs to see an updated invoice reflecting the new payment with its date/time, while preserving all original data. If due remains, the patient stays in Due Payments.
 
-## Database Change
+## Solution
 
-**Migration:** Add a `is_bad_debt` boolean column to `patient_registrations`:
-```sql
-ALTER TABLE patient_registrations ADD COLUMN is_bad_debt boolean NOT NULL DEFAULT false;
-```
+### Changes in `src/components/lims/DuePayments.tsx`
 
-No new tables needed — we reuse the existing `patient_registrations` table, filtering by `due_amount > 0`.
+1. **Import `InvoicePreview`** component and add state for showing it.
 
-## New Components
+2. **Fetch additional fields** needed by `InvoicePreview`: Add `title, gender, dob, email, address, umr_number, visit_type, tests, gross_amount, discount_amount, home_visit_charges, final_amount, refund_amount, refund_mode, refund_date, cancelled_tests` to the select query.
 
-### 1. `src/components/lims/DuePayments.tsx`
-- Query `patient_registrations` where `due_amount > 0 AND is_bad_debt = false AND bill_cancelled = false`, ordered by `created_at DESC`
-- Table columns: Invoice #, Patient Name, Mobile, Doctor, Registration Date, Net Amount, Paid Amount, Due Amount, Actions
-- **Collect Payment** button: Opens a dialog/inline form to add a payment entry (mode + amount). Updates `payments` JSONB array, recalculates `paid_amount` and `due_amount` on the registration row.
-- **Mark as Bad Debt** button: Sets `is_bad_debt = true` on the registration, removing it from this list.
-- Search bar for filtering by name/invoice/mobile.
+3. **After successful payment collection**, instead of just closing the dialog, update the `selected` object with the new payment data (new payments array, new paid_amount, new due_amount) and open the invoice preview dialog.
 
-### 2. `src/components/lims/BadDebts.tsx`
-- Query `patient_registrations` where `is_bad_debt = true`, ordered by `created_at DESC`
-- Same table columns as Due Payments plus the original due amount context.
-- **Restore to Due** button: Sets `is_bad_debt = false`, moving the patient back to Due Payments tab.
-- Search bar for filtering.
+4. **Add `InvoicePreview` component** at the bottom of the JSX, passing the updated registration data and controlling its open/close state.
 
-### 3. Collect Payment Dialog
-- Simple dialog with payment mode selector (Cash/Card/UPI/Online) and amount input (pre-filled with due amount).
-- On save: append to `payments` JSONB, update `paid_amount` and `due_amount`.
-- Reuses existing payment mode patterns from the codebase.
+The `InvoicePreview` already dynamically renders all payments with their modes/amounts, shows the current due, and handles print/WhatsApp sharing. The new payment entry already includes `{ mode, amount, date }` so it will display with the correct date/time. No changes needed to `InvoicePreview.tsx`.
 
-## Changes to `src/pages/Lims.tsx`
-- Add tab entries after "dispatch":
-  ```
-  { key: "due_payments", label: "Due Payments" }
-  { key: "bad_debts", label: "Bad Debts" }
-  ```
-- Import and render both new components in their respective `TabsContent`.
-
-## Technical Notes
-- The `is_bad_debt` flag preserves the due amount data for audit purposes — no financial figures are modified when marking as bad debt.
-- Payment collection follows the same JSONB `payments` array pattern already used in `EditRegistrationDialog` and `PaymentDetailsDialog`.
-- Query invalidation on `lims-dispatch` and `lims-registrations` keys ensures Dispatch tab picks up payment changes immediately (patient no longer blocked if due is cleared).
+### Behavior
+- Collect payment → DB updated → invoice preview opens with refreshed data
+- If due remains > 0, patient stays in Due Payments list (already works this way)
+- Invoice shows all payment entries including the newly collected one with timestamp
 
