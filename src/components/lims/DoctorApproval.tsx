@@ -16,6 +16,19 @@ import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { toast } from "sonner";
 import { formatDateDDMMYYYY } from "@/lib/utils";
 import ModifiedApproval from "./ModifiedApproval";
+
+const QUALITATIVE_PAIRS = [
+  { label: "Absent / Present", values: ["Absent", "Present"] },
+  { label: "Reactive / Non Reactive", values: ["Reactive", "Non Reactive"] },
+  { label: "Positive / Negative", values: ["Positive", "Negative"] },
+];
+const getQualitativeOptions = (expectedValue: string): string[] => {
+  const pair = QUALITATIVE_PAIRS.find(p => p.label === expectedValue);
+  if (pair) return pair.values;
+  for (const p of QUALITATIVE_PAIRS) { if (p.values.some(v => v.toLowerCase() === expectedValue.toLowerCase())) return p.values; }
+  return [];
+};
+
 interface ParameterResult {
   parameterId: string; paramCode: string; parameterName: string; unit: string; referenceRange: string;
   normalRangeLow: number | null; normalRangeHigh: number | null; resultValue: string; flag: string;
@@ -503,6 +516,12 @@ const DoctorApproval = () => {
         {renderHistoryCell(p.parameterId, 0)}{renderHistoryCell(p.parameterId, 1)}
         <TableCell className="py-1.5 w-[180px]">
           {p.isCalculated ? (<Input value={currentValue} readOnly className="h-7 text-sm bg-muted/50 w-[120px] font-mono" />) :
+           p.rangeType === "qualitative" && getQualitativeOptions(p.expectedValue).length > 0 ? (
+            <Select value={currentValue || undefined} onValueChange={(v) => handleValueChange(regId, p.parameterId, v, entry)}>
+              <SelectTrigger className="h-7 text-sm !w-[180px]"><SelectValue placeholder="Select..." /></SelectTrigger>
+              <SelectContent>{getQualitativeOptions(p.expectedValue).map((opt: string) => (<SelectItem key={opt} value={opt}>{opt}</SelectItem>))}</SelectContent>
+            </Select>
+          ) :
            p.rangeType === "descriptive" && p.descriptiveOptions.length > 0 ? (
             <Select value={currentValue || undefined} onValueChange={(v) => handleValueChange(regId, p.parameterId, v, entry)}>
               <SelectTrigger className="h-7 text-sm !w-[180px]"><SelectValue placeholder="Select..." /></SelectTrigger>
