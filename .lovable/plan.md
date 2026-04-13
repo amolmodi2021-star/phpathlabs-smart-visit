@@ -1,48 +1,44 @@
 
 
-# Optimize "New Numbers" Tab — Move Logic to Database RPC
+# Two Features: Self-Service Password Change + User-Signature Mapping
 
-## Problem
-The New Numbers tab downloads **all 35,000+ CRM contacts**, **8,300+ message logs**, and **870 blacklist entries** to the client on every load. This is extremely slow and will only get worse.
+## Feature 1: Self-Service Password Change
 
-## Solution
-Create a single database RPC `get_new_numbers_paginated` that does the entire computation server-side (find log numbers NOT in CRM/blacklist, group, search, paginate) and returns only the 50 rows needed for the current page.
+Each logged-in user gets a "Change Password" option accessible from the app header (next to logout).
 
-## Technical Details
+### Changes:
+1. **New component `src/components/ChangePasswordDialog.tsx`** — Dialog with current password, new password, confirm password fields. Calls the `user-auth` edge function.
+2. **Update `supabase/functions/user-auth/index.ts`** — Add a `change_password` action that verifies the current password before updating to the new one.
+3. **Update `src/components/AppLayout.tsx`** — Add a "Change Password" button/icon in the header bar next to the logout button. Opens the dialog.
 
-### 1. New database migration — `get_new_numbers_paginated` RPC
+## Feature 2: Map App Users to Pathologist Signatures
 
-```sql
-CREATE OR REPLACE FUNCTION public.get_new_numbers_paginated(
-  p_search text DEFAULT '',
-  p_limit integer DEFAULT 50,
-  p_offset integer DEFAULT 0
-)
-RETURNS TABLE(
-  mobile text,
-  patient_name text,
-  last_message_type text,
-  last_sent_at timestamptz,
-  message_count bigint,
-  total_count bigint
-)
-```
+Link each pathologist signature record to an `app_users` entry so that when a user approves a report, their mapped signature automatically appears.
 
-Logic inside the function:
-- Extract distinct 10-digit mobiles from `message_send_log`
-- LEFT JOIN exclude against `crm_contacts` and `crm_blacklist` (normalized to last 10 digits)
-- Group by mobile, pick latest `sent_at`, `patient_name`, `message_type`, and count
-- Apply ILIKE search filter on mobile/patient_name/message_type
-- Return paginated results with a `total_count` column (using `COUNT(*) OVER()`)
+### Changes:
+1. **Database migration** — Add `mapped_user_id UUID` column to `pathologist_signatures` table (nullable, references no FK to avoid issues).
+2. **Update `src/pages/SignatureManagement.tsx`** — Add a "Mapped User" dropdown in the add/edit dialog, populated from `app_users`. Show mapped user in the table.
+3. **Update `src/components/lims/DoctorApproval.tsx`** — When approving, set `approved_by` to the current logged-in user's `display_name` (from `getCurrentUser()`) instead of the hardcoded `"Doctor"` string.
+4. **Report signature resolution already works** — `LimsReportView.tsx` already matches `approved_by` against `pathologist_name`. With the user mapping, we enhance it to also check `mapped_user_id` match. If the `approved_by` name matches a pathologist's mapped user's `display_name`, use that signature.
 
-### 2. Refactor `NewNumbers.tsx`
+### Technical Details
 
-- Replace the heavy `useQuery` with a simple RPC call to `get_new_numbers_paginated`
-- Add 300ms debounced search (same pattern as WhatsApp Chat)
-- Keep the existing table UI and pagination controls
-- Add skeleton loading state
+**Edge function `change_password` action:**
+- Accepts `user_id`, `current_password`, `new_password`
+- Verifies current password hash matches
+- Hashes new password and updates
 
-### Files to modify
-- **New migration**: Create `get_new_numbers_paginated` function + indexes
-- **`src/components/marketing/NewNumbers.tsx`**: Replace client-side logic with single RPC call
+**Signature mapping flow:**
+- `pathologist_signatures.mapped_user_id` → links to `app_users.id`
+- On approval, `approved_by` is set to the current user's display name
+- Report view matches `approved_by` against both `pathologist_name` AND the mapped user's display name
+
+### Files to modify:
+- **New**: `src/components/ChangePasswordDialog.tsx`
+- **Edit**: `supabase/functions/user-auth/index.ts` (add `change_password` action)
+- **Edit**: `src/components/AppLayout.tsx` (add change password button)
+- **Edit**: `src/pages/SignatureManagement.tsx` (add mapped user dropdown)
+- **Edit**: `src/components/lims/DoctorApproval.tsx` (use current user name as `approved_by`)
+- **Edit**: `src/pages/LimsReportView.tsx` (enhance signature matching with user mapping)
+- **New migration**: Add `mapped_user_id` column to `pathologist_signatures`
 
