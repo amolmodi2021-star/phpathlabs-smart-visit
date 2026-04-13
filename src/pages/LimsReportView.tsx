@@ -171,11 +171,26 @@ const LimsReportView = () => {
       }
     }
 
-    // Signature - use first approved_by name match
+    // Signature - match approved_by against pathologist_name OR mapped user's display_name
     let computedSignature: any = null;
     const approvedBy = reports?.[0]?.approved_by;
     if (approvedBy && signatures) {
-      const sig = signatures.find((s: any) => s.pathologist_name.toLowerCase() === approvedBy.toLowerCase());
+      // First try direct pathologist_name match
+      let sig = signatures.find((s: any) => s.pathologist_name.toLowerCase() === approvedBy.toLowerCase());
+      // If no match, try mapped_user_id: fetch app_users to resolve display_name
+      if (!sig) {
+        const mappedSigs = signatures.filter((s: any) => s.mapped_user_id);
+        if (mappedSigs.length > 0) {
+          const { data: mappedUsers } = await supabase
+            .from("app_users")
+            .select("id, display_name")
+            .in("id", mappedSigs.map((s: any) => s.mapped_user_id));
+          if (mappedUsers) {
+            const userMap = Object.fromEntries(mappedUsers.map((u: any) => [u.id, u.display_name]));
+            sig = mappedSigs.find((s: any) => userMap[s.mapped_user_id]?.toLowerCase() === approvedBy.toLowerCase());
+          }
+        }
+      }
       if (sig && sig.signature_image_path) {
         const { data: sigUrl } = supabase.storage.from("signatures").getPublicUrl(sig.signature_image_path);
         computedSignature = { ...sig, signatureUrl: sigUrl.publicUrl };
