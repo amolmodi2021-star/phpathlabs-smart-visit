@@ -591,7 +591,7 @@ const Dispatch = () => {
                                   {auditSteps.map((step, idx) => {
                                     const isDone = !!step.timestamp;
                                     return (
-                                      <div key={idx} className={cn("grid items-center gap-1 py-0.5", isMobile ? "grid-cols-[20px_120px_1fr]" : "grid-cols-[24px_160px_1fr]")}>
+                                      <div key={idx} className={cn("grid items-center gap-1 py-0.5", isMobile ? "grid-cols-[20px_110px_1fr_1fr]" : "grid-cols-[24px_150px_1fr_1fr]")}>
                                         <div className="flex justify-center">
                                           {isDone ? (
                                             <div className="h-2.5 w-2.5 rounded-full bg-green-500" />
@@ -604,6 +604,9 @@ const Dispatch = () => {
                                         </span>
                                         <span className={`text-xs ${isDone ? "text-muted-foreground" : "text-muted-foreground/40"}`}>
                                           {isDone ? formatDate(step.timestamp) : "—"}
+                                        </span>
+                                        <span className={`text-xs ${isDone && step.by ? "text-primary font-medium" : "text-muted-foreground/40"}`}>
+                                          {isDone && step.by ? `by ${step.by}` : ""}
                                         </span>
                                       </div>
                                     );
