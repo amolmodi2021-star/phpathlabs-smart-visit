@@ -1031,7 +1031,12 @@ const ResultVerification = () => {
                           <TableCell className="py-2 text-xs font-mono text-muted-foreground">{p.paramCode}</TableCell>
                           <TableCell className="py-2 text-sm font-medium">{p.parameterName}</TableCell>
                           <TableCell className="py-2">
-                            {p.rangeType === "descriptive" && p.descriptiveOptions.length > 0 ? (
+                            {p.rangeType === "qualitative" && getQualitativeOptions(p.expectedValue).length > 0 ? (
+                              <Select value={currentValue || undefined} onValueChange={(v) => handleValueChange(reg.id, p.parameterId, v, entry)}>
+                                <SelectTrigger className="h-7 text-sm w-full"><SelectValue placeholder="Select..." /></SelectTrigger>
+                                <SelectContent>{getQualitativeOptions(p.expectedValue).map((opt: string) => (<SelectItem key={opt} value={opt}>{opt}</SelectItem>))}</SelectContent>
+                              </Select>
+                            ) : p.rangeType === "descriptive" && p.descriptiveOptions.length > 0 ? (
                               <Select value={currentValue || undefined} onValueChange={(v) => handleValueChange(reg.id, p.parameterId, v, entry)}>
                                 <SelectTrigger className="h-7 text-sm w-full"><SelectValue placeholder="Select..." /></SelectTrigger>
                                 <SelectContent className="max-w-[400px]">
