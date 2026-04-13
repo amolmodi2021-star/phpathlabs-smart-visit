@@ -1,0 +1,1 @@
+ALTER TABLE patient_results ADD COLUMN note text;
