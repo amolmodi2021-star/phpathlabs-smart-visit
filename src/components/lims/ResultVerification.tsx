@@ -28,6 +28,7 @@ const getQualitativeOptions = (expectedValue: string): string[] => {
   return [];
 };
 
+interface ParameterResult {
   parameterId: string;
   paramCode: string;
   parameterName: string;
