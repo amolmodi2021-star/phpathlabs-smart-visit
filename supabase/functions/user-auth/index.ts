@@ -41,6 +41,7 @@ Deno.serve(async (req) => {
 
     if (action === "login") return await handleLogin(params, req);
     if (action === "reset_password") return await handleResetPassword(params);
+    if (action === "change_password") return await handleChangePassword(params);
     if (action === "create_user") return await handleCreateUser(params);
     if (action === "update_user") return await handleUpdateUser(params);
     if (action === "init_admin_password") return await handleInitAdminPassword(params);
@@ -149,6 +150,27 @@ async function handleUpdateUser(params: {
 
   const { error } = await supabase.from("app_users").update(updates).eq("id", params.user_id);
   if (error) return json({ error: error.message }, 500);
+  return json({ success: true });
+}
+
+async function handleChangePassword({ user_id, current_password, new_password }: { user_id: string; current_password: string; new_password: string }) {
+  if (!user_id || !current_password || !new_password) return json({ error: "user_id, current_password, and new_password required" }, 400);
+  if (new_password.length < 4) return json({ error: "New password must be at least 4 characters" }, 400);
+
+  const { data: user, error } = await supabase
+    .from("app_users")
+    .select("id, password_hash")
+    .eq("id", user_id)
+    .maybeSingle();
+
+  if (error || !user) return json({ error: "User not found" }, 404);
+
+  const valid = await verifyPassword(current_password, user.password_hash);
+  if (!valid) return json({ error: "Current password is incorrect" }, 401);
+
+  const hash = await hashPassword(new_password);
+  const { error: updateErr } = await supabase.from("app_users").update({ password_hash: hash }).eq("id", user_id);
+  if (updateErr) return json({ error: updateErr.message }, 500);
   return json({ success: true });
 }
 
