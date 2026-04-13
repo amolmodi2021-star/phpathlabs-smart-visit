@@ -35,6 +35,13 @@ interface DispatchTest {
   verifiedAt: string | null;
   approvedAt: string | null;
   dispatchedAt: string | null;
+  registeredBy: string | null;
+  collectedBy: string | null;
+  acceptedBy: string | null;
+  enteredBy: string | null;
+  verifiedBy: string | null;
+  approvedBy: string | null;
+  dispatchedBy: string | null;
 }
 
 interface DispatchEntry {
