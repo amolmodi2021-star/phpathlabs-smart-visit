@@ -555,6 +555,12 @@ const Dispatch = () => {
                                 </CollapsibleTrigger>
                               </div>
                               <div className={cn("flex items-center gap-1.5 shrink-0", isMobile && "flex-wrap w-full justify-end")}>
+                                {/* View Snip */}
+                                {test.status === "approved" && test.snipUrls.length > 0 && (
+                                  <Button size="sm" variant="ghost" className="h-8 text-xs gap-1" onClick={() => setViewSnipImages(test.snipUrls)}>
+                                    <Eye className="h-3.5 w-3.5" /> Snip
+                                  </Button>
+                                )}
                                 {/* TAT badge */}
                                 {(() => {
                                   const startTime = test.collectedAt;
@@ -575,13 +581,9 @@ const Dispatch = () => {
                                   }
                                   return null;
                                 })()}
-                                {/* Status badge - show only current status */}
+                                {/* Status badge */}
                                 {getStatusBadge(test.status)}
-                                {test.status === "approved" && test.snipUrls.length > 0 && (
-                                  <Button size="sm" variant="ghost" className="h-8 text-xs gap-1" onClick={() => setViewSnipImages(test.snipUrls)}>
-                                    <Eye className="h-3.5 w-3.5" /> Snip
-                                  </Button>
-                                )}
+                                {/* WhatsApp & Dispatch */}
                                 {test.status === "approved" && (
                                   <>
                                     <Button size="sm" variant="outline" className="h-8 text-xs gap-1" onClick={() => dispatchViaWhatsApp(selectedEntry.registration)}>
