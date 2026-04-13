@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Search, X, Save, Printer, Send, ChevronDown, ChevronUp } from "lucide-react";
 import { getTests, TestItem } from "@/lib/tests";
+import { getCurrentUser } from "@/lib/auth";
 import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import InvoicePreview from "./InvoicePreview";
 
@@ -378,6 +379,7 @@ const PatientRegistration = () => {
         remarks: remarks.trim() || null,
         is_stat: isStat,
         report_language: visitType === "pickup_point" ? "ENGLISH" : reportLanguage.toUpperCase(),
+        registered_by: getCurrentUser()?.display_name || null,
       };
 
       const { data: reg, error } = await supabase.from("patient_registrations").insert(regData as any).select().single();

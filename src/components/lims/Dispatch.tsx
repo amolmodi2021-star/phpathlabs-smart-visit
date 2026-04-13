@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
+import { getCurrentUser } from "@/lib/auth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -34,6 +35,13 @@ interface DispatchTest {
   verifiedAt: string | null;
   approvedAt: string | null;
   dispatchedAt: string | null;
+  registeredBy: string | null;
+  collectedBy: string | null;
+  acceptedBy: string | null;
+  enteredBy: string | null;
+  verifiedBy: string | null;
+  approvedBy: string | null;
+  dispatchedBy: string | null;
 }
 
 interface DispatchEntry {
@@ -78,7 +86,7 @@ const Dispatch = () => {
     queryKey: ["dispatch_regs", debouncedSearch, dateFrom.toISOString(), dateTo.toISOString(), dispatchPage],
     queryFn: async () => {
       let query = supabase.from("patient_registrations")
-        .select("id, invoice_number, patient_name, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, created_at, updated_at, bill_cancelled")
+        .select("id, invoice_number, patient_name, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, created_at, updated_at, bill_cancelled, registered_by")
         .eq("bill_cancelled", false)
         .gte("created_at", dateFrom.toISOString())
         .lte("created_at", dateTo.toISOString())
@@ -108,7 +116,7 @@ const Dispatch = () => {
     queryKey: ["dispatch_all_tubes", regIds.join(",")],
     enabled: regIds.length > 0,
     queryFn: async () => {
-      const { data } = await supabase.from("sample_tubes" as any).select("registration_id, test_ids, collected_at, accepted_at, status").in("registration_id", regIds);
+      const { data } = await supabase.from("sample_tubes" as any).select("registration_id, test_ids, collected_at, accepted_at, status, collected_by, accepted_by").in("registration_id", regIds);
       return (data || []) as any[];
     },
   });
@@ -206,6 +214,12 @@ const Dispatch = () => {
           }
         }
 
+        // Extract _by fields
+        const getFirstBy = (field: string) => {
+          const vals = testResults.map((r: any) => r[field]).filter(Boolean);
+          return vals.length > 0 ? vals[0] : null;
+        };
+
         dispatchTests.push({
           testId: t.test_id,
           testName: t.test_name || testInfo.test_name || "Unknown",
@@ -218,6 +232,13 @@ const Dispatch = () => {
           verifiedAt,
           approvedAt: approvedAtTs,
           dispatchedAt: dispatchedAtTs,
+          registeredBy: reg.registered_by || null,
+          collectedBy: tube?.collected_by || null,
+          acceptedBy: tube?.accepted_by || null,
+          enteredBy: getFirstBy("entered_by"),
+          verifiedBy: getFirstBy("verified_by"),
+          approvedBy: getFirstBy("approved_by"),
+          dispatchedBy: getFirstBy("dispatched_by"),
         });
       }
 
@@ -256,7 +277,7 @@ const Dispatch = () => {
     try {
       const approvedTests = entry.tests.filter(t => t.status === "approved");
       for (const test of approvedTests) {
-        await supabase.from("patient_results").update({ status: "dispatched", dispatched_at: new Date().toISOString() } as any).eq("registration_id", reg.id).eq("test_id", test.testId).eq("status", "approved");
+        await supabase.from("patient_results").update({ status: "dispatched", dispatched_at: new Date().toISOString(), dispatched_by: getCurrentUser()?.display_name || null } as any).eq("registration_id", reg.id).eq("test_id", test.testId).eq("status", "approved");
         await supabase.from("outsourced_test_snips").update({ outsource_status: "dispatched" } as any).eq("registration_id", reg.id).eq("test_id", test.testId).eq("outsource_status", "approved");
       }
       const stillPending = entry.tests.some(t => t.status !== "approved" && t.status !== "dispatched");
@@ -274,7 +295,7 @@ const Dispatch = () => {
   const markTestDispatched = async (regId: string, testId: string, testName: string) => {
     setActionKey(`${regId}||${testId}||dispatch`);
     try {
-      await supabase.from("patient_results").update({ status: "dispatched", dispatched_at: new Date().toISOString() } as any).eq("registration_id", regId).eq("test_id", testId).eq("status", "approved");
+      await supabase.from("patient_results").update({ status: "dispatched", dispatched_at: new Date().toISOString(), dispatched_by: getCurrentUser()?.display_name || null } as any).eq("registration_id", regId).eq("test_id", testId).eq("status", "approved");
       await supabase.from("outsourced_test_snips").update({ outsource_status: "dispatched" } as any).eq("registration_id", regId).eq("test_id", testId).eq("outsource_status", "approved");
       toast.success(`${testName} marked as dispatched`);
       qc.invalidateQueries({ queryKey: ["dispatch_"] });
@@ -504,12 +525,13 @@ const Dispatch = () => {
                         const isTestDispatching = actionKey === `${testKey}||dispatch`;
 
                         const auditSteps = [
-                          { label: "Sample Collected", timestamp: test.collectedAt },
-                          { label: "Sample Accepted", timestamp: test.acceptedAt },
-                          { label: "Results Entered", timestamp: test.enteredAt },
-                          { label: "Verified", timestamp: test.verifiedAt },
-                          { label: "Approved", timestamp: test.approvedAt },
-                          { label: "Dispatched", timestamp: test.dispatchedAt },
+                          { label: "Registered", timestamp: selectedEntry.registration.created_at, by: test.registeredBy },
+                          { label: "Sample Collected", timestamp: test.collectedAt, by: test.collectedBy },
+                          { label: "Sample Accepted", timestamp: test.acceptedAt, by: test.acceptedBy },
+                          { label: "Results Entered", timestamp: test.enteredAt, by: test.enteredBy },
+                          { label: "Verified", timestamp: test.verifiedAt, by: test.verifiedBy },
+                          { label: "Approved", timestamp: test.approvedAt, by: test.approvedBy },
+                          { label: "Dispatched", timestamp: test.dispatchedAt, by: test.dispatchedBy },
                         ];
 
                         return (
@@ -569,7 +591,7 @@ const Dispatch = () => {
                                   {auditSteps.map((step, idx) => {
                                     const isDone = !!step.timestamp;
                                     return (
-                                      <div key={idx} className={cn("grid items-center gap-1 py-0.5", isMobile ? "grid-cols-[20px_120px_1fr]" : "grid-cols-[24px_160px_1fr]")}>
+                                      <div key={idx} className={cn("grid items-center gap-1 py-0.5", isMobile ? "grid-cols-[20px_110px_1fr_1fr]" : "grid-cols-[24px_150px_1fr_1fr]")}>
                                         <div className="flex justify-center">
                                           {isDone ? (
                                             <div className="h-2.5 w-2.5 rounded-full bg-green-500" />
@@ -582,6 +604,9 @@ const Dispatch = () => {
                                         </span>
                                         <span className={`text-xs ${isDone ? "text-muted-foreground" : "text-muted-foreground/40"}`}>
                                           {isDone ? formatDate(step.timestamp) : "—"}
+                                        </span>
+                                        <span className={`text-xs ${isDone && step.by ? "text-primary font-medium" : "text-muted-foreground/40"}`}>
+                                          {isDone && step.by ? `by ${step.by}` : ""}
                                         </span>
                                       </div>
                                     );

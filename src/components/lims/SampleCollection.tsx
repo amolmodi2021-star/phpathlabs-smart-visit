@@ -15,6 +15,7 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import JsBarcode from "jsbarcode";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
+import { getCurrentUser } from "@/lib/auth";
 
 const TUBE_COLOR_MAP: Record<string, string> = {
   red: "#e53e3e", lavender: "#b794f4", purple: "#9f7aea", yellow: "#ecc94b",
@@ -231,7 +232,7 @@ const SampleCollection = () => {
       const now = new Date().toISOString();
       const { error } = await supabase
         .from("sample_tubes" as any)
-        .update({ status: "collected", collected_at: now })
+        .update({ status: "collected", collected_at: now, collected_by: getCurrentUser()?.display_name || null })
         .in("id", tubeIds);
       if (error) throw error;
       await recalculateRegistrationStatus(regId);
