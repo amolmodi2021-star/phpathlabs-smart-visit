@@ -2024,6 +2024,7 @@ export type Database = {
           home_visit_id: string | null
           id: string
           invoice_number: string
+          is_bad_debt: boolean
           is_stat: boolean
           mobile_number: string
           net_amount: number
@@ -2066,6 +2067,7 @@ export type Database = {
           home_visit_id?: string | null
           id?: string
           invoice_number: string
+          is_bad_debt?: boolean
           is_stat?: boolean
           mobile_number: string
           net_amount?: number
@@ -2108,6 +2110,7 @@ export type Database = {
           home_visit_id?: string | null
           id?: string
           invoice_number?: string
+          is_bad_debt?: boolean
           is_stat?: boolean
           mobile_number?: string
           net_amount?: number

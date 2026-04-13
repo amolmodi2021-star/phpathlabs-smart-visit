@@ -1,0 +1,1 @@
+ALTER TABLE patient_registrations ADD COLUMN is_bad_debt boolean NOT NULL DEFAULT false;
