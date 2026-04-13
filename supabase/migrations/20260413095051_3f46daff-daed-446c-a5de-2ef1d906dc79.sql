@@ -1,0 +1,3 @@
+UPDATE public.approved_reports
+SET test_results = test_results || '[{"test_id":"1c19b439-0f4c-42e4-9061-8983901657ff","test_name":"FBS","parameter_id":"f1adf33f-c375-48ec-854c-f03b026e28e5","param_code":null,"parameter_name":"Blood Glucose Fasting","result_value":"100","unit":"mg/dl","reference_range":"70 - 100 mg/dl","normal_range_low":70,"normal_range_high":110,"flag":"N","is_calculated":false,"is_outsourced":false,"outsource_lab_name":null,"approved_by":"Doctor","approved_by_qualification":null,"approved_by_designation":null,"approved_by_signature_url":null,"note":"Kindly correlate clinically"}]'::jsonb
+WHERE registration_id = '007aedf0-e25f-44f3-9e54-e64a5a75f4d4';
