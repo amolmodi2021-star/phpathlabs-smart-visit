@@ -196,7 +196,7 @@ const DuePayments = () => {
                   <TableCell>{p.mobile_number}</TableCell>
                   <TableCell>{p.doctor_name || "-"}</TableCell>
                   <TableCell>{format(new Date(p.created_at), "dd-MM-yyyy hh:mm a")}</TableCell>
-                  <TableCell className="text-right">₹{p.net_amount}</TableCell>
+                  <TableCell className="text-right">₹{(p.net_amount || 0) + (p.home_visit_charges || 0)}</TableCell>
                   <TableCell className="text-right">₹{p.paid_amount}</TableCell>
                   <TableCell className="text-right">
                     <Badge variant="destructive">₹{p.due_amount}</Badge>
