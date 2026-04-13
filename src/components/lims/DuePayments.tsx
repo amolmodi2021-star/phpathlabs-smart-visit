@@ -78,7 +78,11 @@ const DuePayments = () => {
 
   const handleModeAmountChange = (mode: string, val: string) => {
     const num = parseFloat(val) || 0;
-    setModeAmounts(prev => ({ ...prev, [mode]: num }));
+    const othersTotal = Object.entries(modeAmounts)
+      .filter(([m]) => m !== mode && selectedModes.has(m))
+      .reduce((sum, [, v]) => sum + (v || 0), 0);
+    const maxForThis = Math.max(0, (selected?.due_amount || 0) - othersTotal);
+    setModeAmounts(prev => ({ ...prev, [mode]: Math.min(num, maxForThis) }));
   };
 
   const handleCollect = async () => {
