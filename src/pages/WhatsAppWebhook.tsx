@@ -25,6 +25,7 @@ const WhatsAppWebhook = () => {
   );
   const [saving, setSaving] = useState(false);
   const [waMeUrl, setWaMeUrl] = useState("https://wa.me/+916356556699");
+  const [maxAutoReplies, setMaxAutoReplies] = useState(0);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
