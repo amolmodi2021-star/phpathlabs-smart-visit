@@ -82,6 +82,42 @@ const SampleCollection = () => {
     },
   });
 
+  // Sync tube types from latest test definitions
+  useEffect(() => {
+    if (allTubes.length === 0) return;
+    const syncTubeTypes = async () => {
+      const allTestIds = [...new Set(allTubes.flatMap(t => t.test_ids || []))];
+      if (allTestIds.length === 0) return;
+      const { data: tests } = await supabase
+        .from("tests")
+        .select("id, sample_tube, tube_color, sample_type")
+        .in("id", allTestIds);
+      if (!tests || tests.length === 0) return;
+      const testMap = Object.fromEntries(tests.map((t: any) => [t.id, t]));
+      const updates: { id: string; tube_type: string | null; tube_color: string | null; sample_type: string | null }[] = [];
+      for (const tube of allTubes) {
+        const firstTestId = (tube.test_ids || [])[0];
+        if (!firstTestId) continue;
+        const testDef = testMap[firstTestId];
+        if (!testDef) continue;
+        const newTubeType = testDef.sample_tube || null;
+        const newTubeColor = testDef.tube_color || null;
+        const newSampleType = testDef.sample_type || null;
+        if (tube.tube_type !== newTubeType || tube.tube_color !== newTubeColor || tube.sample_type !== newSampleType) {
+          updates.push({ id: tube.id, tube_type: newTubeType, tube_color: newTubeColor, sample_type: newSampleType });
+        }
+      }
+      if (updates.length === 0) return;
+      for (const u of updates) {
+        await supabase.from("sample_tubes" as any)
+          .update({ tube_type: u.tube_type, tube_color: u.tube_color, sample_type: u.sample_type } as any)
+          .eq("id", u.id);
+      }
+      qc.invalidateQueries({ queryKey: ["sample_tubes_collection"] });
+    };
+    syncTubeTypes();
+  }, [allTubes]);
+
   // Get unique registration IDs from tubes
   const regIds = useMemo(() => [...new Set(allTubes.map(t => t.registration_id))], [allTubes]);
 
