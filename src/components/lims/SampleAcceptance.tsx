@@ -202,7 +202,7 @@ const SampleAcceptance = () => {
       // Update tube status
       const { error } = await supabase
         .from("sample_tubes" as any)
-        .update({ status: "accepted", accepted_at: now })
+        .update({ status: "accepted", accepted_at: now, accepted_by: getCurrentUser()?.display_name || null })
         .in("id", tubeIds);
       if (error) throw error;
 
