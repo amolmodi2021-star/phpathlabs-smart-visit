@@ -1,26 +1,34 @@
 
 
-# Regenerate Invoice After Due Payment Collection
+# Multi-Mode Payment Collection & Invoice Date/Time
 
 ## Problem
-After collecting a due payment, the invoice is not shown/regenerated. The user needs to see an updated invoice reflecting the new payment with its date/time, while preserving all original data. If due remains, the patient stays in Due Payments.
+1. Due payment collection only allows a single payment mode — should match registration form (multiple modes with per-mode amounts, capped at due amount).
+2. Invoice doesn't show payment date/time alongside each payment entry.
 
-## Solution
+## Changes
 
-### Changes in `src/components/lims/DuePayments.tsx`
+### 1. `src/components/lims/DuePayments.tsx` — Multi-mode payment UI
 
-1. **Import `InvoicePreview`** component and add state for showing it.
+Replace single `payMode`/`payAmount` state with multi-mode pattern from `PatientRegistration.tsx`:
 
-2. **Fetch additional fields** needed by `InvoicePreview`: Add `title, gender, dob, email, address, umr_number, visit_type, tests, gross_amount, discount_amount, home_visit_charges, final_amount, refund_amount, refund_mode, refund_date, cancelled_tests` to the select query.
+- **State**: Replace `payMode`/`payAmount` with `selectedModes: Set<string>` and `modeAmounts: Record<string, number>`
+- **Payment modes**: Use same `PAYMENT_MODES` list with checkbox selection (grid layout)
+- **Amount inputs**: For each selected mode, show an amount input. Cap each input so total across all modes cannot exceed `selected.due_amount`
+- **Collect handler**: Create one payment entry per selected mode (each with `{ mode, amount, date }`) and append all to the existing payments array. Update `paid_amount` and `due_amount` accordingly.
+- **Validation**: Total paid must be > 0 and ≤ due amount.
 
-3. **After successful payment collection**, instead of just closing the dialog, update the `selected` object with the new payment data (new payments array, new paid_amount, new due_amount) and open the invoice preview dialog.
+### 2. `src/components/lims/InvoicePreview.tsx` — Show payment date/time
 
-4. **Add `InvoicePreview` component** at the bottom of the JSX, passing the updated registration data and controlling its open/close state.
+Update the payments rendering section (lines 154-157) to display the `date` field from each payment entry:
 
-The `InvoicePreview` already dynamically renders all payments with their modes/amounts, shows the current due, and handles print/WhatsApp sharing. The new payment entry already includes `{ mode, amount, date }` so it will display with the correct date/time. No changes needed to `InvoicePreview.tsx`.
+```
+{p.mode}: ₹{p.amount}  →  {p.mode} (dd/MM/yyyy HH:mm): ₹{p.amount}
+```
 
-### Behavior
-- Collect payment → DB updated → invoice preview opens with refreshed data
-- If due remains > 0, patient stays in Due Payments list (already works this way)
-- Invoice shows all payment entries including the newly collected one with timestamp
+Only show date if `p.date` exists (old payments before this change may not have it).
+
+### 3. Update `PAYMENT_MODES` in DuePayments
+
+Change from `["Cash", "GPay", "Paytm", "Credit Card", "UPI", "Online"]` to match registration: `["Cash", "GPay", "Paytm", "Credit Card", "NEFT"]`.
 
