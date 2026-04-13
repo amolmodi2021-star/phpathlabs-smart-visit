@@ -110,11 +110,13 @@ const ResultsEntry = () => {
   const [editedUnits, setEditedUnits] = useState<Record<string, string>>({});
   const [editedRefRanges, setEditedRefRanges] = useState<Record<string, string>>({});
   const [editedNotes, setEditedNotes] = useState<Record<string, string>>({});
+  const editedNotesRef = useRef<Record<string, string>>({});
   const [activeNoteKey, setActiveNoteKey] = useState<string | null>(null);
   const [editedFlags, setEditedFlags] = useState<Record<string, string>>({});
   const [blankParamCount, setBlankParamCount] = useState(0);
   const [highlightBlanksForRegs, setHighlightBlanksForRegs] = useState<Set<string>>(new Set());
   const autoSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  useEffect(() => { editedNotesRef.current = editedNotes; }, [editedNotes]);
   const [rePage, setRePage] = useState(0);
 
   useEffect(() => {
@@ -728,7 +730,7 @@ const ResultsEntry = () => {
         is_calculated: p.isCalculated,
         is_from_interface: p.isFromInterface,
          entered_by: getCurrentUser()?.display_name || null,
-         note: editedNotes[key] !== undefined ? (editedNotes[key] || null) : (p.note || null),
+         note: editedNotesRef.current[key] !== undefined ? (editedNotesRef.current[key] || null) : (p.note || null),
         });
     }
     if (upserts.length === 0) return;
@@ -785,7 +787,7 @@ const ResultsEntry = () => {
           is_calculated: p.isCalculated,
           is_from_interface: p.isFromInterface,
           entered_by: getCurrentUser()?.display_name || null,
-          note: editedNotes[key] !== undefined ? (editedNotes[key] || null) : (p.note || null),
+          note: editedNotesRef.current[key] !== undefined ? (editedNotesRef.current[key] || null) : (p.note || null),
         });
       }
 
