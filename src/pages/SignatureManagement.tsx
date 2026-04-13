@@ -11,10 +11,11 @@ import { Plus, Pencil, Trash2, Loader2, Upload } from "lucide-react";
 
 const SignatureManagement = () => {
   const [signatures, setSignatures] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  const [form, setForm] = useState({ pathologist_name: "", designation: "", qualification: "" });
+  const [form, setForm] = useState({ pathologist_name: "", designation: "", qualification: "", mapped_user_id: "" });
   const [sigFile, setSigFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
