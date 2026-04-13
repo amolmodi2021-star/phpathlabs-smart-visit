@@ -47,6 +47,9 @@ interface TestResultEntry {
   param_code?: string;
   is_calculated?: boolean;
   approved_by?: string;
+  approved_by_qualification?: string | null;
+  approved_by_designation?: string | null;
+  approved_by_signature_url?: string | null;
 }
 
 interface TestBlock {
