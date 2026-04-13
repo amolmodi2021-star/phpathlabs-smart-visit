@@ -269,6 +269,7 @@ Deno.serve(async (req) => {
       } catch (replyErr) {
         console.error("Auto-reply failed:", replyErr);
       }
+      } // end if (!rateLimited)
     }
 
     return new Response(JSON.stringify({ success: true }), {
