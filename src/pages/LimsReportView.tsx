@@ -46,6 +46,7 @@ interface TestResultEntry {
   outsource_lab_name?: string | null;
   param_code?: string;
   is_calculated?: boolean;
+  approved_by?: string;
 }
 
 interface TestBlock {
@@ -63,6 +64,7 @@ interface TestBlock {
   fitToPage?: boolean;
   dedicatedPage?: boolean;
   isSingleParameter?: boolean;
+  approvers?: string[];
 }
 
 interface SnipPage {
@@ -74,6 +76,14 @@ interface PageContent {
   departmentName?: string;
   testBlocks?: TestBlock[];
   snipImage?: string;
+  approvers?: string[];
+}
+
+interface SignatureInfo {
+  pathologist_name: string;
+  qualification: string | null;
+  designation: string | null;
+  signatureUrl: string | null;
 }
 
 const LimsReportView = () => {
