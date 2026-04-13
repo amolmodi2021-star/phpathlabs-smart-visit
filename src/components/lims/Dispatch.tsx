@@ -214,6 +214,12 @@ const Dispatch = () => {
           }
         }
 
+        // Extract _by fields
+        const getFirstBy = (field: string) => {
+          const vals = testResults.map((r: any) => r[field]).filter(Boolean);
+          return vals.length > 0 ? vals[0] : null;
+        };
+
         dispatchTests.push({
           testId: t.test_id,
           testName: t.test_name || testInfo.test_name || "Unknown",
@@ -226,6 +232,13 @@ const Dispatch = () => {
           verifiedAt,
           approvedAt: approvedAtTs,
           dispatchedAt: dispatchedAtTs,
+          registeredBy: reg.registered_by || null,
+          collectedBy: tube?.collected_by || null,
+          acceptedBy: tube?.accepted_by || null,
+          enteredBy: getFirstBy("entered_by"),
+          verifiedBy: getFirstBy("verified_by"),
+          approvedBy: getFirstBy("approved_by"),
+          dispatchedBy: getFirstBy("dispatched_by"),
         });
       }
 
