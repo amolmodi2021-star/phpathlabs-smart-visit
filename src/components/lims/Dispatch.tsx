@@ -267,12 +267,12 @@ const Dispatch = () => {
 
   // Auto-select first patient when entries change
   useEffect(() => {
-    if (dispatchEntries.length > 0 && (!selectedPatientId || !dispatchEntries.find(e => e.registration.id === selectedPatientId))) {
-      setSelectedPatientId(dispatchEntries[0].registration.id);
+    if (sortedDispatchEntries.length > 0 && (!selectedPatientId || !sortedDispatchEntries.find(e => e.registration.id === selectedPatientId))) {
+      setSelectedPatientId(sortedDispatchEntries[0].registration.id);
     }
-  }, [dispatchEntries, selectedPatientId]);
+  }, [sortedDispatchEntries, selectedPatientId]);
 
-  const selectedEntry = useMemo(() => dispatchEntries.find(e => e.registration.id === selectedPatientId) || null, [dispatchEntries, selectedPatientId]);
+  const selectedEntry = useMemo(() => sortedDispatchEntries.find(e => e.registration.id === selectedPatientId) || null, [sortedDispatchEntries, selectedPatientId]);
 
   const dispatchViaWhatsApp = (reg: any) => {
     const phone = (reg.mobile_number || "").replace(/\D/g, "");
