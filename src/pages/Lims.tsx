@@ -6,6 +6,8 @@ import RegisteredPatients from "@/components/lims/RegisteredPatients";
 import PickupPointManager from "@/components/lims/PickupPointManager";
 import ChannelManager from "@/components/lims/ChannelManager";
 import CompletedHomeVisits from "@/components/lims/CompletedHomeVisits";
+import DuePayments from "@/components/lims/DuePayments";
+import BadDebts from "@/components/lims/BadDebts";
 import SampleCollection from "@/components/lims/SampleCollection";
 import SampleAcceptance from "@/components/lims/SampleAcceptance";
 import ResultsEntry from "@/components/lims/ResultsEntry";
@@ -22,6 +24,8 @@ const allLimsTabs = [
   { key: "verification", label: "Result Verification" },
   { key: "doctor_approval", label: "Doctor Approval" },
   { key: "dispatch", label: "Dispatch" },
+  { key: "due_payments", label: "Due Payments" },
+  { key: "bad_debts", label: "Bad Debts" },
   { key: "completed_hv", label: "Completed Home Visits" },
   { key: "pickup", label: "Pickup Points" },
   { key: "channels", label: "Channels" },
@@ -63,6 +67,12 @@ const Lims = () => {
         </TabsContent>
         <TabsContent value="dispatch">
           <Dispatch />
+        </TabsContent>
+        <TabsContent value="due_payments">
+          <DuePayments />
+        </TabsContent>
+        <TabsContent value="bad_debts">
+          <BadDebts />
         </TabsContent>
         <TabsContent value="completed_hv">
           <CompletedHomeVisits />
