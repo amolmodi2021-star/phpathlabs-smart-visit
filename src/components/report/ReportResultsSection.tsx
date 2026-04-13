@@ -131,7 +131,7 @@ const ParamRow = ({ r, rowKey, compact, isMorph, showFlagText, rowFontSize, colC
           <td className={`text-center ${resultWeight} ${py}`}>
             {r.result_value}
           </td>
-          <td className={`text-center text-gray-600 ${rangeWeight} ${py}`}>
+          <td className={`text-center text-gray-600 ${rangeWeight} ${py}`} style={{ whiteSpace: 'pre-line' }}>
             {r.normal_range_text || `${r.normal_range_low || ""} - ${r.normal_range_high || ""}${r.unit ? ` ${r.unit}` : ''}`}
           </td>
           {showFlagText && (

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +36,7 @@ interface NormalRange {
   range_type: string;
   expected_value: string;
   descriptive_options: string[];
+  advisory_range?: boolean;
 }
 
 // No default age groups — users set ranges manually
@@ -144,18 +146,24 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
       .order("gender")
       .order("age_min");
     if (data && data.length > 0) {
-      setNormalRanges(data.map((r: any) => ({
-        id: r.id,
-        gender: r.gender,
-        age_min: r.age_min,
-        age_max: r.age_max,
-        normal_range_low: r.normal_range_low,
-        normal_range_high: r.normal_range_high,
-        normal_range_text: r.normal_range_text || "",
-        range_type: r.range_type || "numeric",
-        expected_value: r.expected_value || "",
-        descriptive_options: Array.isArray(r.descriptive_options) ? r.descriptive_options : [],
-      })));
+      setNormalRanges(data.map((r: any) => {
+        const rangeType = r.range_type || "numeric";
+        const text = r.normal_range_text || "";
+        const isAdvisory = rangeType === "numeric" && text.includes("\n");
+        return {
+          id: r.id,
+          gender: r.gender,
+          age_min: r.age_min,
+          age_max: r.age_max,
+          normal_range_low: r.normal_range_low,
+          normal_range_high: r.normal_range_high,
+          normal_range_text: text,
+          range_type: rangeType,
+          expected_value: r.expected_value || "",
+          descriptive_options: Array.isArray(r.descriptive_options) ? r.descriptive_options : [],
+          advisory_range: isAdvisory,
+        };
+      }));
     }
   };
 
@@ -350,8 +358,8 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
     setNormalRanges(prev => prev.map((r, i) => {
       if (i !== index) return r;
       const updated = { ...r, [field]: value };
-      // Auto-fill display text when low/high changes for numeric ranges
-      if ((field === "normal_range_low" || field === "normal_range_high") && (updated.range_type || "numeric") === "numeric") {
+      // Auto-fill display text when low/high changes for numeric ranges (skip if advisory mode)
+      if ((field === "normal_range_low" || field === "normal_range_high") && (updated.range_type || "numeric") === "numeric" && !updated.advisory_range) {
         const low = field === "normal_range_low" ? value : updated.normal_range_low;
         const high = field === "normal_range_high" ? value : updated.normal_range_high;
         const unit = form.unit || "";
@@ -798,19 +806,43 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
                           </Select>
                         </div>
                         {(r.range_type || "numeric") === "numeric" ? (
-                          <div className="grid grid-cols-3 gap-2">
-                            <div>
-                              <Label className="text-xs">Low</Label>
-                              <Input type="number" step="any" value={r.normal_range_low ?? ""} onChange={(e) => updateRange(r._idx, "normal_range_low", e.target.value ? Number(e.target.value) : null)} placeholder="Low" />
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                              <Checkbox
+                                id={`advisory-${r._idx}`}
+                                checked={!!r.advisory_range}
+                                onCheckedChange={(checked) => updateRange(r._idx, "advisory_range", !!checked)}
+                              />
+                              <Label htmlFor={`advisory-${r._idx}`} className="text-xs cursor-pointer">Advisory Range (multi-category, e.g. HbA1c)</Label>
                             </div>
-                            <div>
-                              <Label className="text-xs">High</Label>
-                              <Input type="number" step="any" value={r.normal_range_high ?? ""} onChange={(e) => updateRange(r._idx, "normal_range_high", e.target.value ? Number(e.target.value) : null)} placeholder="High" />
+                            <div className={`grid ${r.advisory_range ? 'grid-cols-2' : 'grid-cols-3'} gap-2`}>
+                              <div>
+                                <Label className="text-xs">Low {r.advisory_range ? '(for flagging)' : ''}</Label>
+                                <Input type="number" step="any" value={r.normal_range_low ?? ""} onChange={(e) => updateRange(r._idx, "normal_range_low", e.target.value ? Number(e.target.value) : null)} placeholder="Low" />
+                              </div>
+                              <div>
+                                <Label className="text-xs">High {r.advisory_range ? '(for flagging)' : ''}</Label>
+                                <Input type="number" step="any" value={r.normal_range_high ?? ""} onChange={(e) => updateRange(r._idx, "normal_range_high", e.target.value ? Number(e.target.value) : null)} placeholder="High" />
+                              </div>
+                              {!r.advisory_range && (
+                                <div>
+                                  <Label className="text-xs">Display Text</Label>
+                                  <Input value={r.normal_range_text} onChange={(e) => updateRange(r._idx, "normal_range_text", e.target.value)} placeholder="e.g. 4.0-11.0" />
+                                </div>
+                              )}
                             </div>
-                            <div>
-                              <Label className="text-xs">Display Text</Label>
-                              <Input value={r.normal_range_text} onChange={(e) => updateRange(r._idx, "normal_range_text", e.target.value)} placeholder="e.g. 4.0-11.0" />
-                            </div>
+                            {r.advisory_range && (
+                              <div>
+                                <Label className="text-xs">Display Text (multi-line for report)</Label>
+                                <Textarea
+                                  value={r.normal_range_text}
+                                  onChange={(e) => updateRange(r._idx, "normal_range_text", e.target.value)}
+                                  placeholder={"Non-Diabetic: < 5.7%\nPre-Diabetic: 5.7 - 6.4%\nDiabetic: ≥ 6.5%"}
+                                  rows={3}
+                                  className="text-sm"
+                                />
+                              </div>
+                            )}
                           </div>
                         ) : r.range_type === "qualitative" ? (
                           <div className="grid grid-cols-2 gap-2">
