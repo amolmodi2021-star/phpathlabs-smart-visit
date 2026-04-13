@@ -181,41 +181,40 @@ const LimsReportView = () => {
       }
     }
 
-    // Signature - match approved_by against pathologist_name OR mapped user's display_name
-    let computedSignature: any = null;
-    const approvedBy = reports?.[0]?.approved_by;
-    if (approvedBy && signatures) {
-      // First try direct pathologist_name match
-      let sig = signatures.find((s: any) => s.pathologist_name.toLowerCase() === approvedBy.toLowerCase());
-      // If no match, try mapped_user_id: fetch app_users to resolve display_name
-      if (!sig) {
-        const mappedSigs = signatures.filter((s: any) => s.mapped_user_id);
-        if (mappedSigs.length > 0) {
-          const { data: mappedUsers } = await supabase
-            .from("app_users")
-            .select("id, display_name")
-            .in("id", mappedSigs.map((s: any) => s.mapped_user_id));
-          if (mappedUsers) {
-            const userMap = Object.fromEntries(mappedUsers.map((u: any) => [u.id, u.display_name]));
-            sig = mappedSigs.find((s: any) => userMap[s.mapped_user_id]?.toLowerCase() === approvedBy.toLowerCase());
-          }
+    // Build signature map: approver display_name → signature info
+    const sigMap: Record<string, SignatureInfo> = {};
+    if (signatures && signatures.length > 0) {
+      // Build mapped user lookup
+      const mappedSigs = signatures.filter((s: any) => s.mapped_user_id);
+      let userDisplayMap: Record<string, string> = {};
+      if (mappedSigs.length > 0) {
+        const { data: mappedUsers } = await supabase
+          .from("app_users")
+          .select("id, display_name")
+          .in("id", mappedSigs.map((s: any) => s.mapped_user_id));
+        if (mappedUsers) {
+          userDisplayMap = Object.fromEntries(mappedUsers.map((u: any) => [u.id, u.display_name]));
         }
       }
-      if (sig && sig.signature_image_path) {
-        const { data: sigUrl } = supabase.storage.from("signatures").getPublicUrl(sig.signature_image_path);
-        computedSignature = { ...sig, signatureUrl: sigUrl.publicUrl };
-      } else if (sig) {
-        computedSignature = sig;
-      } else {
-        computedSignature = signatures[0] ? { ...signatures[0] } : null;
-      }
-    } else if (signatures && signatures.length > 0) {
-      const first = signatures[0];
-      if (first.signature_image_path) {
-        const { data: sigUrl } = supabase.storage.from("signatures").getPublicUrl(first.signature_image_path);
-        computedSignature = { ...first, signatureUrl: sigUrl.publicUrl };
-      } else {
-        computedSignature = first;
+
+      for (const sig of signatures) {
+        let sigUrl: string | null = null;
+        if (sig.signature_image_path) {
+          const { data: sigUrlData } = supabase.storage.from("signatures").getPublicUrl(sig.signature_image_path);
+          sigUrl = sigUrlData.publicUrl;
+        }
+        const info: SignatureInfo = {
+          pathologist_name: sig.pathologist_name,
+          qualification: sig.qualification,
+          designation: sig.designation,
+          signatureUrl: sigUrl,
+        };
+        // Index by pathologist_name
+        sigMap[sig.pathologist_name.toLowerCase()] = info;
+        // Also index by mapped user's display_name
+        if (sig.mapped_user_id && userDisplayMap[sig.mapped_user_id]) {
+          sigMap[userDisplayMap[sig.mapped_user_id].toLowerCase()] = info;
+        }
       }
     }
 
@@ -253,7 +252,7 @@ const LimsReportView = () => {
     setTestsMap(tMap);
     setLayoutSettings(computedLayout);
     setLetterheadImageUrl(computedLetterhead);
-    setSignatureData(computedSignature);
+    setSignatureMap(sigMap);
     setSnipImages(snipPages);
     setTestParamsMap(computedTpMap);
     setLoading(false);
