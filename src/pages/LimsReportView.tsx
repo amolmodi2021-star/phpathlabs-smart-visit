@@ -804,6 +804,7 @@ function mapParamToTestResult(param: TestResultEntry): TestResult {
     normal_range_high: param.normal_range_high?.toString() || undefined,
     flag: param.flag || undefined,
     test_name: param.test_name,
+    remark: (param as any).note || undefined,
   };
 }
 
