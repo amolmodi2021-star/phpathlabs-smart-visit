@@ -2034,6 +2034,7 @@ export type Database = {
           refund_amount: number
           refund_date: string | null
           refund_mode: string | null
+          registered_by: string | null
           remarks: string | null
           report_language: string | null
           status: string
@@ -2075,6 +2076,7 @@ export type Database = {
           refund_amount?: number
           refund_date?: string | null
           refund_mode?: string | null
+          registered_by?: string | null
           remarks?: string | null
           report_language?: string | null
           status?: string
@@ -2116,6 +2118,7 @@ export type Database = {
           refund_amount?: number
           refund_date?: string | null
           refund_mode?: string | null
+          registered_by?: string | null
           remarks?: string | null
           report_language?: string | null
           status?: string
@@ -2152,8 +2155,10 @@ export type Database = {
       patient_results: {
         Row: {
           approved_at: string | null
+          approved_by: string | null
           created_at: string
           dispatched_at: string | null
+          dispatched_by: string | null
           entered_at: string | null
           entered_by: string | null
           flag: string | null
@@ -2173,11 +2178,14 @@ export type Database = {
           unit: string | null
           updated_at: string
           verified_at: string | null
+          verified_by: string | null
         }
         Insert: {
           approved_at?: string | null
+          approved_by?: string | null
           created_at?: string
           dispatched_at?: string | null
+          dispatched_by?: string | null
           entered_at?: string | null
           entered_by?: string | null
           flag?: string | null
@@ -2197,11 +2205,14 @@ export type Database = {
           unit?: string | null
           updated_at?: string
           verified_at?: string | null
+          verified_by?: string | null
         }
         Update: {
           approved_at?: string | null
+          approved_by?: string | null
           created_at?: string
           dispatched_at?: string | null
+          dispatched_by?: string | null
           entered_at?: string | null
           entered_by?: string | null
           flag?: string | null
@@ -2221,6 +2232,7 @@ export type Database = {
           unit?: string | null
           updated_at?: string
           verified_at?: string | null
+          verified_by?: string | null
         }
         Relationships: []
       }
@@ -2731,7 +2743,9 @@ export type Database = {
       sample_tubes: {
         Row: {
           accepted_at: string | null
+          accepted_by: string | null
           collected_at: string | null
+          collected_by: string | null
           created_at: string
           id: string
           registration_id: string
@@ -2746,7 +2760,9 @@ export type Database = {
         }
         Insert: {
           accepted_at?: string | null
+          accepted_by?: string | null
           collected_at?: string | null
+          collected_by?: string | null
           created_at?: string
           id?: string
           registration_id: string
@@ -2761,7 +2777,9 @@ export type Database = {
         }
         Update: {
           accepted_at?: string | null
+          accepted_by?: string | null
           collected_at?: string | null
+          collected_by?: string | null
           created_at?: string
           id?: string
           registration_id?: string
