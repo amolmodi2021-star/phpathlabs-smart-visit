@@ -4,8 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Search, Loader2, AlertTriangle } from "lucide-react";
@@ -13,15 +13,15 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import InvoicePreview from "./InvoicePreview";
 
-const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card", "UPI", "Online"];
+const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card", "NEFT"];
 
 const DuePayments = () => {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [collectOpen, setCollectOpen] = useState(false);
   const [selected, setSelected] = useState<any>(null);
-  const [payMode, setPayMode] = useState("Cash");
-  const [payAmount, setPayAmount] = useState("");
+  const [selectedModes, setSelectedModes] = useState<Set<string>>(new Set());
+  const [modeAmounts, setModeAmounts] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState(false);
   const [badDebtConfirm, setBadDebtConfirm] = useState<any>(null);
   const [invoiceData, setInvoiceData] = useState<any>(null);
@@ -49,24 +49,65 @@ const DuePayments = () => {
 
   const openCollect = (p: any) => {
     setSelected(p);
-    setPayAmount(String(p.due_amount));
-    setPayMode("Cash");
+    setSelectedModes(new Set(["Cash"]));
+    setModeAmounts({ Cash: p.due_amount });
     setCollectOpen(true);
+  };
+
+  const toggleMode = (mode: string) => {
+    setSelectedModes(prev => {
+      const next = new Set(prev);
+      if (next.has(mode)) {
+        next.delete(mode);
+        setModeAmounts(prev => {
+          const copy = { ...prev };
+          delete copy[mode];
+          return copy;
+        });
+      } else {
+        next.add(mode);
+        setModeAmounts(prev => ({ ...prev, [mode]: 0 }));
+      }
+      return next;
+    });
+  };
+
+  const totalPaying = Object.entries(modeAmounts)
+    .filter(([mode]) => selectedModes.has(mode))
+    .reduce((sum, [, val]) => sum + (val || 0), 0);
+
+  const handleModeAmountChange = (mode: string, val: string) => {
+    const num = parseFloat(val) || 0;
+    setModeAmounts(prev => ({ ...prev, [mode]: num }));
   };
 
   const handleCollect = async () => {
     if (!selected) return;
-    const amount = parseFloat(payAmount);
-    if (!amount || amount <= 0 || amount > selected.due_amount) {
-      toast.error("Enter a valid amount up to the due amount");
+    if (selectedModes.size === 0) {
+      toast.error("Select at least one payment mode");
+      return;
+    }
+    if (totalPaying <= 0 || totalPaying > selected.due_amount) {
+      toast.error(`Total must be between ₹1 and ₹${selected.due_amount}`);
       return;
     }
     setSaving(true);
     try {
       const existingPayments = Array.isArray(selected.payments) ? selected.payments : [];
-      const newPayments = [...existingPayments, { mode: payMode, amount, date: new Date().toISOString() }];
-      const newPaid = (selected.paid_amount || 0) + amount;
-      const newDue = (selected.due_amount || 0) - amount;
+      const now = new Date().toISOString();
+      const newEntries = Array.from(selectedModes)
+        .filter(mode => (modeAmounts[mode] || 0) > 0)
+        .map(mode => ({ mode, amount: modeAmounts[mode], date: now }));
+
+      if (newEntries.length === 0) {
+        toast.error("Enter amount for at least one payment mode");
+        setSaving(false);
+        return;
+      }
+
+      const newPayments = [...existingPayments, ...newEntries];
+      const newPaid = (selected.paid_amount || 0) + totalPaying;
+      const newDue = (selected.due_amount || 0) - totalPaying;
 
       const { error } = await supabase
         .from("patient_registrations")
@@ -80,7 +121,6 @@ const DuePayments = () => {
       if (error) throw error;
       toast.success("Payment collected successfully");
       setCollectOpen(false);
-      // Show updated invoice
       setInvoiceData({
         ...selected,
         payments: newPayments,
@@ -151,7 +191,7 @@ const DuePayments = () => {
                   <TableCell className="font-medium">{p.patient_name}</TableCell>
                   <TableCell>{p.mobile_number}</TableCell>
                   <TableCell>{p.doctor_name || "-"}</TableCell>
-                  <TableCell>{format(new Date(p.created_at), "dd/MM/yyyy HH:mm")}</TableCell>
+                  <TableCell>{format(new Date(p.created_at), "dd-MM-yyyy hh:mm a")}</TableCell>
                   <TableCell className="text-right">₹{p.net_amount}</TableCell>
                   <TableCell className="text-right">₹{p.paid_amount}</TableCell>
                   <TableCell className="text-right">
@@ -174,7 +214,7 @@ const DuePayments = () => {
 
       {/* Collect Payment Dialog */}
       <Dialog open={collectOpen} onOpenChange={setCollectOpen}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Collect Payment</DialogTitle>
           </DialogHeader>
@@ -186,28 +226,44 @@ const DuePayments = () => {
                 <p>Due: <span className="text-destructive font-semibold">₹{selected.due_amount}</span></p>
               </div>
               <div className="space-y-2">
-                <Label>Payment Mode</Label>
-                <Select value={payMode} onValueChange={setPayMode}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {PAYMENT_MODES.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <Label>Payment Mode(s)</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  {PAYMENT_MODES.map((mode) => (
+                    <label key={mode} className="flex items-center gap-2 text-sm cursor-pointer">
+                      <Checkbox
+                        checked={selectedModes.has(mode)}
+                        onCheckedChange={() => toggleMode(mode)}
+                      />
+                      {mode}
+                    </label>
+                  ))}
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label>Amount (₹)</Label>
-                <Input
-                  type="number"
-                  value={payAmount}
-                  onChange={(e) => setPayAmount(e.target.value)}
-                  max={selected.due_amount}
-                />
-              </div>
+              {Array.from(selectedModes).map((mode) => (
+                <div key={mode} className="space-y-1">
+                  <Label>{mode} Amount (₹)</Label>
+                  <Input
+                    type="number"
+                    value={modeAmounts[mode] || ""}
+                    onChange={(e) => handleModeAmountChange(mode, e.target.value)}
+                    min={0}
+                    max={selected.due_amount}
+                  />
+                </div>
+              ))}
+              {selectedModes.size > 0 && (
+                <div className="text-sm font-medium flex justify-between border-t pt-2">
+                  <span>Total Paying:</span>
+                  <span className={totalPaying > selected.due_amount ? "text-destructive" : ""}>
+                    ₹{totalPaying.toFixed(2)} / ₹{selected.due_amount}
+                  </span>
+                </div>
+              )}
             </div>
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setCollectOpen(false)}>Cancel</Button>
-            <Button onClick={handleCollect} disabled={saving}>
+            <Button onClick={handleCollect} disabled={saving || totalPaying <= 0 || totalPaying > (selected?.due_amount || 0)}>
               {saving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
               Collect Payment
             </Button>
@@ -238,6 +294,7 @@ const DuePayments = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
       {/* Invoice Preview after payment */}
       <InvoicePreview
         data={invoiceData}
