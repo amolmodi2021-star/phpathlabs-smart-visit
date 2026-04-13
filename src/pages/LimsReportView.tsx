@@ -102,7 +102,7 @@ const LimsReportView = () => {
   const [registration, setRegistration] = useState<any>(null);
   const [layoutSettings, setLayoutSettings] = useState({ top_margin_cm: 2.5, bottom_margin_cm: 1.5, letterhead_pdf_path: null as string | null });
   const [letterheadImageUrl, setLetterheadImageUrl] = useState<string | null>(null);
-  const [signatureData, setSignatureData] = useState<any>(null);
+  const [signatureMap, setSignatureMap] = useState<Record<string, SignatureInfo>>({});
   const [departments, setDepartments] = useState<any[]>([]);
   const [testsMap, setTestsMap] = useState<Record<string, any>>({});
   const [testParamsMap, setTestParamsMap] = useState<Record<string, any[]>>({});
