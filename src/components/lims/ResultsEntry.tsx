@@ -723,6 +723,7 @@ const ResultsEntry = () => {
         status: "pending",
         is_calculated: p.isCalculated,
         is_from_interface: p.isFromInterface,
+        entered_by: getCurrentUser()?.display_name || null,
       });
     }
     if (upserts.length === 0) return;
@@ -778,6 +779,7 @@ const ResultsEntry = () => {
           entered_at: new Date().toISOString(),
           is_calculated: p.isCalculated,
           is_from_interface: p.isFromInterface,
+          entered_by: getCurrentUser()?.display_name || null,
         });
       }
 
