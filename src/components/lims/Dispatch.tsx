@@ -413,7 +413,7 @@ const Dispatch = () => {
 
       {loadingRegs ? (
         <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
-      ) : dispatchEntries.length === 0 ? (
+      ) : sortedDispatchEntries.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <Truck className="h-12 w-12 mx-auto mb-3 opacity-30" />
           <p className="text-lg font-medium">No reports pending dispatch</p>
