@@ -660,16 +660,42 @@ const LimsReportView = () => {
 
               {/* Signature */}
               <div className="mt-auto">
-                {signatureData && (
-                  <ReportSignatureBlock
-                    signatureUrl={signatureData.signatureUrl || null}
-                    pathologistName={signatureData.pathologist_name}
-                    qualification={signatureData.qualification}
-                    designation={signatureData.designation}
-                  />
-                )}
+                {(() => {
+                  const pageApprovers = page.approvers && page.approvers.length > 0
+                    ? page.approvers
+                    : Object.keys(signatureMap).length > 0 ? [Object.keys(signatureMap)[0]] : [];
+                  const resolvedSigs = pageApprovers
+                    .map(name => signatureMap[name.toLowerCase()])
+                    .filter(Boolean);
+                  // Deduplicate by pathologist_name
+                  const uniqueSigs = resolvedSigs.filter((s, i, arr) => arr.findIndex(x => x.pathologist_name === s.pathologist_name) === i);
+                  if (uniqueSigs.length === 0 && Object.keys(signatureMap).length > 0) {
+                    // Fallback: show first signature
+                    const fallback = Object.values(signatureMap)[0];
+                    return (
+                      <ReportSignatureBlock
+                        signatureUrl={fallback.signatureUrl}
+                        pathologistName={fallback.pathologist_name}
+                        qualification={fallback.qualification || undefined}
+                        designation={fallback.designation || undefined}
+                      />
+                    );
+                  }
+                  return (
+                    <div className="pt-1 border-t flex justify-end gap-8 print:break-inside-avoid">
+                      {uniqueSigs.map((sig, idx) => (
+                        <div key={idx} className="text-center">
+                          {sig.signatureUrl && <img src={sig.signatureUrl} alt="Signature" className="h-8 mx-auto mb-0" />}
+                          <p className="font-semibold text-[10px] leading-tight">{sig.pathologist_name}</p>
+                          {sig.qualification && <p className="text-[9px] leading-tight" style={{ color: "hsl(var(--muted-foreground))" }}>{sig.qualification}</p>}
+                          {sig.designation && <p className="text-[9px] leading-tight" style={{ color: "hsl(var(--muted-foreground))" }}>{sig.designation}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
                 {/* Page Number */}
-                <div className="text-center text-gray-400 mt-0.5" style={{ fontSize: "7px" }}>
+                <div className="text-center mt-0.5" style={{ fontSize: "7px", color: "hsl(var(--muted-foreground))" }}>
                   Page {pageIdx + 1} of {totalPages}
                 </div>
               </div>
