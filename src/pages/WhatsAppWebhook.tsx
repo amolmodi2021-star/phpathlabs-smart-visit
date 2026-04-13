@@ -41,6 +41,7 @@ const WhatsAppWebhook = () => {
         if (s.setting_key === "webhook_auto_reply_message") setAutoReplyMessage(s.setting_value);
         if (s.setting_key === "webhook_wa_me_url" && s.setting_value) setWaMeUrl(s.setting_value);
         if (s.setting_key === "webhook_max_auto_replies_24h") setMaxAutoReplies(Number(s.setting_value) || 0);
+      });
     })();
   }, []);
 
