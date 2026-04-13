@@ -86,7 +86,7 @@ const Dispatch = () => {
     queryKey: ["dispatch_regs", debouncedSearch, dateFrom.toISOString(), dateTo.toISOString(), dispatchPage],
     queryFn: async () => {
       let query = supabase.from("patient_registrations")
-        .select("id, invoice_number, patient_name, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, created_at, updated_at, bill_cancelled")
+        .select("id, invoice_number, patient_name, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, created_at, updated_at, bill_cancelled, registered_by")
         .eq("bill_cancelled", false)
         .gte("created_at", dateFrom.toISOString())
         .lte("created_at", dateTo.toISOString())
@@ -116,7 +116,7 @@ const Dispatch = () => {
     queryKey: ["dispatch_all_tubes", regIds.join(",")],
     enabled: regIds.length > 0,
     queryFn: async () => {
-      const { data } = await supabase.from("sample_tubes" as any).select("registration_id, test_ids, collected_at, accepted_at, status").in("registration_id", regIds);
+      const { data } = await supabase.from("sample_tubes" as any).select("registration_id, test_ids, collected_at, accepted_at, status, collected_by, accepted_by").in("registration_id", regIds);
       return (data || []) as any[];
     },
   });
