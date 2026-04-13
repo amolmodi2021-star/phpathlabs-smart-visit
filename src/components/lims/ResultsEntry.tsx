@@ -1019,7 +1019,7 @@ const ResultsEntry = () => {
             {p.isCalculated && <Calculator className="inline h-3 w-3 ml-1 text-primary" />}
             <StickyNote
               className={`inline h-3 w-3 cursor-pointer shrink-0 ${(editedNotes[key] !== undefined ? editedNotes[key] : p.note) ? 'text-amber-600' : 'text-muted-foreground hover:text-primary'}`}
-              onClick={(e) => { e.stopPropagation(); if (activeNoteKey === key) { setActiveNoteKey(null); } else { setActiveNoteKey(key); if (editedNotes[key] === undefined && !p.note) setEditedNotes(prev => ({ ...prev, [key]: "Kindly correlate clinically" })); } }}
+              onClick={(e) => { e.stopPropagation(); if (activeNoteKey === key) { setActiveNoteKey(null); } else { setActiveNoteKey(key); const currentNote = editedNotes[key] !== undefined ? editedNotes[key] : (p.note || ""); if (!currentNote) setEditedNotes(prev => ({ ...prev, [key]: "Kindly correlate clinically" })); } }}
             />
           </div>
           {activeNoteKey === key && (
