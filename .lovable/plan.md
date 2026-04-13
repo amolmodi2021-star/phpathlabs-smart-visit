@@ -1,44 +1,45 @@
 
+# Per-Test Approver Signatures on Reports
 
-# Two Features: Self-Service Password Change + User-Signature Mapping
+## Problem
+Currently, `approved_by` is stored once per registration in the `approved_reports` table. The report shows a single signature on every page. If Dr. Hemang approves some tests and Dr. Patel approves others, only the last approver's signature appears everywhere.
 
-## Feature 1: Self-Service Password Change
+## Solution
+Store `approved_by` inside each test result entry in the `test_results` JSONB. On the report, each page resolves signatures from the approvers of the tests on that page.
 
-Each logged-in user gets a "Change Password" option accessible from the app header (next to logout).
+## Changes
 
-### Changes:
-1. **New component `src/components/ChangePasswordDialog.tsx`** — Dialog with current password, new password, confirm password fields. Calls the `user-auth` edge function.
-2. **Update `supabase/functions/user-auth/index.ts`** — Add a `change_password` action that verifies the current password before updating to the new one.
-3. **Update `src/components/AppLayout.tsx`** — Add a "Change Password" button/icon in the header bar next to the logout button. Opens the dialog.
+### 1. DoctorApproval.tsx — Store `approved_by` per test result
+When building the `test_results` snapshot entries, add `approved_by: getCurrentUser()?.display_name || "Doctor"` to each individual test result object (alongside `test_id`, `parameter_id`, etc.). This way each test knows who approved it.
 
-## Feature 2: Map App Users to Pathologist Signatures
+### 2. LimsReportView.tsx — Per-page signature resolution
+- Remove the single `signatureData` state. Instead, store all signatures + their resolved image URLs in a map.
+- Fetch all `pathologist_signatures` and all `app_users` for mapped entries. Build a lookup: `display_name → signature data`.
+- For each page, collect unique `approved_by` values from the test blocks on that page.
+- Render one `ReportSignatureBlock` per unique approver on that page, displayed side by side (flex row).
 
-Link each pathologist signature record to an `app_users` entry so that when a user approves a report, their mapped signature automatically appears.
+### 3. ReportSignatureBlock.tsx — Support multiple signatures
+Update the component to optionally render multiple signatures side by side, or the parent will simply render multiple instances in a flex row.
 
-### Changes:
-1. **Database migration** — Add `mapped_user_id UUID` column to `pathologist_signatures` table (nullable, references no FK to avoid issues).
-2. **Update `src/pages/SignatureManagement.tsx`** — Add a "Mapped User" dropdown in the add/edit dialog, populated from `app_users`. Show mapped user in the table.
-3. **Update `src/components/lims/DoctorApproval.tsx`** — When approving, set `approved_by` to the current logged-in user's `display_name` (from `getCurrentUser()`) instead of the hardcoded `"Doctor"` string.
-4. **Report signature resolution already works** — `LimsReportView.tsx` already matches `approved_by` against `pathologist_name`. With the user mapping, we enhance it to also check `mapped_user_id` match. If the `approved_by` name matches a pathologist's mapped user's `display_name`, use that signature.
+### 4. PageContent type — Track approvers per page
+Add `approvers` field to the `PageContent` type so each page knows which doctors' signatures to show.
 
-### Technical Details
+## Technical Flow
+```text
+Approval:
+  test_results[i].approved_by = "Dr. Hemang"   ← per-test
 
-**Edge function `change_password` action:**
-- Accepts `user_id`, `current_password`, `new_password`
-- Verifies current password hash matches
-- Hashes new password and updates
+Report View:
+  Page has blocks [Test A (approved_by: Dr. Hemang), Test B (approved_by: Dr. Patel)]
+  → Show both Dr. Hemang's and Dr. Patel's signatures on that page
 
-**Signature mapping flow:**
-- `pathologist_signatures.mapped_user_id` → links to `app_users.id`
-- On approval, `approved_by` is set to the current user's display name
-- Report view matches `approved_by` against both `pathologist_name` AND the mapped user's display name
+  Page has blocks [Test C (approved_by: Dr. Hemang)]
+  → Show only Dr. Hemang's signature
+```
 
-### Files to modify:
-- **New**: `src/components/ChangePasswordDialog.tsx`
-- **Edit**: `supabase/functions/user-auth/index.ts` (add `change_password` action)
-- **Edit**: `src/components/AppLayout.tsx` (add change password button)
-- **Edit**: `src/pages/SignatureManagement.tsx` (add mapped user dropdown)
-- **Edit**: `src/components/lims/DoctorApproval.tsx` (use current user name as `approved_by`)
-- **Edit**: `src/pages/LimsReportView.tsx` (enhance signature matching with user mapping)
-- **New migration**: Add `mapped_user_id` column to `pathologist_signatures`
+## Files to modify
+- **`src/components/lims/DoctorApproval.tsx`** — Add `approved_by` to each test result snapshot entry
+- **`src/pages/LimsReportView.tsx`** — Replace single signature with per-page multi-signature resolution
+- **`src/components/report/ReportSignatureBlock.tsx`** — Minor layout adjustment for multiple signatures
 
+No database migration needed — `approved_by` is stored inside existing JSONB `test_results` column.
