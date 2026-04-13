@@ -1,32 +1,43 @@
 
 
-# Qualitative Range — Pair-First Dropdown System
+# Advisory/Multi-Category Reference Ranges (e.g. HbA1c)
 
-## Overview
-For qualitative range type, replace the two free-text inputs with two linked dropdowns:
-1. **Expected Normal Value** dropdown — select the pair: "Absent / Present", "Reactive / Non Reactive", "Positive / Negative"
-2. **Display Text** dropdown — shows the two values from the selected pair for the user to pick one
+## The Problem
+For parameters like HbA1c, there are multiple clinical categories (Normal: <5.7, Pre-Diabetic: 5.7–6.4, Diabetic: ≥6.5). You want to:
+1. Flag anything outside "Normal" as abnormal (H)
+2. Show **all** categories in the report's Reference Range column
 
-## Changes
+## How It Already Works (Almost)
+Your system already supports this — you just need to use the fields correctly:
 
-### File: `src/pages/ReportParameters.tsx` (lines ~809–818)
+- **Low / High** → Set to the "Normal" bounds (e.g., Low = blank, High = 5.6). This drives the H/L flag logic.
+- **Display Text** → Enter the full multi-line reference text that shows all categories. This is what appears in the report.
 
-Define a constant:
-```ts
-const QUALITATIVE_PAIRS = [
-  { label: "Absent / Present", values: ["Absent", "Present"] },
-  { label: "Reactive / Non Reactive", values: ["Reactive", "Non Reactive"] },
-  { label: "Positive / Negative", values: ["Positive", "Negative"] },
-];
-```
+The flag engine (`reportFlags.ts`) already uses Low/High for flagging, and the report renders `normal_range_text` (Display Text) in the Reference Range column.
 
-Replace the qualitative section's two `<Input>` fields:
+## What's Missing
+The current numeric range UI auto-generates Display Text from Low/High, which doesn't work for advisory ranges. We need a small enhancement:
 
-1. **Expected Normal Value** — `<Select>` with 3 options: "Absent / Present", "Reactive / Non Reactive", "Positive / Negative". On selection, store the label as `expected_value` and auto-set `normal_range_text` to the first value of the pair.
+### Change: `src/pages/ReportParameters.tsx`
+- Add a toggle **"Advisory Range"** (or "Multi-category Range") checkbox on numeric range type parameters.
+- When enabled:
+  - Low/High fields remain (used for flagging the "normal" bounds)
+  - Display Text becomes a **multi-line textarea** instead of a single-line input, so you can enter:
+    ```
+    Non-Diabetic: < 5.7%
+    Pre-Diabetic: 5.7 - 6.4%
+    Diabetic: ≥ 6.5%
+    ```
+  - Display Text is NOT auto-populated from Low/High — it stays manual.
 
-2. **Display Text** — `<Select>` whose options are the two values from the currently selected pair. For example if "Absent / Present" is selected, options are "Absent" and "Present".
+### Change: `src/components/report/ReportResultsSection.tsx`
+- In the Reference Range column, if `normal_range_text` contains newlines, render each line on its own line (using `whitespace-pre-line` or `<br/>` splits) so the multi-category ranges display neatly in the report.
 
-When loading existing data, reverse-match `expected_value` or `normal_range_text` to detect which pair is active.
+### No changes needed to:
+- Flag logic (`reportFlags.ts`) — already uses Low/High for numeric flagging
+- Result Entry / Verification / Approval — they already display `referenceRange` text as-is
+- Database schema — `normal_range_text` is already a text field that can hold multi-line content
 
-No database changes needed.
+## Summary
+Two small UI changes: a toggle + textarea in parameter management, and multi-line rendering in the report. The existing flag engine handles the rest.
 
