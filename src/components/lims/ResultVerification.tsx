@@ -850,13 +850,6 @@ const ResultVerification = () => {
                       <Button size="sm" variant="ghost" className="h-6 text-[11px] gap-1 text-orange-600" onClick={() => sendBackTest(reg.id, tg.testId, tg.testName)}>
                         <Undo2 className="h-3 w-3" /> Send Back
                       </Button>
-                      <Button size="sm" variant="ghost" className="h-6 text-[11px] gap-1 text-amber-600" onClick={() => {
-                        const newNotes = { ...editedNotes };
-                        tg.params.forEach(p => { const k = `${reg.id}||${p.parameterId}`; if (editedNotes[k] === undefined && !p.note) newNotes[k] = "Kindly correlate clinically"; });
-                        setEditedNotes(newNotes);
-                      }}>
-                        <StickyNote className="h-3 w-3" /> Add Note
-                      </Button>
                       <Button size="sm" variant="outline" className="h-6 text-[11px] gap-1" disabled={isVerifying} onClick={() => handleVerifyTest(entry, tg.testId, tg.testName)}>
                         {isVerifying ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
                         Verify & Send to Doctor
