@@ -220,6 +220,7 @@ const WhatsAppWebhook = () => {
             <Input type="number" value={maxAutoReplies} onChange={(e) => setMaxAutoReplies(Number(e.target.value))} min={0} className="mt-1 w-40" placeholder="0" />
             <p className="text-xs text-muted-foreground mt-1">Limits how many auto-replies a single number receives within 24 hours. Set to 0 for unlimited.</p>
           </div>
+          <div className="flex gap-2">
             <Button onClick={handleSave} disabled={saving}>{saving ? "Saving..." : "Save Settings"}</Button>
             {waMeUrl && (
               <Button variant="outline" onClick={() => window.open(waMeUrl, "_blank")}>
