@@ -6,6 +6,8 @@ import RegisteredPatients from "@/components/lims/RegisteredPatients";
 import PickupPointManager from "@/components/lims/PickupPointManager";
 import ChannelManager from "@/components/lims/ChannelManager";
 import CompletedHomeVisits from "@/components/lims/CompletedHomeVisits";
+import DuePayments from "@/components/lims/DuePayments";
+import BadDebts from "@/components/lims/BadDebts";
 import SampleCollection from "@/components/lims/SampleCollection";
 import SampleAcceptance from "@/components/lims/SampleAcceptance";
 import ResultsEntry from "@/components/lims/ResultsEntry";
