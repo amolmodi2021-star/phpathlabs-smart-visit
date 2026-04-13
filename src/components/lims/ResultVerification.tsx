@@ -690,10 +690,16 @@ const ResultVerification = () => {
             />
           </div>
           {activeNoteKey === key && (
-            <Input value={editedNotes[key] ?? p.note ?? ""} onChange={e => setEditedNotes(prev => ({ ...prev, [key]: e.target.value }))} className="h-6 text-xs mt-1 w-full" placeholder="Kindly correlate clinically" autoFocus onClick={e => e.stopPropagation()} />
+            <div className="flex items-center gap-1 mt-1">
+              <Input value={editedNotes[key] ?? p.note ?? ""} onChange={e => setEditedNotes(prev => ({ ...prev, [key]: e.target.value }))} className="h-6 text-xs w-full" placeholder="Kindly correlate clinically" autoFocus onClick={e => e.stopPropagation()} />
+              <Trash2 className="h-3.5 w-3.5 text-destructive cursor-pointer shrink-0" onClick={(e) => { e.stopPropagation(); setEditedNotes(prev => ({ ...prev, [key]: "" })); setActiveNoteKey(null); }} />
+            </div>
           )}
           {(editedNotes[key] ?? p.note) && activeNoteKey !== key && (
-            <div className="text-xs font-bold text-amber-700 mt-0.5 cursor-pointer" onClick={(e) => { e.stopPropagation(); setActiveNoteKey(key); }}>📝 {editedNotes[key] ?? p.note}</div>
+            <div className="flex items-center gap-1 mt-0.5">
+              <div className="text-xs font-bold text-amber-700 cursor-pointer" onClick={(e) => { e.stopPropagation(); setActiveNoteKey(key); }}>📝 {editedNotes[key] ?? p.note}</div>
+              <Trash2 className="h-3 w-3 text-destructive/60 hover:text-destructive cursor-pointer shrink-0" onClick={(e) => { e.stopPropagation(); setEditedNotes(prev => ({ ...prev, [key]: "" })); }} />
+            </div>
           )}
         </TableCell>
         {renderHistoryCell(p.parameterId, 0)}

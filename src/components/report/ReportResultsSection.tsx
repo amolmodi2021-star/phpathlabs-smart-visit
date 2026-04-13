@@ -233,7 +233,7 @@ const ReportResultsSection = ({
                               {r.remark && (
                                 <tr className="border-b border-gray-100">
                                   <td colSpan={totalCols} className="px-3 py-0.5">
-                                    <span className="italic text-gray-600" style={{ fontSize: metaFontSize }}>* {r.remark}</span>
+                                    <span className="font-bold text-gray-600" style={{ fontSize: metaFontSize }}>* {r.remark}</span>
                                   </td>
                                 </tr>
                               )}
@@ -347,7 +347,7 @@ const ReportResultsSection = ({
                             {r.remark && (
                               <tr className="border-b border-gray-100">
                                 <td colSpan={totalCols} className="px-3 py-0.5">
-                                  <span className="italic text-gray-600" style={{ fontSize: metaFontSize }}>* {r.remark}</span>
+                                  <span className="font-bold text-gray-600" style={{ fontSize: metaFontSize }}>* {r.remark}</span>
                                 </td>
                               </tr>
                             )}
