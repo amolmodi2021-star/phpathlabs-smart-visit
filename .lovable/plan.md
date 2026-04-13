@@ -1,34 +1,26 @@
 
 
-# Multi-Mode Payment Collection & Invoice Date/Time
+# Auto-Cap Payment Amount to Due Amount
 
 ## Problem
-1. Due payment collection only allows a single payment mode — should match registration form (multiple modes with per-mode amounts, capped at due amount).
-2. Invoice doesn't show payment date/time alongside each payment entry.
+When entering a payment amount that exceeds the due amount, the value turns red instead of being automatically capped to the due amount (like in patient registration).
 
-## Changes
+## Solution
 
-### 1. `src/components/lims/DuePayments.tsx` — Multi-mode payment UI
+### Change in `src/components/lims/DuePayments.tsx` (line 79-82)
 
-Replace single `payMode`/`payAmount` state with multi-mode pattern from `PatientRegistration.tsx`:
+Update `handleModeAmountChange` to cap the entered amount so the total across all modes never exceeds `selected.due_amount`:
 
-- **State**: Replace `payMode`/`payAmount` with `selectedModes: Set<string>` and `modeAmounts: Record<string, number>`
-- **Payment modes**: Use same `PAYMENT_MODES` list with checkbox selection (grid layout)
-- **Amount inputs**: For each selected mode, show an amount input. Cap each input so total across all modes cannot exceed `selected.due_amount`
-- **Collect handler**: Create one payment entry per selected mode (each with `{ mode, amount, date }`) and append all to the existing payments array. Update `paid_amount` and `due_amount` accordingly.
-- **Validation**: Total paid must be > 0 and ≤ due amount.
-
-### 2. `src/components/lims/InvoicePreview.tsx` — Show payment date/time
-
-Update the payments rendering section (lines 154-157) to display the `date` field from each payment entry:
-
-```
-{p.mode}: ₹{p.amount}  →  {p.mode} (dd/MM/yyyy HH:mm): ₹{p.amount}
+```typescript
+const handleModeAmountChange = (mode: string, val: string) => {
+  const num = parseFloat(val) || 0;
+  const othersTotal = Object.entries(modeAmounts)
+    .filter(([m]) => m !== mode && selectedModes.has(m))
+    .reduce((sum, [, v]) => sum + (v || 0), 0);
+  const maxForThis = Math.max(0, (selected?.due_amount || 0) - othersTotal);
+  setModeAmounts(prev => ({ ...prev, [mode]: Math.min(num, maxForThis) }));
+};
 ```
 
-Only show date if `p.date` exists (old payments before this change may not have it).
-
-### 3. Update `PAYMENT_MODES` in DuePayments
-
-Change from `["Cash", "GPay", "Paytm", "Credit Card", "UPI", "Online"]` to match registration: `["Cash", "GPay", "Paytm", "Credit Card", "NEFT"]`.
+This mirrors the patient registration behavior: if due is ₹70 and user types 100, it auto-fills as 70.
 
