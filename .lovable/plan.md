@@ -1,43 +1,46 @@
 
 
-# Clean Up Interface Orders, Results & Snips on Test Cancellation
+# Fix: Delete Sample Tubes for Cancelled Tests
 
 ## Problem
-When a test is cancelled via the Edit Registration dialog (especially post-sample-collection with password), the system only updates `cancelled_tests` in `patient_registrations`. It does **not**:
-1. Remove the cancelled test's parameters from `lims_test_orders` (interface orders)
-2. Delete `patient_results` rows for the cancelled test
-3. Delete `outsourced_test_snips` rows for the cancelled test
+When test CBC was cancelled for patient 2604150003, the `sample_tubes` row for that test still exists with `pending` status. The Sample Collection view queries `sample_tubes` directly and has no knowledge of `cancelled_tests`, so the cancelled test still appears for collection.
 
-This means cancelled tests still appear in interface machine queries and leave orphan result/snip data.
+## Root Cause
+The `processCancelTests` function in `EditRegistrationDialog.tsx` was recently updated to clean up `patient_results`, `outsourced_test_snips`, and `lims_test_orders` — but it does **not** clean up `sample_tubes`.
 
 ## Solution
-Extend the `processCancelTests` function in `EditRegistrationDialog.tsx` to perform cascading cleanup after updating `patient_registrations`.
+Add one cleanup step in `processCancelTests` (in `EditRegistrationDialog.tsx`):
 
-### Changes in `src/components/lims/EditRegistrationDialog.tsx` — `processCancelTests` function
+For each newly cancelled test ID, delete any `sample_tubes` rows where:
+- `registration_id = reg.id`
+- The `test_ids` array contains the cancelled test ID
 
-After the existing `patient_registrations` update (line ~265), add cleanup for each newly cancelled test:
+Since `test_ids` is a JSONB array, we need to query all tubes for the registration and filter client-side (or use a contains filter), then delete matching rows.
 
-1. **Delete `patient_results`** for each cancelled test:
-   ```
-   DELETE FROM patient_results WHERE registration_id = reg.id AND test_id = cancelledTestId
-   ```
+Additionally, the `SampleCollection.tsx` component should add a safety filter: when grouping tubes by registration, exclude tubes whose `test_ids` are entirely within the registration's `cancelled_tests` array. This provides defense-in-depth for any tubes that weren't cleaned up.
 
-2. **Delete `outsourced_test_snips`** for each cancelled test:
-   ```
-   DELETE FROM outsourced_test_snips WHERE registration_id = reg.id AND test_id = cancelledTestId
-   ```
+### Changes
 
-3. **Clean up `lims_test_orders`** — interface orders use `sample_id` (invoice number ± tube suffix) and store tests as a JSONB array with `code` fields (param codes or test codes). For each cancelled test:
-   - Fetch the test's parameter codes from `test_parameters` + `report_test_parameters` and the test code from `tests` table
-   - Query all `lims_test_orders` where `sample_id LIKE '{invoice_number}%'` and status is `pending` or `in_progress`
-   - For each matching order, filter out entries from the `tests` JSONB array whose `code` matches any cancelled param/test code
-   - If the filtered array is empty, delete the order row entirely
-   - If not empty, update the order with the filtered tests array
+**1. `src/components/lims/EditRegistrationDialog.tsx` — in `processCancelTests`**
+After the existing `outsourced_test_snips` deletion, add:
+```typescript
+// Delete sample_tubes for cancelled test
+const { data: tubes } = await supabase
+  .from("sample_tubes")
+  .select("id, test_ids")
+  .eq("registration_id", reg.id);
+if (tubes) {
+  const tubesToDelete = tubes.filter((t: any) =>
+    (t.test_ids || []).includes(testId)
+  );
+  for (const tube of tubesToDelete) {
+    await supabase.from("sample_tubes").delete().eq("id", tube.id);
+  }
+}
+```
 
-4. **Recalculate registration status** by calling `recalculateRegistrationStatus(reg.id)` to ensure the status reflects the removal (import from `src/lib/limsStatus.ts`)
+**2. `src/components/lims/SampleCollection.tsx` — defense-in-depth filter**
+In `pendingGroups` and `collectedGroups` memos, filter out tubes whose every `test_id` is in the registration's `cancelled_tests` array.
 
-### No other files need changes
-The downstream modules (Sample Acceptance, Results Entry, Result Verification, Doctor Approval, Dispatch) already filter out cancelled test IDs via the `cancelled_tests` array. Deleting the `patient_results` and `outsourced_test_snips` rows ensures no orphan data appears in those views.
-
-### No database schema changes needed
+### No database changes needed
 
