@@ -52,6 +52,22 @@ const formatVisitType = (vt: string | undefined) => {
   return map[vt] || vt.replace(/_/g, " ");
 };
 
+const numberToWords = (num: number): string => {
+  if (num === 0) return "Zero";
+  const ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
+    "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+  const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+  const convert = (n: number): string => {
+    if (n < 20) return ones[n];
+    if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 ? " " + ones[n % 10] : "");
+    if (n < 1000) return ones[Math.floor(n / 100)] + " Hundred" + (n % 100 ? " " + convert(n % 100) : "");
+    if (n < 100000) return convert(Math.floor(n / 1000)) + " Thousand" + (n % 1000 ? " " + convert(n % 1000) : "");
+    if (n < 10000000) return convert(Math.floor(n / 100000)) + " Lakh" + (n % 100000 ? " " + convert(n % 100000) : "");
+    return convert(Math.floor(n / 10000000)) + " Crore" + (n % 10000000 ? " " + convert(n % 10000000) : "");
+  };
+  return convert(Math.floor(Math.abs(num)));
+};
+
 const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
   const receiptRef = useRef<HTMLDivElement>(null);
   const barcodeRef = useRef<SVGSVGElement>(null);
@@ -82,17 +98,21 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
   }, [open, data?.channel_id]);
 
   useEffect(() => {
-    if (!open || !data?.umr_number || !barcodeRef.current) return;
-    try {
-      JsBarcode(barcodeRef.current, data.umr_number, {
-        format: "CODE128",
-        height: 30,
-        width: 1.5,
-        displayValue: true,
-        fontSize: 10,
-        margin: 0,
-      });
-    } catch { /* ignore invalid barcode */ }
+    if (!open || !data?.umr_number) return;
+    const timer = setTimeout(() => {
+      if (!barcodeRef.current) return;
+      try {
+        JsBarcode(barcodeRef.current, data.umr_number, {
+          format: "CODE128",
+          height: 30,
+          width: 1.5,
+          displayValue: true,
+          fontSize: 10,
+          margin: 0,
+        });
+      } catch { /* ignore invalid barcode */ }
+    }, 200);
+    return () => clearTimeout(timer);
   }, [open, data?.umr_number]);
 
   if (!data) return null;
@@ -213,32 +233,32 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
           <table style={{ width: "100%", borderCollapse: "collapse", margin: "10px 0" }}>
             <thead>
               <tr style={{ background: "#f5f5f5" }}>
-                <th style={{ border: "1px solid #ddd", padding: 6, fontSize: 12 }}>#</th>
+                <th style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, width: "1%", whiteSpace: "nowrap" }}>#</th>
                 <th style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "left" }}>Test</th>
                 {hasAnyDiscount ? (
                   <>
-                    <th style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right" }}>MRP</th>
-                    <th style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right" }}>Disc</th>
-                    <th style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right" }}>Net</th>
+                    <th style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right", width: "1%", whiteSpace: "nowrap" }}>MRP</th>
+                    <th style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right", width: "1%", whiteSpace: "nowrap" }}>Disc</th>
+                    <th style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right", width: "1%", whiteSpace: "nowrap" }}>Net</th>
                   </>
                 ) : (
-                  <th style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right" }}>Amount</th>
+                  <th style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right", width: "1%", whiteSpace: "nowrap" }}>Amount</th>
                 )}
               </tr>
             </thead>
             <tbody>
               {tests.map((t: any, i: number) => (
                 <tr key={i}>
-                  <td style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "center" }}>{i + 1}</td>
+                  <td style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "center", width: "1%", whiteSpace: "nowrap" }}>{i + 1}</td>
                   <td style={{ border: "1px solid #ddd", padding: 6, fontSize: 12 }}>{t.test_name}</td>
                   {hasAnyDiscount ? (
                     <>
-                      <td style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right" }}>₹{t.price}</td>
-                      <td style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right" }}>{Number(t.discount || 0) > 0 ? `-₹${t.discount}` : "—"}</td>
-                      <td style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right" }}>₹{t.discounted_price || t.discountedPrice}</td>
+                      <td style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right", whiteSpace: "nowrap" }}>₹{t.price}</td>
+                      <td style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right", whiteSpace: "nowrap" }}>{Number(t.discount || 0) > 0 ? `-₹${t.discount}` : "—"}</td>
+                      <td style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right", whiteSpace: "nowrap" }}>₹{t.discounted_price || t.discountedPrice}</td>
                     </>
                   ) : (
-                    <td style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right" }}>₹{t.price}</td>
+                    <td style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right", whiteSpace: "nowrap" }}>₹{t.price}</td>
                   )}
                 </tr>
               ))}
@@ -268,8 +288,13 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
             <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", marginTop: 4 }}>
               <span>Paid:</span><span>₹{data.paid_amount}</span>
             </div>
+            {Number(data.paid_amount || 0) > 0 && (
+              <div style={{ fontSize: 12, marginTop: 6, fontStyle: "italic", color: "#444" }}>
+                Received with thanks from {data.title ? `${data.title} ` : ""}{data.patient_name} a sum of Rs. {Number(data.paid_amount).toFixed(2)}/- ({numberToWords(Number(data.paid_amount))} Rupees)
+              </div>
+            )}
             {data.due_amount > 0 && (
-              <div style={{ display: "flex", justifyContent: "space-between", color: "red", fontWeight: "bold" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", color: "red", fontWeight: "bold", marginTop: 4 }}>
                 <span>Due:</span><span>₹{data.due_amount}</span>
               </div>
             )}
@@ -302,7 +327,7 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
 
           <div style={{ textAlign: "center", fontSize: 11, color: "#888", marginTop: 15 }}>
             {data.registered_by && <p style={{ margin: "2px 0" }}>Prepared by: {data.registered_by}</p>}
-            <p style={{ margin: "2px 0" }}>Thank you for choosing {brand.invoice_lab_name}</p>
+            <p style={{ margin: "2px 0" }}>Thank you for choosing us</p>
             {data.umr_number && (
               <div style={{ marginTop: 8 }}>
                 <svg ref={barcodeRef} />
