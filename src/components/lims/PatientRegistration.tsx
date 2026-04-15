@@ -463,6 +463,25 @@ const PatientRegistration = () => {
         await supabase.from("patient_master").insert(pmData);
       }
 
+      // Sync demographics across all previous registrations with same UMR
+      if (finalUmr) {
+        const demoUpdates: any = {
+          patient_name: patientName.replace(/\s+/g, ' ').trim().toUpperCase(),
+          title,
+          gender,
+          dob: dob || null,
+          email: email || null,
+          address: visitType === "pickup_point" ? (selectedPickup?.address || "") : address.toUpperCase(),
+          doctor_name: (doctorName || "SELF").toUpperCase(),
+          mobile_number: cleanMobile,
+        };
+        await supabase
+          .from("patient_registrations")
+          .update(demoUpdates)
+          .eq("umr_number", finalUmr)
+          .neq("id", reg.id);
+      }
+
       return reg;
     },
     onSuccess: (reg: any) => {
