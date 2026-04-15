@@ -329,6 +329,10 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       await recalculateRegistrationStatus(reg.id);
 
       qc.invalidateQueries({ queryKey: ["patient_registrations"] });
+      qc.invalidateQueries({ queryKey: ["sample_tubes_collection"] });
+      qc.invalidateQueries({ queryKey: ["sample_collection_regs"] });
+      qc.invalidateQueries({ queryKey: ["sample_tubes_acceptance_pending"] });
+      qc.invalidateQueries({ queryKey: ["sample_tubes_acceptance_accepted"] });
       toast.success(`${newlyCancelled.length} test(s) cancelled. Refund: ₹${refundCalc} via ${refundMode}`);
       onOpenChange(false);
     } catch (e: any) {

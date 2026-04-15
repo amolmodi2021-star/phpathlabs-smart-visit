@@ -157,10 +157,15 @@ const SampleCollection = () => {
 
   // Helper: check if a tube's test_ids are all cancelled
   const isTubeFullyCancelled = (tube: SampleTubeRow, reg: any): boolean => {
-    const cancelledTests: string[] = Array.isArray(reg.cancelled_tests) ? reg.cancelled_tests : [];
-    if (cancelledTests.length === 0) return false;
-    const testIds = tube.test_ids || [];
-    return testIds.length > 0 && testIds.every(id => cancelledTests.includes(id));
+    const cancelledTests = Array.isArray(reg.cancelled_tests) ? reg.cancelled_tests : [];
+    const cancelledIds = new Set(
+      cancelledTests
+        .map((item: any) => (typeof item === "string" ? item : item?.test_id))
+        .filter(Boolean)
+    );
+    if (cancelledIds.size === 0) return false;
+    const testIds = Array.isArray(tube.test_ids) ? tube.test_ids : [];
+    return testIds.length > 0 && testIds.every(id => cancelledIds.has(id));
   };
 
   // Group tubes by registration
