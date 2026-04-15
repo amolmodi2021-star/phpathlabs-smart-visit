@@ -90,7 +90,8 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   const tests: any[] = reg ? (Array.isArray(reg.tests) ? reg.tests : []) : [];
   const alreadyCancelled = reg ? new Set((Array.isArray(reg.cancelled_tests) ? reg.cancelled_tests : []).map((t: any) => t.test_id || t)) : new Set<string>();
   const isBillCancelled = reg?.bill_cancelled;
-  const isRefundBlocked = ["sample_accepted", "processing", "completed", "dispatched"].includes(reg?.status || "");
+  const isPastAccepted = ["sample_accepted", "processing", "partial_processing", "processed", "partial_verified", "verified", "partially_approved", "approved", "partially_dispatched", "dispatched"].includes(reg?.status || "");
+  const isRefundBlocked = isPastAccepted && !refundUnlocked;
 
   const newlyCancelled = [...cancelledTestIds].filter(id => !alreadyCancelled.has(id));
   const refundCalc = useMemo(() => {
@@ -397,8 +398,13 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
               </div>
             )}
             {isRefundBlocked && !isBillCancelled && (
-              <div className="p-3 rounded border border-orange-300 bg-orange-50 text-sm text-orange-700">
-                Refund / cancellation is not allowed after sample has been accepted.
+              <div className="p-3 rounded border border-orange-300 bg-orange-50 space-y-2">
+                <div className="text-sm text-orange-700">
+                  Refund / cancellation is locked after sample acceptance. Enter admin password to unlock.
+                </div>
+                <Button variant="outline" size="sm" onClick={() => setShowRefundUnlockPwd(true)}>
+                  🔓 Unlock Refund
+                </Button>
               </div>
             )}
           </div>
