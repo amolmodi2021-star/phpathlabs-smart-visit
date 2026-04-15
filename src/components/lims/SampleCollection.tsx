@@ -155,24 +155,32 @@ const SampleCollection = () => {
   });
   const ppMap = Object.fromEntries(pickupPoints.map(p => [p.id, p.name]));
 
+  // Helper: check if a tube's test_ids are all cancelled
+  const isTubeFullyCancelled = (tube: SampleTubeRow, reg: any): boolean => {
+    const cancelledTests: string[] = Array.isArray(reg.cancelled_tests) ? reg.cancelled_tests : [];
+    if (cancelledTests.length === 0) return false;
+    const testIds = tube.test_ids || [];
+    return testIds.length > 0 && testIds.every(id => cancelledTests.includes(id));
+  };
+
   // Group tubes by registration
   const pendingGroups = useMemo((): GroupedRegistration[] => {
     return registrations.filter(reg => {
-      const tubes = allTubes.filter(t => t.registration_id === reg.id);
+      const tubes = allTubes.filter(t => t.registration_id === reg.id && !isTubeFullyCancelled(t, reg));
       return tubes.some(t => t.status === "pending");
     }).map(reg => ({
       registration: reg,
-      tubes: allTubes.filter(t => t.registration_id === reg.id),
+      tubes: allTubes.filter(t => t.registration_id === reg.id && !isTubeFullyCancelled(t, reg)),
     }));
   }, [registrations, allTubes]);
 
   const collectedGroups = useMemo((): GroupedRegistration[] => {
     return registrations.filter(reg => {
-      const tubes = allTubes.filter(t => t.registration_id === reg.id);
+      const tubes = allTubes.filter(t => t.registration_id === reg.id && !isTubeFullyCancelled(t, reg));
       return tubes.some(t => t.status === "collected");
     }).map(reg => ({
       registration: reg,
-      tubes: allTubes.filter(t => t.registration_id === reg.id && t.status === "collected"),
+      tubes: allTubes.filter(t => t.registration_id === reg.id && t.status === "collected" && !isTubeFullyCancelled(t, reg)),
     }));
   }, [registrations, allTubes]);
 
