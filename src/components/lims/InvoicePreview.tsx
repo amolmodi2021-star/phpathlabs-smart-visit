@@ -160,7 +160,7 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
   const handleWhatsApp = async () => {
     if (!receiptRef.current) return;
     try {
-      const canvas = await html2canvas(receiptRef.current, { backgroundColor: "#ffffff", scale: 2, useCORS: true });
+      const canvas = await html2canvas(receiptRef.current, { backgroundColor: "#ffffff", scale: 2, useCORS: true, width: 560, windowWidth: 560 });
       canvas.toBlob((blob) => {
         if (!blob) return;
         const file = new File([blob], `invoice-${data.invoice_number}.jpg`, { type: "image/jpeg" });
@@ -194,12 +194,12 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-sm max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Invoice Generated — {data.invoice_number}</DialogTitle>
         </DialogHeader>
 
-        <div ref={receiptRef} className="bg-white text-black p-3 rounded" style={{ fontFamily: "Arial, sans-serif" }}>
+        <div ref={receiptRef} className="bg-white text-black rounded" style={{ fontFamily: "Arial, sans-serif", width: 560, margin: "0 auto", padding: 32 }}>
           <div style={{ marginBottom: 10 }}>
             {brand.invoice_logo_url && (
               <div style={{ textAlign: brand.invoice_logo_align as any }}>
