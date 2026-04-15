@@ -1,24 +1,26 @@
 
 
-# Fix Top Margin on Subsequent Invoice Pages
+# Fix Barcode Not Showing in Print
 
 ## Problem
-On multi-page invoices, the logo/header on page 2+ sticks to the very top of the page because `body { padding: 8mm }` only applies to the first page's top. The `@page { margin: 12mm }` should handle this, but the content div has no additional top padding.
+The barcode displays in the preview because it's rendered by JsBarcode into a React-managed SVG ref. However, the `handlePrint` function builds HTML strings from scratch and never includes the barcode SVG markup.
 
 ## Fix in `src/components/lims/InvoicePreview.tsx`
 
-### 1. Add top padding to each page container (line 299)
-Change the page div to include `padding-top: 8mm` on all pages except the first (the first page already benefits from body padding):
+### Capture the barcode SVG and inject it into the print HTML
 
-```html
-<div style="${pageBreak} ${pageIdx > 0 ? 'padding-top:8mm;' : ''}">
+In the `handlePrint` function, before building `summaryHtml` on the last page, grab the rendered barcode SVG's `outerHTML` from `barcodeRef.current` and inject it into the last page's summary section (after payment details, before the "Thank you" footer).
+
+```typescript
+// Around line 282, before the footer section in summaryHtml
+const barcodeSvgHtml = barcodeRef.current ? barcodeRef.current.outerHTML : '';
+if (barcodeSvgHtml) {
+  summaryHtml += `<div style="margin-top:6px;text-align:center">${barcodeSvgHtml}</div>`;
+}
 ```
 
-### 2. Alternative: remove body padding entirely, add uniform padding to every page div
-Since body padding only applies once, it's cleaner to move it to the page containers. Update the body style (line 313) to remove `padding: 8mm` and add `padding: 8mm` to every page div (line 299).
-
-**Chosen approach**: Add `padding-top:8mm` to subsequent page divs only (option 1), keeping existing layout for page 1 intact.
+This reads the already-rendered SVG from the preview DOM and embeds it as inline SVG in the print HTML. No additional JsBarcode call needed.
 
 ### Single file change
-- `src/components/lims/InvoicePreview.tsx` — one line edit at line 299.
+- `src/components/lims/InvoicePreview.tsx` — ~3 lines added inside `summaryHtml` block on the last page.
 
