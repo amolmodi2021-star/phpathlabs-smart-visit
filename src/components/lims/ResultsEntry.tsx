@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
@@ -741,7 +741,7 @@ const ResultsEntry = () => {
         status: "pending",
         is_calculated: p.isCalculated,
         is_from_interface: p.isFromInterface,
-         entered_by: getCurrentUser()?.display_name || null,
+         entered_by: getCurrentUserName(),
          note: editedNotesRef.current[key] !== undefined ? (editedNotesRef.current[key] || null) : (p.note || null),
         });
     }
@@ -798,7 +798,7 @@ const ResultsEntry = () => {
           entered_at: new Date().toISOString(),
           is_calculated: p.isCalculated,
           is_from_interface: p.isFromInterface,
-          entered_by: getCurrentUser()?.display_name || null,
+          entered_by: getCurrentUserName(),
           note: editedNotesRef.current[key] !== undefined ? (editedNotesRef.current[key] || null) : (p.note || null),
         });
       }

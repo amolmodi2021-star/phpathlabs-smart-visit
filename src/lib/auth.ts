@@ -25,6 +25,11 @@ export function getCurrentUser(): AppUser | null {
   }
 }
 
+export function getCurrentUserName(): string | null {
+  const user = getCurrentUser();
+  return user?.display_name || user?.username || null;
+}
+
 export function getUserPermissions(): Record<string, any> {
   const user = getCurrentUser();
   return user?.permissions?.tabs || {};
