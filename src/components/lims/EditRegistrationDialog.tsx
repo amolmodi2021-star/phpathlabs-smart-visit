@@ -273,17 +273,31 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         // 2. Delete outsourced_test_snips
         await supabase.from("outsourced_test_snips").delete().eq("registration_id", reg.id).eq("test_id", testId);
 
-        // 2b. Delete sample_tubes containing this cancelled test
+        // 2b. Update or delete sample_tubes containing this cancelled test
         const { data: regTubes } = await supabase
           .from("sample_tubes" as any)
-          .select("id, test_ids")
+          .select("id, test_ids, test_names")
           .eq("registration_id", reg.id);
         if (regTubes) {
-          const tubesToDelete = (regTubes as any[]).filter((t: any) =>
+          // Build a name lookup from registration tests
+          const testNameById: Record<string, string> = {};
+          (Array.isArray(reg.tests) ? reg.tests : []).forEach((t: any) => {
+            if (t.test_id) testNameById[t.test_id] = t.test_name || "";
+          });
+
+          const affectedTubes = (regTubes as any[]).filter((t: any) =>
             (t.test_ids || []).includes(testId)
           );
-          for (const tube of tubesToDelete) {
-            await supabase.from("sample_tubes" as any).delete().eq("id", tube.id);
+          for (const tube of affectedTubes) {
+            const remainingIds = (tube.test_ids || []).filter((id: string) => id !== testId);
+            if (remainingIds.length === 0) {
+              await supabase.from("sample_tubes" as any).delete().eq("id", tube.id);
+            } else {
+              const remainingNames = remainingIds.map((id: string) => testNameById[id] || "");
+              await supabase.from("sample_tubes" as any)
+                .update({ test_ids: remainingIds, test_names: remainingNames } as any)
+                .eq("id", tube.id);
+            }
           }
         }
 

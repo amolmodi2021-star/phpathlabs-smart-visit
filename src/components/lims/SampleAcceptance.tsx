@@ -212,7 +212,13 @@ const SampleAcceptance = () => {
       // Generate LIMS orders for accepted tubes
       for (const tube of acceptedTubesData) {
         const orderTests: any[] = [];
-        for (const testId of (tube.test_ids || [])) {
+        // Filter out cancelled test IDs before generating orders
+        const cancelledTests = Array.isArray(reg.cancelled_tests) ? reg.cancelled_tests : [];
+        const cancelledIds = new Set(
+          cancelledTests.map((item: any) => (typeof item === "string" ? item : item?.test_id)).filter(Boolean)
+        );
+        const activeTestIds = (tube.test_ids || []).filter((id: string) => !cancelledIds.has(id));
+        for (const testId of activeTestIds) {
           const testInfo = testsMap[testId] || {};
           const paramData = testParamData[testId];
           if (paramData && paramData.params.length > 0) {

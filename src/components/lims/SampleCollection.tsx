@@ -155,17 +155,34 @@ const SampleCollection = () => {
   });
   const ppMap = Object.fromEntries(pickupPoints.map(p => [p.id, p.name]));
 
-  // Helper: check if a tube's test_ids are all cancelled
-  const isTubeFullyCancelled = (tube: SampleTubeRow, reg: any): boolean => {
+  // Extract cancelled test IDs set from a registration
+  const getCancelledIds = (reg: any): Set<string> => {
     const cancelledTests = Array.isArray(reg.cancelled_tests) ? reg.cancelled_tests : [];
-    const cancelledIds = new Set(
+    return new Set(
       cancelledTests
         .map((item: any) => (typeof item === "string" ? item : item?.test_id))
         .filter(Boolean)
     );
+  };
+
+  // Helper: check if a tube's test_ids are all cancelled
+  const isTubeFullyCancelled = (tube: SampleTubeRow, reg: any): boolean => {
+    const cancelledIds = getCancelledIds(reg);
     if (cancelledIds.size === 0) return false;
     const testIds = Array.isArray(tube.test_ids) ? tube.test_ids : [];
     return testIds.length > 0 && testIds.every(id => cancelledIds.has(id));
+  };
+
+  // Helper: get only the active (non-cancelled) test names for a tube
+  const getActiveTestNames = (tube: SampleTubeRow, reg: any): string[] => {
+    const cancelledIds = getCancelledIds(reg);
+    if (cancelledIds.size === 0) return tube.test_names || [];
+    const testIds = Array.isArray(tube.test_ids) ? tube.test_ids : [];
+    const testNames = Array.isArray(tube.test_names) ? tube.test_names : [];
+    return testIds.reduce<string[]>((acc, id, i) => {
+      if (!cancelledIds.has(id)) acc.push(testNames[i] || "");
+      return acc;
+    }, []);
   };
 
   // Group tubes by registration
@@ -407,7 +424,7 @@ const SampleCollection = () => {
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                      {(tube.test_names || []).join(", ")}
+                      {getActiveTestNames(tube, reg).join(", ")}
                     </p>
                   </div>
                   {isPending && !isCollected && (
@@ -574,7 +591,7 @@ const SampleCollection = () => {
                       <Badge variant="outline" className="text-xs ml-2">
                         {(tube.tube_type || "DEFAULT") === "DEFAULT" ? "No Tube" : tube.tube_type}
                       </Badge>
-                      <p className="text-xs text-muted-foreground truncate">{(tube.test_names || []).join(", ")}</p>
+                      <p className="text-xs text-muted-foreground truncate">{getActiveTestNames(tube, reprintDialog.reg).join(", ")}</p>
                     </div>
                   </div>
                 );
