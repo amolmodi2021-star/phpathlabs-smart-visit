@@ -1,32 +1,35 @@
 
 
-# Multi-Page A5 Invoice Printing with Pagination
+# Add "Prepared by" and "Printed by" Footer on Every Invoice Page
 
-## Problem
-When a patient has many tests, the invoice overflows a single A5 page. The print output needs proper page breaks with repeated headers, subtotals per page, and page numbering.
+## What changes
+Add a footer at the bottom of every printed page showing:
+- **Left side**: `Prepared by: {registered_by} | {registration date/time}`
+- **Right side**: `Printed by: {current logged-in username} | {current date/time}`
 
-## Approach
-Rework the `handlePrint` function to programmatically split tests across pages, generating proper multi-page HTML instead of dumping the single `receiptRef` div. The in-dialog preview and WhatsApp image remain as a single continuous layout (unchanged).
+Also update the in-dialog preview and WhatsApp image to show the same footer.
 
 ## Changes in `src/components/lims/InvoicePreview.tsx`
 
-### 1. Build a page-splitting helper
-Create a function that takes the tests array and splits them into chunks. First page fits ~10 tests (less room due to full header + demographics). Subsequent pages fit ~18 tests (only compact header + demographics). These numbers account for A5 at 10px font with line-height 1.6.
+### 1. Import `getCurrentUserName` from auth
+Add `import { getCurrentUserName } from "@/lib/auth"` to get the currently logged-in user's display name for "Printed by".
 
-### 2. Rewrite `handlePrint` to generate multi-page HTML
-Instead of `receiptRef.current.innerHTML`, build page-by-page HTML:
+### 2. Add footer HTML to every page in `handlePrint`
+Move the "Prepared by" line out of the last-page-only summary block. On every page (inside the `pages.forEach` loop), append a bottom-pinned footer div:
 
-- **Every page**: Logo, lab name, contact, address, tagline (compact header), patient demographics (Invoice #, Date, Patient, Mobile, Gender, Age, Doctor, UMR, Visit), then the test table continuing from where the previous page left off.
-- **Every page**: Footer with "Page X of Y" centered at the bottom.
-- **Each page except the last**: A subtotal row at the bottom of the table showing the running subtotal of tests on that page.
-- **Last page only**: After the table ends, show Gross Amount, Discount, Home Visit Charges, Final Amount, payment details, Paid, Due, Refund, barcode, and footer text.
+```
+Left:  Prepared by: {data.registered_by} on {format(createdAt, "dd-MM-yyyy hh:mm a")}
+Right: Printed by: {currentUser} on {format(now, "dd-MM-yyyy hh:mm a")}
+```
 
-### 3. Print CSS for page breaks
-Use `page-break-after: always` on each page container div (except the last). Each page div is sized to fit within A5 margins.
+Remove the existing `Prepared by` line from the summary section (line 285) since it moves to the per-page footer.
 
-### 4. No changes to preview or WhatsApp
-The `receiptRef` div and `handleWhatsApp` remain untouched — they continue rendering as a single continuous layout.
+### 3. Update the in-dialog preview footer (around line 484)
+Replace the centered "Prepared by" text with a flex row showing prepared-by on the left and printed-by on the right, matching the print layout.
+
+### 4. Styling
+Use `display:flex; justify-content:space-between; font-size:9px; color:#888` for the footer row. The "printed by" timestamp will be generated at print/render time using `new Date()`.
 
 ### Single file change
-- `src/components/lims/InvoicePreview.tsx` — rewrite `handlePrint` function (~80 lines).
+- `src/components/lims/InvoicePreview.tsx`
 
