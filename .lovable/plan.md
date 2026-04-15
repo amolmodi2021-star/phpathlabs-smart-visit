@@ -1,45 +1,28 @@
 
 
-# Fix: Fill First Page Fully Before Spilling to Next Page
+# Fix: Allow Summary to Spill to Dedicated Next Page When Tests Fill the Space
 
 ## Problem
-The current pagination algorithm works **backward** — it reserves `lastPageCapacity` rows for the final page, then puts only the remainder on earlier pages. This causes page 1 to have very few tests (e.g., 7 out of a possible 19) while the last page is packed.
+When tests consume most of the page, the payment summary and barcode overflow beyond the page boundary. The current forward-fill logic tries to reserve space on the last page for the summary, but the height estimates are imprecise, causing overflow.
 
 ## Solution
-Change the distribution to work **forward**:
-1. Fill each page to `normalPageCapacity` (≈19 rows)
-2. After filling, check if the remaining tests fit within `lastPageCapacity`
-3. If they do, put them on the last page — done
-4. If they don't, continue filling another normal page and re-check
+Add a safety check: if the last page's test count equals `normalPageCapacity` (meaning tests filled it completely), push the summary to a new dedicated page with no tests. This guarantees the summary never overflows.
 
-This ensures page 1 is always full before any overflow goes to page 2.
+## Changes in `src/components/lims/InvoicePreview.tsx`
 
-## Change in `src/components/lims/InvoicePreview.tsx` (lines 171-188)
-
-Replace the backward-reserve loop with a forward-fill loop:
+### 1. After page distribution (around line 190), add overflow protection
+If the last page has tests filling it to `normalPageCapacity` or more, OR if the last page's test count exceeds `lastPageCapacity`, push an empty page for the summary:
 
 ```typescript
-const pages: any[][] = [];
-const totalTests = tests.length;
-if (totalTests <= lastPageCapacity) {
-  // Everything fits on one page with summary
-  pages.push(tests);
-} else {
-  let idx = 0;
-  let remaining = totalTests;
-  // Fill pages to normalPageCapacity until remainder fits on last page
-  while (remaining > lastPageCapacity) {
-    const take = Math.min(normalPageCapacity, remaining);
-    pages.push(tests.slice(idx, idx + take));
-    idx += take;
-    remaining -= take;
-  }
-  if (remaining > 0) {
-    pages.push(tests.slice(idx)); // last page with summary
-  }
+// If last page is too full for summary, add a dedicated summary-only page
+if (pages.length > 0 && pages[pages.length - 1].length > lastPageCapacity) {
+  pages.push([]); // empty page just for summary
 }
 ```
 
+### 2. Update the rendering loop (around line 265-342)
+Handle the case where a page has zero tests — skip the table rendering but still show the header, demographics, summary, and footer. The `isLast` check already gates the summary, so an empty last page will simply render header + summary + barcode + footer.
+
 ### Single file change
-- `src/components/lims/InvoicePreview.tsx` — ~10 lines rewritten in the page-splitting block.
+- `src/components/lims/InvoicePreview.tsx` — ~5 lines added/modified.
 
