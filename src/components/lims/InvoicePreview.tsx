@@ -296,7 +296,7 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
         <div>Printed by: ${currentUser} | ${printNow}</div>
       </div>`;
 
-      pagesHtml += `<div style="${pageBreak}">`;
+      pagesHtml += `<div style="${pageBreak}${pageIdx > 0 ? 'padding-top:8mm;' : ''}">`;
       pagesHtml += `<div style="margin-bottom:10px">${headerHtml()}</div>`;
       pagesHtml += demographicsHtml();
       pagesHtml += `<table style="width:100%;border-collapse:collapse;margin:6px 0"><thead>${tableHeaderHtml()}</thead><tbody>${tableRows}${subtotalRow}</tbody></table>`;
