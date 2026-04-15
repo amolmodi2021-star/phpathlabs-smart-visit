@@ -1,12 +1,12 @@
-import { useRef } from "react";
+import { useRef, useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
-import { Printer, Send, X } from "lucide-react";
+import { Printer, Send } from "lucide-react";
 import { format } from "date-fns";
 import html2canvas from "html2canvas";
 import { shareOnWhatsApp } from "@/lib/whatsapp";
 import { logMessageSend } from "@/lib/messageLog";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 interface InvoicePreviewProps {
@@ -15,8 +15,40 @@ interface InvoicePreviewProps {
   onClose: () => void;
 }
 
+const SETTING_KEYS = [
+  "invoice_lab_name",
+  "invoice_address",
+  "invoice_contact",
+  "invoice_tagline",
+  "invoice_logo_url",
+];
+
+const DEFAULTS: Record<string, string> = {
+  invoice_lab_name: "PH PathLabs",
+  invoice_address: "",
+  invoice_contact: "LabLine: 6356 55 66 99",
+  invoice_tagline: "Invoice / Sample Receipt",
+  invoice_logo_url: "",
+};
+
 const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
   const receiptRef = useRef<HTMLDivElement>(null);
+  const [brand, setBrand] = useState<Record<string, string>>(DEFAULTS);
+
+  useEffect(() => {
+    if (!open) return;
+    (async () => {
+      const { data: rows } = await supabase
+        .from("app_settings")
+        .select("setting_key, setting_value")
+        .in("setting_key", SETTING_KEYS);
+      if (rows) {
+        const merged = { ...DEFAULTS };
+        rows.forEach((r) => { merged[r.setting_key] = r.setting_value; });
+        setBrand(merged);
+      }
+    })();
+  }, [open]);
 
   if (!data) return null;
 
@@ -27,13 +59,11 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
   const createdAt = data.created_at ? new Date(data.created_at) : new Date();
   const payments = Array.isArray(data.payments) ? data.payments : [];
 
-  // Recalculate amounts based on active tests only
   const activeGross = tests.reduce((sum: number, t: any) => sum + Number(t.price || 0), 0);
   const activeNet = tests.reduce((sum: number, t: any) => sum + Number(t.discounted_price || t.discountedPrice || t.price || 0), 0);
   const activeDiscount = activeGross - activeNet;
   const activeFinal = activeNet + Number(data.home_visit_charges || 0);
 
-  // Derive HVC refund: total refund minus sum of cancelled test prices
   const cancelledTestRefundTotal = cancelledTests.reduce((sum: number, ct: any) => sum + Number(ct.price || 0), 0);
   const hvcRefund = Math.max(0, Number(data.refund_amount || 0) - cancelledTestRefundTotal);
 
@@ -50,7 +80,6 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
         .header { text-align: center; margin-bottom: 15px; }
         .header h2 { margin: 0; color: #0d9488; }
         .header p { margin: 2px 0; font-size: 12px; color: #666; }
-        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; font-size: 13px; margin-bottom: 10px; }
         .total-row { font-weight: bold; background: #f0fdf4; }
         .footer { text-align: center; font-size: 11px; color: #888; margin-top: 15px; }
         @media print { body { padding: 0; } }
@@ -89,7 +118,7 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
     link.click();
     toast.success("Invoice image downloaded — share it on WhatsApp");
     if (data.mobile_number) {
-      const msg = `📋 *PH PathLabs — Invoice*\nInvoice No: ${data.invoice_number}\nPatient: ${data.title || ""} ${data.patient_name}\nAmount: ₹${data.final_amount}`;
+      const msg = `📋 *${brand.invoice_lab_name} — Invoice*\nInvoice No: ${data.invoice_number}\nPatient: ${data.title || ""} ${data.patient_name}\nAmount: ₹${data.final_amount}`;
       shareOnWhatsApp(data.mobile_number, msg);
       logMessageSend(data.mobile_number, data.patient_name, "Invoice", data.umr_number);
     }
@@ -105,10 +134,18 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
         </DialogHeader>
 
         <div ref={receiptRef} className="bg-white text-black p-4 rounded" style={{ fontFamily: "Arial, sans-serif" }}>
-          <div className="header" style={{ textAlign: "center", marginBottom: 15 }}>
-            <h2 style={{ margin: 0, color: "#0d9488", fontSize: 20 }}>PH PathLabs</h2>
-            <p style={{ margin: "2px 0", fontSize: 12, color: "#666" }}>LabLine: 6356 55 66 99</p>
-            <p style={{ margin: "2px 0", fontSize: 11, color: "#888" }}>Invoice / Sample Receipt</p>
+          <div style={{ textAlign: "center", marginBottom: 15 }}>
+            {brand.invoice_logo_url && (
+              <img src={brand.invoice_logo_url} alt="Logo" style={{ maxHeight: 50, margin: "0 auto 6px", display: "block" }} />
+            )}
+            <h2 style={{ margin: 0, color: "#0d9488", fontSize: 20 }}>{brand.invoice_lab_name}</h2>
+            {brand.invoice_contact && (
+              <p style={{ margin: "2px 0", fontSize: 12, color: "#666" }}>{brand.invoice_contact}</p>
+            )}
+            {brand.invoice_address && (
+              <p style={{ margin: "2px 0", fontSize: 11, color: "#888", whiteSpace: "pre-line" }}>{brand.invoice_address}</p>
+            )}
+            <p style={{ margin: "2px 0", fontSize: 11, color: "#888" }}>{brand.invoice_tagline}</p>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, fontSize: 13, marginBottom: 10 }}>
@@ -197,9 +234,9 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
             )}
           </div>
 
-          <div className="footer" style={{ textAlign: "center", fontSize: 11, color: "#888", marginTop: 15 }}>
+          <div style={{ textAlign: "center", fontSize: 11, color: "#888", marginTop: 15 }}>
             <p>Sample ID: {data.invoice_number}</p>
-            <p>Thank you for choosing PH PathLabs</p>
+            <p>Thank you for choosing {brand.invoice_lab_name}</p>
           </div>
         </div>
 
