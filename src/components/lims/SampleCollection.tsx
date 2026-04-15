@@ -424,7 +424,7 @@ const SampleCollection = () => {
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                      {(tube.test_names || []).join(", ")}
+                      {getActiveTestNames(tube, reg).join(", ")}
                     </p>
                   </div>
                   {isPending && !isCollected && (
@@ -591,7 +591,7 @@ const SampleCollection = () => {
                       <Badge variant="outline" className="text-xs ml-2">
                         {(tube.tube_type || "DEFAULT") === "DEFAULT" ? "No Tube" : tube.tube_type}
                       </Badge>
-                      <p className="text-xs text-muted-foreground truncate">{(tube.test_names || []).join(", ")}</p>
+                      <p className="text-xs text-muted-foreground truncate">{getActiveTestNames(tube, reprintDialog.reg).join(", ")}</p>
                     </div>
                   </div>
                 );
