@@ -1099,7 +1099,7 @@ const ResultsEntry = () => {
                 onClick={() => {
                   if (!p.calculationFormula) return;
                   const paramValues: Record<string, string> = {};
-                  entry.forEach((ep: any) => { paramValues[ep.parameterId] = editedValues[`${regId}::${ep.parameterId}`] ?? ep.resultValue ?? ""; });
+                  entry.parameters.forEach((ep) => { paramValues[ep.parameterId] = editedValues[`${regId}||${ep.parameterId}`] ?? ep.resultValue ?? ""; });
                   const result = evaluateFormula(p.calculationFormula, paramValues);
                   if (result) handleValueChange(regId, p.parameterId, result, entry);
                 }}
