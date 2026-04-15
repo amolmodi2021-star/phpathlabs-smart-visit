@@ -33,6 +33,10 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
   const activeDiscount = activeGross - activeNet;
   const activeFinal = activeNet + Number(data.home_visit_charges || 0);
 
+  // Derive HVC refund: total refund minus sum of cancelled test prices
+  const cancelledTestRefundTotal = cancelledTests.reduce((sum: number, ct: any) => sum + Number(ct.price || 0), 0);
+  const hvcRefund = Math.max(0, Number(data.refund_amount || 0) - cancelledTestRefundTotal);
+
   const handlePrint = () => {
     const printWindow = window.open("", "_blank");
     if (!printWindow || !receiptRef.current) return;
@@ -182,6 +186,11 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
                 {cancelledTests.length > 0 && (
                   <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>
                     <span>Cancelled Tests: {cancelledTests.map((ct: any) => ct.test_name || ct.test_id).join(", ")}</span>
+                  </div>
+                )}
+                {hvcRefund > 0 && (
+                  <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>
+                    <span>Home Visit Charges Refunded: ₹{hvcRefund}</span>
                   </div>
                 )}
               </div>
