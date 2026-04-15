@@ -1,36 +1,27 @@
 
 
-# Invoice Preview Enhancements
+# Invoice Preview Fixes
 
 ## Changes in `src/components/lims/InvoicePreview.tsx`
 
-### 1. Remove "Sample ID" line
-Delete the `<p>Sample ID: {data.invoice_number}</p>` line (line 254). Keep only the "Thank you" line.
+1. **Fix barcode not rendering** — The barcode `useEffect` runs before the SVG is mounted in the DOM (since it depends on `open` and `data?.umr_number` but the SVG may not be in the DOM yet). Add a small timeout or use a callback ref to ensure the SVG element exists before calling `JsBarcode`.
 
-### 2. Conditionally hide Discount column
-Compute `hasAnyDiscount = tests.some(t => Number(t.discount || 0) > 0)`. If false, hide the "Disc" column header and cells, and rename "MRP" to "Amount" and remove the "Net" column (since MRP = Net when no discount).
+2. **Maximize test name column width** — Set the `#` column and amount columns to `width: 1%` / `whiteSpace: nowrap` so the Test column gets all remaining space.
 
-### 3. Show only Final Amount when no discount/HVC
-If `activeGross === activeFinal`, show only the "Final Amount" line. Skip "Gross Amount" line.
+3. **Fix "Thank you" text** — Change `"Thank you for choosing {brand.invoice_lab_name}"` to `"Thank you for choosing us"`.
 
-### 4. Show "Prepared by" at the bottom
-Display `data.registered_by` (already saved on the registration) above the "Thank you" line.
-
-### 5. Render UMR barcode at bottom
-Use a simple Code128-style barcode. Generate an SVG barcode from `data.umr_number` using a lightweight inline approach (or import `JsBarcode` — already in the project or add it). Render below the thank-you text.
-
-### 6. Show channel name beside visit type
-Fetch the channel name from the `channels` table using `data.channel_id` when the dialog opens. Display as "Visit: Home Visit (Channel Name)" or just "Visit: Lab".
-
-### 7. Format visit type properly
-Replace `data.visit_type?.replace("_", " ")` with a formatter: `home_visit` → "Home Visit", `lab_visit` → "Lab", `pickup_point` → "Pickup Point". Capitalize properly instead of lowercase.
+4. **Add "Received with thanks" line** — Below the Paid amount line, add:
+   ```
+   Received with thanks from {PATIENT_NAME} a sum of Rs. {paid_amount}.00/- ({amount in words} Rupees)
+   ```
+   Add a helper function `numberToWords` to convert the paid amount to words (e.g., 520 → "Five Hundred Twenty").
 
 ## Technical details
 
-- **Barcode**: Will add `jsbarcode` package dependency and render a canvas/SVG barcode for the UMR number.
-- **Channel lookup**: Add a small query in the existing `useEffect` to fetch channel name when `data.channel_id` is set.
-- **No database changes needed.**
+- **Number to words**: Implement a simple `numberToWords()` function handling Indian currency amounts (units, teens, tens, hundreds, thousands, lakhs, crores).
+- **Barcode fix**: Use `setTimeout(() => { ... }, 100)` inside the useEffect to let React complete DOM rendering before JsBarcode tries to access the SVG ref. Alternatively use a callback ref pattern.
+- **Column widths**: Add `width: "30px"` to `#` column and `whiteSpace: "nowrap"` to amount columns, letting the Test column auto-expand.
 
-### File changed
+### Single file change
 - `src/components/lims/InvoicePreview.tsx`
 
