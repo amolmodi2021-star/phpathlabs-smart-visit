@@ -403,21 +403,24 @@ const ResultVerification = () => {
     if (!formula || formula.length === 0) return "";
     try {
       let expr = "";
-      for (const token of formula) {
-        if (token.type === "parameter") {
+      for (let idx = 0; idx < formula.length; idx++) {
+        const token = formula[idx];
+        if (token.type === "bracket_open") {
+          if (idx > 0 && token.operator && ["+", "-", "*", "/"].includes(token.operator)) expr += ` ${token.operator} `;
+          expr += "(";
+        } else if (token.type === "bracket_close") {
+          expr += ")";
+        } else if (token.type === "parameter") {
+          if (idx > 0 && token.operator && ["+", "-", "*", "/"].includes(token.operator)) expr += ` ${token.operator} `;
           const val = paramValues[token.parameter_id];
           if (!val || isNaN(parseFloat(val))) return "";
           expr += parseFloat(val);
-        } else if (token.type === "fixed_value" || token.type === "fixed") { expr += token.fixed_value ?? token.value ?? ""; }
-        else if (token.type === "bracket_open") { expr += "("; }
-        else if (token.type === "bracket_close") { expr += ")"; }
-        if (token.operator && token.type !== "bracket_close") {
-          const op = token.operator;
-          if (["+", "-", "*", "/"].includes(op)) expr += ` ${op} `;
+        } else if (token.type === "fixed_value" || token.type === "fixed") {
+          if (idx > 0 && token.operator && ["+", "-", "*", "/"].includes(token.operator)) expr += ` ${token.operator} `;
+          expr += token.fixed_value ?? token.value ?? "";
         }
       }
       expr = expr.replace(/\s+/g, " ").trim();
-      if (expr.endsWith("+") || expr.endsWith("-") || expr.endsWith("*") || expr.endsWith("/")) expr = expr.slice(0, -1).trim();
       const result = new Function(`return (${expr})`)();
       if (typeof result === "number" && isFinite(result)) return parseFloat(result.toFixed(2)).toString();
       return "";
