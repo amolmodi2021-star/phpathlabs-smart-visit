@@ -273,6 +273,20 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         // 2. Delete outsourced_test_snips
         await supabase.from("outsourced_test_snips").delete().eq("registration_id", reg.id).eq("test_id", testId);
 
+        // 2b. Delete sample_tubes containing this cancelled test
+        const { data: regTubes } = await supabase
+          .from("sample_tubes" as any)
+          .select("id, test_ids")
+          .eq("registration_id", reg.id);
+        if (regTubes) {
+          const tubesToDelete = (regTubes as any[]).filter((t: any) =>
+            (t.test_ids || []).includes(testId)
+          );
+          for (const tube of tubesToDelete) {
+            await supabase.from("sample_tubes" as any).delete().eq("id", tube.id);
+          }
+        }
+
         // 3. Clean up lims_test_orders - gather param codes and test code
         const cancelledCodes: string[] = [];
 
