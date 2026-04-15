@@ -1,28 +1,51 @@
 
+## Fix plan for invoice 2604150008 overflow
 
-# Fix: Allow Summary to Spill to Dedicated Next Page When Tests Fill the Space
+### Why the current logic is failing
+The current “dedicated summary page” check in `src/components/lims/InvoicePreview.tsx` is too weak, so it often never triggers:
 
-## Problem
-When tests consume most of the page, the payment summary and barcode overflow beyond the page boundary. The current forward-fill logic tries to reserve space on the last page for the summary, but the height estimates are imprecise, causing overflow.
+- it only pushes a new page when `last page test count > lastPageCapacity`
+- for bills like `2604150008`, the last page is likely landing at exactly the threshold, not above it
+- there is also a `pages.length > 1` guard, so a single full test page can still keep the summary on the same page
+- the summary height estimate is optimistic, and refund + cancelled tests + barcode + footer together are taller than the reserved space
 
-## Solution
-Add a safety check: if the last page's test count equals `normalPageCapacity` (meaning tests filled it completely), push the summary to a new dedicated page with no tests. This guarantees the summary never overflows.
+### What I will change
+#### 1. Make summary-page splitting explicit and conservative
+In `src/components/lims/InvoicePreview.tsx`:
+- keep filling test pages forward so page 1 stays full
+- after pages are built, calculate a stricter `safeLastPageCapacity`
+- if the final test page is at or near that limit, append a dedicated summary-only page
 
-## Changes in `src/components/lims/InvoicePreview.tsx`
+This will use `>=` instead of `>` and will work even when there is only one test page.
 
-### 1. After page distribution (around line 190), add overflow protection
-If the last page has tests filling it to `normalPageCapacity` or more, OR if the last page's test count exceeds `lastPageCapacity`, push an empty page for the summary:
+#### 2. Add extra safety buffer for complex summaries
+Reduce the usable last-page test capacity further when any of these exist:
+- refund section
+- cancelled tests text
+- barcode
+- multiple payment rows
+- due amount / long “received with thanks” text
 
-```typescript
-// If last page is too full for summary, add a dedicated summary-only page
-if (pages.length > 0 && pages[pages.length - 1].length > lastPageCapacity) {
-  pages.push([]); // empty page just for summary
-}
-```
+This avoids relying on exact row math.
 
-### 2. Update the rendering loop (around line 265-342)
-Handle the case where a page has zero tests — skip the table rendering but still show the header, demographics, summary, and footer. The `isLast` check already gates the summary, so an empty last page will simply render header + summary + barcode + footer.
+#### 3. Render true summary-only last page
+When the added last page has no tests:
+- do not render the tests table at all
+- show only header + patient details + payment summary + refund details + barcode + footer
 
-### Single file change
-- `src/components/lims/InvoicePreview.tsx` — ~5 lines added/modified.
+That gives the summary maximum vertical space and prevents an empty table from wasting room.
 
+### Expected behavior after fix
+- Page 1 stays filled with tests as much as possible
+- if the last test page does not have safe room for payment/refund/barcode, those sections move to a fresh next page
+- no barcode or refund block should overflow beyond the printable A5 page
+
+### File to update
+- `src/components/lims/InvoicePreview.tsx`
+
+### Validation after implementation
+I will verify specifically with invoice `2604150008` and check:
+- first page remains properly filled
+- summary/refund/barcode moves to a separate page when needed
+- no empty test table appears on the summary-only page
+- print output matches preview behavior correctly
