@@ -1,35 +1,24 @@
 
 
-# Add "Prepared by" and "Printed by" Footer on Every Invoice Page
+# Fix Top Margin on Subsequent Invoice Pages
 
-## What changes
-Add a footer at the bottom of every printed page showing:
-- **Left side**: `Prepared by: {registered_by} | {registration date/time}`
-- **Right side**: `Printed by: {current logged-in username} | {current date/time}`
+## Problem
+On multi-page invoices, the logo/header on page 2+ sticks to the very top of the page because `body { padding: 8mm }` only applies to the first page's top. The `@page { margin: 12mm }` should handle this, but the content div has no additional top padding.
 
-Also update the in-dialog preview and WhatsApp image to show the same footer.
+## Fix in `src/components/lims/InvoicePreview.tsx`
 
-## Changes in `src/components/lims/InvoicePreview.tsx`
+### 1. Add top padding to each page container (line 299)
+Change the page div to include `padding-top: 8mm` on all pages except the first (the first page already benefits from body padding):
 
-### 1. Import `getCurrentUserName` from auth
-Add `import { getCurrentUserName } from "@/lib/auth"` to get the currently logged-in user's display name for "Printed by".
-
-### 2. Add footer HTML to every page in `handlePrint`
-Move the "Prepared by" line out of the last-page-only summary block. On every page (inside the `pages.forEach` loop), append a bottom-pinned footer div:
-
-```
-Left:  Prepared by: {data.registered_by} on {format(createdAt, "dd-MM-yyyy hh:mm a")}
-Right: Printed by: {currentUser} on {format(now, "dd-MM-yyyy hh:mm a")}
+```html
+<div style="${pageBreak} ${pageIdx > 0 ? 'padding-top:8mm;' : ''}">
 ```
 
-Remove the existing `Prepared by` line from the summary section (line 285) since it moves to the per-page footer.
+### 2. Alternative: remove body padding entirely, add uniform padding to every page div
+Since body padding only applies once, it's cleaner to move it to the page containers. Update the body style (line 313) to remove `padding: 8mm` and add `padding: 8mm` to every page div (line 299).
 
-### 3. Update the in-dialog preview footer (around line 484)
-Replace the centered "Prepared by" text with a flex row showing prepared-by on the left and printed-by on the right, matching the print layout.
-
-### 4. Styling
-Use `display:flex; justify-content:space-between; font-size:9px; color:#888` for the footer row. The "printed by" timestamp will be generated at print/render time using `new Date()`.
+**Chosen approach**: Add `padding-top:8mm` to subsequent page divs only (option 1), keeping existing layout for page 1 intact.
 
 ### Single file change
-- `src/components/lims/InvoicePreview.tsx`
+- `src/components/lims/InvoicePreview.tsx` — one line edit at line 299.
 
