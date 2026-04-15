@@ -189,6 +189,11 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
       }
     }
 
+    // If last page is too full for summary, add a dedicated summary-only page
+    if (pages.length > 1 && pages[pages.length - 1].length > lastPageCapacity) {
+      pages.push([]); // empty page just for summary
+    }
+
     const totalPages = pages.length;
 
     const headerHtml = () => {
