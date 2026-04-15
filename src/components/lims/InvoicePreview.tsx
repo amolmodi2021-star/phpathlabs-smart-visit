@@ -140,7 +140,163 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
 
   const handlePrint = () => {
     const printWindow = window.open("", "_blank");
-    if (!printWindow || !receiptRef.current) return;
+    if (!printWindow) return;
+
+    const FIRST_PAGE_TESTS = 10;
+    const SUBSEQUENT_PAGE_TESTS = 18;
+
+    // Split tests into page chunks
+    const pages: any[][] = [];
+    if (tests.length <= FIRST_PAGE_TESTS) {
+      pages.push(tests);
+    } else {
+      pages.push(tests.slice(0, FIRST_PAGE_TESTS));
+      let idx = FIRST_PAGE_TESTS;
+      while (idx < tests.length) {
+        pages.push(tests.slice(idx, idx + SUBSEQUENT_PAGE_TESTS));
+        idx += SUBSEQUENT_PAGE_TESTS;
+      }
+    }
+
+    const totalPages = pages.length;
+
+    const headerHtml = () => {
+      let h = '';
+      if (brand.invoice_logo_url) {
+        h += `<div style="text-align:${brand.invoice_logo_align}"><img src="${brand.invoice_logo_url}" style="max-height:40px;display:inline-block;margin-bottom:4px" /></div>`;
+      }
+      if (labVisible) {
+        h += `<h2 style="margin:0;color:#0d9488;font-size:16px;text-align:${brand.invoice_lab_name_align}">${brand.invoice_lab_name}</h2>`;
+      }
+      if (brand.invoice_contact) {
+        h += `<p style="margin:2px 0;font-size:10px;color:#666;text-align:${brand.invoice_lab_name_align}">${brand.invoice_contact}</p>`;
+      }
+      if (brand.invoice_address) {
+        h += `<p style="margin:2px 0;font-size:9px;color:#888;white-space:pre-line;text-align:${brand.invoice_address_align}">${brand.invoice_address}</p>`;
+      }
+      h += `<p style="margin:2px 0;font-size:9px;color:#888;text-align:${brand.invoice_tagline_align}">${brand.invoice_tagline}</p>`;
+      return h;
+    };
+
+    const demographicsHtml = () => {
+      let d = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;font-size:11px;margin-bottom:8px">`;
+      d += `<div><strong>Invoice #:</strong> ${data.invoice_number}</div>`;
+      d += `<div><strong>Date:</strong> ${format(createdAt, "dd-MM-yyyy HH:mm")}</div>`;
+      d += `<div><strong>Patient:</strong> ${data.title || ""} ${data.patient_name}</div>`;
+      d += `<div><strong>Mobile:</strong> ${data.mobile_number}</div>`;
+      if (data.gender) d += `<div><strong>Gender:</strong> ${data.gender}</div>`;
+      if (age) d += `<div><strong>Age:</strong> ${age}</div>`;
+      if (data.doctor_name) d += `<div><strong>Doctor:</strong> ${data.doctor_name}</div>`;
+      if (data.umr_number) d += `<div><strong>UMR:</strong> ${data.umr_number}</div>`;
+      d += `<div><strong>Visit:</strong> ${visitLabel}</div>`;
+      d += `</div>`;
+      return d;
+    };
+
+    const tableHeaderHtml = () => {
+      const thStyle = `border:1px solid #ddd;padding:4px;font-size:10px`;
+      let h = `<tr style="background:#f5f5f5">`;
+      h += `<th style="${thStyle};width:1%;white-space:nowrap">#</th>`;
+      h += `<th style="${thStyle};text-align:left">Test</th>`;
+      if (hasAnyDiscount) {
+        h += `<th style="${thStyle};text-align:right;width:1%;white-space:nowrap">MRP</th>`;
+        h += `<th style="${thStyle};text-align:right;width:1%;white-space:nowrap">Disc</th>`;
+        h += `<th style="${thStyle};text-align:right;width:1%;white-space:nowrap">Net</th>`;
+      } else {
+        h += `<th style="${thStyle};text-align:right;width:1%;white-space:nowrap">Amount</th>`;
+      }
+      h += `</tr>`;
+      return h;
+    };
+
+    const testRowHtml = (t: any, globalIndex: number) => {
+      const tdStyle = `border:1px solid #ddd;padding:4px;font-size:10px`;
+      let r = `<tr>`;
+      r += `<td style="${tdStyle};text-align:center;width:1%;white-space:nowrap">${globalIndex + 1}</td>`;
+      r += `<td style="${tdStyle}">${t.test_name}</td>`;
+      if (hasAnyDiscount) {
+        r += `<td style="${tdStyle};text-align:right;white-space:nowrap">₹${t.price}</td>`;
+        r += `<td style="${tdStyle};text-align:right;white-space:nowrap">${Number(t.discount || 0) > 0 ? `-₹${t.discount}` : "—"}</td>`;
+        r += `<td style="${tdStyle};text-align:right;white-space:nowrap">₹${t.discounted_price || t.discountedPrice}</td>`;
+      } else {
+        r += `<td style="${tdStyle};text-align:right;white-space:nowrap">₹${t.price}</td>`;
+      }
+      r += `</tr>`;
+      return r;
+    };
+
+    let pagesHtml = '';
+    let globalTestIndex = 0;
+
+    pages.forEach((pageTests, pageIdx) => {
+      const isLast = pageIdx === totalPages - 1;
+      const pageBreak = isLast ? '' : 'page-break-after:always;';
+
+      // Calculate subtotal for this page's tests
+      const pageSubtotal = pageTests.reduce((sum: number, t: any) => sum + Number(t.discounted_price || t.discountedPrice || t.price || 0), 0);
+
+      let tableRows = '';
+      pageTests.forEach((t: any) => {
+        tableRows += testRowHtml(t, globalTestIndex);
+        globalTestIndex++;
+      });
+
+      // Subtotal row on non-last pages
+      const colSpan = hasAnyDiscount ? 4 : 2;
+      const subtotalRow = !isLast ? `<tr style="background:#f9f9f9"><td colspan="${colSpan}" style="border:1px solid #ddd;padding:4px;font-size:10px;text-align:right;font-weight:bold">Subtotal:</td><td style="border:1px solid #ddd;padding:4px;font-size:10px;text-align:right;font-weight:bold;white-space:nowrap">₹${pageSubtotal}</td></tr>` : '';
+
+      // Payment summary only on last page
+      let summaryHtml = '';
+      if (isLast) {
+        summaryHtml = `<div style="font-size:11px;margin-top:6px">`;
+        if (showGross) {
+          summaryHtml += `<div style="display:flex;justify-content:space-between"><span>Gross Amount:</span><span>₹${activeGross}</span></div>`;
+          if (activeDiscount > 0) summaryHtml += `<div style="display:flex;justify-content:space-between;color:green"><span>Discount:</span><span>-₹${activeDiscount}</span></div>`;
+          if (Number(data.home_visit_charges || 0) > 0) summaryHtml += `<div style="display:flex;justify-content:space-between"><span>Home Visit Charges:</span><span>+₹${data.home_visit_charges}</span></div>`;
+        }
+        summaryHtml += `<div style="display:flex;justify-content:space-between;font-weight:bold;${showGross ? 'border-top:1px solid #ddd;padding-top:3px;margin-top:3px' : ''}"><span>Final Amount:</span><span>₹${activeFinal}</span></div>`;
+        if (payments.length > 0) {
+          summaryHtml += `<div style="margin-top:3px">`;
+          payments.forEach((p: any) => {
+            summaryHtml += `<div style="display:flex;justify-content:space-between;font-size:10px"><span>${p.mode}${p.date ? ` (${format(new Date(p.date), "dd-MM-yyyy hh:mm a")})` : ""}:</span><span>₹${p.amount}</span></div>`;
+          });
+          summaryHtml += `</div>`;
+        }
+        summaryHtml += `<div style="display:flex;justify-content:space-between;font-weight:bold;margin-top:3px"><span>Paid:</span><span>₹${data.paid_amount}</span></div>`;
+        if (Number(data.paid_amount || 0) > 0) {
+          summaryHtml += `<div style="font-size:10px;margin-top:4px;font-style:italic;color:#444">Received with thanks from ${data.title ? data.title + " " : ""}${data.patient_name} a sum of Rs. ${Number(data.paid_amount).toFixed(2)}/- (${numberToWords(Number(data.paid_amount))} Rupees)</div>`;
+        }
+        if (data.due_amount > 0) {
+          summaryHtml += `<div style="display:flex;justify-content:space-between;color:red;font-weight:bold;margin-top:3px"><span>Due:</span><span>₹${data.due_amount}</span></div>`;
+        }
+        if (data.refund_amount > 0) {
+          summaryHtml += `<div style="margin-top:6px;border-top:1px solid #ddd;padding-top:4px">`;
+          summaryHtml += `<div style="display:flex;justify-content:space-between;color:#ea580c;font-weight:bold"><span>Refund Amount:</span><span>₹${data.refund_amount}</span></div>`;
+          summaryHtml += `<div style="display:flex;justify-content:space-between;font-size:10px"><span>Refund Mode:</span><span>${data.refund_mode || "—"}</span></div>`;
+          if (data.refund_date) summaryHtml += `<div style="display:flex;justify-content:space-between;font-size:10px"><span>Refund Date:</span><span>${format(new Date(data.refund_date), "dd-MM-yyyy hh:mm a")}</span></div>`;
+          if (cancelledTests.length > 0) summaryHtml += `<div style="font-size:9px;color:#888;margin-top:3px">Cancelled Tests: ${cancelledTests.map((ct: any) => ct.test_name || ct.test_id).join(", ")}</div>`;
+          if (hvcRefund > 0) summaryHtml += `<div style="font-size:9px;color:#888;margin-top:3px">Home Visit Charges Refunded: ₹${hvcRefund}</div>`;
+          summaryHtml += `</div>`;
+        }
+        summaryHtml += `</div>`;
+
+        // Footer
+        summaryHtml += `<div style="text-align:center;font-size:9px;color:#888;margin-top:10px">`;
+        if (data.registered_by) summaryHtml += `<p style="margin:2px 0">Prepared by: ${data.registered_by}</p>`;
+        summaryHtml += `<p style="margin:2px 0">Thank you for choosing us</p>`;
+        summaryHtml += `<p style="margin:4px 0 0;font-size:8px;color:#888">This is an Electronically Generated Receipt &amp; Does Not Require Signature</p>`;
+        summaryHtml += `</div>`;
+      }
+
+      pagesHtml += `<div style="${pageBreak}">`;
+      pagesHtml += `<div style="margin-bottom:10px">${headerHtml()}</div>`;
+      pagesHtml += demographicsHtml();
+      pagesHtml += `<table style="width:100%;border-collapse:collapse;margin:6px 0"><thead>${tableHeaderHtml()}</thead><tbody>${tableRows}${subtotalRow}</tbody></table>`;
+      pagesHtml += summaryHtml;
+      pagesHtml += `<div style="text-align:center;font-size:8px;color:#aaa;margin-top:8px">Page ${pageIdx + 1} of ${totalPages}</div>`;
+      pagesHtml += `</div>`;
+    });
+
     printWindow.document.write(`
       <html><head><title>Invoice ${data.invoice_number}</title>
       <style>
@@ -150,8 +306,8 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
         th, td { border: 1px solid #ddd; padding: 4px; text-align: left; font-size: 10px; line-height: 1.5; }
         th { background: #f5f5f5; }
       </style></head><body>
-      ${receiptRef.current.innerHTML}
-      <script>window.print(); window.close();</script>
+      ${pagesHtml}
+      <script>window.print(); window.close();<\/script>
       </body></html>
     `);
     printWindow.document.close();
