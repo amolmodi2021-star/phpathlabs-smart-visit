@@ -3,8 +3,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getAllowedSections } from "@/lib/auth";
 import PatientRegistration from "@/components/lims/PatientRegistration";
 import RegisteredPatients from "@/components/lims/RegisteredPatients";
-import PickupPointManager from "@/components/lims/PickupPointManager";
-import ChannelManager from "@/components/lims/ChannelManager";
 import CompletedHomeVisits from "@/components/lims/CompletedHomeVisits";
 import DuePayments from "@/components/lims/DuePayments";
 import BadDebts from "@/components/lims/BadDebts";
@@ -14,6 +12,7 @@ import ResultsEntry from "@/components/lims/ResultsEntry";
 import ResultVerification from "@/components/lims/ResultVerification";
 import DoctorApproval from "@/components/lims/DoctorApproval";
 import Dispatch from "@/components/lims/Dispatch";
+import LimsSettings from "@/components/lims/LimsSettings";
 
 const allLimsTabs = [
   { key: "register", label: "New Registration" },
@@ -27,8 +26,7 @@ const allLimsTabs = [
   { key: "due_payments", label: "Due Payments" },
   { key: "bad_debts", label: "Bad Debts" },
   { key: "completed_hv", label: "Completed Home Visits" },
-  { key: "pickup", label: "Pickup Points" },
-  { key: "channels", label: "Channels" },
+  { key: "settings", label: "Settings" },
 ];
 
 const Lims = () => {
@@ -77,11 +75,8 @@ const Lims = () => {
         <TabsContent value="completed_hv">
           <CompletedHomeVisits />
         </TabsContent>
-        <TabsContent value="pickup">
-          <PickupPointManager />
-        </TabsContent>
-        <TabsContent value="channels">
-          <ChannelManager />
+        <TabsContent value="settings">
+          <LimsSettings />
         </TabsContent>
       </Tabs>
     </div>
