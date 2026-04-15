@@ -49,8 +49,8 @@ const DuePayments = () => {
 
   const openCollect = (p: any) => {
     setSelected(p);
-    setSelectedModes(new Set(["Cash"]));
-    setModeAmounts({ Cash: p.due_amount });
+    setSelectedModes(new Set());
+    setModeAmounts({});
     setCollectOpen(true);
   };
 
