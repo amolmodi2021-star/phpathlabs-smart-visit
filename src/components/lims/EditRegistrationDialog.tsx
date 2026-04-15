@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { Save, Ban, RotateCcw } from "lucide-react";
+import { Save, Ban, RotateCcw, Lock } from "lucide-react";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 
 const TITLES = ["Mr.", "Mrs.", "Ms.", "Master", "Miss", "Baby Of", "Dr."];
@@ -53,10 +53,18 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   const [refundUnlocked, setRefundUnlocked] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // Discount editing
+  const [editTests, setEditTests] = useState<any[]>([]);
+  const [globalDiscountType, setGlobalDiscountType] = useState<"percent" | "amount">("percent");
+  const [globalDiscountValue, setGlobalDiscountValue] = useState(0);
+  const [showDiscountUnlockPwd, setShowDiscountUnlockPwd] = useState(false);
+  const [discountUnlocked, setDiscountUnlocked] = useState(false);
+
   // Populate on open
   useEffect(() => {
     if (reg && open) {
       setRefundUnlocked(false);
+      setDiscountUnlocked(false);
       setPatientName(reg.patient_name || "");
       setTitle(reg.title || "");
       setGender(reg.gender || "");
@@ -79,6 +87,16 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       const existing = Array.isArray(reg.cancelled_tests) ? reg.cancelled_tests : [];
       setCancelledTestIds(new Set(existing.map((t: any) => t.test_id || t)));
       setRefundMode("Cash");
+      // Populate tests for discount editing
+      const regTests: any[] = Array.isArray(reg.tests) ? reg.tests : [];
+      setEditTests(regTests.map((t: any) => ({
+        ...t,
+        individual_discount_type: t.individual_discount_type || null,
+        individual_discount_value: Number(t.individual_discount_value || 0),
+        discount_applicable: t.discount_applicable !== false,
+      })));
+      setGlobalDiscountType((reg.global_discount_type as any) || "percent");
+      setGlobalDiscountValue(Number(reg.global_discount_value || 0));
     }
   }, [reg, open]);
 
@@ -93,6 +111,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   const isBillCancelled = reg?.bill_cancelled;
   const isPastAccepted = ["sample_accepted", "processing", "partial_processing", "processed", "partial_verified", "verified", "partially_approved", "approved", "partially_dispatched", "dispatched"].includes(reg?.status || "");
   const isRefundBlocked = isPastAccepted && !refundUnlocked;
+  const isDiscountLocked = isPastAccepted && !discountUnlocked;
 
   const newlyCancelled = [...cancelledTestIds].filter(id => !alreadyCancelled.has(id));
   const refundCalc = useMemo(() => {
@@ -117,10 +136,51 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
     });
   };
 
+  // Discount calculations
+  const discountCalc = useMemo(() => {
+    let totalAmount = 0;
+    let totalDiscount = 0;
+    const updatedTests = editTests.map(t => {
+      if (alreadyCancelled.has(t.test_id)) {
+        return { ...t, discounted_price: 0 };
+      }
+      const price = Number(t.price || 0);
+      totalAmount += price;
+      let discount = 0;
+      const hasIndividual = t.individual_discount_type && t.individual_discount_value > 0 && t.discount_applicable;
+      if (hasIndividual) {
+        discount = t.individual_discount_type === "percent"
+          ? (price * t.individual_discount_value) / 100 : t.individual_discount_value;
+      } else if (t.discount_applicable && globalDiscountValue > 0) {
+        discount = globalDiscountType === "percent"
+          ? (price * globalDiscountValue) / 100 : globalDiscountValue;
+      }
+      discount = Math.min(discount, price);
+      totalDiscount += discount;
+      return { ...t, discounted_price: price - discount };
+    });
+    const hvc = Number(reg?.home_visit_charges || 0);
+    const finalAmount = totalAmount - totalDiscount + hvc;
+    return { totalAmount, totalDiscount, finalAmount, hvc, updatedTests };
+  }, [editTests, globalDiscountType, globalDiscountValue, alreadyCancelled, reg]);
+
+  const discountChanged = useMemo(() => {
+    return Math.abs(discountCalc.finalAmount - Number(reg?.final_amount || 0)) > 0.01 ||
+      Math.abs(discountCalc.totalDiscount - Number(reg?.discount_amount || 0)) > 0.01;
+  }, [discountCalc, reg]);
+
+  const updateTestDiscount = (testId: string, field: string, value: any) => {
+    setEditTests(prev => prev.map(t =>
+      t.test_id === testId ? { ...t, [field]: value } : t
+    ));
+  };
+
   const editPaidAmount = Array.from(selectedModes).reduce((sum, mode) => sum + (modeAmounts[mode] || 0), 0);
+  // Use recalculated final amount for zero-due check
+  const effectiveFinalAmount = discountChanged ? discountCalc.finalAmount : Number(reg?.final_amount || 0);
   const isZeroDue = reg ? Number(reg.due_amount || 0) <= 0 : false;
-  const editDueAmount = isZeroDue ? 0 : Math.max(0, Number(reg?.final_amount || 0) - editPaidAmount);
-  const zeroDueMismatch = isZeroDue && Math.abs(editPaidAmount - Number(reg?.final_amount || 0)) > 0.01;
+  const editDueAmount = isZeroDue && !discountChanged ? 0 : Math.max(0, effectiveFinalAmount - editPaidAmount);
+  const zeroDueMismatch = isZeroDue && !discountChanged && Math.abs(editPaidAmount - Number(reg?.final_amount || 0)) > 0.01;
 
   if (!reg) return null;
 
@@ -131,7 +191,11 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         .filter(m => (modeAmounts[m] || 0) > 0)
         .map(m => ({ mode: m, amount: modeAmounts[m] || 0 }));
 
-      const { error } = await supabase.from("patient_registrations").update({
+      const saveFinalAmount = discountChanged ? discountCalc.finalAmount : Number(reg.final_amount);
+      const savePaidAmount = isZeroDue && !discountChanged ? saveFinalAmount : editPaidAmount;
+      const saveDueAmount = isZeroDue && !discountChanged ? 0 : Math.max(0, saveFinalAmount - savePaidAmount);
+
+      const updateData: any = {
         patient_name: patientName.replace(/\s+/g, ' ').trim().toUpperCase(),
         title,
         gender,
@@ -143,9 +207,22 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         remarks: remarks.trim() || null,
         is_stat: isStat,
         payments,
-        paid_amount: isZeroDue ? Number(reg.final_amount) : editPaidAmount,
-        due_amount: isZeroDue ? 0 : editDueAmount,
-      } as any).eq("id", reg.id);
+        paid_amount: savePaidAmount,
+        due_amount: saveDueAmount,
+      };
+
+      // Include discount data if changed
+      if (discountChanged) {
+        updateData.tests = discountCalc.updatedTests;
+        updateData.gross_amount = discountCalc.totalAmount;
+        updateData.discount_amount = discountCalc.totalDiscount;
+        updateData.final_amount = discountCalc.finalAmount;
+        updateData.net_amount = discountCalc.totalAmount - discountCalc.totalDiscount;
+        updateData.global_discount_type = globalDiscountValue > 0 ? globalDiscountType : null;
+        updateData.global_discount_value = globalDiscountValue;
+      }
+
+      const { error } = await supabase.from("patient_registrations").update(updateData).eq("id", reg.id);
       if (error) throw error;
       qc.invalidateQueries({ queryKey: ["patient_registrations"] });
       toast.success("Registration updated");
@@ -321,9 +398,9 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
                 {selectedModes.size > 0 && (
                   <div className="text-sm space-y-1 pt-1">
                     <div className="flex justify-between"><span>Total Paid:</span><span className="font-medium">₹{editPaidAmount}</span></div>
-                    <div className="flex justify-between"><span>Final Amount:</span><span className="font-medium">₹{reg.final_amount}</span></div>
+                    <div className="flex justify-between"><span>Final Amount:</span><span className="font-medium">₹{effectiveFinalAmount}</span></div>
                     {!isZeroDue && editDueAmount > 0 && <div className="flex justify-between text-destructive font-medium"><span>Due:</span><span>₹{editDueAmount}</span></div>}
-                    {isZeroDue && zeroDueMismatch && (
+                    {isZeroDue && !discountChanged && zeroDueMismatch && (
                       <div className="text-destructive text-xs font-medium mt-1">
                         ⚠ Total must equal ₹{reg.final_amount} — no additional payment allowed, only mode change permitted.
                       </div>
@@ -334,7 +411,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
             )}
 
             {!isBillCancelled && (
-              <Button onClick={handleSaveDetails} disabled={saving || zeroDueMismatch} className="w-full">
+              <Button onClick={handleSaveDetails} disabled={saving || (zeroDueMismatch && !discountChanged)} className="w-full">
                 <Save className="h-4 w-4 mr-2" />Save Details
               </Button>
             )}
@@ -342,35 +419,102 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
 
           <Separator />
 
-          {/* Tests & Cancellation */}
+          {/* Tests & Discounts */}
           <div className="space-y-3">
-            <h3 className="font-semibold text-sm">Tests ({tests.length})</h3>
+            <h3 className="font-semibold text-sm">Tests & Discounts ({editTests.length})</h3>
+
+            {/* Discount unlock gate for post-accepted stages */}
+            {isPastAccepted && !discountUnlocked && !isBillCancelled && (
+              <div className="p-3 rounded border border-orange-300 bg-orange-50 space-y-2">
+                <div className="text-sm text-orange-700 flex items-center gap-2">
+                  <Lock className="h-4 w-4" />
+                  Discount editing is locked after sample acceptance. Enter admin password to unlock.
+                </div>
+                <Button variant="outline" size="sm" onClick={() => setShowDiscountUnlockPwd(true)}>
+                  🔓 Unlock Discounts
+                </Button>
+              </div>
+            )}
+
             <div className="space-y-2">
-              {tests.map((t: any, i: number) => {
+              {editTests.map((t: any, i: number) => {
                 const isCancelled = alreadyCancelled.has(t.test_id);
                 const isNewCancel = cancelledTestIds.has(t.test_id) && !isCancelled;
+                const canEditDiscount = !isBillCancelled && !isCancelled && !isDiscountLocked && t.discount_applicable;
                 return (
-                  <div key={t.test_id || i} className={`flex items-center gap-3 p-2 rounded border ${isCancelled ? "bg-destructive/10 line-through opacity-60" : isNewCancel ? "bg-yellow-50 border-yellow-300" : ""}`}>
-                    {!isBillCancelled && !isCancelled && !isRefundBlocked && (
-                      <Checkbox
-                        checked={cancelledTestIds.has(t.test_id)}
-                        onCheckedChange={(checked) => {
-                          setCancelledTestIds(prev => {
-                            const next = new Set(prev);
-                            if (checked) next.add(t.test_id);
-                            else next.delete(t.test_id);
-                            return next;
-                          });
-                        }}
-                      />
+                  <div key={t.test_id || i} className={`p-2 rounded border ${isCancelled ? "bg-destructive/10 line-through opacity-60" : isNewCancel ? "bg-yellow-50 border-yellow-300" : ""}`}>
+                    <div className="flex items-center gap-3">
+                      {!isBillCancelled && !isCancelled && !isRefundBlocked && (
+                        <Checkbox
+                          checked={cancelledTestIds.has(t.test_id)}
+                          onCheckedChange={(checked) => {
+                            setCancelledTestIds(prev => {
+                              const next = new Set(prev);
+                              if (checked) next.add(t.test_id);
+                              else next.delete(t.test_id);
+                              return next;
+                            });
+                          }}
+                        />
+                      )}
+                      <span className="flex-1 text-sm">{t.test_name}</span>
+                      <span className="text-sm text-muted-foreground">₹{t.price}</span>
+                      {!isCancelled && (
+                        <span className="text-sm font-medium">₹{discountCalc.updatedTests.find((u: any) => u.test_id === t.test_id)?.discounted_price ?? t.price}</span>
+                      )}
+                      {isCancelled && <Badge variant="destructive" className="text-xs">Cancelled</Badge>}
+                    </div>
+                    {/* Individual discount controls */}
+                    {canEditDiscount && (
+                      <div className="flex items-center gap-2 mt-1 ml-8">
+                        <span className="text-xs text-muted-foreground">Discount:</span>
+                        <Select value={t.individual_discount_type || ""} onValueChange={v => updateTestDiscount(t.test_id, "individual_discount_type", v || null)}>
+                          <SelectTrigger className="w-16 h-7 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
+                          <SelectContent><SelectItem value="percent">%</SelectItem><SelectItem value="amount">₹</SelectItem></SelectContent>
+                        </Select>
+                        {t.individual_discount_type && (
+                          <Input type="number" className="w-20 h-7 text-xs" min={0}
+                            value={t.individual_discount_value || ""}
+                            onChange={e => updateTestDiscount(t.test_id, "individual_discount_value", parseFloat(e.target.value) || 0)}
+                            placeholder="Value" />
+                        )}
+                      </div>
                     )}
-                    <span className="flex-1 text-sm">{t.test_name}</span>
-                    <span className="text-sm font-medium">₹{t.discounted_price || t.price}</span>
-                    {isCancelled && <Badge variant="destructive" className="text-xs">Cancelled</Badge>}
                   </div>
                 );
               })}
             </div>
+
+            {/* Global Discount */}
+            {!isBillCancelled && !isDiscountLocked && (
+              <div className="p-3 rounded border bg-muted/30 space-y-2">
+                <Label className="text-sm font-medium">Global Discount</Label>
+                <div className="flex gap-2 items-center">
+                  <Select value={globalDiscountType} onValueChange={(v: any) => setGlobalDiscountType(v)}>
+                    <SelectTrigger className="w-20"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="percent">%</SelectItem><SelectItem value="amount">₹</SelectItem></SelectContent>
+                  </Select>
+                  <Input type="number" className="w-28" min={0}
+                    value={globalDiscountValue || ""}
+                    onChange={e => setGlobalDiscountValue(parseFloat(e.target.value) || 0)}
+                    placeholder="Value" />
+                </div>
+                <p className="text-xs text-muted-foreground">Applied to tests without individual discounts</p>
+              </div>
+            )}
+
+            {/* Discount change summary */}
+            {discountChanged && (
+              <div className="p-3 rounded border border-blue-300 bg-blue-50 space-y-1 text-sm">
+                <div className="font-medium text-blue-700">Discount Changed</div>
+                <div className="flex justify-between"><span>New Gross:</span><span>₹{discountCalc.totalAmount}</span></div>
+                <div className="flex justify-between text-green-600"><span>New Discount:</span><span>-₹{discountCalc.totalDiscount}</span></div>
+                {discountCalc.hvc > 0 && <div className="flex justify-between"><span>Home Visit:</span><span>+₹{discountCalc.hvc}</span></div>}
+                <div className="flex justify-between font-bold border-t pt-1"><span>New Final:</span><span>₹{discountCalc.finalAmount}</span></div>
+                <div className="flex justify-between"><span>Paid:</span><span>₹{editPaidAmount}</span></div>
+                <div className="flex justify-between text-destructive"><span>New Due:</span><span>₹{Math.max(0, discountCalc.finalAmount - editPaidAmount)}</span></div>
+              </div>
+            )}
 
             {!isBillCancelled && !isRefundBlocked && newlyCancelled.length > 0 && (
               <div className="p-3 rounded border bg-muted/50 space-y-2">
@@ -415,12 +559,12 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
           {/* Bill Summary */}
           <div className="space-y-2 text-sm">
             <h3 className="font-semibold">Bill Summary</h3>
-            <div className="flex justify-between"><span>Gross Amount:</span><span>₹{reg.gross_amount}</span></div>
-            {reg.discount_amount > 0 && <div className="flex justify-between text-green-600"><span>Discount:</span><span>-₹{reg.discount_amount}</span></div>}
-            {reg.home_visit_charges > 0 && <div className="flex justify-between"><span>Home Visit Charges:</span><span>+₹{reg.home_visit_charges}</span></div>}
-            <div className="flex justify-between font-bold border-t pt-1"><span>Final Amount:</span><span>₹{reg.final_amount}</span></div>
+            <div className="flex justify-between"><span>Gross Amount:</span><span>₹{discountChanged ? discountCalc.totalAmount : reg.gross_amount}</span></div>
+            {(discountChanged ? discountCalc.totalDiscount : reg.discount_amount) > 0 && <div className="flex justify-between text-green-600"><span>Discount:</span><span>-₹{discountChanged ? discountCalc.totalDiscount : reg.discount_amount}</span></div>}
+            {(discountChanged ? discountCalc.hvc : reg.home_visit_charges) > 0 && <div className="flex justify-between"><span>Home Visit Charges:</span><span>+₹{discountChanged ? discountCalc.hvc : reg.home_visit_charges}</span></div>}
+            <div className="flex justify-between font-bold border-t pt-1"><span>Final Amount:</span><span>₹{discountChanged ? discountCalc.finalAmount : reg.final_amount}</span></div>
             <div className="flex justify-between"><span>Paid:</span><span>₹{reg.paid_amount}</span></div>
-            {reg.due_amount > 0 && <div className="flex justify-between text-destructive font-bold"><span>Due:</span><span>₹{reg.due_amount}</span></div>}
+            {(discountChanged ? Math.max(0, discountCalc.finalAmount - editPaidAmount) : reg.due_amount) > 0 && <div className="flex justify-between text-destructive font-bold"><span>Due:</span><span>₹{discountChanged ? Math.max(0, discountCalc.finalAmount - editPaidAmount) : reg.due_amount}</span></div>}
             {reg.refund_amount > 0 && <div className="flex justify-between text-orange-600"><span>Refunded:</span><span>₹{reg.refund_amount}</span></div>}
           </div>
 
@@ -468,6 +612,15 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
           toast.success("Refund unlocked for this session");
         }}
         description="Sample has passed accepted stage. Enter admin password to unlock refund/cancellation."
+      />
+      <DeletePasswordDialog
+        open={showDiscountUnlockPwd}
+        onOpenChange={setShowDiscountUnlockPwd}
+        onSuccess={() => {
+          setDiscountUnlocked(true);
+          toast.success("Discount editing unlocked for this session");
+        }}
+        description="Sample has passed accepted stage. Enter admin password to unlock discount editing."
       />
     </>
   );
