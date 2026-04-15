@@ -33,6 +33,10 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
   const activeDiscount = activeGross - activeNet;
   const activeFinal = activeNet + Number(data.home_visit_charges || 0);
 
+  // Derive HVC refund: total refund minus sum of cancelled test prices
+  const cancelledTestRefundTotal = cancelledTests.reduce((sum: number, ct: any) => sum + Number(ct.price || 0), 0);
+  const hvcRefund = Math.max(0, Number(data.refund_amount || 0) - cancelledTestRefundTotal);
+
   const handlePrint = () => {
     const printWindow = window.open("", "_blank");
     if (!printWindow || !receiptRef.current) return;
