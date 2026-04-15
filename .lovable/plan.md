@@ -1,41 +1,33 @@
 
 
-# Sync Demographics Across All Records for Same UMR
+# Add Home Visit Charge Refund in Edit Registration
 
 ## Problem
-When a patient is selected from the dropdown with an existing UMR number and the user changes demographics (name, title, gender, DOB, address), only the new registration and `patient_master` get updated. Previous `patient_registrations` with the same UMR still show the old name/details, creating inconsistency — same UMR appears with two different names.
-
-## Root Cause
-In `PatientRegistration.tsx` lines 447-464, the save logic correctly upserts `patient_master`, but does **not** update existing `patient_registrations` rows that share the same `umr_number`.
+There is no way to refund home visit charges from the Edit Registration dialog. The user wants the same password-gated logic used for test cancellations: if the registration is past sample accepted, require a password to unlock, then allow refunding the home visit charges.
 
 ## Solution
-In the `saveMutation` function, after upserting `patient_master` (line ~464) and before `return reg`, add a bulk update to synchronize demographics across all `patient_registrations` with the same UMR:
+Add a "Refund Home Visit Charges" section in the Edit Registration dialog, visible only when `home_visit_charges > 0` and charges haven't already been refunded. Uses the same `isRefundBlocked` / `refundUnlocked` gate.
 
-```typescript
-// Update demographics on all previous registrations with same UMR
-if (finalUmr) {
-  const demoUpdates: any = {
-    patient_name: patientName.replace(/\s+/g, ' ').trim().toUpperCase(),
-    title,
-    gender,
-    dob: dob || null,
-    email: email || null,
-    address: visitType === "pickup_point" ? (selectedPickup?.address || "") : address.toUpperCase(),
-    doctor_name: (doctorName || "SELF").toUpperCase(),
-    mobile_number: cleanMobile,
-  };
-  await supabase
-    .from("patient_registrations")
-    .update(demoUpdates)
-    .eq("umr_number", finalUmr)
-    .neq("id", reg.id);
-}
-```
+### Changes in `src/components/lims/EditRegistrationDialog.tsx`
 
-This updates name, title, gender, DOB, email, address, doctor, and mobile for all prior registrations sharing the same UMR — excluding the just-created record. Non-demographic fields (tests, amounts, status) are untouched.
+1. **New state**: `homeVisitRefundRequested` (boolean) to track if user wants to refund HVC.
 
-### File changed
-- `src/components/lims/PatientRegistration.tsx` — ~10 lines added after the `patient_master` upsert block
+2. **Refund calculation update**: Extend `refundCalc` to include home visit charges when `homeVisitRefundRequested` is true.
 
-### No database changes needed
+3. **UI section**: After the test cancellation area (around line 620), add a section:
+   - Show only when `reg.home_visit_charges > 0` and not already refunded (track via a flag, e.g. check if `reg.home_visit_charges_refunded` or simply check if previous refund included HVC)
+   - A checkbox/button "Refund Home Visit Charges (₹X)" — gated behind `isRefundBlocked` just like test cancellation
+   - When checked, adds the HVC amount to the refund total
+
+4. **Process refund update**: In `processCancelTests`, when `homeVisitRefundRequested`:
+   - Add HVC to `totalRefund`
+   - Set `home_visit_charges: 0` in the update
+   - Recalculate `newFinalAmount` accordingly (subtract HVC)
+
+5. **Allow standalone HVC refund**: The "Process Refund" button should also appear when `homeVisitRefundRequested` is true even if no tests are newly cancelled. Adjust the condition from `newlyCancelled.length > 0` to `newlyCancelled.length > 0 || homeVisitRefundRequested`.
+
+6. **Discount calc update**: The `discountCalc` memo uses `reg.home_visit_charges` for `hvc`. After HVC refund, since we set `home_visit_charges: 0`, subsequent edits will correctly show 0.
+
+### No database schema changes needed
+The existing `home_visit_charges` column on `patient_registrations` will simply be set to 0 upon refund, and the refund amount added to `refund_amount`.
 
