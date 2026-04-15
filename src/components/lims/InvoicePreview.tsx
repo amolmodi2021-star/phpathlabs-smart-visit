@@ -143,20 +143,48 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
-    const FIRST_PAGE_TESTS = 10;
-    const SUBSEQUENT_PAGE_TESTS = 18;
+    // Dynamic pagination: estimate heights in mm relative to A5 usable area
+    const ROW_HEIGHT = 6; // mm per test row
+    const USABLE_HEIGHT = 186; // A5 (210mm) minus 24mm margins
+    const HEADER_HEIGHT = 70; // logo + demographics + table header + page footer
 
-    // Split tests into page chunks
+    // Estimate summary section height based on actual data
+    let summaryRows = 3; // final amount + paid + thank-you footer
+    if (showGross) summaryRows += 1;
+    if (activeDiscount > 0) summaryRows += 1;
+    if (Number(data.home_visit_charges || 0) > 0) summaryRows += 1;
+    summaryRows += payments.length;
+    if (Number(data.paid_amount || 0) > 0) summaryRows += 1; // "received with thanks"
+    if (data.due_amount > 0) summaryRows += 1;
+    if (data.refund_amount > 0) {
+      summaryRows += 2; // refund amount + mode
+      if (data.refund_date) summaryRows += 1;
+      if (cancelledTests.length > 0) summaryRows += 1;
+      if (hvcRefund > 0) summaryRows += 1;
+    }
+    if (data.umr_number) summaryRows += 2; // barcode
+    const SUMMARY_HEIGHT = summaryRows * 5 + 30; // base padding + rows
+
+    const normalPageCapacity = Math.max(5, Math.floor((USABLE_HEIGHT - HEADER_HEIGHT) / ROW_HEIGHT));
+    const lastPageCapacity = Math.max(3, Math.floor((USABLE_HEIGHT - HEADER_HEIGHT - SUMMARY_HEIGHT) / ROW_HEIGHT));
+
+    // Build pages: distribute tests so last page fits within lastPageCapacity
     const pages: any[][] = [];
-    if (tests.length <= FIRST_PAGE_TESTS) {
+    const totalTests = tests.length;
+    if (totalTests <= lastPageCapacity) {
+      // Everything fits on one page with summary
       pages.push(tests);
     } else {
-      pages.push(tests.slice(0, FIRST_PAGE_TESTS));
-      let idx = FIRST_PAGE_TESTS;
-      while (idx < tests.length) {
-        pages.push(tests.slice(idx, idx + SUBSEQUENT_PAGE_TESTS));
-        idx += SUBSEQUENT_PAGE_TESTS;
+      // Fill normal pages, reserve enough for last page
+      let remaining = totalTests;
+      let idx = 0;
+      while (remaining > lastPageCapacity) {
+        const take = Math.min(normalPageCapacity, remaining - lastPageCapacity);
+        pages.push(tests.slice(idx, idx + take));
+        idx += take;
+        remaining -= take;
       }
+      pages.push(tests.slice(idx)); // last page
     }
 
     const totalPages = pages.length;
