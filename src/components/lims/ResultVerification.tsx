@@ -408,7 +408,7 @@ const ResultVerification = () => {
           const val = paramValues[token.parameter_id];
           if (!val || isNaN(parseFloat(val))) return "";
           expr += parseFloat(val);
-        } else if (token.type === "fixed_value") { expr += token.fixed_value; }
+        } else if (token.type === "fixed_value" || token.type === "fixed") { expr += token.fixed_value ?? token.value ?? ""; }
         else if (token.type === "bracket_open") { expr += "("; }
         else if (token.type === "bracket_close") { expr += ")"; }
         if (token.operator && token.type !== "bracket_close") {
@@ -720,7 +720,10 @@ const ResultVerification = () => {
         {renderHistoryCell(p.parameterId, 1)}
         <TableCell className="py-1.5 w-[180px]">
           {p.isCalculated ? (
-            <Input value={currentValue} readOnly className="h-7 text-sm bg-muted/50 w-[120px] font-mono" placeholder="Auto" />
+            <div className="flex items-center gap-1">
+              <Input value={currentValue} onChange={(e) => handleValueChange(regId, p.parameterId, e.target.value, entry)} className="h-7 text-sm w-[120px] font-mono" placeholder="Auto" />
+              <Button type="button" variant="ghost" size="icon" className="h-7 w-7" title="Recalculate" onClick={() => { if (!p.calculationFormula) return; const paramValues: Record<string, string> = {}; entry.forEach((ep: any) => { paramValues[ep.parameterId] = editedValues[`${regId}::${ep.parameterId}`] ?? ep.resultValue ?? ""; }); const result = evaluateFormula(p.calculationFormula, paramValues); if (result) handleValueChange(regId, p.parameterId, result, entry); }}><Calculator className="h-3 w-3 text-primary" /></Button>
+            </div>
           ) : p.rangeType === "qualitative" && getQualitativeOptions(p.expectedValue).length > 0 ? (
             <Select value={currentValue || undefined} onValueChange={(v) => handleValueChange(regId, p.parameterId, v, entry)}>
               <SelectTrigger className="h-7 text-sm !w-[180px] min-w-[180px] max-w-[180px]"><SelectValue placeholder="Select..." /></SelectTrigger>
