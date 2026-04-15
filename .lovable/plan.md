@@ -1,45 +1,34 @@
 
 
-# Add LIMS Settings Tab with Invoice Designer
+# Add Alignment & Visibility Controls to Invoice Designer
 
 ## What changes
-1. **Replace** the "Pickup Points" and "Channels" tabs with a single **"Settings"** tab in the LIMS page.
-2. Inside Settings, render a sub-tabs layout with three sections: **Pickup Points**, **Channels**, and **Invoice Designer**.
-3. **Invoice Designer** — a simple form to configure invoice branding stored in `app_settings`:
-   - Upload a logo image (stored in a new `invoice-assets` storage bucket)
-   - Lab name (text input)
-   - Address (textarea)
-   - Contact number (text input)
-   - Tagline (text input, e.g. "LabLine: 6356 55 66 99")
-   - Live preview of the invoice header
-4. **InvoicePreview** will read these settings and use them instead of the hardcoded "PH PathLabs" / "LabLine: 6356 55 66 99" header.
+Add alignment options (left/center/right) for logo, lab name, tagline, and address. Add a toggle to show/hide the lab name. All saved to `app_settings` and respected in `InvoicePreview`.
 
-## Files
+## New setting keys in `app_settings`
 
-### New files
-- `src/components/lims/LimsSettings.tsx` — Sub-tabs wrapper rendering Pickup Points, Channels, and Invoice Designer
-- `src/components/lims/InvoiceDesigner.tsx` — Form to upload logo and edit lab name/address/contact; saves to `app_settings` with keys `invoice_lab_name`, `invoice_address`, `invoice_contact`, `invoice_tagline`, `invoice_logo_url`
+| Key | Default | Values |
+|-----|---------|--------|
+| `invoice_logo_align` | `center` | `left`, `center`, `right` |
+| `invoice_lab_name_align` | `center` | `left`, `center`, `right` |
+| `invoice_lab_name_visible` | `true` | `true`, `false` |
+| `invoice_tagline_align` | `center` | `left`, `center`, `right` |
+| `invoice_address_align` | `center` | `left`, `center`, `right` |
 
-### Modified files
-- `src/pages/Lims.tsx` — Remove `pickup` and `channels` tabs, add `settings` tab pointing to `LimsSettings`
-- `src/components/lims/InvoicePreview.tsx` — Fetch invoice settings from `app_settings` on mount; use them in the header (fall back to current hardcoded values if not set)
+## Changes
 
-### Database migration
-- Create `invoice-assets` public storage bucket for logo uploads
-- RLS policy: anyone authenticated can upload/read
+### `src/components/lims/InvoiceDesigner.tsx`
+1. Add 5 new keys to `SETTING_KEYS` and `DEFAULTS`.
+2. For each element (Logo, Lab Name, Tagline, Address), add a 3-button toggle group (Left / Center / Right) using `RadioGroup` or simple button group with active styling.
+3. For Lab Name, add a `Switch` toggle for visibility.
+4. Update the live preview to respect alignment (`textAlign`) and visibility settings.
 
-## Technical details
+### `src/components/lims/InvoicePreview.tsx`
+1. Add the 5 new keys to `SETTING_KEYS` and `DEFAULTS`.
+2. Apply `textAlign` from alignment settings to logo, lab name, tagline, and address elements.
+3. Conditionally hide lab name when `invoice_lab_name_visible === "false"`.
+4. For the logo, set appropriate `margin` based on alignment (e.g., `margin: "0 auto"` for center, `0` for left, `0 0 0 auto` for right).
 
-**Invoice Designer settings keys** (stored in `app_settings`):
-| Key | Default |
-|-----|---------|
-| `invoice_lab_name` | PH PathLabs |
-| `invoice_address` | (empty) |
-| `invoice_contact` | LabLine: 6356 55 66 99 |
-| `invoice_tagline` | Invoice / Sample Receipt |
-| `invoice_logo_url` | (empty) |
-
-**LimsSettings sub-tabs** use the same `Tabs` component pattern already used elsewhere. The `pickup` and `channels` RBAC keys remain valid — they'll be checked inside LimsSettings for sub-tab visibility.
-
-**InvoicePreview** will add a small `useEffect` to load these 5 keys on mount and replace the hardcoded header text and optionally render the logo image.
+### No database migration needed
+Uses existing `app_settings` table with new keys.
 
