@@ -1,20 +1,31 @@
 
 
-# Add Paper Border Margins to Invoice Print
+# Match Invoice Preview, Print & WhatsApp to A5 Layout
 
-## What changes
-The printed invoice currently has `@page { margin: 8mm }` but the body content has no padding, so it appears edge-to-edge. Add padding to the invoice content container so there's a visible border margin on print.
+## Problem
+The in-dialog preview looks different from the printed output. The WhatsApp image also captures whatever the dialog shows, not a proper A5-proportioned layout.
+
+## Approach
+Fix the receipt container to render at a fixed A5-proportioned width (148mm ≈ 560px) with consistent padding, so the dialog preview, print output, and WhatsApp capture all look identical.
 
 ## Changes in `src/components/lims/InvoicePreview.tsx`
 
-### 1. Increase `@page` margin
-Change `margin: 8mm` → `margin: 12mm` in the print stylesheet for more breathing room.
+### 1. Fix receipt container to A5 dimensions
+On the `receiptRef` div (line 202), set a fixed width and padding matching A5 paper with margins:
+```
+width: 560px (≈148mm at 96dpi)
+padding: 32px (≈8mm margins)
+```
+Remove the `p-3` class and use inline styles for exact control.
 
-### 2. Add padding to the receipt container
-On the `ref={receiptRef}` div (line 202), add `padding: 16px` inline so that when the innerHTML is injected into the print window, the content has internal margins. Update the print body style to include `padding: 10mm` as well.
+### 2. Update DialogContent width
+Change `max-w-sm` to `max-w-2xl` so the dialog can accommodate the fixed-width receipt without squeezing it.
 
-### 3. Update print body style
-Change `body { padding: 0; ... }` to `body { padding: 8mm; ... }` so the content doesn't touch the page edges.
+### 3. WhatsApp capture — set fixed width
+In `handleWhatsApp`, the `html2canvas` call already captures `receiptRef` — since the container is now fixed-width, the output will match print exactly. Set `width: 560` in html2canvas options to enforce consistent rendering.
+
+### 4. Print handler — keep consistent
+The print handler injects `receiptRef.innerHTML` into a new window. Since the receipt now has inline fixed width and padding, the print output will match. Keep the existing `@page { size: A5; margin: 12mm; }` stylesheet.
 
 ### Single file change
 - `src/components/lims/InvoicePreview.tsx`
