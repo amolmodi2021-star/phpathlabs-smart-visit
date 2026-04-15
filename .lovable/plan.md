@@ -1,33 +1,25 @@
 
 
-# Add Home Visit Charge Refund in Edit Registration
+# Show Home Visit Charge Refund on Invoice
 
 ## Problem
-There is no way to refund home visit charges from the Edit Registration dialog. The user wants the same password-gated logic used for test cancellations: if the registration is past sample accepted, require a password to unlock, then allow refunding the home visit charges.
+When home visit charges are refunded, the invoice's refund section only mentions cancelled tests. It should also mention the refunded home visit charges, similar to how cancelled tests are listed.
 
-## Solution
-Add a "Refund Home Visit Charges" section in the Edit Registration dialog, visible only when `home_visit_charges > 0` and charges haven't already been refunded. Uses the same `isRefundBlocked` / `refundUnlocked` gate.
+## Approach
+Derive the HVC refund amount by comparing `refund_amount` against the sum of cancelled test refund amounts. The difference (if any) is the HVC refund.
 
-### Changes in `src/components/lims/EditRegistrationDialog.tsx`
+## Change in `src/components/lims/InvoicePreview.tsx`
 
-1. **New state**: `homeVisitRefundRequested` (boolean) to track if user wants to refund HVC.
+1. **Calculate HVC refund amount** — Sum cancelled test prices (from `cancelledTests` array), then: `hvcRefund = refund_amount - cancelledTestRefundTotal`. If positive, HVC was refunded.
 
-2. **Refund calculation update**: Extend `refundCalc` to include home visit charges when `homeVisitRefundRequested` is true.
+2. **Display in refund section** (after cancelled tests line, ~line 186) — Add a line:
+   ```
+   Home Visit Charges Refunded: ₹{hvcRefund}
+   ```
+   Styled the same as the cancelled tests line (fontSize 11, color #888).
 
-3. **UI section**: After the test cancellation area (around line 620), add a section:
-   - Show only when `reg.home_visit_charges > 0` and not already refunded (track via a flag, e.g. check if `reg.home_visit_charges_refunded` or simply check if previous refund included HVC)
-   - A checkbox/button "Refund Home Visit Charges (₹X)" — gated behind `isRefundBlocked` just like test cancellation
-   - When checked, adds the HVC amount to the refund total
+3. **Update HVC display line** — The existing "Home Visit Charges" line (line 148) already only shows when `home_visit_charges > 0`, so after refund (set to 0) it correctly hides. No change needed there.
 
-4. **Process refund update**: In `processCancelTests`, when `homeVisitRefundRequested`:
-   - Add HVC to `totalRefund`
-   - Set `home_visit_charges: 0` in the update
-   - Recalculate `newFinalAmount` accordingly (subtract HVC)
-
-5. **Allow standalone HVC refund**: The "Process Refund" button should also appear when `homeVisitRefundRequested` is true even if no tests are newly cancelled. Adjust the condition from `newlyCancelled.length > 0` to `newlyCancelled.length > 0 || homeVisitRefundRequested`.
-
-6. **Discount calc update**: The `discountCalc` memo uses `reg.home_visit_charges` for `hvc`. After HVC refund, since we set `home_visit_charges: 0`, subsequent edits will correctly show 0.
-
-### No database schema changes needed
-The existing `home_visit_charges` column on `patient_registrations` will simply be set to 0 upon refund, and the refund amount added to `refund_amount`.
+### Single file change
+- `src/components/lims/InvoicePreview.tsx`
 
