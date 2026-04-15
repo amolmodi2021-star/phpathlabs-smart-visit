@@ -114,7 +114,9 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   };
 
   const editPaidAmount = Array.from(selectedModes).reduce((sum, mode) => sum + (modeAmounts[mode] || 0), 0);
-  const editDueAmount = Math.max(0, Number(reg?.final_amount || 0) - editPaidAmount);
+  const isZeroDue = reg ? Number(reg.due_amount || 0) <= 0 : false;
+  const editDueAmount = isZeroDue ? 0 : Math.max(0, Number(reg?.final_amount || 0) - editPaidAmount);
+  const zeroDueMismatch = isZeroDue && Math.abs(editPaidAmount - Number(reg?.final_amount || 0)) > 0.01;
 
   if (!reg) return null;
 
