@@ -264,6 +264,56 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         due_amount: Math.max(0, newFinalAmount - newPaid),
       } as any).eq("id", reg.id);
       if (error) throw error;
+
+      // Cascading cleanup for each newly cancelled test
+      for (const testId of newlyCancelled) {
+        // 1. Delete patient_results
+        await supabase.from("patient_results").delete().eq("registration_id", reg.id).eq("test_id", testId);
+
+        // 2. Delete outsourced_test_snips
+        await supabase.from("outsourced_test_snips").delete().eq("registration_id", reg.id).eq("test_id", testId);
+
+        // 3. Clean up lims_test_orders - gather param codes and test code
+        const cancelledCodes: string[] = [];
+
+        // Get test code from tests table
+        const { data: testRow } = await supabase.from("tests").select("test_code").eq("id", testId).maybeSingle();
+        if (testRow?.test_code) cancelledCodes.push(testRow.test_code);
+
+        // Get param codes via test_parameters → report_test_parameters
+        const { data: tpRows } = await supabase.from("test_parameters" as any).select("parameter_id").eq("test_id", testId);
+        if (tpRows && tpRows.length > 0) {
+          const paramIds = (tpRows as any[]).map((r: any) => r.parameter_id);
+          const { data: paramRows } = await supabase.from("report_test_parameters").select("param_code").in("id", paramIds);
+          if (paramRows) {
+            paramRows.forEach((p: any) => { if (p.param_code) cancelledCodes.push(p.param_code); });
+          }
+        }
+
+        if (cancelledCodes.length > 0) {
+          // Find interface orders matching this invoice
+          const { data: orders } = await supabase.from("lims_test_orders")
+            .select("id, tests")
+            .like("sample_id", `${reg.invoice_number}%`)
+            .in("status", ["pending", "in_progress"]);
+
+          if (orders) {
+            for (const order of orders) {
+              const orderTests = Array.isArray(order.tests) ? order.tests : [];
+              const filtered = (orderTests as any[]).filter((t: any) => !cancelledCodes.includes(t.code));
+              if (filtered.length === 0) {
+                await supabase.from("lims_test_orders").delete().eq("id", order.id);
+              } else {
+                await supabase.from("lims_test_orders").update({ tests: filtered } as any).eq("id", order.id);
+              }
+            }
+          }
+        }
+      }
+
+      // 4. Recalculate registration status
+      await recalculateRegistrationStatus(reg.id);
+
       qc.invalidateQueries({ queryKey: ["patient_registrations"] });
       toast.success(`${newlyCancelled.length} test(s) cancelled. Refund: ₹${refundCalc} via ${refundMode}`);
       onOpenChange(false);
