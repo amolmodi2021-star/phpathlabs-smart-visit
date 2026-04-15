@@ -144,8 +144,8 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
     printWindow.document.write(`
       <html><head><title>Invoice ${data.invoice_number}</title>
       <style>
-        @page { size: A5; margin: 8mm; }
-        body { font-family: Arial, sans-serif; padding: 0; max-width: 148mm; margin: auto; font-size: 10px; }
+        @page { size: A5; margin: 12mm; }
+        body { font-family: Arial, sans-serif; padding: 8mm; max-width: 148mm; margin: auto; font-size: 10px; }
         table { width: 100%; border-collapse: collapse; margin: 6px 0; }
         th, td { border: 1px solid #ddd; padding: 4px; text-align: left; font-size: 10px; }
         th { background: #f5f5f5; }
