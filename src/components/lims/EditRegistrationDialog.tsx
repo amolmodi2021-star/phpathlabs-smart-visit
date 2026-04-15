@@ -139,8 +139,8 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         remarks: remarks.trim() || null,
         is_stat: isStat,
         payments,
-        paid_amount: editPaidAmount,
-        due_amount: editDueAmount,
+        paid_amount: isZeroDue ? Number(reg.final_amount) : editPaidAmount,
+        due_amount: isZeroDue ? 0 : editDueAmount,
       } as any).eq("id", reg.id);
       if (error) throw error;
       qc.invalidateQueries({ queryKey: ["patient_registrations"] });
@@ -318,14 +318,19 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
                   <div className="text-sm space-y-1 pt-1">
                     <div className="flex justify-between"><span>Total Paid:</span><span className="font-medium">₹{editPaidAmount}</span></div>
                     <div className="flex justify-between"><span>Final Amount:</span><span className="font-medium">₹{reg.final_amount}</span></div>
-                    {editDueAmount > 0 && <div className="flex justify-between text-destructive font-medium"><span>Due:</span><span>₹{editDueAmount}</span></div>}
+                    {!isZeroDue && editDueAmount > 0 && <div className="flex justify-between text-destructive font-medium"><span>Due:</span><span>₹{editDueAmount}</span></div>}
+                    {isZeroDue && zeroDueMismatch && (
+                      <div className="text-destructive text-xs font-medium mt-1">
+                        ⚠ Total must equal ₹{reg.final_amount} — no additional payment allowed, only mode change permitted.
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             )}
 
             {!isBillCancelled && (
-              <Button onClick={handleSaveDetails} disabled={saving} className="w-full">
+              <Button onClick={handleSaveDetails} disabled={saving || zeroDueMismatch} className="w-full">
                 <Save className="h-4 w-4 mr-2" />Save Details
               </Button>
             )}
