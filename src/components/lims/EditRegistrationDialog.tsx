@@ -56,6 +56,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   // Populate on open
   useEffect(() => {
     if (reg && open) {
+      setRefundUnlocked(false);
       setPatientName(reg.patient_name || "");
       setTitle(reg.title || "");
       setGender(reg.gender || "");
@@ -458,6 +459,15 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         onOpenChange={setShowRefundPwd}
         onSuccess={processCancelTests}
         description={`This will cancel ${newlyCancelled.length} test(s) and refund ₹${refundCalc} via ${refundMode}.`}
+      />
+      <DeletePasswordDialog
+        open={showRefundUnlockPwd}
+        onOpenChange={setShowRefundUnlockPwd}
+        onSuccess={() => {
+          setRefundUnlocked(true);
+          toast.success("Refund unlocked for this session");
+        }}
+        description="Sample has passed accepted stage. Enter admin password to unlock refund/cancellation."
       />
     </>
   );
