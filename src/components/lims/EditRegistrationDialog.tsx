@@ -14,6 +14,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Save, Ban, RotateCcw, Lock } from "lucide-react";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
+import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 
 const TITLES = ["Mr.", "Mrs.", "Ms.", "Master", "Miss", "Baby Of", "Dr."];
 
