@@ -1,46 +1,69 @@
 
+Fix the cancellation behavior so shared tubes are edited, not deleted.
 
-# Fix: Delete Sample Tubes for Cancelled Tests
+What’s happening now
+- I checked the live data for bill `2604150004`.
+- CBC and HBA1C both use the same tube definition: `EDTA / PURPLE / WHOLE BLOOD`.
+- `sample_tubes` stores one row per physical tube with `test_ids` and `test_names` arrays.
+- The current cancellation code in `EditRegistrationDialog.tsx` deletes any tube row whose `test_ids` contains the cancelled test.
+- That is correct only when the cancelled test is the only test in that tube. It is wrong for shared tubes, because cancelling CBC also removes the HBA1C tube row.
 
-## Problem
-When test CBC was cancelled for patient 2604150003, the `sample_tubes` row for that test still exists with `pending` status. The Sample Collection view queries `sample_tubes` directly and has no knowledge of `cancelled_tests`, so the cancelled test still appears for collection.
+Evidence from code
+- `PatientRegistration.tsx` groups tests into shared tubes by `sample_tube + suffix`.
+- `EditRegistrationDialog.tsx` currently does:
+  - fetch registration tubes
+  - if `tube.test_ids.includes(testId)` → delete full tube row
+- `SampleCollection.tsx` then only renders whatever tube rows still exist, so HBA1C disappears too.
 
-## Root Cause
-The `processCancelTests` function in `EditRegistrationDialog.tsx` was recently updated to clean up `patient_results`, `outsourced_test_snips`, and `lims_test_orders` — but it does **not** clean up `sample_tubes`.
+Implementation plan
+1. Update cancellation cleanup in `src/components/lims/EditRegistrationDialog.tsx`
+- Replace full-tube deletion with partial tube update logic.
+- For each affected tube:
+  - remove only the cancelled `testId` from `test_ids`
+  - remove only the matching test name from `test_names`
+  - if other tests remain, `update` the tube row
+  - if no tests remain, then `delete` the tube row
+- Keep the existing downstream cleanup for:
+  - `patient_results`
+  - `outsourced_test_snips`
+  - `lims_test_orders`
+- Keep `recalculateRegistrationStatus` and query invalidations.
 
-## Solution
-Add one cleanup step in `processCancelTests` (in `EditRegistrationDialog.tsx`):
+2. Make the tube update robust
+- Build a `testNameById` map from `reg.tests` so the code knows which display name to remove.
+- Prefer filtering `test_ids` first, then rebuild `test_names` in the same order from remaining active IDs.
+- This avoids index mismatch bugs if names and ids arrays ever drift.
 
-For each newly cancelled test ID, delete any `sample_tubes` rows where:
-- `registration_id = reg.id`
-- The `test_ids` array contains the cancelled test ID
+3. Add safety filtering in `src/components/lims/SampleCollection.tsx`
+- Keep the existing “hide fully cancelled tube” logic.
+- Improve it so a partially cancelled tube is still shown, but only with active tests displayed.
+- Add a derived helper that returns:
+  - active `test_ids`
+  - active `test_names`
+  after excluding cancelled tests.
+- Use those derived values in the UI instead of raw `tube.test_names`.
+- Result:
+  - if tube has only cancelled tests → hidden
+  - if tube has CBC + HBA1C and CBC is cancelled → tube still visible, showing HBA1C only
 
-Since `test_ids` is a JSONB array, we need to query all tubes for the registration and filter client-side (or use a contains filter), then delete matching rows.
+4. Apply the same defensive filtering in downstream tube-based views
+- `SampleAcceptance.tsx` should also derive active tests per tube before rendering badges and before generating interface orders.
+- This prevents old/stale shared-tube rows from accidentally accepting or ordering cancelled tests.
+- Acceptance should generate interface orders only for remaining active test IDs.
 
-Additionally, the `SampleCollection.tsx` component should add a safety filter: when grouping tubes by registration, exclude tubes whose `test_ids` are entirely within the registration's `cancelled_tests` array. This provides defense-in-depth for any tubes that weren't cleaned up.
+5. Verify the specific broken case
+- Re-test bill `2604150004`:
+  - CBC cancelled
+  - HBA1C should still appear in Sample Collection on the same purple EDTA tube
+  - tube label should show only HBA1C
+- Re-test bill `2604150003`:
+  - cancelled-only tube should disappear fully
+- Also verify Sample Acceptance and interface order generation behave correctly after partial cancellation.
 
-### Changes
-
-**1. `src/components/lims/EditRegistrationDialog.tsx` — in `processCancelTests`**
-After the existing `outsourced_test_snips` deletion, add:
-```typescript
-// Delete sample_tubes for cancelled test
-const { data: tubes } = await supabase
-  .from("sample_tubes")
-  .select("id, test_ids")
-  .eq("registration_id", reg.id);
-if (tubes) {
-  const tubesToDelete = tubes.filter((t: any) =>
-    (t.test_ids || []).includes(testId)
-  );
-  for (const tube of tubesToDelete) {
-    await supabase.from("sample_tubes").delete().eq("id", tube.id);
-  }
-}
-```
-
-**2. `src/components/lims/SampleCollection.tsx` — defense-in-depth filter**
-In `pendingGroups` and `collectedGroups` memos, filter out tubes whose every `test_id` is in the registration's `cancelled_tests` array.
-
-### No database changes needed
-
+Technical notes
+- No database schema change is needed.
+- The bug is in application logic, not table structure.
+- Core fix is:
+  - delete tube only when remaining `test_ids.length === 0`
+  - otherwise update the same tube row in place
+- This aligns with project memory: technical queues must show only active, non-cancelled tests, while preserving shared tube continuity.
