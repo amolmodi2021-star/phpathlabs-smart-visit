@@ -723,7 +723,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         open={showRefundPwd}
         onOpenChange={setShowRefundPwd}
         onSuccess={processCancelTests}
-        description={`This will cancel ${newlyCancelled.length} test(s) and refund ₹${refundCalc} via ${refundMode}.`}
+        description={`This will ${newlyCancelled.length > 0 ? `cancel ${newlyCancelled.length} test(s)` : ""}${newlyCancelled.length > 0 && homeVisitRefundRequested ? " and " : ""}${homeVisitRefundRequested ? "refund home visit charges" : ""} — Refund ₹${refundCalc} via ${refundMode}.`}
       />
       <DeletePasswordDialog
         open={showRefundUnlockPwd}
