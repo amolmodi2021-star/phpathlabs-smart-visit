@@ -125,8 +125,11 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         refundAmount += Number(test.discounted_price || test.price || 0);
       }
     });
+    if (homeVisitRefundRequested) {
+      refundAmount += Number(reg?.home_visit_charges || 0);
+    }
     return refundAmount;
-  }, [newlyCancelled, tests]);
+  }, [newlyCancelled, tests, homeVisitRefundRequested, reg]);
 
   const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card", "NEFT"];
 
@@ -237,8 +240,8 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   };
 
   const handleCancelTests = async () => {
-    if (newlyCancelled.length === 0) {
-      toast.error("No new tests selected for cancellation");
+    if (newlyCancelled.length === 0 && !homeVisitRefundRequested) {
+      toast.error("No tests selected for cancellation and no home visit refund requested");
       return;
     }
     setShowRefundPwd(true);
@@ -252,11 +255,18 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         return { test_id: id, test_name: test?.test_name || "", refund_amount: Number(test?.discounted_price || test?.price || 0) };
       });
 
-      const totalRefund = Number(reg.refund_amount || 0) + refundCalc;
-      const newFinalAmount = Math.max(0, Number(reg.final_amount) - refundCalc);
-      const newPaid = Math.max(0, Number(reg.paid_amount) - refundCalc);
+      const testRefundAmount = newlyCancelled.reduce((sum, id) => {
+        const test = tests.find((t: any) => t.test_id === id);
+        return sum + Number(test?.discounted_price || test?.price || 0);
+      }, 0);
+      const hvcRefund = homeVisitRefundRequested ? Number(reg.home_visit_charges || 0) : 0;
+      const totalNewRefund = testRefundAmount + hvcRefund;
 
-      const { error } = await supabase.from("patient_registrations").update({
+      const totalRefund = Number(reg.refund_amount || 0) + totalNewRefund;
+      const newFinalAmount = Math.max(0, Number(reg.final_amount) - totalNewRefund);
+      const newPaid = Math.max(0, Number(reg.paid_amount) - totalNewRefund);
+
+      const updatePayload: any = {
         cancelled_tests: allCancelled,
         refund_amount: totalRefund,
         refund_mode: refundMode,
@@ -264,7 +274,12 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         final_amount: newFinalAmount,
         paid_amount: newPaid,
         due_amount: Math.max(0, newFinalAmount - newPaid),
-      } as any).eq("id", reg.id);
+      };
+      if (homeVisitRefundRequested) {
+        updatePayload.home_visit_charges = 0;
+      }
+
+      const { error } = await supabase.from("patient_registrations").update(updatePayload).eq("id", reg.id);
       if (error) throw error;
 
       // Cascading cleanup for each newly cancelled test
@@ -349,7 +364,10 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       qc.invalidateQueries({ queryKey: ["sample_collection_regs"] });
       qc.invalidateQueries({ queryKey: ["sample_tubes_acceptance_pending"] });
       qc.invalidateQueries({ queryKey: ["sample_tubes_acceptance_accepted"] });
-      toast.success(`${newlyCancelled.length} test(s) cancelled. Refund: ₹${refundCalc} via ${refundMode}`);
+      const parts: string[] = [];
+      if (newlyCancelled.length > 0) parts.push(`${newlyCancelled.length} test(s) cancelled`);
+      if (homeVisitRefundRequested) parts.push("Home visit charges refunded");
+      toast.success(`${parts.join(". ")}. Refund: ₹${refundCalc} via ${refundMode}`);
       onOpenChange(false);
     } catch (e: any) {
       toast.error(e.message);
@@ -601,9 +619,27 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
               </div>
             )}
 
-            {!isBillCancelled && !isRefundBlocked && newlyCancelled.length > 0 && (
+            {/* Home Visit Charges Refund */}
+            {!isBillCancelled && !isRefundBlocked && Number(reg.home_visit_charges || 0) > 0 && (
               <div className="p-3 rounded border bg-muted/50 space-y-2">
-                <div className="text-sm font-medium">Cancel {newlyCancelled.length} test(s) — Refund: ₹{refundCalc}</div>
+                <div className="flex items-center gap-3">
+                  <Checkbox
+                    checked={homeVisitRefundRequested}
+                    onCheckedChange={(checked) => setHomeVisitRefundRequested(!!checked)}
+                  />
+                  <span className="text-sm font-medium">Refund Home Visit Charges — ₹{reg.home_visit_charges}</span>
+                </div>
+              </div>
+            )}
+
+            {!isBillCancelled && !isRefundBlocked && (newlyCancelled.length > 0 || homeVisitRefundRequested) && (
+              <div className="p-3 rounded border bg-muted/50 space-y-2">
+                <div className="text-sm font-medium">
+                  {newlyCancelled.length > 0 && `Cancel ${newlyCancelled.length} test(s)`}
+                  {newlyCancelled.length > 0 && homeVisitRefundRequested && " + "}
+                  {homeVisitRefundRequested && "Refund HVC"}
+                  {" — Refund: ₹"}{refundCalc}
+                </div>
                 <div className="flex items-center gap-3">
                   <Label className="text-sm">Refund Mode:</Label>
                   <Select value={refundMode} onValueChange={setRefundMode}>
