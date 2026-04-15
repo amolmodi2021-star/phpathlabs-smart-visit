@@ -268,7 +268,7 @@ const SampleCollection = () => {
       const now = new Date().toISOString();
       const { error } = await supabase
         .from("sample_tubes" as any)
-        .update({ status: "collected", collected_at: now, collected_by: getCurrentUser()?.display_name || null })
+        .update({ status: "collected", collected_at: now, collected_by: getCurrentUserName() })
         .in("id", tubeIds);
       if (error) throw error;
       await recalculateRegistrationStatus(regId);

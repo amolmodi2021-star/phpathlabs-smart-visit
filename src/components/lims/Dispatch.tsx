@@ -287,7 +287,7 @@ const Dispatch = () => {
     try {
       const approvedTests = entry.tests.filter(t => t.status === "approved");
       for (const test of approvedTests) {
-        await supabase.from("patient_results").update({ status: "dispatched", dispatched_at: new Date().toISOString(), dispatched_by: getCurrentUser()?.display_name || null } as any).eq("registration_id", reg.id).eq("test_id", test.testId).eq("status", "approved");
+        await supabase.from("patient_results").update({ status: "dispatched", dispatched_at: new Date().toISOString(), dispatched_by: getCurrentUserName() } as any).eq("registration_id", reg.id).eq("test_id", test.testId).eq("status", "approved");
         await supabase.from("outsourced_test_snips").update({ outsource_status: "dispatched" } as any).eq("registration_id", reg.id).eq("test_id", test.testId).eq("outsource_status", "approved");
       }
       const stillPending = entry.tests.some(t => t.status !== "approved" && t.status !== "dispatched");
@@ -305,7 +305,7 @@ const Dispatch = () => {
   const markTestDispatched = async (regId: string, testId: string, testName: string) => {
     setActionKey(`${regId}||${testId}||dispatch`);
     try {
-      await supabase.from("patient_results").update({ status: "dispatched", dispatched_at: new Date().toISOString(), dispatched_by: getCurrentUser()?.display_name || null } as any).eq("registration_id", regId).eq("test_id", testId).eq("status", "approved");
+      await supabase.from("patient_results").update({ status: "dispatched", dispatched_at: new Date().toISOString(), dispatched_by: getCurrentUserName() } as any).eq("registration_id", regId).eq("test_id", testId).eq("status", "approved");
       await supabase.from("outsourced_test_snips").update({ outsource_status: "dispatched" } as any).eq("registration_id", regId).eq("test_id", testId).eq("outsource_status", "approved");
       toast.success(`${testName} marked as dispatched`);
       qc.invalidateQueries({ queryKey: ["dispatch_"] });

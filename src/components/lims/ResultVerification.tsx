@@ -570,7 +570,7 @@ const ResultVerification = () => {
           param_code: p.paramCode, parameter_name: p.parameterName,
           result_value: value || null, unit, reference_range: refRange,
           normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh,
-           flag: flag || null, status: "verified", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, verified_at: new Date().toISOString(), entered_at: p.enteredAt || new Date().toISOString(), entered_by: p.enteredBy || null, verified_by: getCurrentUser()?.display_name || null, note: editedNotes[k] !== undefined ? (editedNotes[k] || null) : (p.note || null),
+           flag: flag || null, status: "verified", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, verified_at: new Date().toISOString(), entered_at: p.enteredAt || new Date().toISOString(), entered_by: p.enteredBy || null, verified_by: getCurrentUserName(), note: editedNotes[k] !== undefined ? (editedNotes[k] || null) : (p.note || null),
         });
       }
       if (upserts.length > 0) {
@@ -619,7 +619,7 @@ const ResultVerification = () => {
             param_code: p.paramCode, parameter_name: p.parameterName,
             result_value: value || null, unit, reference_range: refRange,
             normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh,
-            flag: flag || null, status: "verified", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, verified_at: new Date().toISOString(), entered_at: p.enteredAt || new Date().toISOString(), entered_by: p.enteredBy || null, verified_by: getCurrentUser()?.display_name || null, note: editedNotes[k] !== undefined ? (editedNotes[k] || null) : (p.note || null),
+            flag: flag || null, status: "verified", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, verified_at: new Date().toISOString(), entered_at: p.enteredAt || new Date().toISOString(), entered_by: p.enteredBy || null, verified_by: getCurrentUserName(), note: editedNotes[k] !== undefined ? (editedNotes[k] || null) : (p.note || null),
           });
         }
         if (upserts.length > 0) {
