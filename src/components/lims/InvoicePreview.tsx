@@ -106,7 +106,7 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
           format: "CODE128",
           height: 30,
           width: 1.5,
-          displayValue: true,
+          displayValue: false,
           fontSize: 10,
           margin: 0,
         });
@@ -329,10 +329,11 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
             {data.registered_by && <p style={{ margin: "2px 0" }}>Prepared by: {data.registered_by}</p>}
             <p style={{ margin: "2px 0" }}>Thank you for choosing us</p>
             {data.umr_number && (
-              <div style={{ marginTop: 8 }}>
-                <svg ref={barcodeRef} />
+              <div style={{ marginTop: 8, textAlign: "center" }}>
+                <svg ref={barcodeRef} style={{ display: "block", margin: "0 auto" }} />
               </div>
             )}
+            <p style={{ margin: "6px 0 0", fontSize: 10, color: "#888" }}>This is an Electronically Generated Receipt &amp; Does Not Require Signature</p>
           </div>
         </div>
 
