@@ -168,17 +168,23 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
     const normalPageCapacity = Math.max(5, Math.floor((USABLE_HEIGHT - HEADER_HEIGHT) / ROW_HEIGHT));
     const lastPageCapacity = Math.max(3, Math.floor((USABLE_HEIGHT - HEADER_HEIGHT - SUMMARY_HEIGHT) / ROW_HEIGHT));
 
+    // Extra safety buffer for complex summaries
+    const hasRefund = data.refund_amount > 0;
+    const hasMultiplePayments = payments.length > 2;
+    const safetyBuffer = (hasRefund ? 3 : 0) + (hasMultiplePayments ? 2 : 0) + (cancelledTests.length > 0 ? 1 : 0);
+    const safeLastPageCapacity = Math.max(1, lastPageCapacity - safetyBuffer);
+
     // Build pages: fill each page to normalPageCapacity, last page gets summary
     const pages: any[][] = [];
     const totalTests = tests.length;
-    if (totalTests <= lastPageCapacity) {
+    if (totalTests <= safeLastPageCapacity) {
       // Everything fits on one page with summary
       pages.push(tests);
     } else {
       let idx = 0;
       let remaining = totalTests;
       // Fill pages forward until remainder fits on last page with summary
-      while (remaining > lastPageCapacity) {
+      while (remaining > safeLastPageCapacity) {
         const take = Math.min(normalPageCapacity, remaining);
         pages.push(tests.slice(idx, idx + take));
         idx += take;
@@ -189,8 +195,8 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
       }
     }
 
-    // If last page is too full for summary, add a dedicated summary-only page
-    if (pages.length > 1 && pages[pages.length - 1].length > lastPageCapacity) {
+    // If last page is at or above safe capacity, push summary to dedicated page
+    if (pages.length > 0 && pages[pages.length - 1].length >= safeLastPageCapacity && pages[pages.length - 1].length >= lastPageCapacity) {
       pages.push([]); // empty page just for summary
     }
 
@@ -340,7 +346,9 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
       pagesHtml += `<div style="${pageBreak}${pageIdx > 0 ? 'padding-top:8mm;' : ''}">`;
       pagesHtml += `<div style="margin-bottom:10px">${headerHtml()}</div>`;
       pagesHtml += demographicsHtml();
-      pagesHtml += `<table style="width:100%;border-collapse:collapse;margin:6px 0"><thead>${tableHeaderHtml()}</thead><tbody>${tableRows}${subtotalRow}</tbody></table>`;
+      if (pageTests.length > 0) {
+        pagesHtml += `<table style="width:100%;border-collapse:collapse;margin:6px 0"><thead>${tableHeaderHtml()}</thead><tbody>${tableRows}${subtotalRow}</tbody></table>`;
+      }
       pagesHtml += summaryHtml;
       pagesHtml += preparedPrintedFooter;
       pagesHtml += `<div style="text-align:center;font-size:8px;color:#aaa;margin-top:8px">Page ${pageIdx + 1} of ${totalPages}</div>`;
