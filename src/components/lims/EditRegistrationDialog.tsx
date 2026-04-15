@@ -53,6 +53,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   const [showRefundUnlockPwd, setShowRefundUnlockPwd] = useState(false);
   const [refundUnlocked, setRefundUnlocked] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [homeVisitRefundRequested, setHomeVisitRefundRequested] = useState(false);
 
   // Discount editing
   const [editTests, setEditTests] = useState<any[]>([]);
