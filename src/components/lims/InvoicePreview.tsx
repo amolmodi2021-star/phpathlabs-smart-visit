@@ -21,6 +21,11 @@ const SETTING_KEYS = [
   "invoice_contact",
   "invoice_tagline",
   "invoice_logo_url",
+  "invoice_logo_align",
+  "invoice_lab_name_align",
+  "invoice_lab_name_visible",
+  "invoice_tagline_align",
+  "invoice_address_align",
 ];
 
 const DEFAULTS: Record<string, string> = {
@@ -29,7 +34,15 @@ const DEFAULTS: Record<string, string> = {
   invoice_contact: "LabLine: 6356 55 66 99",
   invoice_tagline: "Invoice / Sample Receipt",
   invoice_logo_url: "",
+  invoice_logo_align: "center",
+  invoice_lab_name_align: "center",
+  invoice_lab_name_visible: "true",
+  invoice_tagline_align: "center",
+  invoice_address_align: "center",
 };
+
+const logoMargin = (align: string) =>
+  align === "left" ? "0" : align === "right" ? "0 0 0 auto" : "0 auto";
 
 const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
   const receiptRef = useRef<HTMLDivElement>(null);
@@ -67,6 +80,8 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
   const cancelledTestRefundTotal = cancelledTests.reduce((sum: number, ct: any) => sum + Number(ct.price || 0), 0);
   const hvcRefund = Math.max(0, Number(data.refund_amount || 0) - cancelledTestRefundTotal);
 
+  const labVisible = brand.invoice_lab_name_visible !== "false";
+
   const handlePrint = () => {
     const printWindow = window.open("", "_blank");
     if (!printWindow || !receiptRef.current) return;
@@ -77,9 +92,6 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
         table { width: 100%; border-collapse: collapse; margin: 10px 0; }
         th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 13px; }
         th { background: #f5f5f5; }
-        .header { text-align: center; margin-bottom: 15px; }
-        .header h2 { margin: 0; color: #0d9488; }
-        .header p { margin: 2px 0; font-size: 12px; color: #666; }
         .total-row { font-weight: bold; background: #f0fdf4; }
         .footer { text-align: center; font-size: 11px; color: #888; margin-top: 15px; }
         @media print { body { padding: 0; } }
@@ -134,18 +146,22 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
         </DialogHeader>
 
         <div ref={receiptRef} className="bg-white text-black p-4 rounded" style={{ fontFamily: "Arial, sans-serif" }}>
-          <div style={{ textAlign: "center", marginBottom: 15 }}>
+          <div style={{ marginBottom: 15 }}>
             {brand.invoice_logo_url && (
-              <img src={brand.invoice_logo_url} alt="Logo" style={{ maxHeight: 50, margin: "0 auto 6px", display: "block" }} />
+              <div style={{ textAlign: brand.invoice_logo_align as any }}>
+                <img src={brand.invoice_logo_url} alt="Logo" style={{ maxHeight: 50, display: "inline-block", marginBottom: 6 }} />
+              </div>
             )}
-            <h2 style={{ margin: 0, color: "#0d9488", fontSize: 20 }}>{brand.invoice_lab_name}</h2>
+            {labVisible && (
+              <h2 style={{ margin: 0, color: "#0d9488", fontSize: 20, textAlign: brand.invoice_lab_name_align as any }}>{brand.invoice_lab_name}</h2>
+            )}
             {brand.invoice_contact && (
-              <p style={{ margin: "2px 0", fontSize: 12, color: "#666" }}>{brand.invoice_contact}</p>
+              <p style={{ margin: "2px 0", fontSize: 12, color: "#666", textAlign: brand.invoice_lab_name_align as any }}>{brand.invoice_contact}</p>
             )}
             {brand.invoice_address && (
-              <p style={{ margin: "2px 0", fontSize: 11, color: "#888", whiteSpace: "pre-line" }}>{brand.invoice_address}</p>
+              <p style={{ margin: "2px 0", fontSize: 11, color: "#888", whiteSpace: "pre-line", textAlign: brand.invoice_address_align as any }}>{brand.invoice_address}</p>
             )}
-            <p style={{ margin: "2px 0", fontSize: 11, color: "#888" }}>{brand.invoice_tagline}</p>
+            <p style={{ margin: "2px 0", fontSize: 11, color: "#888", textAlign: brand.invoice_tagline_align as any }}>{brand.invoice_tagline}</p>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, fontSize: 13, marginBottom: 10 }}>
