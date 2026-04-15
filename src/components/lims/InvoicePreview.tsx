@@ -346,7 +346,9 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
       pagesHtml += `<div style="${pageBreak}${pageIdx > 0 ? 'padding-top:8mm;' : ''}">`;
       pagesHtml += `<div style="margin-bottom:10px">${headerHtml()}</div>`;
       pagesHtml += demographicsHtml();
-      pagesHtml += `<table style="width:100%;border-collapse:collapse;margin:6px 0"><thead>${tableHeaderHtml()}</thead><tbody>${tableRows}${subtotalRow}</tbody></table>`;
+      if (pageTests.length > 0) {
+        pagesHtml += `<table style="width:100%;border-collapse:collapse;margin:6px 0"><thead>${tableHeaderHtml()}</thead><tbody>${tableRows}${subtotalRow}</tbody></table>`;
+      }
       pagesHtml += summaryHtml;
       pagesHtml += preparedPrintedFooter;
       pagesHtml += `<div style="text-align:center;font-size:8px;color:#aaa;margin-top:8px">Page ${pageIdx + 1} of ${totalPages}</div>`;
