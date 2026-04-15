@@ -104,10 +104,10 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
       try {
         JsBarcode(barcodeRef.current, data.umr_number, {
           format: "CODE128",
-          height: 30,
-          width: 1.5,
+          height: 24,
+          width: 1.2,
           displayValue: false,
-          fontSize: 10,
+          fontSize: 8,
           margin: 0,
         });
       } catch { /* ignore invalid barcode */ }
@@ -144,11 +144,11 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
     printWindow.document.write(`
       <html><head><title>Invoice ${data.invoice_number}</title>
       <style>
-        body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: auto; }
-        table { width: 100%; border-collapse: collapse; margin: 10px 0; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 13px; }
+        @page { size: A5; margin: 8mm; }
+        body { font-family: Arial, sans-serif; padding: 0; max-width: 148mm; margin: auto; font-size: 10px; }
+        table { width: 100%; border-collapse: collapse; margin: 6px 0; }
+        th, td { border: 1px solid #ddd; padding: 4px; text-align: left; font-size: 10px; }
         th { background: #f5f5f5; }
-        @media print { body { padding: 0; } }
       </style></head><body>
       ${receiptRef.current.innerHTML}
       <script>window.print(); window.close();</script>
@@ -194,31 +194,31 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-sm max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Invoice Generated — {data.invoice_number}</DialogTitle>
         </DialogHeader>
 
-        <div ref={receiptRef} className="bg-white text-black p-4 rounded" style={{ fontFamily: "Arial, sans-serif" }}>
-          <div style={{ marginBottom: 15 }}>
+        <div ref={receiptRef} className="bg-white text-black p-3 rounded" style={{ fontFamily: "Arial, sans-serif" }}>
+          <div style={{ marginBottom: 10 }}>
             {brand.invoice_logo_url && (
               <div style={{ textAlign: brand.invoice_logo_align as any }}>
-                <img src={brand.invoice_logo_url} alt="Logo" style={{ maxHeight: 50, display: "inline-block", marginBottom: 6 }} />
+                <img src={brand.invoice_logo_url} alt="Logo" style={{ maxHeight: 40, display: "inline-block", marginBottom: 4 }} />
               </div>
             )}
             {labVisible && (
-              <h2 style={{ margin: 0, color: "#0d9488", fontSize: 20, textAlign: brand.invoice_lab_name_align as any }}>{brand.invoice_lab_name}</h2>
+              <h2 style={{ margin: 0, color: "#0d9488", fontSize: 16, textAlign: brand.invoice_lab_name_align as any }}>{brand.invoice_lab_name}</h2>
             )}
             {brand.invoice_contact && (
-              <p style={{ margin: "2px 0", fontSize: 12, color: "#666", textAlign: brand.invoice_lab_name_align as any }}>{brand.invoice_contact}</p>
+              <p style={{ margin: "2px 0", fontSize: 10, color: "#666", textAlign: brand.invoice_lab_name_align as any }}>{brand.invoice_contact}</p>
             )}
             {brand.invoice_address && (
-              <p style={{ margin: "2px 0", fontSize: 11, color: "#888", whiteSpace: "pre-line", textAlign: brand.invoice_address_align as any }}>{brand.invoice_address}</p>
+              <p style={{ margin: "2px 0", fontSize: 9, color: "#888", whiteSpace: "pre-line", textAlign: brand.invoice_address_align as any }}>{brand.invoice_address}</p>
             )}
-            <p style={{ margin: "2px 0", fontSize: 11, color: "#888", textAlign: brand.invoice_tagline_align as any }}>{brand.invoice_tagline}</p>
+            <p style={{ margin: "2px 0", fontSize: 9, color: "#888", textAlign: brand.invoice_tagline_align as any }}>{brand.invoice_tagline}</p>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, fontSize: 13, marginBottom: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 3, fontSize: 11, marginBottom: 8 }}>
             <div><strong>Invoice #:</strong> {data.invoice_number}</div>
             <div><strong>Date:</strong> {format(createdAt, "dd-MM-yyyy HH:mm")}</div>
             <div><strong>Patient:</strong> {data.title} {data.patient_name}</div>
@@ -230,42 +230,42 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
             <div><strong>Visit:</strong> {visitLabel}</div>
           </div>
 
-          <table style={{ width: "100%", borderCollapse: "collapse", margin: "10px 0" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", margin: "6px 0" }}>
             <thead>
               <tr style={{ background: "#f5f5f5" }}>
-                <th style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, width: "1%", whiteSpace: "nowrap" }}>#</th>
-                <th style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "left" }}>Test</th>
+                <th style={{ border: "1px solid #ddd", padding: 4, fontSize: 10, width: "1%", whiteSpace: "nowrap" }}>#</th>
+                <th style={{ border: "1px solid #ddd", padding: 4, fontSize: 10, textAlign: "left" }}>Test</th>
                 {hasAnyDiscount ? (
                   <>
-                    <th style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right", width: "1%", whiteSpace: "nowrap" }}>MRP</th>
-                    <th style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right", width: "1%", whiteSpace: "nowrap" }}>Disc</th>
-                    <th style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right", width: "1%", whiteSpace: "nowrap" }}>Net</th>
+                    <th style={{ border: "1px solid #ddd", padding: 4, fontSize: 10, textAlign: "right", width: "1%", whiteSpace: "nowrap" }}>MRP</th>
+                    <th style={{ border: "1px solid #ddd", padding: 4, fontSize: 10, textAlign: "right", width: "1%", whiteSpace: "nowrap" }}>Disc</th>
+                    <th style={{ border: "1px solid #ddd", padding: 4, fontSize: 10, textAlign: "right", width: "1%", whiteSpace: "nowrap" }}>Net</th>
                   </>
                 ) : (
-                  <th style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right", width: "1%", whiteSpace: "nowrap" }}>Amount</th>
+                  <th style={{ border: "1px solid #ddd", padding: 4, fontSize: 10, textAlign: "right", width: "1%", whiteSpace: "nowrap" }}>Amount</th>
                 )}
               </tr>
             </thead>
             <tbody>
               {tests.map((t: any, i: number) => (
                 <tr key={i}>
-                  <td style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "center", width: "1%", whiteSpace: "nowrap" }}>{i + 1}</td>
-                  <td style={{ border: "1px solid #ddd", padding: 6, fontSize: 12 }}>{t.test_name}</td>
+                  <td style={{ border: "1px solid #ddd", padding: 4, fontSize: 10, textAlign: "center", width: "1%", whiteSpace: "nowrap" }}>{i + 1}</td>
+                  <td style={{ border: "1px solid #ddd", padding: 4, fontSize: 10 }}>{t.test_name}</td>
                   {hasAnyDiscount ? (
                     <>
-                      <td style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right", whiteSpace: "nowrap" }}>₹{t.price}</td>
-                      <td style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right", whiteSpace: "nowrap" }}>{Number(t.discount || 0) > 0 ? `-₹${t.discount}` : "—"}</td>
-                      <td style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right", whiteSpace: "nowrap" }}>₹{t.discounted_price || t.discountedPrice}</td>
+                      <td style={{ border: "1px solid #ddd", padding: 4, fontSize: 10, textAlign: "right", whiteSpace: "nowrap" }}>₹{t.price}</td>
+                      <td style={{ border: "1px solid #ddd", padding: 4, fontSize: 10, textAlign: "right", whiteSpace: "nowrap" }}>{Number(t.discount || 0) > 0 ? `-₹${t.discount}` : "—"}</td>
+                      <td style={{ border: "1px solid #ddd", padding: 4, fontSize: 10, textAlign: "right", whiteSpace: "nowrap" }}>₹{t.discounted_price || t.discountedPrice}</td>
                     </>
                   ) : (
-                    <td style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right", whiteSpace: "nowrap" }}>₹{t.price}</td>
+                    <td style={{ border: "1px solid #ddd", padding: 4, fontSize: 10, textAlign: "right", whiteSpace: "nowrap" }}>₹{t.price}</td>
                   )}
                 </tr>
               ))}
             </tbody>
           </table>
 
-          <div style={{ fontSize: 13, marginTop: 8 }}>
+          <div style={{ fontSize: 11, marginTop: 6 }}>
             {showGross && (
               <>
                 <div style={{ display: "flex", justifyContent: "space-between" }}><span>Gross Amount:</span><span>₹{activeGross}</span></div>
@@ -273,51 +273,51 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
                 {Number(data.home_visit_charges || 0) > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}><span>Home Visit Charges:</span><span>+₹{data.home_visit_charges}</span></div>}
               </>
             )}
-            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", borderTop: showGross ? "1px solid #ddd" : "none", paddingTop: showGross ? 4 : 0, marginTop: showGross ? 4 : 0 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", borderTop: showGross ? "1px solid #ddd" : "none", paddingTop: showGross ? 3 : 0, marginTop: showGross ? 3 : 0 }}>
               <span>Final Amount:</span><span>₹{activeFinal}</span>
             </div>
             {payments.length > 0 && (
-              <div style={{ marginTop: 4 }}>
+              <div style={{ marginTop: 3 }}>
                 {payments.map((p: any, i: number) => (
-                  <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 10 }}>
                     <span>{p.mode}{p.date ? ` (${format(new Date(p.date), "dd-MM-yyyy hh:mm a")})` : ""}:</span><span>₹{p.amount}</span>
                   </div>
                 ))}
               </div>
             )}
-            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", marginTop: 4 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", marginTop: 3 }}>
               <span>Paid:</span><span>₹{data.paid_amount}</span>
             </div>
             {Number(data.paid_amount || 0) > 0 && (
-              <div style={{ fontSize: 12, marginTop: 6, fontStyle: "italic", color: "#444" }}>
+              <div style={{ fontSize: 10, marginTop: 4, fontStyle: "italic", color: "#444" }}>
                 Received with thanks from {data.title ? `${data.title} ` : ""}{data.patient_name} a sum of Rs. {Number(data.paid_amount).toFixed(2)}/- ({numberToWords(Number(data.paid_amount))} Rupees)
               </div>
             )}
             {data.due_amount > 0 && (
-              <div style={{ display: "flex", justifyContent: "space-between", color: "red", fontWeight: "bold", marginTop: 4 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", color: "red", fontWeight: "bold", marginTop: 3 }}>
                 <span>Due:</span><span>₹{data.due_amount}</span>
               </div>
             )}
             {data.refund_amount > 0 && (
-              <div style={{ marginTop: 8, borderTop: "1px solid #ddd", paddingTop: 6 }}>
+              <div style={{ marginTop: 6, borderTop: "1px solid #ddd", paddingTop: 4 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", color: "#ea580c", fontWeight: "bold" }}>
                   <span>Refund Amount:</span><span>₹{data.refund_amount}</span>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10 }}>
                   <span>Refund Mode:</span><span>{data.refund_mode || "—"}</span>
                 </div>
                 {data.refund_date && (
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10 }}>
                     <span>Refund Date:</span><span>{format(new Date(data.refund_date), "dd-MM-yyyy hh:mm a")}</span>
                   </div>
                 )}
                 {cancelledTests.length > 0 && (
-                  <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>
+                  <div style={{ fontSize: 9, color: "#888", marginTop: 3 }}>
                     <span>Cancelled Tests: {cancelledTests.map((ct: any) => ct.test_name || ct.test_id).join(", ")}</span>
                   </div>
                 )}
                 {hvcRefund > 0 && (
-                  <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>
+                  <div style={{ fontSize: 9, color: "#888", marginTop: 3 }}>
                     <span>Home Visit Charges Refunded: ₹{hvcRefund}</span>
                   </div>
                 )}
@@ -325,15 +325,15 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
             )}
           </div>
 
-          <div style={{ textAlign: "center", fontSize: 11, color: "#888", marginTop: 15 }}>
+          <div style={{ textAlign: "center", fontSize: 9, color: "#888", marginTop: 10 }}>
             {data.registered_by && <p style={{ margin: "2px 0" }}>Prepared by: {data.registered_by}</p>}
             <p style={{ margin: "2px 0" }}>Thank you for choosing us</p>
             {data.umr_number && (
-              <div style={{ marginTop: 8, textAlign: "center" }}>
+              <div style={{ marginTop: 6, textAlign: "center" }}>
                 <svg ref={barcodeRef} style={{ display: "block", margin: "0 auto" }} />
               </div>
             )}
-            <p style={{ margin: "6px 0 0", fontSize: 10, color: "#888" }}>This is an Electronically Generated Receipt &amp; Does Not Require Signature</p>
+            <p style={{ margin: "4px 0 0", fontSize: 8, color: "#888" }}>This is an Electronically Generated Receipt &amp; Does Not Require Signature</p>
           </div>
         </div>
 
