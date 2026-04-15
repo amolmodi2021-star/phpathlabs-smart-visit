@@ -1,9 +1,10 @@
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Printer, Send } from "lucide-react";
 import { format } from "date-fns";
 import html2canvas from "html2canvas";
+import JsBarcode from "jsbarcode";
 import { shareOnWhatsApp } from "@/lib/whatsapp";
 import { logMessageSend } from "@/lib/messageLog";
 import { supabase } from "@/integrations/supabase/client";
@@ -41,12 +42,21 @@ const DEFAULTS: Record<string, string> = {
   invoice_address_align: "center",
 };
 
-const logoMargin = (align: string) =>
-  align === "left" ? "0" : align === "right" ? "0 0 0 auto" : "0 auto";
+const formatVisitType = (vt: string | undefined) => {
+  if (!vt) return "";
+  const map: Record<string, string> = {
+    home_visit: "Home Visit",
+    lab_visit: "Lab",
+    pickup_point: "Pickup Point",
+  };
+  return map[vt] || vt.replace(/_/g, " ");
+};
 
 const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
   const receiptRef = useRef<HTMLDivElement>(null);
+  const barcodeRef = useRef<SVGSVGElement>(null);
   const [brand, setBrand] = useState<Record<string, string>>(DEFAULTS);
+  const [channelName, setChannelName] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -62,6 +72,28 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
       }
     })();
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !data?.channel_id) { setChannelName(""); return; }
+    (async () => {
+      const { data: ch } = await supabase.from("channels").select("name").eq("id", data.channel_id).maybeSingle();
+      setChannelName(ch?.name || "");
+    })();
+  }, [open, data?.channel_id]);
+
+  useEffect(() => {
+    if (!open || !data?.umr_number || !barcodeRef.current) return;
+    try {
+      JsBarcode(barcodeRef.current, data.umr_number, {
+        format: "CODE128",
+        height: 30,
+        width: 1.5,
+        displayValue: true,
+        fontSize: 10,
+        margin: 0,
+      });
+    } catch { /* ignore invalid barcode */ }
+  }, [open, data?.umr_number]);
 
   if (!data) return null;
 
@@ -81,6 +113,10 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
   const hvcRefund = Math.max(0, Number(data.refund_amount || 0) - cancelledTestRefundTotal);
 
   const labVisible = brand.invoice_lab_name_visible !== "false";
+  const hasAnyDiscount = tests.some((t: any) => Number(t.discount || 0) > 0);
+  const showGross = activeGross !== activeFinal;
+
+  const visitLabel = formatVisitType(data.visit_type) + (channelName ? ` (${channelName})` : "");
 
   const handlePrint = () => {
     const printWindow = window.open("", "_blank");
@@ -92,8 +128,6 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
         table { width: 100%; border-collapse: collapse; margin: 10px 0; }
         th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 13px; }
         th { background: #f5f5f5; }
-        .total-row { font-weight: bold; background: #f0fdf4; }
-        .footer { text-align: center; font-size: 11px; color: #888; margin-top: 15px; }
         @media print { body { padding: 0; } }
       </style></head><body>
       ${receiptRef.current.innerHTML}
@@ -173,7 +207,7 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
             {age && <div><strong>Age:</strong> {age}</div>}
             {data.doctor_name && <div><strong>Doctor:</strong> {data.doctor_name}</div>}
             {data.umr_number && <div><strong>UMR:</strong> {data.umr_number}</div>}
-            <div><strong>Visit:</strong> {data.visit_type?.replace("_", " ")}</div>
+            <div><strong>Visit:</strong> {visitLabel}</div>
           </div>
 
           <table style={{ width: "100%", borderCollapse: "collapse", margin: "10px 0" }}>
@@ -181,9 +215,15 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
               <tr style={{ background: "#f5f5f5" }}>
                 <th style={{ border: "1px solid #ddd", padding: 6, fontSize: 12 }}>#</th>
                 <th style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "left" }}>Test</th>
-                <th style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right" }}>MRP</th>
-                <th style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right" }}>Disc</th>
-                <th style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right" }}>Net</th>
+                {hasAnyDiscount ? (
+                  <>
+                    <th style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right" }}>MRP</th>
+                    <th style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right" }}>Disc</th>
+                    <th style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right" }}>Net</th>
+                  </>
+                ) : (
+                  <th style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right" }}>Amount</th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -191,19 +231,29 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
                 <tr key={i}>
                   <td style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "center" }}>{i + 1}</td>
                   <td style={{ border: "1px solid #ddd", padding: 6, fontSize: 12 }}>{t.test_name}</td>
-                  <td style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right" }}>₹{t.price}</td>
-                  <td style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right" }}>{t.discount > 0 ? `-₹${t.discount}` : "—"}</td>
-                  <td style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right" }}>₹{t.discounted_price || t.discountedPrice}</td>
+                  {hasAnyDiscount ? (
+                    <>
+                      <td style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right" }}>₹{t.price}</td>
+                      <td style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right" }}>{Number(t.discount || 0) > 0 ? `-₹${t.discount}` : "—"}</td>
+                      <td style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right" }}>₹{t.discounted_price || t.discountedPrice}</td>
+                    </>
+                  ) : (
+                    <td style={{ border: "1px solid #ddd", padding: 6, fontSize: 12, textAlign: "right" }}>₹{t.price}</td>
+                  )}
                 </tr>
               ))}
             </tbody>
           </table>
 
           <div style={{ fontSize: 13, marginTop: 8 }}>
-            <div style={{ display: "flex", justifyContent: "space-between" }}><span>Gross Amount:</span><span>₹{activeGross}</span></div>
-            {activeDiscount > 0 && <div style={{ display: "flex", justifyContent: "space-between", color: "green" }}><span>Discount:</span><span>-₹{activeDiscount}</span></div>}
-            {data.home_visit_charges > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}><span>Home Visit Charges:</span><span>+₹{data.home_visit_charges}</span></div>}
-            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", borderTop: "1px solid #ddd", paddingTop: 4, marginTop: 4 }}>
+            {showGross && (
+              <>
+                <div style={{ display: "flex", justifyContent: "space-between" }}><span>Gross Amount:</span><span>₹{activeGross}</span></div>
+                {activeDiscount > 0 && <div style={{ display: "flex", justifyContent: "space-between", color: "green" }}><span>Discount:</span><span>-₹{activeDiscount}</span></div>}
+                {Number(data.home_visit_charges || 0) > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}><span>Home Visit Charges:</span><span>+₹{data.home_visit_charges}</span></div>}
+              </>
+            )}
+            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", borderTop: showGross ? "1px solid #ddd" : "none", paddingTop: showGross ? 4 : 0, marginTop: showGross ? 4 : 0 }}>
               <span>Final Amount:</span><span>₹{activeFinal}</span>
             </div>
             {payments.length > 0 && (
@@ -251,8 +301,13 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
           </div>
 
           <div style={{ textAlign: "center", fontSize: 11, color: "#888", marginTop: 15 }}>
-            <p>Sample ID: {data.invoice_number}</p>
-            <p>Thank you for choosing {brand.invoice_lab_name}</p>
+            {data.registered_by && <p style={{ margin: "2px 0" }}>Prepared by: {data.registered_by}</p>}
+            <p style={{ margin: "2px 0" }}>Thank you for choosing {brand.invoice_lab_name}</p>
+            {data.umr_number && (
+              <div style={{ marginTop: 8 }}>
+                <svg ref={barcodeRef} />
+              </div>
+            )}
           </div>
         </div>
 
