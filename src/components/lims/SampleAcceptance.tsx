@@ -14,7 +14,7 @@ import { Search, ShieldCheck, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, 
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 
 const TUBE_COLOR_MAP: Record<string, string> = {
   red: "#e53e3e", lavender: "#b794f4", purple: "#9f7aea", yellow: "#ecc94b",
