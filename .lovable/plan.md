@@ -1,41 +1,29 @@
 
 
-# Fix Formula Evaluation Operator Placement Bug
+# Lock Payment Mode Changes to Final Amount When Due is Zero
 
-## Root Cause
-The formula builder UI stores the operator on each token and displays it **before** that token (as an infix between the previous and current token). But `evaluateFormula` appends the operator **after** the token's value, shifting all operators by one position.
+## Problem
+In the Edit Registration dialog (Registered Patients), the payment section currently allows free editing of payment amounts. When a patient has zero due (`due_amount = 0`), users can:
+1. Add extra payment modes and increase the total paid beyond the final amount — creating phantom overpayments
+2. Redistribute amounts unevenly across modes without ensuring the total matches the bill
 
-Example with `HbA1c * 28.7 - 46.7`:
-- Current (wrong): builds `6.5 + 28.7 * 46.7` = 1346.79
-- Correct: should build `6.5 * 28.7 - 46.7` = 139.85
+## Solution
+When the original registration has zero due (`reg.due_amount === 0`), enforce that the total of all payment mode amounts must exactly equal the final amount (including visit charges). Block saving if the total doesn't match.
 
-## Fix
-In `evaluateFormula`, move the operator to appear **before** the token's value (for tokens after the first one), instead of after.
+### Changes in `src/components/lims/EditRegistrationDialog.tsx`
 
-### Current logic (all 4 files):
-```typescript
-// Appends value, THEN operator after
-expr += parseFloat(val);  // or fixed_value
-if (token.operator && ...) expr += ` ${op} `;
-```
+1. **Detect zero-due mode**: Check `reg.due_amount === 0` (or `<= 0`) at the top of the payment section
+2. **Lock total to final amount**: When zero-due, the sum of all mode amounts must exactly equal `reg.final_amount` (which already includes home visit charges)
+3. **Prevent overpayment**: Cap each mode's input so the total across all modes cannot exceed the final amount
+4. **Save button validation**: Disable the "Save Details" button if in zero-due mode and `editPaidAmount !== reg.final_amount`
+5. **Visual feedback**: Show a warning message when totals don't match — e.g., "Total must equal ₹{final_amount} (no due adjustment allowed)"
+6. **Prevent accepting more money**: When zero-due, `editDueAmount` is forced to 0 — the update will save `paid_amount = final_amount` and `due_amount = 0`, preventing any leakage
 
-### New logic:
-```typescript
-// For idx > 0, prepend operator BEFORE value
-if (idx > 0 && token.operator) expr += ` ${token.operator} `;
-expr += parseFloat(val);  // or fixed_value
-// Remove the post-value operator append
-```
+### Specific code changes
 
-### Files to change (same fix in each):
-1. `src/components/lims/ResultsEntry.tsx` — `evaluateFormula` function (~line 643-677)
-2. `src/components/lims/ResultVerification.tsx` — same function
-3. `src/components/lims/DoctorApproval.tsx` — same function
-4. `src/components/lims/ModifiedApproval.tsx` — same function
-
-### Bracket handling adjustment
-- `bracket_open`: prepend operator before `(` if idx > 0
-- `bracket_close`: just append `)`, no operator after
-
-### No database changes needed — stored formulas are correct; only the evaluation order is wrong.
+- Around line 116-117: Add a `isZeroDue` flag based on original registration
+- Around line 309-312: Cap input amounts so total cannot exceed `reg.final_amount` when `isZeroDue`
+- Around line 315-321: Show validation error when total doesn't match in zero-due mode
+- Around line 326: Add disabled condition to Save button when amounts don't match
+- Around line 121-151 (`handleSaveDetails`): When `isZeroDue`, force `paid_amount = final_amount` and `due_amount = 0` regardless
 
