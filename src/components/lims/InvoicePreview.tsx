@@ -188,6 +188,11 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
                     <span>Cancelled Tests: {cancelledTests.map((ct: any) => ct.test_name || ct.test_id).join(", ")}</span>
                   </div>
                 )}
+                {hvcRefund > 0 && (
+                  <div style={{ fontSize: 11, color: "#888", marginTop: 4 }}>
+                    <span>Home Visit Charges Refunded: ₹{hvcRefund}</span>
+                  </div>
+                )}
               </div>
             )}
           </div>
