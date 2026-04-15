@@ -168,23 +168,25 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
     const normalPageCapacity = Math.max(5, Math.floor((USABLE_HEIGHT - HEADER_HEIGHT) / ROW_HEIGHT));
     const lastPageCapacity = Math.max(3, Math.floor((USABLE_HEIGHT - HEADER_HEIGHT - SUMMARY_HEIGHT) / ROW_HEIGHT));
 
-    // Build pages: distribute tests so last page fits within lastPageCapacity
+    // Build pages: fill each page to normalPageCapacity, last page gets summary
     const pages: any[][] = [];
     const totalTests = tests.length;
     if (totalTests <= lastPageCapacity) {
       // Everything fits on one page with summary
       pages.push(tests);
     } else {
-      // Fill normal pages, reserve enough for last page
-      let remaining = totalTests;
       let idx = 0;
+      let remaining = totalTests;
+      // Fill pages forward until remainder fits on last page with summary
       while (remaining > lastPageCapacity) {
-        const take = Math.min(normalPageCapacity, remaining - lastPageCapacity);
+        const take = Math.min(normalPageCapacity, remaining);
         pages.push(tests.slice(idx, idx + take));
         idx += take;
         remaining -= take;
       }
-      pages.push(tests.slice(idx)); // last page
+      if (remaining > 0) {
+        pages.push(tests.slice(idx)); // last page with summary
+      }
     }
 
     const totalPages = pages.length;
