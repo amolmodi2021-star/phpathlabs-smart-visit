@@ -9,6 +9,7 @@ import { shareOnWhatsApp } from "@/lib/whatsapp";
 import { logMessageSend } from "@/lib/messageLog";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { getCurrentUserName } from "@/lib/auth";
 
 interface InvoicePreviewProps {
   data: any;
@@ -282,17 +283,25 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
 
         // Footer
         summaryHtml += `<div style="text-align:center;font-size:9px;color:#888;margin-top:10px">`;
-        if (data.registered_by) summaryHtml += `<p style="margin:2px 0">Prepared by: ${data.registered_by}</p>`;
         summaryHtml += `<p style="margin:2px 0">Thank you for choosing us</p>`;
         summaryHtml += `<p style="margin:4px 0 0;font-size:8px;color:#888">This is an Electronically Generated Receipt &amp; Does Not Require Signature</p>`;
         summaryHtml += `</div>`;
       }
+
+      const printNow = format(new Date(), "dd-MM-yyyy hh:mm a");
+      const preparedDate = format(createdAt, "dd-MM-yyyy hh:mm a");
+      const currentUser = getCurrentUserName() || "—";
+      const preparedPrintedFooter = `<div style="display:flex;justify-content:space-between;font-size:9px;color:#888;margin-top:10px;border-top:1px solid #eee;padding-top:4px">
+        <div>Prepared by: ${data.registered_by || "—"} | ${preparedDate}</div>
+        <div>Printed by: ${currentUser} | ${printNow}</div>
+      </div>`;
 
       pagesHtml += `<div style="${pageBreak}">`;
       pagesHtml += `<div style="margin-bottom:10px">${headerHtml()}</div>`;
       pagesHtml += demographicsHtml();
       pagesHtml += `<table style="width:100%;border-collapse:collapse;margin:6px 0"><thead>${tableHeaderHtml()}</thead><tbody>${tableRows}${subtotalRow}</tbody></table>`;
       pagesHtml += summaryHtml;
+      pagesHtml += preparedPrintedFooter;
       pagesHtml += `<div style="text-align:center;font-size:8px;color:#aaa;margin-top:8px">Page ${pageIdx + 1} of ${totalPages}</div>`;
       pagesHtml += `</div>`;
     });
@@ -481,8 +490,11 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
             )}
           </div>
 
-          <div style={{ textAlign: "center", fontSize: 9, color: "#888", marginTop: 10 }}>
-            {data.registered_by && <p style={{ margin: "2px 0" }}>Prepared by: {data.registered_by}</p>}
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "#888", marginTop: 10, borderTop: "1px solid #eee", paddingTop: 4 }}>
+            <div>Prepared by: {data.registered_by || "—"} | {format(createdAt, "dd-MM-yyyy hh:mm a")}</div>
+            <div>Printed by: {getCurrentUserName() || "—"} | {format(new Date(), "dd-MM-yyyy hh:mm a")}</div>
+          </div>
+          <div style={{ textAlign: "center", fontSize: 9, color: "#888", marginTop: 6 }}>
             <p style={{ margin: "2px 0" }}>Thank you for choosing us</p>
             {data.umr_number && (
               <div style={{ marginTop: 6, textAlign: "center" }}>
