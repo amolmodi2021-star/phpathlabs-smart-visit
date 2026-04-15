@@ -1,34 +1,36 @@
 
 
-# Add Alignment & Visibility Controls to Invoice Designer
+# Invoice Preview Enhancements
 
-## What changes
-Add alignment options (left/center/right) for logo, lab name, tagline, and address. Add a toggle to show/hide the lab name. All saved to `app_settings` and respected in `InvoicePreview`.
+## Changes in `src/components/lims/InvoicePreview.tsx`
 
-## New setting keys in `app_settings`
+### 1. Remove "Sample ID" line
+Delete the `<p>Sample ID: {data.invoice_number}</p>` line (line 254). Keep only the "Thank you" line.
 
-| Key | Default | Values |
-|-----|---------|--------|
-| `invoice_logo_align` | `center` | `left`, `center`, `right` |
-| `invoice_lab_name_align` | `center` | `left`, `center`, `right` |
-| `invoice_lab_name_visible` | `true` | `true`, `false` |
-| `invoice_tagline_align` | `center` | `left`, `center`, `right` |
-| `invoice_address_align` | `center` | `left`, `center`, `right` |
+### 2. Conditionally hide Discount column
+Compute `hasAnyDiscount = tests.some(t => Number(t.discount || 0) > 0)`. If false, hide the "Disc" column header and cells, and rename "MRP" to "Amount" and remove the "Net" column (since MRP = Net when no discount).
 
-## Changes
+### 3. Show only Final Amount when no discount/HVC
+If `activeGross === activeFinal`, show only the "Final Amount" line. Skip "Gross Amount" line.
 
-### `src/components/lims/InvoiceDesigner.tsx`
-1. Add 5 new keys to `SETTING_KEYS` and `DEFAULTS`.
-2. For each element (Logo, Lab Name, Tagline, Address), add a 3-button toggle group (Left / Center / Right) using `RadioGroup` or simple button group with active styling.
-3. For Lab Name, add a `Switch` toggle for visibility.
-4. Update the live preview to respect alignment (`textAlign`) and visibility settings.
+### 4. Show "Prepared by" at the bottom
+Display `data.registered_by` (already saved on the registration) above the "Thank you" line.
 
-### `src/components/lims/InvoicePreview.tsx`
-1. Add the 5 new keys to `SETTING_KEYS` and `DEFAULTS`.
-2. Apply `textAlign` from alignment settings to logo, lab name, tagline, and address elements.
-3. Conditionally hide lab name when `invoice_lab_name_visible === "false"`.
-4. For the logo, set appropriate `margin` based on alignment (e.g., `margin: "0 auto"` for center, `0` for left, `0 0 0 auto` for right).
+### 5. Render UMR barcode at bottom
+Use a simple Code128-style barcode. Generate an SVG barcode from `data.umr_number` using a lightweight inline approach (or import `JsBarcode` — already in the project or add it). Render below the thank-you text.
 
-### No database migration needed
-Uses existing `app_settings` table with new keys.
+### 6. Show channel name beside visit type
+Fetch the channel name from the `channels` table using `data.channel_id` when the dialog opens. Display as "Visit: Home Visit (Channel Name)" or just "Visit: Lab".
+
+### 7. Format visit type properly
+Replace `data.visit_type?.replace("_", " ")` with a formatter: `home_visit` → "Home Visit", `lab_visit` → "Lab", `pickup_point` → "Pickup Point". Capitalize properly instead of lowercase.
+
+## Technical details
+
+- **Barcode**: Will add `jsbarcode` package dependency and render a canvas/SVG barcode for the UMR number.
+- **Channel lookup**: Add a small query in the existing `useEffect` to fetch channel name when `data.channel_id` is set.
+- **No database changes needed.**
+
+### File changed
+- `src/components/lims/InvoicePreview.tsx`
 
