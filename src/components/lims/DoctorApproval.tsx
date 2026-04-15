@@ -287,7 +287,7 @@ const DoctorApproval = () => {
         const unit = p.isOutsourced && editedUnits[k] !== undefined ? editedUnits[k] : p.unit;
         const refRange = p.isOutsourced && editedRefRanges[k] !== undefined ? editedRefRanges[k] : p.referenceRange;
          const noteVal = editedNotes[k] !== undefined ? editedNotes[k] : p.note;
-         upserts.push({ registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId, param_code: p.paramCode, parameter_name: p.parameterName, result_value: value || null, unit, reference_range: refRange, normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh, flag: flag || null, status: "approved", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, approved_at: new Date().toISOString(), entered_at: p.enteredAt || null, entered_by: p.enteredBy || null, verified_at: p.verifiedAt || null, verified_by: p.verifiedBy || null, approved_by: getCurrentUser()?.display_name || "Doctor", note: noteVal || null });
+         upserts.push({ registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId, param_code: p.paramCode, parameter_name: p.parameterName, result_value: value || null, unit, reference_range: refRange, normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh, flag: flag || null, status: "approved", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, approved_at: new Date().toISOString(), entered_at: p.enteredAt || null, entered_by: p.enteredBy || null, verified_at: p.verifiedAt || null, verified_by: p.verifiedBy || null, approved_by: getCurrentUserName() || "Doctor", note: noteVal || null });
       }
       if (upserts.length > 0) {
         await supabase.from("patient_results").delete().eq("registration_id", reg.id).eq("test_id", testId).eq("status", "verified");
@@ -341,7 +341,7 @@ const DoctorApproval = () => {
         patient_name: reg.patient_name, title: reg.title, gender: reg.gender, dob: reg.dob,
         mobile_number: reg.mobile_number, email: reg.email, address: reg.address,
         doctor_name: reg.doctor_name, visit_type: reg.visit_type, is_stat: reg.is_stat,
-        report_language: reg.report_language, approved_by: getCurrentUser()?.display_name || "Doctor",
+        report_language: reg.report_language, approved_by: getCurrentUserName() || "Doctor",
         registration_date: reg.created_at, approval_date: new Date().toISOString(),
         test_results: mergedResults, outsourced_snip_urls: mergedSnipUrls,
       } as any, { onConflict: "registration_id" as any, ignoreDuplicates: false });
@@ -394,7 +394,7 @@ const DoctorApproval = () => {
           const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
           const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
           const noteVal = editedNotes[k] !== undefined ? editedNotes[k] : p.note;
-          upserts.push({ registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId, param_code: p.paramCode, parameter_name: p.parameterName, result_value: value || null, unit: p.unit, reference_range: p.referenceRange, normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh, flag: flag || null, status: "approved", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, approved_at: new Date().toISOString(), entered_at: p.enteredAt || null, entered_by: p.enteredBy || null, verified_at: p.verifiedAt || null, verified_by: p.verifiedBy || null, approved_by: getCurrentUser()?.display_name || "Doctor", note: noteVal || null });
+          upserts.push({ registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId, param_code: p.paramCode, parameter_name: p.parameterName, result_value: value || null, unit: p.unit, reference_range: p.referenceRange, normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh, flag: flag || null, status: "approved", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, approved_at: new Date().toISOString(), entered_at: p.enteredAt || null, entered_by: p.enteredBy || null, verified_at: p.verifiedAt || null, verified_by: p.verifiedBy || null, approved_by: getCurrentUserName() || "Doctor", note: noteVal || null });
         }
         if (upserts.length > 0) {
           await supabase.from("patient_results").delete().eq("registration_id", reg.id).eq("test_id", testId).eq("status", "verified");
@@ -432,7 +432,7 @@ const DoctorApproval = () => {
         patient_name: reg.patient_name, title: reg.title, gender: reg.gender, dob: reg.dob,
         mobile_number: reg.mobile_number, email: reg.email, address: reg.address,
         doctor_name: reg.doctor_name, visit_type: reg.visit_type, is_stat: reg.is_stat,
-        report_language: reg.report_language, approved_by: getCurrentUser()?.display_name || "Doctor",
+        report_language: reg.report_language, approved_by: getCurrentUserName() || "Doctor",
         registration_date: reg.created_at, approval_date: new Date().toISOString(),
         test_results: mergedResultsAll, outsourced_snip_urls: mergedSnipUrlsAll,
       } as any, { onConflict: "registration_id" as any, ignoreDuplicates: false });
@@ -590,10 +590,10 @@ const DoctorApproval = () => {
                     const { data: existSnipReport } = await supabase.from("approved_reports").select("test_results, outsourced_snip_urls").eq("registration_id", reg.id).maybeSingle();
                     const prevResults = Array.isArray((existSnipReport as any)?.test_results) ? (existSnipReport as any).test_results : [];
                     const prevSnipUrls = Array.isArray((existSnipReport as any)?.outsourced_snip_urls) ? (existSnipReport as any).outsourced_snip_urls : [];
-                    const snipApprover = getCurrentUser()?.display_name || "Doctor";
+                    const snipApprover = getCurrentUserName() || "Doctor";
                     const newResults = prevResults.filter((r: any) => r.test_id !== st.testId).concat([{ test_id: st.testId, test_name: st.testName, is_outsourced: true, outsource_lab_name: st.labName, approved_by: snipApprover }]);
                     const newSnipUrls = [...new Set([...prevSnipUrls.filter((u: string) => !u.includes(st.testId)), ...st.snipUrls])];
-                    await supabase.from("approved_reports").upsert({ registration_id: reg.id, invoice_number: reg.invoice_number, umr_number: reg.umr_number, patient_name: reg.patient_name, title: reg.title, gender: reg.gender, dob: reg.dob, mobile_number: reg.mobile_number, email: reg.email, address: reg.address, doctor_name: reg.doctor_name, visit_type: reg.visit_type, is_stat: reg.is_stat, report_language: reg.report_language, approved_by: getCurrentUser()?.display_name || "Doctor", registration_date: reg.created_at, approval_date: new Date().toISOString(), test_results: newResults, outsourced_snip_urls: newSnipUrls } as any, { onConflict: "registration_id" as any, ignoreDuplicates: false });
+                    await supabase.from("approved_reports").upsert({ registration_id: reg.id, invoice_number: reg.invoice_number, umr_number: reg.umr_number, patient_name: reg.patient_name, title: reg.title, gender: reg.gender, dob: reg.dob, mobile_number: reg.mobile_number, email: reg.email, address: reg.address, doctor_name: reg.doctor_name, visit_type: reg.visit_type, is_stat: reg.is_stat, report_language: reg.report_language, approved_by: getCurrentUserName() || "Doctor", registration_date: reg.created_at, approval_date: new Date().toISOString(), test_results: newResults, outsourced_snip_urls: newSnipUrls } as any, { onConflict: "registration_id" as any, ignoreDuplicates: false });
                     toast.success(`${st.testName} approved`);
                     invalidateAll();
                   } catch (err: any) { toast.error(err.message || "Approval failed"); }
