@@ -49,6 +49,8 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   const [refundMode, setRefundMode] = useState<string>("Cash");
   const [showCancelBillPwd, setShowCancelBillPwd] = useState(false);
   const [showRefundPwd, setShowRefundPwd] = useState(false);
+  const [showRefundUnlockPwd, setShowRefundUnlockPwd] = useState(false);
+  const [refundUnlocked, setRefundUnlocked] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // Populate on open
