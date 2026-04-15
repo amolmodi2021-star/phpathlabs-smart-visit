@@ -281,6 +281,12 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
         }
         summaryHtml += `</div>`;
 
+        // Barcode
+        const barcodeSvgHtml = barcodeRef.current ? barcodeRef.current.outerHTML : '';
+        if (barcodeSvgHtml) {
+          summaryHtml += `<div style="margin-top:6px;text-align:center">${barcodeSvgHtml}</div>`;
+        }
+
         // Footer
         summaryHtml += `<div style="text-align:center;font-size:9px;color:#888;margin-top:10px">`;
         summaryHtml += `<p style="margin:2px 0">Thank you for choosing us</p>`;
