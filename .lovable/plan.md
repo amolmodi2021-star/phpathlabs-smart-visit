@@ -1,29 +1,41 @@
 
 
-# Fix Auto-Calculation of Parameters in Results Entry
+# Fix Formula Evaluation Operator Placement Bug
 
 ## Root Cause
-The formula builder (in `ReportParameters.tsx`) saves fixed-value tokens with `type: "fixed"`, but the `evaluateFormula` function in all four result entry components checks for `type: "fixed_value"`. This mismatch means any formula containing a constant (like `HbA1c × 28.7 − 46.7`) silently fails — the fixed values are skipped, producing an invalid expression that returns empty string.
+The formula builder UI stores the operator on each token and displays it **before** that token (as an infix between the previous and current token). But `evaluateFormula` appends the operator **after** the token's value, shifting all operators by one position.
+
+Example with `HbA1c * 28.7 - 46.7`:
+- Current (wrong): builds `6.5 + 28.7 * 46.7` = 1346.79
+- Correct: should build `6.5 * 28.7 - 46.7` = 139.85
 
 ## Fix
-Update `evaluateFormula` in all four files to accept **both** `"fixed"` and `"fixed_value"` as the token type:
+In `evaluateFormula`, move the operator to appear **before** the token's value (for tokens after the first one), instead of after.
 
-### Files to change (1 line each):
+### Current logic (all 4 files):
+```typescript
+// Appends value, THEN operator after
+expr += parseFloat(val);  // or fixed_value
+if (token.operator && ...) expr += ` ${op} `;
+```
 
-1. **`src/components/lims/ResultsEntry.tsx`** (~line 652)
-   - Change: `token.type === "fixed_value"` → `token.type === "fixed_value" || token.type === "fixed"`
+### New logic:
+```typescript
+// For idx > 0, prepend operator BEFORE value
+if (idx > 0 && token.operator) expr += ` ${token.operator} `;
+expr += parseFloat(val);  // or fixed_value
+// Remove the post-value operator append
+```
 
-2. **`src/components/lims/ResultVerification.tsx`** (~line 411)
-   - Same fix
+### Files to change (same fix in each):
+1. `src/components/lims/ResultsEntry.tsx` — `evaluateFormula` function (~line 643-677)
+2. `src/components/lims/ResultVerification.tsx` — same function
+3. `src/components/lims/DoctorApproval.tsx` — same function
+4. `src/components/lims/ModifiedApproval.tsx` — same function
 
-3. **`src/components/lims/DoctorApproval.tsx`** (~line 238)
-   - Same fix
+### Bracket handling adjustment
+- `bracket_open`: prepend operator before `(` if idx > 0
+- `bracket_close`: just append `)`, no operator after
 
-4. **`src/components/lims/ModifiedApproval.tsx`** (~line 133)
-   - Same fix
-
-### Additionally — make calculated fields editable with recalculate button
-As previously discussed, the calculated field input is currently `readOnly`. This will also be updated to allow manual override with a recalculate icon button, in all four components.
-
-### No database changes needed.
+### No database changes needed — stored formulas are correct; only the evaluation order is wrong.
 
