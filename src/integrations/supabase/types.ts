@@ -1388,12 +1388,43 @@ export type Database = {
         }
         Relationships: []
       }
+      lims_code_mapping: {
+        Row: {
+          created_at: string | null
+          id: string
+          machine_code: string
+          machine_id: string | null
+          mapped_param_code: string | null
+          mapped_test_code: string | null
+          parameter_name: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          machine_code: string
+          machine_id?: string | null
+          mapped_param_code?: string | null
+          mapped_test_code?: string | null
+          parameter_name?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          machine_code?: string
+          machine_id?: string | null
+          mapped_param_code?: string | null
+          mapped_test_code?: string | null
+          parameter_name?: string | null
+        }
+        Relationships: []
+      }
       lims_interface_logs: {
         Row: {
           created_at: string
           direction: string
           event_type: string
           id: string
+          machine_id: string | null
           request_body: Json | null
           response_body: Json | null
           sample_id: string | null
@@ -1403,6 +1434,7 @@ export type Database = {
           direction?: string
           event_type: string
           id?: string
+          machine_id?: string | null
           request_body?: Json | null
           response_body?: Json | null
           sample_id?: string | null
@@ -1412,6 +1444,7 @@ export type Database = {
           direction?: string
           event_type?: string
           id?: string
+          machine_id?: string | null
           request_body?: Json | null
           response_body?: Json | null
           sample_id?: string | null
@@ -1488,6 +1521,56 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "lims_test_results_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "lims_test_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lims_unmapped_results: {
+        Row: {
+          flag: string | null
+          id: string
+          is_resolved: boolean | null
+          machine_code: string
+          machine_id: string | null
+          order_id: string | null
+          received_at: string | null
+          reference_range: string | null
+          result_value: string | null
+          sample_id: string
+          unit: string | null
+        }
+        Insert: {
+          flag?: string | null
+          id?: string
+          is_resolved?: boolean | null
+          machine_code: string
+          machine_id?: string | null
+          order_id?: string | null
+          received_at?: string | null
+          reference_range?: string | null
+          result_value?: string | null
+          sample_id: string
+          unit?: string | null
+        }
+        Update: {
+          flag?: string | null
+          id?: string
+          is_resolved?: boolean | null
+          machine_code?: string
+          machine_id?: string | null
+          order_id?: string | null
+          received_at?: string | null
+          reference_range?: string | null
+          result_value?: string | null
+          sample_id?: string
+          unit?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lims_unmapped_results_order_id_fkey"
             columns: ["order_id"]
             isOneToOne: false
             referencedRelation: "lims_test_orders"

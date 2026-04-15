@@ -8,8 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "@/hooks/use-toast";
-import { Plus, Trash2, ChevronDown, ChevronRight, Copy, RefreshCw } from "lucide-react";
+import { Plus, Trash2, ChevronDown, ChevronRight, Copy, RefreshCw, Link2, AlertTriangle } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface TestItem {
   code: string;
@@ -60,6 +61,7 @@ const LimsDemo = () => {
   const [customMachineId, setCustomMachineId] = useState("");
   const [customMachineName, setCustomMachineName] = useState("");
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
+  const [mappingParamCode, setMappingParamCode] = useState<Record<string, string>>({});
 
   const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID || "rpbkilhzulaugzrlatts";
   const apiUrl = `https://${projectId}.supabase.co/functions/v1/lims-interface`;
@@ -79,7 +81,11 @@ const LimsDemo = () => {
       .on("postgres_changes", { event: "*", schema: "public", table: "lims_interface_logs" }, () => {
         queryClient.invalidateQueries({ queryKey: ["lims-logs"] });
       }).subscribe();
-    return () => { supabase.removeChannel(ch1); supabase.removeChannel(ch2); supabase.removeChannel(ch3); };
+    const ch4 = supabase.channel("lims-unmapped-rt")
+      .on("postgres_changes", { event: "*", schema: "public", table: "lims_unmapped_results" }, () => {
+        queryClient.invalidateQueries({ queryKey: ["lims-unmapped"] });
+      }).subscribe();
+    return () => { supabase.removeChannel(ch1); supabase.removeChannel(ch2); supabase.removeChannel(ch3); supabase.removeChannel(ch4); };
   }, [queryClient]);
 
   const { data: orders = [] } = useQuery({
@@ -102,6 +108,30 @@ const LimsDemo = () => {
     queryKey: ["lims-logs"],
     queryFn: async () => {
       const { data } = await supabase.from("lims_interface_logs").select("*").order("created_at", { ascending: false }).limit(100);
+      return data || [];
+    },
+  });
+
+  const { data: unmappedResults = [] } = useQuery({
+    queryKey: ["lims-unmapped"],
+    queryFn: async () => {
+      const { data } = await supabase.from("lims_unmapped_results").select("*").eq("is_resolved", false).order("received_at", { ascending: false });
+      return data || [];
+    },
+  });
+
+  const { data: codeMappings = [] } = useQuery({
+    queryKey: ["lims-code-mappings"],
+    queryFn: async () => {
+      const { data } = await supabase.from("lims_code_mapping").select("*").order("created_at", { ascending: false });
+      return data || [];
+    },
+  });
+
+  const { data: allParams = [] } = useQuery({
+    queryKey: ["all-params-for-mapping"],
+    queryFn: async () => {
+      const { data } = await supabase.from("report_test_parameters").select("id, param_code, parameter_name").order("parameter_name");
       return data || [];
     },
   });
@@ -148,6 +178,55 @@ const LimsDemo = () => {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["lims-logs"] }),
   });
 
+  const resolveUnmapped = useMutation({
+    mutationFn: async ({ unmappedId, machineCode, machineId, paramCode, sampleId: sid, orderId, resultValue, unit, referenceRange, flag }: any) => {
+      const param = allParams.find((p) => p.param_code === paramCode);
+      if (!param) throw new Error("Parameter not found");
+
+      // Insert code mapping
+      const { error: mapErr } = await supabase.from("lims_code_mapping").upsert({
+        machine_code: machineCode,
+        machine_id: machineId || "",
+        mapped_param_code: paramCode,
+        parameter_name: param.parameter_name || "",
+      }, { onConflict: "machine_code,machine_id" });
+      if (mapErr) throw mapErr;
+
+      // Move result to lims_test_results
+      const { error: resErr } = await supabase.from("lims_test_results").insert({
+        order_id: orderId,
+        sample_id: sid,
+        test_code: paramCode,
+        test_name: param.parameter_name || "",
+        result_value: resultValue,
+        unit: unit,
+        reference_range: referenceRange,
+        flag: flag,
+      });
+      if (resErr) throw resErr;
+
+      // Mark as resolved
+      const { error: resolveErr } = await supabase.from("lims_unmapped_results").update({ is_resolved: true }).eq("id", unmappedId);
+      if (resolveErr) throw resolveErr;
+    },
+    onSuccess: () => {
+      toast({ title: "Mapped & resolved", description: "Result moved to results table and mapping saved" });
+      queryClient.invalidateQueries({ queryKey: ["lims-unmapped"] });
+      queryClient.invalidateQueries({ queryKey: ["lims-code-mappings"] });
+      queryClient.invalidateQueries({ queryKey: ["lims-results"] });
+      setMappingParamCode({});
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const deleteMapping = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("lims_code_mapping").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["lims-code-mappings"] }),
+  });
+
   const toggleTest = (test: TestItem) => {
     setSelectedTests((prev) =>
       prev.find((t) => t.code === test.code)
@@ -187,12 +266,17 @@ const LimsDemo = () => {
         <TabsList>
           <TabsTrigger value="orders">Orders & Results</TabsTrigger>
           <TabsTrigger value="logs">Interface Logs ({logs.length})</TabsTrigger>
+          <TabsTrigger value="mapping">
+            Code Mapping
+            {unmappedResults.length > 0 && (
+              <Badge variant="destructive" className="ml-1.5 h-5 px-1.5 text-xs">{unmappedResults.length}</Badge>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="api">API Reference</TabsTrigger>
         </TabsList>
 
         {/* ───── ORDERS TAB ───── */}
         <TabsContent value="orders" className="space-y-6">
-          {/* Create Order */}
           <Card>
             <CardHeader><CardTitle className="text-base">Create Test Order</CardTitle></CardHeader>
             <CardContent className="space-y-4">
@@ -238,7 +322,6 @@ const LimsDemo = () => {
             </CardContent>
           </Card>
 
-          {/* Active Orders */}
           <Card>
             <CardHeader><CardTitle className="text-base">Active Orders ({orders.length})</CardTitle></CardHeader>
             <CardContent>
@@ -332,10 +415,13 @@ const LimsDemo = () => {
                 <div className="space-y-2 max-h-[600px] overflow-y-auto">
                   {logs.map((log) => (
                     <div key={log.id} className="border rounded p-3 text-sm space-y-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <Badge variant={log.direction === "incoming" ? "default" : "secondary"}>{log.direction}</Badge>
                         <Badge variant="outline">{log.event_type}</Badge>
                         <span className="font-mono text-xs">{log.sample_id}</span>
+                        {(log as any).machine_id && (
+                          <Badge variant="secondary" className="text-xs font-mono">🖥 {(log as any).machine_id}</Badge>
+                        )}
                         <span className="text-xs text-muted-foreground ml-auto">{new Date(log.created_at).toLocaleString()}</span>
                       </div>
                       <details>
@@ -346,6 +432,134 @@ const LimsDemo = () => {
                     </div>
                   ))}
                 </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ───── CODE MAPPING TAB ───── */}
+        <TabsContent value="mapping" className="space-y-6">
+          {/* Unmapped Results */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-destructive" />
+                Unmapped Results ({unmappedResults.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {unmappedResults.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No unmapped results. All incoming codes are mapped correctly.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Sample ID</TableHead>
+                      <TableHead>Machine Code</TableHead>
+                      <TableHead>Machine ID</TableHead>
+                      <TableHead>Result</TableHead>
+                      <TableHead>Unit</TableHead>
+                      <TableHead>Flag</TableHead>
+                      <TableHead>Received</TableHead>
+                      <TableHead>Map To Parameter</TableHead>
+                      <TableHead></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {unmappedResults.map((ur) => (
+                      <TableRow key={ur.id}>
+                        <TableCell className="font-mono text-xs">{ur.sample_id}</TableCell>
+                        <TableCell className="font-mono font-medium">{ur.machine_code}</TableCell>
+                        <TableCell className="font-mono text-xs">{ur.machine_id || "—"}</TableCell>
+                        <TableCell className="font-mono">{ur.result_value}</TableCell>
+                        <TableCell>{ur.unit}</TableCell>
+                        <TableCell>
+                          <Badge variant={ur.flag === "Abnormal" ? "destructive" : "outline"} className="text-xs">{ur.flag}</Badge>
+                        </TableCell>
+                        <TableCell className="text-xs">{new Date(ur.received_at).toLocaleString()}</TableCell>
+                        <TableCell>
+                          <Select
+                            value={mappingParamCode[ur.id] || ""}
+                            onValueChange={(val) => setMappingParamCode((prev) => ({ ...prev, [ur.id]: val }))}
+                          >
+                            <SelectTrigger className="w-48 h-8 text-xs">
+                              <SelectValue placeholder="Select parameter..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {allParams.map((p) => (
+                                <SelectItem key={p.id} value={p.param_code || p.id}>
+                                  {p.param_code} — {p.parameter_name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            size="sm"
+                            variant="default"
+                            disabled={!mappingParamCode[ur.id] || resolveUnmapped.isPending}
+                            onClick={() => resolveUnmapped.mutate({
+                              unmappedId: ur.id,
+                              machineCode: ur.machine_code,
+                              machineId: ur.machine_id,
+                              paramCode: mappingParamCode[ur.id],
+                              sampleId: ur.sample_id,
+                              orderId: ur.order_id,
+                              resultValue: ur.result_value,
+                              unit: ur.unit,
+                              referenceRange: ur.reference_range,
+                              flag: ur.flag,
+                            })}
+                          >
+                            <Link2 className="h-3 w-3 mr-1" /> Map
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Existing Mappings */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Code Mappings ({codeMappings.length})</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {codeMappings.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No mappings configured yet. Map unmapped results above or they'll be auto-used for future results.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Machine Code</TableHead>
+                      <TableHead>Machine ID</TableHead>
+                      <TableHead>→ Param Code</TableHead>
+                      <TableHead>Parameter Name</TableHead>
+                      <TableHead>Created</TableHead>
+                      <TableHead></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {codeMappings.map((m) => (
+                      <TableRow key={m.id}>
+                        <TableCell className="font-mono font-medium">{m.machine_code}</TableCell>
+                        <TableCell className="font-mono text-xs">{m.machine_id || "—"}</TableCell>
+                        <TableCell className="font-mono">{m.mapped_param_code || m.mapped_test_code}</TableCell>
+                        <TableCell>{m.parameter_name}</TableCell>
+                        <TableCell className="text-xs">{new Date(m.created_at).toLocaleString()}</TableCell>
+                        <TableCell>
+                          <Button size="icon" variant="ghost" onClick={() => deleteMapping.mutate(m.id)}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               )}
             </CardContent>
           </Card>
@@ -366,9 +580,10 @@ const LimsDemo = () => {
 
               <div>
                 <h3 className="font-semibold mb-2">1. Query Tests (Middleware → App)</h3>
-                <p className="text-sm text-muted-foreground mb-2">When middleware scans a barcode, call this to get the list of tests to process.</p>
+                <p className="text-sm text-muted-foreground mb-2">When middleware scans a barcode, call this to get the list of tests to process. Optionally pass <code>machine_id</code> to filter tests for a specific machine.</p>
                 <div className="bg-muted p-3 rounded space-y-2">
-                  <code className="text-sm block">GET {apiUrl}?action=query&sample_id=BARCODE123</code>
+                  <code className="text-sm block">GET {apiUrl}?action=query&sample_id=BARCODE123&machine_id=MACH001</code>
+                  <p className="text-xs text-muted-foreground">• <code>machine_id</code> is optional — if provided, only tests assigned to that machine are returned</p>
                   <p className="text-xs font-medium mt-2">Response:</p>
                   <pre className="text-xs overflow-x-auto">{JSON.stringify({
                     order_id: "uuid",
@@ -376,7 +591,6 @@ const LimsDemo = () => {
                     patient_name: "John Doe",
                     tests: [
                       { code: "CBC", name: "Complete Blood Count", unit: "", machine_id: "MACH001" },
-                      { code: "FBS", name: "Fasting Blood Sugar", unit: "mg/dL", machine_id: "MACH002" },
                     ],
                   }, null, 2)}</pre>
                 </div>
@@ -384,23 +598,25 @@ const LimsDemo = () => {
 
               <div>
                 <h3 className="font-semibold mb-2">2. Submit Results (Middleware → App)</h3>
-                <p className="text-sm text-muted-foreground mb-2">After processing, send results back to the app.</p>
+                <p className="text-sm text-muted-foreground mb-2">After processing, send results back. Codes are auto-mapped via the Code Mapping table. Unmapped codes are stored separately for manual mapping.</p>
                 <div className="bg-muted p-3 rounded space-y-2">
                   <code className="text-sm block">POST {apiUrl}</code>
                   <p className="text-xs font-medium mt-2">Request Body:</p>
                   <pre className="text-xs overflow-x-auto">{JSON.stringify({
                     action: "results",
                     sample_id: "BARCODE123",
+                    machine_id: "MACH001",
                     results: [
-                      { code: "CBC", name: "Complete Blood Count", value: "Normal", unit: "", reference_range: "", flag: "Normal" },
-                      { code: "FBS", name: "Fasting Blood Sugar", value: "95", unit: "mg/dL", reference_range: "70-110", flag: "Normal" },
+                      { code: "HB_MACHINE", name: "Hemoglobin", value: "13.5", unit: "g/dL", reference_range: "12-16", flag: "Normal" },
                     ],
                   }, null, 2)}</pre>
                   <p className="text-xs font-medium mt-2">Response:</p>
                   <pre className="text-xs overflow-x-auto">{JSON.stringify({
                     success: true,
                     sample_id: "BARCODE123",
-                    results_received: 2,
+                    results_received: 1,
+                    mapped: 1,
+                    unmapped: 0,
                     order_id: "uuid",
                   }, null, 2)}</pre>
                 </div>
