@@ -448,6 +448,25 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       if (newlyCancelled.length > 0) parts.push(`${newlyCancelled.length} test(s) cancelled`);
       if (homeVisitRefundRequested) parts.push("Home visit charges refunded");
       toast.success(`${parts.join(". ")}. Refund: ₹${refundCalc} via ${refundMode}`);
+      // Log cancellation refund
+      if (refundCalc > 0) {
+        logPaymentTransaction({
+          registration_id: reg.id,
+          invoice_number: reg.invoice_number,
+          patient_name: patientName,
+          transaction_type: "refund",
+          direction: "out",
+          payments: [{ mode: refundMode, amount: refundCalc }],
+          total_amount: refundCalc,
+          gross_amount: reg.gross_amount || 0,
+          discount_amount: reg.discount_amount || 0,
+          final_amount: newFinalAmount,
+          paid_amount: newPaid,
+          due_amount: Math.max(0, newFinalAmount - newPaid),
+          refund_amount: refundCalc,
+          remarks: `${newlyCancelled.length} test(s) cancelled${homeVisitRefundRequested ? " + HV charges refunded" : ""}`,
+        });
+      }
       onOpenChange(false);
     } catch (e: any) {
       toast.error(e.message);
