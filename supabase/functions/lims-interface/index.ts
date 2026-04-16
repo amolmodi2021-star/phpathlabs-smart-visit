@@ -246,6 +246,132 @@ Deno.serve(async (req) => {
         if (unmappedErr) throw unmappedErr;
       }
 
+      // ===== Bridge mapped results into patient_results (Results Entry UI) =====
+      let patientResultsWritten = 0;
+      let registrationResolved = false;
+      try {
+        // 1) Resolve registration_id from sample_id (strip trailing letter suffix)
+        const invoiceNumber = sample_id.replace(/[A-Za-z]+$/, "");
+        const { data: regRows } = await supabase
+          .from("patient_registrations")
+          .select("id, tests")
+          .eq("invoice_number", invoiceNumber)
+          .limit(1);
+        const registration = regRows?.[0];
+
+        if (registration && mappedRows.length > 0) {
+          registrationResolved = true;
+          const registrationId = registration.id;
+          const regTestIds = new Set(((registration.tests as any[]) || []).map((t: any) => t.test_id || t.id).filter(Boolean));
+
+          // 2) Resolve parameters by param_code
+          const paramCodes = Array.from(new Set(mappedRows.map((r) => r.test_code).filter(Boolean)));
+          const { data: paramRows } = await supabase
+            .from("report_test_parameters")
+            .select("id, param_code, parameter_name, unit, normal_range_low, normal_range_high, normal_range_text")
+            .in("param_code", paramCodes);
+          const paramByCode: Record<string, any> = {};
+          for (const p of paramRows || []) paramByCode[p.param_code] = p;
+
+          // Resolve test_id via test_parameters junction; prefer tests present in registration
+          const paramIds = (paramRows || []).map((p) => p.id);
+          let tpRows: any[] = [];
+          if (paramIds.length > 0) {
+            const { data } = await supabase
+              .from("test_parameters")
+              .select("test_id, parameter_id")
+              .in("parameter_id", paramIds);
+            tpRows = data || [];
+          }
+          const testIdsByParam: Record<string, string[]> = {};
+          for (const tp of tpRows) {
+            if (!testIdsByParam[tp.parameter_id]) testIdsByParam[tp.parameter_id] = [];
+            testIdsByParam[tp.parameter_id].push(tp.test_id);
+          }
+
+          // 3) Fetch existing patient_results for this registration to decide insert vs update vs skip
+          const { data: existingRows } = await supabase
+            .from("patient_results")
+            .select("id, parameter_id, status, result_value")
+            .eq("registration_id", registrationId);
+          const existingByParam: Record<string, any> = {};
+          for (const er of existingRows || []) existingByParam[er.parameter_id] = er;
+
+          const insertPayload: any[] = [];
+          for (const mr of mappedRows) {
+            const param = paramByCode[mr.test_code];
+            if (!param) continue;
+            const candidateTestIds = testIdsByParam[param.id] || [];
+            const testId = candidateTestIds.find((tid) => regTestIds.has(tid)) || candidateTestIds[0];
+            if (!testId) continue;
+
+            // Compute flag from numeric range when possible
+            const numericVal = parseFloat(mr.result_value);
+            let flag = mr.flag || "";
+            if (!isNaN(numericVal) && param.normal_range_low != null && param.normal_range_high != null) {
+              if (numericVal < Number(param.normal_range_low)) flag = "L";
+              else if (numericVal > Number(param.normal_range_high)) flag = "H";
+              else flag = "N";
+            }
+
+            const referenceRange = param.normal_range_text
+              || (param.normal_range_low != null && param.normal_range_high != null
+                  ? `${param.normal_range_low} - ${param.normal_range_high}`
+                  : "");
+
+            const existing = existingByParam[param.id];
+            const nowIso = new Date().toISOString();
+            if (existing) {
+              // Skip if technician/verifier/approver already worked on it
+              if (existing.status && existing.status !== "pending") continue;
+              const { error: updErr } = await supabase
+                .from("patient_results")
+                .update({
+                  result_value: mr.result_value,
+                  flag,
+                  unit: mr.unit || param.unit || "",
+                  reference_range: referenceRange,
+                  normal_range_low: param.normal_range_low,
+                  normal_range_high: param.normal_range_high,
+                  is_from_interface: true,
+                  entered_at: nowIso,
+                  entered_by: "INTERFACE",
+                  status: "pending",
+                  updated_at: nowIso,
+                })
+                .eq("id", existing.id);
+              if (!updErr) patientResultsWritten++;
+            } else {
+              insertPayload.push({
+                registration_id: registrationId,
+                test_id: testId,
+                parameter_id: param.id,
+                param_code: param.param_code,
+                parameter_name: param.parameter_name,
+                result_value: mr.result_value,
+                unit: mr.unit || param.unit || "",
+                reference_range: referenceRange,
+                normal_range_low: param.normal_range_low,
+                normal_range_high: param.normal_range_high,
+                flag,
+                status: "pending",
+                is_from_interface: true,
+                entered_at: nowIso,
+                entered_by: "INTERFACE",
+              });
+            }
+          }
+
+          if (insertPayload.length > 0) {
+            const { error: insErr } = await supabase.from("patient_results").insert(insertPayload);
+            if (!insErr) patientResultsWritten += insertPayload.length;
+            else console.error("patient_results insert error:", insErr);
+          }
+        }
+      } catch (bridgeErr) {
+        console.error("patient_results bridge error:", bridgeErr);
+      }
+
       // Update order: mark individual tests as completed for mapped results
       if (orderId && mappedRows.length > 0) {
         const { data: order } = await supabase
@@ -280,6 +406,8 @@ Deno.serve(async (req) => {
         mapped: mappedRows.length,
         unmapped: unmappedRows.length,
         order_id: orderId,
+        registration_resolved: registrationResolved,
+        patient_results_written: patientResultsWritten,
       };
 
       await supabase.from("lims_interface_logs").insert({
