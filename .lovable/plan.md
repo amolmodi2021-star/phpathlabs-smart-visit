@@ -1,40 +1,33 @@
 
 
-## Plan: Use Pure Native CODE128 — No Formatting Tweaks
+## Plan: Fix Barcode Size to 37mm Width × 10mm Height
 
-### Goal
-Strip all custom barcode formatting (scale boost, height boost, padding, etc.) and let bwip-js render CODE128 in its **default native format** — exactly as the spec defines, no embellishments.
+### Assumption
+User typed "3.7 MM" but means **37 mm** (3.7 cm) — a 3.7mm-wide barcode would be physically unreadable on a 50mm sticker. Confirming via the sticker context: 50mm sticker, current barcode placed at 46mm wide. 37mm wide × 10mm tall fits cleanly with margins.
 
-### Current State (in `src/lib/barcodePrint.ts`)
+### Change
+In `src/lib/barcodePrint.ts`, update the `doc.addImage()` call inside the tube loop:
+
+**Current:**
 ```typescript
-bwipjs.toCanvas(canvas, {
-  bcid: "code128",
-  text: value,
-  scale: 5,
-  height: 12,
-  includetext: false,
-  paddingwidth: 10,
-  paddingheight: 2,
-  backgroundcolor: "FFFFFF",
-});
+doc.addImage(png, "PNG", 2, 6.5, 46, 12, undefined, "FAST");
 ```
 
-### Change To — Native Defaults Only
+**New — center 37mm wide × 10mm tall barcode on 50mm sticker:**
 ```typescript
-bwipjs.toCanvas(canvas, {
-  bcid: "code128",
-  text: value,
-  includetext: false,
-});
+// Center horizontally: (50 - 37) / 2 = 6.5mm left margin
+doc.addImage(png, "PNG", 6.5, 7.5, 37, 10, undefined, "FAST");
 ```
 
-That's it. No scale, no height, no padding, no background color overrides. bwip-js will use its built-in CODE128 defaults (scale 2, height 10mm, default quiet zone per spec).
+### Layout Impact
+- Barcode occupies y: 7.5 → 17.5 (10mm tall)
+- Sample ID line at y: 20.5 — still clears the barcode (3mm gap) ✓
+- Bottom row at y: 23.5 — unchanged ✓
 
-### PDF Placement
-Keep the existing barcode image area on the sticker (`2, 6.5, 46, 12` mm). The PNG will simply render at native bwip-js dimensions and jsPDF will scale it to fit the 46×12 mm box on the label.
+Native CODE128 rendering from bwip-js stays untouched (per previous request). jsPDF will scale the native PNG down to fit the 37×10mm box.
 
 ### File
-- `src/lib/barcodePrint.ts` — `renderBarcodePng()` options only (remove `scale`, `height`, `paddingwidth`, `paddingheight`, `backgroundcolor`)
+- `src/lib/barcodePrint.ts` — single line change (`doc.addImage` parameters)
 
 ### No DB / other file changes
 
