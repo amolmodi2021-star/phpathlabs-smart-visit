@@ -1,5 +1,6 @@
 import { format } from "date-fns";
-import JsBarcode from "jsbarcode";
+import { jsPDF } from "jspdf";
+import bwipjs from "bwip-js";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -27,74 +28,128 @@ const getPickupPointMap = async (): Promise<Record<string, string>> => {
 };
 
 /**
+ * Render a CODE128 barcode to a high-DPI PNG data URL using bwip-js.
+ * scale=4 ≈ 300 DPI equivalent — razor-sharp on thermal (203 DPI) & laser (600 DPI) printers.
+ */
+const renderBarcodePng = (value: string): string => {
+  const canvas = document.createElement("canvas");
+  bwipjs.toCanvas(canvas, {
+    bcid: "code128",
+    text: value,
+    scale: 4,
+    height: 8, // mm
+    includetext: false,
+    paddingwidth: 0,
+    paddingheight: 0,
+    backgroundcolor: "FFFFFF",
+  });
+  return canvas.toDataURL("image/png");
+};
+
+/**
  * Print barcode stickers for a registration's sample tubes.
- * Sticker layout: 50mm x 25mm, scanner-safe CODE128 with quiet zone.
+ *
+ * Builds a multi-page PDF (one 50×25mm page per tube) using jsPDF + bwip-js,
+ * then sends it straight to the printer via a hidden iframe — no new tab, no
+ * PDF viewer. The browser's print dialog will appear once (this is a hard
+ * browser security restriction — silent print requires Chrome's
+ * `--kiosk-printing` flag enabled on the printing PC for true zero-click).
  */
 export const printBarcodes = async (reg: any, tubes: BarcodeTube[]): Promise<void> => {
-  return new Promise(async (resolve) => {
-    const printWindow = window.open("", "_blank", "width=400,height=600");
-    if (!printWindow) { toast.error("Pop-up blocked. Please allow pop-ups."); resolve(); return; }
+  if (!tubes.length) return;
 
-    const ppMap = await getPickupPointMap();
-    const age = calcAge(reg.dob);
-    const gender = reg.gender ? reg.gender.charAt(0) : "";
-    const location = reg.pickup_point_id ? ppMap[reg.pickup_point_id] || "" : "";
-    const dateTime = format(new Date(), "dd-MM-yyyy hh:mm a");
-    const patientName = reg.patient_name || "";
+  const ppMap = await getPickupPointMap();
+  const age = calcAge(reg.dob);
+  const gender = reg.gender ? reg.gender.charAt(0) : "";
+  const location = reg.pickup_point_id ? ppMap[reg.pickup_point_id] || "" : "";
+  const dateTime = format(new Date(), "dd-MM-yyyy hh:mm a");
+  const patientName = reg.patient_name || "";
 
-    let html = `<!DOCTYPE html><html><head><style>
-      @page { size: 50mm 25mm; margin: 0; }
-      html, body { margin: 0; padding: 0; font-family: 'Arial', sans-serif; }
-      .label {
-        width: 50mm; height: 25mm;
-        padding: 0.5mm 0.8mm;
-        box-sizing: border-box;
-        break-inside: avoid;
-        page-break-inside: avoid;
-        overflow: hidden;
-        display: grid;
-        grid-template-rows: 3mm 3mm 8mm 2.8mm 3mm;
-        row-gap: 0.3mm;
-      }
-      .label + .label { break-before: page; page-break-before: always; }
-      .row1 { display: flex; justify-content: space-between; font-size: 7pt; font-weight: bold; line-height: 1; white-space: nowrap; overflow: hidden; }
-      .row2 { font-size: 6.5pt; font-weight: bold; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .barcode-wrap { text-align: center; line-height: 0; overflow: hidden; padding: 0 3mm; box-sizing: border-box; display: flex; align-items: center; justify-content: center; }
-      .barcode-wrap svg { display: block; }
-      .sample-id { text-align: center; font-size: 5.5pt; font-weight: bold; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .row-bottom { display: flex; justify-content: space-between; font-size: 6pt; line-height: 1; white-space: nowrap; overflow: hidden; }
-      .row-bottom span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    </style></head><body>`;
+  // 50mm x 25mm landscape sticker
+  const doc = new jsPDF({ unit: "mm", format: [50, 25], orientation: "landscape" });
+  doc.setFont("helvetica");
 
-    for (const tube of tubes) {
-      const barcodeValue = tube.suffix ? `${reg.invoice_number}${tube.suffix}` : reg.invoice_number;
-      const svgEl = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      try { JsBarcode(svgEl, barcodeValue, { format: "CODE128", width: 2, height: 40, displayValue: false, margin: 0 }); } catch { /* fallback */ }
-      // Force exact physical dimensions on the SVG so the printer rasterizes vector bars at native DPI
-      svgEl.setAttribute("width", "42mm");
-      svgEl.setAttribute("height", "8mm");
-      svgEl.setAttribute("preserveAspectRatio", "none");
-      const barcodeSvg = svgEl.outerHTML;
+  tubes.forEach((tube, idx) => {
+    if (idx > 0) doc.addPage([50, 25], "landscape");
 
-      html += `<div class="label">
-        <div class="row1"><span>${reg.invoice_number}</span><span>${age}${gender ? `/${gender}` : ""}</span></div>
-        <div class="row2">${patientName}${location ? ` &nbsp; PH ${location}` : ""}</div>
-        <div class="barcode-wrap">${barcodeSvg}</div>
-        <div class="sample-id">${barcodeValue}&nbsp;<small style="color:#888">${tube.sample_uid}</small></div>
-        <div class="row-bottom">
-          <span>${tube.sample_type || tube.tube_type || ""}</span>
-          <span>${dateTime}</span>
-        </div>
-      </div>`;
+    const barcodeValue = tube.suffix ? `${reg.invoice_number}${tube.suffix}` : reg.invoice_number;
+
+    // --- Row 1: invoice number (left) | age/sex (right) ---
+    doc.setFontSize(7);
+    doc.setFont("helvetica", "bold");
+    doc.text(String(reg.invoice_number), 1, 2.5);
+    const ageSex = `${age}${gender ? `/${gender}` : ""}`;
+    if (ageSex) doc.text(ageSex, 49, 2.5, { align: "right" });
+
+    // --- Row 2: patient name + location ---
+    doc.setFontSize(6.5);
+    doc.setFont("helvetica", "bold");
+    const nameLine = location ? `${patientName}  PH ${location}` : patientName;
+    // truncate to fit ~48mm width
+    const truncated = doc.splitTextToSize(nameLine, 48)[0];
+    doc.text(truncated, 1, 5.5);
+
+    // --- Barcode (centered, 44mm x 8mm) ---
+    try {
+      const png = renderBarcodePng(barcodeValue);
+      doc.addImage(png, "PNG", 3, 7, 44, 8, undefined, "FAST");
+    } catch (err) {
+      console.error("Barcode render failed:", err);
     }
 
-    html += "</body></html>";
-    printWindow.document.write(html);
-    printWindow.document.close();
-    let resolved = false;
-    const doResolve = () => { if (!resolved) { resolved = true; resolve(); } };
-    printWindow.onafterprint = () => doResolve();
-    printWindow.onload = () => { printWindow.print(); setTimeout(doResolve, 1000); };
-    setTimeout(doResolve, 3000);
+    // --- Sample ID line (centered) ---
+    doc.setFontSize(5.5);
+    doc.setFont("helvetica", "bold");
+    const sampleLine = `${barcodeValue}  ${tube.sample_uid}`;
+    doc.text(sampleLine, 25, 17.5, { align: "center" });
+
+    // --- Bottom row: sample type (left) | datetime (right) ---
+    doc.setFontSize(6);
+    doc.setFont("helvetica", "normal");
+    const sampleType = tube.sample_type || tube.tube_type || "";
+    if (sampleType) doc.text(sampleType, 1, 21);
+    doc.text(dateTime, 49, 21, { align: "right" });
+  });
+
+  // Convert to blob and trigger print via hidden iframe (no new tab)
+  const blob = doc.output("blob");
+  const blobUrl = URL.createObjectURL(blob);
+
+  return new Promise((resolve) => {
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    iframe.style.visibility = "hidden";
+    iframe.src = blobUrl;
+
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      try { URL.revokeObjectURL(blobUrl); } catch { /* ignore */ }
+      try { iframe.parentNode?.removeChild(iframe); } catch { /* ignore */ }
+      resolve();
+    };
+
+    iframe.onload = () => {
+      // Give the PDF viewer a tick to fully initialize before invoking print
+      setTimeout(() => {
+        try {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+        } catch (err) {
+          console.error("Print failed:", err);
+          toast.error("Print failed. Please try again.");
+        }
+        // Cleanup after a generous delay so the print job has time to dispatch
+        setTimeout(cleanup, 60_000);
+      }, 250);
+    };
+
+    document.body.appendChild(iframe);
   });
 };
