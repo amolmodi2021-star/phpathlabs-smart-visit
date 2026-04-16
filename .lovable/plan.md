@@ -1,49 +1,65 @@
 
-## Reverify: Extra Blank Sticker Before/After Barcode Print
+## Rebuild Plan: Barcode Printing Once and for All
 
-### What I found
-- The barcode print helper is still only called once per user action in `SampleCollection` / `SampleAcceptance`, so this does **not** look like a duplicate click handler issue.
-- The uploaded photo suggests a **blank label page is being created in the print document itself** (blank sticker + printed sticker in one single-label print job).
-- Current print CSS still relies on browser pagination behavior inside a popup window. Thermal barcode printers are very sensitive to this and often mis-handle generic browser page-break CSS.
+### What I found in the current code
+- `src/lib/barcodePrint.ts` still prints through a popup window with browser-managed pagination.
+- The barcode SVG is being forcibly resized:
+  - `width="42mm"`
+  - `height="8mm"`
+  - `preserveAspectRatio="none"`
+- That combination can distort CODE128 bar widths, which explains why scanning became unreliable again.
+- The print document root is not fully locked to `50mm x 25mm` on every level, so the thermal printer can still interpret a second blank page/label.
 
-### Plan
-1. **Refactor the print HTML to use explicit page wrappers**
-   - Wrap each sticker in a dedicated `.page` container sized exactly `50mm x 25mm`.
-   - Move the actual sticker markup inside that page.
-   - Avoid relying on the current `.label + .label { break-before: page }` approach.
+### Root causes
+1. **Barcode distortion**: the SVG bars are stretched to fit a box instead of printing at their native module widths.
+2. **Thermal pagination issue**: popup/browser print layout is still creating an extra blank label page.
+3. **Layout rounding risk**: the current grid row sizing on a tiny 25mm label can overflow by fractions and trigger an extra feed.
 
-2. **Use only one pagination rule**
-   - Apply page break only on `.page:not(:last-child)`.
-   - This prevents both:
-     - an unwanted blank first sticker
-     - an unwanted blank trailing sticker
+### Rebuild approach
+I will fully replace the current barcode print structure in `src/lib/barcodePrint.ts` with a stricter label-rendering flow:
 
-3. **Lock the print document to exact thermal dimensions**
-   - Set `html`, `body`, and `.page` to exact label size with no extra flow height.
-   - Force `overflow: hidden`, zero margins, zero padding, and no min-height behavior that could create an empty page.
+1. **Switch to an isolated print document**
+   - Replace the current popup-based HTML flow with a dedicated print container structure designed only for label printing.
+   - Ensure `html`, `body`, and each label page are all explicitly `50mm x 25mm` with zero margin, zero padding, zero overflow.
 
-4. **Delay printing until layout is fully ready**
-   - After writing the popup HTML, wait for the document load plus one render tick before calling `print()`.
-   - This avoids browsers/printers snapshotting the popup before the label content/SVG is fully laid out.
+2. **Keep SVG barcode, but never stretch it**
+   - Continue using `JsBarcode` with SVG since that was the last version that scanned properly.
+   - Remove:
+     - forced `42mm` width
+     - forced `8mm` height
+     - `preserveAspectRatio="none"`
+   - Let the barcode render at its own native width/module size and center it inside the label.
+   - Keep proper quiet zone on both sides.
 
-5. **Close the print window after print**
-   - Clean up the popup after `afterprint` so the browser does not keep stale print state.
+3. **Rebuild label layout with safer sizing**
+   - Replace the current fragile grid row math with a simpler fixed/flex layout that cannot accidentally exceed 25mm.
+   - Reserve a dedicated barcode band in the middle and clamp text rows above/below it.
+
+4. **Use strict per-label page wrappers**
+   - Each sticker will be rendered inside a single `.page` wrapper.
+   - Apply page break only between labels, never before the first or after the last.
+
+5. **Print only after the document is fully ready**
+   - Wait until the print document is rendered before calling `print()`.
+   - Keep automatic cleanup after print to avoid stale print state.
 
 ### Expected result
-- Printing **1 barcode** should produce exactly **1 sticker**
-- Printing **N barcodes** should produce exactly **N stickers**
-- No leading blank sticker
-- No trailing blank sticker
-- Existing barcode sharpness/scannability stays unchanged
+- **Single barcode print = exactly 1 sticker**
+- **Multiple barcodes = exactly the same number of stickers**
+- No blank leading sticker
+- No blank trailing sticker
+- Barcode remains machine-scannable
 
 ### File to update
 - `src/lib/barcodePrint.ts`
 
-### Technical note
-The likely fix here is not barcode content itself, but making the popup print document behave like a true label sheet:
+### Technical implementation notes
+- Preserve invoice number as the barcode value, since that is the instrument-facing barcode standard in this project.
+- Keep `sample_uid` only as printed text reference, not as the encoded barcode.
+- Main rule for the rebuild:
 ```text
-body
-└── .page (50mm x 25mm)
-    └── .label
+Generate barcode at native SVG size
+→ do not stretch it
+→ center it inside a fixed 50mm x 25mm page
+→ break pages only between labels
 ```
-with page breaks only between `.page` elements, never on the label node itself.
