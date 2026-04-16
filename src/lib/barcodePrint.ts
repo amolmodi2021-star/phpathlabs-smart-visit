@@ -36,11 +36,11 @@ const renderBarcodePng = (value: string): string => {
   bwipjs.toCanvas(canvas, {
     bcid: "code128",
     text: value,
-    scale: 4,
-    height: 8, // mm
+    scale: 5, // thicker bars (X-dimension ~0.30mm) for analyzer internal readers
+    height: 12, // mm — matches old LIMS barcode height for tube-tilt tolerance
     includetext: false,
-    paddingwidth: 0,
-    paddingheight: 0,
+    paddingwidth: 10, // CODE128 spec requires ≥10× narrowest bar quiet zone
+    paddingheight: 2,
     backgroundcolor: "FFFFFF",
   });
   return canvas.toDataURL("image/png");
@@ -92,26 +92,26 @@ export const printBarcodes = async (reg: any, tubes: BarcodeTube[]): Promise<voi
     const truncated = doc.splitTextToSize(nameLine, 48)[0];
     doc.text(truncated, 1, 5.5);
 
-    // --- Barcode (centered, 44mm x 8mm) ---
+    // --- Barcode (centered, 46mm x 12mm) — taller + proper quiet zone for Indiko Plus ---
     try {
       const png = renderBarcodePng(barcodeValue);
-      doc.addImage(png, "PNG", 3, 7, 44, 8, undefined, "FAST");
+      doc.addImage(png, "PNG", 2, 6.5, 46, 12, undefined, "FAST");
     } catch (err) {
       console.error("Barcode render failed:", err);
     }
 
-    // --- Sample ID line (centered) ---
+    // --- Sample ID line (centered, shifted down for taller barcode) ---
     doc.setFontSize(5.5);
     doc.setFont("helvetica", "bold");
     const sampleLine = `${displayValue}  ${tube.sample_uid}`;
-    doc.text(sampleLine, 25, 17.5, { align: "center" });
+    doc.text(sampleLine, 25, 20.5, { align: "center" });
 
     // --- Bottom row: sample type (left) | datetime (right) ---
     doc.setFontSize(6);
     doc.setFont("helvetica", "normal");
     const sampleType = tube.sample_type || tube.tube_type || "";
-    if (sampleType) doc.text(sampleType, 1, 21);
-    doc.text(dateTime, 49, 21, { align: "right" });
+    if (sampleType) doc.text(sampleType, 1, 23.5);
+    doc.text(dateTime, 49, 23.5, { align: "right" });
   });
 
   // Convert to blob and trigger print via hidden iframe (no new tab)
