@@ -132,6 +132,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   }, [newlyCancelled, tests, homeVisitRefundRequested, reg]);
 
   const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card", "NEFT"];
+  const lockedPaidAmount = Number(reg?.paid_amount || 0);
 
   const togglePaymentMode = (mode: string) => {
     setSelectedModes(prev => {
@@ -141,6 +142,14 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       return next;
     });
   };
+
+  // Auto-fill when single mode selected
+  useEffect(() => {
+    if (selectedModes.size === 1) {
+      const mode = Array.from(selectedModes)[0];
+      setModeAmounts({ [mode]: lockedPaidAmount });
+    }
+  }, [selectedModes.size, lockedPaidAmount]);
 
   // Discount calculations
   const discountCalc = useMemo(() => {
