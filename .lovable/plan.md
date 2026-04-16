@@ -1,42 +1,44 @@
 
-## Plan: Aggregate Only Across Tubes With Identical Sample ID
+## Plan: Allow Duplicate Machine Codes Mapped to Multiple Parameters
 
-### Behaviour
-- Query `sample_id = "2604160004"` → fetch ALL `lims_test_orders` rows where `sample_id = "2604160004"` exactly (could be 2+ tubes sharing the same ID for different sample types like Plasma/Serum). Merge their pending tests.
-- Query `sample_id = "2604160004A"` → fetch ALL rows where `sample_id = "2604160004A"` exactly. Merge if multiple.
-- NEVER cross between `2604160004` and `2604160004A` — they are different sample IDs.
-- Machine ID filter unchanged.
+### Why
+User wants one machine code (e.g. `GLU`) to map to multiple internal parameter codes (e.g. `PRM0025` Fasting + `PRM0026` Random). Currently this is likely blocked by a unique constraint on `lims_code_mapping.machine_code`, and the GET/POST handlers assume 1:1 lookup.
 
-### Fix — `supabase/functions/lims-interface/index.ts` (GET handler)
+### Investigation needed (before final plan)
+Quick reads to confirm:
+1. Check `lims_code_mapping` schema/constraints for any UNIQUE on `machine_code`.
+2. Confirm the GET reverse-mapping logic (`reverseCodeMap[t.code] = m.machine_code`) — already 1-to-many friendly (internal → machine), so GET is fine.
+3. Confirm POST forward-mapping logic (`codeMap[m.machine_code] = {...}`) — currently overwrites; needs to expand to array.
 
-Replace the current suffix-detection + LIKE-pattern block with a single exact-match query. The downstream loop already iterates over multiple orders and merges their tests, so multi-tube aggregation for identical sample IDs continues to work naturally.
+### Changes
 
+**1. DB migration — drop uniqueness on `machine_code` (if present)**
+- Remove any UNIQUE constraint/index on `lims_code_mapping.machine_code` alone.
+- Add a composite UNIQUE on `(machine_code, mapped_param_code, mapped_test_code)` to still prevent exact duplicate rows.
+
+**2. Edge function `supabase/functions/lims-interface/index.ts` — POST handler**
+
+Change `codeMap` from `code → single mapping` to `code → array of mappings`:
 ```ts
-const { data: orders, error: orderErr } = await supabase
-  .from("lims_test_orders")
-  .select("*")
-  .eq("sample_id", sampleId)
-  .in("status", ["pending", "in_progress"])
-  .order("created_at", { ascending: false });
-if (orderErr) throw orderErr;
+let codeMap: Record<string, Array<{mapped_param_code, mapped_test_code, parameter_name}>> = {};
+for (const m of mappings) {
+  if (!codeMap[m.machine_code]) codeMap[m.machine_code] = [];
+  codeMap[m.machine_code].push({...});
+}
 ```
 
-Remove:
-- `hasSuffix` regex detection
-- `.or(...)` LIKE patterns (`sampleId_`, `sampleId__`)
-- post-filter that retained base + letter-suffix variants
+When processing each incoming result, look up matching mapping(s) and pick the one whose `mapped_param_code` / `mapped_test_code` is present in the order's pending tests. Fallback: if none match the order, fall back to first mapping (or mark unmapped). This guarantees `GLU` going to a fasting-glucose order maps to `PRM0025`, and to a random-glucose order maps to `PRM0026`.
 
-Keep unchanged:
-- Merge loop across `orders` (handles 2+ tubes with same sample_id)
-- `pending` → `in_progress` status update per order
-- Enrichment via `lims_code_mapping`
-- Machine ID filter (case-insensitive; universal tests included)
-- Response shape (primary order metadata + merged tests)
+**3. UI — `src/components/lims/LimsSettings.tsx` (Code Mapping tab)**
+- Remove any client-side "machine_code already exists" duplicate-check.
+- Allow saving multiple rows with the same `machine_code` but different `mapped_param_code`.
+- Display grouped or sortable by `machine_code` so duplicates are visible.
 
-### POST flow
-Unchanged.
+### Files to inspect/edit
+- `supabase/functions/lims-interface/index.ts` (POST handler)
+- `src/components/lims/LimsSettings.tsx` (or wherever `lims_code_mapping` CRUD lives)
+- Migration to adjust constraints on `lims_code_mapping`
 
-### File
-- `supabase/functions/lims-interface/index.ts` — GET handler only
-
-### No DB / schema / other changes
+### No changes
+- GET handler reverse-map (already 1:N safe)
+- `lims_test_orders`, `lims_test_results` schemas
