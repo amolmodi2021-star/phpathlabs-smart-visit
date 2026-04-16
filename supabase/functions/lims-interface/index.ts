@@ -99,14 +99,11 @@ Deno.serve(async (req) => {
         }
 
         // Reverse-lookup: internal code (PRM####) -> machine_code (WBC, RBC, etc.)
-        let mappingQuery = supabase
+        // machine_id is intentionally ignored — mappings apply to all machines.
+        const { data: codeMappings } = await supabase
           .from("lims_code_mapping")
-          .select("machine_code, mapped_param_code, mapped_test_code, machine_id")
+          .select("machine_code, mapped_param_code, mapped_test_code")
           .or(`mapped_param_code.in.(${testCodes.join(",")}),mapped_test_code.in.(${testCodes.join(",")})`);
-        if (machineId) {
-          mappingQuery = mappingQuery.eq("machine_id", machineId);
-        }
-        const { data: codeMappings } = await mappingQuery;
         if (codeMappings) {
           for (const m of codeMappings) {
             if (m.machine_code && m.mapped_param_code && !reverseCodeMap[m.mapped_param_code]) {
