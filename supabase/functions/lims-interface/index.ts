@@ -119,14 +119,15 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Build enriched test list — send machine_code to middleware (fallback to internal code)
-      const enrichedTests = pendingTests.map((t: any) => ({
-        code: reverseCodeMap[t.code] || t.code,
-        internal_code: t.code,
-        name: t.name,
-        unit: t.unit || "",
-        machine_id: t.machine_id || machineMap[t.code] || "",
-      }));
+      // Build enriched test list — only include tests with a configured machine_code mapping
+      const enrichedTests = pendingTests
+        .filter((t: any) => reverseCodeMap[t.code])
+        .map((t: any) => ({
+          code: reverseCodeMap[t.code],
+          name: t.name,
+          unit: t.unit || "",
+          machine_id: t.machine_id || machineMap[t.code] || "",
+        }));
 
       // Filter by machine_id if provided
       const filteredTests = machineId
