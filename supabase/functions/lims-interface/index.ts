@@ -126,11 +126,17 @@ Deno.serve(async (req) => {
           machine_id: t.machine_id || machineMap[t.code] || "",
         }));
 
-      // machine_id is ignored — return all mapped tests regardless of machine.
-      const filteredTests = enrichedTests;
+      // Filter by requesting machine_id (case-insensitive).
+      // Tests with no machine_id assigned are treated as universal (returned to any machine).
+      const filteredTests = machineId
+        ? enrichedTests.filter((t) =>
+            !t.machine_id ||
+            t.machine_id.toLowerCase() === machineId.toLowerCase()
+          )
+        : enrichedTests;
 
       if (filteredTests.length === 0) {
-        const responseBody = { sample_id: sampleId, tests: [], message: "No pending tests" };
+        const responseBody = { sample_id: sampleId, tests: [], message: machineId ? `No pending tests for machine ${machineId}` : "No pending tests" };
         await supabase.from("lims_interface_logs").insert({
           sample_id: sampleId, direction: "outgoing", event_type: "query_tests",
           request_body: requestBody, response_body: responseBody, machine_id: machineId,
