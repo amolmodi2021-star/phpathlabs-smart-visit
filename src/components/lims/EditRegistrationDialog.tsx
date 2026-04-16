@@ -754,7 +754,11 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
             {(discountChanged ? discountCalc.hvc : reg.home_visit_charges) > 0 && <div className="flex justify-between"><span>Home Visit Charges:</span><span>+₹{discountChanged ? discountCalc.hvc : reg.home_visit_charges}</span></div>}
             <div className="flex justify-between font-bold border-t pt-1"><span>Final Amount:</span><span>₹{discountChanged ? discountCalc.finalAmount : reg.final_amount}</span></div>
             <div className="flex justify-between"><span>Paid:</span><span>₹{reg.paid_amount}</span></div>
-            {(discountChanged ? Math.max(0, discountCalc.finalAmount - editPaidAmount) : reg.due_amount) > 0 && <div className="flex justify-between text-destructive font-bold"><span>Due:</span><span>₹{discountChanged ? Math.max(0, discountCalc.finalAmount - editPaidAmount) : reg.due_amount}</span></div>}
+            {discountOverpayment > 0 ? (
+              <div className="flex justify-between text-orange-600 font-bold"><span>To Refund:</span><span>₹{discountOverpayment}</span></div>
+            ) : (
+              (discountChanged ? Math.max(0, discountCalc.finalAmount - lockedPaidAmount) : reg.due_amount) > 0 && <div className="flex justify-between text-destructive font-bold"><span>Due:</span><span>₹{discountChanged ? Math.max(0, discountCalc.finalAmount - lockedPaidAmount) : reg.due_amount}</span></div>
+            )}
             {reg.refund_amount > 0 && <div className="flex justify-between text-orange-600"><span>Refunded:</span><span>₹{reg.refund_amount}</span></div>}
           </div>
 
