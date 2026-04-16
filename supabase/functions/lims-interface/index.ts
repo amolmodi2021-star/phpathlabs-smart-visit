@@ -33,16 +33,39 @@ Deno.serve(async (req) => {
 
       const requestBody = { action: "query", sample_id: sampleId, machine_id: machineId };
 
-      // Find order by sample_id
-      const { data: orders, error: orderErr } = await supabase
+      // Detect whether the queried sample_id has a trailing letter suffix.
+      // - With suffix (e.g. "2604160004A") → exact match only.
+      // - Without suffix (e.g. "2604160004") → match base OR base + letter suffix(es)
+      //   so all tube variants (A/B/F/S/P...) are aggregated.
+      const hasSuffix = /[A-Za-z]$/.test(sampleId);
+
+      let ordersQuery = supabase
         .from("lims_test_orders")
         .select("*")
-        .eq("sample_id", sampleId)
-        .in("status", ["pending", "in_progress"])
-        .order("created_at", { ascending: false })
-        .limit(1);
+        .in("status", ["pending", "in_progress"]);
+
+      if (hasSuffix) {
+        ordersQuery = ordersQuery.eq("sample_id", sampleId);
+      } else {
+        // `_` in LIKE matches any single char; we post-filter to letters-only suffixes.
+        ordersQuery = ordersQuery.or(
+          `sample_id.eq.${sampleId},sample_id.like.${sampleId}_,sample_id.like.${sampleId}__`
+        );
+      }
+
+      const { data: ordersRaw, error: orderErr } = await ordersQuery
+        .order("created_at", { ascending: false });
 
       if (orderErr) throw orderErr;
+
+      const orders = hasSuffix
+        ? (ordersRaw || [])
+        : (ordersRaw || []).filter((o: any) => {
+            const sid = o.sample_id || "";
+            if (sid === sampleId) return true;
+            const tail = sid.slice(sampleId.length);
+            return tail.length > 0 && /^[A-Za-z]+$/.test(tail);
+          });
 
       if (!orders || orders.length === 0) {
         const responseBody = { sample_id: sampleId, tests: [], message: "No pending orders found" };
@@ -55,9 +78,18 @@ Deno.serve(async (req) => {
         });
       }
 
-      const order = orders[0];
-      const tests = (order.tests as any[]) || [];
-      const pendingTests = tests.filter((t: any) => t.status !== "completed");
+      // Merge pending tests across all matching tube orders
+      const primaryOrder = orders[0];
+      const pendingTests: any[] = [];
+      for (const ord of orders) {
+        const ts = (ord.tests as any[]) || [];
+        for (const t of ts) {
+          if (t.status !== "completed") pendingTests.push(t);
+        }
+        if (ord.status === "pending") {
+          await supabase.from("lims_test_orders").update({ status: "in_progress" }).eq("id", ord.id);
+        }
+      }
 
       if (pendingTests.length === 0) {
         const responseBody = { sample_id: sampleId, tests: [], message: "All tests already completed" };
@@ -68,11 +100,6 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify(responseBody), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
-      }
-
-      // Mark order as in_progress
-      if (order.status === "pending") {
-        await supabase.from("lims_test_orders").update({ status: "in_progress" }).eq("id", order.id);
       }
 
       // Enrich tests with machine_id from tests/parameters tables
@@ -147,9 +174,9 @@ Deno.serve(async (req) => {
       }
 
       const responseBody = {
-        order_id: order.id,
-        sample_id: order.sample_id,
-        patient_name: order.patient_name,
+        order_id: primaryOrder.id,
+        sample_id: sampleId,
+        patient_name: primaryOrder.patient_name,
         tests: filteredTests,
       };
 
