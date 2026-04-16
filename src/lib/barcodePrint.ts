@@ -73,7 +73,9 @@ export const printBarcodes = async (reg: any, tubes: BarcodeTube[]): Promise<voi
     if (idx > 0) doc.addPage([50, 25], "landscape");
 
     const cleanSuffix = tube.suffix?.trim();
-    const barcodeValue = cleanSuffix ? `${reg.invoice_number}${cleanSuffix}` : reg.invoice_number;
+    const displayValue = cleanSuffix ? `${reg.invoice_number}${cleanSuffix}` : reg.invoice_number;
+    // Append CR (ASCII 13) so scanner auto-sends "Enter" to middleware after reading
+    const barcodeValue = `${displayValue}\x0D`;
 
     // --- Row 1: invoice number (left) | age/sex (right) ---
     doc.setFontSize(7);
@@ -101,7 +103,7 @@ export const printBarcodes = async (reg: any, tubes: BarcodeTube[]): Promise<voi
     // --- Sample ID line (centered) ---
     doc.setFontSize(5.5);
     doc.setFont("helvetica", "bold");
-    const sampleLine = `${barcodeValue}  ${tube.sample_uid}`;
+    const sampleLine = `${displayValue}  ${tube.sample_uid}`;
     doc.text(sampleLine, 25, 17.5, { align: "center" });
 
     // --- Bottom row: sample type (left) | datetime (right) ---
