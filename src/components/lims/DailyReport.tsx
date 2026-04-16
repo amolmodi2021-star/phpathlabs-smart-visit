@@ -186,7 +186,7 @@ const DailyReport = () => {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="rounded-lg border p-3 text-center">
           <p className="text-xs text-muted-foreground">Total In</p>
-          <p className="text-lg font-bold text-green-600">₹{totals.total_in.toFixed(2)}</p>
+          <p className="text-lg font-bold text-primary">₹{totals.total_in.toFixed(2)}</p>
         </div>
         <div className="rounded-lg border p-3 text-center">
           <p className="text-xs text-muted-foreground">Total Out (Refunds)</p>
@@ -299,8 +299,7 @@ const DailyReport = () => {
       <DeletePasswordDialog
         open={showAdminPwd}
         onOpenChange={setShowAdminPwd}
-        onConfirm={() => { setAdminUnlocked(true); setShowAdminPwd(false); }}
-        title="Admin Access"
+        onSuccess={() => { setAdminUnlocked(true); setShowAdminPwd(false); }}
         description="Enter admin password to access historical reports and filters."
       />
     </div>
