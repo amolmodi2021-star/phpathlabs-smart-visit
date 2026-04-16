@@ -1,36 +1,43 @@
 
 
-## Plan: Append ENTER (Carriage Return) to Barcode Value
+## Issue: Machine Cannot Read Barcode — Root Cause Analysis
 
-### Goal
-Append a CR (Carriage Return, ASCII 13) to every barcode so that after the scanner reads it, the machine automatically "presses Enter" — triggering the query to middleware without manual intervention.
-
-### How CODE128 Handles ENTER
-CODE128 supports encoding control characters via its **Function Code** set. The ASCII character `\x0D` (CR) is a valid CODE128 character. When the scanner decodes it, it transmits CR to the host — which most analyzers/POS apps interpret as "Enter pressed".
-
-`bwip-js` (already in use) supports embedding raw control characters directly in the `text` parameter when `parsefnc: true` is enabled, OR you can simply append `String.fromCharCode(13)` to the text — bwip-js will encode it natively in CODE128.
-
-### Change
-
-In `src/lib/barcodePrint.ts`, append CR to the barcode value used for encoding (but NOT to the human-readable text printed below the barcode):
-
+### Investigation
+Looking at `src/lib/barcodePrint.ts`, the barcode value passed to `bwip-js` is:
 ```typescript
-const cleanSuffix = tube.suffix?.trim();
-const displayValue = cleanSuffix ? `${reg.invoice_number}${cleanSuffix}` : reg.invoice_number;
-const barcodeValue = `${displayValue}\x0D`;  // ← appended CR for auto-Enter
+const barcodeValue = `${displayValue}\x0D`;  // appended CR (ASCII 13)
 ```
 
-Then:
-- Pass `barcodeValue` (with CR) to `renderBarcodePng()` for encoding
-- Pass `displayValue` (without CR) to the human-readable text line below the barcode
+This CR character is being **encoded into the CODE128 barcode itself** (as a Code C/Function shift), making the bars contain a non-printable control character.
 
-### Why This Works
-- Scanner reads bars → outputs `240416001A` + CR keystroke → analyzer/middleware input field receives the value followed by Enter → query fires automatically
-- Same effect as configuring "suffix = CR" on the scanner itself, but baked into the barcode (works regardless of scanner config)
-- Display text remains clean (`240416001A`), no visible artifact of the CR
+### Why Machines Fail to Read It
+1. **Most lab analyzer scanners reject control characters in the barcode payload.** They expect alphanumeric data only — embedded CR (`\x0D`) makes the decoded string contain a non-ASCII-printable byte, which the analyzer's middleware parser drops or treats as malformed.
+2. **CODE128 encoding of control chars uses Code A subset**, which forces a subset switch mid-barcode. Some lower-end scanners (especially CCD/laser, not 2D imagers) fail to decode the subset shift correctly → no read at all.
+3. The "Enter after scan" behavior is **NOT** supposed to come from the barcode data — it's supposed to come from the **scanner's suffix configuration** (a one-time scanner setting: scan a "Add CR Suffix" config barcode from the scanner manual).
+4. Even when scanners do read it, they output `240416001A` followed by CR — but the CR being **inside** the barcode data confuses the lookup because the value stored in DB is `240416001A` (no CR), so exact-match lookup fails.
+
+### The Fix
+**Remove the CR from the barcode payload entirely.** The "auto-Enter" behavior should be configured on the scanner itself (universal scanner feature), not baked into the barcode.
+
+```typescript
+// BEFORE (broken)
+const barcodeValue = `${displayValue}\x0D`;
+
+// AFTER (fixed)
+const barcodeValue = displayValue;  // clean alphanumeric only
+```
+
+### How to Get "Auto-Enter" After Scan (Correct Method)
+Configure the scanner one time:
+- **Honeywell/Datalogic/Symbol/Zebra scanners**: Scan the "Add CR Suffix" or "Enter Key Suffix" config barcode from the scanner's user manual (usually page 1-2 of "Suffix Setup" section)
+- **Generic USB scanners**: Most ship with CR+LF suffix enabled by default
+- This is a **scanner-side** configuration — the barcode itself must contain only the data
+
+### Changes
+- `src/lib/barcodePrint.ts` — remove `\x0D` from `barcodeValue`, use `displayValue` directly for both encoding and display
 
 ### File
-- `src/lib/barcodePrint.ts` — split `barcodeValue` into `displayValue` (text) + `barcodeValue` (encoded with `\x0D`)
+- `src/lib/barcodePrint.ts` — line ~76 only
 
 ### No DB / other file changes
 
