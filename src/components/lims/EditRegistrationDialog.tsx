@@ -197,7 +197,12 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   const editPaidAmount = Array.from(selectedModes).reduce((sum, mode) => sum + (modeAmounts[mode] || 0), 0);
   const paymentModesMismatch = lockedPaidAmount > 0 && selectedModes.size > 1 && Math.abs(editPaidAmount - lockedPaidAmount) > 0.01;
 
-  if (!reg) return null;
+  // Overpayment detection when discount reduces final below paid
+  const discountOverpayment = discountChanged && discountCalc.finalAmount < lockedPaidAmount
+    ? lockedPaidAmount - discountCalc.finalAmount : 0;
+
+  // Disable save if overpayment exists but no refund mode acknowledged via password
+  const overpaymentBlocksSave = discountOverpayment > 0;
 
   const handleSaveDetails = async () => {
     setSaving(true);
