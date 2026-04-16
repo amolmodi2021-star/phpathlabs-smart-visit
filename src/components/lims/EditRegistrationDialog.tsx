@@ -132,6 +132,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   }, [newlyCancelled, tests, homeVisitRefundRequested, reg]);
 
   const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card", "NEFT"];
+  const lockedPaidAmount = Number(reg?.paid_amount || 0);
 
   const togglePaymentMode = (mode: string) => {
     setSelectedModes(prev => {
@@ -141,6 +142,14 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       return next;
     });
   };
+
+  // Auto-fill when single mode selected
+  useEffect(() => {
+    if (selectedModes.size === 1) {
+      const mode = Array.from(selectedModes)[0];
+      setModeAmounts({ [mode]: lockedPaidAmount });
+    }
+  }, [selectedModes.size, lockedPaidAmount]);
 
   // Discount calculations
   const discountCalc = useMemo(() => {
@@ -182,11 +191,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   };
 
   const editPaidAmount = Array.from(selectedModes).reduce((sum, mode) => sum + (modeAmounts[mode] || 0), 0);
-  // Use recalculated final amount for zero-due check
-  const effectiveFinalAmount = discountChanged ? discountCalc.finalAmount : Number(reg?.final_amount || 0);
-  const isZeroDue = reg ? Number(reg.due_amount || 0) <= 0 : false;
-  const editDueAmount = isZeroDue && !discountChanged ? 0 : Math.max(0, effectiveFinalAmount - editPaidAmount);
-  const zeroDueMismatch = isZeroDue && !discountChanged && Math.abs(editPaidAmount - Number(reg?.final_amount || 0)) > 0.01;
+  const paymentModesMismatch = lockedPaidAmount > 0 && selectedModes.size > 1 && Math.abs(editPaidAmount - lockedPaidAmount) > 0.01;
 
   if (!reg) return null;
 
@@ -196,10 +201,6 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       const payments = Array.from(selectedModes)
         .filter(m => (modeAmounts[m] || 0) > 0)
         .map(m => ({ mode: m, amount: modeAmounts[m] || 0 }));
-
-      const saveFinalAmount = discountChanged ? discountCalc.finalAmount : Number(reg.final_amount);
-      const savePaidAmount = isZeroDue && !discountChanged ? saveFinalAmount : editPaidAmount;
-      const saveDueAmount = isZeroDue && !discountChanged ? 0 : Math.max(0, saveFinalAmount - savePaidAmount);
 
       const updateData: any = {
         patient_name: patientName.replace(/\s+/g, ' ').trim().toUpperCase(),
@@ -213,8 +214,6 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         remarks: remarks.trim() || null,
         is_stat: isStat,
         payments,
-        paid_amount: savePaidAmount,
-        due_amount: saveDueAmount,
       };
 
       // Include discount data if changed
@@ -477,10 +476,11 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
               <Switch id="edit-stat-toggle" checked={isStat} onCheckedChange={setIsStat} className="data-[state=checked]:bg-destructive" disabled={isBillCancelled} />
             </div>
 
-            {/* Payment Details */}
-            {!isBillCancelled && (
+            {/* Payment Mode Redistribution — only shown when payment exists */}
+            {!isBillCancelled && lockedPaidAmount > 0 && (
               <div className="space-y-2">
-                <h3 className="font-semibold text-sm">Payment Details</h3>
+                <h3 className="font-semibold text-sm">Payment Mode</h3>
+                <div className="text-sm text-muted-foreground mb-1">Amount Paid: <span className="font-semibold text-foreground">₹{lockedPaidAmount}</span></div>
                 <div className="flex flex-wrap gap-2">
                   {PAYMENT_MODES.map(mode => (
                     <Button key={mode} type="button" size="sm"
@@ -495,17 +495,16 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
                     <Input type="number" min={0} className="w-32"
                       value={modeAmounts[mode] || ""}
                       onChange={e => setModeAmounts(prev => ({ ...prev, [mode]: Number(e.target.value) || 0 }))}
-                      placeholder="₹ Amount" />
+                      placeholder="₹ Amount"
+                      readOnly={selectedModes.size === 1} />
                   </div>
                 ))}
-                {selectedModes.size > 0 && (
+                {selectedModes.size > 1 && (
                   <div className="text-sm space-y-1 pt-1">
-                    <div className="flex justify-between"><span>Total Paid:</span><span className="font-medium">₹{editPaidAmount}</span></div>
-                    <div className="flex justify-between"><span>Final Amount:</span><span className="font-medium">₹{effectiveFinalAmount}</span></div>
-                    {!isZeroDue && editDueAmount > 0 && <div className="flex justify-between text-destructive font-medium"><span>Due:</span><span>₹{editDueAmount}</span></div>}
-                    {isZeroDue && !discountChanged && zeroDueMismatch && (
-                      <div className="text-destructive text-xs font-medium mt-1">
-                        ⚠ Total must equal ₹{reg.final_amount} — no additional payment allowed, only mode change permitted.
+                    <div className="flex justify-between"><span>Allocated:</span><span className={`font-medium ${paymentModesMismatch ? "text-destructive" : ""}`}>₹{editPaidAmount} / ₹{lockedPaidAmount}</span></div>
+                    {paymentModesMismatch && (
+                      <div className="text-destructive text-xs font-medium">
+                        ⚠ Split amounts must equal ₹{lockedPaidAmount}
                       </div>
                     )}
                   </div>
@@ -514,7 +513,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
             )}
 
             {!isBillCancelled && (
-              <Button onClick={handleSaveDetails} disabled={saving || (zeroDueMismatch && !discountChanged)} className="w-full">
+              <Button onClick={handleSaveDetails} disabled={saving || paymentModesMismatch} className="w-full">
                 <Save className="h-4 w-4 mr-2" />Save Details
               </Button>
             )}
