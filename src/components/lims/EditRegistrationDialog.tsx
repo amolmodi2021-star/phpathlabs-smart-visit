@@ -15,6 +15,7 @@ import { format } from "date-fns";
 import { Save, Ban, RotateCcw, Lock } from "lucide-react";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
+import { logPaymentTransaction } from "@/lib/paymentTransactions";
 
 const TITLES = ["Mr.", "Mrs.", "Ms.", "Master", "Miss", "Baby Of", "Dr."];
 
@@ -243,6 +244,23 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       const { error } = await supabase.from("patient_registrations").update(updateData).eq("id", reg.id);
       if (error) throw error;
       qc.invalidateQueries({ queryKey: ["patient_registrations"] });
+      // Log discount change if applicable
+      if (discountChanged) {
+        logPaymentTransaction({
+          registration_id: reg.id,
+          invoice_number: reg.invoice_number,
+          patient_name: patientName,
+          transaction_type: "discount_applied",
+          direction: "in",
+          total_amount: 0,
+          gross_amount: discountCalc.totalAmount,
+          discount_amount: discountCalc.totalDiscount,
+          final_amount: discountCalc.finalAmount,
+          paid_amount: lockedPaidAmount,
+          due_amount: Math.max(0, discountCalc.finalAmount - lockedPaidAmount),
+          remarks: `Discount updated from ₹${reg.discount_amount} to ₹${discountCalc.totalDiscount}`,
+        });
+      }
       toast.success("Registration updated");
     } catch (e: any) {
       toast.error(e.message);
@@ -275,6 +293,23 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       const { error } = await supabase.from("patient_registrations").update(updateData).eq("id", reg.id);
       if (error) throw error;
       qc.invalidateQueries({ queryKey: ["patient_registrations"] });
+      // Log overpayment refund
+      logPaymentTransaction({
+        registration_id: reg.id,
+        invoice_number: reg.invoice_number,
+        patient_name: patientName,
+        transaction_type: "refund",
+        direction: "out",
+        payments: [{ mode: overpaymentRefundMode, amount: discountOverpayment }],
+        total_amount: discountOverpayment,
+        gross_amount: discountCalc.totalAmount,
+        discount_amount: discountCalc.totalDiscount,
+        final_amount: discountCalc.finalAmount,
+        paid_amount: discountCalc.finalAmount,
+        due_amount: 0,
+        refund_amount: discountOverpayment,
+        remarks: `Overpayment refund via ${overpaymentRefundMode}`,
+      });
       toast.success(`Discount applied & ₹${discountOverpayment} refunded via ${overpaymentRefundMode}`);
       onOpenChange(false);
     } catch (e: any) {
