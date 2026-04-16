@@ -10,11 +10,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Search, ShieldCheck, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, ScanBarcode } from "lucide-react";
+import { Search, ShieldCheck, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, ScanBarcode, Printer } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
+import { printBarcodes } from "@/lib/barcodePrint";
 
 const TUBE_COLOR_MAP: Record<string, string> = {
   red: "#e53e3e", lavender: "#b794f4", purple: "#9f7aea", yellow: "#ecc94b",
@@ -430,6 +431,14 @@ const SampleAcceptance = () => {
                         {!isAccepted && (
                           <TableCell className="text-right" onClick={e => e.stopPropagation()}>
                             <div className="flex gap-2 justify-end">
+                              <Button size="sm" variant="outline" title="Reprint all barcodes"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  printBarcodes(reg, tubes);
+                                  toast.success(`Reprinting ${tubes.length} barcode(s)`);
+                                }}>
+                                <Printer className="h-4 w-4 mr-1" /> Print All
+                              </Button>
                               <Button size="sm" onClick={() => acceptMutation.mutate({ reg, tubeIds: tubes.map(t => t.id) })}
                                 disabled={acceptMutation.isPending}>
                                 <ShieldCheck className="h-4 w-4 mr-1" /> Accept All
@@ -442,8 +451,18 @@ const SampleAcceptance = () => {
                           </TableCell>
                         )}
                         {isAccepted && (
-                          <TableCell className="text-sm text-muted-foreground">
-                            {statusLabel(reg.status)}
+                          <TableCell className="text-sm text-muted-foreground" onClick={e => e.stopPropagation()}>
+                            <div className="flex items-center gap-2">
+                              <span>{statusLabel(reg.status)}</span>
+                              <Button size="sm" variant="outline" title="Reprint all barcodes"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  printBarcodes(reg, tubes);
+                                  toast.success(`Reprinting ${tubes.length} barcode(s)`);
+                                }}>
+                                <Printer className="h-4 w-4 mr-1" /> Print All
+                              </Button>
+                            </div>
                           </TableCell>
                         )}
                       </TableRow>
@@ -488,19 +507,28 @@ const SampleAcceptance = () => {
                                         {format(new Date(tube.accepted_at), "dd-MM-yyyy hh:mm a")}
                                       </Badge>
                                     )}
-                                    {!isAccepted && (
-                                      <div className="flex gap-1" onClick={e => e.stopPropagation()}>
-                                        <Button size="sm" variant="outline" className="h-7 text-xs"
-                                          onClick={() => acceptMutation.mutate({ reg, tubeIds: [tube.id] })}
-                                          disabled={acceptMutation.isPending}>
-                                          <ShieldCheck className="h-3 w-3 mr-1" /> Accept
-                                        </Button>
-                                        <Button size="sm" variant="outline" className="h-7 text-xs text-destructive border-destructive/50"
-                                          onClick={() => setRejectDialog({ open: true, reg, tubeIds: [tube.id] })}>
-                                          <RotateCcw className="h-3 w-3 mr-1" /> Repeat
-                                        </Button>
-                                      </div>
-                                    )}
+                                    <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+                                      <Button size="sm" variant="outline" className="h-7 text-xs" title="Reprint barcode"
+                                        onClick={() => {
+                                          printBarcodes(reg, [tube]);
+                                          toast.success(`Reprinting barcode for ${tube.sample_uid}`);
+                                        }}>
+                                        <Printer className="h-3 w-3" />
+                                      </Button>
+                                      {!isAccepted && (
+                                        <>
+                                          <Button size="sm" variant="outline" className="h-7 text-xs"
+                                            onClick={() => acceptMutation.mutate({ reg, tubeIds: [tube.id] })}
+                                            disabled={acceptMutation.isPending}>
+                                            <ShieldCheck className="h-3 w-3 mr-1" /> Accept
+                                          </Button>
+                                          <Button size="sm" variant="outline" className="h-7 text-xs text-destructive border-destructive/50"
+                                            onClick={() => setRejectDialog({ open: true, reg, tubeIds: [tube.id] })}>
+                                            <RotateCcw className="h-3 w-3 mr-1" /> Repeat
+                                          </Button>
+                                        </>
+                                      )}
+                                    </div>
                                   </div>
                                 );
                               })}
