@@ -117,7 +117,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-50 flex h-14 items-center gap-3 border-b bg-card px-4">
+      <header className="sticky top-0 z-50 flex h-14 items-center gap-3 border-b bg-card px-4" style={{ paddingTop: 'var(--sat, 0px)' }}>
         {isMobile && (
           <Button variant="ghost" size="icon" onClick={() => setOpen(!open)}>
             {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
