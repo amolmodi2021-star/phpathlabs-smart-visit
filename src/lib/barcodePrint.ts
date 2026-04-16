@@ -43,20 +43,23 @@ export const printBarcodes = async (reg: any, tubes: BarcodeTube[]): Promise<voi
     const patientName = reg.patient_name || "";
 
     let html = `<!DOCTYPE html><html><head><style>
-      @page { size: 50mm 25mm; margin: 0; }
-      html, body { margin: 0; padding: 0; font-family: 'Arial', sans-serif; }
+      @page { size: 50mm 25mm; margin: 0; padding: 0; }
+      html, body { margin: 0; padding: 0; width: 50mm; font-family: 'Arial', sans-serif; overflow: hidden; }
+      .page {
+        width: 50mm; height: 25mm;
+        overflow: hidden;
+        box-sizing: border-box;
+      }
+      .page:not(:last-child) { page-break-after: always; }
       .label {
         width: 50mm; height: 25mm;
         padding: 0.5mm 0.8mm;
         box-sizing: border-box;
-        break-inside: avoid;
-        page-break-inside: avoid;
         overflow: hidden;
         display: grid;
         grid-template-rows: 3mm 3mm 8mm 2.8mm 3mm;
         row-gap: 0.3mm;
       }
-      .label + .label { break-before: page; page-break-before: always; }
       .row1 { display: flex; justify-content: space-between; font-size: 7pt; font-weight: bold; line-height: 1; white-space: nowrap; overflow: hidden; }
       .row2 { font-size: 6.5pt; font-weight: bold; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .barcode-wrap { text-align: center; line-height: 0; overflow: hidden; padding: 0 3mm; box-sizing: border-box; display: flex; align-items: center; justify-content: center; }
@@ -70,13 +73,12 @@ export const printBarcodes = async (reg: any, tubes: BarcodeTube[]): Promise<voi
       const barcodeValue = tube.suffix ? `${reg.invoice_number}${tube.suffix}` : reg.invoice_number;
       const svgEl = document.createElementNS("http://www.w3.org/2000/svg", "svg");
       try { JsBarcode(svgEl, barcodeValue, { format: "CODE128", width: 2, height: 40, displayValue: false, margin: 0 }); } catch { /* fallback */ }
-      // Force exact physical dimensions on the SVG so the printer rasterizes vector bars at native DPI
       svgEl.setAttribute("width", "42mm");
       svgEl.setAttribute("height", "8mm");
       svgEl.setAttribute("preserveAspectRatio", "none");
       const barcodeSvg = svgEl.outerHTML;
 
-      html += `<div class="label">
+      html += `<div class="page"><div class="label">
         <div class="row1"><span>${reg.invoice_number}</span><span>${age}${gender ? `/${gender}` : ""}</span></div>
         <div class="row2">${patientName}${location ? ` &nbsp; PH ${location}` : ""}</div>
         <div class="barcode-wrap">${barcodeSvg}</div>
@@ -85,7 +87,7 @@ export const printBarcodes = async (reg: any, tubes: BarcodeTube[]): Promise<voi
           <span>${tube.sample_type || tube.tube_type || ""}</span>
           <span>${dateTime}</span>
         </div>
-      </div>`;
+      </div></div>`;
     }
 
     html += "</body></html>";
@@ -93,8 +95,8 @@ export const printBarcodes = async (reg: any, tubes: BarcodeTube[]): Promise<voi
     printWindow.document.close();
     let resolved = false;
     const doResolve = () => { if (!resolved) { resolved = true; resolve(); } };
-    printWindow.onafterprint = () => doResolve();
-    printWindow.onload = () => { printWindow.print(); setTimeout(doResolve, 1000); };
-    setTimeout(doResolve, 3000);
+    printWindow.onafterprint = () => { printWindow.close(); doResolve(); };
+    printWindow.onload = () => { requestAnimationFrame(() => { printWindow.print(); }); setTimeout(doResolve, 3000); };
+    setTimeout(doResolve, 5000);
   });
 };
