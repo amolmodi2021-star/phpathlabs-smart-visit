@@ -8,7 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "@/hooks/use-toast";
-import { Plus, Trash2, ChevronDown, ChevronRight, Copy, RefreshCw, Link2, AlertTriangle } from "lucide-react";
+import { Plus, Trash2, ChevronDown, ChevronRight, Copy, RefreshCw, Link2, AlertTriangle, ChevronsUpDown, Check } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandInput, CommandList, CommandEmpty, CommandItem } from "@/components/ui/command";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -478,21 +480,42 @@ const LimsDemo = () => {
                         </TableCell>
                         <TableCell className="text-xs">{new Date(ur.received_at).toLocaleString()}</TableCell>
                         <TableCell>
-                          <Select
-                            value={mappingParamCode[ur.id] || ""}
-                            onValueChange={(val) => setMappingParamCode((prev) => ({ ...prev, [ur.id]: val }))}
-                          >
-                            <SelectTrigger className="w-48 h-8 text-xs">
-                              <SelectValue placeholder="Select parameter..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {allParams.map((p) => (
-                                <SelectItem key={p.id} value={p.param_code || p.id}>
-                                  {p.param_code} — {p.parameter_name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button variant="outline" size="sm" className="w-56 h-8 text-xs justify-between font-normal">
+                                {mappingParamCode[ur.id]
+                                  ? allParams.find((p) => (p.param_code || p.id) === mappingParamCode[ur.id])
+                                    ? `${mappingParamCode[ur.id]} — ${allParams.find((p) => (p.param_code || p.id) === mappingParamCode[ur.id])?.parameter_name}`
+                                    : mappingParamCode[ur.id]
+                                  : "Search parameter..."}
+                                <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-72 p-0" align="start">
+                              <Command>
+                                <CommandInput placeholder="Search by code or name..." className="h-8 text-xs" />
+                                <CommandList className="max-h-48">
+                                  <CommandEmpty className="py-2 text-xs">No parameter found.</CommandEmpty>
+                                  {allParams.map((p) => {
+                                    const val = p.param_code || p.id;
+                                    return (
+                                      <CommandItem
+                                        key={p.id}
+                                        value={`${p.param_code} ${p.parameter_name}`}
+                                        onSelect={() => setMappingParamCode((prev) => ({ ...prev, [ur.id]: val }))}
+                                        className="text-xs"
+                                      >
+                                        <Check className={`mr-1 h-3 w-3 ${mappingParamCode[ur.id] === val ? "opacity-100" : "opacity-0"}`} />
+                                        <span className="font-mono">{p.param_code}</span>
+                                        <span className="mx-1">—</span>
+                                        <span className="truncate">{p.parameter_name}</span>
+                                      </CommandItem>
+                                    );
+                                  })}
+                                </CommandList>
+                              </Command>
+                            </PopoverContent>
+                          </Popover>
                         </TableCell>
                         <TableCell>
                           <Button
