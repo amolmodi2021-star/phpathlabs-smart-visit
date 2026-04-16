@@ -1,6 +1,6 @@
 import { format } from "date-fns";
 import { jsPDF } from "jspdf";
-import bwipjs from "bwip-js";
+import bwipjs from "bwip-js/browser";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
