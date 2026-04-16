@@ -1,57 +1,35 @@
 
 
-# Convert PH PathLabs to a PWA with Mobile-Friendly Improvements
+# Mobile-Friendly Results Entry Section
 
-## What This Achieves
-- App becomes **installable** on phones/tablets (Add to Home Screen) with full-screen standalone display
-- Login persists across sessions (already works via localStorage — no change needed)
-- Key mobile UX improvements across all modules
+## Problems Found
+1. **Parameter table has 10 columns** with fixed widths totaling ~1000px — overflows on mobile (390px)
+2. **Test header bar** has long "Transfer to Outsourced" button text that doesn't fit
+3. **Patient card header** has too many inline elements (name, badges, progress bar, counts) — wraps poorly
+4. **Search + Tabs bar** stacks awkwardly on small screens
+5. **Blank confirmation dialog** table also has 8 columns, same overflow issue
 
-## Changes
+## Approach
+Rather than hiding columns (which would lose critical clinical data), wrap all tables in horizontal scroll containers and make the non-table UI elements stack vertically on mobile.
 
-### 1. Update `index.html` — PWA meta tags
-- Add `<link rel="manifest" href="/manifest.json">`
-- Add `<meta name="apple-mobile-web-app-capable" content="yes">`
-- Add `<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">`
-- Add `<meta name="theme-color" content="#3d8c7e">`
-- Add apple-touch-icon link
-- Update title to "PH PathLabs"
+## Changes — `src/components/lims/ResultsEntry.tsx`
 
-### 2. Update `public/manifest.json` — proper PWA manifest
-- Add multiple icon sizes (192x192, 512x512) using generated SVG-based PNG icons
-- Set `"display": "standalone"`, `"scope": "/"`, `"theme_color": "#3d8c7e"`
-- Add `"orientation": "any"` to support both portrait and landscape
+### 1. Wrap parameter tables in scroll container
+Add `<div className="overflow-x-auto -mx-1">` around all `<Table>` elements inside the expanded patient view (line ~1414) and the blank confirmation dialog (line ~1635).
 
-### 3. Generate PWA icons
-- Create `public/icon-192.png` and `public/icon-512.png` using the existing FlaskConical teal branding via a simple canvas script
+### 2. Mobile-stack the test header bar (line ~1359-1411)
+Change the test name + "Save & Verify" / "Transfer to Outsourced" row from `flex items-center justify-between` to `flex flex-col sm:flex-row` on mobile. Shorten "Transfer to Outsourced" to just an icon on small screens.
 
-### 4. Add service worker registration guard in `src/main.tsx`
-- Only register in production (not in Lovable preview iframe)
-- Simple offline-capable caching for app shell
+### 3. Mobile-stack the patient card header (line ~1551-1597)
+- Move the progress bar + pending count below the patient name on mobile using `flex-wrap`
+- Stack badges vertically on narrow screens
 
-### 5. Mobile-friendly CSS improvements in `src/index.css`
-- Add `env(safe-area-inset-*)` padding for notched phones
-- Ensure tables scroll horizontally on mobile (`overflow-x-auto` wrappers)
-- Add touch-friendly tap targets (min 44px)
-- Prevent zoom on input focus with `font-size: 16px` minimum
+### 4. Mobile-stack search + tabs bar (line ~1446-1488)
+Change to `flex flex-col sm:flex-row` so search goes full-width above tabs on mobile.
 
-### 6. Update `src/components/AppLayout.tsx` — mobile standalone adjustments
-- Add safe-area padding for standalone mode (status bar overlap)
-- Ensure the mobile drawer works well in full-screen PWA mode
+### 5. Snip-only test rows (line ~1315-1329)
+Add `flex-wrap` so the test name and buttons wrap on mobile instead of overflowing.
 
-### 7. No service worker plugin needed
-Since the user doesn't need offline-first functionality, a simple `manifest.json` with standalone display is sufficient for installability. No `vite-plugin-pwa` required — avoiding all the iframe/preview complications.
-
-## Files to modify
-- `index.html`
-- `public/manifest.json`
-- `src/index.css`
-- `src/main.tsx`
-- `src/components/AppLayout.tsx`
-
-## Files to create
-- `public/icon-192.png` and `public/icon-512.png` (generated via script)
-
-## Auth persistence
-Already handled — localStorage keeps users logged in across sessions. No changes needed.
+### Single file
+- `src/components/lims/ResultsEntry.tsx`
 
