@@ -174,9 +174,9 @@ Deno.serve(async (req) => {
       }
 
       const responseBody = {
-        order_id: order.id,
-        sample_id: order.sample_id,
-        patient_name: order.patient_name,
+        order_id: primaryOrder.id,
+        sample_id: sampleId,
+        patient_name: primaryOrder.patient_name,
         tests: filteredTests,
       };
 
