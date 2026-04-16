@@ -27,8 +27,9 @@ const getPickupPointMap = async (): Promise<Record<string, string>> => {
 };
 
 /**
- * Print barcode stickers for a registration's sample tubes.
- * Sticker layout: 50mm x 25mm, scanner-safe CODE128 with quiet zone.
+ * Print barcode stickers — 50mm x 25mm thermal labels.
+ * Barcode renders at native SVG module width (no stretching) for reliable scanning.
+ * Strict page sizing prevents extra blank labels from being fed.
  */
 export const printBarcodes = async (reg: any, tubes: BarcodeTube[]): Promise<void> => {
   return new Promise(async (resolve) => {
@@ -42,40 +43,107 @@ export const printBarcodes = async (reg: any, tubes: BarcodeTube[]): Promise<voi
     const dateTime = format(new Date(), "dd-MM-yyyy hh:mm a");
     const patientName = reg.patient_name || "";
 
-    let html = `<!DOCTYPE html><html><head><style>
-      @page { size: 50mm 25mm; margin: 0; padding: 0; }
-      html, body { margin: 0; padding: 0; width: 50mm; font-family: 'Arial', sans-serif; overflow: hidden; }
+    let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Barcodes</title><style>
+      @page { size: 50mm 25mm; margin: 0; }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0; padding: 0;
+        width: 50mm;
+        font-family: Arial, sans-serif;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      body { background: #fff; }
       .page {
-        width: 50mm; height: 25mm;
+        width: 50mm;
+        height: 25mm;
         overflow: hidden;
-        box-sizing: border-box;
+        position: relative;
+        page-break-inside: avoid;
+        break-inside: avoid;
       }
-      .page:not(:last-child) { page-break-after: always; }
+      .page + .page {
+        page-break-before: always;
+        break-before: page;
+      }
       .label {
-        width: 50mm; height: 25mm;
-        padding: 0.5mm 0.8mm;
-        box-sizing: border-box;
+        width: 50mm;
+        height: 25mm;
+        padding: 0.6mm 1mm;
+        display: flex;
+        flex-direction: column;
         overflow: hidden;
-        display: grid;
-        grid-template-rows: 3mm 3mm 8mm 2.8mm 3mm;
-        row-gap: 0.3mm;
       }
-      .row1 { display: flex; justify-content: space-between; font-size: 7pt; font-weight: bold; line-height: 1; white-space: nowrap; overflow: hidden; }
-      .row2 { font-size: 6.5pt; font-weight: bold; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .barcode-wrap { text-align: center; line-height: 0; overflow: hidden; padding: 0 3mm; box-sizing: border-box; display: flex; align-items: center; justify-content: center; }
-      .barcode-wrap svg { display: block; }
-      .sample-id { text-align: center; font-size: 5.5pt; font-weight: bold; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .row-bottom { display: flex; justify-content: space-between; font-size: 6pt; line-height: 1; white-space: nowrap; overflow: hidden; }
-      .row-bottom span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .row1 {
+        display: flex;
+        justify-content: space-between;
+        font-size: 7pt;
+        font-weight: bold;
+        line-height: 1.05;
+        white-space: nowrap;
+        overflow: hidden;
+      }
+      .row2 {
+        font-size: 6.5pt;
+        font-weight: bold;
+        line-height: 1.05;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        margin-top: 0.3mm;
+      }
+      .barcode-wrap {
+        flex: 1 1 auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        margin: 0.3mm 0;
+      }
+      .barcode-wrap svg {
+        display: block;
+        max-width: 100%;
+        height: 8mm;
+      }
+      .sample-id {
+        text-align: center;
+        font-size: 5.5pt;
+        font-weight: bold;
+        line-height: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .row-bottom {
+        display: flex;
+        justify-content: space-between;
+        font-size: 6pt;
+        line-height: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        margin-top: 0.3mm;
+      }
+      .row-bottom span {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
     </style></head><body>`;
 
     for (const tube of tubes) {
       const barcodeValue = tube.suffix ? `${reg.invoice_number}${tube.suffix}` : reg.invoice_number;
       const svgEl = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      try { JsBarcode(svgEl, barcodeValue, { format: "CODE128", width: 2, height: 40, displayValue: false, margin: 0 }); } catch { /* fallback */ }
-      svgEl.setAttribute("width", "42mm");
-      svgEl.setAttribute("height", "8mm");
-      svgEl.setAttribute("preserveAspectRatio", "none");
+      try {
+        // Native module rendering — no stretching, no preserveAspectRatio override.
+        // width=2 module, height=40 → bars stay crisp and scanner-readable.
+        JsBarcode(svgEl, barcodeValue, {
+          format: "CODE128",
+          width: 2,
+          height: 40,
+          displayValue: false,
+          margin: 0,
+        });
+      } catch { /* keep going */ }
       const barcodeSvg = svgEl.outerHTML;
 
       html += `<div class="page"><div class="label">
@@ -91,12 +159,34 @@ export const printBarcodes = async (reg: any, tubes: BarcodeTube[]): Promise<voi
     }
 
     html += "</body></html>";
+    printWindow.document.open();
     printWindow.document.write(html);
     printWindow.document.close();
+
     let resolved = false;
     const doResolve = () => { if (!resolved) { resolved = true; resolve(); } };
-    printWindow.onafterprint = () => { printWindow.close(); doResolve(); };
-    printWindow.onload = () => { requestAnimationFrame(() => { printWindow.print(); }); setTimeout(doResolve, 3000); };
-    setTimeout(doResolve, 5000);
+
+    printWindow.onafterprint = () => {
+      try { printWindow.close(); } catch { /* noop */ }
+      doResolve();
+    };
+
+    const triggerPrint = () => {
+      // Wait an extra frame so SVG layout is finalized before the printer snapshots.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          try { printWindow.focus(); printWindow.print(); } catch { /* noop */ }
+          setTimeout(doResolve, 3000);
+        });
+      });
+    };
+
+    if (printWindow.document.readyState === "complete") {
+      triggerPrint();
+    } else {
+      printWindow.onload = triggerPrint;
+    }
+
+    setTimeout(doResolve, 8000);
   });
 };
