@@ -252,14 +252,14 @@ const SampleCollection = () => {
       let html = `<!DOCTYPE html><html><head><style>
         @page { margin: 2mm; size: 50mm 25mm; }
         body { margin: 0; padding: 0; font-family: 'Arial', sans-serif; }
-        .label { width: 48mm; height: 23mm; padding: 1.5mm; box-sizing: border-box; page-break-after: always; position: relative; overflow: hidden; }
+        .label { width: 48mm; height: 23mm; padding: 1mm; box-sizing: border-box; page-break-after: always; position: relative; overflow: hidden; }
         .label:last-child { page-break-after: auto; }
         .row1 { display: flex; justify-content: space-between; font-size: 7pt; font-weight: bold; line-height: 1.2; }
-        .row2 { font-size: 6.5pt; font-weight: bold; line-height: 1.2; margin-top: 0.5mm; }
-        .barcode-wrap { text-align: center; margin: 0.5mm 0; }
-        .barcode-wrap svg { width: 42mm; height: 8mm; }
-        .sample-id { text-align: center; font-size: 7pt; font-weight: bold; line-height: 1; }
-        .row-bottom { display: flex; justify-content: space-between; font-size: 6pt; line-height: 1.2; margin-top: 0.5mm; }
+        .row2 { font-size: 6.5pt; font-weight: bold; line-height: 1.2; margin-top: 0.3mm; }
+        .barcode-wrap { text-align: center; margin: 0.3mm 0; }
+        .barcode-wrap svg { width: 42mm; height: 7mm; }
+        .sample-id { text-align: center; font-size: 6pt; font-weight: bold; line-height: 1; }
+        .row-bottom { display: flex; justify-content: space-between; font-size: 6pt; line-height: 1.2; margin-top: 0.3mm; }
       </style></head><body>`;
 
       for (const tube of tubes) {
@@ -272,7 +272,7 @@ const SampleCollection = () => {
         html += `<div class="label">
           <div class="row1"><span>${reg.invoice_number}</span><span>${age}${gender ? `/${gender}` : ""}</span></div>
           <div class="row2">${patientName}${location ? ` &nbsp; PH ${location}` : ""}</div>
-          <div class="barcode-wrap"><img src="${barcodeDataUrl}" style="width:42mm;height:8mm;" /></div>
+          <div class="barcode-wrap"><img src="${barcodeDataUrl}" style="width:42mm;height:7mm;" /></div>
           <div class="sample-id">${barcodeValue} &nbsp; <small style="color:#888">${tube.sample_uid}</small></div>
           <div class="row-bottom">
             <span>${tube.sample_type || tube.tube_type || ""}</span>
