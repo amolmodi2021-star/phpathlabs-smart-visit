@@ -1312,7 +1312,7 @@ const ResultsEntry = () => {
               const testKey = `${reg.id}||${st.testId}`;
               const isTestSaving = saveMutation.isPending && savingTestKey === testKey;
               return (
-                <div key={st.testId} className="flex items-center justify-between px-3 py-2 bg-blue-50 border border-blue-200 rounded text-sm">
+                <div key={st.testId} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded text-sm">
                   <div className="flex items-center gap-2">
                     <Package className="h-4 w-4 text-blue-600 shrink-0" />
                     <span className="font-medium text-blue-800">{st.testName}</span>
@@ -1357,10 +1357,10 @@ const ResultsEntry = () => {
               return (
                 <div key={tg.testId} className="ml-1">
                   <div
-                    className="flex items-center justify-between px-2 py-1.5 bg-muted/40 rounded cursor-pointer hover:bg-muted/60 transition-colors"
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-0 px-2 py-1.5 bg-muted/40 rounded cursor-pointer hover:bg-muted/60 transition-colors"
                     onClick={toggleTest}
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       {isTestExpanded ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
                       <span className="text-xs font-medium text-muted-foreground">{tg.testName}</span>
                       <Badge variant="outline" className="text-[10px]">{filledCount}/{tg.params.length}</Badge>
@@ -1377,7 +1377,7 @@ const ResultsEntry = () => {
                         );
                       })()}
                     </div>
-                    <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center gap-1 flex-wrap" onClick={e => e.stopPropagation()}>
                       {!isFullTestOutsourced && (
                         <Button
                           size="sm"
@@ -1391,7 +1391,7 @@ const ResultsEntry = () => {
                           ) : (
                             <ArrowRightLeft className="h-3 w-3" />
                           )}
-                          Transfer to Outsourced
+                          <span className="hidden sm:inline">Transfer to Outsourced</span><span className="sm:hidden">Outsource</span>
                         </Button>
                       )}
                       <Button
@@ -1411,6 +1411,7 @@ const ResultsEntry = () => {
                     </div>
                   </div>
                   {isTestExpanded && (
+                    <div className="overflow-x-auto -mx-1">
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -1430,6 +1431,7 @@ const ResultsEntry = () => {
                         {tg.params.map(p => renderParamRow(entry, p))}
                       </TableBody>
                     </Table>
+                    </div>
                   )}
                 </div>
               );
@@ -1443,8 +1445,8 @@ const ResultsEntry = () => {
   return (
     <div className="space-y-4">
       {/* Mode tabs */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 max-w-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
+        <div className="relative w-full sm:flex-1 sm:max-w-sm">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search patient, invoice, mobile…"
@@ -1548,7 +1550,7 @@ const ResultsEntry = () => {
                 return (
                   <Card key={reg.id} className={isExpanded ? "ring-1 ring-primary/30" : ""}>
                     <div
-                      className="flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/30 transition-colors"
+                      className="flex flex-wrap items-center gap-2 sm:gap-3 p-3 cursor-pointer hover:bg-muted/30 transition-colors"
                       onClick={() => setExpandedPatient(isExpanded ? null : reg.id)}
                     >
                       {isExpanded ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
@@ -1575,7 +1577,7 @@ const ResultsEntry = () => {
                           <FlaskConical className="h-3 w-3" /> {entry.incompleteTests.length} test{entry.incompleteTests.length > 1 ? "s" : ""} need setup
                         </Badge>
                       )}
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center gap-2 shrink-0 flex-wrap">
                         {awaitingCount > 0 && (
                           <Badge variant="outline" className="text-xs text-orange-600 border-orange-300 gap-0.5">
                             <Wifi className="h-3 w-3" /> {awaitingCount}
@@ -1631,7 +1633,7 @@ const ResultsEntry = () => {
               return blankParamIds.has(p.parameterId);
             });
             return (
-              <div className="border rounded-lg overflow-hidden">
+              <div className="border rounded-lg overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
