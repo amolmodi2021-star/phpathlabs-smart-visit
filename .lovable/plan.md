@@ -1,73 +1,40 @@
 
-## Plan: Aggregate Tests Across All Sample Tubes for Same Sample ID
+## Plan: Aggregate Only Across Tubes With Identical Sample ID
 
 ### Behaviour
-- Query `{sample_id: "2604160004", machine_id: "Indiko"}` → fetch orders for ALL tubes whose `sample_id` matches `2604160004` exactly OR starts with `2604160004` followed by a letter suffix (e.g. `2604160004A`, `2604160004B`, `2604160004F`). Return Indiko-assigned tests merged across all those tubes.
-- Query `{sample_id: "2604160004A", machine_id: "Indiko"}` → fetch ONLY orders where `sample_id = "2604160004A"` (exact match, no aggregation).
-- `machine_id` filtering rule unchanged: when provided, filter to that machine + universal tests; when absent, return all enriched tests.
+- Query `sample_id = "2604160004"` → fetch ALL `lims_test_orders` rows where `sample_id = "2604160004"` exactly (could be 2+ tubes sharing the same ID for different sample types like Plasma/Serum). Merge their pending tests.
+- Query `sample_id = "2604160004A"` → fetch ALL rows where `sample_id = "2604160004A"` exactly. Merge if multiple.
+- NEVER cross between `2604160004` and `2604160004A` — they are different sample IDs.
+- Machine ID filter unchanged.
 
-### Detection Rule
-- "Without suffix" = `sample_id` ends in a digit (no trailing letter). → match `sample_id = X` OR `sample_id LIKE 'X[A-Za-z]'` (where the next char is a letter).
-- "With suffix" = `sample_id` ends in a letter. → exact match only.
+### Fix — `supabase/functions/lims-interface/index.ts` (GET handler)
 
-### Fix — `supabase/functions/lims-interface/index.ts` (GET handler only)
+Replace the current suffix-detection + LIKE-pattern block with a single exact-match query. The downstream loop already iterates over multiple orders and merges their tests, so multi-tube aggregation for identical sample IDs continues to work naturally.
 
-**1. Detect suffix and build query accordingly:**
 ```ts
-const hasSuffix = /[A-Za-z]$/.test(sampleId);
-
-let ordersQuery = supabase
+const { data: orders, error: orderErr } = await supabase
   .from("lims_test_orders")
   .select("*")
-  .in("status", ["pending", "in_progress"]);
-
-if (hasSuffix) {
-  // Exact match only
-  ordersQuery = ordersQuery.eq("sample_id", sampleId);
-} else {
-  // Match base OR base + single-letter suffix variants
-  // Use OR with eq + like pattern that matches a letter after base
-  ordersQuery = ordersQuery.or(
-    `sample_id.eq.${sampleId},sample_id.like.${sampleId}_,sample_id.like.${sampleId}__`
-  );
-  // Note: `_` matches any single char in LIKE; we'll filter to letters in JS
-}
-
-const { data: ordersRaw, error: orderErr } = await ordersQuery
+  .eq("sample_id", sampleId)
+  .in("status", ["pending", "in_progress"])
   .order("created_at", { ascending: false });
 if (orderErr) throw orderErr;
-
-// Post-filter for "without suffix" case: keep only exact match or base + letter(s)
-const orders = hasSuffix
-  ? (ordersRaw || [])
-  : (ordersRaw || []).filter((o: any) => {
-      const sid = o.sample_id || "";
-      if (sid === sampleId) return true;
-      const tail = sid.slice(sampleId.length);
-      return tail.length > 0 && /^[A-Za-z]+$/.test(tail);
-    });
 ```
 
-**2. Merge pending tests across all matching orders:**
-```ts
-const allPendingTests: any[] = [];
-for (const ord of orders) {
-  const tests = (ord.tests as any[]) || [];
-  for (const t of tests) {
-    if (t.status !== "completed") allPendingTests.push(t);
-  }
-  if (ord.status === "pending") {
-    await supabase.from("lims_test_orders").update({ status: "in_progress" }).eq("id", ord.id);
-  }
-}
-```
+Remove:
+- `hasSuffix` regex detection
+- `.or(...)` LIKE patterns (`sampleId_`, `sampleId__`)
+- post-filter that retained base + letter-suffix variants
 
-**3. Existing enrichment + machine_id filter operates on the merged `allPendingTests`** — no changes to that downstream logic.
-
-**4. Response** — primary `order_id` / `patient_name` taken from the most recent order; `sample_id` echoed as queried. `tests` is the merged + filtered list.
+Keep unchanged:
+- Merge loop across `orders` (handles 2+ tubes with same sample_id)
+- `pending` → `in_progress` status update per order
+- Enrichment via `lims_code_mapping`
+- Machine ID filter (case-insensitive; universal tests included)
+- Response shape (primary order metadata + merged tests)
 
 ### POST flow
-Unchanged. Result submission still targets the exact `sample_id` provided by the analyzer.
+Unchanged.
 
 ### File
 - `supabase/functions/lims-interface/index.ts` — GET handler only
