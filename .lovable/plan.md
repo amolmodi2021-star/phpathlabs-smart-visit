@@ -1,51 +1,35 @@
 
-
-## Plan: Strip Internal Code from LIMS Interface Response
+## Plan: Ignore machine_id Entirely in Code Mapping Lookup
 
 ### Problem
-Current GET response (`?action=query&sample_id=XXX`) sends both `code` (machine code) AND `internal_code` (PRM####) for each test. The analyzer should only see the machine code mapped via `lims_code_mapping`. Also, when no mapping exists, we currently fall back to the internal code — which leaks PRM#### to the machine.
+Currently the GET handler filters `lims_code_mapping` rows by `machine_id` when the analyzer query includes one. This causes mappings saved without a machine_id (or with a different casing) to be skipped → tests dropped → "No tests for machine X".
 
-### Example
-For a test with internal code `PRM0025` mapped to machine code `O11`:
-- **Current response**: `{ "code": "O11", "internal_code": "PRM0025", "name": "...", "unit": "...", "machine_id": "..." }`
-- **New response**: `{ "code": "O11", "name": "...", "unit": "...", "machine_id": "..." }`
+### Fix — `supabase/functions/lims-interface/index.ts`
 
-If `PRM0025` has no mapping in `lims_code_mapping`, the test will be **excluded** from the response (analyzer won't see internal codes at all).
+**1. Mapping lookup (around lines 102-110)** — remove the `machine_id` filter entirely. Always look up mappings purely by `mapped_param_code` / `mapped_test_code`:
 
-### Change — `supabase/functions/lims-interface/index.ts`
-
-In the GET handler (around lines 122–134), update the test enrichment:
-
-**Current:**
 ```ts
-const enrichedTests = pendingTests.map((t: any) => ({
-  code: reverseCodeMap[t.code] || t.code,   // falls back to PRM####
-  internal_code: t.code,                     // leaks PRM####
-  name: t.name,
-  unit: t.unit || "",
-  machine_id: t.machine_id || machineMap[t.code] || "",
-}));
+const { data: codeMappings } = await supabase
+  .from("lims_code_mapping")
+  .select("machine_code, mapped_param_code, mapped_test_code")
+  .or(`mapped_param_code.in.(${testCodes.join(",")}),mapped_test_code.in.(${testCodes.join(",")})`);
+```
+(No `if (machineId) mappingQuery = mappingQuery.eq(...)` block.)
+
+**2. Test list filter (around lines 132-135)** — remove the `machine_id` filter on enriched tests too. All mapped tests are returned regardless of `machine_id`:
+
+```ts
+const filteredTests = enrichedTests; // no machine_id filtering
 ```
 
-**New:**
-```ts
-const enrichedTests = pendingTests
-  .filter((t: any) => reverseCodeMap[t.code])  // only include tests with a mapping
-  .map((t: any) => ({
-    code: reverseCodeMap[t.code],              // machine code only (e.g. "011")
-    name: t.name,
-    unit: t.unit || "",
-    machine_id: t.machine_id || machineMap[t.code] || "",
-  }));
-```
+**3. Empty-result message** — drop the "No tests for machine X" branch since machine_id no longer filters anything. The existing "No pending tests" / "All tests already completed" messages still cover the empty case.
 
-### Behaviour Notes
-- POST (results submission) flow is unchanged — analyzer continues to send `machine_code` (e.g. `O11`) and we map it back to `PRM0025` via `lims_code_mapping`.
-- If a sample has tests with no mapping configured, those tests are silently dropped from the analyzer response (admin can add the mapping in the new "Add Mapping Manually" UI we just built).
-- `lims_interface_logs` will record the cleaned response — useful for debugging.
+### Result
+- Query `{ sample_id: "2604160004-F", machine_id: "Indiko" }` → returns all mapped tests for that sample, regardless of which machine_id was saved on the mapping row.
+- `machine_id` from the analyzer is still logged in `lims_interface_logs` for audit, but no longer affects which tests get returned.
+- POST (results submission) flow is unchanged — incoming `machine_code` is still mapped back to the internal param via `lims_code_mapping`, ignoring `machine_id`.
 
 ### File
-- `supabase/functions/lims-interface/index.ts` — single block change in GET handler (lines 122–134)
+- `supabase/functions/lims-interface/index.ts` — GET handler only
 
-### No DB / other file changes
-
+### No DB / schema / other file changes
