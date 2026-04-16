@@ -2325,6 +2325,81 @@ export type Database = {
         }
         Relationships: []
       }
+      payment_transactions: {
+        Row: {
+          cash_amount: number | null
+          created_at: string
+          credit_card_amount: number | null
+          direction: string
+          discount_amount: number | null
+          due_amount: number | null
+          final_amount: number | null
+          gpay_amount: number | null
+          gross_amount: number | null
+          id: string
+          invoice_number: string
+          neft_amount: number | null
+          paid_amount: number | null
+          patient_name: string | null
+          paytm_amount: number | null
+          performed_by: string | null
+          refund_amount: number | null
+          registration_id: string
+          remarks: string | null
+          total_amount: number | null
+          transaction_date: string
+          transaction_type: string
+        }
+        Insert: {
+          cash_amount?: number | null
+          created_at?: string
+          credit_card_amount?: number | null
+          direction?: string
+          discount_amount?: number | null
+          due_amount?: number | null
+          final_amount?: number | null
+          gpay_amount?: number | null
+          gross_amount?: number | null
+          id?: string
+          invoice_number: string
+          neft_amount?: number | null
+          paid_amount?: number | null
+          patient_name?: string | null
+          paytm_amount?: number | null
+          performed_by?: string | null
+          refund_amount?: number | null
+          registration_id: string
+          remarks?: string | null
+          total_amount?: number | null
+          transaction_date?: string
+          transaction_type: string
+        }
+        Update: {
+          cash_amount?: number | null
+          created_at?: string
+          credit_card_amount?: number | null
+          direction?: string
+          discount_amount?: number | null
+          due_amount?: number | null
+          final_amount?: number | null
+          gpay_amount?: number | null
+          gross_amount?: number | null
+          id?: string
+          invoice_number?: string
+          neft_amount?: number | null
+          paid_amount?: number | null
+          patient_name?: string | null
+          paytm_amount?: number | null
+          performed_by?: string | null
+          refund_amount?: number | null
+          registration_id?: string
+          remarks?: string | null
+          total_amount?: number | null
+          transaction_date?: string
+          transaction_type?: string
+        }
+        Relationships: []
+      }
       phlebotomist_leaves: {
         Row: {
           created_at: string

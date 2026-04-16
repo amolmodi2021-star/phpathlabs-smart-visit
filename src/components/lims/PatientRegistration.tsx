@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { Search, X, Save, Printer, Send, ChevronDown, ChevronUp } from "lucide-react";
 import { getTests, TestItem } from "@/lib/tests";
 import { getCurrentUser } from "@/lib/auth";
+import { logPaymentTransaction } from "@/lib/paymentTransactions";
 import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import InvoicePreview from "./InvoicePreview";
 
@@ -492,6 +493,26 @@ const PatientRegistration = () => {
         tests: calculations.testDetails,
         calculations,
       });
+      // Log payment transaction (fire-and-forget)
+      if (paidAmount > 0) {
+        const payments = Array.from(selectedModes)
+          .filter(m => (modeAmounts[m] || 0) > 0)
+          .map(m => ({ mode: m, amount: modeAmounts[m] || 0 }));
+        logPaymentTransaction({
+          registration_id: reg.id,
+          invoice_number: reg.invoice_number,
+          patient_name: reg.patient_name,
+          transaction_type: "registration_payment",
+          direction: "in",
+          payments,
+          total_amount: paidAmount,
+          gross_amount: calculations.totalAmount,
+          discount_amount: calculations.totalDiscount,
+          final_amount: calculations.finalAmount,
+          paid_amount: paidAmount,
+          due_amount: dueAmount,
+        });
+      }
     },
     onError: (e: Error) => toast.error(e.message),
   });
