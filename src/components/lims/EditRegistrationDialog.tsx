@@ -236,6 +236,8 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         updateData.net_amount = discountCalc.totalAmount - discountCalc.totalDiscount;
         updateData.global_discount_type = globalDiscountValue > 0 ? globalDiscountType : null;
         updateData.global_discount_value = globalDiscountValue;
+        // Recalculate due_amount to keep Due Payments section accurate
+        updateData.due_amount = Math.max(0, discountCalc.finalAmount - lockedPaidAmount);
       }
 
       const { error } = await supabase.from("patient_registrations").update(updateData).eq("id", reg.id);
