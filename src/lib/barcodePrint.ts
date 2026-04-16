@@ -47,22 +47,20 @@ export const printBarcodes = async (reg: any, tubes: BarcodeTube[]): Promise<voi
       html, body { margin: 0; padding: 0; font-family: 'Arial', sans-serif; }
       .label {
         width: 50mm; height: 25mm;
-        padding: 1mm 1.2mm;
+        padding: 0.5mm 0.8mm;
         box-sizing: border-box;
-        page-break-after: always;
-        page-break-inside: avoid;
         break-after: page;
         break-inside: avoid;
         overflow: hidden;
         display: grid;
-        grid-template-rows: 3mm 3mm 7.5mm 2.8mm 3mm;
+        grid-template-rows: 3mm 3mm 8mm 2.8mm 3mm;
         row-gap: 0.3mm;
       }
-      .label:last-child { page-break-after: auto; break-after: auto; }
+      .label:last-child { break-after: auto; }
       .row1 { display: flex; justify-content: space-between; font-size: 7pt; font-weight: bold; line-height: 1; white-space: nowrap; overflow: hidden; }
       .row2 { font-size: 6.5pt; font-weight: bold; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .barcode-wrap { text-align: center; line-height: 0; overflow: hidden; }
-      .barcode-wrap img { height: 7.5mm; max-width: 47mm; image-rendering: pixelated; image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges; }
+      .barcode-wrap { text-align: center; line-height: 0; overflow: hidden; padding: 0 1mm; box-sizing: border-box; }
+      .barcode-wrap img { width: 100%; height: 8mm; image-rendering: pixelated; image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges; }
       .sample-id { text-align: center; font-size: 5.5pt; font-weight: bold; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .row-bottom { display: flex; justify-content: space-between; font-size: 6pt; line-height: 1; white-space: nowrap; overflow: hidden; }
       .row-bottom span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -71,7 +69,7 @@ export const printBarcodes = async (reg: any, tubes: BarcodeTube[]): Promise<voi
     for (const tube of tubes) {
       const barcodeValue = tube.suffix ? `${reg.invoice_number}${tube.suffix}` : reg.invoice_number;
       const canvas = document.createElement("canvas");
-      try { JsBarcode(canvas, barcodeValue, { format: "CODE128", width: 2, height: 60, displayValue: false, margin: 10 }); } catch { /* fallback */ }
+      try { JsBarcode(canvas, barcodeValue, { format: "CODE128", width: 4, height: 80, displayValue: false, margin: 0 }); } catch { /* fallback */ }
       const barcodeDataUrl = canvas.toDataURL("image/png");
 
       html += `<div class="label">
