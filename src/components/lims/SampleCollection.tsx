@@ -257,7 +257,7 @@ const SampleCollection = () => {
         .row1 { display: flex; justify-content: space-between; font-size: 7pt; font-weight: bold; line-height: 1.2; }
         .row2 { font-size: 6.5pt; font-weight: bold; line-height: 1.2; margin-top: 0.3mm; }
         .barcode-wrap { text-align: center; margin: 0.3mm 0; }
-        .barcode-wrap svg { width: 42mm; height: 7mm; }
+        .barcode-wrap img { height: 7mm; max-width: 44mm; image-rendering: pixelated; image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges; }
         .sample-id { text-align: center; font-size: 6pt; font-weight: bold; line-height: 1; }
         .row-bottom { display: flex; justify-content: space-between; font-size: 6pt; line-height: 1.2; margin-top: 0.3mm; }
       </style></head><body>`;
@@ -266,13 +266,15 @@ const SampleCollection = () => {
         // Barcode uses existing invoice-based sample ID for interfacing
         const barcodeValue = tube.suffix ? `${reg.invoice_number}${tube.suffix}` : reg.invoice_number;
         const canvas = document.createElement("canvas");
-        try { JsBarcode(canvas, barcodeValue, { format: "CODE128", width: 1.5, height: 30, displayValue: false, margin: 0 }); } catch { /* fallback */ }
+        // High-resolution barcode generation: width=2 (module px), height=60, margin=10 for proper quiet zone
+        // Scanners need crisp bar edges + ~10x quiet zone to decode CODE128 reliably
+        try { JsBarcode(canvas, barcodeValue, { format: "CODE128", width: 2, height: 60, displayValue: false, margin: 10 }); } catch { /* fallback */ }
         const barcodeDataUrl = canvas.toDataURL("image/png");
 
         html += `<div class="label">
           <div class="row1"><span>${reg.invoice_number}</span><span>${age}${gender ? `/${gender}` : ""}</span></div>
           <div class="row2">${patientName}${location ? ` &nbsp; PH ${location}` : ""}</div>
-          <div class="barcode-wrap"><img src="${barcodeDataUrl}" style="width:42mm;height:7mm;" /></div>
+          <div class="barcode-wrap"><img src="${barcodeDataUrl}" /></div>
           <div class="sample-id">${barcodeValue} &nbsp; <small style="color:#888">${tube.sample_uid}</small></div>
           <div class="row-bottom">
             <span>${tube.sample_type || tube.tube_type || ""}</span>
