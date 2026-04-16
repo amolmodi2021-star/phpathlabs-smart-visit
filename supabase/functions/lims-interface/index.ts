@@ -78,9 +78,18 @@ Deno.serve(async (req) => {
         });
       }
 
-      const order = orders[0];
-      const tests = (order.tests as any[]) || [];
-      const pendingTests = tests.filter((t: any) => t.status !== "completed");
+      // Merge pending tests across all matching tube orders
+      const primaryOrder = orders[0];
+      const pendingTests: any[] = [];
+      for (const ord of orders) {
+        const ts = (ord.tests as any[]) || [];
+        for (const t of ts) {
+          if (t.status !== "completed") pendingTests.push(t);
+        }
+        if (ord.status === "pending") {
+          await supabase.from("lims_test_orders").update({ status: "in_progress" }).eq("id", ord.id);
+        }
+      }
 
       if (pendingTests.length === 0) {
         const responseBody = { sample_id: sampleId, tests: [], message: "All tests already completed" };
@@ -91,11 +100,6 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify(responseBody), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
-      }
-
-      // Mark order as in_progress
-      if (order.status === "pending") {
-        await supabase.from("lims_test_orders").update({ status: "in_progress" }).eq("id", order.id);
       }
 
       // Enrich tests with machine_id from tests/parameters tables
