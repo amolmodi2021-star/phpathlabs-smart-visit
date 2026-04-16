@@ -1,52 +1,57 @@
 
 
-# Fix: Recalculate due_amount on Discount Change + Overpayment Refund
+# Convert PH PathLabs to a PWA with Mobile-Friendly Improvements
 
-## Problem
-1. When a discount is applied via Edit Registration, `due_amount` is not recalculated — causing Due Payments to show the old (higher) due, leading to overpayment.
-2. If the new final amount is less than what was already paid, there's no way to process a refund for the overpayment.
+## What This Achieves
+- App becomes **installable** on phones/tablets (Add to Home Screen) with full-screen standalone display
+- Login persists across sessions (already works via localStorage — no change needed)
+- Key mobile UX improvements across all modules
 
-## Changes — `src/components/lims/EditRegistrationDialog.tsx`
+## Changes
 
-### 1. Recalculate `due_amount` when discount changes (line ~220-228)
-In `handleSaveDetails`, inside the `if (discountChanged)` block, add:
-```
-updateData.due_amount = Math.max(0, discountCalc.finalAmount - lockedPaidAmount);
-```
-This ensures the Due Payments section always reflects the correct outstanding balance.
+### 1. Update `index.html` — PWA meta tags
+- Add `<link rel="manifest" href="/manifest.json">`
+- Add `<meta name="apple-mobile-web-app-capable" content="yes">`
+- Add `<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">`
+- Add `<meta name="theme-color" content="#3d8c7e">`
+- Add apple-touch-icon link
+- Update title to "PH PathLabs"
 
-### 2. Detect overpayment and show refund UI
-Add a computed value:
-```
-const discountOverpayment = discountChanged && discountCalc.finalAmount < lockedPaidAmount
-  ? lockedPaidAmount - discountCalc.finalAmount : 0;
-```
+### 2. Update `public/manifest.json` — proper PWA manifest
+- Add multiple icon sizes (192x192, 512x512) using generated SVG-based PNG icons
+- Set `"display": "standalone"`, `"scope": "/"`, `"theme_color": "#3d8c7e"`
+- Add `"orientation": "any"` to support both portrait and landscape
 
-Add state for overpayment refund mode and a password dialog trigger.
+### 3. Generate PWA icons
+- Create `public/icon-192.png` and `public/icon-512.png` using the existing FlaskConical teal branding via a simple canvas script
 
-### 3. Show overpayment refund block in the "Discount Changed" summary (line ~609-619)
-When `discountOverpayment > 0`, replace the "New Due" line with:
-- **"Overpaid: ₹X"** warning in orange/destructive
-- Refund mode selector (Cash / NEFT)
-- "Process Refund" button (password-protected)
+### 4. Add service worker registration guard in `src/main.tsx`
+- Only register in production (not in Lovable preview iframe)
+- Simple offline-capable caching for app shell
 
-### 4. Handle overpayment refund on save
-When saving with an overpayment:
-- Set `due_amount = 0`
-- Set `paid_amount = discountCalc.finalAmount` (reduce to match new final)
-- Set `refund_amount = existing refund + overpayment`
-- Set `refund_mode` and `refund_date`
+### 5. Mobile-friendly CSS improvements in `src/index.css`
+- Add `env(safe-area-inset-*)` padding for notched phones
+- Ensure tables scroll horizontally on mobile (`overflow-x-auto` wrappers)
+- Add touch-friendly tap targets (min 44px)
+- Prevent zoom on input focus with `font-size: 16px` minimum
 
-This will be integrated into `handleSaveDetails` so discount change + refund happen atomically in one save.
+### 6. Update `src/components/AppLayout.tsx` — mobile standalone adjustments
+- Add safe-area padding for standalone mode (status bar overlap)
+- Ensure the mobile drawer works well in full-screen PWA mode
 
-### 5. Disable Save if overpayment exists but no refund mode selected
-The Save button remains enabled only when the overpayment refund flow is acknowledged (refund mode selected). Password confirmation required before processing.
+### 7. No service worker plugin needed
+Since the user doesn't need offline-first functionality, a simple `manifest.json` with standalone display is sufficient for installability. No `vite-plugin-pwa` required — avoiding all the iframe/preview complications.
 
-### UI behavior
-- **No overpayment**: Save works as before, just also updates `due_amount`
-- **Overpayment detected**: Orange warning block appears with refund amount, mode selector, and password-protected save
-- **Bill Summary**: Reflects the corrected due/refund values in real time
+## Files to modify
+- `index.html`
+- `public/manifest.json`
+- `src/index.css`
+- `src/main.tsx`
+- `src/components/AppLayout.tsx`
 
-### Single file change
-- `src/components/lims/EditRegistrationDialog.tsx`
+## Files to create
+- `public/icon-192.png` and `public/icon-512.png` (generated via script)
+
+## Auth persistence
+Already handled — localStorage keeps users logged in across sessions. No changes needed.
 
