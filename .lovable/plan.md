@@ -1,44 +1,43 @@
 
 
-## Fix: Barcode Not Scannable
+## Fix: Send Machine Codes (Not Internal Param Codes) in LIMS Interface GET Response
 
-### Root cause
-Three rendering issues are degrading scanner readability:
+### Problem
+The `lims-interface` GET endpoint currently returns our internal parameter codes (e.g., `PRM0158`, `PRM0113`) in the `tests[]` array. The middleware has no mapping table — it forwards codes directly to the analyzer machines, which only understand their native codes (e.g., `WBC`, `RBC`, `HGB`).
 
-1. **`image-rendering: pixelated` + `width: 100%` stretch** — The PNG is generated at a fixed canvas pixel width (e.g. ~400px for short codes, larger for long codes), then scaled by the browser to fill ~48mm. With `pixelated`, the scaling produces **uneven bar widths** (some bars become 2px wide, neighbors become 3px wide). Scanners reject CODE128 when the module-width ratio isn't consistent.
-2. **No quiet zone validated against CODE128 spec** — CODE128 requires a quiet zone of **≥10× the narrow bar width** on each side. With ~0.4mm bars, that's ~4mm — but we only give 1mm CSS padding. Many handheld scanners refuse to decode.
-3. **PNG raster + browser scaling** — Even with crisp-edges, raster scaling at print resolution (often 203 DPI on thermal, 600 DPI on laser) creates anti-aliased gray edges that scanners read as "in-between" bars.
+### Root Cause
+In `supabase/functions/lims-interface/index.ts` (lines 101–107), the response is built using `t.code` directly from the order's stored tests, which are our internal `PRM####` codes.
 
-### The fix — render barcode as SVG sized in mm
+### The Fix — Reverse-lookup machine_code from lims_code_mapping
 
-Switch `JsBarcode` from canvas/PNG to **SVG output**, sized directly in millimeters. SVG is vector — the printer rasterizes at native DPI with **mathematically perfect bar widths**, no scaling artifacts.
+The `lims_code_mapping` table already stores the bidirectional mapping:
+- `machine_code` = analyzer's native code (e.g., `WBC`)
+- `mapped_param_code` = our internal code (e.g., `PRM0158`)
+- `mapped_test_code` = our internal test code (alternative)
 
-**Changes in `src/lib/barcodePrint.ts`:**
+**Changes in `supabase/functions/lims-interface/index.ts` (GET branch only):**
 
-1. **Generate barcode as SVG, not PNG**
-   - Create an `<svg>` element instead of `<canvas>`
-   - `JsBarcode(svg, value, { format: "CODE128", width: 2, height: 40, displayValue: false, margin: 0 })`
-   - Module width `2` (SVG units) gives clean ratios; the SVG itself is then sized via attributes
-   - Inject `svg.outerHTML` directly into the print HTML (no `toDataURL`)
+1. **Build a reverse-lookup map: internal code → machine_code**
+   - After collecting `testCodes` from pending tests, query `lims_code_mapping`:
+     - `select("machine_code, mapped_param_code, mapped_test_code, machine_id").or("mapped_param_code.in.(...),mapped_test_code.in.(...)")`
+   - When `machineId` is provided, also filter by `machine_id` so the correct analyzer's code is picked (handles cases where the same parameter has different codes per machine).
+   - Build `reverseMap: Record<internalCode, machine_code>`.
 
-2. **Size the SVG explicitly in mm**
-   - Set `width="42mm" height="8mm"` as SVG attributes (not CSS) so the printer driver gets exact physical dimensions
-   - Remove `preserveAspectRatio` issues by setting `preserveAspectRatio="none"` — bars stretch uniformly
+2. **Replace internal code with machine_code in the response**
+   - In the `enrichedTests` map, set `code: reverseMap[t.code] || t.code` (fallback to internal code only if no mapping exists, so nothing breaks silently).
+   - Optionally also include `internal_code: t.code` in the response for traceability/logging — but not required.
 
-3. **Proper quiet zone via centered container**
-   - `.barcode-wrap` becomes `padding: 0 3mm` (3mm each side = sufficient quiet zone for CODE128 at this bar width)
-   - Sticker is 50mm wide → 50 − 6 (quiet zone) − 1.6 (label padding) ≈ 42mm barcode width
-   - SVG centered within wrap
+3. **Keep POST behavior unchanged**
+   - The POST flow already correctly accepts machine codes from analyzers and translates them back to internal codes via the same table — that direction is working.
 
-4. **Remove `image-rendering: pixelated`** — no longer needed; SVG is vector.
-
-5. **Keep CODE128 module ratio integer-clean** — with SVG `width: 2` and explicit `width="42mm"`, the printer scales vector coordinates uniformly. No fractional-pixel jitter.
+4. **Logging**
+   - The existing `lims_interface_logs` insert continues to log the response_body, which will now show the machine codes that were actually sent (good for debugging middleware/analyzer issues).
 
 ### Why this works
-- **Vector = perfect bars**: Thermal/laser printers rasterize SVG at their native DPI. Every narrow bar prints exactly the same width; every wide bar is exactly 2× or 3×. This is what CODE128 scanners require.
-- **Real quiet zone**: 3mm white space each side ≥ 10× narrow bar width (0.25mm) → meets ISO/IEC 15417 quiet zone spec.
-- **No scaling distortion**: The `width: 100% + pixelated` PNG stretch was the real culprit — even crisp PNGs become unreadable when scaled non-integer-multiples.
+- Middleware becomes a dumb pass-through: receives `WBC`, sends `WBC` to analyzer, analyzer responds with `WBC` → POST endpoint translates back to `PRM0158`. Symmetric round-trip.
+- Falls back gracefully: if a parameter has no machine_code mapping defined yet, the internal code is still returned (current behavior preserved for unmapped tests).
+- No DB schema changes. No frontend changes. No POST logic changes.
 
 ### File
-- `src/lib/barcodePrint.ts` — only file changed.
+- `supabase/functions/lims-interface/index.ts` — GET branch only
 
