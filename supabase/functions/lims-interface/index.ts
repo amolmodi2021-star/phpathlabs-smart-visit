@@ -78,6 +78,7 @@ Deno.serve(async (req) => {
       // Enrich tests with machine_id from tests/parameters tables
       const testCodes = pendingTests.map((t: any) => t.code).filter(Boolean);
       let machineMap: Record<string, string> = {};
+      let reverseCodeMap: Record<string, string> = {};
       if (testCodes.length > 0) {
         const { data: testRows } = await supabase
           .from("tests").select("test_code, machine_id").in("test_code", testCodes);
@@ -96,11 +97,32 @@ Deno.serve(async (req) => {
             }
           }
         }
+
+        // Reverse-lookup: internal code (PRM####) -> machine_code (WBC, RBC, etc.)
+        let mappingQuery = supabase
+          .from("lims_code_mapping")
+          .select("machine_code, mapped_param_code, mapped_test_code, machine_id")
+          .or(`mapped_param_code.in.(${testCodes.join(",")}),mapped_test_code.in.(${testCodes.join(",")})`);
+        if (machineId) {
+          mappingQuery = mappingQuery.eq("machine_id", machineId);
+        }
+        const { data: codeMappings } = await mappingQuery;
+        if (codeMappings) {
+          for (const m of codeMappings) {
+            if (m.machine_code && m.mapped_param_code && !reverseCodeMap[m.mapped_param_code]) {
+              reverseCodeMap[m.mapped_param_code] = m.machine_code;
+            }
+            if (m.machine_code && m.mapped_test_code && !reverseCodeMap[m.mapped_test_code]) {
+              reverseCodeMap[m.mapped_test_code] = m.machine_code;
+            }
+          }
+        }
       }
 
-      // Build enriched test list
+      // Build enriched test list — send machine_code to middleware (fallback to internal code)
       const enrichedTests = pendingTests.map((t: any) => ({
-        code: t.code,
+        code: reverseCodeMap[t.code] || t.code,
+        internal_code: t.code,
         name: t.name,
         unit: t.unit || "",
         machine_id: t.machine_id || machineMap[t.code] || "",
