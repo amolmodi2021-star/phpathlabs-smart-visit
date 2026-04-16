@@ -36,12 +36,7 @@ const renderBarcodePng = (value: string): string => {
   bwipjs.toCanvas(canvas, {
     bcid: "code128",
     text: value,
-    scale: 5, // thicker bars (X-dimension ~0.30mm) for analyzer internal readers
-    height: 12, // mm — matches old LIMS barcode height for tube-tilt tolerance
     includetext: false,
-    paddingwidth: 10, // CODE128 spec requires ≥10× narrowest bar quiet zone
-    paddingheight: 2,
-    backgroundcolor: "FFFFFF",
   });
   return canvas.toDataURL("image/png");
 };
