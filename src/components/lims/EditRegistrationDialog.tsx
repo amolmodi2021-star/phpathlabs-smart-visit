@@ -816,6 +816,13 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         }}
         description="Sample has passed accepted stage. Enter admin password to unlock discount editing."
       />
+      <DeletePasswordDialog
+        open={showOverpaymentRefundPwd}
+        onOpenChange={setShowOverpaymentRefundPwd}
+        onSuccess={processOverpaymentRefund}
+        description={`Applying discount will reduce the final amount to ₹${discountCalc.finalAmount}. Refund ₹${discountOverpayment} to patient via ${overpaymentRefundMode}.`}
+      />
+      />
     </>
   );
 };
