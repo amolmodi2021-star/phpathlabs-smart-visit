@@ -193,16 +193,34 @@ Deno.serve(async (req) => {
         orderId = orders?.[0]?.id || null;
       }
 
-      // Fetch all code mappings for the incoming codes
+      // Fetch all code mappings for the incoming codes (1 machine_code → N internal codes allowed)
       const incomingCodes = results.map((r: any) => r.code || r.test_code || "").filter(Boolean);
-      let codeMap: Record<string, { mapped_param_code: string; mapped_test_code: string; parameter_name: string }> = {};
+      let codeMap: Record<string, Array<{ mapped_param_code: string; mapped_test_code: string; parameter_name: string }>> = {};
       if (incomingCodes.length > 0) {
         const { data: mappings } = await supabase
           .from("lims_code_mapping").select("machine_code, mapped_param_code, mapped_test_code, parameter_name")
           .in("machine_code", incomingCodes);
         if (mappings) {
           for (const m of mappings) {
-            codeMap[m.machine_code] = { mapped_param_code: m.mapped_param_code, mapped_test_code: m.mapped_test_code, parameter_name: m.parameter_name };
+            if (!codeMap[m.machine_code]) codeMap[m.machine_code] = [];
+            codeMap[m.machine_code].push({
+              mapped_param_code: m.mapped_param_code,
+              mapped_test_code: m.mapped_test_code,
+              parameter_name: m.parameter_name,
+            });
+          }
+        }
+      }
+
+      // Fetch the order's pending test codes so we can disambiguate when one
+      // machine_code maps to multiple internal codes (e.g. GLU → fasting vs random).
+      let orderTestCodes = new Set<string>();
+      if (orderId) {
+        const { data: ord } = await supabase
+          .from("lims_test_orders").select("tests").eq("id", orderId).single();
+        if (ord) {
+          for (const t of ((ord.tests as any[]) || [])) {
+            if (t?.code) orderTestCodes.add(t.code);
           }
         }
       }
@@ -212,7 +230,13 @@ Deno.serve(async (req) => {
 
       for (const r of results) {
         const code = r.code || r.test_code || "";
-        const mapping = codeMap[code];
+        const candidates = codeMap[code] || [];
+        // Pick the mapping whose internal code is present in this order;
+        // otherwise fall back to the first mapping.
+        const mapping = candidates.find((c) =>
+          (c.mapped_param_code && orderTestCodes.has(c.mapped_param_code)) ||
+          (c.mapped_test_code && orderTestCodes.has(c.mapped_test_code))
+        ) || candidates[0];
 
         if (mapping && (mapping.mapped_param_code || mapping.mapped_test_code)) {
           // Mapped result — insert into lims_test_results with mapped code
