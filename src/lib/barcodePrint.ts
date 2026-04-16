@@ -74,8 +74,8 @@ export const printBarcodes = async (reg: any, tubes: BarcodeTube[]): Promise<voi
 
     const cleanSuffix = tube.suffix?.trim();
     const displayValue = cleanSuffix ? `${reg.invoice_number}${cleanSuffix}` : reg.invoice_number;
-    // Append CR (ASCII 13) so scanner auto-sends "Enter" to middleware after reading
-    const barcodeValue = `${displayValue}\x0D`;
+    // Clean alphanumeric payload only — "auto-Enter" must be configured on the scanner (CR suffix), not baked into the barcode
+    const barcodeValue = displayValue;
 
     // --- Row 1: invoice number (left) | age/sex (right) ---
     doc.setFontSize(7);
