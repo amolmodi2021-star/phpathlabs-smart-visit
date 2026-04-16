@@ -251,6 +251,39 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
     }
   };
 
+  const processOverpaymentRefund = async () => {
+    setSaving(true);
+    try {
+      const existingRefund = Number(reg.refund_amount || 0);
+      const updateData: any = {
+        tests: discountCalc.updatedTests,
+        gross_amount: discountCalc.totalAmount,
+        discount_amount: discountCalc.totalDiscount,
+        final_amount: discountCalc.finalAmount,
+        net_amount: discountCalc.totalAmount - discountCalc.totalDiscount,
+        global_discount_type: globalDiscountValue > 0 ? globalDiscountType : null,
+        global_discount_value: globalDiscountValue,
+        due_amount: 0,
+        paid_amount: discountCalc.finalAmount,
+        refund_amount: existingRefund + discountOverpayment,
+        refund_mode: overpaymentRefundMode,
+        refund_date: new Date().toISOString(),
+        payments: Array.from(selectedModes)
+          .filter(m => (modeAmounts[m] || 0) > 0)
+          .map(m => ({ mode: m, amount: modeAmounts[m] || 0 })),
+      };
+      const { error } = await supabase.from("patient_registrations").update(updateData).eq("id", reg.id);
+      if (error) throw error;
+      qc.invalidateQueries({ queryKey: ["patient_registrations"] });
+      toast.success(`Discount applied & ₹${discountOverpayment} refunded via ${overpaymentRefundMode}`);
+      onOpenChange(false);
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleCancelTests = async () => {
     if (newlyCancelled.length === 0 && !homeVisitRefundRequested) {
       toast.error("No tests selected for cancellation and no home visit refund requested");
