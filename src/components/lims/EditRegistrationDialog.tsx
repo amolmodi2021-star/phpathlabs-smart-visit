@@ -559,8 +559,8 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
             )}
 
             {!isBillCancelled && (
-              <Button onClick={handleSaveDetails} disabled={saving || paymentModesMismatch} className="w-full">
-                <Save className="h-4 w-4 mr-2" />Save Details
+              <Button onClick={handleSaveDetails} disabled={saving || paymentModesMismatch || overpaymentBlocksSave} className="w-full">
+                <Save className="h-4 w-4 mr-2" />{overpaymentBlocksSave ? "Process Refund Below First" : "Save Details"}
               </Button>
             )}
           </div>
