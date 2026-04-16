@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "@/hooks/use-toast";
-import { Plus, Trash2, ChevronDown, ChevronRight, Copy, RefreshCw, Link2, AlertTriangle, ChevronsUpDown, Check } from "lucide-react";
+import { Plus, Trash2, ChevronDown, ChevronRight, Copy, RefreshCw, Link2, AlertTriangle, ChevronsUpDown, Check, Pencil, X } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandInput, CommandList, CommandEmpty, CommandItem } from "@/components/ui/command";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -64,6 +64,8 @@ const LimsDemo = () => {
   const [customMachineName, setCustomMachineName] = useState("");
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [mappingParamCode, setMappingParamCode] = useState<Record<string, string>>({});
+  const [editingMappingId, setEditingMappingId] = useState<string | null>(null);
+  const [editingParamCode, setEditingParamCode] = useState<Record<string, string>>({});
 
   const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID || "rpbkilhzulaugzrlatts";
   const apiUrl = `https://${projectId}.supabase.co/functions/v1/lims-interface`;
@@ -227,6 +229,24 @@ const LimsDemo = () => {
       if (error) throw error;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["lims-code-mappings"] }),
+  });
+
+  const updateMapping = useMutation({
+    mutationFn: async ({ id, paramCode }: { id: string; paramCode: string }) => {
+      const param = allParams.find((p) => (p.param_code || p.id) === paramCode);
+      const { error } = await supabase.from("lims_code_mapping").update({
+        mapped_param_code: paramCode,
+        parameter_name: param?.parameter_name || null,
+      }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast({ title: "Mapping updated" });
+      queryClient.invalidateQueries({ queryKey: ["lims-code-mappings"] });
+      setEditingMappingId(null);
+      setEditingParamCode({});
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
   const toggleTest = (test: TestItem) => {
@@ -567,20 +587,82 @@ const LimsDemo = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {codeMappings.map((m) => (
-                      <TableRow key={m.id}>
-                        <TableCell className="font-mono font-medium">{m.machine_code}</TableCell>
-                        <TableCell className="font-mono text-xs">{m.machine_id || "—"}</TableCell>
-                        <TableCell className="font-mono">{m.mapped_param_code || m.mapped_test_code}</TableCell>
-                        <TableCell>{m.parameter_name}</TableCell>
-                        <TableCell className="text-xs">{new Date(m.created_at).toLocaleString()}</TableCell>
-                        <TableCell>
-                          <Button size="icon" variant="ghost" onClick={() => deleteMapping.mutate(m.id)}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {codeMappings.map((m) => {
+                      const isEditing = editingMappingId === m.id;
+                      const selectedCode = editingParamCode[m.id];
+                      const selectedParam = selectedCode ? allParams.find((p) => (p.param_code || p.id) === selectedCode) : null;
+                      return (
+                        <TableRow key={m.id}>
+                          <TableCell className="font-mono font-medium">{m.machine_code}</TableCell>
+                          <TableCell className="font-mono text-xs">{m.machine_id || "—"}</TableCell>
+                          {isEditing ? (
+                            <TableCell colSpan={2}>
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <Button variant="outline" size="sm" className="w-64 h-8 text-xs justify-between font-normal">
+                                    {selectedParam
+                                      ? `${selectedCode} — ${selectedParam.parameter_name}`
+                                      : "Search parameter..."}
+                                    <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-72 p-0" align="start">
+                                  <Command>
+                                    <CommandInput placeholder="Search by code or name..." className="h-8 text-xs" />
+                                    <CommandList className="max-h-48">
+                                      <CommandEmpty>No parameter found.</CommandEmpty>
+                                      {allParams.map((p) => {
+                                        const val = p.param_code || p.id;
+                                        return (
+                                          <CommandItem
+                                            key={p.id}
+                                            value={`${p.param_code} ${p.parameter_name}`}
+                                            onSelect={() => setEditingParamCode((prev) => ({ ...prev, [m.id]: val }))}
+                                            className="text-xs"
+                                          >
+                                            <Check className={`mr-1 h-3 w-3 ${selectedCode === val ? "opacity-100" : "opacity-0"}`} />
+                                            <span className="font-mono">{p.param_code}</span>
+                                            <span className="mx-1">—</span>
+                                            <span className="truncate">{p.parameter_name}</span>
+                                          </CommandItem>
+                                        );
+                                      })}
+                                    </CommandList>
+                                  </Command>
+                                </PopoverContent>
+                              </Popover>
+                            </TableCell>
+                          ) : (
+                            <>
+                              <TableCell className="font-mono">{m.mapped_param_code || m.mapped_test_code}</TableCell>
+                              <TableCell>{m.parameter_name}</TableCell>
+                            </>
+                          )}
+                          <TableCell className="text-xs">{new Date(m.created_at).toLocaleString()}</TableCell>
+                          <TableCell>
+                            {isEditing ? (
+                              <div className="flex gap-1">
+                                <Button size="icon" variant="ghost" disabled={!selectedCode || updateMapping.isPending} onClick={() => updateMapping.mutate({ id: m.id, paramCode: selectedCode })}>
+                                  <Check className="h-4 w-4 text-primary" />
+                                </Button>
+                                <Button size="icon" variant="ghost" onClick={() => { setEditingMappingId(null); setEditingParamCode({}); }}>
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="flex gap-1">
+                                <Button size="icon" variant="ghost" onClick={() => { setEditingMappingId(m.id); setEditingParamCode({ [m.id]: m.mapped_param_code || m.mapped_test_code || "" }); }}>
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button size="icon" variant="ghost" onClick={() => deleteMapping.mutate(m.id)}>
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </div>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               )}
