@@ -117,7 +117,7 @@ const LimsDemo = () => {
   });
 
   const { data: unmappedResults = [] } = useQuery({
-    queryKey: ["lims-unmapped", codeMappings],
+    queryKey: ["lims-unmapped"],
     queryFn: async () => {
       const { data } = await supabase.from("lims_unmapped_results").select("*").eq("is_resolved", false).order("received_at", { ascending: false });
       if (!data) return [];
