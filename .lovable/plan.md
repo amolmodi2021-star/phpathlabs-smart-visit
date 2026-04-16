@@ -1,30 +1,33 @@
 
 
-# Fix: Auto-resolve unmapped results when mapping already exists
+# Restrict Payment Editing to Mode Change Only
 
 ## Problem
-When a machine code (e.g., RBC) is mapped via the Code Mapping tab, only the single unmapped result row that triggered the mapping gets resolved. Other unmapped results with the same machine code remain visible in the "Unmapped Results" section. Additionally, their result values are never transferred to `lims_test_results` for the respective sample.
+The Edit Registration Dialog currently allows modifying payment amounts, which should only happen via the Due Payments section. Users should only be able to **change how the already-paid amount is split across payment modes**, not add or reduce payments.
 
-## Solution — Two changes
+## Changes — `src/components/lims/EditRegistrationDialog.tsx`
 
-### 1. Edge Function: Already correct
-The edge function POST handler already checks `lims_code_mapping` before routing results. The existing unmapped rows are from results submitted *before* the mapping was created. No edge function changes needed.
+### 1. Lock total to `paid_amount`
+The payment section will enforce that the sum of all mode amounts always equals `reg.paid_amount`. No more, no less.
 
-### 2. UI: When mapping an unmapped result, also auto-resolve all other unmapped results with the same machine_code
+### 2. Single mode auto-fill
+When only one payment mode is selected, automatically fill it with the full `paid_amount`. The amount field becomes read-only (single mode = no split needed).
 
-**File:** `src/pages/LimsDemo.tsx`
+### 3. Multi-mode validation
+When multiple modes are selected, allow editing amounts per mode but show a real-time validation message if the total doesn't match `paid_amount`. Disable Save until it matches exactly.
 
-In the `mapResult` mutation (around line 190-214), after inserting the code mapping and resolving the clicked row:
-- Query `lims_unmapped_results` for all other rows with the same `machine_code` and `is_resolved = false`
-- For each, insert a corresponding row into `lims_test_results` using the newly created mapping's `paramCode` and `parameter_name`
-- Mark all those rows as `is_resolved = true`
+### 4. Show read-only summary
+Display "Amount Paid: ₹X" as a fixed label above the mode selector. Remove the due amount calculation logic from this section — dues are handled elsewhere.
 
-This ensures that when you map RBC → PRM0113, all existing unmapped RBC results across all samples are automatically resolved and their values transferred to the results entry system.
+### 5. Remove due amount display
+Remove the `Due:` line and the zero-due mismatch warning. The dialog only manages mode redistribution, not payment collection.
 
-### 3. UI: Filter unmapped results that already have a mapping
+### UI behavior summary
+- **No payment received (paid = 0):** Payment mode section hidden entirely
+- **Single mode selected:** Auto-fills with paid amount, read-only field
+- **Multiple modes:** Editable fields, must sum to paid amount exactly
+- **Save disabled** if mode amounts don't sum to paid amount
 
-As a visual safety net, also filter the unmapped results query or display to exclude rows whose `machine_code` already exists in `lims_code_mapping`. This handles the edge case where the auto-resolve hasn't run yet.
-
-### Single file change
-- `src/pages/LimsDemo.tsx` — modify `mapResult` mutation to batch-resolve siblings, and filter display
+### File
+- `src/components/lims/EditRegistrationDialog.tsx`
 
