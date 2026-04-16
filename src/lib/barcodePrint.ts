@@ -59,8 +59,8 @@ export const printBarcodes = async (reg: any, tubes: BarcodeTube[]): Promise<voi
       .label:last-child { break-after: auto; }
       .row1 { display: flex; justify-content: space-between; font-size: 7pt; font-weight: bold; line-height: 1; white-space: nowrap; overflow: hidden; }
       .row2 { font-size: 6.5pt; font-weight: bold; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .barcode-wrap { text-align: center; line-height: 0; overflow: hidden; padding: 0 1mm; box-sizing: border-box; }
-      .barcode-wrap img { width: 100%; height: 8mm; image-rendering: pixelated; image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges; }
+      .barcode-wrap { text-align: center; line-height: 0; overflow: hidden; padding: 0 3mm; box-sizing: border-box; display: flex; align-items: center; justify-content: center; }
+      .barcode-wrap svg { display: block; }
       .sample-id { text-align: center; font-size: 5.5pt; font-weight: bold; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .row-bottom { display: flex; justify-content: space-between; font-size: 6pt; line-height: 1; white-space: nowrap; overflow: hidden; }
       .row-bottom span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -68,14 +68,18 @@ export const printBarcodes = async (reg: any, tubes: BarcodeTube[]): Promise<voi
 
     for (const tube of tubes) {
       const barcodeValue = tube.suffix ? `${reg.invoice_number}${tube.suffix}` : reg.invoice_number;
-      const canvas = document.createElement("canvas");
-      try { JsBarcode(canvas, barcodeValue, { format: "CODE128", width: 4, height: 80, displayValue: false, margin: 0 }); } catch { /* fallback */ }
-      const barcodeDataUrl = canvas.toDataURL("image/png");
+      const svgEl = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      try { JsBarcode(svgEl, barcodeValue, { format: "CODE128", width: 2, height: 40, displayValue: false, margin: 0 }); } catch { /* fallback */ }
+      // Force exact physical dimensions on the SVG so the printer rasterizes vector bars at native DPI
+      svgEl.setAttribute("width", "42mm");
+      svgEl.setAttribute("height", "8mm");
+      svgEl.setAttribute("preserveAspectRatio", "none");
+      const barcodeSvg = svgEl.outerHTML;
 
       html += `<div class="label">
         <div class="row1"><span>${reg.invoice_number}</span><span>${age}${gender ? `/${gender}` : ""}</span></div>
         <div class="row2">${patientName}${location ? ` &nbsp; PH ${location}` : ""}</div>
-        <div class="barcode-wrap"><img src="${barcodeDataUrl}" /></div>
+        <div class="barcode-wrap">${barcodeSvg}</div>
         <div class="sample-id">${barcodeValue}&nbsp;<small style="color:#888">${tube.sample_uid}</small></div>
         <div class="row-bottom">
           <span>${tube.sample_type || tube.tube_type || ""}</span>
