@@ -103,7 +103,7 @@ export const printBarcodes = async (reg: any, tubes: BarcodeTube[]): Promise<voi
     // --- Sample ID line (centered) ---
     doc.setFontSize(5.5);
     doc.setFont("helvetica", "bold");
-    const sampleLine = `${barcodeValue}  ${tube.sample_uid}`;
+    const sampleLine = `${displayValue}  ${tube.sample_uid}`;
     doc.text(sampleLine, 25, 17.5, { align: "center" });
 
     // --- Bottom row: sample type (left) | datetime (right) ---
