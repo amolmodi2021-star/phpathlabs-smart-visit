@@ -66,6 +66,9 @@ const LimsDemo = () => {
   const [mappingParamCode, setMappingParamCode] = useState<Record<string, string>>({});
   const [editingMappingId, setEditingMappingId] = useState<string | null>(null);
   const [editingParamCode, setEditingParamCode] = useState<Record<string, string>>({});
+  const [newMachineCode, setNewMachineCode] = useState("");
+  const [newMachineId, setNewMachineId] = useState("");
+  const [newParamCode, setNewParamCode] = useState("");
 
   const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID || "rpbkilhzulaugzrlatts";
   const apiUrl = `https://${projectId}.supabase.co/functions/v1/lims-interface`;
@@ -275,6 +278,29 @@ const LimsDemo = () => {
       queryClient.invalidateQueries({ queryKey: ["lims-code-mappings"] });
       setEditingMappingId(null);
       setEditingParamCode({});
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const addMapping = useMutation({
+    mutationFn: async ({ machineCode, machineId, paramCode }: { machineCode: string; machineId: string; paramCode: string }) => {
+      const param = allParams.find((p) => (p.param_code || p.id) === paramCode);
+      if (!param) throw new Error("Parameter not found");
+      const { error } = await supabase.from("lims_code_mapping").upsert({
+        machine_code: machineCode,
+        machine_id: machineId || "",
+        mapped_param_code: paramCode,
+        parameter_name: param.parameter_name || "",
+      }, { onConflict: "machine_code,machine_id" });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast({ title: "Mapping added" });
+      setNewMachineCode("");
+      setNewMachineId("");
+      setNewParamCode("");
+      queryClient.invalidateQueries({ queryKey: ["lims-code-mappings"] });
+      queryClient.invalidateQueries({ queryKey: ["lims-unmapped"] });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -593,6 +619,92 @@ const LimsDemo = () => {
                   </TableBody>
                 </Table>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Add Mapping Manually */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Plus className="h-4 w-4" />
+                Add Mapping Manually
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-muted-foreground">Machine Code *</label>
+                  <Input
+                    value={newMachineCode}
+                    onChange={(e) => setNewMachineCode(e.target.value)}
+                    placeholder="e.g. WBC, RBC#"
+                    className="h-9 w-40 font-mono"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-muted-foreground">Machine ID (optional)</label>
+                  <Input
+                    value={newMachineId}
+                    onChange={(e) => setNewMachineId(e.target.value)}
+                    placeholder="e.g. INDIKO"
+                    className="h-9 w-40 font-mono"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-muted-foreground">Parameter *</label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="w-72 h-9 text-xs justify-between font-normal">
+                        {newParamCode
+                          ? allParams.find((p) => (p.param_code || p.id) === newParamCode)
+                            ? `${newParamCode} — ${allParams.find((p) => (p.param_code || p.id) === newParamCode)?.parameter_name}`
+                            : newParamCode
+                          : "Search parameter..."}
+                        <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-72 p-0" align="start">
+                      <Command>
+                        <CommandInput placeholder="Search by code or name..." className="h-8 text-xs" />
+                        <CommandList className="max-h-48">
+                          <CommandEmpty className="py-2 text-xs">No parameter found.</CommandEmpty>
+                          {allParams.map((p) => {
+                            const val = p.param_code || p.id;
+                            return (
+                              <CommandItem
+                                key={p.id}
+                                value={`${p.param_code} ${p.parameter_name}`}
+                                onSelect={() => setNewParamCode(val)}
+                                className="text-xs"
+                              >
+                                <Check className={`mr-1 h-3 w-3 ${newParamCode === val ? "opacity-100" : "opacity-0"}`} />
+                                <span className="font-mono">{p.param_code}</span>
+                                <span className="mx-1">—</span>
+                                <span className="truncate">{p.parameter_name}</span>
+                              </CommandItem>
+                            );
+                          })}
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <Button
+                  size="sm"
+                  className="h-9"
+                  disabled={!newMachineCode.trim() || !newParamCode || addMapping.isPending}
+                  onClick={() => addMapping.mutate({
+                    machineCode: newMachineCode.trim(),
+                    machineId: newMachineId.trim(),
+                    paramCode: newParamCode,
+                  })}
+                >
+                  <Plus className="h-3 w-3 mr-1" /> Add Mapping
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-3">
+                Manually pair an analyzer's machine code with an existing parameter. If the same Machine Code + Machine ID already exists, it will be updated.
+              </p>
             </CardContent>
           </Card>
 
