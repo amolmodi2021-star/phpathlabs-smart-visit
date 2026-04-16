@@ -1,65 +1,56 @@
 
-## Rebuild Plan: Barcode Printing Once and for All
 
-### What I found in the current code
-- `src/lib/barcodePrint.ts` still prints through a popup window with browser-managed pagination.
-- The barcode SVG is being forcibly resized:
-  - `width="42mm"`
-  - `height="8mm"`
-  - `preserveAspectRatio="none"`
-- That combination can distort CODE128 bar widths, which explains why scanning became unreliable again.
-- The print document root is not fully locked to `50mm x 25mm` on every level, so the thermal printer can still interpret a second blank page/label.
+## Plan: Map Machine Results into Results Entry
 
-### Root causes
-1. **Barcode distortion**: the SVG bars are stretched to fit a box instead of printing at their native module widths.
-2. **Thermal pagination issue**: popup/browser print layout is still creating an extra blank label page.
-3. **Layout rounding risk**: the current grid row sizing on a tiny 25mm label can overflow by fractions and trigger an extra feed.
+### Problem
+The middleware POSTs results back with machine codes (e.g. `WBC`, `RBC`). The current `lims-interface` POST handler:
+1. Translates machine_code → `mapped_param_code` (PRM####) ✓
+2. Writes them only to `lims_test_results` table (used by the demo screen)
+3. Does **NOT** write them to `patient_results`, which is what the production **Results Entry** screen reads
 
-### Rebuild approach
-I will fully replace the current barcode print structure in `src/lib/barcodePrint.ts` with a stricter label-rendering flow:
+Result: machine values never appear in Results Entry for technicians to verify.
 
-1. **Switch to an isolated print document**
-   - Replace the current popup-based HTML flow with a dedicated print container structure designed only for label printing.
-   - Ensure `html`, `body`, and each label page are all explicitly `50mm x 25mm` with zero margin, zero padding, zero overflow.
+### Fix — Bridge interface results into `patient_results`
 
-2. **Keep SVG barcode, but never stretch it**
-   - Continue using `JsBarcode` with SVG since that was the last version that scanned properly.
-   - Remove:
-     - forced `42mm` width
-     - forced `8mm` height
-     - `preserveAspectRatio="none"`
-   - Let the barcode render at its own native width/module size and center it inside the label.
-   - Keep proper quiet zone on both sides.
+In `supabase/functions/lims-interface/index.ts` POST branch, after successfully translating + inserting into `lims_test_results`, also write the same mapped values into `patient_results` so they show up in the Results Entry UI.
 
-3. **Rebuild label layout with safer sizing**
-   - Replace the current fragile grid row math with a simpler fixed/flex layout that cannot accidentally exceed 25mm.
-   - Reserve a dedicated barcode band in the middle and clamp text rows above/below it.
+#### Step-by-step logic
 
-4. **Use strict per-label page wrappers**
-   - Each sticker will be rendered inside a single `.page` wrapper.
-   - Apply page break only between labels, never before the first or after the last.
+1. **Resolve registration_id from sample_id**
+   - `sample_id` = `invoice_number[+suffix]` (set during Sample Acceptance).
+   - Strip the trailing single-letter suffix (A/B/C…) if present, then look up `patient_registrations` by `invoice_number` to get `registration_id`.
+   - If not found, skip patient_results write (still log + write to lims_test_results as today).
 
-5. **Print only after the document is fully ready**
-   - Wait until the print document is rendered before calling `print()`.
-   - Keep automatic cleanup after print to avoid stale print state.
+2. **Resolve parameter_id + test_id from `mapped_param_code`**
+   - Query `report_test_parameters` by `param_code IN (...)` → get `id` (parameter_id), `parameter_name`, `unit`, `normal_range_low/high/text`.
+   - Query `test_parameters` joined with `tests` to find which `test_id` this parameter belongs to within the registration's tests list. If a parameter belongs to multiple tests, prefer the one present in `patient_registrations.tests[]`.
 
-### Expected result
-- **Single barcode print = exactly 1 sticker**
-- **Multiple barcodes = exactly the same number of stickers**
-- No blank leading sticker
-- No blank trailing sticker
-- Barcode remains machine-scannable
+3. **Compute flag** server-side using the parameter's normal range:
+   - Numeric: `< low` → `L`, `> high` → `H`, else `N`.
+   - If parameter has descriptive/qualitative range, leave flag as machine-provided or empty.
 
-### File to update
-- `src/lib/barcodePrint.ts`
+4. **Upsert into `patient_results`** (no unique constraint exists, so do manual select-then-insert/update):
+   - Match on `(registration_id, parameter_id)`.
+   - If exists with `status = "pending"` or empty `result_value` → UPDATE `result_value`, `flag`, `unit`, `is_from_interface = true`, `entered_at = now()`, `entered_by = 'INTERFACE'`, keep `status = 'pending'` (technician still reviews).
+   - If does not exist → INSERT a new row with `status = 'pending'`, `is_from_interface = true`.
+   - If row already has `status` beyond `pending` (entered/verified/approved) → SKIP (don't overwrite human-entered or verified values).
 
-### Technical implementation notes
-- Preserve invoice number as the barcode value, since that is the instrument-facing barcode standard in this project.
-- Keep `sample_uid` only as printed text reference, not as the encoded barcode.
-- Main rule for the rebuild:
-```text
-Generate barcode at native SVG size
-→ do not stretch it
-→ center it inside a fixed 50mm x 25mm page
-→ break pages only between labels
-```
+5. **Trigger status recalculation** — after writes, no need to call `recalculateRegistrationStatus` from the edge function (that runs client-side); the realtime sync hook (`useRealtimeSync("patient_results", ...)`) on Results Entry will auto-refresh and the new row appears, pre-filled with `isFromInterface: true`.
+
+6. **Keep existing behavior** — `lims_test_results` and `lims_test_orders` updates remain unchanged. Unmapped results still go to `lims_unmapped_results`.
+
+7. **Response payload** — extend with `patient_results_written: <count>` and `registration_resolved: true|false` for traceability in `lims_interface_logs`.
+
+### Why this is safe
+- Only writes to `patient_results` rows that are **pending or new** — never overwrites technician-entered, verified, or approved data.
+- `is_from_interface = true` flag already drives existing UI behavior in Results Entry / Verification / Approval (visible in current code).
+- Realtime sync already in place — no frontend changes required.
+- Falls back gracefully if registration or parameter cannot be resolved (logged, no crash).
+
+### File
+- `supabase/functions/lims-interface/index.ts` — POST branch only
+
+### No DB / frontend changes needed
+- No schema changes.
+- Results Entry already reads `patient_results` via `useQuery(["patient_results_existing", ...])` and displays values with the interface badge.
+
