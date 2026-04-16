@@ -123,11 +123,7 @@ const LimsDemo = () => {
     queryKey: ["lims-unmapped"],
     queryFn: async () => {
       const { data } = await supabase.from("lims_unmapped_results").select("*").eq("is_resolved", false).order("received_at", { ascending: false });
-      if (!data) return [];
-      // Filter out results whose machine_code already has a mapping
-      const { data: mappings } = await supabase.from("lims_code_mapping").select("machine_code");
-      const mappedCodes = new Set((mappings || []).map((m: any) => m.machine_code));
-      return data.filter((r: any) => !mappedCodes.has(r.machine_code));
+      return data || [];
     },
   });
 
@@ -194,14 +190,22 @@ const LimsDemo = () => {
       const param = allParams.find((p) => p.param_code === paramCode);
       if (!param) throw new Error("Parameter not found");
 
-      // Insert code mapping
-      const { error: mapErr } = await supabase.from("lims_code_mapping").upsert({
-        machine_code: machineCode,
-        machine_id: machineId || "",
-        mapped_param_code: paramCode,
-        parameter_name: param.parameter_name || "",
-      }, { onConflict: "machine_code,machine_id" });
-      if (mapErr) throw mapErr;
+      // Insert code mapping (allow multiple param codes per machine_code)
+      const { data: existingMap } = await supabase.from("lims_code_mapping")
+        .select("id")
+        .eq("machine_code", machineCode)
+        .eq("machine_id", machineId || "")
+        .eq("mapped_param_code", paramCode)
+        .maybeSingle();
+      if (!existingMap) {
+        const { error: mapErr } = await supabase.from("lims_code_mapping").insert({
+          machine_code: machineCode,
+          machine_id: machineId || "",
+          mapped_param_code: paramCode,
+          parameter_name: param.parameter_name || "",
+        });
+        if (mapErr) throw mapErr;
+      }
 
       // Move clicked result to lims_test_results
       const { error: resErr } = await supabase.from("lims_test_results").insert({
@@ -286,12 +290,20 @@ const LimsDemo = () => {
     mutationFn: async ({ machineCode, machineId, paramCode }: { machineCode: string; machineId: string; paramCode: string }) => {
       const param = allParams.find((p) => (p.param_code || p.id) === paramCode);
       if (!param) throw new Error("Parameter not found");
-      const { error } = await supabase.from("lims_code_mapping").upsert({
+      // Allow same machine_code with different mapped_param_code (1:N mapping)
+      const { data: existingMap } = await supabase.from("lims_code_mapping")
+        .select("id")
+        .eq("machine_code", machineCode)
+        .eq("machine_id", machineId || "")
+        .eq("mapped_param_code", paramCode)
+        .maybeSingle();
+      if (existingMap) throw new Error("This exact mapping already exists");
+      const { error } = await supabase.from("lims_code_mapping").insert({
         machine_code: machineCode,
         machine_id: machineId || "",
         mapped_param_code: paramCode,
         parameter_name: param.parameter_name || "",
-      }, { onConflict: "machine_code,machine_id" });
+      });
       if (error) throw error;
     },
     onSuccess: () => {
