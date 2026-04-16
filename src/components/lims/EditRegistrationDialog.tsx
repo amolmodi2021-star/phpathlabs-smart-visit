@@ -55,6 +55,10 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   const [saving, setSaving] = useState(false);
   const [homeVisitRefundRequested, setHomeVisitRefundRequested] = useState(false);
 
+  // Overpayment refund (from discount change)
+  const [overpaymentRefundMode, setOverpaymentRefundMode] = useState<string>("Cash");
+  const [showOverpaymentRefundPwd, setShowOverpaymentRefundPwd] = useState(false);
+
   // Discount editing
   const [editTests, setEditTests] = useState<any[]>([]);
   const [globalDiscountType, setGlobalDiscountType] = useState<"percent" | "amount">("percent");
@@ -193,6 +197,13 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   const editPaidAmount = Array.from(selectedModes).reduce((sum, mode) => sum + (modeAmounts[mode] || 0), 0);
   const paymentModesMismatch = lockedPaidAmount > 0 && selectedModes.size > 1 && Math.abs(editPaidAmount - lockedPaidAmount) > 0.01;
 
+  // Overpayment detection when discount reduces final below paid
+  const discountOverpayment = discountChanged && discountCalc.finalAmount < lockedPaidAmount
+    ? lockedPaidAmount - discountCalc.finalAmount : 0;
+
+  // Disable save if overpayment exists but no refund mode acknowledged via password
+  const overpaymentBlocksSave = discountOverpayment > 0;
+
   if (!reg) return null;
 
   const handleSaveDetails = async () => {
@@ -225,12 +236,47 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         updateData.net_amount = discountCalc.totalAmount - discountCalc.totalDiscount;
         updateData.global_discount_type = globalDiscountValue > 0 ? globalDiscountType : null;
         updateData.global_discount_value = globalDiscountValue;
+        // Recalculate due_amount to keep Due Payments section accurate
+        updateData.due_amount = Math.max(0, discountCalc.finalAmount - lockedPaidAmount);
       }
 
       const { error } = await supabase.from("patient_registrations").update(updateData).eq("id", reg.id);
       if (error) throw error;
       qc.invalidateQueries({ queryKey: ["patient_registrations"] });
       toast.success("Registration updated");
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const processOverpaymentRefund = async () => {
+    setSaving(true);
+    try {
+      const existingRefund = Number(reg.refund_amount || 0);
+      const updateData: any = {
+        tests: discountCalc.updatedTests,
+        gross_amount: discountCalc.totalAmount,
+        discount_amount: discountCalc.totalDiscount,
+        final_amount: discountCalc.finalAmount,
+        net_amount: discountCalc.totalAmount - discountCalc.totalDiscount,
+        global_discount_type: globalDiscountValue > 0 ? globalDiscountType : null,
+        global_discount_value: globalDiscountValue,
+        due_amount: 0,
+        paid_amount: discountCalc.finalAmount,
+        refund_amount: existingRefund + discountOverpayment,
+        refund_mode: overpaymentRefundMode,
+        refund_date: new Date().toISOString(),
+        payments: Array.from(selectedModes)
+          .filter(m => (modeAmounts[m] || 0) > 0)
+          .map(m => ({ mode: m, amount: modeAmounts[m] || 0 })),
+      };
+      const { error } = await supabase.from("patient_registrations").update(updateData).eq("id", reg.id);
+      if (error) throw error;
+      qc.invalidateQueries({ queryKey: ["patient_registrations"] });
+      toast.success(`Discount applied & ₹${discountOverpayment} refunded via ${overpaymentRefundMode}`);
+      onOpenChange(false);
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -513,8 +559,8 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
             )}
 
             {!isBillCancelled && (
-              <Button onClick={handleSaveDetails} disabled={saving || paymentModesMismatch} className="w-full">
-                <Save className="h-4 w-4 mr-2" />Save Details
+              <Button onClick={handleSaveDetails} disabled={saving || paymentModesMismatch || overpaymentBlocksSave} className="w-full">
+                <Save className="h-4 w-4 mr-2" />{overpaymentBlocksSave ? "Process Refund Below First" : "Save Details"}
               </Button>
             )}
           </div>
@@ -607,14 +653,38 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
 
             {/* Discount change summary */}
             {discountChanged && (
-              <div className="p-3 rounded border border-blue-300 bg-blue-50 space-y-1 text-sm">
-                <div className="font-medium text-blue-700">Discount Changed</div>
+              <div className={`p-3 rounded border space-y-1 text-sm ${discountOverpayment > 0 ? "border-orange-400 bg-orange-50" : "border-blue-300 bg-blue-50"}`}>
+                <div className={`font-medium ${discountOverpayment > 0 ? "text-orange-700" : "text-blue-700"}`}>Discount Changed</div>
                 <div className="flex justify-between"><span>New Gross:</span><span>₹{discountCalc.totalAmount}</span></div>
                 <div className="flex justify-between text-green-600"><span>New Discount:</span><span>-₹{discountCalc.totalDiscount}</span></div>
                 {discountCalc.hvc > 0 && <div className="flex justify-between"><span>Home Visit:</span><span>+₹{discountCalc.hvc}</span></div>}
                 <div className="flex justify-between font-bold border-t pt-1"><span>New Final:</span><span>₹{discountCalc.finalAmount}</span></div>
-                <div className="flex justify-between"><span>Paid:</span><span>₹{editPaidAmount}</span></div>
-                <div className="flex justify-between text-destructive"><span>New Due:</span><span>₹{Math.max(0, discountCalc.finalAmount - editPaidAmount)}</span></div>
+                <div className="flex justify-between"><span>Paid:</span><span>₹{lockedPaidAmount}</span></div>
+
+                {discountOverpayment > 0 ? (
+                  <>
+                    <div className="flex justify-between text-orange-700 font-bold"><span>⚠ Overpaid:</span><span>₹{discountOverpayment}</span></div>
+                    <Separator className="my-2" />
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium text-orange-800">Refund ₹{discountOverpayment} to patient</div>
+                      <div className="flex items-center gap-3">
+                        <Label className="text-sm">Refund Mode:</Label>
+                        <Select value={overpaymentRefundMode} onValueChange={setOverpaymentRefundMode}>
+                          <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Cash">Cash</SelectItem>
+                            <SelectItem value="NEFT">NEFT</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button variant="destructive" size="sm" onClick={() => setShowOverpaymentRefundPwd(true)} disabled={saving}>
+                        <RotateCcw className="h-4 w-4 mr-2" />Apply Discount & Process Refund
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex justify-between text-destructive"><span>New Due:</span><span>₹{Math.max(0, discountCalc.finalAmount - lockedPaidAmount)}</span></div>
+                )}
               </div>
             )}
 
@@ -684,7 +754,11 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
             {(discountChanged ? discountCalc.hvc : reg.home_visit_charges) > 0 && <div className="flex justify-between"><span>Home Visit Charges:</span><span>+₹{discountChanged ? discountCalc.hvc : reg.home_visit_charges}</span></div>}
             <div className="flex justify-between font-bold border-t pt-1"><span>Final Amount:</span><span>₹{discountChanged ? discountCalc.finalAmount : reg.final_amount}</span></div>
             <div className="flex justify-between"><span>Paid:</span><span>₹{reg.paid_amount}</span></div>
-            {(discountChanged ? Math.max(0, discountCalc.finalAmount - editPaidAmount) : reg.due_amount) > 0 && <div className="flex justify-between text-destructive font-bold"><span>Due:</span><span>₹{discountChanged ? Math.max(0, discountCalc.finalAmount - editPaidAmount) : reg.due_amount}</span></div>}
+            {discountOverpayment > 0 ? (
+              <div className="flex justify-between text-orange-600 font-bold"><span>To Refund:</span><span>₹{discountOverpayment}</span></div>
+            ) : (
+              (discountChanged ? Math.max(0, discountCalc.finalAmount - lockedPaidAmount) : reg.due_amount) > 0 && <div className="flex justify-between text-destructive font-bold"><span>Due:</span><span>₹{discountChanged ? Math.max(0, discountCalc.finalAmount - lockedPaidAmount) : reg.due_amount}</span></div>
+            )}
             {reg.refund_amount > 0 && <div className="flex justify-between text-orange-600"><span>Refunded:</span><span>₹{reg.refund_amount}</span></div>}
           </div>
 
@@ -741,6 +815,12 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
           toast.success("Discount editing unlocked for this session");
         }}
         description="Sample has passed accepted stage. Enter admin password to unlock discount editing."
+      />
+      <DeletePasswordDialog
+        open={showOverpaymentRefundPwd}
+        onOpenChange={setShowOverpaymentRefundPwd}
+        onSuccess={processOverpaymentRefund}
+        description={`Applying discount will reduce the final amount to ₹${discountCalc.finalAmount}. Refund ₹${discountOverpayment} to patient via ${overpaymentRefundMode}.`}
       />
     </>
   );
