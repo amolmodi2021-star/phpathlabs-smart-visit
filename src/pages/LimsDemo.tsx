@@ -120,7 +120,11 @@ const LimsDemo = () => {
     queryKey: ["lims-unmapped"],
     queryFn: async () => {
       const { data } = await supabase.from("lims_unmapped_results").select("*").eq("is_resolved", false).order("received_at", { ascending: false });
-      return data || [];
+      if (!data) return [];
+      // Filter out results whose machine_code already has a mapping
+      const { data: mappings } = await supabase.from("lims_code_mapping").select("machine_code");
+      const mappedCodes = new Set((mappings || []).map((m: any) => m.machine_code));
+      return data.filter((r: any) => !mappedCodes.has(r.machine_code));
     },
   });
 
@@ -196,7 +200,7 @@ const LimsDemo = () => {
       }, { onConflict: "machine_code,machine_id" });
       if (mapErr) throw mapErr;
 
-      // Move result to lims_test_results
+      // Move clicked result to lims_test_results
       const { error: resErr } = await supabase.from("lims_test_results").insert({
         order_id: orderId,
         sample_id: sid,
@@ -209,9 +213,35 @@ const LimsDemo = () => {
       });
       if (resErr) throw resErr;
 
-      // Mark as resolved
+      // Mark clicked row as resolved
       const { error: resolveErr } = await supabase.from("lims_unmapped_results").update({ is_resolved: true }).eq("id", unmappedId);
       if (resolveErr) throw resolveErr;
+
+      // Auto-resolve all other unmapped results with the same machine_code
+      const { data: siblings } = await supabase.from("lims_unmapped_results")
+        .select("*")
+        .eq("machine_code", machineCode)
+        .eq("is_resolved", false)
+        .neq("id", unmappedId);
+      
+      if (siblings && siblings.length > 0) {
+        // Insert each sibling's result into lims_test_results
+        const siblingResults = siblings.map((s: any) => ({
+          order_id: s.order_id,
+          sample_id: s.sample_id,
+          test_code: paramCode,
+          test_name: param.parameter_name || "",
+          result_value: s.result_value,
+          unit: s.unit,
+          reference_range: s.reference_range,
+          flag: s.flag,
+        }));
+        await supabase.from("lims_test_results").insert(siblingResults);
+
+        // Mark all siblings as resolved
+        const siblingIds = siblings.map((s: any) => s.id);
+        await supabase.from("lims_unmapped_results").update({ is_resolved: true }).in("id", siblingIds);
+      }
     },
     onSuccess: () => {
       toast({ title: "Mapped & resolved", description: "Result moved to results table and mapping saved" });
