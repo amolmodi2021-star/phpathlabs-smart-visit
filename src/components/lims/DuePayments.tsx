@@ -12,6 +12,7 @@ import { Search, Loader2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import InvoicePreview from "./InvoicePreview";
+import { logPaymentTransaction } from "@/lib/paymentTransactions";
 
 const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card", "NEFT"];
 
@@ -128,6 +129,21 @@ const DuePayments = () => {
       setInvoiceData({
         ...selected,
         payments: newPayments,
+        paid_amount: newPaid,
+        due_amount: Math.max(0, newDue),
+      });
+      // Log due collection transaction
+      logPaymentTransaction({
+        registration_id: selected.id,
+        invoice_number: selected.invoice_number,
+        patient_name: selected.patient_name,
+        transaction_type: "due_collection",
+        direction: "in",
+        payments: newEntries,
+        total_amount: totalPaying,
+        gross_amount: selected.gross_amount || 0,
+        discount_amount: selected.discount_amount || 0,
+        final_amount: (selected.net_amount || 0) + (selected.home_visit_charges || 0),
         paid_amount: newPaid,
         due_amount: Math.max(0, newDue),
       });
