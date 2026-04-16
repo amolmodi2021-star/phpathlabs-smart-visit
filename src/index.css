@@ -59,6 +59,12 @@ input[type="number"] {
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
+
+    /* Safe area insets for notched devices */
+    --sat: env(safe-area-inset-top, 0px);
+    --sar: env(safe-area-inset-right, 0px);
+    --sab: env(safe-area-inset-bottom, 0px);
+    --sal: env(safe-area-inset-left, 0px);
   }
 }
 
@@ -70,12 +76,47 @@ input[type="number"] {
   body {
     @apply bg-background text-foreground font-sans antialiased;
     font-family: 'IBM Plex Sans', sans-serif;
+    /* Prevent iOS zoom on input focus */
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* Prevent iOS auto-zoom on focused inputs */
+  @supports (-webkit-touch-callout: none) {
+    input, select, textarea {
+      font-size: 16px !important;
+    }
   }
 }
 
 @layer utilities {
   .glass-card {
     @apply bg-card/80 backdrop-blur-sm border border-border/50 shadow-sm;
+  }
+}
+
+/* Mobile-friendly tables: horizontal scroll */
+@layer components {
+  .table-responsive {
+    @apply overflow-x-auto -mx-4 px-4;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Touch-friendly tap targets */
+@media (pointer: coarse) {
+  button, a, [role="button"], [role="tab"], [role="menuitem"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Safe-area padding for standalone PWA mode */
+@media all and (display-mode: standalone) {
+  body {
+    padding-top: var(--sat);
+    padding-left: var(--sal);
+    padding-right: var(--sar);
+    padding-bottom: var(--sab);
   }
 }
 
