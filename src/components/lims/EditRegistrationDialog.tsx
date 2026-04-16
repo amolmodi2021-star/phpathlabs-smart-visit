@@ -492,6 +492,25 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       if (error) throw error;
       qc.invalidateQueries({ queryKey: ["patient_registrations"] });
       toast.success(`Bill cancelled. Full refund: ₹${totalPaid} via ${refundMode}`);
+      // Log bill cancellation refund
+      if (totalPaid > 0) {
+        logPaymentTransaction({
+          registration_id: reg.id,
+          invoice_number: reg.invoice_number,
+          patient_name: patientName,
+          transaction_type: "bill_cancellation",
+          direction: "out",
+          payments: [{ mode: refundMode, amount: totalPaid }],
+          total_amount: totalPaid,
+          gross_amount: reg.gross_amount || 0,
+          discount_amount: reg.discount_amount || 0,
+          final_amount: 0,
+          paid_amount: 0,
+          due_amount: 0,
+          refund_amount: totalPaid,
+          remarks: "Full bill cancellation",
+        });
+      }
       onOpenChange(false);
     } catch (e: any) {
       toast.error(e.message);
