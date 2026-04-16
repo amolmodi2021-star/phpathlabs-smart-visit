@@ -653,14 +653,38 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
 
             {/* Discount change summary */}
             {discountChanged && (
-              <div className="p-3 rounded border border-blue-300 bg-blue-50 space-y-1 text-sm">
-                <div className="font-medium text-blue-700">Discount Changed</div>
+              <div className={`p-3 rounded border space-y-1 text-sm ${discountOverpayment > 0 ? "border-orange-400 bg-orange-50" : "border-blue-300 bg-blue-50"}`}>
+                <div className={`font-medium ${discountOverpayment > 0 ? "text-orange-700" : "text-blue-700"}`}>Discount Changed</div>
                 <div className="flex justify-between"><span>New Gross:</span><span>₹{discountCalc.totalAmount}</span></div>
                 <div className="flex justify-between text-green-600"><span>New Discount:</span><span>-₹{discountCalc.totalDiscount}</span></div>
                 {discountCalc.hvc > 0 && <div className="flex justify-between"><span>Home Visit:</span><span>+₹{discountCalc.hvc}</span></div>}
                 <div className="flex justify-between font-bold border-t pt-1"><span>New Final:</span><span>₹{discountCalc.finalAmount}</span></div>
-                <div className="flex justify-between"><span>Paid:</span><span>₹{editPaidAmount}</span></div>
-                <div className="flex justify-between text-destructive"><span>New Due:</span><span>₹{Math.max(0, discountCalc.finalAmount - editPaidAmount)}</span></div>
+                <div className="flex justify-between"><span>Paid:</span><span>₹{lockedPaidAmount}</span></div>
+
+                {discountOverpayment > 0 ? (
+                  <>
+                    <div className="flex justify-between text-orange-700 font-bold"><span>⚠ Overpaid:</span><span>₹{discountOverpayment}</span></div>
+                    <Separator className="my-2" />
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium text-orange-800">Refund ₹{discountOverpayment} to patient</div>
+                      <div className="flex items-center gap-3">
+                        <Label className="text-sm">Refund Mode:</Label>
+                        <Select value={overpaymentRefundMode} onValueChange={setOverpaymentRefundMode}>
+                          <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Cash">Cash</SelectItem>
+                            <SelectItem value="NEFT">NEFT</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button variant="destructive" size="sm" onClick={() => setShowOverpaymentRefundPwd(true)} disabled={saving}>
+                        <RotateCcw className="h-4 w-4 mr-2" />Apply Discount & Process Refund
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex justify-between text-destructive"><span>New Due:</span><span>₹{Math.max(0, discountCalc.finalAmount - lockedPaidAmount)}</span></div>
+                )}
               </div>
             )}
 
