@@ -72,7 +72,8 @@ export const printBarcodes = async (reg: any, tubes: BarcodeTube[]): Promise<voi
   tubes.forEach((tube, idx) => {
     if (idx > 0) doc.addPage([50, 25], "landscape");
 
-    const barcodeValue = tube.suffix ? `${reg.invoice_number}${tube.suffix}` : reg.invoice_number;
+    const cleanSuffix = tube.suffix?.trim();
+    const barcodeValue = cleanSuffix ? `${reg.invoice_number}${cleanSuffix}` : reg.invoice_number;
 
     // --- Row 1: invoice number (left) | age/sex (right) ---
     doc.setFontSize(7);
