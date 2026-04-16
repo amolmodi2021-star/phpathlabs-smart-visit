@@ -55,6 +55,10 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   const [saving, setSaving] = useState(false);
   const [homeVisitRefundRequested, setHomeVisitRefundRequested] = useState(false);
 
+  // Overpayment refund (from discount change)
+  const [overpaymentRefundMode, setOverpaymentRefundMode] = useState<string>("Cash");
+  const [showOverpaymentRefundPwd, setShowOverpaymentRefundPwd] = useState(false);
+
   // Discount editing
   const [editTests, setEditTests] = useState<any[]>([]);
   const [globalDiscountType, setGlobalDiscountType] = useState<"percent" | "amount">("percent");
