@@ -1,34 +1,44 @@
 
 
-## Fix: Skipped Sticker + Small Barcode
+## Fix: Barcode Not Scannable
 
-### Three fixes in `src/lib/barcodePrint.ts`
+### Root cause
+Three rendering issues are degrading scanner readability:
 
-**1. Remove the duplicate page-break (fixes blank sticker between labels)**
-- Currently the `.label` has BOTH `page-break-after: always` AND `break-after: page`. With `@page size: 50mm 25mm`, this double-directive causes Chrome to emit an extra empty page on some printers.
-- Keep only the modern `break-after: page` and `break-inside: avoid`. Remove the legacy `page-break-after` and `page-break-inside` lines.
+1. **`image-rendering: pixelated` + `width: 100%` stretch** — The PNG is generated at a fixed canvas pixel width (e.g. ~400px for short codes, larger for long codes), then scaled by the browser to fill ~48mm. With `pixelated`, the scaling produces **uneven bar widths** (some bars become 2px wide, neighbors become 3px wide). Scanners reject CODE128 when the module-width ratio isn't consistent.
+2. **No quiet zone validated against CODE128 spec** — CODE128 requires a quiet zone of **≥10× the narrow bar width** on each side. With ~0.4mm bars, that's ~4mm — but we only give 1mm CSS padding. Many handheld scanners refuse to decode.
+3. **PNG raster + browser scaling** — Even with crisp-edges, raster scaling at print resolution (often 203 DPI on thermal, 600 DPI on laser) creates anti-aliased gray edges that scanners read as "in-between" bars.
 
-**2. Make barcode fill the sticker width (fixes tiny barcode)**
-- Currently `JsBarcode` is generated with `margin: 10` — this bakes ~5mm of white quiet zone INSIDE the PNG, then the PNG is capped at `max-width: 47mm`. Net: bars only span ~30mm (matches your photo).
-- **Move the quiet zone to CSS instead of baking it into the image:**
-  - Generate barcode with `margin: 0` (no internal padding)
-  - Increase module `width` from `2` to `4` for sharper bars at higher source resolution
-  - Increase `height` from `60` to `80` for crisp tall bars
-- **Sticker CSS provides the quiet zone via padding:**
-  - Change `.barcode-wrap` to `padding: 0 1mm` (1mm white space each side = sufficient quiet zone for CODE128)
-  - Change `.barcode-wrap img` to `width: 100%` and `height: 8mm` — barcode now fills full ~46mm width
-  - Keep `image-rendering: pixelated` for crisp thermal print
+### The fix — render barcode as SVG sized in mm
 
-**3. Tighten label padding (gives barcode max horizontal space)**
-- Change `.label` padding from `1mm 1.2mm` to `0.5mm 0.8mm` (minimal left/right padding)
-- This gives the barcode roughly 48mm of usable width — full sticker utilization
-- Adjust grid rows to `3mm 3mm 8mm 2.8mm 3mm` to accommodate slightly taller barcode
+Switch `JsBarcode` from canvas/PNG to **SVG output**, sized directly in millimeters. SVG is vector — the printer rasterizes at native DPI with **mathematically perfect bar widths**, no scaling artifacts.
+
+**Changes in `src/lib/barcodePrint.ts`:**
+
+1. **Generate barcode as SVG, not PNG**
+   - Create an `<svg>` element instead of `<canvas>`
+   - `JsBarcode(svg, value, { format: "CODE128", width: 2, height: 40, displayValue: false, margin: 0 })`
+   - Module width `2` (SVG units) gives clean ratios; the SVG itself is then sized via attributes
+   - Inject `svg.outerHTML` directly into the print HTML (no `toDataURL`)
+
+2. **Size the SVG explicitly in mm**
+   - Set `width="42mm" height="8mm"` as SVG attributes (not CSS) so the printer driver gets exact physical dimensions
+   - Remove `preserveAspectRatio` issues by setting `preserveAspectRatio="none"` — bars stretch uniformly
+
+3. **Proper quiet zone via centered container**
+   - `.barcode-wrap` becomes `padding: 0 3mm` (3mm each side = sufficient quiet zone for CODE128 at this bar width)
+   - Sticker is 50mm wide → 50 − 6 (quiet zone) − 1.6 (label padding) ≈ 42mm barcode width
+   - SVG centered within wrap
+
+4. **Remove `image-rendering: pixelated`** — no longer needed; SVG is vector.
+
+5. **Keep CODE128 module ratio integer-clean** — with SVG `width: 2` and explicit `width="42mm"`, the printer scales vector coordinates uniformly. No fractional-pixel jitter.
 
 ### Why this works
-- **Skipped sticker**: Browsers honoring both old + new page-break rules can double-trigger the page eject. Using only `break-after: page` ensures one label = one page = one sticker.
-- **Larger barcode**: A CODE128 barcode at ~46mm wide with `width: 4` produces module bars ~0.4mm wide — well above the 0.25mm scanner minimum, with sharp edges from the high-res source.
-- **No font change needed**: CODE128 is a vector standard, not a font. The issue was purely sizing/quiet-zone placement.
+- **Vector = perfect bars**: Thermal/laser printers rasterize SVG at their native DPI. Every narrow bar prints exactly the same width; every wide bar is exactly 2× or 3×. This is what CODE128 scanners require.
+- **Real quiet zone**: 3mm white space each side ≥ 10× narrow bar width (0.25mm) → meets ISO/IEC 15417 quiet zone spec.
+- **No scaling distortion**: The `width: 100% + pixelated` PNG stretch was the real culprit — even crisp PNGs become unreadable when scaled non-integer-multiples.
 
 ### File
-- `src/lib/barcodePrint.ts` — only file changed (used by both Sample Collection and Sample Acceptance prints)
+- `src/lib/barcodePrint.ts` — only file changed.
 
