@@ -49,14 +49,14 @@ export const printBarcodes = async (reg: any, tubes: BarcodeTube[]): Promise<voi
         width: 50mm; height: 25mm;
         padding: 0.5mm 0.8mm;
         box-sizing: border-box;
-        break-after: page;
         break-inside: avoid;
+        page-break-inside: avoid;
         overflow: hidden;
         display: grid;
         grid-template-rows: 3mm 3mm 8mm 2.8mm 3mm;
         row-gap: 0.3mm;
       }
-      .label:last-child { break-after: auto; }
+      .label + .label { break-before: page; page-break-before: always; }
       .row1 { display: flex; justify-content: space-between; font-size: 7pt; font-weight: bold; line-height: 1; white-space: nowrap; overflow: hidden; }
       .row2 { font-size: 6.5pt; font-weight: bold; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .barcode-wrap { text-align: center; line-height: 0; overflow: hidden; padding: 0 3mm; box-sizing: border-box; display: flex; align-items: center; justify-content: center; }
