@@ -272,7 +272,7 @@ const SampleCollection = () => {
         html += `<div class="label">
           <div class="row1"><span>${reg.invoice_number}</span><span>${age}${gender ? `/${gender}` : ""}</span></div>
           <div class="row2">${patientName}${location ? ` &nbsp; PH ${location}` : ""}</div>
-          <div class="barcode-wrap"><img src="${barcodeDataUrl}" style="width:42mm;height:8mm;" /></div>
+          <div class="barcode-wrap"><img src="${barcodeDataUrl}" style="width:42mm;height:7mm;" /></div>
           <div class="sample-id">${barcodeValue} &nbsp; <small style="color:#888">${tube.sample_uid}</small></div>
           <div class="row-bottom">
             <span>${tube.sample_type || tube.tube_type || ""}</span>
