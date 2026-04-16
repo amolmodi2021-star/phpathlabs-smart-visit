@@ -822,7 +822,6 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         onSuccess={processOverpaymentRefund}
         description={`Applying discount will reduce the final amount to ₹${discountCalc.finalAmount}. Refund ₹${discountOverpayment} to patient via ${overpaymentRefundMode}.`}
       />
-      />
     </>
   );
 };
