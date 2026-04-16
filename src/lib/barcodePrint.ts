@@ -90,7 +90,7 @@ export const printBarcodes = async (reg: any, tubes: BarcodeTube[]): Promise<voi
     // --- Barcode (centered, 46mm x 12mm) — taller + proper quiet zone for Indiko Plus ---
     try {
       const png = renderBarcodePng(barcodeValue);
-      doc.addImage(png, "PNG", 2, 6.5, 46, 12, undefined, "FAST");
+      doc.addImage(png, "PNG", 6.5, 7.5, 37, 10, undefined, "FAST");
     } catch (err) {
       console.error("Barcode render failed:", err);
     }
