@@ -375,17 +375,25 @@ const SampleCollection = () => {
               </span>
             )}
           </h4>
-          {isPending && pendingTubes.length > 0 && (
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={() => toggleAllPendingTubes(reg.id, tubes, !allPendingSelected)}>
-                {allPendingSelected ? "Deselect All" : "Select All"}
+          <div className="flex gap-2">
+            {isPending && pendingTubes.length > 0 && (
+              <>
+                <Button size="sm" variant="outline" onClick={() => toggleAllPendingTubes(reg.id, tubes, !allPendingSelected)}>
+                  {allPendingSelected ? "Deselect All" : "Select All"}
+                </Button>
+                <Button size="sm" variant="default" className="gap-1" disabled={selectedPendingCount === 0}
+                  onClick={() => handlePrintAndCollect(reg, tubes)}>
+                  <Printer className="h-3.5 w-3.5" /> Print & Collect ({selectedPendingCount})
+                </Button>
+              </>
+            )}
+            {!isPending && collectedTubes.length > 0 && (
+              <Button size="sm" variant="outline" className="gap-1"
+                onClick={() => { doPrintBarcodes(reg, collectedTubes); toast.success(`Reprinted all ${collectedTubes.length} barcode(s)`); }}>
+                <Printer className="h-3.5 w-3.5" /> Print All ({collectedTubes.length})
               </Button>
-              <Button size="sm" variant="default" className="gap-1" disabled={selectedPendingCount === 0}
-                onClick={() => handlePrintAndCollect(reg, tubes)}>
-                <Printer className="h-3.5 w-3.5" /> Print & Collect ({selectedPendingCount})
-              </Button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         <div className="grid gap-2">
@@ -394,7 +402,7 @@ const SampleCollection = () => {
             const isCollected = tube.status === "collected";
             const isSelected = regSel.has(tube.id);
             return (
-              <Card key={tube.id} className={`${isCollected ? "opacity-60" : ""} ${isPending && !isCollected && isSelected ? "ring-2 ring-primary" : ""}`}>
+              <Card key={tube.id} className={`${isCollected && isPending ? "opacity-60" : ""} ${isPending && !isCollected && isSelected ? "ring-2 ring-primary" : ""}`}>
                 <CardContent className="p-3 flex items-center gap-3">
                   {isPending && !isCollected && (
                     <Checkbox checked={isSelected} onCheckedChange={() => toggleTube(reg.id, tube.id)} />
@@ -404,7 +412,7 @@ const SampleCollection = () => {
                       style={{ backgroundColor: colorHex }} title={tube.tube_color || ""} />
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-mono font-bold text-sm">{tube.sample_uid}</span>
                       <Badge variant="outline" className="text-xs">
                         {(tube.tube_type || "DEFAULT") === "DEFAULT" ? "No Tube" : tube.tube_type}
@@ -430,6 +438,12 @@ const SampleCollection = () => {
                   {isPending && !isCollected && (
                     <Button size="sm" variant="ghost" className="shrink-0"
                       onClick={(e) => { e.stopPropagation(); handleSinglePrintAndCollect(reg, tube); }}>
+                      <Printer className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                  {!isPending && isCollected && (
+                    <Button size="sm" variant="ghost" className="shrink-0" title="Reprint this barcode"
+                      onClick={(e) => { e.stopPropagation(); doPrintBarcodes(reg, [tube]); toast.success(`Reprinted barcode for ${tube.sample_uid}`); }}>
                       <Printer className="h-3.5 w-3.5" />
                     </Button>
                   )}
