@@ -204,6 +204,8 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   // Disable save if overpayment exists but no refund mode acknowledged via password
   const overpaymentBlocksSave = discountOverpayment > 0;
 
+  if (!reg) return null;
+
   const handleSaveDetails = async () => {
     setSaving(true);
     try {
