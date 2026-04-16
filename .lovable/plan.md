@@ -1,59 +1,40 @@
 
 
-## Re-analysis: Suffix is NOT the Problem
+## Plan: Use Pure Native CODE128 — No Formatting Tweaks
 
-User confirms old LIMS also uses alphanumeric suffixes and works fine on Indiko Plus. So Code 128 Subset B with alphanumerics is acceptable to the analyzer. The issue must be elsewhere.
+### Goal
+Strip all custom barcode formatting (scale boost, height boost, padding, etc.) and let bwip-js render CODE128 in its **default native format** — exactly as the spec defines, no embellishments.
 
-### Comparing the Two Barcodes (from the uploaded image)
-
-Looking again at the image:
-- **Old LIMS barcode (bottom)**: Taller bars, wider quiet zones, thicker bar widths → physically more robust
-- **Lovable barcode (top)**: Shorter bars (8mm), zero padding (`paddingwidth: 0`), thinner bars → analyzer's internal CCD reader struggles
-
-### Real Root Causes (in order of likelihood)
-
-**1. Quiet Zone is ZERO** ⚠️ Most likely cause
-```typescript
-paddingwidth: 0,
-paddingheight: 0,
-```
-CODE128 spec **requires** a quiet zone of **at least 10× the narrowest bar width** on both sides. With `paddingwidth: 0`, bars touch the edge of the image — handheld scanners forgive this, but **fixed-mount analyzer readers (like Indiko Plus's internal reader) strictly enforce it** and refuse to decode.
-
-**2. Bar height too short (8mm)**
-The Indiko Plus internal reader scans a narrow horizontal slit. Old LIMS barcode is visibly ~10-12mm tall. 8mm gives less vertical tolerance for tube rotation/tilt during loading.
-
-**3. Bar width (X-dimension) too thin**
-`scale: 4` at 50mm width with ~10 chars = very thin bars (~0.25mm). Indiko spec sheet typically requires **min X-dimension of 0.30mm (12 mil)** for reliable internal read.
-
-### The Fix — Three Coordinated Changes
-
+### Current State (in `src/lib/barcodePrint.ts`)
 ```typescript
 bwipjs.toCanvas(canvas, {
   bcid: "code128",
   text: value,
-  scale: 5,              // ↑ thicker bars (was 4)
-  height: 12,            // ↑ taller bars in mm (was 8)
+  scale: 5,
+  height: 12,
   includetext: false,
-  paddingwidth: 10,      // ↑ proper quiet zone (was 0)
-  paddingheight: 2,      // ↑ small vertical pad (was 0)
+  paddingwidth: 10,
+  paddingheight: 2,
   backgroundcolor: "FFFFFF",
 });
 ```
 
-And adjust PDF placement to fit the taller barcode:
+### Change To — Native Defaults Only
 ```typescript
-doc.addImage(png, "PNG", 2, 6.5, 46, 12, undefined, "FAST");  // wider, taller
+bwipjs.toCanvas(canvas, {
+  bcid: "code128",
+  text: value,
+  includetext: false,
+});
 ```
 
-Plus shift the sample ID line and bottom row down to accommodate the taller barcode within the 25mm sticker.
+That's it. No scale, no height, no padding, no background color overrides. bwip-js will use its built-in CODE128 defaults (scale 2, height 10mm, default quiet zone per spec).
 
-### Why This Will Work
-- Quiet zone of 10 modules = analyzer's decoder sees clean white space before the start bar → recognizes the barcode boundary
-- 12mm bar height = matches old LIMS visually, gives tube-tilt tolerance
-- Thicker bars = better contrast read on thermal labels at any DPI
+### PDF Placement
+Keep the existing barcode image area on the sticker (`2, 6.5, 46, 12` mm). The PNG will simply render at native bwip-js dimensions and jsPDF will scale it to fit the 46×12 mm box on the label.
 
 ### File
-- `src/lib/barcodePrint.ts` — `renderBarcodePng()` options + barcode placement coordinates in the PDF loop
+- `src/lib/barcodePrint.ts` — `renderBarcodePng()` options only (remove `scale`, `height`, `paddingwidth`, `paddingheight`, `backgroundcolor`)
 
 ### No DB / other file changes
 
