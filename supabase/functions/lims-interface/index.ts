@@ -321,14 +321,19 @@ Deno.serve(async (req) => {
       }
 
       // Build enriched test list — only include tests with a configured machine_code mapping
+      // AND a non-empty resolved machine_id (skip parameters with no assigned machine).
       const enrichedTests = pendingTests
         .filter((t: any) => reverseCodeMap[t.code])
-        .map((t: any) => ({
-          code: reverseCodeMap[t.code],
-          name: t.name,
-          unit: t.unit || "",
-          machine_id: t.machine_id || machineMap[t.code] || "",
-        }));
+        .map((t: any) => {
+          const resolvedMachineId = t.machine_id || machineMap[t.code] || "";
+          return {
+            code: reverseCodeMap[t.code],
+            name: t.name,
+            unit: t.unit || "",
+            machine_id: resolvedMachineId,
+          };
+        })
+        .filter((t: any) => t.machine_id !== "");
 
       // Filter by requesting machine_id (case-insensitive).
       // Tests with no machine_id assigned are treated as universal (returned to any machine).
