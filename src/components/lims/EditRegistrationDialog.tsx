@@ -15,7 +15,7 @@ import { format } from "date-fns";
 import { Save, Ban, RotateCcw, Lock } from "lucide-react";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
-import { logPaymentTransaction, updateRegistrationPaymentSplit, splitPaymentModes } from "@/lib/paymentTransactions";
+import { logPaymentTransaction, syncRegistrationPaymentRow, splitPaymentModes } from "@/lib/paymentTransactions";
 
 const TITLES = ["Mr.", "Mrs.", "Ms.", "Master", "Miss", "Baby Of", "Dr."];
 
@@ -245,29 +245,36 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       if (error) throw error;
       qc.invalidateQueries({ queryKey: ["patient_registrations"] });
 
-      // Detect payment mode split change vs original — if changed, sync payment_transactions
-      const origModes = splitPaymentModes(reg.payments || []);
-      const newModes = splitPaymentModes(payments);
-      const splitChanged =
-        origModes.cash !== newModes.cash ||
-        origModes.gpay !== newModes.gpay ||
-        origModes.paytm !== newModes.paytm ||
-        origModes.credit_card !== newModes.credit_card ||
-        origModes.neft !== newModes.neft;
-      if (splitChanged) {
+      // Always sync the original registration_payment row with latest authoritative numbers
+      // so Daily Report stays exact after split / discount / test-cancel edits.
+      {
         const newPaid = payments.reduce((s, p) => s + (p.amount || 0), 0);
         const newFinal = discountChanged ? discountCalc.finalAmount : Number(reg.final_amount || 0);
-        await updateRegistrationPaymentSplit({
-          registration_id: reg.id,
-          invoice_number: reg.invoice_number,
-          patient_name: patientName,
-          payments,
-          paid_amount: newPaid,
-          final_amount: newFinal,
-          due_amount: Math.max(0, newFinal - newPaid),
-          gross_amount: discountChanged ? discountCalc.totalAmount : Number(reg.gross_amount || 0),
-          discount_amount: discountChanged ? discountCalc.totalDiscount : Number(reg.discount_amount || 0),
-        });
+        const origModes = splitPaymentModes(reg.payments || []);
+        const newModes = splitPaymentModes(payments);
+        const splitChanged =
+          origModes.cash !== newModes.cash ||
+          origModes.gpay !== newModes.gpay ||
+          origModes.paytm !== newModes.paytm ||
+          origModes.credit_card !== newModes.credit_card ||
+          origModes.neft !== newModes.neft;
+        const reasons: string[] = [];
+        if (splitChanged) reasons.push("Payment mode edited");
+        if (discountChanged) reasons.push("Discount edited");
+        if (reasons.length > 0) {
+          await syncRegistrationPaymentRow({
+            registration_id: reg.id,
+            invoice_number: reg.invoice_number,
+            patient_name: patientName,
+            payments,
+            paid_amount: newPaid,
+            final_amount: newFinal,
+            due_amount: Math.max(0, newFinal - newPaid),
+            gross_amount: discountChanged ? discountCalc.totalAmount : Number(reg.gross_amount || 0),
+            discount_amount: discountChanged ? discountCalc.totalDiscount : Number(reg.discount_amount || 0),
+            change_reason: reasons.join(" + "),
+          });
+        }
       }
 
       // Log discount change if applicable
@@ -320,18 +327,10 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       if (error) throw error;
       qc.invalidateQueries({ queryKey: ["patient_registrations"] });
 
-      // Sync registration_payment row if payment split changed
-      const newPayments = updateData.payments as Array<{ mode: string; amount: number }>;
-      const origModes = splitPaymentModes(reg.payments || []);
-      const newModes = splitPaymentModes(newPayments);
-      const splitChanged =
-        origModes.cash !== newModes.cash ||
-        origModes.gpay !== newModes.gpay ||
-        origModes.paytm !== newModes.paytm ||
-        origModes.credit_card !== newModes.credit_card ||
-        origModes.neft !== newModes.neft;
-      if (splitChanged) {
-        await updateRegistrationPaymentSplit({
+      // Always sync registration_payment row after refund + discount applied
+      {
+        const newPayments = updateData.payments as Array<{ mode: string; amount: number }>;
+        await syncRegistrationPaymentRow({
           registration_id: reg.id,
           invoice_number: reg.invoice_number,
           patient_name: patientName,
@@ -341,6 +340,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
           due_amount: 0,
           gross_amount: discountCalc.totalAmount,
           discount_amount: discountCalc.totalDiscount,
+          change_reason: "Discount applied + overpayment refunded",
         });
       }
 
