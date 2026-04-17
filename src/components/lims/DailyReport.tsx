@@ -49,7 +49,19 @@ const DailyReport = () => {
         .order("invoice_number", { ascending: false })
         .order("transaction_date", { ascending: true });
       if (error) throw error;
-      return (data || []) as any[];
+      const txs = (data || []) as any[];
+
+      // Fetch original registration created_at for each unique registration_id
+      const regIds = Array.from(new Set(txs.map(t => t.registration_id).filter(Boolean)));
+      let regMap: Record<string, string> = {};
+      if (regIds.length > 0) {
+        const { data: regs } = await supabase
+          .from("patient_registrations")
+          .select("id, created_at")
+          .in("id", regIds);
+        (regs || []).forEach((r: any) => { regMap[r.id] = r.created_at; });
+      }
+      return txs.map(t => ({ ...t, _invoice_date: regMap[t.registration_id] || t.transaction_date }));
     },
   });
 
@@ -99,6 +111,7 @@ const DailyReport = () => {
     const rows = filtered.map((r: any) => ({
       "Invoice #": r.invoice_number,
       "Date/Time": format(parseISO(r.transaction_date), "dd-MM-yyyy hh:mm a"),
+      "Invoice Date": format(parseISO(r._invoice_date), "dd-MM-yyyy"),
       "Username": r.performed_by || "",
       "Type": TRANSACTION_LABELS[r.transaction_type] || r.transaction_type,
       "Direction": r.direction === "in" ? "Money In" : "Money Out",
@@ -235,6 +248,7 @@ const DailyReport = () => {
               <TableRow>
                 <TableHead className="whitespace-nowrap">Invoice #</TableHead>
                 <TableHead className="whitespace-nowrap">Date/Time</TableHead>
+                <TableHead className="whitespace-nowrap">Invoice Date</TableHead>
                 <TableHead className="whitespace-nowrap">Username</TableHead>
                 <TableHead className="whitespace-nowrap">Type</TableHead>
                 <TableHead className="whitespace-nowrap">Patient Name</TableHead>
@@ -257,6 +271,7 @@ const DailyReport = () => {
                 <TableRow key={r.id} className={r.direction === "out" ? "bg-destructive/5" : ""}>
                   <TableCell className="font-mono text-xs whitespace-nowrap">{r.invoice_number}</TableCell>
                   <TableCell className="text-xs whitespace-nowrap">{format(parseISO(r.transaction_date), "dd-MM-yyyy hh:mm a")}</TableCell>
+                  <TableCell className="text-xs whitespace-nowrap">{format(parseISO(r._invoice_date), "dd-MM-yyyy")}</TableCell>
                   <TableCell className="text-xs whitespace-nowrap">{r.performed_by}</TableCell>
                   <TableCell>
                     <Badge variant={r.direction === "out" ? "destructive" : "secondary"} className="text-xs whitespace-nowrap">
@@ -286,7 +301,7 @@ const DailyReport = () => {
             </TableBody>
             <TableFooter>
               <TableRow className="font-semibold">
-                <TableCell colSpan={5} className="text-right">Totals</TableCell>
+                <TableCell colSpan={6} className="text-right">Totals</TableCell>
                 <TableCell className="text-right">₹{totals.gross.toFixed(2)}</TableCell>
                 <TableCell className="text-right">₹{totals.discount.toFixed(2)}</TableCell>
                 <TableCell className="text-right">₹{totals.final.toFixed(2)}</TableCell>
