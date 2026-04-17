@@ -606,11 +606,14 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
 
       // 2) Bill cancellation marker row: negative bill snapshot for audit visibility.
       //    Mode amounts = 0 so it does NOT double-count cash impact.
+      //    Use "old_bill_cancellation" type when original registration was on a previous day.
+      const todayStr = format(new Date(), "dd-MM-yyyy");
+      const isCrossDay = regDateStr !== todayStr;
       logPaymentTransaction({
         registration_id: reg.id,
         invoice_number: reg.invoice_number,
         patient_name: patientName,
-        transaction_type: "bill_cancellation",
+        transaction_type: isCrossDay ? "old_bill_cancellation" : "bill_cancellation",
         direction: "out",
         payments: [], // no mode amounts — refund row already captured the cash movement
         total_amount: 0,

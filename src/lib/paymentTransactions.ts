@@ -33,7 +33,7 @@ export interface LogTransactionParams {
   registration_id: string;
   invoice_number: string;
   patient_name?: string;
-  transaction_type: "registration_payment" | "due_collection" | "discount_applied" | "refund" | "bill_cancellation";
+  transaction_type: "registration_payment" | "due_collection" | "discount_applied" | "refund" | "bill_cancellation" | "old_bill_cancellation";
   direction: "in" | "out";
   payments?: Array<{ mode: string; amount: number }>;
   total_amount?: number;
