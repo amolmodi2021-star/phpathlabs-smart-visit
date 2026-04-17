@@ -1,49 +1,51 @@
 
+## Question 1: Auto-transfer for future results
 
-## Root cause
+**Yes, fully automatic.** The fix I deployed is in the edge function (`lims-interface`) which runs server-side every time the middleware POSTs results. Future results for `2604170001-F` / `-P` / `-R` (or any hyphenated suffix) will:
 
-Middleware sends results with sample IDs **`2604170001-F`**, **`2604170001-P`**, **`2604170001-R`** (hyphen + tube-type letter suffix). The bridge code that writes results into `patient_results` (Results Entry) extracts the invoice number using:
+1. Hit the edge function
+2. Strip the suffix correctly → resolve invoice → write to `patient_results`
+3. Appear in Results Entry the moment that screen polls/refreshes its data
 
-```ts
-const invoiceNumber = sample_id.replace(/[A-Za-z]+$/, "");
-```
+**No manual refresh button needed.** Results Entry already auto-refreshes via the realtime sync hook (`useRealtimeSync` subscribes to `patient_results` table changes). New rows pop in live.
 
-This regex only strips trailing **letters**, not the **hyphen**. So `"2604170001-F"` becomes `"2604170001-"` — which never matches the actual invoice `"2604170001"` in `patient_registrations.invoice_number`.
+The only "manual" step was for the **3 already-failed historical results** (PRM0025/26/27) — those landed before the fix existed, so they need a one-time reprocess. From here on, zero manual action.
 
-Result: `regRows` is empty → `registration` is `undefined` → entire bridge block silently skipped → `patient_results_written = 0`. The raw results land in `lims_test_results` (verified — PRM0025/PRM0026/PRM0027 are there) and `lims_test_orders` rows are marked `completed`, but Results Entry never sees them.
+## Question 2: Numeric suffixes (`2604170001-1`, `-2`, etc.)
 
-The base sample `2604170001` (no suffix) bridges fine, which is why some results from the same patient DID flow through (PRM0008, PRM0106, etc.) and others did not.
+**Current regex `/-?[A-Za-z]+$/` does NOT handle numeric suffixes.** For `2604170001-1` it would strip nothing (no trailing letters), leaving `invoiceNumber = "2604170001-1"` → no match → same bug all over again.
+
+Need to broaden the regex to strip any hyphen + alphanumeric suffix.
 
 ## Fix
 
-**`supabase/functions/lims-interface/index.ts`** — change the suffix-stripping regex in **2 places** to also strip an optional leading hyphen:
+**`supabase/functions/lims-interface/index.ts`** — change regex in 2 places (lines 68 and 507):
 
 ```ts
+// Before (only handles letters)
 const invoiceNumber = sample_id.replace(/-?[A-Za-z]+$/, "");
+
+// After (handles letters, digits, or mixed after hyphen)
+const invoiceNumber = sample_id.replace(/-[A-Za-z0-9]+$/, "");
 ```
 
-- Line 507 — POST results bridge (the actual bug causing user's issue)
-- Line 68 — POST reprocess action (same pattern, same latent bug)
+### Behavior matrix after fix
+| Sample ID | Stripped to | Notes |
+|---|---|---|
+| `2604170001` | `2604170001` | No suffix, untouched ✓ |
+| `2604170001-F` | `2604170001` | Letter suffix ✓ |
+| `2604170001-P` | `2604170001` | Letter suffix ✓ |
+| `2604170001-1` | `2604170001` | Numeric suffix ✓ (new) |
+| `2604170001-12` | `2604170001` | Multi-digit ✓ (new) |
+| `2604170001-F1` | `2604170001` | Mixed alphanumeric ✓ (new) |
 
-That's it. ~2 lines changed.
-
-## After the fix — recovering already-failed results
-
-The 3 failed results (PRM0025, PRM0026, PRM0027) are already stored in `lims_test_results` but never bridged. After deploying the fix, the user can recover them by triggering the existing **reprocess** action:
-
-```
-POST /lims-interface { action: "reprocess", registration_id: "<reg-id-for-2604170001>" }
-```
-
-Since the reprocess regex is also being fixed, it will now correctly resolve the registration for `2604170001-F/P/R` and push the missing rows into `patient_results`.
-
-If there's no UI button to trigger reprocess for a single registration, I'll mention to the user how to invoke it (or we can add a one-click "Reprocess from interface" button later if needed — out of scope for this fix).
+### Why require the hyphen now (not optional)?
+Invoice numbers themselves are pure 10-digit numerics (`YYMMDDXXXX` per memory). If we left the hyphen optional and allowed digits, a bare invoice like `2604170001` could get its trailing digits chewed off. **Requiring the literal `-` as the suffix delimiter** keeps un-suffixed invoices safe while handling every middleware suffix scheme (letter, digit, mixed).
 
 ## Out of scope
 - No DB changes.
-- No changes to `query` (GET) path — it uses exact `eq("sample_id", ...)` so suffix is preserved correctly.
-- No changes to the suffix scheme itself (`-F`, `-P`, `-R` stays as-is in barcodes/middleware).
+- No UI changes — Results Entry continues to auto-refresh as before.
+- No changes to `query` (GET) path — still uses exact `sample_id` match, suffix preserved.
 
 ## Files
-- `supabase/functions/lims-interface/index.ts` — 2-character regex fix on lines 68 and 507.
-
+- `supabase/functions/lims-interface/index.ts` — 2-character regex tweak on lines 68 and 507.
