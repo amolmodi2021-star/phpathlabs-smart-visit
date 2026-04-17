@@ -1,37 +1,53 @@
 
 
 ## Goal
-Fix barcode sticker layout so left edge text isn't clipped, drop the `S…` sample UID, and make patient name + sample ID more readable. **Zero changes to barcode rendering, image, position, dimensions, or quiet zone** — only text content/sizing/positions.
+Add a **Retry** tab in `/marketing` that lists failed WhatsApp messages from marketing campaigns, lets the user **Retry All** with one click, removes any that succeed (delivered) or fail again on the second attempt, and shows a summary of how many were retried.
 
-## Issues from photo
-- Left edge of text is clipped (invoice number "2604170001" prints as "604170001", "AMOL" prints as "MOL"). Caused by `x = 1mm` being inside the printer's non-printable margin.
-- Patient name "AMOL MODI" partially cut at the start.
-- Sample type "WHOLE BLOOD" / "PLASMA" partially cut ("VHOLE BLOOD", "LASMA").
-- Sample ID line shows redundant `S26041700001` — user wants only the invoice/suffix portion.
-- Patient name + sample ID feel small.
+## Approach
 
-## Fix plan — `src/lib/barcodePrint.ts` only
+### What counts as "failed"
+Messages whose `delivery_status` is `"failed"` in `message_send_log` (set either by the webhook on failure callback, or by us at send-time when the API returns non-2xx). Plus rows the marketing sender currently silently drops (no log row at all). We'll fix both.
 
-In the `tubes.forEach(...)` block (lines 75–109):
+### Data we need to retry
+Currently `MarketingSender.tsx` ONLY calls `logMessageSend` on success — failures are not logged at all. To make retry possible we need to persist the full send payload for every attempt.
 
-1. **Increase left margin** for ALL text from `x = 1` → `x = 3.5` (mm). Mirror right side from `49` → `46.5` so right-aligned items also stay inside the printable area. Update `splitTextToSize` width from `48` → `43` to match the new safe width.
+### Plan
 
-2. **Row 1 — invoice number bigger**: bump font size from `7` → `8.5` (bold, unchanged otherwise). Age/sex stays at 7 on the right.
+**1. DB migration — new column on `message_send_log`** *(approval required)*
+- Add `retry_payload jsonb` — stores `{ apiUrl, apiKey, headerName, headerPrefix, payload }` snapshot for failed messages so we can replay without rebuilding.
+- Add `retry_count integer default 0` — tracks how many retry attempts have been made (0, 1; once it's 1 and still fails, row gets removed).
 
-3. **Row 2 — patient name bigger**: bump font size from `6.5` → `8` (bold). Keep location suffix `"  PH <loc>"` truncation logic, just with the new 43mm width.
+**2. `src/components/marketing/MarketingSender.tsx` — log failures + payload**
+- On both success AND failure, insert into `message_send_log` (currently only success is logged).
+- Failed rows: `delivery_status = "failed"`, include `retry_payload` JSON snapshot, `message_type = "Marketing"`.
+- Successful rows: behavior unchanged (status `"sent"`, no `retry_payload` needed).
 
-4. **Sample ID line — remove `S…` UID, make bigger**:
-   - Replace `const sampleLine = \`${displayValue}  ${tube.sample_uid}\`` with `const sampleLine = displayValue` (just `2604170001` or `2604170001-R`).
-   - Bump font size from `5.5` → `8` (bold), keep centered at `x=25, y=20.5`.
+**3. `src/pages/Marketing.tsx` — add Retry tab**
+- Add `{ key: "retry", label: "Retry" }` to `allMarketingTabs`.
+- Add `<TabsContent value="retry"><MarketingRetry /></TabsContent>`.
 
-5. **Bottom row — sample type bold**: change `doc.setFont("helvetica", "normal")` → `doc.setFont("helvetica", "bold")` for this row. Font size stays `6`. Datetime stays bold too (it already inherits). Use new `x = 3.5` for sample type and `x = 46.5` for datetime.
+**4. New file `src/components/marketing/MarketingRetry.tsx`**
+- Query: select from `message_send_log` where `message_type = 'Marketing'` AND `delivery_status = 'failed'` AND `retry_count < 1`, ordered by `sent_at desc`, paginated 50/page.
+- Table columns: # / Patient Name / Mobile / Sent At / Days Ago / Retry Count / Error (best-effort from `error_info` linked via `message_id` on `webhook_messages`; falls back to "—").
+- "Retry All" button at top-right:
+  - Confirms ("Retry N failed messages?").
+  - Iterates each row: increment `retry_count` to 1, then call `send-marketing-message` edge function with the saved `retry_payload`.
+    - On success (2xx) → update row to `delivery_status = "sent"`, refresh `message_id` from response so webhook can track final delivery → row disappears from list.
+    - On failure → row already has `retry_count = 1`, so it's excluded from the next query → disappears from list.
+  - Uses 3-second delay between sends (matches sender default).
+  - Shows live progress bar.
+  - On completion: toast `"Retried N messages — X succeeded, Y still failed and removed from list"`.
+- Auto-refreshes list after retry; manual "Refresh" icon button next to "Retry All".
+- Empty state: "No failed marketing messages to retry."
 
-## Explicitly NOT touching
-- `renderBarcodePng()` — untouched.
-- Barcode `addImage(png, "PNG", 6.5, 7.5, 37, 10, …)` — same x, y, width, height, quiet zone. No risk of yesterday's scanner issue recurring.
-- Page size `[50, 25]`, orientation, font family, iframe print pipeline — all unchanged.
-- `barcodeValue` payload — unchanged (still pure alphanumeric, scanner-safe).
+### Out of scope
+- Retrying non-Marketing message types (Abnormal History, ABC Cards, WhatsApp Chat, etc.) — only Marketing campaigns per request.
+- Manual per-row retry (only "Retry All").
+- Retry beyond 1 attempt (per spec: if 2nd attempt fails, drop it).
 
 ## Files
-- `src/lib/barcodePrint.ts` — text-layout-only edits to lines 75–109 (~10 lines changed).
+- New migration — add `retry_payload jsonb`, `retry_count integer default 0` to `message_send_log`.
+- `src/components/marketing/MarketingSender.tsx` — log failures with payload snapshot (~20 lines added).
+- `src/pages/Marketing.tsx` — register Retry tab (~3 lines).
+- `src/components/marketing/MarketingRetry.tsx` — new component (~150 lines).
 
