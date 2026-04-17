@@ -32,13 +32,31 @@ const DailyReport = () => {
   const [userFilter, setUserFilter] = useState("ALL");
   const [modeFilter, setModeFilter] = useState("ALL");
   const [typeFilter, setTypeFilter] = useState("ALL");
+  const [invoiceSearch, setInvoiceSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(invoiceSearch.trim()), 300);
+    return () => clearTimeout(t);
+  }, [invoiceSearch]);
 
   const effectiveDateFrom = adminUnlocked ? dateFrom : today;
   const effectiveDateTo = adminUnlocked ? dateTo : today;
+  const isSearching = debouncedSearch.length >= 3;
 
   const { data: transactions = [], isLoading } = useQuery({
-    queryKey: ["payment-transactions", effectiveDateFrom, effectiveDateTo],
+    queryKey: ["payment-transactions", effectiveDateFrom, effectiveDateTo, debouncedSearch],
     queryFn: async () => {
+      if (isSearching) {
+        const { data, error } = await supabase
+          .from("payment_transactions" as any)
+          .select("*")
+          .ilike("invoice_number", `%${debouncedSearch}%`)
+          .order("transaction_date", { ascending: false })
+          .limit(200);
+        if (error) throw error;
+        return (data || []) as any[];
+      }
       const from = startOfDay(parseISO(effectiveDateFrom)).toISOString();
       const to = endOfDay(parseISO(effectiveDateTo)).toISOString();
       const { data, error } = await supabase
