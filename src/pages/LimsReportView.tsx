@@ -97,9 +97,34 @@ const LimsReportView = () => {
   const selectedTestIdsParam = searchParams.get("tests");
   const selectedTestIds = selectedTestIdsParam ? new Set(selectedTestIdsParam.split(",")) : null;
   const printRef = useRef<HTMLDivElement>(null);
+  const previewWrapRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [showLetterhead, setShowLetterhead] = useState(true);
+  const [previewScale, setPreviewScale] = useState(1);
+
+  // A4 width at 96dpi ≈ 794px. Recompute scale on resize so the page fits the viewport on mobile.
+  useEffect(() => {
+    const A4_WIDTH_PX = (PAGE_WIDTH_MM / 25.4) * 96; // ~794
+    const compute = () => {
+      const wrap = previewWrapRef.current;
+      if (!wrap) return;
+      const available = wrap.clientWidth;
+      if (!available) return;
+      const next = Math.min(1, available / A4_WIDTH_PX);
+      setPreviewScale(next);
+    };
+    compute();
+    const ro = new ResizeObserver(compute);
+    if (previewWrapRef.current) ro.observe(previewWrapRef.current);
+    window.addEventListener("resize", compute);
+    window.addEventListener("orientationchange", compute);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", compute);
+      window.removeEventListener("orientationchange", compute);
+    };
+  }, [loading]);
 
   // Data
   const [approvedReports, setApprovedReports] = useState<any[]>([]);
@@ -415,10 +440,19 @@ const LimsReportView = () => {
       if (pageElements.length === 0) { toast.error("No pages to export"); setDownloading(false); return; }
 
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const NATIVE_W = Math.round((PAGE_WIDTH_MM / 25.4) * 96);
+      const NATIVE_H = Math.round((PAGE_HEIGHT_MM / 25.4) * 96);
       for (let i = 0; i < pageElements.length; i++) {
         if (i > 0) pdf.addPage();
         const el = pageElements[i] as HTMLElement;
-        const png = await toPng(el, { quality: 1, pixelRatio: 4, backgroundColor: "#ffffff" });
+        const png = await toPng(el, {
+          quality: 1,
+          pixelRatio: 4,
+          backgroundColor: "#ffffff",
+          width: NATIVE_W,
+          height: NATIVE_H,
+          style: { transform: "none", transformOrigin: "top left" },
+        });
         pdf.addImage(png, "PNG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM);
       }
 
@@ -453,9 +487,18 @@ const LimsReportView = () => {
       if (pageElements.length === 0) { toast.error("No pages to print"); setShowLetterhead(originalLetterhead); setDownloading(false); return; }
 
       const imageUrls: string[] = [];
+      const NATIVE_W = Math.round((PAGE_WIDTH_MM / 25.4) * 96);
+      const NATIVE_H = Math.round((PAGE_HEIGHT_MM / 25.4) * 96);
       for (let i = 0; i < pageElements.length; i++) {
         const el = pageElements[i] as HTMLElement;
-        const png = await toPng(el, { quality: 1, pixelRatio: 4, backgroundColor: "#ffffff" });
+        const png = await toPng(el, {
+          quality: 1,
+          pixelRatio: 4,
+          backgroundColor: "#ffffff",
+          width: NATIVE_W,
+          height: NATIVE_H,
+          style: { transform: "none", transformOrigin: "top left" },
+        });
         imageUrls.push(png);
       }
 
@@ -551,45 +594,64 @@ const LimsReportView = () => {
     );
   }
 
+  const NATIVE_W_PX = (PAGE_WIDTH_MM / 25.4) * 96;
+  const NATIVE_H_PX = (PAGE_HEIGHT_MM / 25.4) * 96;
+  const scaledHeight = NATIVE_H_PX * previewScale;
+
   return (
-    <div className="p-4 space-y-4">
+    <div className="p-2 sm:p-4 space-y-3 sm:space-y-4">
       {/* Toolbar */}
-      <div className="flex items-center gap-3 print:hidden">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3 print:hidden">
         <Button variant="outline" size="sm" onClick={() => navigate("/lims?tab=dispatch")}>
-          <ArrowLeft className="h-4 w-4 mr-1" />Back
+          <ArrowLeft className="h-4 w-4 sm:mr-1" />
+          <span className="hidden sm:inline">Back</span>
         </Button>
-        <h1 className="text-xl font-bold">
-          Report — {report.patient_name} ({report.invoice_number})
+        <h1 className="text-sm sm:text-xl font-bold truncate flex-1 min-w-0">
+          <span className="hidden sm:inline">Report — </span>
+          {report.patient_name} ({report.invoice_number})
         </h1>
-        <div className="ml-auto flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4 ml-auto flex-wrap">
           <div className="flex items-center gap-2">
             <Switch id="letterhead-toggle" checked={showLetterhead} onCheckedChange={setShowLetterhead} />
-            <Label htmlFor="letterhead-toggle" className="text-sm cursor-pointer">With Letterhead</Label>
+            <Label htmlFor="letterhead-toggle" className="text-xs sm:text-sm cursor-pointer whitespace-nowrap">
+              <span className="hidden sm:inline">With </span>Letterhead
+            </Label>
           </div>
-          <Button size="sm" variant="outline" onClick={handlePrint} disabled={downloading}>
-            <Printer className="h-4 w-4 mr-1" />Print
+          <Button size="sm" variant="outline" onClick={handlePrint} disabled={downloading} aria-label="Print">
+            <Printer className="h-4 w-4 sm:mr-1" />
+            <span className="hidden sm:inline">Print</span>
           </Button>
-          <Button size="sm" onClick={handleDownloadPdf} disabled={downloading}>
-            {downloading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}
-            Download PDF
+          <Button size="sm" onClick={handleDownloadPdf} disabled={downloading} aria-label="Download PDF">
+            {downloading ? <Loader2 className="h-4 w-4 sm:mr-1 animate-spin" /> : <Download className="h-4 w-4 sm:mr-1" />}
+            <span className="hidden sm:inline">Download PDF</span>
+            <span className="sm:hidden">PDF</span>
           </Button>
         </div>
       </div>
 
-      {/* Rendered Pages */}
-      <div ref={printRef} id="print-container" className="flex flex-col items-center gap-4">
-        {pages.map((page, pageIdx) => (
-          <div
-            key={pageIdx}
-            data-page={pageIdx}
-            className="bg-white shadow-lg relative overflow-hidden"
-            style={{
-              width: `${PAGE_WIDTH_MM}mm`,
-              height: `${PAGE_HEIGHT_MM}mm`,
-              minHeight: `${PAGE_HEIGHT_MM}mm`,
-              maxHeight: `${PAGE_HEIGHT_MM}mm`,
-            }}
-          >
+      {/* Rendered Pages — wrapper measures available width and applies CSS scale on mobile */}
+      <div ref={previewWrapRef} className="w-full overflow-hidden">
+        <div ref={printRef} id="print-container" className="flex flex-col items-center gap-4 mx-auto" style={{ width: `${NATIVE_W_PX}px` }}>
+          {pages.map((page, pageIdx) => (
+            <div
+              key={pageIdx}
+              style={{
+                width: `${NATIVE_W_PX}px`,
+                height: `${scaledHeight}px`,
+              }}
+            >
+            <div
+              data-page={pageIdx}
+              className="bg-white shadow-lg relative overflow-hidden"
+              style={{
+                width: `${PAGE_WIDTH_MM}mm`,
+                height: `${PAGE_HEIGHT_MM}mm`,
+                minHeight: `${PAGE_HEIGHT_MM}mm`,
+                maxHeight: `${PAGE_HEIGHT_MM}mm`,
+                transform: previewScale < 1 ? `scale(${previewScale})` : undefined,
+                transformOrigin: "top left",
+              }}
+            >
             {/* Background letterhead */}
             {letterheadImageUrl && showLetterhead && (
               <img
@@ -726,8 +788,10 @@ const LimsReportView = () => {
                 </div>
               </div>
             </div>
+            </div>
           </div>
-        ))}
+          ))}
+        </div>
       </div>
 
       {/* Print styles - minimal since we use image-based printing */}
