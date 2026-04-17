@@ -15,8 +15,10 @@ import * as XLSX from "xlsx";
 const TRANSACTION_LABELS: Record<string, string> = {
   registration_payment: "Registration",
   due_collection: "Due Collection",
+  old_due_recovered: "Old Due Recovered",
   discount_applied: "Discount Applied",
   refund: "Refund",
+  old_bill_refund: "Old Bill Refund",
   bill_cancellation: "Bill Cancellation",
   old_bill_cancellation: "Old Bill Cancelled",
 };

@@ -132,12 +132,15 @@ const DuePayments = () => {
         paid_amount: newPaid,
         due_amount: Math.max(0, newDue),
       });
-      // Log due collection transaction
+      // Log due collection transaction — use "old_due_recovered" if original bill is from a previous day
+      const todayStr = format(new Date(), "dd-MM-yyyy");
+      const regDateStr = selected.created_at ? format(new Date(selected.created_at), "dd-MM-yyyy") : todayStr;
+      const isCrossDay = regDateStr !== todayStr;
       logPaymentTransaction({
         registration_id: selected.id,
         invoice_number: selected.invoice_number,
         patient_name: selected.patient_name,
-        transaction_type: "due_collection",
+        transaction_type: isCrossDay ? "old_due_recovered" : "due_collection",
         direction: "in",
         payments: newEntries,
         total_amount: totalPaying,
