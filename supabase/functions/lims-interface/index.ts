@@ -18,6 +18,205 @@ Deno.serve(async (req) => {
   try {
     const url = new URL(req.url);
 
+    // POST reprocess action — re-bridge already-received lims_test_results into patient_results
+    // for active orders. Optional `registration_id` filter scopes to a single patient.
+    if (req.method === "POST") {
+      // Peek at body without consuming if it's not a reprocess call
+      const cloned = req.clone();
+      let peekBody: any = null;
+      try { peekBody = await cloned.json(); } catch { /* not json */ }
+      if (peekBody && peekBody.action === "reprocess") {
+        const filterRegistrationId: string | null = peekBody.registration_id || null;
+
+        // 1) Resolve which sample_ids to reprocess
+        let sampleIds: string[] = [];
+        if (filterRegistrationId) {
+          const { data: reg } = await supabase
+            .from("patient_registrations")
+            .select("invoice_number")
+            .eq("id", filterRegistrationId)
+            .maybeSingle();
+          if (reg?.invoice_number) {
+            // Match base invoice + suffixed tubes (e.g. 2604160004A)
+            const { data: ords } = await supabase
+              .from("lims_test_orders")
+              .select("sample_id")
+              .or(`sample_id.eq.${reg.invoice_number},sample_id.like.${reg.invoice_number}%`);
+            sampleIds = Array.from(new Set((ords || []).map((o: any) => o.sample_id)));
+          }
+        } else {
+          const { data: ords } = await supabase
+            .from("lims_test_orders")
+            .select("sample_id")
+            .in("status", ["pending", "in_progress"]);
+          sampleIds = Array.from(new Set((ords || []).map((o: any) => o.sample_id)));
+        }
+
+        let totalPushed = 0;
+        let totalCompleted = 0;
+        let processedOrders = 0;
+
+        for (const sampleId of sampleIds) {
+          // Pull all stored mapped results for this sample
+          const { data: storedResults } = await supabase
+            .from("lims_test_results")
+            .select("test_code, test_name, result_value, unit, reference_range, flag, order_id")
+            .eq("sample_id", sampleId);
+          if (!storedResults || storedResults.length === 0) continue;
+
+          // Resolve registration
+          const invoiceNumber = sampleId.replace(/[A-Za-z]+$/, "");
+          const { data: regRows } = await supabase
+            .from("patient_registrations")
+            .select("id, tests")
+            .eq("invoice_number", invoiceNumber)
+            .limit(1);
+          const registration = regRows?.[0];
+          if (!registration) continue;
+          if (filterRegistrationId && registration.id !== filterRegistrationId) continue;
+
+          processedOrders++;
+          const registrationId = registration.id;
+          const regTestIds = new Set(((registration.tests as any[]) || []).map((t: any) => t.test_id || t.id).filter(Boolean));
+
+          const paramCodes = Array.from(new Set(storedResults.map((r: any) => r.test_code).filter(Boolean)));
+          if (paramCodes.length === 0) continue;
+
+          const { data: paramRows } = await supabase
+            .from("report_test_parameters")
+            .select("id, param_code, parameter_name, unit, normal_range_low, normal_range_high, normal_range_text")
+            .in("param_code", paramCodes);
+          const paramByCode: Record<string, any> = {};
+          for (const p of paramRows || []) paramByCode[p.param_code] = p;
+
+          const paramIds = (paramRows || []).map((p) => p.id);
+          let tpRows: any[] = [];
+          if (paramIds.length > 0) {
+            const { data } = await supabase
+              .from("test_parameters")
+              .select("test_id, parameter_id")
+              .in("parameter_id", paramIds);
+            tpRows = data || [];
+          }
+          const testIdsByParam: Record<string, string[]> = {};
+          for (const tp of tpRows) {
+            if (!testIdsByParam[tp.parameter_id]) testIdsByParam[tp.parameter_id] = [];
+            testIdsByParam[tp.parameter_id].push(tp.test_id);
+          }
+
+          const { data: existingRows } = await supabase
+            .from("patient_results")
+            .select("id, parameter_id, status")
+            .eq("registration_id", registrationId);
+          const existingByParam: Record<string, any> = {};
+          for (const er of existingRows || []) existingByParam[er.parameter_id] = er;
+
+          const insertPayload: any[] = [];
+          for (const sr of storedResults as any[]) {
+            const param = paramByCode[sr.test_code];
+            if (!param) continue;
+            const candidateTestIds = testIdsByParam[param.id] || [];
+            const testId = candidateTestIds.find((tid) => regTestIds.has(tid)) || candidateTestIds[0];
+            if (!testId) continue;
+
+            const numericVal = parseFloat(sr.result_value);
+            let flag = sr.flag || "";
+            if (!isNaN(numericVal) && param.normal_range_low != null && param.normal_range_high != null) {
+              if (numericVal < Number(param.normal_range_low)) flag = "L";
+              else if (numericVal > Number(param.normal_range_high)) flag = "H";
+              else flag = "N";
+            }
+
+            const referenceRange = param.normal_range_text
+              || (param.normal_range_low != null && param.normal_range_high != null
+                  ? `${param.normal_range_low} - ${param.normal_range_high}`
+                  : "");
+
+            const existing = existingByParam[param.id];
+            const nowIso = new Date().toISOString();
+            if (existing) {
+              if (existing.status && existing.status !== "pending") continue;
+              const { error: updErr } = await supabase
+                .from("patient_results")
+                .update({
+                  result_value: sr.result_value,
+                  flag,
+                  unit: sr.unit || param.unit || "",
+                  reference_range: referenceRange,
+                  normal_range_low: param.normal_range_low,
+                  normal_range_high: param.normal_range_high,
+                  is_from_interface: true,
+                  entered_at: nowIso,
+                  entered_by: "INTERFACE",
+                  status: "pending",
+                  updated_at: nowIso,
+                })
+                .eq("id", existing.id);
+              if (!updErr) totalPushed++;
+            } else {
+              insertPayload.push({
+                registration_id: registrationId,
+                test_id: testId,
+                parameter_id: param.id,
+                param_code: param.param_code,
+                parameter_name: param.parameter_name,
+                result_value: sr.result_value,
+                unit: sr.unit || param.unit || "",
+                reference_range: referenceRange,
+                normal_range_low: param.normal_range_low,
+                normal_range_high: param.normal_range_high,
+                flag,
+                status: "pending",
+                is_from_interface: true,
+                entered_at: nowIso,
+                entered_by: "INTERFACE",
+              });
+            }
+          }
+
+          if (insertPayload.length > 0) {
+            const { error: insErr } = await supabase.from("patient_results").insert(insertPayload);
+            if (!insErr) totalPushed += insertPayload.length;
+          }
+
+          // Re-evaluate order completion
+          const orderIds = Array.from(new Set(storedResults.map((r: any) => r.order_id).filter(Boolean)));
+          for (const oid of orderIds) {
+            const { data: ord } = await supabase
+              .from("lims_test_orders")
+              .select("tests")
+              .eq("id", oid)
+              .maybeSingle();
+            if (!ord) continue;
+            const tests = (ord.tests as any[]) || [];
+            // Get all mapped codes received for this order
+            const { data: orderResults } = await supabase
+              .from("lims_test_results")
+              .select("test_code")
+              .eq("order_id", oid);
+            const receivedCodes = new Set((orderResults || []).map((r: any) => r.test_code));
+            const updatedTests = tests.map((t: any) => ({
+              ...t,
+              status: receivedCodes.has(t.code) ? "completed" : (t.status || "pending"),
+            }));
+            const allDone = updatedTests.length > 0 && updatedTests.every((t: any) => t.status === "completed");
+            await supabase.from("lims_test_orders").update({
+              tests: updatedTests,
+              status: allDone ? "completed" : "in_progress",
+            }).eq("id", oid);
+            if (allDone) totalCompleted++;
+          }
+        }
+
+        return new Response(JSON.stringify({
+          success: true,
+          processed: processedOrders,
+          pushed: totalPushed,
+          completed: totalCompleted,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
     // GET: Query tests for a sample_id, optionally filtered by machine_id
     if (req.method === "GET") {
       const action = url.searchParams.get("action");
