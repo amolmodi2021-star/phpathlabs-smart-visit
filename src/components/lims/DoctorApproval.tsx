@@ -16,6 +16,7 @@ import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { toast } from "sonner";
 import { formatDateDDMMYYYY } from "@/lib/utils";
 import ModifiedApproval from "./ModifiedApproval";
+import SelectApproverDialog, { ApproverChoice } from "./SelectApproverDialog";
 
 const QUALITATIVE_PAIRS = [
   { label: "Absent / Present", values: ["Absent", "Present"] },
@@ -70,7 +71,66 @@ const DoctorApproval = () => {
   const [daPage, setDaPage] = useState(0);
   const [editedNotes, setEditedNotes] = useState<Record<string, string>>({});
   const [activeNoteKey, setActiveNoteKey] = useState<string | null>(null);
+  const [approverDialogOpen, setApproverDialogOpen] = useState(false);
+  const pendingApprovalRef = useRef<null | ((choice: ApproverChoice) => void)>(null);
+  const currentUserSigCacheRef = useRef<{ userId: string | null; checked: boolean; choice: ApproverChoice | null }>({ userId: null, checked: false, choice: null });
 
+  // Resolve who should sign this approval. Returns null if blocked (toast already shown) or pending dialog selection.
+  const resolveApprover = (): Promise<ApproverChoice | null> => {
+    return new Promise(async (resolve) => {
+      const currentUser = getCurrentUser();
+      if (!currentUser?.id) { toast.error("Not signed in"); return resolve(null); }
+      // Cache: check if current user has own pathologist signature
+      if (!currentUserSigCacheRef.current.checked || currentUserSigCacheRef.current.userId !== currentUser.id) {
+        const { data: sigData } = await supabase
+          .from("pathologist_signatures")
+          .select("pathologist_name, qualification, designation, signature_image_path")
+          .eq("mapped_user_id", currentUser.id)
+          .maybeSingle();
+        let choice: ApproverChoice | null = null;
+        if (sigData) {
+          let signatureUrl: string | null = null;
+          if (sigData.signature_image_path) {
+            const { data: u } = supabase.storage.from("signatures").getPublicUrl(sigData.signature_image_path);
+            signatureUrl = u.publicUrl;
+          }
+          choice = {
+            pathologistName: sigData.pathologist_name || currentUser.display_name || "Doctor",
+            qualification: sigData.qualification || null,
+            designation: sigData.designation || null,
+            signatureUrl,
+          };
+        }
+        currentUserSigCacheRef.current = { userId: currentUser.id, checked: true, choice };
+      }
+      const ownChoice = currentUserSigCacheRef.current.choice;
+      if (ownChoice) return resolve(ownChoice);
+      // No own signature — check permission
+      const canApproveAsDoctor = (currentUser as any).can_approve_as_doctor === true;
+      if (!canApproveAsDoctor) {
+        toast.error("You don't have permission to approve. Ask Admin to grant approval rights or sign in as a pathologist.");
+        return resolve(null);
+      }
+      // Open dialog
+      pendingApprovalRef.current = (choice: ApproverChoice) => resolve(choice);
+      setApproverDialogOpen(true);
+    });
+  };
+
+  const handleApproverDialogConfirm = (choice: ApproverChoice) => {
+    setApproverDialogOpen(false);
+    const cb = pendingApprovalRef.current;
+    pendingApprovalRef.current = null;
+    if (cb) cb(choice);
+  };
+
+  const handleApproverDialogCancel = (open: boolean) => {
+    if (open) { setApproverDialogOpen(true); return; }
+    setApproverDialogOpen(false);
+    const cb = pendingApprovalRef.current;
+    pendingApprovalRef.current = null;
+    if (cb) cb(null as any); // resolve null → caller treats as cancel
+  };
   useEffect(() => { const t = setTimeout(() => { setDebouncedSearch(search); setDaPage(0); }, 400); return () => clearTimeout(t); }, [search]);
 
   const { data: daCount = 0 } = useQuery({
