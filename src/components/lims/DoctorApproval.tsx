@@ -16,6 +16,7 @@ import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { toast } from "sonner";
 import { formatDateDDMMYYYY } from "@/lib/utils";
 import ModifiedApproval from "./ModifiedApproval";
+import SelectApproverDialog, { ApproverChoice } from "./SelectApproverDialog";
 
 const QUALITATIVE_PAIRS = [
   { label: "Absent / Present", values: ["Absent", "Present"] },
