@@ -111,6 +111,7 @@ const DailyReport = () => {
     const rows = filtered.map((r: any) => ({
       "Invoice #": r.invoice_number,
       "Date/Time": format(parseISO(r.transaction_date), "dd-MM-yyyy hh:mm a"),
+      "Invoice Date": format(parseISO(r._invoice_date), "dd-MM-yyyy"),
       "Username": r.performed_by || "",
       "Type": TRANSACTION_LABELS[r.transaction_type] || r.transaction_type,
       "Direction": r.direction === "in" ? "Money In" : "Money Out",
