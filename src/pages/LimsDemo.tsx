@@ -748,12 +748,12 @@ const LimsDemo = () => {
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 text-destructive" />
-                Unmapped Results ({unmappedResults.length})
+                Unmapped Results ({visibleUnmappedResults.length})
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {unmappedResults.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No unmapped results. All incoming codes are mapped correctly.</p>
+              {visibleUnmappedResults.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No unmapped results. All incoming codes are mapped or marked as No Map Required.</p>
               ) : (
                 <Table>
                   <TableHeader>
@@ -767,10 +767,11 @@ const LimsDemo = () => {
                       <TableHead>Received</TableHead>
                       <TableHead>Map To Parameter</TableHead>
                       <TableHead></TableHead>
+                      <TableHead></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {unmappedResults.map((ur) => (
+                    {visibleUnmappedResults.map((ur: any) => (
                       <TableRow key={ur.id}>
                         <TableCell className="font-mono text-xs">{ur.sample_id}</TableCell>
                         <TableCell className="font-mono font-medium">{ur.machine_code}</TableCell>
