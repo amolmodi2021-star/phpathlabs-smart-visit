@@ -1,28 +1,25 @@
 
 
-## Change
-Add an **Invoice # search** input on the Daily Payment Register that searches across **all dates**, ignoring the From/To date filter.
+## Issue
+For cancelled bills, the "Bill Cancellation" / "Old Bill Cancelled" row currently appears **after** the "Refund" / "Old Bill Refund" row in the Daily Payment Register. Logically the bill is cancelled first and refund follows — display order should reflect that.
 
-## UX
-- New text input "Search Invoice #" placed in the filter row (available to everyone, not gated behind admin).
-- When the field is empty → current behavior (date-range query).
-- When the field has ≥3 characters → switch the query to search `invoice_number ILIKE '%<query>%'` across the entire `payment_transactions` table (no date filter), capped at 200 rows ordered by `transaction_date DESC`.
-- A small hint badge appears: "Searching all dates — date filter ignored".
-- Clearing the search returns to date-range mode automatically.
+## Root cause
+In `EditRegistrationDialog.tsx` the refund row is `logPaymentTransaction(...)` first, then the cancellation marker row. Both get `transaction_date = now()` microseconds apart, refund being slightly earlier. The Daily Report sorts by `invoice_number DESC` then `transaction_date ASC`, so refund wins the tie.
 
-## File
-**`src/components/lims/DailyReport.tsx`** only:
-1. Add state `const [invoiceSearch, setInvoiceSearch] = useState("")` and a 300ms debounced value.
-2. Update `useQuery`:
-   - Include `invoiceSearch` in the queryKey.
-   - If debounced search has ≥3 chars: query `payment_transactions` with `.ilike("invoice_number", "%search%").order("transaction_date", { ascending: false }).limit(200)` — no date `gte`/`lte`.
-   - Otherwise: existing date-range query.
-3. Add the `<Input>` next to existing filters with a `Search` icon and a clear (×) button.
-4. Add the conditional hint badge above the table when search is active.
+## Fix (display-only, no DB changes)
+In `src/components/lims/DailyReport.tsx`, after fetching `transactions`, apply a stable secondary sort: within the same `invoice_number`, place rows of type `bill_cancellation` / `old_bill_cancellation` **before** `refund` / `old_bill_refund`. Other types keep their existing chronological order.
 
-## What stays the same
-- Existing date / user / mode / type filters
-- Admin gating for date-range expansion
-- All totals / footer / Excel export logic (operates on whatever rows are loaded)
-- No DB / RLS / schema changes
+Approach: define a small `typeRank` map (cancellation=0, refund=1, everything else=2) and re-sort `filtered` (or `transactions`) using:
+1. invoice_number desc (preserve current grouping)
+2. typeRank asc (cancellation before refund)
+3. transaction_date asc (preserve existing chronology for non-cancel/refund rows)
+
+Apply the same ordering to the Excel export so the file matches the on-screen view.
+
+## Files
+- `src/components/lims/DailyReport.tsx` — add `typeRank` and resort the `filtered` memo (used by both table and Excel export). ~10 lines.
+
+## Out of scope
+- No change to `payment_transactions` data, schema, or insertion order.
+- No change to `EditRegistrationDialog.tsx` insertion sequence.
 
