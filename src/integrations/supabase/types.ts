@@ -1865,6 +1865,8 @@ export type Database = {
           mobile_number: string
           patient_name: string | null
           primary_key: string | null
+          retry_count: number
+          retry_payload: Json | null
           sent_at: string
           umr_number: string | null
         }
@@ -1878,6 +1880,8 @@ export type Database = {
           mobile_number: string
           patient_name?: string | null
           primary_key?: string | null
+          retry_count?: number
+          retry_payload?: Json | null
           sent_at?: string
           umr_number?: string | null
         }
@@ -1891,6 +1895,8 @@ export type Database = {
           mobile_number?: string
           patient_name?: string | null
           primary_key?: string | null
+          retry_count?: number
+          retry_payload?: Json | null
           sent_at?: string
           umr_number?: string | null
         }

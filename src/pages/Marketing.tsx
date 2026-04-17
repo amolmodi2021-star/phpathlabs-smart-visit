@@ -4,10 +4,12 @@ import MarketingSender from "@/components/marketing/MarketingSender";
 import AutomatedMarketing from "@/components/marketing/AutomatedMarketing";
 import MessageLog from "@/components/marketing/MessageLog";
 import NewNumbers from "@/components/marketing/NewNumbers";
+import MarketingRetry from "@/components/marketing/MarketingRetry";
 
 const allMarketingTabs = [
   { key: "send", label: "Send Messages" },
   { key: "automated", label: "Automated" },
+  { key: "retry", label: "Retry" },
   { key: "log", label: "Message Log" },
   { key: "new", label: "New Numbers" },
 ];
@@ -25,6 +27,7 @@ const Marketing = () => {
         </TabsList>
         <TabsContent value="send"><MarketingSender /></TabsContent>
         <TabsContent value="automated"><AutomatedMarketing /></TabsContent>
+        <TabsContent value="retry"><MarketingRetry /></TabsContent>
         <TabsContent value="log"><MessageLog /></TabsContent>
         <TabsContent value="new"><NewNumbers /></TabsContent>
       </Tabs>
