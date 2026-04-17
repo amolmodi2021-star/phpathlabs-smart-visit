@@ -49,21 +49,19 @@ const DailyReport = () => {
         .order("invoice_number", { ascending: false })
         .order("transaction_date", { ascending: true });
       if (error) throw error;
-      const txs = (data || []) as any[];
-
-      // Fetch original registration created_at for each unique registration_id
-      const regIds = Array.from(new Set(txs.map(t => t.registration_id).filter(Boolean)));
-      let regMap: Record<string, string> = {};
-      if (regIds.length > 0) {
-        const { data: regs } = await supabase
-          .from("patient_registrations")
-          .select("id, created_at")
-          .in("id", regIds);
-        (regs || []).forEach((r: any) => { regMap[r.id] = r.created_at; });
-      }
-      return txs.map(t => ({ ...t, _invoice_date: regMap[t.registration_id] || t.transaction_date }));
+      return (data || []) as any[];
     },
   });
+
+  // Derive invoice date from invoice number YYMMDD prefix (e.g. "2604160004" -> 16-04-2026)
+  const formatInvoiceDate = (invoiceNumber: string | null | undefined): string => {
+    if (!invoiceNumber || invoiceNumber.length < 6) return "-";
+    const yy = invoiceNumber.slice(0, 2);
+    const mm = invoiceNumber.slice(2, 4);
+    const dd = invoiceNumber.slice(4, 6);
+    if (!/^\d{6}$/.test(yy + mm + dd)) return "-";
+    return `${dd}-${mm}-20${yy}`;
+  };
 
   // Unique users for filter
   const uniqueUsers = useMemo(() => {
@@ -110,7 +108,7 @@ const DailyReport = () => {
   const exportToExcel = () => {
     const rows = filtered.map((r: any) => ({
       "Invoice #": r.invoice_number,
-      "Invoice Date": format(parseISO(r._invoice_date), "dd-MM-yyyy"),
+      "Invoice Date": formatInvoiceDate(r.invoice_number),
       "Date/Time": format(parseISO(r.transaction_date), "dd-MM-yyyy hh:mm a"),
       "Username": r.performed_by || "",
       "Type": TRANSACTION_LABELS[r.transaction_type] || r.transaction_type,
@@ -270,7 +268,7 @@ const DailyReport = () => {
               {filtered.map((r: any) => (
                 <TableRow key={r.id} className={r.direction === "out" ? "bg-destructive/5" : ""}>
                   <TableCell className="font-mono text-xs whitespace-nowrap">{r.invoice_number}</TableCell>
-                  <TableCell className="text-xs whitespace-nowrap">{format(parseISO(r._invoice_date), "dd-MM-yyyy")}</TableCell>
+                  <TableCell className="text-xs whitespace-nowrap">{formatInvoiceDate(r.invoice_number)}</TableCell>
                   <TableCell className="text-xs whitespace-nowrap">{format(parseISO(r.transaction_date), "dd-MM-yyyy hh:mm a")}</TableCell>
                   <TableCell className="text-xs whitespace-nowrap">{r.performed_by}</TableCell>
                   <TableCell>
