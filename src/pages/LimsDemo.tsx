@@ -620,6 +620,10 @@ const LimsDemo = () => {
                   <span className="text-sm text-muted-foreground">{selectedOrderIds.size} selected</span>
                 )}
                 <div className="ml-auto flex gap-2">
+                  <Button size="sm" variant="outline" onClick={handleRefreshActiveOrders} disabled={isRefreshing}>
+                    <RefreshCw className={`h-4 w-4 mr-1 ${isRefreshing ? "animate-spin" : ""}`} />
+                    {isRefreshing ? "Refreshing…" : "Refresh"}
+                  </Button>
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button size="sm" variant="destructive" disabled={selectedOrderIds.size === 0}>
