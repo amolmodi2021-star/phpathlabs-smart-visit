@@ -211,10 +211,41 @@ const DailyReport = () => {
             </div>
           </>
         )}
+        <div>
+          <Label className="text-xs">Search Invoice #</Label>
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              type="text"
+              value={invoiceSearch}
+              onChange={e => setInvoiceSearch(e.target.value)}
+              placeholder="e.g. 2604160004"
+              className="w-48 pl-7 pr-7"
+            />
+            {invoiceSearch && (
+              <button
+                type="button"
+                onClick={() => setInvoiceSearch("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                aria-label="Clear search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
         <Button variant="outline" size="sm" onClick={exportToExcel} disabled={filtered.length === 0}>
           <Download className="h-3.5 w-3.5 mr-1" /> Export Excel
         </Button>
       </div>
+
+      {isSearching && (
+        <div>
+          <Badge variant="secondary" className="text-xs">
+            Searching all dates — date filter ignored ({transactions.length} result{transactions.length === 1 ? "" : "s"})
+          </Badge>
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
