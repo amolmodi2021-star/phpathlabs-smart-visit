@@ -13,6 +13,18 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandInput, CommandList, CommandEmpty, CommandItem } from "@/components/ui/command";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface TestItem {
   code: string;
@@ -69,6 +81,8 @@ const LimsDemo = () => {
   const [newMachineCode, setNewMachineCode] = useState("");
   const [newMachineId, setNewMachineId] = useState("");
   const [newParamCode, setNewParamCode] = useState("");
+  const [orderSearch, setOrderSearch] = useState("");
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
 
   const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID || "rpbkilhzulaugzrlatts";
   const apiUrl = `https://${projectId}.supabase.co/functions/v1/lims-interface`;
@@ -92,7 +106,11 @@ const LimsDemo = () => {
       .on("postgres_changes", { event: "*", schema: "public", table: "lims_unmapped_results" }, () => {
         queryClient.invalidateQueries({ queryKey: ["lims-unmapped"] });
       }).subscribe();
-    return () => { supabase.removeChannel(ch1); supabase.removeChannel(ch2); supabase.removeChannel(ch3); supabase.removeChannel(ch4); };
+    const ch5 = supabase.channel("lims-patient-results-rt")
+      .on("postgres_changes", { event: "*", schema: "public", table: "patient_results" }, () => {
+        queryClient.invalidateQueries({ queryKey: ["lims-dispatch-status"] });
+      }).subscribe();
+    return () => { supabase.removeChannel(ch1); supabase.removeChannel(ch2); supabase.removeChannel(ch3); supabase.removeChannel(ch4); supabase.removeChannel(ch5); };
   }, [queryClient]);
 
   const { data: orders = [] } = useQuery({
@@ -142,6 +160,110 @@ const LimsDemo = () => {
       return data || [];
     },
   });
+
+  // Filtered orders for search
+  const filteredOrders = orders.filter((o: any) => {
+    if (!orderSearch.trim()) return true;
+    const q = orderSearch.trim().toLowerCase();
+    return (
+      (o.sample_id || "").toLowerCase().includes(q) ||
+      (o.patient_name || "").toLowerCase().includes(q)
+    );
+  });
+
+  // Dispatch status for active orders → auto-delete dispatched
+  const { data: dispatchedInvoices = [] } = useQuery({
+    queryKey: ["lims-dispatch-status", orders.map((o: any) => o.sample_id).sort().join(",")],
+    enabled: orders.length > 0,
+    queryFn: async () => {
+      const invoices = Array.from(
+        new Set(orders.map((o: any) => String(o.sample_id || "").replace(/[A-Za-z]+$/, "")).filter(Boolean))
+      );
+      if (invoices.length === 0) return [] as string[];
+      const { data: regs } = await supabase
+        .from("patient_registrations")
+        .select("id, invoice_number")
+        .in("invoice_number", invoices);
+      if (!regs || regs.length === 0) return [];
+      const regIds = regs.map((r: any) => r.id);
+      const { data: prs } = await supabase
+        .from("patient_results")
+        .select("registration_id, status")
+        .in("registration_id", regIds);
+      const byReg: Record<string, string[]> = {};
+      (prs || []).forEach((r: any) => {
+        (byReg[r.registration_id] ||= []).push(r.status);
+      });
+      const dispatched = new Set<string>();
+      regs.forEach((r: any) => {
+        const statuses = byReg[r.id];
+        if (statuses && statuses.length > 0 && statuses.every((s) => s === "dispatched")) {
+          dispatched.add(r.invoice_number);
+        }
+      });
+      return Array.from(dispatched);
+    },
+  });
+
+  // Auto-delete orders whose underlying registration is fully dispatched
+  useEffect(() => {
+    if (!orders.length || !dispatchedInvoices.length) return;
+    const dispSet = new Set(dispatchedInvoices);
+    const toDelete = orders.filter((o: any) => {
+      const inv = String(o.sample_id || "").replace(/[A-Za-z]+$/, "");
+      return inv && dispSet.has(inv);
+    });
+    if (toDelete.length === 0) return;
+    Promise.all(
+      toDelete.map(async (o: any) => {
+        await supabase.from("lims_test_results").delete().eq("order_id", o.id);
+        await supabase.from("lims_test_orders").delete().eq("id", o.id);
+      })
+    ).then(() => {
+      toast({ title: `Auto-removed ${toDelete.length} dispatched order${toDelete.length > 1 ? "s" : ""}` });
+      queryClient.invalidateQueries({ queryKey: ["lims-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["lims-results"] });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispatchedInvoices.join(","), orders.map((o: any) => o.id).join(",")]);
+
+  // Bulk delete selected/filtered
+  const bulkDelete = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    await Promise.all(
+      ids.map(async (id) => {
+        await supabase.from("lims_test_results").delete().eq("order_id", id);
+        await supabase.from("lims_test_orders").delete().eq("id", id);
+      })
+    );
+    toast({ title: `Deleted ${ids.length} order${ids.length > 1 ? "s" : ""}` });
+    setSelectedOrderIds(new Set());
+    queryClient.invalidateQueries({ queryKey: ["lims-orders"] });
+    queryClient.invalidateQueries({ queryKey: ["lims-results"] });
+  };
+
+  const toggleSelectOrder = (id: string) => {
+    setSelectedOrderIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const allFilteredSelected =
+    filteredOrders.length > 0 && filteredOrders.every((o: any) => selectedOrderIds.has(o.id));
+  const toggleSelectAllFiltered = () => {
+    setSelectedOrderIds((prev) => {
+      const next = new Set(prev);
+      if (allFilteredSelected) {
+        filteredOrders.forEach((o: any) => next.delete(o.id));
+      } else {
+        filteredOrders.forEach((o: any) => next.add(o.id));
+      }
+      return next;
+    });
+  };
 
   const createOrder = useMutation({
     mutationFn: async () => {
@@ -413,36 +535,101 @@ const LimsDemo = () => {
           </Card>
 
           <Card>
-            <CardHeader><CardTitle className="text-base">Active Orders ({orders.length})</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">Active Orders ({filteredOrders.length}{orderSearch ? ` of ${orders.length}` : ""})</CardTitle></CardHeader>
             <CardContent>
-              {orders.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No orders yet. Create one above.</p>
+              {/* Toolbar: search + bulk actions */}
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                <Input
+                  placeholder="Search by Sample ID or Patient Name…"
+                  value={orderSearch}
+                  onChange={(e) => setOrderSearch(e.target.value)}
+                  className="max-w-xs"
+                />
+                {filteredOrders.length > 0 && (
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <Checkbox checked={allFilteredSelected} onCheckedChange={toggleSelectAllFiltered} />
+                    Select all ({filteredOrders.length})
+                  </label>
+                )}
+                {selectedOrderIds.size > 0 && (
+                  <span className="text-sm text-muted-foreground">{selectedOrderIds.size} selected</span>
+                )}
+                <div className="ml-auto flex gap-2">
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button size="sm" variant="destructive" disabled={selectedOrderIds.size === 0}>
+                        <Trash2 className="h-4 w-4 mr-1" /> Delete Selected
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete {selectedOrderIds.size} selected order(s)?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will permanently remove these active orders and their associated results from the bidirectional interface.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => bulkDelete(Array.from(selectedOrderIds))}>Delete</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button size="sm" variant="outline" disabled={filteredOrders.length === 0}>
+                        Delete All{orderSearch ? " (filtered)" : ""}
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete all {filteredOrders.length} order(s){orderSearch ? " in filter" : ""}?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will permanently remove every order currently shown and their associated results.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => bulkDelete(filteredOrders.map((o: any) => o.id))}>Delete All</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              </div>
+
+              {filteredOrders.length === 0 ? (
+                <p className="text-sm text-muted-foreground">{orders.length === 0 ? "No orders yet. Create one above." : "No orders match the search."}</p>
               ) : (
                 <div className="space-y-2">
-                  {orders.map((order) => {
+                  {filteredOrders.map((order: any) => {
                     const tests = (order.tests as any as TestItem[]) || [];
                     const oResults = orderResults(order.id);
                     const isExpanded = expandedOrder === order.id;
+                    const isSelected = selectedOrderIds.has(order.id);
                     return (
                       <Collapsible key={order.id} open={isExpanded} onOpenChange={() => setExpandedOrder(isExpanded ? null : order.id)}>
                         <div className="border rounded-lg p-3">
-                          <CollapsibleTrigger className="w-full">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3">
-                                {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                                <span className="font-mono font-medium">{order.sample_id}</span>
-                                {order.patient_name && <span className="text-muted-foreground text-sm">{order.patient_name}</span>}
-                                <Badge variant={statusColor(order.status)}>{order.status}</Badge>
-                                <span className="text-xs text-muted-foreground">{tests.length} tests, {oResults.length} results</span>
-                              </div>
-                              <Button
-                                size="icon" variant="ghost"
-                                onClick={(e) => { e.stopPropagation(); deleteOrder.mutate(order.id); }}
-                              >
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
+                          <div className="flex items-center justify-between gap-2">
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <Checkbox checked={isSelected} onCheckedChange={() => toggleSelectOrder(order.id)} />
                             </div>
-                          </CollapsibleTrigger>
+                            <CollapsibleTrigger className="flex-1">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                  {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                  <span className="font-mono font-medium">{order.sample_id}</span>
+                                  {order.patient_name && <span className="text-muted-foreground text-sm">{order.patient_name}</span>}
+                                  <Badge variant={statusColor(order.status)}>{order.status}</Badge>
+                                  <span className="text-xs text-muted-foreground">{tests.length} tests, {oResults.length} results</span>
+                                </div>
+                              </div>
+                            </CollapsibleTrigger>
+                            <Button
+                              size="icon" variant="ghost"
+                              onClick={(e) => { e.stopPropagation(); deleteOrder.mutate(order.id); }}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
                           <CollapsibleContent className="mt-3">
                             <Table>
                               <TableHeader>
