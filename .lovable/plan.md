@@ -1,50 +1,52 @@
 
 
-## Goal
-Restructure the **Code Mapping** tab in `/lims-demo` into 4 sections, adding a new **No Map Required** ignore-list with two-way transfer to **Unmapped Results**. The edge function must respect this ignore list so flagged machine codes are silently dropped (not re-inserted into `lims_unmapped_results`) on every future submission.
+## Root cause
+Already-mapped codes (PDW, RBC, WBC, HGB, MCV, MCH, MCHC, PLT) appear in **Unmapped Results** because their `lims_unmapped_results` rows were inserted (05:11–05:19 UTC on 16-Apr) **before** the mappings were created in `lims_code_mapping` (06:18–06:56 UTC).
 
-## 4 sections (in order, on Code Mapping tab)
-1. **Unmapped Results** — existing card, but excludes any row whose `machine_code` exists in the ignore list. Adds a new per-row button: **"No Map Required"** → moves that machine code to section 4.
-2. **Add Mapping Manually** — unchanged.
-3. **Code Mappings** (the existing "Mapped Codes") — unchanged.
-4. **No Map Required** (NEW) — table of ignored machine codes with columns: Machine Code, Machine ID, Added At, Action. Action = **"Move to Unmapped Results"** button (vice versa).
+The edge function correctly classified them as unmapped at submission time. The per-row **"Map"** button (`resolveUnmapped`) auto-resolves all sibling unmapped rows with the same `machine_code` — but the **"Add Mapping Manually"** form (`addMapping`) does NOT do this back-fill. So mappings created via the manual form (or any path other than the resolve button) leave historical unmapped rows orphaned.
 
-## DB — new table
-New migration creates `lims_no_map_required`:
-- `id uuid pk default gen_random_uuid()`
-- `machine_code text not null`
-- `machine_id text default ''` (kept for parity with code-mapping rows; matching is by `machine_code` only — same convention as the mapping reverse-lookup which already ignores machine_id)
-- `created_at timestamptz default now()`
-- Unique constraint on `machine_code` (one ignore entry per code, applies to all machines)
-- RLS: enable, plus "Anyone can view/insert/delete" policies (matches existing permissive policies on `lims_code_mapping` / `lims_unmapped_results`)
+Verified data:
+- 8 mappings exist (PDW, RBC, WBC, HGB, MCV, MCH, MCHC, PLT) — all created 06:18–06:56 UTC.
+- ~30+ unresolved unmapped rows exist for those same codes — all received 05:11–05:19 UTC.
 
-## Behavior
-**Mark as No Map Required (from Unmapped Results row):**
-1. Insert `{machine_code, machine_id}` into `lims_no_map_required` (ignore conflict on duplicate).
-2. Soft-resolve every existing unmapped row with the same `machine_code` by setting `is_resolved = true` (so they disappear from the section).
-3. Toast: "Code <X> marked as No Map Required".
+## Fix (2 parts)
 
-**Move back to Unmapped Results (from No Map Required row):**
-1. Delete the row from `lims_no_map_required`.
-2. Toast: "Code <X> moved back. Future submissions of this code will appear in Unmapped Results."
-3. Note: historical rows already soft-resolved are not resurrected — only future submissions reappear. (Acceptable & consistent with how dispatch-removed orders work.)
+### A. One-time backfill (migration)
+Soft-resolve every existing `lims_unmapped_results` row whose `machine_code` already has any entry in `lims_code_mapping`. This clears the current stale rows for PDW, RBC, WBC, HGB, MCV, MCH, MCHC, PLT, and any other historical drift.
 
-**Edge function (`supabase/functions/lims-interface/index.ts`) — POST `results`:**
-- After classifying mapped vs unmapped, fetch `lims_no_map_required.machine_code` for the incoming codes once.
-- Drop any `unmappedRows` whose `machine_code` is in the ignore set **before** inserting into `lims_unmapped_results`.
-- Response counters: add `ignored: N` alongside existing `mapped` / `unmapped`.
-- Mapped rows are unaffected (if a code is later mapped, mapping wins).
+```sql
+UPDATE public.lims_unmapped_results u
+SET is_resolved = true
+WHERE u.is_resolved = false
+  AND EXISTS (
+    SELECT 1 FROM public.lims_code_mapping m
+    WHERE m.machine_code = u.machine_code
+  );
+```
 
-**Frontend filter (defense in depth):**
-- The `unmappedResults` query also excludes any row whose `machine_code` is present in the loaded `noMapRequired` list, so the section is clean even if a stale row exists.
+Note: this only flips `is_resolved`; it does NOT retroactively insert into `lims_test_results` for those old samples (consistent with how the dispatch-removed orders behave — historical rows aren't resurrected).
 
-## Files
-- New migration — create `lims_no_map_required` + RLS policies.
-- `src/pages/LimsDemo.tsx` — new query `noMapRequired`, new realtime channel, two new mutations (`markNoMapRequired`, `unmarkNoMapRequired`), per-row "No Map Required" button in Unmapped Results, new 4th `<Card>` for the ignore list, client-side filter on `unmappedResults`.
-- `supabase/functions/lims-interface/index.ts` — fetch ignore list, skip ignored codes from `unmappedRows` insert, return `ignored` count.
+### B. Prevent recurrence — patch `addMapping` (`src/pages/LimsDemo.tsx`)
+After inserting a new mapping in `addMapping.mutationFn`, also auto-resolve any existing unmapped rows with the matching `machine_code`:
+
+```ts
+// after the successful insert into lims_code_mapping
+await supabase.from("lims_unmapped_results")
+  .update({ is_resolved: true })
+  .eq("machine_code", machineCode)
+  .eq("is_resolved", false);
+```
+
+Same one-line back-fill should be added to `updateMapping` as a safety net (in case a row was added via direct DB / future flow).
+
+Toast updated to: "Mapping added — historical unmapped rows for this code cleared".
 
 ## Out of scope
-- Logs, Orders & Results, API Reference tabs — untouched.
-- Existing mapping logic (1:N machine_code → param mappings, auto-resolve siblings) — untouched.
-- No password gate on these toggles (mirrors existing free-form mapping add/delete on the same page).
+- Edge function logic — already correct.
+- `resolveUnmapped` — already does this.
+- No retroactive insert into `lims_test_results` for historical samples (matches existing behaviour).
+
+## Files
+- New migration — one-time `UPDATE` to soft-resolve stale rows.
+- `src/pages/LimsDemo.tsx` — add back-fill step inside `addMapping` (and `updateMapping`) mutations (~3 lines each).
 
