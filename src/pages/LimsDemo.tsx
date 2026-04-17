@@ -106,7 +106,11 @@ const LimsDemo = () => {
       .on("postgres_changes", { event: "*", schema: "public", table: "lims_unmapped_results" }, () => {
         queryClient.invalidateQueries({ queryKey: ["lims-unmapped"] });
       }).subscribe();
-    return () => { supabase.removeChannel(ch1); supabase.removeChannel(ch2); supabase.removeChannel(ch3); supabase.removeChannel(ch4); };
+    const ch5 = supabase.channel("lims-patient-results-rt")
+      .on("postgres_changes", { event: "*", schema: "public", table: "patient_results" }, () => {
+        queryClient.invalidateQueries({ queryKey: ["lims-dispatch-status"] });
+      }).subscribe();
+    return () => { supabase.removeChannel(ch1); supabase.removeChannel(ch2); supabase.removeChannel(ch3); supabase.removeChannel(ch4); supabase.removeChannel(ch5); };
   }, [queryClient]);
 
   const { data: orders = [] } = useQuery({
