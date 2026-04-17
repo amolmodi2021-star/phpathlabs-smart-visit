@@ -137,6 +137,9 @@ const MarketingSender = () => {
         };
       }
 
+      const patientName = String(row["Name"] || row["name"] || "");
+      const retryPayloadSnapshot = { apiUrl, apiKey, headerName, headerPrefix, payload };
+
       try {
         const { data: proxyResp, error: proxyErr } = await supabase.functions.invoke("send-marketing-message", {
           body: {
@@ -147,11 +150,23 @@ const MarketingSender = () => {
             payload,
           },
         });
-        if (proxyErr || !proxyResp || proxyResp.status < 200 || proxyResp.status >= 300) {
+        const ok = !proxyErr && proxyResp && proxyResp.status >= 200 && proxyResp.status < 300;
+        if (!ok) {
           failedCount++;
+          // Log the failure with retry payload so user can retry from the Retry tab
+          if (mobile10) {
+            await supabase.from("message_send_log").insert({
+              mobile_number: mobile10,
+              patient_name: patientName || null,
+              message_type: "Marketing",
+              delivery_status: "failed",
+              retry_payload: retryPayloadSnapshot as any,
+              retry_count: 0,
+            } as any);
+          }
         } else {
           sentCount++;
-          await logMessageSend(mobile10, String(row["Name"] || row["name"] || ""), "Marketing");
+          await logMessageSend(mobile10, patientName, "Marketing");
           // Update CRM with last sent info
           if (mobile10) {
             await supabase.from("crm_contacts").update({
@@ -162,6 +177,16 @@ const MarketingSender = () => {
         }
       } catch {
         failedCount++;
+        if (mobile10) {
+          await supabase.from("message_send_log").insert({
+            mobile_number: mobile10,
+            patient_name: patientName || null,
+            message_type: "Marketing",
+            delivery_status: "failed",
+            retry_payload: retryPayloadSnapshot as any,
+            retry_count: 0,
+          } as any);
+        }
       }
 
       setProgress({ current: i + 1, total: excelData.length });
