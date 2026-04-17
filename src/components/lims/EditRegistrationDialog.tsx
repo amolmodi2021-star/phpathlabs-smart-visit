@@ -344,7 +344,9 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         });
       }
 
-      // Log overpayment refund
+      // Log overpayment refund — money-out delta only.
+      // Registration snapshot fields (gross/discount/final/paid/due) are zero so
+      // they don't inflate Daily Report totals; sync row above already reflects new state.
       logPaymentTransaction({
         registration_id: reg.id,
         invoice_number: reg.invoice_number,
@@ -353,10 +355,10 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         direction: "out",
         payments: [{ mode: overpaymentRefundMode, amount: discountOverpayment }],
         total_amount: discountOverpayment,
-        gross_amount: discountCalc.totalAmount,
-        discount_amount: discountCalc.totalDiscount,
-        final_amount: discountCalc.finalAmount,
-        paid_amount: discountCalc.finalAmount,
+        gross_amount: 0,
+        discount_amount: 0,
+        final_amount: 0,
+        paid_amount: 0,
         due_amount: 0,
         refund_amount: discountOverpayment,
         remarks: `Overpayment refund via ${overpaymentRefundMode}`,
@@ -525,7 +527,8 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       if (newlyCancelled.length > 0) parts.push(`${newlyCancelled.length} test(s) cancelled`);
       if (homeVisitRefundRequested) parts.push("Home visit charges refunded");
       toast.success(`${parts.join(". ")}. Refund: ₹${refundCalc} via ${refundMode}`);
-      // Log cancellation refund
+      // Log cancellation refund — money-out delta only.
+      // Registration snapshot fields zeroed; reduced totals already on the synced registration_payment row.
       if (refundCalc > 0) {
         logPaymentTransaction({
           registration_id: reg.id,
@@ -535,11 +538,11 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
           direction: "out",
           payments: [{ mode: refundMode, amount: refundCalc }],
           total_amount: refundCalc,
-          gross_amount: reg.gross_amount || 0,
-          discount_amount: reg.discount_amount || 0,
-          final_amount: newFinalAmount,
-          paid_amount: newPaid,
-          due_amount: Math.max(0, newFinalAmount - newPaid),
+          gross_amount: 0,
+          discount_amount: 0,
+          final_amount: 0,
+          paid_amount: 0,
+          due_amount: 0,
           refund_amount: refundCalc,
           remarks: `${newlyCancelled.length} test(s) cancelled${homeVisitRefundRequested ? " + HV charges refunded" : ""}`,
         });
@@ -585,7 +588,9 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       });
 
       toast.success(`Bill cancelled. Full refund: ₹${totalPaid} via ${refundMode}`);
-      // Log bill cancellation refund
+      // Log bill cancellation refund — money-out delta only.
+      // Registration snapshot fields zeroed; original registration_payment row was
+      // also synced to zeros above so combined daily total nets to zero.
       if (totalPaid > 0) {
         logPaymentTransaction({
           registration_id: reg.id,
@@ -595,8 +600,8 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
           direction: "out",
           payments: [{ mode: refundMode, amount: totalPaid }],
           total_amount: totalPaid,
-          gross_amount: reg.gross_amount || 0,
-          discount_amount: reg.discount_amount || 0,
+          gross_amount: 0,
+          discount_amount: 0,
           final_amount: 0,
           paid_amount: 0,
           due_amount: 0,

@@ -53,6 +53,10 @@ export interface LogTransactionParams {
 export function logPaymentTransaction(params: LogTransactionParams) {
   const user = getCurrentUser();
   const modes = splitPaymentModes(params.payments);
+  // For "out" (refund / bill_cancellation), store mode amounts and total_amount as
+  // NEGATIVE so daily mode totals net to actual cash-drawer reality.
+  // refund_amount stays POSITIVE (audit value).
+  const sign = params.direction === "out" ? -1 : 1;
 
   const row = {
     registration_id: params.registration_id,
@@ -61,12 +65,12 @@ export function logPaymentTransaction(params: LogTransactionParams) {
     transaction_type: params.transaction_type,
     transaction_date: new Date().toISOString(),
     performed_by: user?.display_name || user?.username || "Unknown",
-    cash_amount: modes.cash,
-    gpay_amount: modes.gpay,
-    paytm_amount: modes.paytm,
-    credit_card_amount: modes.credit_card,
-    neft_amount: modes.neft,
-    total_amount: params.total_amount ?? 0,
+    cash_amount: modes.cash * sign,
+    gpay_amount: modes.gpay * sign,
+    paytm_amount: modes.paytm * sign,
+    credit_card_amount: modes.credit_card * sign,
+    neft_amount: modes.neft * sign,
+    total_amount: (params.total_amount ?? 0) * sign,
     direction: params.direction,
     gross_amount: params.gross_amount ?? 0,
     discount_amount: params.discount_amount ?? 0,
