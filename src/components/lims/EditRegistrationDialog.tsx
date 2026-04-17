@@ -15,7 +15,7 @@ import { format } from "date-fns";
 import { Save, Ban, RotateCcw, Lock } from "lucide-react";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
-import { logPaymentTransaction } from "@/lib/paymentTransactions";
+import { logPaymentTransaction, updateRegistrationPaymentSplit, splitPaymentModes } from "@/lib/paymentTransactions";
 
 const TITLES = ["Mr.", "Mrs.", "Ms.", "Master", "Miss", "Baby Of", "Dr."];
 
