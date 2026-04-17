@@ -531,8 +531,10 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       // Registration snapshot fields zeroed; reduced totals already on the synced registration_payment row.
       if (refundCalc > 0) {
         const cTodayStr = format(new Date(), "dd-MM-yyyy");
-        const cRegDateStr = reg.created_at ? format(new Date(reg.created_at), "dd-MM-yyyy") : cTodayStr;
-        const cIsCrossDay = cRegDateStr !== cTodayStr;
+        const cInvDateStr = (reg.invoice_number && /^\d{6}/.test(reg.invoice_number))
+          ? `${reg.invoice_number.slice(4,6)}-${reg.invoice_number.slice(2,4)}-20${reg.invoice_number.slice(0,2)}`
+          : cTodayStr;
+        const cIsCrossDay = cInvDateStr !== cTodayStr;
         logPaymentTransaction({
           registration_id: reg.id,
           invoice_number: reg.invoice_number,
@@ -569,7 +571,9 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       const origDiscount = Number(reg.discount_amount || 0);
       const origFinal = Number(reg.final_amount || 0);
       const regDate = reg.created_at ? new Date(reg.created_at) : new Date();
-      const regDateStr = format(regDate, "dd-MM-yyyy");
+      const regDateStr = (reg.invoice_number && /^\d{6}/.test(reg.invoice_number))
+        ? `${reg.invoice_number.slice(4,6)}-${reg.invoice_number.slice(2,4)}-20${reg.invoice_number.slice(0,2)}`
+        : format(regDate, "dd-MM-yyyy");
       // Detect original payment modes for audit context in remarks
       const origPayments: Array<{ mode: string; amount: number }> = Array.isArray(reg.payments) ? reg.payments : [];
       const origModesLabel = origPayments.length

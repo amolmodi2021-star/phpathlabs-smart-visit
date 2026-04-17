@@ -134,8 +134,10 @@ const DuePayments = () => {
       });
       // Log due collection transaction — use "old_due_recovered" if original bill is from a previous day
       const todayStr = format(new Date(), "dd-MM-yyyy");
-      const regDateStr = selected.created_at ? format(new Date(selected.created_at), "dd-MM-yyyy") : todayStr;
-      const isCrossDay = regDateStr !== todayStr;
+      const invDateStr = (selected.invoice_number && /^\d{6}/.test(selected.invoice_number))
+        ? `${selected.invoice_number.slice(4,6)}-${selected.invoice_number.slice(2,4)}-20${selected.invoice_number.slice(0,2)}`
+        : todayStr;
+      const isCrossDay = invDateStr !== todayStr;
       logPaymentTransaction({
         registration_id: selected.id,
         invoice_number: selected.invoice_number,
