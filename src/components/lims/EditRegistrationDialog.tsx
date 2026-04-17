@@ -210,9 +210,16 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   const handleSaveDetails = async () => {
     setSaving(true);
     try {
-      const payments = Array.from(selectedModes)
+      const editedSplit = Array.from(selectedModes)
         .filter(m => (modeAmounts[m] || 0) > 0)
         .map(m => ({ mode: m, amount: modeAmounts[m] || 0 }));
+
+      // Preserve due-collection entries (have a `date` field) — only the original
+      // at-registration split (entries without `date`) is replaced by the dialog edits.
+      const existingPayments: any[] = Array.isArray(reg.payments) ? reg.payments : [];
+      const dueCollectionEntries = existingPayments.filter((p: any) => p && p.date);
+      const originalRegEntries = existingPayments.filter((p: any) => p && !p.date);
+      const payments = [...editedSplit, ...dueCollectionEntries];
 
       const updateData: any = {
         patient_name: patientName.replace(/\s+/g, ' ').trim().toUpperCase(),
@@ -245,13 +252,13 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       if (error) throw error;
       qc.invalidateQueries({ queryKey: ["patient_registrations"] });
 
-      // Always sync the original registration_payment row with latest authoritative numbers
-      // so Daily Report stays exact after split / discount / test-cancel edits.
+      // Sync the original registration_payment row's bill snapshot. Payment-mode
+      // columns stay frozen UNLESS the user truly edited the original at-registration
+      // split (mode typo correction) — never when adding what is really a due collection.
       {
-        const newPaid = payments.reduce((s, p) => s + (p.amount || 0), 0);
         const newFinal = discountChanged ? discountCalc.finalAmount : Number(reg.final_amount || 0);
-        const origModes = splitPaymentModes(reg.payments || []);
-        const newModes = splitPaymentModes(payments);
+        const origModes = splitPaymentModes(originalRegEntries);
+        const newModes = splitPaymentModes(editedSplit);
         const splitChanged =
           origModes.cash !== newModes.cash ||
           origModes.gpay !== newModes.gpay ||
@@ -262,17 +269,22 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         if (splitChanged) reasons.push("Payment mode edited");
         if (discountChanged) reasons.push("Discount edited");
         if (reasons.length > 0) {
+          const origPaid = originalRegEntries.reduce((s: number, p: any) => s + Number(p.amount || 0), 0);
+          const syncedPaid = splitChanged
+            ? editedSplit.reduce((s, p) => s + (p.amount || 0), 0)
+            : origPaid;
           await syncRegistrationPaymentRow({
             registration_id: reg.id,
             invoice_number: reg.invoice_number,
             patient_name: patientName,
-            payments,
-            paid_amount: newPaid,
+            payments: splitChanged ? editedSplit : originalRegEntries,
+            paid_amount: syncedPaid,
             final_amount: newFinal,
-            due_amount: Math.max(0, newFinal - newPaid),
+            due_amount: Math.max(0, newFinal - lockedPaidAmount),
             gross_amount: discountChanged ? discountCalc.totalAmount : Number(reg.gross_amount || 0),
             discount_amount: discountChanged ? discountCalc.totalDiscount : Number(reg.discount_amount || 0),
             change_reason: reasons.join(" + "),
+            sync_payment_split: splitChanged,
           });
         }
       }
