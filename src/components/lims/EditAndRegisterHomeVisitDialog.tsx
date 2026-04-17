@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { X, Search } from "lucide-react";
 import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import { format, parse, isValid, differenceInYears } from "date-fns";
+import { logPaymentTransaction } from "@/lib/paymentTransactions";
 
 interface EditTest {
   test_id: string;
@@ -286,7 +287,7 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
         umrNumber = umr;
       }
 
-      const { error } = await supabase.from("patient_registrations").insert({
+      const { data: insertedReg, error } = await supabase.from("patient_registrations").insert({
         invoice_number: invNum,
         patient_name: patientName.replace(/\s+/g, ' ').trim().toUpperCase(),
         mobile_number: cleanNumber,
@@ -311,8 +312,26 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
         home_visit_id: visit.id,
         global_discount_type: globalDiscountValue > 0 ? globalDiscountType : null,
         global_discount_value: globalDiscountValue,
-      } as any);
+      } as any).select().single();
       if (error) throw error;
+
+      // Log payment transaction (always, even when totalPaid = 0)
+      if (insertedReg) {
+        logPaymentTransaction({
+          registration_id: (insertedReg as any).id,
+          invoice_number: (insertedReg as any).invoice_number,
+          patient_name: (insertedReg as any).patient_name,
+          transaction_type: "registration_payment",
+          direction: "in",
+          payments,
+          total_amount: totalPaid,
+          gross_amount: calculations.totalAmount,
+          discount_amount: calculations.totalDiscount,
+          final_amount: calculations.finalAmount,
+          paid_amount: totalPaid,
+          due_amount: dueAmount,
+        });
+      }
 
       // Update home_visits status and payment
       await supabase.from("home_visits").update({

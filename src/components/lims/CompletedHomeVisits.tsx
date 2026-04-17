@@ -10,6 +10,7 @@ import { Search, CheckCircle, Eye, ChevronDown, ChevronUp, Pencil } from "lucide
 import { format } from "date-fns";
 import { toast } from "sonner";
 import EditAndRegisterHomeVisitDialog from "@/components/lims/EditAndRegisterHomeVisitDialog";
+import { logPaymentTransaction } from "@/lib/paymentTransactions";
 
 const CompletedHomeVisits = () => {
   const qc = useQueryClient();
@@ -132,7 +133,7 @@ const CompletedHomeVisits = () => {
         umrNumber = umr;
       }
 
-      const { error } = await supabase.from("patient_registrations").insert({
+      const { data: insertedReg, error } = await supabase.from("patient_registrations").insert({
         invoice_number: invNum,
         patient_name: e.patient_name || "",
         mobile_number: e.whatsapp_number || "",
@@ -157,9 +158,27 @@ const CompletedHomeVisits = () => {
         home_visit_id: visit.id,
         global_discount_type: e.global_discount_type || null,
         global_discount_value: Number(e.global_discount_value || 0),
-      } as any);
+      } as any).select().single();
 
       if (error) throw error;
+
+      // Log payment transaction (always, even when paid_amount = 0)
+      if (insertedReg) {
+        logPaymentTransaction({
+          registration_id: (insertedReg as any).id,
+          invoice_number: (insertedReg as any).invoice_number,
+          patient_name: (insertedReg as any).patient_name,
+          transaction_type: "registration_payment",
+          direction: "in",
+          payments,
+          total_amount: paidAmount,
+          gross_amount: grossAmount,
+          discount_amount: Number(e.discount_amount || 0),
+          final_amount: finalAmount,
+          paid_amount: paidAmount,
+          due_amount: dueAmount,
+        });
+      }
 
       // Update home_visits status to "Registered"
       const { error: statusError } = await supabase.from("home_visits").update({ status: "Registered" }).eq("id", visit.id);
