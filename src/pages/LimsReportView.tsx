@@ -97,9 +97,34 @@ const LimsReportView = () => {
   const selectedTestIdsParam = searchParams.get("tests");
   const selectedTestIds = selectedTestIdsParam ? new Set(selectedTestIdsParam.split(",")) : null;
   const printRef = useRef<HTMLDivElement>(null);
+  const previewWrapRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [showLetterhead, setShowLetterhead] = useState(true);
+  const [previewScale, setPreviewScale] = useState(1);
+
+  // A4 width at 96dpi ≈ 794px. Recompute scale on resize so the page fits the viewport on mobile.
+  useEffect(() => {
+    const A4_WIDTH_PX = (PAGE_WIDTH_MM / 25.4) * 96; // ~794
+    const compute = () => {
+      const wrap = previewWrapRef.current;
+      if (!wrap) return;
+      const available = wrap.clientWidth;
+      if (!available) return;
+      const next = Math.min(1, available / A4_WIDTH_PX);
+      setPreviewScale(next);
+    };
+    compute();
+    const ro = new ResizeObserver(compute);
+    if (previewWrapRef.current) ro.observe(previewWrapRef.current);
+    window.addEventListener("resize", compute);
+    window.addEventListener("orientationchange", compute);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", compute);
+      window.removeEventListener("orientationchange", compute);
+    };
+  }, [loading]);
 
   // Data
   const [approvedReports, setApprovedReports] = useState<any[]>([]);
