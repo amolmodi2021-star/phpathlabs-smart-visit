@@ -103,12 +103,31 @@ const NavSection = ({ items, onClick }: { items: typeof allNavItems; onClick?: (
 const AppLayout = ({ children }: { children: React.ReactNode }) => {
   const [open, setOpen] = useState(false);
   const [pwDialogOpen, setPwDialogOpen] = useState(false);
+  const [permsVersion, setPermsVersion] = useState(0);
   const navigate = useNavigate();
+  const location = useLocation();
   const isMobile = useIsMobile();
   useHomeVisitNotifications();
 
+  // Refresh permissions on mount, route change, and window focus
+  useEffect(() => {
+    refreshCurrentUserPermissions();
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const onFocus = () => { refreshCurrentUserPermissions(); };
+    const onPermsUpdated = () => setPermsVersion((v) => v + 1);
+    window.addEventListener("focus", onFocus);
+    window.addEventListener(PERMISSIONS_UPDATED_EVENT, onPermsUpdated);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener(PERMISSIONS_UPDATED_EVENT, onPermsUpdated);
+    };
+  }, []);
+
   const user = getCurrentUser();
   const navItems = allNavItems.filter((item) => isTabAllowed(item.to));
+  void permsVersion; // ensure recompute on permission changes
 
   const handleLogout = () => {
     logout();
