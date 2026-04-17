@@ -776,6 +776,7 @@ const DoctorApproval = () => {
       )}
       </>
       )}
+      <SelectApproverDialog open={approverDialogOpen} onOpenChange={handleApproverDialogCancel} onConfirm={handleApproverDialogConfirm} />
     </div>
   );
 };
