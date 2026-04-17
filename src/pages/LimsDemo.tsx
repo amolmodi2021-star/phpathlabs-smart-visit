@@ -79,7 +79,7 @@ const LimsDemo = () => {
   const [editingMappingId, setEditingMappingId] = useState<string | null>(null);
   const [editingParamCode, setEditingParamCode] = useState<Record<string, string>>({});
   const [newMachineCode, setNewMachineCode] = useState("");
-  const [newMachineId, setNewMachineId] = useState("");
+  
   const [newParamCode, setNewParamCode] = useState("");
   const [orderSearch, setOrderSearch] = useState("");
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
@@ -433,7 +433,7 @@ const LimsDemo = () => {
     onSuccess: () => {
       toast({ title: "Mapping added", description: "Historical unmapped rows for this code cleared" });
       setNewMachineCode("");
-      setNewMachineId("");
+      
       setNewParamCode("");
       queryClient.invalidateQueries({ queryKey: ["lims-code-mappings"] });
       queryClient.invalidateQueries({ queryKey: ["lims-unmapped"] });
@@ -891,15 +891,6 @@ const LimsDemo = () => {
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs text-muted-foreground">Machine ID (optional)</label>
-                  <Input
-                    value={newMachineId}
-                    onChange={(e) => setNewMachineId(e.target.value)}
-                    placeholder="e.g. INDIKO"
-                    className="h-9 w-40 font-mono"
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
                   <label className="text-xs text-muted-foreground">Parameter *</label>
                   <Popover>
                     <PopoverTrigger asChild>
@@ -944,7 +935,7 @@ const LimsDemo = () => {
                   disabled={!newMachineCode.trim() || !newParamCode || addMapping.isPending}
                   onClick={() => addMapping.mutate({
                     machineCode: newMachineCode.trim(),
-                    machineId: newMachineId.trim(),
+                    machineId: "",
                     paramCode: newParamCode,
                   })}
                 >
@@ -952,7 +943,7 @@ const LimsDemo = () => {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground mt-3">
-                Manually pair an analyzer's machine code with an existing parameter. If the same Machine Code + Machine ID already exists, it will be updated.
+                Manually pair an analyzer's machine code with an existing parameter. If the same Machine Code already exists, it will be updated.
               </p>
             </CardContent>
           </Card>
@@ -970,7 +961,6 @@ const LimsDemo = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Machine Code</TableHead>
-                      <TableHead>Machine ID</TableHead>
                       <TableHead>→ Param Code</TableHead>
                       <TableHead>Parameter Name</TableHead>
                       <TableHead>Created</TableHead>
@@ -985,7 +975,6 @@ const LimsDemo = () => {
                       return (
                         <TableRow key={m.id}>
                           <TableCell className="font-mono font-medium">{m.machine_code}</TableCell>
-                          <TableCell className="font-mono text-xs">{m.machine_id || "—"}</TableCell>
                           {isEditing ? (
                             <TableCell colSpan={2}>
                               <Popover>
