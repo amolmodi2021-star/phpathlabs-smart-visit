@@ -88,9 +88,16 @@ const DailyReport = () => {
     return Array.from(set).sort();
   }, [transactions]);
 
+  // Type rank: cancellation rows must appear before refund rows within the same invoice
+  const typeRank = (type: string): number => {
+    if (type === "bill_cancellation" || type === "old_bill_cancellation") return 0;
+    if (type === "refund" || type === "old_bill_refund") return 1;
+    return 2;
+  };
+
   // Filtered data
   const filtered = useMemo(() => {
-    return transactions.filter((t: any) => {
+    const rows = transactions.filter((t: any) => {
       if (userFilter !== "ALL" && t.performed_by !== userFilter) return false;
       if (typeFilter !== "ALL" && t.transaction_type !== typeFilter) return false;
       if (modeFilter !== "ALL") {
@@ -99,6 +106,15 @@ const DailyReport = () => {
         if (Number(t[key] || 0) === 0) return false;
       }
       return true;
+    });
+    // Stable sort: invoice_number desc, then cancellation before refund, then chronological
+    return [...rows].sort((a: any, b: any) => {
+      const invA = a.invoice_number || "";
+      const invB = b.invoice_number || "";
+      if (invA !== invB) return invB.localeCompare(invA);
+      const rankDiff = typeRank(a.transaction_type) - typeRank(b.transaction_type);
+      if (rankDiff !== 0) return rankDiff;
+      return new Date(a.transaction_date).getTime() - new Date(b.transaction_date).getTime();
     });
   }, [transactions, userFilter, typeFilter, modeFilter]);
 
