@@ -1,58 +1,47 @@
 
 
-## Problem
-Daily Payment Register relies on `payment_transactions`, but THREE registration paths fail to insert a row in certain cases:
+## Problem (invoice 2604170001)
+Three rows appear in Daily Report for one patient:
+1. **Registration** (10:26 AM) — already correctly synced with post-edit values
+2. **Due Collection** (10:41 AM) — correct delta-only row, GPay ₹150
+3. **Discount Applied** (10:42 AM) — duplicates the registration snapshot (gross 300, disc 60, final 240, paid 150, due 90) → inflates Daily Report totals AND looks like a "second collection" to the user
 
-1. **`PatientRegistration.tsx` line 497** — `if (paidAmount > 0)` skips logging when patient registers as 100% due. Invoice **2604170001** (₹300 final, ₹0 paid, ₹300 due) was created but never logged. Same will happen for any future "register now, collect later" patient.
-2. **`CompletedHomeVisits.tsx` `handleRegister`** — never calls `logPaymentTransaction` at all, even when the home visit collected payment.
-3. **`EditAndRegisterHomeVisitDialog.tsx`** — also never calls `logPaymentTransaction` after inserting into `patient_registrations`.
-
-The Daily Report shows "Money In ₹0" rows correctly for due-only registrations once they are logged — totals stay accurate because gross/discount/final/paid/due are all snapshotted, and `total_amount=0` adds nothing to mode columns. So always logging is safe.
+The discount edit ALREADY updates the registration row in-place via `syncRegistrationPaymentRow` (lines 264–278 of `EditRegistrationDialog.tsx`). The separate `discount_applied` audit row (lines 281–296) is redundant — it's pure duplication.
 
 ## Fix
 
-### A. `PatientRegistration.tsx` (line 497)
-Remove the `if (paidAmount > 0)` guard. Always log the registration row, with empty `payments` array if nothing collected. The row records the bill snapshot (gross/discount/final/paid=0/due=full) so the patient appears in Daily Report from day one. When the due is later collected via `DuePayments`, that adds a separate delta row on the collection day (already correct).
+### A. Remove the separate `discount_applied` audit insert
+File: `src/components/lims/EditRegistrationDialog.tsx`, lines 280–296.
 
-```ts
-const payments = Array.from(selectedModes)
-  .filter(m => (modeAmounts[m] || 0) > 0)
-  .map(m => ({ mode: m, amount: modeAmounts[m] || 0 }));
-logPaymentTransaction({
-  registration_id: reg.id,
-  invoice_number: reg.invoice_number,
-  patient_name: reg.patient_name,
-  transaction_type: "registration_payment",
-  direction: "in",
-  payments,                 // [] when nothing collected
-  total_amount: paidAmount, // 0 when nothing collected
-  gross_amount: calculations.totalAmount,
-  discount_amount: calculations.totalDiscount,
-  final_amount: calculations.finalAmount,
-  paid_amount: paidAmount,
-  due_amount: dueAmount,
-});
+Delete the entire `if (discountChanged) { logPaymentTransaction({...}) }` block. The discount change is already captured by `syncRegistrationPaymentRow` which:
+- Updates the existing registration_payment row's gross/discount/final/paid/due in place
+- Appends a remark line: "Discount edited on {date} by {user}" (visible in Daily Report's Remarks column)
+
+Result: only ONE row per registration, always reflecting current state. No duplication, no inflated totals.
+
+### B. (Optional) Drop the `discount_applied` transaction_type entirely
+Since no other call site emits it, we can leave the type in the union for backwards-compat with existing rows, but no new ones will be created.
+
+### C. One-time data fix
+Delete the existing stray `discount_applied` row for invoice 2604170001 (id `75212236-cc35-4d58-b5c0-96cb80db6f71`) so today's report immediately reflects the clean state. Also delete any other historical `discount_applied` rows project-wide (their info is already preserved in the corresponding `registration_payment` row's remarks via the sync flow).
+
+```sql
+DELETE FROM payment_transactions WHERE transaction_type = 'discount_applied';
 ```
 
-### B. `CompletedHomeVisits.tsx` (`handleRegister`)
-After inserting into `patient_registrations`, fetch the new row's `id` and call `logPaymentTransaction` with the same registration snapshot + parsed `payments` (already built locally). Always log — even when paid_amount is 0.
+## Verification
+After fix, invoice 2604170001 will show exactly 2 rows in Daily Report:
+- **Registration** — Gross ₹300, Disc ₹60, Final ₹240, Paid ₹150, Due ₹90, GPay ₹150, Remarks: "Discount edited on 17/04/2026, 10:42 am by Unknown"
+- **Due Collection** — snapshots all ₹0, GPay ₹150 (the delta)
 
-To get `reg.id`: change the insert to `.insert({...}).select().single()`.
+Grand totals naturally correct: Gross ₹300, Final ₹240, Paid ₹150, Due ₹90, GPay ₹300 (real cash drawer = registration ₹150 + collection ₹150).
 
-### C. `EditAndRegisterHomeVisitDialog.tsx`
-Mirror change B — capture inserted row, then log a `registration_payment` transaction. Always log.
+## Files
+- `src/components/lims/EditRegistrationDialog.tsx` — remove redundant `logPaymentTransaction` call (lines 280–296)
+- One-time SQL: `DELETE FROM payment_transactions WHERE transaction_type = 'discount_applied'`
 
-### D. One-time data fix for invoice 2604170001
-Insert the missing `payment_transactions` row matching the registration snapshot (paid_amount=0, due_amount=300, total_amount=0, gross/discount/final from registration, performed_by from `registered_by`).
-
-## Files to edit
-- `src/components/lims/PatientRegistration.tsx` — remove `paidAmount > 0` guard
-- `src/components/lims/CompletedHomeVisits.tsx` — add `logPaymentTransaction` call + capture insert id
-- `src/components/lims/EditAndRegisterHomeVisitDialog.tsx` — add `logPaymentTransaction` call + capture insert id
-- One-time SQL `INSERT INTO payment_transactions` for invoice 2604170001
-
-## Why this is safe
-- Existing rows logged with `total_amount=0` contribute nothing to Cash/GPay/Net Collection cards or mode totals.
-- They DO populate Gross/Discount/Final columns — exactly what Daily Report needs to show "this patient was billed today".
-- Future due collection adds its own delta row; no double counting (already proven for invoice 2604150003 fix).
+## What stays the same
+- `syncRegistrationPaymentRow` continues to handle ALL edits (split/discount/test-cancel) by updating the original row in place with appended remarks
+- Refund / bill_cancellation / due_collection logic unchanged
+- Schema unchanged
 
