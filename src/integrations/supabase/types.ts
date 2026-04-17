@@ -198,6 +198,7 @@ export type Database = {
       }
       app_users: {
         Row: {
+          can_approve_as_doctor: boolean
           created_at: string
           display_name: string | null
           id: string
@@ -209,6 +210,7 @@ export type Database = {
           username: string
         }
         Insert: {
+          can_approve_as_doctor?: boolean
           created_at?: string
           display_name?: string | null
           id?: string
@@ -220,6 +222,7 @@ export type Database = {
           username: string
         }
         Update: {
+          can_approve_as_doctor?: boolean
           created_at?: string
           display_name?: string | null
           id?: string
