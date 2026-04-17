@@ -429,7 +429,42 @@ const LimsDemo = () => {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  const toggleTest = (test: TestItem) => {
+  const markNoMapRequired = useMutation({
+    mutationFn: async ({ machineCode, machineId }: { machineCode: string; machineId?: string }) => {
+      const { error } = await (supabase as any).from("lims_no_map_required").insert({
+        machine_code: machineCode,
+        machine_id: machineId || "",
+      });
+      // Ignore unique-violation duplicates
+      if (error && !String(error.message).toLowerCase().includes("duplicate")) throw error;
+      // Soft-resolve all existing unmapped rows with this machine_code
+      await supabase.from("lims_unmapped_results")
+        .update({ is_resolved: true })
+        .eq("machine_code", machineCode)
+        .eq("is_resolved", false);
+      return machineCode;
+    },
+    onSuccess: (machineCode) => {
+      toast({ title: "Marked as No Map Required", description: `Code ${machineCode} will be ignored on future submissions.` });
+      queryClient.invalidateQueries({ queryKey: ["lims-no-map-required"] });
+      queryClient.invalidateQueries({ queryKey: ["lims-unmapped"] });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const unmarkNoMapRequired = useMutation({
+    mutationFn: async ({ id, machineCode }: { id: string; machineCode: string }) => {
+      const { error } = await (supabase as any).from("lims_no_map_required").delete().eq("id", id);
+      if (error) throw error;
+      return machineCode;
+    },
+    onSuccess: (machineCode) => {
+      toast({ title: "Moved back to Unmapped Results", description: `Future submissions of ${machineCode} will appear in Unmapped Results.` });
+      queryClient.invalidateQueries({ queryKey: ["lims-no-map-required"] });
+      queryClient.invalidateQueries({ queryKey: ["lims-unmapped"] });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
     setSelectedTests((prev) =>
       prev.find((t) => t.code === test.code)
         ? prev.filter((t) => t.code !== test.code)
