@@ -891,15 +891,6 @@ const LimsDemo = () => {
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs text-muted-foreground">Machine ID (optional)</label>
-                  <Input
-                    value={newMachineId}
-                    onChange={(e) => setNewMachineId(e.target.value)}
-                    placeholder="e.g. INDIKO"
-                    className="h-9 w-40 font-mono"
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
                   <label className="text-xs text-muted-foreground">Parameter *</label>
                   <Popover>
                     <PopoverTrigger asChild>
