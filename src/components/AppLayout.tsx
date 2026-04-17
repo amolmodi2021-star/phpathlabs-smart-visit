@@ -1,6 +1,6 @@
-import { useState } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
-import { logout, getCurrentUser, isTabAllowed, isActionAllowed } from "@/lib/auth";
+import { useEffect, useState } from "react";
+import { NavLink, useNavigate, useLocation } from "react-router-dom";
+import { logout, getCurrentUser, isTabAllowed, isActionAllowed, refreshCurrentUserPermissions, PERMISSIONS_UPDATED_EVENT } from "@/lib/auth";
 import {
   FileText, LayoutDashboard, Home, Users, TestTubes, MessageSquare,
   Menu, X, LogOut, FlaskConical, AlertTriangle, BarChart3, CreditCard,
