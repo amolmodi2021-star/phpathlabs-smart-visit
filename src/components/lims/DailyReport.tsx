@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
-import { Loader2, Download, Lock, CalendarIcon } from "lucide-react";
+import { Loader2, Download, Lock, CalendarIcon, Search, X } from "lucide-react";
 import { format, startOfDay, endOfDay, parseISO } from "date-fns";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import * as XLSX from "xlsx";
@@ -32,13 +32,31 @@ const DailyReport = () => {
   const [userFilter, setUserFilter] = useState("ALL");
   const [modeFilter, setModeFilter] = useState("ALL");
   const [typeFilter, setTypeFilter] = useState("ALL");
+  const [invoiceSearch, setInvoiceSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(invoiceSearch.trim()), 300);
+    return () => clearTimeout(t);
+  }, [invoiceSearch]);
 
   const effectiveDateFrom = adminUnlocked ? dateFrom : today;
   const effectiveDateTo = adminUnlocked ? dateTo : today;
+  const isSearching = debouncedSearch.length >= 3;
 
   const { data: transactions = [], isLoading } = useQuery({
-    queryKey: ["payment-transactions", effectiveDateFrom, effectiveDateTo],
+    queryKey: ["payment-transactions", effectiveDateFrom, effectiveDateTo, debouncedSearch],
     queryFn: async () => {
+      if (isSearching) {
+        const { data, error } = await supabase
+          .from("payment_transactions" as any)
+          .select("*")
+          .ilike("invoice_number", `%${debouncedSearch}%`)
+          .order("transaction_date", { ascending: false })
+          .limit(200);
+        if (error) throw error;
+        return (data || []) as any[];
+      }
       const from = startOfDay(parseISO(effectiveDateFrom)).toISOString();
       const to = endOfDay(parseISO(effectiveDateTo)).toISOString();
       const { data, error } = await supabase
@@ -193,10 +211,41 @@ const DailyReport = () => {
             </div>
           </>
         )}
+        <div>
+          <Label className="text-xs">Search Invoice #</Label>
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              type="text"
+              value={invoiceSearch}
+              onChange={e => setInvoiceSearch(e.target.value)}
+              placeholder="e.g. 2604160004"
+              className="w-48 pl-7 pr-7"
+            />
+            {invoiceSearch && (
+              <button
+                type="button"
+                onClick={() => setInvoiceSearch("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                aria-label="Clear search"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
         <Button variant="outline" size="sm" onClick={exportToExcel} disabled={filtered.length === 0}>
           <Download className="h-3.5 w-3.5 mr-1" /> Export Excel
         </Button>
       </div>
+
+      {isSearching && (
+        <div>
+          <Badge variant="secondary" className="text-xs">
+            Searching all dates — date filter ignored ({transactions.length} result{transactions.length === 1 ? "" : "s"})
+          </Badge>
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
