@@ -342,11 +342,14 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       // Log overpayment refund — money-out delta only.
       // Registration snapshot fields (gross/discount/final/paid/due) are zero so
       // they don't inflate Daily Report totals; sync row above already reflects new state.
+      const ovTodayStr = format(new Date(), "dd-MM-yyyy");
+      const ovRegDateStr = reg.created_at ? format(new Date(reg.created_at), "dd-MM-yyyy") : ovTodayStr;
+      const ovIsCrossDay = ovRegDateStr !== ovTodayStr;
       logPaymentTransaction({
         registration_id: reg.id,
         invoice_number: reg.invoice_number,
         patient_name: patientName,
-        transaction_type: "refund",
+        transaction_type: ovIsCrossDay ? "old_bill_refund" : "refund",
         direction: "out",
         payments: [{ mode: overpaymentRefundMode, amount: discountOverpayment }],
         total_amount: discountOverpayment,
@@ -525,11 +528,14 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       // Log cancellation refund — money-out delta only.
       // Registration snapshot fields zeroed; reduced totals already on the synced registration_payment row.
       if (refundCalc > 0) {
+        const cTodayStr = format(new Date(), "dd-MM-yyyy");
+        const cRegDateStr = reg.created_at ? format(new Date(reg.created_at), "dd-MM-yyyy") : cTodayStr;
+        const cIsCrossDay = cRegDateStr !== cTodayStr;
         logPaymentTransaction({
           registration_id: reg.id,
           invoice_number: reg.invoice_number,
           patient_name: patientName,
-          transaction_type: "refund",
+          transaction_type: cIsCrossDay ? "old_bill_refund" : "refund",
           direction: "out",
           payments: [{ mode: refundMode, amount: refundCalc }],
           total_amount: refundCalc,
