@@ -141,11 +141,12 @@ const DuePayments = () => {
         direction: "in",
         payments: newEntries,
         total_amount: totalPaying,
-        gross_amount: selected.gross_amount || 0,
-        discount_amount: selected.discount_amount || 0,
-        final_amount: (selected.net_amount || 0) + (selected.home_visit_charges || 0),
-        paid_amount: newPaid,
-        due_amount: Math.max(0, newDue),
+        // Delta-only row: snapshot fields zeroed so Daily Report totals don't double-count
+        gross_amount: 0,
+        discount_amount: 0,
+        final_amount: 0,
+        paid_amount: 0,
+        due_amount: 0,
       });
       queryClient.invalidateQueries({ queryKey: ["lims-due-payments"] });
       queryClient.invalidateQueries({ queryKey: ["lims-dispatch"] });
