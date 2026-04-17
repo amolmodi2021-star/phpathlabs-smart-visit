@@ -585,12 +585,15 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
 
       // Log TWO entries dated today — both audit-correct and cash-drawer-correct.
       // 1) Refund row: actual cash outflow in chosen mode (Cash or NEFT only).
+      //    Use "old_bill_refund" type when original registration was on a previous day.
+      const todayStr = format(new Date(), "dd-MM-yyyy");
+      const isCrossDay = regDateStr !== todayStr;
       if (totalPaid > 0) {
         logPaymentTransaction({
           registration_id: reg.id,
           invoice_number: reg.invoice_number,
           patient_name: patientName,
-          transaction_type: "refund",
+          transaction_type: isCrossDay ? "old_bill_refund" : "refund",
           direction: "out",
           payments: [{ mode: refundMode, amount: totalPaid }],
           total_amount: totalPaid,
@@ -607,8 +610,6 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       // 2) Bill cancellation marker row: negative bill snapshot for audit visibility.
       //    Mode amounts = 0 so it does NOT double-count cash impact.
       //    Use "old_bill_cancellation" type when original registration was on a previous day.
-      const todayStr = format(new Date(), "dd-MM-yyyy");
-      const isCrossDay = regDateStr !== todayStr;
       logPaymentTransaction({
         registration_id: reg.id,
         invoice_number: reg.invoice_number,
