@@ -490,6 +490,32 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       // 4. Recalculate registration status
       await recalculateRegistrationStatus(reg.id);
 
+      // Sync registration_payment row so Daily Report reflects reduced totals after test cancellation
+      {
+        const currentPayments = Array.isArray(reg.payments) ? reg.payments : [];
+        // Proportionally scale existing payment modes to match new paid amount
+        const origPaid = Number(reg.paid_amount || 0);
+        const scaledPayments: Array<{ mode: string; amount: number }> =
+          origPaid > 0 && newPaid !== origPaid
+            ? currentPayments.map((p: any) => ({
+                mode: p.mode,
+                amount: Number(((Number(p.amount || 0) * newPaid) / origPaid).toFixed(2)),
+              }))
+            : currentPayments;
+        await syncRegistrationPaymentRow({
+          registration_id: reg.id,
+          invoice_number: reg.invoice_number,
+          patient_name: patientName,
+          payments: scaledPayments,
+          paid_amount: newPaid,
+          final_amount: newFinalAmount,
+          due_amount: Math.max(0, newFinalAmount - newPaid),
+          gross_amount: Number(reg.gross_amount || 0),
+          discount_amount: Number(reg.discount_amount || 0),
+          change_reason: `${newlyCancelled.length} test(s) cancelled${homeVisitRefundRequested ? " + HV refunded" : ""}`,
+        });
+      }
+
       qc.invalidateQueries({ queryKey: ["patient_registrations"] });
       qc.invalidateQueries({ queryKey: ["sample_tubes_collection"] });
       qc.invalidateQueries({ queryKey: ["sample_collection_regs"] });
@@ -542,6 +568,22 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       } as any).eq("id", reg.id);
       if (error) throw error;
       qc.invalidateQueries({ queryKey: ["patient_registrations"] });
+
+      // Zero-out the original registration_payment row so Daily Report nets correctly.
+      // Bill cancellation audit row (logged below) is the negative entry for the day.
+      await syncRegistrationPaymentRow({
+        registration_id: reg.id,
+        invoice_number: reg.invoice_number,
+        patient_name: patientName,
+        payments: [],
+        paid_amount: 0,
+        final_amount: 0,
+        due_amount: 0,
+        gross_amount: Number(reg.gross_amount || 0),
+        discount_amount: Number(reg.discount_amount || 0),
+        change_reason: "Bill cancelled",
+      });
+
       toast.success(`Bill cancelled. Full refund: ₹${totalPaid} via ${refundMode}`);
       // Log bill cancellation refund
       if (totalPaid > 0) {
