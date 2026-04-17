@@ -465,6 +465,8 @@ const LimsDemo = () => {
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
+
+  const toggleTest = (test: TestItem) => {
     setSelectedTests((prev) =>
       prev.find((t) => t.code === test.code)
         ? prev.filter((t) => t.code !== test.code)
