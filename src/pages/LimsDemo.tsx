@@ -81,6 +81,8 @@ const LimsDemo = () => {
   const [newMachineCode, setNewMachineCode] = useState("");
   const [newMachineId, setNewMachineId] = useState("");
   const [newParamCode, setNewParamCode] = useState("");
+  const [orderSearch, setOrderSearch] = useState("");
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
 
   const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID || "rpbkilhzulaugzrlatts";
   const apiUrl = `https://${projectId}.supabase.co/functions/v1/lims-interface`;
