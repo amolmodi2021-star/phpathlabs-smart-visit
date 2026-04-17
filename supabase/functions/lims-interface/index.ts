@@ -65,7 +65,7 @@ Deno.serve(async (req) => {
           if (!storedResults || storedResults.length === 0) continue;
 
           // Resolve registration
-          const invoiceNumber = sampleId.replace(/-?[A-Za-z]+$/, "");
+          const invoiceNumber = sampleId.replace(/-[A-Za-z0-9]+$/, "");
           const { data: regRows } = await supabase
             .from("patient_registrations")
             .select("id, tests")
