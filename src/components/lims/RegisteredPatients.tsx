@@ -138,7 +138,7 @@ const RegisteredPatients = () => {
         const payments = Array.isArray(r.payments) ? r.payments : [];
         return {
           "Invoice #": r.invoice_number,
-          "Date": r.created_at ? format(new Date(r.created_at), "dd-MM-yyyy HH:mm") : "",
+          "Date": r.created_at ? format(new Date(r.created_at), "dd-MM-yyyy hh:mm a") : "",
           "Title": r.title || "",
           "Patient Name": r.patient_name,
           "Gender": r.gender || "",
@@ -234,7 +234,7 @@ const RegisteredPatients = () => {
                       {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                     </TableCell>
                     <TableCell className="font-mono text-xs">{r.invoice_number}</TableCell>
-                    <TableCell className="text-xs">{r.created_at ? format(new Date(r.created_at), "dd-MM-yyyy HH:mm") : "—"}</TableCell>
+                    <TableCell className="text-xs">{r.created_at ? format(new Date(r.created_at), "dd-MM-yyyy hh:mm a") : "—"}</TableCell>
                     <TableCell>
                       <div className="text-sm font-medium">
                         {r.title} {r.patient_name}
