@@ -343,8 +343,10 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       // Registration snapshot fields (gross/discount/final/paid/due) are zero so
       // they don't inflate Daily Report totals; sync row above already reflects new state.
       const ovTodayStr = format(new Date(), "dd-MM-yyyy");
-      const ovRegDateStr = reg.created_at ? format(new Date(reg.created_at), "dd-MM-yyyy") : ovTodayStr;
-      const ovIsCrossDay = ovRegDateStr !== ovTodayStr;
+      const ovInvDateStr = (reg.invoice_number && /^\d{6}/.test(reg.invoice_number))
+        ? `${reg.invoice_number.slice(4,6)}-${reg.invoice_number.slice(2,4)}-20${reg.invoice_number.slice(0,2)}`
+        : ovTodayStr;
+      const ovIsCrossDay = ovInvDateStr !== ovTodayStr;
       logPaymentTransaction({
         registration_id: reg.id,
         invoice_number: reg.invoice_number,
