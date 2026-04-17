@@ -1,44 +1,41 @@
 
-## Plan: Allow Duplicate Machine Codes Mapped to Multiple Parameters
+## Plan: Add Missing LIMS Tabs to User Roles Permissions
 
-### Why
-User wants one machine code (e.g. `GLU`) to map to multiple internal parameter codes (e.g. `PRM0025` Fasting + `PRM0026` Random). Currently this is likely blocked by a unique constraint on `lims_code_mapping.machine_code`, and the GET/POST handlers assume 1:1 lookup.
+### Gap
+`src/pages/UserManagement.tsx` LIMS section list is out of sync with `src/pages/Lims.tsx`. Missing entries: **Due Payments, Bad Debts, Daily Report, Settings**. Also includes stale entries `pickup` and `channels` which are no longer top-level LIMS tabs (they now live inside the **Settings** tab via `LimsSettings.tsx`).
 
-### Investigation needed (before final plan)
-Quick reads to confirm:
-1. Check `lims_code_mapping` schema/constraints for any UNIQUE on `machine_code`.
-2. Confirm the GET reverse-mapping logic (`reverseCodeMap[t.code] = m.machine_code`) — already 1-to-many friendly (internal → machine), so GET is fine.
-3. Confirm POST forward-mapping logic (`codeMap[m.machine_code] = {...}`) — currently overwrites; needs to expand to array.
+### Change
+Edit the `/lims` entry's `sections` array in `src/pages/UserManagement.tsx` to exactly match the tabs declared in `Lims.tsx`, in the same order:
 
-### Changes
-
-**1. DB migration — drop uniqueness on `machine_code` (if present)**
-- Remove any UNIQUE constraint/index on `lims_code_mapping.machine_code` alone.
-- Add a composite UNIQUE on `(machine_code, mapped_param_code, mapped_test_code)` to still prevent exact duplicate rows.
-
-**2. Edge function `supabase/functions/lims-interface/index.ts` — POST handler**
-
-Change `codeMap` from `code → single mapping` to `code → array of mappings`:
 ```ts
-let codeMap: Record<string, Array<{mapped_param_code, mapped_test_code, parameter_name}>> = {};
-for (const m of mappings) {
-  if (!codeMap[m.machine_code]) codeMap[m.machine_code] = [];
-  codeMap[m.machine_code].push({...});
-}
+{
+  route: "/lims", label: "LIMS",
+  sections: [
+    { key: "register", label: "New Registration" },
+    { key: "patients", label: "Registered Patients" },
+    { key: "sample_collection", label: "Sample Collection" },
+    { key: "sample_acceptance", label: "Sample Acceptance" },
+    { key: "results", label: "Results" },
+    { key: "verification", label: "Result Verification" },
+    { key: "doctor_approval", label: "Doctor Approval" },
+    { key: "dispatch", label: "Dispatch" },
+    { key: "due_payments", label: "Due Payments" },
+    { key: "bad_debts", label: "Bad Debts" },
+    { key: "daily_report", label: "Daily Report" },
+    { key: "completed_hv", label: "Completed Home Visits" },
+    { key: "settings", label: "Settings" },
+  ],
+},
 ```
 
-When processing each incoming result, look up matching mapping(s) and pick the one whose `mapped_param_code` / `mapped_test_code` is present in the order's pending tests. Fallback: if none match the order, fall back to first mapping (or mark unmapped). This guarantees `GLU` going to a fasting-glucose order maps to `PRM0025`, and to a random-glucose order maps to `PRM0026`.
+### Effect
+- Admins can now toggle Due Payments, Bad Debts, Daily Report and Settings per role in User Management.
+- Removed `pickup` / `channels` because they are sub-tabs inside Settings; granting Settings already exposes them. (No nested-section permission system exists for sub-tabs.)
+- Existing roles that had `pickup` / `channels` enabled will simply ignore those keys; no break. New role setups should grant `settings` instead.
 
-**3. UI — `src/components/lims/LimsSettings.tsx` (Code Mapping tab)**
-- Remove any client-side "machine_code already exists" duplicate-check.
-- Allow saving multiple rows with the same `machine_code` but different `mapped_param_code`.
-- Display grouped or sortable by `machine_code` so duplicates are visible.
+### Files
+- `src/pages/UserManagement.tsx` — single array edit, ~12 lines
 
-### Files to inspect/edit
-- `supabase/functions/lims-interface/index.ts` (POST handler)
-- `src/components/lims/LimsSettings.tsx` (or wherever `lims_code_mapping` CRUD lives)
-- Migration to adjust constraints on `lims_code_mapping`
-
-### No changes
-- GET handler reverse-map (already 1:N safe)
-- `lims_test_orders`, `lims_test_results` schemas
+### No other changes
+- `Lims.tsx` `getAllowedSections("/lims")` filter logic already supports any new keys.
+- No DB / edge function / migration required.
