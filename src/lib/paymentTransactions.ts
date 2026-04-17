@@ -153,22 +153,28 @@ export async function syncRegistrationPaymentRow(params: SyncRegistrationPayment
     if (existing && existing.length > 0) {
       const row: any = existing[0];
       const newRemarks = row.remarks ? `${row.remarks}\n${editRemark}` : editRemark;
+      const updateRow: any = {
+        due_amount: params.due_amount,
+        final_amount: params.final_amount,
+        ...(params.gross_amount !== undefined ? { gross_amount: params.gross_amount } : {}),
+        ...(params.discount_amount !== undefined ? { discount_amount: params.discount_amount } : {}),
+        remarks: newRemarks,
+      };
+      // Only overwrite the original registration-time payment split when explicitly
+      // requested (e.g. user corrected a mode typo). Otherwise leave cash/gpay/... and
+      // paid/total frozen so later due-collection rows don't get double-counted.
+      if (params.sync_payment_split) {
+        updateRow.cash_amount = modes.cash;
+        updateRow.gpay_amount = modes.gpay;
+        updateRow.paytm_amount = modes.paytm;
+        updateRow.credit_card_amount = modes.credit_card;
+        updateRow.neft_amount = modes.neft;
+        updateRow.total_amount = params.paid_amount;
+        updateRow.paid_amount = params.paid_amount;
+      }
       const { error: updErr } = await supabase
         .from("payment_transactions" as any)
-        .update({
-          cash_amount: modes.cash,
-          gpay_amount: modes.gpay,
-          paytm_amount: modes.paytm,
-          credit_card_amount: modes.credit_card,
-          neft_amount: modes.neft,
-          total_amount: params.paid_amount,
-          paid_amount: params.paid_amount,
-          due_amount: params.due_amount,
-          final_amount: params.final_amount,
-          ...(params.gross_amount !== undefined ? { gross_amount: params.gross_amount } : {}),
-          ...(params.discount_amount !== undefined ? { discount_amount: params.discount_amount } : {}),
-          remarks: newRemarks,
-        })
+        .update(updateRow)
         .eq("id", row.id);
       if (updErr) console.error("Failed to sync registration payment row:", updErr);
     } else {
