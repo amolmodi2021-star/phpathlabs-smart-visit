@@ -18,6 +18,7 @@ const TRANSACTION_LABELS: Record<string, string> = {
   discount_applied: "Discount Applied",
   refund: "Refund",
   bill_cancellation: "Bill Cancellation",
+  old_bill_cancellation: "Old Bill Cancelled",
 };
 
 const DailyReport = () => {
