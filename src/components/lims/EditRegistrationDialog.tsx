@@ -319,6 +319,31 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       const { error } = await supabase.from("patient_registrations").update(updateData).eq("id", reg.id);
       if (error) throw error;
       qc.invalidateQueries({ queryKey: ["patient_registrations"] });
+
+      // Sync registration_payment row if payment split changed
+      const newPayments = updateData.payments as Array<{ mode: string; amount: number }>;
+      const origModes = splitPaymentModes(reg.payments || []);
+      const newModes = splitPaymentModes(newPayments);
+      const splitChanged =
+        origModes.cash !== newModes.cash ||
+        origModes.gpay !== newModes.gpay ||
+        origModes.paytm !== newModes.paytm ||
+        origModes.credit_card !== newModes.credit_card ||
+        origModes.neft !== newModes.neft;
+      if (splitChanged) {
+        await updateRegistrationPaymentSplit({
+          registration_id: reg.id,
+          invoice_number: reg.invoice_number,
+          patient_name: patientName,
+          payments: newPayments,
+          paid_amount: discountCalc.finalAmount,
+          final_amount: discountCalc.finalAmount,
+          due_amount: 0,
+          gross_amount: discountCalc.totalAmount,
+          discount_amount: discountCalc.totalDiscount,
+        });
+      }
+
       // Log overpayment refund
       logPaymentTransaction({
         registration_id: reg.id,
