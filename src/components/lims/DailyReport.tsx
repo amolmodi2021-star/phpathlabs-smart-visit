@@ -110,8 +110,8 @@ const DailyReport = () => {
   const exportToExcel = () => {
     const rows = filtered.map((r: any) => ({
       "Invoice #": r.invoice_number,
-      "Date/Time": format(parseISO(r.transaction_date), "dd-MM-yyyy hh:mm a"),
       "Invoice Date": format(parseISO(r._invoice_date), "dd-MM-yyyy"),
+      "Date/Time": format(parseISO(r.transaction_date), "dd-MM-yyyy hh:mm a"),
       "Username": r.performed_by || "",
       "Type": TRANSACTION_LABELS[r.transaction_type] || r.transaction_type,
       "Direction": r.direction === "in" ? "Money In" : "Money Out",
@@ -247,8 +247,8 @@ const DailyReport = () => {
             <TableHeader>
               <TableRow>
                 <TableHead className="whitespace-nowrap">Invoice #</TableHead>
-                <TableHead className="whitespace-nowrap">Date/Time</TableHead>
                 <TableHead className="whitespace-nowrap">Invoice Date</TableHead>
+                <TableHead className="whitespace-nowrap">Date/Time</TableHead>
                 <TableHead className="whitespace-nowrap">Username</TableHead>
                 <TableHead className="whitespace-nowrap">Type</TableHead>
                 <TableHead className="whitespace-nowrap">Patient Name</TableHead>
@@ -270,8 +270,8 @@ const DailyReport = () => {
               {filtered.map((r: any) => (
                 <TableRow key={r.id} className={r.direction === "out" ? "bg-destructive/5" : ""}>
                   <TableCell className="font-mono text-xs whitespace-nowrap">{r.invoice_number}</TableCell>
-                  <TableCell className="text-xs whitespace-nowrap">{format(parseISO(r.transaction_date), "dd-MM-yyyy hh:mm a")}</TableCell>
                   <TableCell className="text-xs whitespace-nowrap">{format(parseISO(r._invoice_date), "dd-MM-yyyy")}</TableCell>
+                  <TableCell className="text-xs whitespace-nowrap">{format(parseISO(r.transaction_date), "dd-MM-yyyy hh:mm a")}</TableCell>
                   <TableCell className="text-xs whitespace-nowrap">{r.performed_by}</TableCell>
                   <TableCell>
                     <Badge variant={r.direction === "out" ? "destructive" : "secondary"} className="text-xs whitespace-nowrap">
