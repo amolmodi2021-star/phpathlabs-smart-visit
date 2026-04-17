@@ -84,3 +84,86 @@ export function logPaymentTransaction(params: LogTransactionParams) {
       if (error) console.error("Failed to log payment transaction:", error);
     });
 }
+
+/**
+ * Update the original `registration_payment` row in-place when payment mode split changes.
+ * If no original row exists (legacy), inserts a fresh one so Daily Report stays correct.
+ */
+export async function updateRegistrationPaymentSplit(params: {
+  registration_id: string;
+  invoice_number: string;
+  patient_name?: string;
+  payments: Array<{ mode: string; amount: number }>;
+  paid_amount: number;
+  final_amount: number;
+  due_amount: number;
+  gross_amount?: number;
+  discount_amount?: number;
+}) {
+  try {
+    const user = getCurrentUser();
+    const modes = splitPaymentModes(params.payments);
+    const performer = user?.display_name || user?.username || "Unknown";
+    const now = new Date();
+    const stamp = now.toLocaleString("en-IN", {
+      day: "2-digit", month: "2-digit", year: "numeric",
+      hour: "2-digit", minute: "2-digit", hour12: true,
+    });
+    const editRemark = `Payment mode edited on ${stamp} by ${performer}`;
+
+    const { data: existing, error: findErr } = await supabase
+      .from("payment_transactions" as any)
+      .select("id, remarks")
+      .eq("registration_id", params.registration_id)
+      .eq("transaction_type", "registration_payment")
+      .order("transaction_date", { ascending: false })
+      .limit(1);
+
+    if (findErr) {
+      console.error("Failed to lookup payment transaction:", findErr);
+      return;
+    }
+
+    if (existing && existing.length > 0) {
+      const row: any = existing[0];
+      const newRemarks = row.remarks ? `${row.remarks}\n${editRemark}` : editRemark;
+      const { error: updErr } = await supabase
+        .from("payment_transactions" as any)
+        .update({
+          cash_amount: modes.cash,
+          gpay_amount: modes.gpay,
+          paytm_amount: modes.paytm,
+          credit_card_amount: modes.credit_card,
+          neft_amount: modes.neft,
+          total_amount: params.paid_amount,
+          paid_amount: params.paid_amount,
+          due_amount: params.due_amount,
+          final_amount: params.final_amount,
+          ...(params.gross_amount !== undefined ? { gross_amount: params.gross_amount } : {}),
+          ...(params.discount_amount !== undefined ? { discount_amount: params.discount_amount } : {}),
+          remarks: newRemarks,
+        })
+        .eq("id", row.id);
+      if (updErr) console.error("Failed to update payment transaction split:", updErr);
+    } else {
+      // Fallback: legacy registration with no audit row — create one now
+      logPaymentTransaction({
+        registration_id: params.registration_id,
+        invoice_number: params.invoice_number,
+        patient_name: params.patient_name,
+        transaction_type: "registration_payment",
+        direction: "in",
+        payments: params.payments,
+        total_amount: params.paid_amount,
+        gross_amount: params.gross_amount ?? 0,
+        discount_amount: params.discount_amount ?? 0,
+        final_amount: params.final_amount,
+        paid_amount: params.paid_amount,
+        due_amount: params.due_amount,
+        remarks: editRemark,
+      });
+    }
+  } catch (e) {
+    console.error("updateRegistrationPaymentSplit failed:", e);
+  }
+}
