@@ -424,9 +424,14 @@ const LimsDemo = () => {
         parameter_name: param.parameter_name || "",
       });
       if (error) throw error;
+      // Back-fill: clear any historical unmapped rows for this machine_code
+      await supabase.from("lims_unmapped_results")
+        .update({ is_resolved: true })
+        .eq("machine_code", machineCode)
+        .eq("is_resolved", false);
     },
     onSuccess: () => {
-      toast({ title: "Mapping added" });
+      toast({ title: "Mapping added", description: "Historical unmapped rows for this code cleared" });
       setNewMachineCode("");
       setNewMachineId("");
       setNewParamCode("");
