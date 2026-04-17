@@ -788,8 +788,10 @@ const LimsReportView = () => {
                 </div>
               </div>
             </div>
+            </div>
           </div>
-        ))}
+          ))}
+        </div>
       </div>
 
       {/* Print styles - minimal since we use image-based printing */}
