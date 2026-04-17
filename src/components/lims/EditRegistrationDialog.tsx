@@ -554,6 +554,19 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
     setSaving(true);
     try {
       const totalPaid = Number(reg.paid_amount || 0);
+      const origGross = Number(reg.gross_amount || 0);
+      const origDiscount = Number(reg.discount_amount || 0);
+      const origFinal = Number(reg.final_amount || 0);
+      const regDate = reg.created_at ? new Date(reg.created_at) : new Date();
+      const regDateStr = format(regDate, "dd-MM-yyyy");
+      // Detect original payment modes for audit context in remarks
+      const origPayments: Array<{ mode: string; amount: number }> = Array.isArray(reg.payments) ? reg.payments : [];
+      const origModesLabel = origPayments.length
+        ? Array.from(new Set(origPayments.map((p: any) => p.mode))).join("/")
+        : "—";
+
+      // Freeze pattern: do NOT mutate the original registration_payment audit row.
+      // Update live registration state only.
       const { error } = await supabase.from("patient_registrations").update({
         bill_cancelled: true,
         status: "cancelled",
@@ -567,31 +580,14 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       if (error) throw error;
       qc.invalidateQueries({ queryKey: ["patient_registrations"] });
 
-      // Zero-out the original registration_payment row so Daily Report nets correctly.
-      // Bill cancellation audit row (logged below) is the negative entry for the day.
-      await syncRegistrationPaymentRow({
-        registration_id: reg.id,
-        invoice_number: reg.invoice_number,
-        patient_name: patientName,
-        payments: [],
-        paid_amount: 0,
-        final_amount: 0,
-        due_amount: 0,
-        gross_amount: Number(reg.gross_amount || 0),
-        discount_amount: Number(reg.discount_amount || 0),
-        change_reason: "Bill cancelled",
-      });
-
-      toast.success(`Bill cancelled. Full refund: ₹${totalPaid} via ${refundMode}`);
-      // Log bill cancellation refund — money-out delta only.
-      // Registration snapshot fields zeroed; original registration_payment row was
-      // also synced to zeros above so combined daily total nets to zero.
+      // Log TWO entries dated today — both audit-correct and cash-drawer-correct.
+      // 1) Refund row: actual cash outflow in chosen mode (Cash or NEFT only).
       if (totalPaid > 0) {
         logPaymentTransaction({
           registration_id: reg.id,
           invoice_number: reg.invoice_number,
           patient_name: patientName,
-          transaction_type: "bill_cancellation",
+          transaction_type: "refund",
           direction: "out",
           payments: [{ mode: refundMode, amount: totalPaid }],
           total_amount: totalPaid,
@@ -601,9 +597,30 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
           paid_amount: 0,
           due_amount: 0,
           refund_amount: totalPaid,
-          remarks: "Full bill cancellation",
+          remarks: `Refund of ₹${totalPaid} via ${refundMode} for cancelled invoice ${reg.invoice_number} (registered ${regDateStr}, originally paid via ${origModesLabel})`,
         });
       }
+
+      // 2) Bill cancellation marker row: negative bill snapshot for audit visibility.
+      //    Mode amounts = 0 so it does NOT double-count cash impact.
+      logPaymentTransaction({
+        registration_id: reg.id,
+        invoice_number: reg.invoice_number,
+        patient_name: patientName,
+        transaction_type: "bill_cancellation",
+        direction: "out",
+        payments: [], // no mode amounts — refund row already captured the cash movement
+        total_amount: 0,
+        gross_amount: -origGross,
+        discount_amount: -origDiscount,
+        final_amount: -origFinal,
+        paid_amount: 0,
+        due_amount: 0,
+        refund_amount: 0,
+        remarks: `Bill cancelled — original invoice ${reg.invoice_number} dated ${regDateStr}, final ₹${origFinal}`,
+      });
+
+      toast.success(`Bill cancelled. Refund ₹${totalPaid} via ${refundMode} recorded in today's Daily Report.`);
       onOpenChange(false);
     } catch (e: any) {
       toast.error(e.message);
