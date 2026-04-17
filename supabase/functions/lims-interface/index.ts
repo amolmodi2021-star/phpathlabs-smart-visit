@@ -5,6 +5,19 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Apply per-parameter unit conversion (configured in Test Management).
+// Leaves non-numeric values (e.g. "POSITIVE") and disabled-conversion params untouched.
+function applyUnitConversion(rawValue: string | null | undefined, param: any): string {
+  const raw = rawValue == null ? "" : String(rawValue);
+  if (!param?.unit_conversion_enabled) return raw;
+  const factor = Number(param.unit_conversion_value);
+  if (!factor || isNaN(factor)) return raw;
+  const num = parseFloat(raw);
+  if (isNaN(num)) return raw;
+  const converted = param.unit_conversion_operator === "/" ? num / factor : num * factor;
+  return Number(converted.toFixed(4)).toString();
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
