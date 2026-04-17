@@ -5,6 +5,19 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Apply per-parameter unit conversion (configured in Test Management).
+// Leaves non-numeric values (e.g. "POSITIVE") and disabled-conversion params untouched.
+function applyUnitConversion(rawValue: string | null | undefined, param: any): string {
+  const raw = rawValue == null ? "" : String(rawValue);
+  if (!param?.unit_conversion_enabled) return raw;
+  const factor = Number(param.unit_conversion_value);
+  if (!factor || isNaN(factor)) return raw;
+  const num = parseFloat(raw);
+  if (isNaN(num)) return raw;
+  const converted = param.unit_conversion_operator === "/" ? num / factor : num * factor;
+  return Number(converted.toFixed(4)).toString();
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -84,7 +97,7 @@ Deno.serve(async (req) => {
 
           const { data: paramRows } = await supabase
             .from("report_test_parameters")
-            .select("id, param_code, parameter_name, unit, normal_range_low, normal_range_high, normal_range_text")
+            .select("id, param_code, parameter_name, unit, normal_range_low, normal_range_high, normal_range_text, unit_conversion_enabled, unit_conversion_operator, unit_conversion_value")
             .in("param_code", paramCodes);
           const paramByCode: Record<string, any> = {};
           for (const p of paramRows || []) paramByCode[p.param_code] = p;
@@ -119,7 +132,8 @@ Deno.serve(async (req) => {
             const testId = candidateTestIds.find((tid) => regTestIds.has(tid)) || candidateTestIds[0];
             if (!testId) continue;
 
-            const numericVal = parseFloat(sr.result_value);
+            const convertedValue = applyUnitConversion(sr.result_value, param);
+            const numericVal = parseFloat(convertedValue);
             let flag = sr.flag || "";
             if (!isNaN(numericVal) && param.normal_range_low != null && param.normal_range_high != null) {
               if (numericVal < Number(param.normal_range_low)) flag = "L";
@@ -139,7 +153,7 @@ Deno.serve(async (req) => {
               const { error: updErr } = await supabase
                 .from("patient_results")
                 .update({
-                  result_value: sr.result_value,
+                  result_value: convertedValue,
                   flag,
                   unit: sr.unit || param.unit || "",
                   reference_range: referenceRange,
@@ -160,7 +174,7 @@ Deno.serve(async (req) => {
                 parameter_id: param.id,
                 param_code: param.param_code,
                 parameter_name: param.parameter_name,
-                result_value: sr.result_value,
+                result_value: convertedValue,
                 unit: sr.unit || param.unit || "",
                 reference_range: referenceRange,
                 normal_range_low: param.normal_range_low,
@@ -521,7 +535,7 @@ Deno.serve(async (req) => {
           const paramCodes = Array.from(new Set(mappedRows.map((r) => r.test_code).filter(Boolean)));
           const { data: paramRows } = await supabase
             .from("report_test_parameters")
-            .select("id, param_code, parameter_name, unit, normal_range_low, normal_range_high, normal_range_text")
+            .select("id, param_code, parameter_name, unit, normal_range_low, normal_range_high, normal_range_text, unit_conversion_enabled, unit_conversion_operator, unit_conversion_value")
             .in("param_code", paramCodes);
           const paramByCode: Record<string, any> = {};
           for (const p of paramRows || []) paramByCode[p.param_code] = p;
@@ -559,7 +573,8 @@ Deno.serve(async (req) => {
             if (!testId) continue;
 
             // Compute flag from numeric range when possible
-            const numericVal = parseFloat(mr.result_value);
+            const convertedValue = applyUnitConversion(mr.result_value, param);
+            const numericVal = parseFloat(convertedValue);
             let flag = mr.flag || "";
             if (!isNaN(numericVal) && param.normal_range_low != null && param.normal_range_high != null) {
               if (numericVal < Number(param.normal_range_low)) flag = "L";
@@ -580,7 +595,7 @@ Deno.serve(async (req) => {
               const { error: updErr } = await supabase
                 .from("patient_results")
                 .update({
-                  result_value: mr.result_value,
+                  result_value: convertedValue,
                   flag,
                   unit: mr.unit || param.unit || "",
                   reference_range: referenceRange,
@@ -601,7 +616,7 @@ Deno.serve(async (req) => {
                 parameter_id: param.id,
                 param_code: param.param_code,
                 parameter_name: param.parameter_name,
-                result_value: mr.result_value,
+                result_value: convertedValue,
                 unit: mr.unit || param.unit || "",
                 reference_range: referenceRange,
                 normal_range_low: param.normal_range_low,
