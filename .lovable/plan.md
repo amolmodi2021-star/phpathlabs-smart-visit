@@ -1,53 +1,28 @@
 
 
 ## Goal
-Add a **Retry** tab in `/marketing` that lists failed WhatsApp messages from marketing campaigns, lets the user **Retry All** with one click, removes any that succeed (delivered) or fail again on the second attempt, and shows a summary of how many were retried.
+In the LIMS interface `query` response, exclude any test/parameter whose `machine_id` is null/empty so the machine never sees entries like `"machine_id": ""`.
 
-## Approach
+## Current behavior
+`supabase/functions/lims-interface/index.ts` (lines 324–340) builds `enrichedTests` with `machine_id: t.machine_id || machineMap[t.code] || ""` and only filters out by requesting machine when `machineId` query param is provided. When the requesting machine doesn't pass `machine_id`, parameters with no assigned machine slip through with empty string.
 
-### What counts as "failed"
-Messages whose `delivery_status` is `"failed"` in `message_send_log` (set either by the webhook on failure callback, or by us at send-time when the API returns non-2xx). Plus rows the marketing sender currently silently drops (no log row at all). We'll fix both.
+## Fix — single file
+**`supabase/functions/lims-interface/index.ts`** (~5 line change in the enrichment block):
 
-### Data we need to retry
-Currently `MarketingSender.tsx` ONLY calls `logMessageSend` on success — failures are not logged at all. To make retry possible we need to persist the full send payload for every attempt.
+1. Compute `resolvedMachineId = t.machine_id || machineMap[t.code] || ""` for each test.
+2. **Skip the test entirely if `resolvedMachineId` is empty** (in addition to the existing skip when `reverseCodeMap[t.code]` is missing).
+3. Keep the existing requesting-machine filter as-is — but since we now guarantee every returned test has a non-empty `machine_id`, the "treat empty as universal" branch becomes dead code (harmless, leave it).
 
-### Plan
+Net effect on the example:
+- `HbA1c` with `machine_id: ""` → **dropped**.
+- `PROTEINS` / `Albumin` with `machine_id: "Indiko"` → returned unchanged.
 
-**1. DB migration — new column on `message_send_log`** *(approval required)*
-- Add `retry_payload jsonb` — stores `{ apiUrl, apiKey, headerName, headerPrefix, payload }` snapshot for failed messages so we can replay without rebuilding.
-- Add `retry_count integer default 0` — tracks how many retry attempts have been made (0, 1; once it's 1 and still fails, row gets removed).
-
-**2. `src/components/marketing/MarketingSender.tsx` — log failures + payload**
-- On both success AND failure, insert into `message_send_log` (currently only success is logged).
-- Failed rows: `delivery_status = "failed"`, include `retry_payload` JSON snapshot, `message_type = "Marketing"`.
-- Successful rows: behavior unchanged (status `"sent"`, no `retry_payload` needed).
-
-**3. `src/pages/Marketing.tsx` — add Retry tab**
-- Add `{ key: "retry", label: "Retry" }` to `allMarketingTabs`.
-- Add `<TabsContent value="retry"><MarketingRetry /></TabsContent>`.
-
-**4. New file `src/components/marketing/MarketingRetry.tsx`**
-- Query: select from `message_send_log` where `message_type = 'Marketing'` AND `delivery_status = 'failed'` AND `retry_count < 1`, ordered by `sent_at desc`, paginated 50/page.
-- Table columns: # / Patient Name / Mobile / Sent At / Days Ago / Retry Count / Error (best-effort from `error_info` linked via `message_id` on `webhook_messages`; falls back to "—").
-- "Retry All" button at top-right:
-  - Confirms ("Retry N failed messages?").
-  - Iterates each row: increment `retry_count` to 1, then call `send-marketing-message` edge function with the saved `retry_payload`.
-    - On success (2xx) → update row to `delivery_status = "sent"`, refresh `message_id` from response so webhook can track final delivery → row disappears from list.
-    - On failure → row already has `retry_count = 1`, so it's excluded from the next query → disappears from list.
-  - Uses 3-second delay between sends (matches sender default).
-  - Shows live progress bar.
-  - On completion: toast `"Retried N messages — X succeeded, Y still failed and removed from list"`.
-- Auto-refreshes list after retry; manual "Refresh" icon button next to "Retry All".
-- Empty state: "No failed marketing messages to retry."
-
-### Out of scope
-- Retrying non-Marketing message types (Abnormal History, ABC Cards, WhatsApp Chat, etc.) — only Marketing campaigns per request.
-- Manual per-row retry (only "Retry All").
-- Retry beyond 1 attempt (per spec: if 2nd attempt fails, drop it).
+## Out of scope
+- No DB changes.
+- No changes to results-submission (POST) path.
+- No changes to reprocess action.
+- No client-side LIMS UI changes.
 
 ## Files
-- New migration — add `retry_payload jsonb`, `retry_count integer default 0` to `message_send_log`.
-- `src/components/marketing/MarketingSender.tsx` — log failures with payload snapshot (~20 lines added).
-- `src/pages/Marketing.tsx` — register Retry tab (~3 lines).
-- `src/components/marketing/MarketingRetry.tsx` — new component (~150 lines).
+- `supabase/functions/lims-interface/index.ts` — tighten `enrichedTests` filter (~5 lines).
 
