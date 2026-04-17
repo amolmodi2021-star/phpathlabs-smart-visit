@@ -943,7 +943,7 @@ const LimsDemo = () => {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground mt-3">
-                Manually pair an analyzer's machine code with an existing parameter. If the same Machine Code + Machine ID already exists, it will be updated.
+                Manually pair an analyzer's machine code with an existing parameter. If the same Machine Code already exists, it will be updated.
               </p>
             </CardContent>
           </Card>
