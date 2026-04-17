@@ -1,61 +1,27 @@
 
 
-## Diagnosis
+## Change
+Add an "Invoice Date" column to the Daily Payment Register table, placed immediately to the right of the existing "Date/Time" column.
 
-The source code IS already correct — all three refund-logging sites in `EditRegistrationDialog.tsx` (cancel-bill, test-cancel-refund, overpayment-refund) and the due-collection site in `DuePayments.tsx` use an `isCrossDay` check based on `reg.created_at`.
+## Source of the date
+Use `transaction_date` from `payment_transactions` rows, formatted as `dd-MM-yyyy` (date only, no time). This represents when the bill/invoice action actually happened.
 
-I queried the DB for invoice `2604150005` (registered 15-04-2026, screenshot row dated 17-04-2026):
+For cross-day rows (Old Bill Refund, Old Due Recovered, Old Bill Cancelled), the existing `transaction_date` is already today; the original invoice's creation date lives on `patient_registrations.created_at`. To show the **original invoice date**, we'll need to join.
 
-| Time (UTC) | Type stored | Should be |
-|---|---|---|
-| 04:48:08 | `due_collection` | `old_due_recovered` |
-| 04:49:07 | `refund` | `old_bill_refund` |
-| 04:49:07 | `registration_payment` | (correct — sync row) |
+## Question for you
+Which date should "Invoice Date" show?
+1. **Original bill date** — `patient_registrations.created_at` (so old-bill rows show e.g. 15-04-2026 even though the action happened today). Requires joining `patient_registrations` in the query.
+2. **Same as Date/Time but date-only** — just `transaction_date` formatted `dd-MM-yyyy`. No query change.
 
-So the rows in the DB **were inserted with the old code** — most likely because the preview build hadn't hot-reloaded the previous fix at the time you ran the action. The code change is present in source, but the runtime that wrote those rows didn't have it yet.
+I'll proceed with **Option 1** unless you say otherwise — it's the more useful one (lets you see at a glance which bills are old).
 
-## Fix
+## File
+**`src/components/lims/DailyReport.tsx`**:
+1. Update the `useQuery` select to also pull `patient_registrations(created_at)` via FK relationship (column `registration_id`).
+2. Add `<TableHead>Invoice Date</TableHead>` right after the existing Date/Time header.
+3. Add `<TableCell>{format(parseISO(r.patient_registrations?.created_at ?? r.transaction_date), "dd-MM-yyyy")}</TableCell>` right after the Date/Time cell.
+4. Update the footer `colSpan={5}` → `colSpan={6}` so the "Totals" label stays aligned.
+5. Add "Invoice Date" column to the Excel export rows.
 
-**Step 1 — Verify current build is using new code.**
-Re-run a refund or due collection on any cross-day bill (registered before today). The new row should now show "Old Bill Refund" / "Old Due Recovered" in the Daily Report.
-
-**Step 2 — Backfill the 3 mislabeled historical rows.**
-Run a one-time SQL update to relabel any existing `refund` / `due_collection` / `bill_cancellation` rows where `transaction_date::date > registration.created_at::date`. This will fix the screenshot row and any others created before the fix landed.
-
-Migration logic:
-```sql
--- Refund → old_bill_refund when cross-day
-UPDATE payment_transactions pt
-SET transaction_type = 'old_bill_refund'
-FROM patient_registrations pr
-WHERE pt.registration_id = pr.id
-  AND pt.transaction_type = 'refund'
-  AND (pt.transaction_date AT TIME ZONE 'Asia/Kolkata')::date
-    > (pr.created_at AT TIME ZONE 'Asia/Kolkata')::date;
-
--- Due collection → old_due_recovered when cross-day
-UPDATE payment_transactions pt
-SET transaction_type = 'old_due_recovered'
-FROM patient_registrations pr
-WHERE pt.registration_id = pr.id
-  AND pt.transaction_type = 'due_collection'
-  AND (pt.transaction_date AT TIME ZONE 'Asia/Kolkata')::date
-    > (pr.created_at AT TIME ZONE 'Asia/Kolkata')::date;
-
--- Bill cancellation → old_bill_cancellation when cross-day
-UPDATE payment_transactions pt
-SET transaction_type = 'old_bill_cancellation'
-FROM patient_registrations pr
-WHERE pt.registration_id = pr.id
-  AND pt.transaction_type = 'bill_cancellation'
-  AND (pt.transaction_date AT TIME ZONE 'Asia/Kolkata')::date
-    > (pr.created_at AT TIME ZONE 'Asia/Kolkata')::date;
-```
-
-Uses Asia/Kolkata so dd-MM-yyyy comparison matches the app's local-day rule. No new code, no schema change.
-
-## What stays the same
-- All source code (already correct)
-- Same-day rows (filter excludes them)
-- Future logging — already handled correctly
+No DB / RLS / schema changes. No logic changes elsewhere.
 
