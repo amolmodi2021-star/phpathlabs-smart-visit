@@ -1,29 +1,28 @@
 
 
-## Root cause
-`isCrossDay` compares `format(new Date(reg.created_at), "dd-MM-yyyy")` vs today. But `created_at` is a UTC timestamp and `format(new Date(...))` uses browser local TZ, which can disagree with the **invoice number's YYMMDD prefix** (the authoritative bill-date used everywhere in the UI).
+## Change
+Add an **Invoice # search** input on the Daily Payment Register that searches across **all dates**, ignoring the From/To date filter.
 
-For invoice `2604160004`: prefix says 16-04-2026, but `created_at` (2026-04-16 20:07 UTC) when read in some local TZs evaluates to a different day than the prefix. Result: same-day → wrong `Refund` label instead of `Old Bill Refund`.
+## UX
+- New text input "Search Invoice #" placed in the filter row (available to everyone, not gated behind admin).
+- When the field is empty → current behavior (date-range query).
+- When the field has ≥3 characters → switch the query to search `invoice_number ILIKE '%<query>%'` across the entire `payment_transactions` table (no date filter), capped at 200 rows ordered by `transaction_date DESC`.
+- A small hint badge appears: "Searching all dates — date filter ignored".
+- Clearing the search returns to date-range mode automatically.
 
-## Fix
-Replace `created_at`-based cross-day detection with **invoice-number prefix** comparison. The YYMMDD prefix is atomic, user-visible, and already the column shown as "Invoice Date".
+## File
+**`src/components/lims/DailyReport.tsx`** only:
+1. Add state `const [invoiceSearch, setInvoiceSearch] = useState("")` and a 300ms debounced value.
+2. Update `useQuery`:
+   - Include `invoiceSearch` in the queryKey.
+   - If debounced search has ≥3 chars: query `payment_transactions` with `.ilike("invoice_number", "%search%").order("transaction_date", { ascending: false }).limit(200)` — no date `gte`/`lte`.
+   - Otherwise: existing date-range query.
+3. Add the `<Input>` next to existing filters with a `Search` icon and a clear (×) button.
+4. Add the conditional hint badge above the table when search is active.
 
-Helper (inline at each site, or a tiny shared util):
-```ts
-const invDateStr = (inv?: string | null) => {
-  if (!inv || inv.length < 6 || !/^\d{6}/.test(inv)) return format(new Date(), "dd-MM-yyyy");
-  return `${inv.slice(4,6)}-${inv.slice(2,4)}-20${inv.slice(0,2)}`;
-};
-const isCrossDay = invDateStr(reg.invoice_number) !== format(new Date(), "dd-MM-yyyy");
-```
-
-## Files to edit
-- **`src/components/lims/EditRegistrationDialog.tsx`** — 3 sites (lines ~345-347, ~531-533, ~594-596). Replace `reg.created_at`/`regDateStr` logic with invoice-number-prefix check.
-- **`src/components/lims/DuePayments.tsx`** — 1 site (lines ~136-138). Same replacement using `selected.invoice_number`.
-
-## Backfill historical row
-The existing mislabeled row for `2604160004` (id `7eb30218-...`, type `refund`, ₹10) needs relabeling to `old_bill_refund`. Will run a targeted SQL update comparing invoice-number prefix vs `transaction_date` IST date for all rows.
-
-## What stays
-No DB schema changes. No UI changes. Only the cross-day detection source flips from `created_at` → invoice-number prefix.
+## What stays the same
+- Existing date / user / mode / type filters
+- Admin gating for date-range expansion
+- All totals / footer / Excel export logic (operates on whatever rows are loaded)
+- No DB / RLS / schema changes
 
