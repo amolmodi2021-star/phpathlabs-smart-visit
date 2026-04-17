@@ -554,7 +554,10 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
     setSaving(true);
     try {
       const totalPaid = Number(reg.paid_amount || 0);
-      const origGross = Number(reg.gross_amount || 0);
+      // Include home_visit_charges in gross so the cancellation marker is internally consistent:
+      // Final = Gross − Discount must hold (gross_amount column stores tests-only subtotal).
+      const origHomeVisit = Number(reg.home_visit_charges || 0);
+      const origGross = Number(reg.gross_amount || 0) + origHomeVisit;
       const origDiscount = Number(reg.discount_amount || 0);
       const origFinal = Number(reg.final_amount || 0);
       const regDate = reg.created_at ? new Date(reg.created_at) : new Date();
