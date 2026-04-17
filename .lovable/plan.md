@@ -1,59 +1,58 @@
 
 
 ## Problem
-Invoice **2604150003** appears as TWO `due_collection` rows in Daily Report. Each row carries the registration's full `gross=1400`, `final=1400`, plus its own `paid` & `due` snapshots. When the totals row SUMs all rows for the day, those snapshots stack:
-- Gross 1400 + 1400 = 2800 added (only ₹150 cash actually collected across both)
-- Final 1400 + 1400 = 2800 added
-- Paid 100 + 200 = 300 (200 already counted again from later snapshot)
-- Due 1000 + 900 = 1900 added (already on the original Registration row)
+Daily Payment Register relies on `payment_transactions`, but THREE registration paths fail to insert a row in certain cases:
 
-The original `registration_payment` row separately holds the true gross/discount/final/paid/due. Due-collection rows duplicate them → grand totals inflate every time a due is collected.
+1. **`PatientRegistration.tsx` line 497** — `if (paidAmount > 0)` skips logging when patient registers as 100% due. Invoice **2604170001** (₹300 final, ₹0 paid, ₹300 due) was created but never logged. Same will happen for any future "register now, collect later" patient.
+2. **`CompletedHomeVisits.tsx` `handleRegister`** — never calls `logPaymentTransaction` at all, even when the home visit collected payment.
+3. **`EditAndRegisterHomeVisitDialog.tsx`** — also never calls `logPaymentTransaction` after inserting into `patient_registrations`.
 
-## Fix (mirrors the Refund fix)
-Treat `due_collection` rows the same way as `refund` / `bill_cancellation` rows: they represent ONLY the money-in delta. They must NOT duplicate registration snapshot fields.
+The Daily Report shows "Money In ₹0" rows correctly for due-only registrations once they are logged — totals stay accurate because gross/discount/final/paid/due are all snapshotted, and `total_amount=0` adds nothing to mode columns. So always logging is safe.
 
-### A. `src/components/lims/DuePayments.tsx` — `handleCollect`
-Change the `logPaymentTransaction` call so the due-collection row stores ONLY the delta:
-- `gross_amount = 0`
-- `discount_amount = 0`
-- `final_amount = 0`
-- `paid_amount = 0` (this is the per-row payment delta — already represented by `total_amount` and the per-mode columns)
-- `due_amount = 0`
-- `total_amount` = amount collected this time (unchanged)
-- `cash/gpay/paytm/credit_card/neft_amount` = the split for this collection (unchanged)
+## Fix
 
-The original `registration_payment` row continues to hold the authoritative gross/discount/final. Daily Report totals then naturally show:
-- Gross/Final = registration's actual values (counted once)
-- Cash/GPay etc. = SUM of registration row + each due-collection row = real cash drawer
-- Paid = registration's initial paid + each due collection (correct delta sum)
+### A. `PatientRegistration.tsx` (line 497)
+Remove the `if (paidAmount > 0)` guard. Always log the registration row, with empty `payments` array if nothing collected. The row records the bill snapshot (gross/discount/final/paid=0/due=full) so the patient appears in Daily Report from day one. When the due is later collected via `DuePayments`, that adds a separate delta row on the collection day (already correct).
 
-### B. Daily Report display
-No change needed. The current renderer already shows ₹0 for zero values which is fine for delta rows.
-
-Optionally (cleanup): for `due_collection` / `refund` / `bill_cancellation` / `discount_applied` rows, render the snapshot columns (Gross/Discount/Final/Paid/Due) as `-` instead of `₹0` so the eye doesn't try to read them as money. Small UX polish.
-
-### C. One-time data fix
-Update existing `due_collection`, `discount_applied` (and any other supplemental) rows in `payment_transactions` to zero out the snapshot fields:
-```sql
-UPDATE payment_transactions
-SET gross_amount = 0, discount_amount = 0, final_amount = 0,
-    paid_amount = 0, due_amount = 0
-WHERE transaction_type IN ('due_collection', 'discount_applied');
+```ts
+const payments = Array.from(selectedModes)
+  .filter(m => (modeAmounts[m] || 0) > 0)
+  .map(m => ({ mode: m, amount: modeAmounts[m] || 0 }));
+logPaymentTransaction({
+  registration_id: reg.id,
+  invoice_number: reg.invoice_number,
+  patient_name: reg.patient_name,
+  transaction_type: "registration_payment",
+  direction: "in",
+  payments,                 // [] when nothing collected
+  total_amount: paidAmount, // 0 when nothing collected
+  gross_amount: calculations.totalAmount,
+  discount_amount: calculations.totalDiscount,
+  final_amount: calculations.finalAmount,
+  paid_amount: paidAmount,
+  due_amount: dueAmount,
+});
 ```
-This corrects the historical data (including both rows for invoice 2604150003) so today's Daily Report immediately reflects accurate totals.
 
-### Note on `discount_applied` rows
-Same conceptual issue — discount audit rows carry a snapshot too. Including them in the same backfill prevents future inflation when discounts are edited later.
+### B. `CompletedHomeVisits.tsx` (`handleRegister`)
+After inserting into `patient_registrations`, fetch the new row's `id` and call `logPaymentTransaction` with the same registration snapshot + parsed `payments` (already built locally). Always log — even when paid_amount is 0.
 
-## Files
-- `src/components/lims/DuePayments.tsx` — set snapshot fields to 0 in `logPaymentTransaction` call (lines 144–148)
-- `src/components/lims/DailyReport.tsx` *(optional polish)* — render `-` instead of `₹0` for snapshot columns when row type is `due_collection` / `refund` / `bill_cancellation` / `discount_applied`
-- One-time SQL UPDATE on `payment_transactions` (no schema change)
+To get `reg.id`: change the insert to `.insert({...}).select().single()`.
 
-## What stays the same
-- Schema unchanged
-- Audit trail intact — due-collection row still tagged with `transaction_type: "due_collection"`, full mode split, and remarks
-- `EditRegistrationDialog` flows already correct (in-place sync of registration row)
-- Refund / bill-cancellation handling unchanged
-- Net Collection card stays accurate (in − out)
+### C. `EditAndRegisterHomeVisitDialog.tsx`
+Mirror change B — capture inserted row, then log a `registration_payment` transaction. Always log.
+
+### D. One-time data fix for invoice 2604170001
+Insert the missing `payment_transactions` row matching the registration snapshot (paid_amount=0, due_amount=300, total_amount=0, gross/discount/final from registration, performed_by from `registered_by`).
+
+## Files to edit
+- `src/components/lims/PatientRegistration.tsx` — remove `paidAmount > 0` guard
+- `src/components/lims/CompletedHomeVisits.tsx` — add `logPaymentTransaction` call + capture insert id
+- `src/components/lims/EditAndRegisterHomeVisitDialog.tsx` — add `logPaymentTransaction` call + capture insert id
+- One-time SQL `INSERT INTO payment_transactions` for invoice 2604170001
+
+## Why this is safe
+- Existing rows logged with `total_amount=0` contribute nothing to Cash/GPay/Net Collection cards or mode totals.
+- They DO populate Gross/Discount/Final columns — exactly what Daily Report needs to show "this patient was billed today".
+- Future due collection adds its own delta row; no double counting (already proven for invoice 2604150003 fix).
 
