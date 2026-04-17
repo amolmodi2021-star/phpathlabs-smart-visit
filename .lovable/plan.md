@@ -1,51 +1,59 @@
 
-## Question 1: Auto-transfer for future results
+## Root cause
+The `lims-interface` edge function writes machine `result_value` directly into `patient_results` without consulting the per-parameter unit-conversion settings on `report_test_parameters` (`unit_conversion_enabled`, `unit_conversion_operator`, `unit_conversion_value`). So PRM0101 (Platelet Count) keeps the machine's raw value (e.g. `200`) instead of converting (e.g. `× 1000` → `200000`) before storing.
 
-**Yes, fully automatic.** The fix I deployed is in the edge function (`lims-interface`) which runs server-side every time the middleware POSTs results. Future results for `2604170001-F` / `-P` / `-R` (or any hyphenated suffix) will:
+## Fix — single file
+**`supabase/functions/lims-interface/index.ts`** — apply conversion in both bridge paths.
 
-1. Hit the edge function
-2. Strip the suffix correctly → resolve invoice → write to `patient_results`
-3. Appear in Results Entry the moment that screen polls/refreshes its data
-
-**No manual refresh button needed.** Results Entry already auto-refreshes via the realtime sync hook (`useRealtimeSync` subscribes to `patient_results` table changes). New rows pop in live.
-
-The only "manual" step was for the **3 already-failed historical results** (PRM0025/26/27) — those landed before the fix existed, so they need a one-time reprocess. From here on, zero manual action.
-
-## Question 2: Numeric suffixes (`2604170001-1`, `-2`, etc.)
-
-**Current regex `/-?[A-Za-z]+$/` does NOT handle numeric suffixes.** For `2604170001-1` it would strip nothing (no trailing letters), leaving `invoiceNumber = "2604170001-1"` → no match → same bug all over again.
-
-Need to broaden the regex to strip any hyphen + alphanumeric suffix.
-
-## Fix
-
-**`supabase/functions/lims-interface/index.ts`** — change regex in 2 places (lines 68 and 507):
-
+### 1. Extend parameter SELECT (2 places)
+Lines ~84-86 (reprocess) and ~522-525 (POST bridge): add the 3 fields.
 ```ts
-// Before (only handles letters)
-const invoiceNumber = sample_id.replace(/-?[A-Za-z]+$/, "");
-
-// After (handles letters, digits, or mixed after hyphen)
-const invoiceNumber = sample_id.replace(/-[A-Za-z0-9]+$/, "");
+.select("id, param_code, parameter_name, unit, normal_range_low, normal_range_high, normal_range_text, unit_conversion_enabled, unit_conversion_operator, unit_conversion_value")
 ```
 
-### Behavior matrix after fix
-| Sample ID | Stripped to | Notes |
-|---|---|---|
-| `2604170001` | `2604170001` | No suffix, untouched ✓ |
-| `2604170001-F` | `2604170001` | Letter suffix ✓ |
-| `2604170001-P` | `2604170001` | Letter suffix ✓ |
-| `2604170001-1` | `2604170001` | Numeric suffix ✓ (new) |
-| `2604170001-12` | `2604170001` | Multi-digit ✓ (new) |
-| `2604170001-F1` | `2604170001` | Mixed alphanumeric ✓ (new) |
+### 2. Add a small converter helper near the top of the file
+```ts
+function applyUnitConversion(rawValue: string, param: any): string {
+  if (!param?.unit_conversion_enabled) return rawValue;
+  const factor = Number(param.unit_conversion_value);
+  if (!factor || isNaN(factor)) return rawValue;
+  const num = parseFloat(rawValue);
+  if (isNaN(num)) return rawValue; // leave non-numeric (e.g. "POSITIVE") untouched
+  const converted = param.unit_conversion_operator === "/" ? num / factor : num * factor;
+  // Trim trailing zeros, cap at 4 decimals
+  return Number(converted.toFixed(4)).toString();
+}
+```
 
-### Why require the hyphen now (not optional)?
-Invoice numbers themselves are pure 10-digit numerics (`YYMMDDXXXX` per memory). If we left the hyphen optional and allowed digits, a bare invoice like `2604170001` could get its trailing digits chewed off. **Requiring the literal `-` as the suffix delimiter** keeps un-suffixed invoices safe while handling every middleware suffix scheme (letter, digit, mixed).
+### 3. Apply in both bridge loops
+- **POST results bridge** (~line 562): replace `parseFloat(mr.result_value)` and the `result_value` writes with the converted value. Compute once at top of loop:
+  ```ts
+  const convertedValue = applyUnitConversion(mr.result_value, param);
+  const numericVal = parseFloat(convertedValue);
+  ```
+  Then use `convertedValue` in both the `update({ result_value: ... })` (~line 583) and the `insertPayload.push({ result_value: ... })` (~line 600 area). The flag computation now uses the converted numeric so range-based H/L/N stays correct against the parameter's reference interval (which is in the converted unit).
+
+- **Reprocess action** (~line 122): identical change — `const convertedValue = applyUnitConversion(sr.result_value, param);` then use `convertedValue` for both numeric flag check and `result_value` written at lines 142 and 163.
+
+### Behavior
+| Param | Raw from machine | Conversion config | Stored in Results Entry |
+|---|---|---|---|
+| PRM0101 Platelet Count | `200` | `× 1000` enabled | `200000` |
+| PRM0101 Platelet Count | `1.5` | `× 1000` enabled | `1500` |
+| Any param | `POSITIVE` (text) | enabled | `POSITIVE` (untouched) |
+| Any param | `5.4` | conversion disabled | `5.4` |
+| HbA1c etc. | numeric | not enabled | unchanged |
+
+### Notes
+- Raw value remains intact in `lims_test_results` (audit trail). Only the value pushed to `patient_results` (Results Entry) is converted.
+- Flags (H/L/N) are computed against the converted value vs. parameter's normal range, which is the correct comparison.
+- Auto-bridges in real time on next result POST — no manual refresh / reprocess needed.
+- Already-stored converted-incorrectly values can be fixed by triggering the existing `reprocess` action (it overwrites pending rows).
 
 ## Out of scope
 - No DB changes.
-- No UI changes — Results Entry continues to auto-refresh as before.
-- No changes to `query` (GET) path — still uses exact `sample_id` match, suffix preserved.
+- No UI changes (Results Entry already reads `result_value` as-is).
+- Manual entries unaffected (conversion only applies on the interface bridge path).
 
 ## Files
-- `supabase/functions/lims-interface/index.ts` — 2-character regex tweak on lines 68 and 507.
+- `supabase/functions/lims-interface/index.ts` — add helper, extend 2 SELECTs, apply conversion in 2 bridge loops (~15 lines net).
