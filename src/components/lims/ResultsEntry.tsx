@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Search, User, Monitor, Save, Calculator, Wifi, WifiOff, ChevronDown, ChevronUp, Check, Loader2, FlaskConical, Package, SendHorizonal, ArrowRightLeft, Eye, Trash2, StickyNote } from "lucide-react";
+import { Search, User, Monitor, Save, Calculator, Wifi, WifiOff, ChevronDown, ChevronUp, Check, Loader2, FlaskConical, Package, SendHorizonal, ArrowRightLeft, Eye, Trash2, StickyNote, RefreshCw } from "lucide-react";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import OutsourcedResults from "./OutsourcedResults";
@@ -134,6 +134,30 @@ const ResultsEntry = () => {
   const autoSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   useEffect(() => { editedNotesRef.current = editedNotes; }, [editedNotes]);
   const [rePage, setRePage] = useState(0);
+  const [refreshingRegId, setRefreshingRegId] = useState<string | null>(null);
+
+  const handleRefreshFromLims = useCallback(async (regId: string) => {
+    if (refreshingRegId) return;
+    setRefreshingRegId(regId);
+    try {
+      const { data, error } = await supabase.functions.invoke("lims-interface", {
+        body: { action: "reprocess", registration_id: regId },
+      });
+      if (error) throw error;
+      const pushed = (data as any)?.pushed ?? 0;
+      if (pushed > 0) {
+        toast.success(`Pulled ${pushed} new result${pushed > 1 ? "s" : ""} from LIMS`);
+      } else {
+        toast.info("No new results available");
+      }
+      qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
+      qc.invalidateQueries({ queryKey: ["results_accepted_regs"] });
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to refresh from LIMS");
+    } finally {
+      setRefreshingRegId(null);
+    }
+  }, [qc, refreshingRegId]);
 
   useEffect(() => {
     const t = setTimeout(() => { setDebouncedSearch(search); setRePage(0); }, 400);
@@ -1596,6 +1620,21 @@ const ResultsEntry = () => {
                         {hasUnsavedChanges(reg.id) && (
                           <div className="w-2 h-2 rounded-full bg-orange-500" title="Unsaved" />
                         )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2"
+                          disabled={refreshingRegId === reg.id}
+                          title="Pull latest results from LIMS interface"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRefreshFromLims(reg.id);
+                          }}
+                        >
+                          {refreshingRegId === reg.id
+                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            : <RefreshCw className="h-3.5 w-3.5" />}
+                        </Button>
                       </div>
                     </div>
                     {isExpanded && (
