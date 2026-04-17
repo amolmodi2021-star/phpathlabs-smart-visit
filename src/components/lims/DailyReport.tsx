@@ -13,13 +13,13 @@ import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import * as XLSX from "xlsx";
 
 const TRANSACTION_LABELS: Record<string, string> = {
-  registration_payment: "Registration",
-  due_collection: "Due Collection",
+  registration_payment: "New Bill",
+  due_collection: "Today's Due Collected",
   old_due_recovered: "Old Due Recovered",
   discount_applied: "Discount Applied",
-  refund: "Refund",
+  refund: "Today's Refund",
   old_bill_refund: "Old Bill Refund",
-  bill_cancellation: "Bill Cancellation",
+  bill_cancellation: "Today's Bill Cancelled",
   old_bill_cancellation: "Old Bill Cancelled",
 };
 
