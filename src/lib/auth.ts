@@ -94,3 +94,58 @@ export function logout() {
   localStorage.removeItem(AUTH_KEY);
   localStorage.removeItem(USER_KEY);
 }
+
+export const PERMISSIONS_UPDATED_EVENT = "ph:permissions-updated";
+
+let refreshInFlight: Promise<AppUser | null> | null = null;
+
+export async function refreshCurrentUserPermissions(): Promise<AppUser | null> {
+  const current = getCurrentUser();
+  if (!current?.id) return null;
+  if (refreshInFlight) return refreshInFlight;
+
+  refreshInFlight = (async () => {
+    try {
+      const { data: userRow, error: uErr } = await supabase
+        .from("app_users")
+        .select("id, username, display_name, role_id, is_active")
+        .eq("id", current.id)
+        .maybeSingle();
+      if (uErr || !userRow || userRow.is_active === false) return current;
+
+      let permissions: Record<string, any> = {};
+      if (userRow.role_id) {
+        const { data: roleRow } = await supabase
+          .from("app_roles")
+          .select("permissions")
+          .eq("id", userRow.role_id)
+          .maybeSingle();
+        permissions = (roleRow?.permissions as any) || {};
+      }
+
+      const refreshed: AppUser = {
+        id: userRow.id,
+        username: userRow.username,
+        display_name: userRow.display_name || userRow.username,
+        role_id: userRow.role_id,
+        permissions,
+      };
+
+      const prevJson = JSON.stringify(current);
+      const nextJson = JSON.stringify(refreshed);
+      if (prevJson !== nextJson) {
+        localStorage.setItem(USER_KEY, nextJson);
+        try {
+          window.dispatchEvent(new CustomEvent(PERMISSIONS_UPDATED_EVENT));
+        } catch {}
+      }
+      return refreshed;
+    } catch {
+      return current;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+
+  return refreshInFlight;
+}
