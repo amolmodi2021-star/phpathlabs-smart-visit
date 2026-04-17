@@ -84,6 +84,31 @@ const LimsDemo = () => {
   const [newParamCode, setNewParamCode] = useState("");
   const [orderSearch, setOrderSearch] = useState("");
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefreshActiveOrders = async () => {
+    setIsRefreshing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("lims-interface", {
+        body: { action: "reprocess" },
+      });
+      if (error) throw error;
+      const processed = data?.processed ?? 0;
+      const pushed = data?.pushed ?? data?.results_pushed ?? 0;
+      const completed = data?.completed ?? data?.marked_completed ?? 0;
+      toast({
+        title: "Refresh complete",
+        description: `Reprocessed ${processed} order(s) — ${pushed} result(s) pushed, ${completed} marked completed`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["lims_orders"] });
+      queryClient.invalidateQueries({ queryKey: ["lims_test_results"] });
+      queryClient.invalidateQueries({ queryKey: ["patient_results_existing"] });
+    } catch (e: any) {
+      toast({ title: "Refresh failed", description: e?.message || String(e), variant: "destructive" });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID || "rpbkilhzulaugzrlatts";
   const apiUrl = `https://${projectId}.supabase.co/functions/v1/lims-interface`;
@@ -595,6 +620,10 @@ const LimsDemo = () => {
                   <span className="text-sm text-muted-foreground">{selectedOrderIds.size} selected</span>
                 )}
                 <div className="ml-auto flex gap-2">
+                  <Button size="sm" variant="outline" onClick={handleRefreshActiveOrders} disabled={isRefreshing}>
+                    <RefreshCw className={`h-4 w-4 mr-1 ${isRefreshing ? "animate-spin" : ""}`} />
+                    {isRefreshing ? "Refreshing…" : "Refresh"}
+                  </Button>
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button size="sm" variant="destructive" disabled={selectedOrderIds.size === 0}>
