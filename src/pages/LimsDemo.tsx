@@ -961,7 +961,6 @@ const LimsDemo = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Machine Code</TableHead>
-                      <TableHead>Machine ID</TableHead>
                       <TableHead>→ Param Code</TableHead>
                       <TableHead>Parameter Name</TableHead>
                       <TableHead>Created</TableHead>
@@ -976,7 +975,6 @@ const LimsDemo = () => {
                       return (
                         <TableRow key={m.id}>
                           <TableCell className="font-mono font-medium">{m.machine_code}</TableCell>
-                          <TableCell className="font-mono text-xs">{m.machine_id || "—"}</TableCell>
                           {isEditing ? (
                             <TableCell colSpan={2}>
                               <Popover>
