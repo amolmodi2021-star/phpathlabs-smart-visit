@@ -1071,6 +1071,9 @@ const LimsDemo = () => {
                     })}
                   </TableBody>
                 </Table>
+                    );
+                  })()}
+                </>
               )}
             </CardContent>
           </Card>
