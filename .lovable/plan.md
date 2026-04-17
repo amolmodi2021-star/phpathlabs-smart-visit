@@ -1,27 +1,29 @@
 
 
-## Change
-Add an "Invoice Date" column to the Daily Payment Register table, placed immediately to the right of the existing "Date/Time" column.
+## Root cause
+`isCrossDay` compares `format(new Date(reg.created_at), "dd-MM-yyyy")` vs today. But `created_at` is a UTC timestamp and `format(new Date(...))` uses browser local TZ, which can disagree with the **invoice number's YYMMDD prefix** (the authoritative bill-date used everywhere in the UI).
 
-## Source of the date
-Use `transaction_date` from `payment_transactions` rows, formatted as `dd-MM-yyyy` (date only, no time). This represents when the bill/invoice action actually happened.
+For invoice `2604160004`: prefix says 16-04-2026, but `created_at` (2026-04-16 20:07 UTC) when read in some local TZs evaluates to a different day than the prefix. Result: same-day → wrong `Refund` label instead of `Old Bill Refund`.
 
-For cross-day rows (Old Bill Refund, Old Due Recovered, Old Bill Cancelled), the existing `transaction_date` is already today; the original invoice's creation date lives on `patient_registrations.created_at`. To show the **original invoice date**, we'll need to join.
+## Fix
+Replace `created_at`-based cross-day detection with **invoice-number prefix** comparison. The YYMMDD prefix is atomic, user-visible, and already the column shown as "Invoice Date".
 
-## Question for you
-Which date should "Invoice Date" show?
-1. **Original bill date** — `patient_registrations.created_at` (so old-bill rows show e.g. 15-04-2026 even though the action happened today). Requires joining `patient_registrations` in the query.
-2. **Same as Date/Time but date-only** — just `transaction_date` formatted `dd-MM-yyyy`. No query change.
+Helper (inline at each site, or a tiny shared util):
+```ts
+const invDateStr = (inv?: string | null) => {
+  if (!inv || inv.length < 6 || !/^\d{6}/.test(inv)) return format(new Date(), "dd-MM-yyyy");
+  return `${inv.slice(4,6)}-${inv.slice(2,4)}-20${inv.slice(0,2)}`;
+};
+const isCrossDay = invDateStr(reg.invoice_number) !== format(new Date(), "dd-MM-yyyy");
+```
 
-I'll proceed with **Option 1** unless you say otherwise — it's the more useful one (lets you see at a glance which bills are old).
+## Files to edit
+- **`src/components/lims/EditRegistrationDialog.tsx`** — 3 sites (lines ~345-347, ~531-533, ~594-596). Replace `reg.created_at`/`regDateStr` logic with invoice-number-prefix check.
+- **`src/components/lims/DuePayments.tsx`** — 1 site (lines ~136-138). Same replacement using `selected.invoice_number`.
 
-## File
-**`src/components/lims/DailyReport.tsx`**:
-1. Update the `useQuery` select to also pull `patient_registrations(created_at)` via FK relationship (column `registration_id`).
-2. Add `<TableHead>Invoice Date</TableHead>` right after the existing Date/Time header.
-3. Add `<TableCell>{format(parseISO(r.patient_registrations?.created_at ?? r.transaction_date), "dd-MM-yyyy")}</TableCell>` right after the Date/Time cell.
-4. Update the footer `colSpan={5}` → `colSpan={6}` so the "Totals" label stays aligned.
-5. Add "Invoice Date" column to the Excel export rows.
+## Backfill historical row
+The existing mislabeled row for `2604160004` (id `7eb30218-...`, type `refund`, ₹10) needs relabeling to `old_bill_refund`. Will run a targeted SQL update comparing invoice-number prefix vs `transaction_date` IST date for all rows.
 
-No DB / RLS / schema changes. No logic changes elsewhere.
+## What stays
+No DB schema changes. No UI changes. Only the cross-day detection source flips from `created_at` → invoice-number prefix.
 
