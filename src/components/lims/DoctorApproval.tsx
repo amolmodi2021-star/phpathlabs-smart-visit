@@ -105,8 +105,16 @@ const DoctorApproval = () => {
       }
       const ownChoice = currentUserSigCacheRef.current.choice;
       if (ownChoice) return resolve(ownChoice);
-      // No own signature — check permission
-      const canApproveAsDoctor = (currentUser as any).can_approve_as_doctor === true;
+      // No own signature — check permission (always fetch fresh from DB; localStorage may be stale from older login)
+      let canApproveAsDoctor = (currentUser as any).can_approve_as_doctor === true;
+      try {
+        const { data: freshUser } = await supabase
+          .from("app_users")
+          .select("can_approve_as_doctor")
+          .eq("id", currentUser.id)
+          .maybeSingle();
+        if (freshUser) canApproveAsDoctor = freshUser.can_approve_as_doctor === true;
+      } catch {}
       if (!canApproveAsDoctor) {
         toast.error("You don't have permission to approve. Ask Admin to grant approval rights or sign in as a pathologist.");
         return resolve(null);
