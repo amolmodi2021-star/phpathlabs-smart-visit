@@ -935,7 +935,7 @@ const LimsDemo = () => {
                   disabled={!newMachineCode.trim() || !newParamCode || addMapping.isPending}
                   onClick={() => addMapping.mutate({
                     machineCode: newMachineCode.trim(),
-                    machineId: newMachineId.trim(),
+                    machineId: "",
                     paramCode: newParamCode,
                   })}
                 >
