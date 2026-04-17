@@ -248,12 +248,14 @@ const UserManagement = () => {
     if (!roleForm.role_name.trim()) { toast.error("Role name required"); return; }
     setSaving(true);
     try {
+      let savedRoleId: string | null = null;
       if (editingRole) {
         await supabase.from("app_roles").update({
           role_name: roleForm.role_name,
           description: roleForm.description,
           permissions: roleForm.permissions,
         }).eq("id", editingRole.id);
+        savedRoleId = editingRole.id;
         toast.success("Role updated");
       } else {
         const { error } = await supabase.from("app_roles").insert({
@@ -266,6 +268,13 @@ const UserManagement = () => {
       }
       setRoleDialogOpen(false);
       fetchData();
+
+      // If the edited role belongs to the current user, refresh permissions immediately
+      const currentUser = getCurrentUser();
+      if (savedRoleId && currentUser?.role_id === savedRoleId) {
+        await refreshCurrentUserPermissions();
+        toast.success("Permissions updated — sidebar refreshed");
+      }
     } catch (err: any) {
       toast.error(err.message);
     } finally {
