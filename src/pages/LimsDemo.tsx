@@ -154,6 +154,17 @@ const LimsDemo = () => {
     },
   });
 
+  const { data: noMapRequired = [] } = useQuery({
+    queryKey: ["lims-no-map-required"],
+    queryFn: async () => {
+      const { data } = await (supabase as any).from("lims_no_map_required").select("*").order("created_at", { ascending: false });
+      return data || [];
+    },
+  });
+
+  const noMapCodes = new Set<string>((noMapRequired as any[]).map((n: any) => n.machine_code));
+  const visibleUnmappedResults = (unmappedResults as any[]).filter((u: any) => !noMapCodes.has(u.machine_code));
+
   const { data: allParams = [] } = useQuery({
     queryKey: ["all-params-for-mapping"],
     queryFn: async () => {
