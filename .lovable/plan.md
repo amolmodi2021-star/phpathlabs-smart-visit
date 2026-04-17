@@ -1,17 +1,30 @@
 
 ## Goal
-Remove the **Machine ID** field from the "Add Mapping Manually" form and the **Machine ID** column from the "Code Mappings" table on `/lims-demo` (Code Mapping tab). The DB column stays (mapping is already matched by `machine_code` only); we just hide it from the UI.
+Add a per-patient **Refresh from LIMS** button on each patient card in the **Results Entry** section, so operators can pull machine results into that specific patient's tests without navigating to the LIMS Interface module.
 
-## Changes — `src/pages/LimsDemo.tsx`
-1. **Add Mapping Manually form**: remove the Machine ID input. In the `addMapping.mutationFn`, insert with `machine_id: ''` (consistent with how the No Map Required entries are stored).
-2. **Code Mappings table**: remove the "Machine ID" `<TableHead>` and the matching `<TableCell>` from each row. Adjust `colSpan` on the empty-state row accordingly.
-3. **Edit Mapping dialog**: also drop the Machine ID field — it serves no purpose if it's not shown in the table and isn't used in matching. `updateMapping` keeps `machine_id` untouched (don't overwrite existing values).
+## Plan
 
-## Out of scope
-- No DB migration — `machine_id` column remains on `lims_code_mapping` for backward compatibility.
-- Edge function — already matches purely by `machine_code`, no change needed.
-- "No Map Required" section — keeps its Machine ID column as-is (separate request).
-- Unmapped Results section — unchanged.
+### A. Reuse the same edge action from the previous plan
+The previously approved `lims-interface` reprocess action will be extended to accept an optional `registration_id` filter:
+- No `registration_id` → reprocess all active orders (used by Active Orders Refresh button).
+- With `registration_id` → reprocess only that single patient's order(s).
+
+Same logic, just a scoped query.
+
+### B. UI — `src/components/lims/ResultsEntry.tsx`
+- On each patient card header (next to the existing patient meta / accordion trigger), add a small **Refresh** icon button (RefreshCw icon, `variant="ghost" size="sm"`).
+- `onClick` (stop propagation so the accordion doesn't toggle):
+  - Calls `supabase.functions.invoke('lims-interface', { body: { action: 'reprocess', registration_id: patient.registration_id } })`.
+  - Shows a spinner on the icon while in flight.
+  - Toast: `"Pulled X new results from LIMS"` or `"No new results available"`.
+  - Invalidates the patient_results / registration queries so the accordion content refreshes immediately.
+- Disabled state while loading; per-card loading state (not a global flag) so refreshing one patient doesn't lock others.
+
+### C. Out of scope
+- No changes to the existing Results Entry data model, accordion structure, or save flow.
+- No automatic polling.
+- LIMS Demo Active Orders Refresh button — already covered in the prior approved plan.
 
 ## Files
-- `src/pages/LimsDemo.tsx` — remove one input, one table column, one dialog field, adjust `colSpan`.
+- `supabase/functions/lims-interface/index.ts` — extend `reprocess` action to accept optional `registration_id` (~5 lines added to the previously planned handler).
+- `src/components/lims/ResultsEntry.tsx` — add Refresh button + per-patient mutation in each patient card header (~25 lines).
