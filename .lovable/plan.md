@@ -1,45 +1,39 @@
 
 ## Goal
-In Registered Patients, restrict Bill Cancellation:
-- **Same-day bill** (invoice prefix YYMMDD == today): allowed normally (existing flow).
-- **Older bill** (invoice prefix < today): require password `9819111107` before opening the cancellation flow.
+Eliminate UTC drift entirely. The invoice prefix `YYMMDD` and the displayed `Registered Date & Time` must both reflect IST (Asia/Kolkata) so they always agree.
 
-## Where the cancellation lives
-`src/components/lims/EditRegistrationDialog.tsx` houses the "Cancel Bill" action triggered from the Registered Patients table. That's where the gate must sit (the row-level "Edit" button in `RegisteredPatients.tsx` opens this dialog).
+## Root cause recap
+- `generate_invoice_number()` uses `to_char(CURRENT_DATE, 'YYMMDD')`. `CURRENT_DATE` follows the database session timezone (UTC by default on Supabase), so bills made between 00:00–05:30 IST get the previous day's prefix.
+- `RegisteredPatients.tsx` renders `created_at` in the browser's local zone (IST for our users) using 24-hour `HH:mm`.
 
-I'll confirm the exact button/handler by reading `EditRegistrationDialog.tsx` during implementation, but the cancel-bill trigger is unambiguously inside that dialog.
+## Fix — IST everywhere
 
-## Implementation
+### 1. DB migration — invoice prefix in IST
+Update `generate_invoice_number()` to derive the date from IST:
+```sql
+today text := to_char((now() AT TIME ZONE 'Asia/Kolkata')::date, 'YYMMDD');
+```
+Apply the same fix to `generate_sample_uid()` (sample tube IDs use the same `S[YY][MM][DD]` convention and have the identical bug):
+```sql
+today text := to_char((now() AT TIME ZONE 'Asia/Kolkata')::date, 'YYMMDD');
+```
+No data backfill — historical rows keep their existing prefixes.
 
-1. **Reuse existing password dialog**: `src/components/DeletePasswordDialog.tsx` already enforces `9819111107`. Import it into `EditRegistrationDialog.tsx`.
+### 2. UI — display in IST 12-hour format
+`src/components/lims/RegisteredPatients.tsx`:
+- Cell render (line ~237): `format(new Date(r.created_at), "dd-MM-yyyy hh:mm a")`
+- Excel export (line ~141): same format string
 
-2. **Add gate state** in `EditRegistrationDialog.tsx`:
-   ```ts
-   const [showOldCancelPwd, setShowOldCancelPwd] = useState(false);
-   ```
+`date-fns` `format()` already renders in the browser's local zone (IST for our users). The `hh:mm a` token gives the project-standard 12-hour AM/PM display. This matches the global Date & Time Format Standard already enforced project-wide.
 
-3. **Derive bill date from invoice prefix** (consistent with the existing cross-day logic already in this file):
-   ```ts
-   const isOldBill = (() => {
-     const inv = registration?.invoice_number || "";
-     if (!/^\d{6}/.test(inv)) return false;
-     const billDate = `${inv.slice(4,6)}-${inv.slice(2,4)}-20${inv.slice(0,2)}`;
-     return billDate !== format(new Date(), "dd-MM-yyyy");
-   })();
-   ```
-
-4. **Wrap the Cancel Bill button handler**:
-   - If `isOldBill` → `setShowOldCancelPwd(true)` (open password dialog).
-   - Else → run the existing cancel-bill flow directly.
-   - On password success → run the same existing cancel-bill flow.
-
-5. **Render** `<DeletePasswordDialog>` at the bottom with `description="This bill is from an earlier date. Enter password to cancel."`.
+### 3. Verify no other UTC sources
+Quick sweep of other generators that use `CURRENT_DATE` / `now()` for date keys to confirm nothing else silently uses UTC for IST-facing identifiers. If any are found in the same migration scope, convert them to `(now() AT TIME ZONE 'Asia/Kolkata')::date` as well (notably `invoice_counter` / `sample_tube_counter` `date_key` writes — already handled because they read the local `today` variable inside the same function).
 
 ## What stays the same
-- Same-day cancellation UX is unchanged.
-- No DB schema, RLS, or transaction-logging changes.
-- All existing refund + cancellation marker logic (and the cross-day "Old Bill" labeling already in place) untouched.
-- No changes to `RegisteredPatients.tsx`.
+- No schema changes; only function bodies updated.
+- No change to existing rows.
+- All other modules (Daily Report, audit trail, etc.) already render via `date-fns format()` which uses the browser local zone (IST).
 
 ## Files
-- `src/components/lims/EditRegistrationDialog.tsx` — add state, gate the cancel handler, render password dialog (~15 lines).
+- New migration: update `generate_invoice_number()` and `generate_sample_uid()` to use `Asia/Kolkata`.
+- `src/components/lims/RegisteredPatients.tsx` — 2 line edits to switch to `dd-MM-yyyy hh:mm a`.
