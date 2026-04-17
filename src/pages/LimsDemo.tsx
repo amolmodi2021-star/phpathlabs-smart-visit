@@ -535,36 +535,101 @@ const LimsDemo = () => {
           </Card>
 
           <Card>
-            <CardHeader><CardTitle className="text-base">Active Orders ({orders.length})</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">Active Orders ({filteredOrders.length}{orderSearch ? ` of ${orders.length}` : ""})</CardTitle></CardHeader>
             <CardContent>
-              {orders.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No orders yet. Create one above.</p>
+              {/* Toolbar: search + bulk actions */}
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                <Input
+                  placeholder="Search by Sample ID or Patient Name…"
+                  value={orderSearch}
+                  onChange={(e) => setOrderSearch(e.target.value)}
+                  className="max-w-xs"
+                />
+                {filteredOrders.length > 0 && (
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <Checkbox checked={allFilteredSelected} onCheckedChange={toggleSelectAllFiltered} />
+                    Select all ({filteredOrders.length})
+                  </label>
+                )}
+                {selectedOrderIds.size > 0 && (
+                  <span className="text-sm text-muted-foreground">{selectedOrderIds.size} selected</span>
+                )}
+                <div className="ml-auto flex gap-2">
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button size="sm" variant="destructive" disabled={selectedOrderIds.size === 0}>
+                        <Trash2 className="h-4 w-4 mr-1" /> Delete Selected
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete {selectedOrderIds.size} selected order(s)?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will permanently remove these active orders and their associated results from the bidirectional interface.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => bulkDelete(Array.from(selectedOrderIds))}>Delete</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button size="sm" variant="outline" disabled={filteredOrders.length === 0}>
+                        Delete All{orderSearch ? " (filtered)" : ""}
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete all {filteredOrders.length} order(s){orderSearch ? " in filter" : ""}?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will permanently remove every order currently shown and their associated results.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => bulkDelete(filteredOrders.map((o: any) => o.id))}>Delete All</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              </div>
+
+              {filteredOrders.length === 0 ? (
+                <p className="text-sm text-muted-foreground">{orders.length === 0 ? "No orders yet. Create one above." : "No orders match the search."}</p>
               ) : (
                 <div className="space-y-2">
-                  {orders.map((order) => {
+                  {filteredOrders.map((order: any) => {
                     const tests = (order.tests as any as TestItem[]) || [];
                     const oResults = orderResults(order.id);
                     const isExpanded = expandedOrder === order.id;
+                    const isSelected = selectedOrderIds.has(order.id);
                     return (
                       <Collapsible key={order.id} open={isExpanded} onOpenChange={() => setExpandedOrder(isExpanded ? null : order.id)}>
                         <div className="border rounded-lg p-3">
-                          <CollapsibleTrigger className="w-full">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3">
-                                {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                                <span className="font-mono font-medium">{order.sample_id}</span>
-                                {order.patient_name && <span className="text-muted-foreground text-sm">{order.patient_name}</span>}
-                                <Badge variant={statusColor(order.status)}>{order.status}</Badge>
-                                <span className="text-xs text-muted-foreground">{tests.length} tests, {oResults.length} results</span>
-                              </div>
-                              <Button
-                                size="icon" variant="ghost"
-                                onClick={(e) => { e.stopPropagation(); deleteOrder.mutate(order.id); }}
-                              >
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
+                          <div className="flex items-center justify-between gap-2">
+                            <div onClick={(e) => e.stopPropagation()}>
+                              <Checkbox checked={isSelected} onCheckedChange={() => toggleSelectOrder(order.id)} />
                             </div>
-                          </CollapsibleTrigger>
+                            <CollapsibleTrigger className="flex-1">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                  {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                  <span className="font-mono font-medium">{order.sample_id}</span>
+                                  {order.patient_name && <span className="text-muted-foreground text-sm">{order.patient_name}</span>}
+                                  <Badge variant={statusColor(order.status)}>{order.status}</Badge>
+                                  <span className="text-xs text-muted-foreground">{tests.length} tests, {oResults.length} results</span>
+                                </div>
+                              </div>
+                            </CollapsibleTrigger>
+                            <Button
+                              size="icon" variant="ghost"
+                              onClick={(e) => { e.stopPropagation(); deleteOrder.mutate(order.id); }}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
                           <CollapsibleContent className="mt-3">
                             <Table>
                               <TableHeader>
