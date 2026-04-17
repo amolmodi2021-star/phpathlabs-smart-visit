@@ -100,9 +100,9 @@ const LimsDemo = () => {
         title: "Refresh complete",
         description: `Reprocessed ${processed} order(s) — ${pushed} result(s) pushed, ${completed} marked completed`,
       });
-      qc.invalidateQueries({ queryKey: ["lims_orders"] });
-      qc.invalidateQueries({ queryKey: ["lims_test_results"] });
-      qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
+      queryClient.invalidateQueries({ queryKey: ["lims_orders"] });
+      queryClient.invalidateQueries({ queryKey: ["lims_test_results"] });
+      queryClient.invalidateQueries({ queryKey: ["patient_results_existing"] });
     } catch (e: any) {
       toast({ title: "Refresh failed", description: e?.message || String(e), variant: "destructive" });
     } finally {
