@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
-import { Loader2, Download, Lock, CalendarIcon } from "lucide-react";
+import { Loader2, Download, Lock, CalendarIcon, Search, X } from "lucide-react";
 import { format, startOfDay, endOfDay, parseISO } from "date-fns";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import * as XLSX from "xlsx";
