@@ -200,7 +200,7 @@ const RegisteredPatients = () => {
             <TableRow>
               <TableHead className="w-8"></TableHead>
               <TableHead>Invoice #</TableHead>
-              <TableHead>Date</TableHead>
+              <TableHead>Registered Date &amp; Time</TableHead>
               <TableHead>Patient</TableHead>
               <TableHead>Mobile</TableHead>
               <TableHead>Visit</TableHead>
