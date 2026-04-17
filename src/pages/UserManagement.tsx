@@ -109,7 +109,7 @@ const UserManagement = () => {
   // User dialog state
   const [userDialogOpen, setUserDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<AppUserRow | null>(null);
-  const [userForm, setUserForm] = useState({ username: "", display_name: "", password: "", role_id: "", is_active: true });
+  const [userForm, setUserForm] = useState({ username: "", display_name: "", password: "", role_id: "", is_active: true, can_approve_as_doctor: false });
 
   // Password reset dialog
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
@@ -145,13 +145,13 @@ const UserManagement = () => {
 
   const openAddUser = () => {
     setEditingUser(null);
-    setUserForm({ username: "", display_name: "", password: "", role_id: "", is_active: true });
+    setUserForm({ username: "", display_name: "", password: "", role_id: "", is_active: true, can_approve_as_doctor: false });
     setUserDialogOpen(true);
   };
 
   const openEditUser = (u: AppUserRow) => {
     setEditingUser(u);
-    setUserForm({ username: u.username, display_name: u.display_name || "", password: "", role_id: u.role_id || "", is_active: u.is_active });
+    setUserForm({ username: u.username, display_name: u.display_name || "", password: "", role_id: u.role_id || "", is_active: u.is_active, can_approve_as_doctor: (u as any).can_approve_as_doctor === true });
     setUserDialogOpen(true);
   };
 
@@ -160,14 +160,14 @@ const UserManagement = () => {
     try {
       if (editingUser) {
         const { error } = await supabase.functions.invoke("user-auth", {
-          body: { action: "update_user", user_id: editingUser.id, display_name: userForm.display_name, role_id: userForm.role_id || null, is_active: userForm.is_active },
+          body: { action: "update_user", user_id: editingUser.id, display_name: userForm.display_name, role_id: userForm.role_id || null, is_active: userForm.is_active, can_approve_as_doctor: userForm.can_approve_as_doctor },
         });
         if (error) throw error;
         toast.success("User updated");
       } else {
         if (!userForm.username || !userForm.password) { toast.error("Username and password required"); setSaving(false); return; }
         const res = await supabase.functions.invoke("user-auth", {
-          body: { action: "create_user", username: userForm.username, password: userForm.password, display_name: userForm.display_name, role_id: userForm.role_id || null, is_active: userForm.is_active },
+          body: { action: "create_user", username: userForm.username, password: userForm.password, display_name: userForm.display_name, role_id: userForm.role_id || null, is_active: userForm.is_active, can_approve_as_doctor: userForm.can_approve_as_doctor },
         });
         if (res.data?.error) { toast.error(res.data.error); setSaving(false); return; }
         toast.success("User created");
@@ -474,6 +474,18 @@ const UserManagement = () => {
             <div className="flex items-center gap-2">
               <Switch checked={userForm.is_active} onCheckedChange={(v) => setUserForm({ ...userForm, is_active: v })} />
               <Label>Active</Label>
+            </div>
+            <div className="flex items-start gap-2 rounded-md border p-3 bg-muted/20">
+              <Switch
+                checked={userForm.can_approve_as_doctor}
+                onCheckedChange={(v) => setUserForm({ ...userForm, can_approve_as_doctor: v })}
+              />
+              <div className="space-y-0.5">
+                <Label className="cursor-pointer">Allow approving on behalf of doctors</Label>
+                <p className="text-xs text-muted-foreground">
+                  When enabled, this user (without their own pathologist signature) can approve reports by selecting an active doctor's signature at approval time.
+                </p>
+              </div>
             </div>
           </div>
           <DialogFooter>

@@ -59,7 +59,7 @@ async function handleLogin(
 
   const { data: user, error } = await supabase
     .from("app_users")
-    .select("id, username, password_hash, display_name, is_active, role_id")
+    .select("id, username, password_hash, display_name, is_active, role_id, can_approve_as_doctor")
     .eq("username", username.toUpperCase())
     .maybeSingle();
 
@@ -91,6 +91,7 @@ async function handleLogin(
       username: user.username,
       display_name: user.display_name,
       role_id: user.role_id,
+      can_approve_as_doctor: user.can_approve_as_doctor === true,
       permissions,
     },
   });
@@ -112,6 +113,7 @@ async function handleCreateUser(params: {
   display_name?: string;
   role_id?: string;
   is_active?: boolean;
+  can_approve_as_doctor?: boolean;
 }) {
   if (!params.username || !params.password) return json({ error: "Username and password required" }, 400);
 
@@ -124,6 +126,7 @@ async function handleCreateUser(params: {
       display_name: params.display_name || params.username,
       role_id: params.role_id || null,
       is_active: params.is_active !== false,
+      can_approve_as_doctor: params.can_approve_as_doctor === true,
     })
     .select()
     .single();
@@ -140,6 +143,7 @@ async function handleUpdateUser(params: {
   display_name?: string;
   role_id?: string;
   is_active?: boolean;
+  can_approve_as_doctor?: boolean;
 }) {
   if (!params.user_id) return json({ error: "user_id required" }, 400);
 
@@ -147,6 +151,7 @@ async function handleUpdateUser(params: {
   if (params.display_name !== undefined) updates.display_name = params.display_name;
   if (params.role_id !== undefined) updates.role_id = params.role_id || null;
   if (params.is_active !== undefined) updates.is_active = params.is_active;
+  if (params.can_approve_as_doctor !== undefined) updates.can_approve_as_doctor = params.can_approve_as_doctor;
 
   const { error } = await supabase.from("app_users").update(updates).eq("id", params.user_id);
   if (error) return json({ error: error.message }, 500);
