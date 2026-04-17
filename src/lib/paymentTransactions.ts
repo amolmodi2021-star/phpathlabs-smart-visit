@@ -101,6 +101,13 @@ export interface SyncRegistrationPaymentRowParams {
   discount_amount?: number;
   /** Short label describing the edit, e.g. "Discount edited", "Tests cancelled", "Bill cancelled" */
   change_reason?: string;
+  /**
+   * If true, overwrite per-mode payment columns (cash/gpay/...) + paid_amount + total_amount
+   * on the original registration audit row. Default false: only the bill snapshot
+   * (gross/discount/final/due) is updated, leaving the original at-registration-time
+   * payment split frozen so later due-collection deltas don't get double-counted.
+   */
+  sync_payment_split?: boolean;
 }
 
 /**
