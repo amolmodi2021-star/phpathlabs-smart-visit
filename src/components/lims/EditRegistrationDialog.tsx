@@ -973,7 +973,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         open={showCancelBillPwd}
         onOpenChange={setShowCancelBillPwd}
         onSuccess={processCancelBill}
-        description={`This will cancel the entire bill and refund ₹${reg.paid_amount} via ${refundMode}.`}
+        description={`This will cancel invoice ${reg.invoice_number}. Refund ₹${reg.paid_amount} via ${refundMode} will be recorded in TODAY's Daily Report. The original registration entry will remain unchanged.`}
       />
       <DeletePasswordDialog
         open={showRefundPwd}
