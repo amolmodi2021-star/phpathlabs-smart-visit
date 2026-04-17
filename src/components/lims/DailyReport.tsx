@@ -270,8 +270,8 @@ const DailyReport = () => {
               {filtered.map((r: any) => (
                 <TableRow key={r.id} className={r.direction === "out" ? "bg-destructive/5" : ""}>
                   <TableCell className="font-mono text-xs whitespace-nowrap">{r.invoice_number}</TableCell>
-                  <TableCell className="text-xs whitespace-nowrap">{format(parseISO(r.transaction_date), "dd-MM-yyyy hh:mm a")}</TableCell>
                   <TableCell className="text-xs whitespace-nowrap">{format(parseISO(r._invoice_date), "dd-MM-yyyy")}</TableCell>
+                  <TableCell className="text-xs whitespace-nowrap">{format(parseISO(r.transaction_date), "dd-MM-yyyy hh:mm a")}</TableCell>
                   <TableCell className="text-xs whitespace-nowrap">{r.performed_by}</TableCell>
                   <TableCell>
                     <Badge variant={r.direction === "out" ? "destructive" : "secondary"} className="text-xs whitespace-nowrap">
