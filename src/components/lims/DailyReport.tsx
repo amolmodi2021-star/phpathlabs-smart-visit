@@ -43,7 +43,8 @@ const DailyReport = () => {
         .select("*")
         .gte("transaction_date", from)
         .lte("transaction_date", to)
-        .order("invoice_number", { ascending: true });
+        .order("invoice_number", { ascending: false })
+        .order("transaction_date", { ascending: true });
       if (error) throw error;
       return (data || []) as any[];
     },
