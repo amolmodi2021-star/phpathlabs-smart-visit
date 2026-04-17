@@ -73,19 +73,20 @@ export const printBarcodes = async (reg: any, tubes: BarcodeTube[]): Promise<voi
     const barcodeValue = displayValue;
 
     // --- Row 1: invoice number (left) | age/sex (right) ---
-    doc.setFontSize(7);
+    doc.setFontSize(8.5);
     doc.setFont("helvetica", "bold");
-    doc.text(String(reg.invoice_number), 1, 2.5);
+    doc.text(String(reg.invoice_number), 3.5, 2.5);
+    doc.setFontSize(7);
     const ageSex = `${age}${gender ? `/${gender}` : ""}`;
-    if (ageSex) doc.text(ageSex, 49, 2.5, { align: "right" });
+    if (ageSex) doc.text(ageSex, 46.5, 2.5, { align: "right" });
 
     // --- Row 2: patient name + location ---
-    doc.setFontSize(6.5);
+    doc.setFontSize(8);
     doc.setFont("helvetica", "bold");
     const nameLine = location ? `${patientName}  PH ${location}` : patientName;
-    // truncate to fit ~48mm width
-    const truncated = doc.splitTextToSize(nameLine, 48)[0];
-    doc.text(truncated, 1, 5.5);
+    // truncate to fit safe printable width (~43mm)
+    const truncated = doc.splitTextToSize(nameLine, 43)[0];
+    doc.text(truncated, 3.5, 5.5);
 
     // --- Barcode (centered, 46mm x 12mm) — taller + proper quiet zone for Indiko Plus ---
     try {
@@ -96,17 +97,16 @@ export const printBarcodes = async (reg: any, tubes: BarcodeTube[]): Promise<voi
     }
 
     // --- Sample ID line (centered, shifted down for taller barcode) ---
-    doc.setFontSize(5.5);
+    doc.setFontSize(8);
     doc.setFont("helvetica", "bold");
-    const sampleLine = `${displayValue}  ${tube.sample_uid}`;
-    doc.text(sampleLine, 25, 20.5, { align: "center" });
+    doc.text(displayValue, 25, 20.5, { align: "center" });
 
     // --- Bottom row: sample type (left) | datetime (right) ---
     doc.setFontSize(6);
-    doc.setFont("helvetica", "normal");
+    doc.setFont("helvetica", "bold");
     const sampleType = tube.sample_type || tube.tube_type || "";
-    if (sampleType) doc.text(sampleType, 1, 23.5);
-    doc.text(dateTime, 49, 23.5, { align: "right" });
+    if (sampleType) doc.text(sampleType, 3.5, 23.5);
+    doc.text(dateTime, 46.5, 23.5, { align: "right" });
   });
 
   // Convert to blob and trigger print via hidden iframe (no new tab)
