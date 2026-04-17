@@ -277,23 +277,6 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         }
       }
 
-      // Log discount change if applicable
-      if (discountChanged) {
-        logPaymentTransaction({
-          registration_id: reg.id,
-          invoice_number: reg.invoice_number,
-          patient_name: patientName,
-          transaction_type: "discount_applied",
-          direction: "in",
-          total_amount: 0,
-          gross_amount: discountCalc.totalAmount,
-          discount_amount: discountCalc.totalDiscount,
-          final_amount: discountCalc.finalAmount,
-          paid_amount: lockedPaidAmount,
-          due_amount: Math.max(0, discountCalc.finalAmount - lockedPaidAmount),
-          remarks: `Discount updated from ₹${reg.discount_amount} to ₹${discountCalc.totalDiscount}`,
-        });
-      }
       toast.success("Registration updated");
     } catch (e: any) {
       toast.error(e.message);
