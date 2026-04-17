@@ -979,7 +979,16 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
                     </SelectContent>
                   </Select>
                 </div>
-                <Button variant="destructive" className="w-full" onClick={() => setShowCancelBillPwd(true)} disabled={saving}>
+                <Button variant="destructive" className="w-full" onClick={() => {
+                  const inv = reg?.invoice_number || "";
+                  const isOldBill = /^\d{6}/.test(inv) &&
+                    `${inv.slice(4,6)}-${inv.slice(2,4)}-20${inv.slice(0,2)}` !== format(new Date(), "dd-MM-yyyy");
+                  if (isOldBill) {
+                    setShowCancelBillPwd(true);
+                  } else {
+                    processCancelBill();
+                  }
+                }} disabled={saving}>
                   <Ban className="h-4 w-4 mr-2" />Cancel Entire Bill
                 </Button>
               </div>
