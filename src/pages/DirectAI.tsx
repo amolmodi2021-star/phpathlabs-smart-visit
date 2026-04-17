@@ -15,7 +15,7 @@ import { Switch } from "@/components/ui/switch";
 import { shareOnWhatsApp } from "@/lib/whatsapp";
 import { logMessageSend } from "@/lib/messageLog";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs";
+pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.mjs";
 
 interface TestResult {
   department?: string;

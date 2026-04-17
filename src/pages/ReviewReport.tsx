@@ -16,7 +16,7 @@ import AddParameterToMasterDialog from "@/components/AddParameterToMasterDialog"
 import { computeAbnormalFlag, normalizeTestResultFlags } from "@/lib/reportFlags";
 import * as pdfjsLib from "pdfjs-dist";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs`;
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.mjs`;
 
 interface TestResult {
   department?: string;

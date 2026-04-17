@@ -21,7 +21,7 @@ import { logMessageSend } from "@/lib/messageLog";
 import { useToast } from "@/hooks/use-toast";
 import { normalizeTestResultFlags } from "@/lib/reportFlags";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs";
+pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.mjs";
 
 interface TestResult {
   department?: string;
