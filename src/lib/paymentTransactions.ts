@@ -139,7 +139,7 @@ export async function syncRegistrationPaymentRow(params: SyncRegistrationPayment
 
     const { data: existing, error: findErr } = await supabase
       .from("payment_transactions" as any)
-      .select("id, remarks")
+      .select("id, remarks, paid_amount")
       .eq("registration_id", params.registration_id)
       .eq("transaction_type", "registration_payment")
       .order("transaction_date", { ascending: false })
@@ -153,8 +153,17 @@ export async function syncRegistrationPaymentRow(params: SyncRegistrationPayment
     if (existing && existing.length > 0) {
       const row: any = existing[0];
       const newRemarks = row.remarks ? `${row.remarks}\n${editRemark}` : editRemark;
+      // Invariant on the registration audit row:
+      //   due_amount = final_amount - paid_amount (frozen at registration time)
+      // When NOT syncing the payment split, paid_amount stays frozen, so we must
+      // recompute due from the new final_amount and the existing frozen paid_amount —
+      // NOT use the live registration's due_amount (which already nets later collections).
+      const frozenPaid = Number(row.paid_amount) || 0;
+      const dueForRow = params.sync_payment_split
+        ? params.due_amount
+        : Math.max(0, params.final_amount - frozenPaid);
       const updateRow: any = {
-        due_amount: params.due_amount,
+        due_amount: dueForRow,
         final_amount: params.final_amount,
         ...(params.gross_amount !== undefined ? { gross_amount: params.gross_amount } : {}),
         ...(params.discount_amount !== undefined ? { discount_amount: params.discount_amount } : {}),
