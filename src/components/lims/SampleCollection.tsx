@@ -242,14 +242,15 @@ const SampleCollection = () => {
     return printBarcodes(reg, tubes);
   };
 
-  // Mark tubes as collected
+  // Mark tubes as collected — guarded so already accepted/processed tubes are NEVER demoted
   const collectMutation = useMutation({
     mutationFn: async ({ regId, tubeIds }: { regId: string; tubeIds: string[] }) => {
       const now = new Date().toISOString();
       const { error } = await supabase
         .from("sample_tubes" as any)
         .update({ status: "collected", collected_at: now, collected_by: getCurrentUserName() })
-        .in("id", tubeIds);
+        .in("id", tubeIds)
+        .eq("status", "pending"); // CRITICAL: only collect tubes still pending; never revert accepted/processed tubes
       if (error) throw error;
       await recalculateRegistrationStatus(regId);
     },
@@ -266,14 +267,26 @@ const SampleCollection = () => {
 
   const handlePrintAndCollect = async (reg: any, tubes: SampleTubeRow[]) => {
     const regSel = selectedTubes[reg.id] || new Set();
-    const toPrint = tubes.filter(t => t.status === "pending" && regSel.has(t.id));
-    if (toPrint.length === 0) { toast.error("Please select at least one barcode"); return; }
-    await doPrintBarcodes(reg, toPrint);
-    collectMutation.mutate({ regId: reg.id, tubeIds: toPrint.map(t => t.id) });
+    const selected = tubes.filter(t => regSel.has(t.id));
+    if (selected.length === 0) { toast.error("Please select at least one barcode"); return; }
+    // Print all selected tubes (reprint is OK for any status)
+    await doPrintBarcodes(reg, selected);
+    // Only collect tubes still pending — never demote accepted/processed tubes
+    const toCollect = selected.filter(t => t.status === "pending");
+    if (toCollect.length === 0) {
+      toast.info("Tubes already collected/accepted — barcode reprinted only");
+      setSelectedTubes(prev => ({ ...prev, [reg.id]: new Set() }));
+      return;
+    }
+    collectMutation.mutate({ regId: reg.id, tubeIds: toCollect.map(t => t.id) });
   };
 
   const handleSinglePrintAndCollect = async (reg: any, tube: SampleTubeRow) => {
     await doPrintBarcodes(reg, [tube]);
+    if (tube.status !== "pending") {
+      toast.info("Tube already collected/accepted — barcode reprinted only");
+      return;
+    }
     collectMutation.mutate({ regId: reg.id, tubeIds: [tube.id] });
   };
 

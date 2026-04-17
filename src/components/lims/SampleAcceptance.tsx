@@ -200,11 +200,12 @@ const SampleAcceptance = () => {
     mutationFn: async ({ reg, tubeIds }: { reg: any; tubeIds: string[] }) => {
       const now = new Date().toISOString();
 
-      // Update tube status
+      // Update tube status — guarded so a stale double-click can't re-accept already-processed tubes
       const { error } = await supabase
         .from("sample_tubes" as any)
         .update({ status: "accepted", accepted_at: now, accepted_by: getCurrentUserName() })
-        .in("id", tubeIds);
+        .in("id", tubeIds)
+        .eq("status", "collected"); // CRITICAL: only accept tubes still in "collected" state
       if (error) throw error;
 
       // Get accepted tubes for LIMS order generation
