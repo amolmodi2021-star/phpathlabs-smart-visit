@@ -79,7 +79,7 @@ const LimsDemo = () => {
   const [editingMappingId, setEditingMappingId] = useState<string | null>(null);
   const [editingParamCode, setEditingParamCode] = useState<Record<string, string>>({});
   const [newMachineCode, setNewMachineCode] = useState("");
-  const [newMachineId, setNewMachineId] = useState("");
+  
   const [newParamCode, setNewParamCode] = useState("");
   const [orderSearch, setOrderSearch] = useState("");
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
@@ -433,7 +433,7 @@ const LimsDemo = () => {
     onSuccess: () => {
       toast({ title: "Mapping added", description: "Historical unmapped rows for this code cleared" });
       setNewMachineCode("");
-      setNewMachineId("");
+      
       setNewParamCode("");
       queryClient.invalidateQueries({ queryKey: ["lims-code-mappings"] });
       queryClient.invalidateQueries({ queryKey: ["lims-unmapped"] });
