@@ -132,7 +132,8 @@ Deno.serve(async (req) => {
             const testId = candidateTestIds.find((tid) => regTestIds.has(tid)) || candidateTestIds[0];
             if (!testId) continue;
 
-            const numericVal = parseFloat(sr.result_value);
+            const convertedValue = applyUnitConversion(sr.result_value, param);
+            const numericVal = parseFloat(convertedValue);
             let flag = sr.flag || "";
             if (!isNaN(numericVal) && param.normal_range_low != null && param.normal_range_high != null) {
               if (numericVal < Number(param.normal_range_low)) flag = "L";
