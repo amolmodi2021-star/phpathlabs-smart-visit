@@ -1047,9 +1047,53 @@ const LimsDemo = () => {
               )}
             </CardContent>
           </Card>
+
+          {/* No Map Required */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <X className="h-4 w-4 text-muted-foreground" />
+                No Map Required ({(noMapRequired as any[]).length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {(noMapRequired as any[]).length === 0 ? (
+                <p className="text-sm text-muted-foreground">No codes are being ignored. Use "No Map Required" on an unmapped row to add it here.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Machine Code</TableHead>
+                      <TableHead>Machine ID</TableHead>
+                      <TableHead>Added At</TableHead>
+                      <TableHead></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(noMapRequired as any[]).map((n: any) => (
+                      <TableRow key={n.id}>
+                        <TableCell className="font-mono font-medium">{n.machine_code}</TableCell>
+                        <TableCell className="font-mono text-xs">{n.machine_id || "—"}</TableCell>
+                        <TableCell className="text-xs">{new Date(n.created_at).toLocaleString()}</TableCell>
+                        <TableCell>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={unmarkNoMapRequired.isPending}
+                            onClick={() => unmarkNoMapRequired.mutate({ id: n.id, machineCode: n.machine_code })}
+                          >
+                            <RefreshCw className="h-3 w-3 mr-1" /> Move to Unmapped Results
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
-        {/* ───── API REFERENCE TAB ───── */}
         <TabsContent value="api">
           <Card>
             <CardHeader><CardTitle className="text-base">API Reference for Middleware</CardTitle></CardHeader>
