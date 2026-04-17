@@ -1,34 +1,31 @@
 
 
 ## Change
-Add cross-day labels for refund and due-collection rows, mirroring the existing "Old Bill Cancelled" pattern.
+Rename existing transaction type labels in the Daily Payment Register for clarity.
 
-## Mapping
-| Same-day type | Cross-day type | Cross-day label |
-|---|---|---|
-| `refund` | `old_bill_refund` | "Old Bill Refund" |
-| `due_collection` | `old_due_recovered` | "Old Due Recovered" |
-| `bill_cancellation` | `old_bill_cancellation` | "Old Bill Cancelled" (already done) |
+## Likely intent
+User wants the same-day labels updated to be more descriptive/consistent with the new "Old ..." cross-day labels. Need to confirm exact wording.
 
-"Cross-day" = the original registration date (`patient_registrations.created_at` / `reg.created_at`) is before today, regardless of when the action is taken.
+## Proposed renames (to confirm)
+| Current label | Proposed new label |
+|---|---|
+| Registration | New Bill |
+| Due Collection | Today's Due Collected |
+| Refund | Today's Refund |
+| Bill Cancellation | Today's Bill Cancelled |
+| Discount Applied | Discount Applied (unchanged) |
+| Old Due Recovered | (keep) |
+| Old Bill Refund | (keep) |
+| Old Bill Cancelled | (keep) |
 
-## Files
+## File
+- **`src/components/lims/DailyReport.tsx`** — update strings in the `TRANSACTION_LABELS` map only. This auto-propagates to:
+  - Table "Type" badge
+  - Type filter dropdown
+  - Excel export "Type" column
 
-1. **`src/lib/paymentTransactions.ts`** — widen `transaction_type` union to include `"old_bill_refund"` and `"old_due_recovered"`.
+No DB changes — `transaction_type` keys stay the same; only display labels change. Historical rows automatically display the new labels.
 
-2. **`src/components/lims/DailyReport.tsx`** — extend `TRANSACTION_LABELS`:
-   ```ts
-   old_bill_refund: "Old Bill Refund",
-   old_due_recovered: "Old Due Recovered",
-   ```
-   Auto-updates table badge, Type filter dropdown, and Excel "Type" column.
-
-3. **`src/components/lims/EditRegistrationDialog.tsx`** — in `processCancelBill`, for the refund row use `transaction_type: isCrossDay ? "old_bill_refund" : "refund"` (same `isCrossDay` flag already computed for the marker row).
-
-4. **Due collection logging site** — locate where `transaction_type: "due_collection"` is logged (likely `PaymentDetailsDialog.tsx` or similar). Compute `isCrossDay` by comparing the registration's `created_at` date (dd-MM-yyyy local) with today. If cross-day, log as `"old_due_recovered"` instead.
-
-## What stays the same
-- Same-day refunds and due collections keep current labels.
-- Schema, RLS, sort order, freeze rule, Cash/NEFT-only refund constraint.
-- Existing rows in DB unchanged (historical entries keep their original labels).
+## Need from you
+Please confirm the exact label wording you want — I'll ask via multiple choice next, or if you already have specific labels in mind, share them and I'll apply directly.
 
