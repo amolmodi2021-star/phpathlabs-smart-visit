@@ -167,47 +167,13 @@ const LimsDemo = () => {
     );
   });
 
-  // Dispatch status for active orders → auto-delete dispatched
-  const { data: dispatchedInvoices = [] } = useQuery({
-    queryKey: ["lims-dispatch-status", orders.map((o: any) => o.sample_id).sort().join(",")],
-    enabled: orders.length > 0,
-    queryFn: async () => {
-      const invoices = Array.from(
-        new Set(orders.map((o: any) => String(o.sample_id || "").replace(/[A-Za-z]+$/, "")).filter(Boolean))
-      );
-      if (invoices.length === 0) return [] as string[];
-      const { data: regs } = await supabase
-        .from("patient_registrations")
-        .select("id, invoice_number")
-        .in("invoice_number", invoices);
-      if (!regs || regs.length === 0) return [];
-      const regIds = regs.map((r: any) => r.id);
-      const { data: prs } = await supabase
-        .from("patient_results")
-        .select("registration_id, status")
-        .in("registration_id", regIds);
-      const byReg: Record<string, string[]> = {};
-      (prs || []).forEach((r: any) => {
-        (byReg[r.registration_id] ||= []).push(r.status);
-      });
-      const dispatched = new Set<string>();
-      regs.forEach((r: any) => {
-        const statuses = byReg[r.id];
-        if (statuses && statuses.length > 0 && statuses.every((s) => s === "dispatched")) {
-          dispatched.add(r.invoice_number);
-        }
-      });
-      return Array.from(dispatched);
-    },
-  });
-
-  // Auto-delete orders whose underlying registration is fully dispatched
+  // Auto-delete active orders older than 15 days
   useEffect(() => {
-    if (!orders.length || !dispatchedInvoices.length) return;
-    const dispSet = new Set(dispatchedInvoices);
+    if (!orders.length) return;
+    const cutoff = Date.now() - 15 * 24 * 60 * 60 * 1000;
     const toDelete = orders.filter((o: any) => {
-      const inv = String(o.sample_id || "").replace(/[A-Za-z]+$/, "");
-      return inv && dispSet.has(inv);
+      const ts = o.created_at ? new Date(o.created_at).getTime() : NaN;
+      return Number.isFinite(ts) && ts < cutoff;
     });
     if (toDelete.length === 0) return;
     Promise.all(
@@ -216,12 +182,12 @@ const LimsDemo = () => {
         await supabase.from("lims_test_orders").delete().eq("id", o.id);
       })
     ).then(() => {
-      toast({ title: `Auto-removed ${toDelete.length} dispatched order${toDelete.length > 1 ? "s" : ""}` });
+      toast({ title: `Auto-removed ${toDelete.length} order${toDelete.length > 1 ? "s" : ""} older than 15 days` });
       queryClient.invalidateQueries({ queryKey: ["lims-orders"] });
       queryClient.invalidateQueries({ queryKey: ["lims-results"] });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatchedInvoices.join(","), orders.map((o: any) => o.id).join(",")]);
+  }, [orders.map((o: any) => o.id).join(",")]);
 
   // Bulk delete selected/filtered
   const bulkDelete = async (ids: string[]) => {
