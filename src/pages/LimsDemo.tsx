@@ -189,6 +189,18 @@ const LimsDemo = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orders.map((o: any) => o.id).join(",")]);
 
+  // Auto-delete interface logs older than 15 days (runs once per mount)
+  useEffect(() => {
+    const cutoffIso = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString();
+    supabase
+      .from("lims_interface_logs")
+      .delete()
+      .lt("created_at", cutoffIso)
+      .then(({ error }) => {
+        if (error) console.warn("Failed to purge old interface logs:", error.message);
+      });
+  }, []);
+
   // Bulk delete selected/filtered
   const bulkDelete = async (ids: string[]) => {
     if (ids.length === 0) return;
