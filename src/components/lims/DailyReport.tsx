@@ -63,7 +63,8 @@ const DailyReport = () => {
       if (typeFilter !== "ALL" && t.transaction_type !== typeFilter) return false;
       if (modeFilter !== "ALL") {
         const key = modeFilter.toLowerCase().replace(/\s+/g, "_") + "_amount";
-        if (Number(t[key] || 0) <= 0) return false;
+        // Show row if this mode has any non-zero amount (positive in or negative refund)
+        if (Number(t[key] || 0) === 0) return false;
       }
       return true;
     });
@@ -190,11 +191,11 @@ const DailyReport = () => {
         </div>
         <div className="rounded-lg border p-3 text-center">
           <p className="text-xs text-muted-foreground">Total Out (Refunds)</p>
-          <p className="text-lg font-bold text-destructive">₹{totals.total_out.toFixed(2)}</p>
+          <p className="text-lg font-bold text-destructive">₹{Math.abs(totals.total_out).toFixed(2)}</p>
         </div>
         <div className="rounded-lg border p-3 text-center">
           <p className="text-xs text-muted-foreground">Net Collection</p>
-          <p className="text-lg font-bold">₹{(totals.total_in - totals.total_out).toFixed(2)}</p>
+          <p className="text-lg font-bold">₹{(totals.total_in + totals.total_out).toFixed(2)}</p>
         </div>
         <div className="rounded-lg border p-3 text-center">
           <p className="text-xs text-muted-foreground">Transactions</p>
@@ -264,11 +265,16 @@ const DailyReport = () => {
                   <TableCell className="text-right text-sm font-medium">₹{Number(r.final_amount || 0)}</TableCell>
                   <TableCell className="text-right text-sm">₹{Number(r.paid_amount || 0)}</TableCell>
                   <TableCell className="text-right text-sm">{Number(r.due_amount || 0) > 0 ? <span className="text-destructive">₹{Number(r.due_amount)}</span> : "₹0"}</TableCell>
-                  <TableCell className="text-right text-sm">{Number(r.cash_amount || 0) > 0 ? `₹${r.cash_amount}` : "-"}</TableCell>
-                  <TableCell className="text-right text-sm">{Number(r.gpay_amount || 0) > 0 ? `₹${r.gpay_amount}` : "-"}</TableCell>
-                  <TableCell className="text-right text-sm">{Number(r.paytm_amount || 0) > 0 ? `₹${r.paytm_amount}` : "-"}</TableCell>
-                  <TableCell className="text-right text-sm">{Number(r.neft_amount || 0) > 0 ? `₹${r.neft_amount}` : "-"}</TableCell>
-                  <TableCell className="text-right text-sm">{Number(r.credit_card_amount || 0) > 0 ? `₹${r.credit_card_amount}` : "-"}</TableCell>
+                  {(["cash_amount","gpay_amount","paytm_amount","neft_amount","credit_card_amount"] as const).map((k) => {
+                    const v = Number(r[k] || 0);
+                    if (v === 0) return <TableCell key={k} className="text-right text-sm">-</TableCell>;
+                    const isNeg = v < 0;
+                    return (
+                      <TableCell key={k} className={`text-right text-sm ${isNeg ? "text-destructive font-medium" : ""}`}>
+                        {isNeg ? `-₹${Math.abs(v)}` : `₹${v}`}
+                      </TableCell>
+                    );
+                  })}
                   <TableCell className="text-right text-sm">{Number(r.refund_amount || 0) > 0 ? <span className="text-destructive">₹{r.refund_amount}</span> : "-"}</TableCell>
                   <TableCell className="text-xs max-w-[120px] truncate">{r.remarks || "-"}</TableCell>
                 </TableRow>
