@@ -408,28 +408,13 @@ const DoctorApproval = () => {
 
   const approveAllForPatient = async (entry: PatientEntry) => {
     const reg = entry.registration;
+    const approver = await resolveApprover();
+    if (!approver) return;
     setActionKey(`${reg.id}||all||approve`);
     try {
       const testIds = [...new Set(entry.parameters.map(p => p.testId))];
       const allTestResults: any[] = [];
       const allSnipUrls: string[] = [];
-      // Fetch approver's signature details once for all tests
-      const currentUserAll = getCurrentUser();
-      const approverNameAll = currentUserAll?.display_name || "Doctor";
-      let approverQualAll: string | null = null;
-      let approverDesigAll: string | null = null;
-      let approverSigUrlAll: string | null = null;
-      if (currentUserAll?.id) {
-        const { data: sigDataAll } = await supabase.from("pathologist_signatures").select("qualification, designation, signature_image_path").eq("mapped_user_id", currentUserAll.id).maybeSingle();
-        if (sigDataAll) {
-          approverQualAll = sigDataAll.qualification || null;
-          approverDesigAll = sigDataAll.designation || null;
-          if (sigDataAll.signature_image_path) {
-            const { data: sigUrlDataAll } = supabase.storage.from("signatures").getPublicUrl(sigDataAll.signature_image_path);
-            approverSigUrlAll = sigUrlDataAll.publicUrl;
-          }
-        }
-      }
       for (const testId of testIds) {
         const testParams = entry.parameters.filter(p => p.testId === testId);
         const testName = testParams[0]?.testName || testId;
@@ -440,7 +425,7 @@ const DoctorApproval = () => {
           const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
           const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
           const noteVal = editedNotes[k] !== undefined ? editedNotes[k] : p.note;
-          upserts.push({ registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId, param_code: p.paramCode, parameter_name: p.parameterName, result_value: value || null, unit: p.unit, reference_range: p.referenceRange, normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh, flag: flag || null, status: "approved", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, approved_at: new Date().toISOString(), entered_at: p.enteredAt || null, entered_by: p.enteredBy || null, verified_at: p.verifiedAt || null, verified_by: p.verifiedBy || null, approved_by: getCurrentUserName() || "Doctor", note: noteVal || null });
+          upserts.push({ registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId, param_code: p.paramCode, parameter_name: p.parameterName, result_value: value || null, unit: p.unit, reference_range: p.referenceRange, normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh, flag: flag || null, status: "approved", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, approved_at: new Date().toISOString(), entered_at: p.enteredAt || null, entered_by: p.enteredBy || null, verified_at: p.verifiedAt || null, verified_by: p.verifiedBy || null, approved_by: approver.pathologistName, note: noteVal || null });
         }
         if (upserts.length > 0) {
           await supabase.from("patient_results").delete().eq("registration_id", reg.id).eq("test_id", testId).eq("status", "verified");
@@ -459,10 +444,10 @@ const DoctorApproval = () => {
           normal_range_low: u.normal_range_low, normal_range_high: u.normal_range_high,
           flag: u.flag, is_calculated: u.is_calculated, is_outsourced: testParams[0]?.isOutsourced || false,
           outsource_lab_name: snipDetail?.labName || null,
-          approved_by: approverNameAll,
-          approved_by_qualification: approverQualAll,
-          approved_by_designation: approverDesigAll,
-          approved_by_signature_url: approverSigUrlAll,
+          approved_by: approver.pathologistName,
+          approved_by_qualification: approver.qualification,
+          approved_by_designation: approver.designation,
+          approved_by_signature_url: approver.signatureUrl,
           note: u.note || null,
         }));
       }
@@ -478,7 +463,7 @@ const DoctorApproval = () => {
         patient_name: reg.patient_name, title: reg.title, gender: reg.gender, dob: reg.dob,
         mobile_number: reg.mobile_number, email: reg.email, address: reg.address,
         doctor_name: reg.doctor_name, visit_type: reg.visit_type, is_stat: reg.is_stat,
-        report_language: reg.report_language, approved_by: getCurrentUserName() || "Doctor",
+        report_language: reg.report_language, approved_by: approver.pathologistName,
         registration_date: reg.created_at, approval_date: new Date().toISOString(),
         test_results: mergedResultsAll, outsourced_snip_urls: mergedSnipUrlsAll,
       } as any, { onConflict: "registration_id" as any, ignoreDuplicates: false });
