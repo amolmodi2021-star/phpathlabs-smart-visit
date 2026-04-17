@@ -49,7 +49,19 @@ const DailyReport = () => {
         .order("invoice_number", { ascending: false })
         .order("transaction_date", { ascending: true });
       if (error) throw error;
-      return (data || []) as any[];
+      const txs = (data || []) as any[];
+
+      // Fetch original registration created_at for each unique registration_id
+      const regIds = Array.from(new Set(txs.map(t => t.registration_id).filter(Boolean)));
+      let regMap: Record<string, string> = {};
+      if (regIds.length > 0) {
+        const { data: regs } = await supabase
+          .from("patient_registrations")
+          .select("id, created_at")
+          .in("id", regIds);
+        (regs || []).forEach((r: any) => { regMap[r.id] = r.created_at; });
+      }
+      return txs.map(t => ({ ...t, _invoice_date: regMap[t.registration_id] || t.transaction_date }));
     },
   });
 
