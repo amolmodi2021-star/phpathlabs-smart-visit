@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Plus, Edit2, Key, History, Copy, Trash2, Loader2 } from "lucide-react";
 import { format } from "date-fns";
+import { getCurrentUser, refreshCurrentUserPermissions } from "@/lib/auth";
 
 // All available tabs and their sections
 const ALL_TABS = [
