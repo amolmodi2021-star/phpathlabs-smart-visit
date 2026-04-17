@@ -79,6 +79,7 @@ const LimsDemo = () => {
   const [editingMappingId, setEditingMappingId] = useState<string | null>(null);
   const [editingParamCode, setEditingParamCode] = useState<Record<string, string>>({});
   const [newMachineCode, setNewMachineCode] = useState("");
+  const [mappingsSearch, setMappingsSearch] = useState("");
   
   const [newParamCode, setNewParamCode] = useState("");
   const [orderSearch, setOrderSearch] = useState("");
@@ -957,6 +958,25 @@ const LimsDemo = () => {
               {codeMappings.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No mappings configured yet. Map unmapped results above or they'll be auto-used for future results.</p>
               ) : (
+                <>
+                  <div className="mb-3">
+                    <Input
+                      value={mappingsSearch}
+                      onChange={(e) => setMappingsSearch(e.target.value)}
+                      placeholder="Search by machine code, param code, or parameter name..."
+                      className="h-9 max-w-md"
+                    />
+                  </div>
+                  {(() => {
+                    const q = mappingsSearch.trim().toLowerCase();
+                    const filteredMappings = q
+                      ? codeMappings.filter((m: any) =>
+                          [m.machine_code, m.mapped_param_code, m.mapped_test_code, m.parameter_name]
+                            .filter(Boolean)
+                            .some((v: string) => String(v).toLowerCase().includes(q)),
+                        )
+                      : codeMappings;
+                    return (
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -968,7 +988,13 @@ const LimsDemo = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {codeMappings.map((m) => {
+                    {filteredMappings.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-6">
+                          No mappings match "{mappingsSearch}".
+                        </TableCell>
+                      </TableRow>
+                    ) : filteredMappings.map((m) => {
                       const isEditing = editingMappingId === m.id;
                       const selectedCode = editingParamCode[m.id];
                       const selectedParam = selectedCode ? allParams.find((p) => (p.param_code || p.id) === selectedCode) : null;
@@ -1045,6 +1071,9 @@ const LimsDemo = () => {
                     })}
                   </TableBody>
                 </Table>
+                    );
+                  })()}
+                </>
               )}
             </CardContent>
           </Card>
