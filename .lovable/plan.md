@@ -1,25 +1,45 @@
 
+## Goal
+In Registered Patients, restrict Bill Cancellation:
+- **Same-day bill** (invoice prefix YYMMDD == today): allowed normally (existing flow).
+- **Older bill** (invoice prefix < today): require password `9819111107` before opening the cancellation flow.
 
-## Issue
-For cancelled bills, the "Bill Cancellation" / "Old Bill Cancelled" row currently appears **after** the "Refund" / "Old Bill Refund" row in the Daily Payment Register. Logically the bill is cancelled first and refund follows — display order should reflect that.
+## Where the cancellation lives
+`src/components/lims/EditRegistrationDialog.tsx` houses the "Cancel Bill" action triggered from the Registered Patients table. That's where the gate must sit (the row-level "Edit" button in `RegisteredPatients.tsx` opens this dialog).
 
-## Root cause
-In `EditRegistrationDialog.tsx` the refund row is `logPaymentTransaction(...)` first, then the cancellation marker row. Both get `transaction_date = now()` microseconds apart, refund being slightly earlier. The Daily Report sorts by `invoice_number DESC` then `transaction_date ASC`, so refund wins the tie.
+I'll confirm the exact button/handler by reading `EditRegistrationDialog.tsx` during implementation, but the cancel-bill trigger is unambiguously inside that dialog.
 
-## Fix (display-only, no DB changes)
-In `src/components/lims/DailyReport.tsx`, after fetching `transactions`, apply a stable secondary sort: within the same `invoice_number`, place rows of type `bill_cancellation` / `old_bill_cancellation` **before** `refund` / `old_bill_refund`. Other types keep their existing chronological order.
+## Implementation
 
-Approach: define a small `typeRank` map (cancellation=0, refund=1, everything else=2) and re-sort `filtered` (or `transactions`) using:
-1. invoice_number desc (preserve current grouping)
-2. typeRank asc (cancellation before refund)
-3. transaction_date asc (preserve existing chronology for non-cancel/refund rows)
+1. **Reuse existing password dialog**: `src/components/DeletePasswordDialog.tsx` already enforces `9819111107`. Import it into `EditRegistrationDialog.tsx`.
 
-Apply the same ordering to the Excel export so the file matches the on-screen view.
+2. **Add gate state** in `EditRegistrationDialog.tsx`:
+   ```ts
+   const [showOldCancelPwd, setShowOldCancelPwd] = useState(false);
+   ```
+
+3. **Derive bill date from invoice prefix** (consistent with the existing cross-day logic already in this file):
+   ```ts
+   const isOldBill = (() => {
+     const inv = registration?.invoice_number || "";
+     if (!/^\d{6}/.test(inv)) return false;
+     const billDate = `${inv.slice(4,6)}-${inv.slice(2,4)}-20${inv.slice(0,2)}`;
+     return billDate !== format(new Date(), "dd-MM-yyyy");
+   })();
+   ```
+
+4. **Wrap the Cancel Bill button handler**:
+   - If `isOldBill` → `setShowOldCancelPwd(true)` (open password dialog).
+   - Else → run the existing cancel-bill flow directly.
+   - On password success → run the same existing cancel-bill flow.
+
+5. **Render** `<DeletePasswordDialog>` at the bottom with `description="This bill is from an earlier date. Enter password to cancel."`.
+
+## What stays the same
+- Same-day cancellation UX is unchanged.
+- No DB schema, RLS, or transaction-logging changes.
+- All existing refund + cancellation marker logic (and the cross-day "Old Bill" labeling already in place) untouched.
+- No changes to `RegisteredPatients.tsx`.
 
 ## Files
-- `src/components/lims/DailyReport.tsx` — add `typeRank` and resort the `filtered` memo (used by both table and Excel export). ~10 lines.
-
-## Out of scope
-- No change to `payment_transactions` data, schema, or insertion order.
-- No change to `EditRegistrationDialog.tsx` insertion sequence.
-
+- `src/components/lims/EditRegistrationDialog.tsx` — add state, gate the cancel handler, render password dialog (~15 lines).
