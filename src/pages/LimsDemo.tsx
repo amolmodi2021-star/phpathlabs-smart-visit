@@ -383,11 +383,18 @@ const LimsDemo = () => {
   const updateMapping = useMutation({
     mutationFn: async ({ id, paramCode }: { id: string; paramCode: string }) => {
       const param = allParams.find((p) => (p.param_code || p.id) === paramCode);
-      const { error } = await supabase.from("lims_code_mapping").update({
+      const { data: updated, error } = await supabase.from("lims_code_mapping").update({
         mapped_param_code: paramCode,
         parameter_name: param?.parameter_name || null,
-      }).eq("id", id);
+      }).eq("id", id).select("machine_code").maybeSingle();
       if (error) throw error;
+      // Safety net: clear any historical unmapped rows for this machine_code
+      if (updated?.machine_code) {
+        await supabase.from("lims_unmapped_results")
+          .update({ is_resolved: true })
+          .eq("machine_code", updated.machine_code)
+          .eq("is_resolved", false);
+      }
     },
     onSuccess: () => {
       toast({ title: "Mapping updated" });
