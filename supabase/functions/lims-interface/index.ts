@@ -504,7 +504,7 @@ Deno.serve(async (req) => {
       let registrationResolved = false;
       try {
         // 1) Resolve registration_id from sample_id (strip trailing letter suffix)
-        const invoiceNumber = sample_id.replace(/[A-Za-z]+$/, "");
+        const invoiceNumber = sample_id.replace(/-?[A-Za-z]+$/, "");
         const { data: regRows } = await supabase
           .from("patient_registrations")
           .select("id, tests")
