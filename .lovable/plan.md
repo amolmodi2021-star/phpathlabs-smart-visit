@@ -1,40 +1,50 @@
 
+
 ## Goal
-In the LIMS Bidirectional Interface ("Active Orders" card on `/lims-demo`):
-1. **Auto-delete** active orders once the underlying registration has been dispatched (via the Dispatch button or WhatsApp send).
-2. Add **selection UI** (checkbox per row + select-all), **Delete Selected**, **Delete All**.
-3. Add a **search bar** to filter active orders (by Sample ID / Patient Name) so users can target rows for selection/deletion.
+Restructure the **Code Mapping** tab in `/lims-demo` into 4 sections, adding a new **No Map Required** ignore-list with two-way transfer to **Unmapped Results**. The edge function must respect this ignore list so flagged machine codes are silently dropped (not re-inserted into `lims_unmapped_results`) on every future submission.
 
-## How "dispatched" is detected
-A `lims_test_orders.sample_id` is the registration `invoice_number` optionally suffixed with a tube letter (e.g. `2604160005`, `2604160005A`). Strip the trailing letters → `invoice_number`. An order is considered dispatched when the matching registration's tests are all dispatched. The simplest, accurate signal already used elsewhere in the project: the registration's `patient_results` rows for the order's tests have `status = 'dispatched'` (set by both the explicit Dispatch button and the WhatsApp send flow in `Dispatch.tsx` lines 288–310).
+## 4 sections (in order, on Code Mapping tab)
+1. **Unmapped Results** — existing card, but excludes any row whose `machine_code` exists in the ignore list. Adds a new per-row button: **"No Map Required"** → moves that machine code to section 4.
+2. **Add Mapping Manually** — unchanged.
+3. **Code Mappings** (the existing "Mapped Codes") — unchanged.
+4. **No Map Required** (NEW) — table of ignored machine codes with columns: Machine Code, Machine ID, Added At, Action. Action = **"Move to Unmapped Results"** button (vice versa).
 
-We compute this client-side in `LimsDemo.tsx` after fetching orders + matching registrations + their patient_results, and auto-cascade-delete via the existing `deleteOrder` mutation (which already cleans `lims_test_results` first, then the order).
+## DB — new table
+New migration creates `lims_no_map_required`:
+- `id uuid pk default gen_random_uuid()`
+- `machine_code text not null`
+- `machine_id text default ''` (kept for parity with code-mapping rows; matching is by `machine_code` only — same convention as the mapping reverse-lookup which already ignores machine_id)
+- `created_at timestamptz default now()`
+- Unique constraint on `machine_code` (one ignore entry per code, applies to all machines)
+- RLS: enable, plus "Anyone can view/insert/delete" policies (matches existing permissive policies on `lims_code_mapping` / `lims_unmapped_results`)
 
-## Implementation (one file: `src/pages/LimsDemo.tsx`)
+## Behavior
+**Mark as No Map Required (from Unmapped Results row):**
+1. Insert `{machine_code, machine_id}` into `lims_no_map_required` (ignore conflict on duplicate).
+2. Soft-resolve every existing unmapped row with the same `machine_code` by setting `is_resolved = true` (so they disappear from the section).
+3. Toast: "Code <X> marked as No Map Required".
 
-### A. Auto-delete on dispatch
-- After the `orders` query loads, derive base invoice numbers: `invoice = sample_id.replace(/[A-Za-z]+$/, "")`.
-- Fetch matching `patient_registrations` (id, invoice_number, tests) for those invoice numbers.
-- For each registration, fetch `patient_results (test_id, status)`. An order is "dispatched" when **every** test in the order's `tests` array has a corresponding `patient_results` row with `status = 'dispatched'` (cross-referenced by mapped param/test code → the already-resolved order test list).
-- Pragmatic + safer rule: treat the order as dispatched when the registration has at least one `patient_results` row for it AND **all** rows for that registration are `status = 'dispatched'` (mirrors how the Dispatch screen treats a registration as fully sent). This avoids false positives from partial dispatches.
-- A small `useEffect` runs after each refresh: for any order matching the rule, call `deleteOrder.mutate(order.id)` once. Realtime subscription on `patient_results` is added so this triggers immediately when Dispatch / WhatsApp marks results as dispatched.
-- Subtle toast: "Auto-removed N dispatched orders" (only when N>0).
+**Move back to Unmapped Results (from No Map Required row):**
+1. Delete the row from `lims_no_map_required`.
+2. Toast: "Code <X> moved back. Future submissions of this code will appear in Unmapped Results."
+3. Note: historical rows already soft-resolved are not resurrected — only future submissions reappear. (Acceptable & consistent with how dispatch-removed orders work.)
 
-### B. Selection + bulk delete UI
-- New state: `selectedOrderIds: Set<string>`.
-- Add a checkbox column at the start of each Active Orders row + a "select all (filtered)" checkbox in the header strip.
-- Header strip (above the list) shows: search input, count of selected, **Delete Selected** button (disabled when none), **Delete All (filtered)** button. Both run a confirm dialog (existing `AlertDialog` pattern in the project) before bulk-calling the existing `deleteOrder` mutation in a loop / `Promise.all`.
+**Edge function (`supabase/functions/lims-interface/index.ts`) — POST `results`:**
+- After classifying mapped vs unmapped, fetch `lims_no_map_required.machine_code` for the incoming codes once.
+- Drop any `unmappedRows` whose `machine_code` is in the ignore set **before** inserting into `lims_unmapped_results`.
+- Response counters: add `ignored: N` alongside existing `mapped` / `unmapped`.
+- Mapped rows are unaffected (if a code is later mapped, mapping wins).
 
-### C. Search bar
-- New state: `orderSearch`.
-- Client-side filter on the already-loaded `orders` array: case-insensitive match against `sample_id` or `patient_name`.
-- All UI (count badge, select-all, bulk delete) operates on the filtered list.
-
-## Out of scope
-- No DB schema changes.
-- No edge function changes.
-- No change to how Dispatch / WhatsApp themselves work — we only react to the existing `status = 'dispatched'` writes.
-- Logs, Code Mapping, and API tabs untouched.
+**Frontend filter (defense in depth):**
+- The `unmappedResults` query also excludes any row whose `machine_code` is present in the loaded `noMapRequired` list, so the section is clean even if a stale row exists.
 
 ## Files
-- `src/pages/LimsDemo.tsx` — add search input, checkboxes, bulk-delete buttons, auto-cleanup effect, and a `patient_results` realtime channel (~80 lines added).
+- New migration — create `lims_no_map_required` + RLS policies.
+- `src/pages/LimsDemo.tsx` — new query `noMapRequired`, new realtime channel, two new mutations (`markNoMapRequired`, `unmarkNoMapRequired`), per-row "No Map Required" button in Unmapped Results, new 4th `<Card>` for the ignore list, client-side filter on `unmappedResults`.
+- `supabase/functions/lims-interface/index.ts` — fetch ignore list, skip ignored codes from `unmappedRows` insert, return `ignored` count.
+
+## Out of scope
+- Logs, Orders & Results, API Reference tabs — untouched.
+- Existing mapping logic (1:N machine_code → param mappings, auto-resolve siblings) — untouched.
+- No password gate on these toggles (mirrors existing free-form mapping add/delete on the same page).
+
