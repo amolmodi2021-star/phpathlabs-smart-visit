@@ -244,6 +244,32 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       const { error } = await supabase.from("patient_registrations").update(updateData).eq("id", reg.id);
       if (error) throw error;
       qc.invalidateQueries({ queryKey: ["patient_registrations"] });
+
+      // Detect payment mode split change vs original — if changed, sync payment_transactions
+      const origModes = splitPaymentModes(reg.payments || []);
+      const newModes = splitPaymentModes(payments);
+      const splitChanged =
+        origModes.cash !== newModes.cash ||
+        origModes.gpay !== newModes.gpay ||
+        origModes.paytm !== newModes.paytm ||
+        origModes.credit_card !== newModes.credit_card ||
+        origModes.neft !== newModes.neft;
+      if (splitChanged) {
+        const newPaid = payments.reduce((s, p) => s + (p.amount || 0), 0);
+        const newFinal = discountChanged ? discountCalc.finalAmount : Number(reg.final_amount || 0);
+        await updateRegistrationPaymentSplit({
+          registration_id: reg.id,
+          invoice_number: reg.invoice_number,
+          patient_name: patientName,
+          payments,
+          paid_amount: newPaid,
+          final_amount: newFinal,
+          due_amount: Math.max(0, newFinal - newPaid),
+          gross_amount: discountChanged ? discountCalc.totalAmount : Number(reg.gross_amount || 0),
+          discount_amount: discountChanged ? discountCalc.totalDiscount : Number(reg.discount_amount || 0),
+        });
+      }
+
       // Log discount change if applicable
       if (discountChanged) {
         logPaymentTransaction({
