@@ -247,8 +247,8 @@ const DailyReport = () => {
             <TableHeader>
               <TableRow>
                 <TableHead className="whitespace-nowrap">Invoice #</TableHead>
-                <TableHead className="whitespace-nowrap">Date/Time</TableHead>
                 <TableHead className="whitespace-nowrap">Invoice Date</TableHead>
+                <TableHead className="whitespace-nowrap">Date/Time</TableHead>
                 <TableHead className="whitespace-nowrap">Username</TableHead>
                 <TableHead className="whitespace-nowrap">Type</TableHead>
                 <TableHead className="whitespace-nowrap">Patient Name</TableHead>
