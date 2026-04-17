@@ -487,9 +487,18 @@ const LimsReportView = () => {
       if (pageElements.length === 0) { toast.error("No pages to print"); setShowLetterhead(originalLetterhead); setDownloading(false); return; }
 
       const imageUrls: string[] = [];
+      const NATIVE_W = Math.round((PAGE_WIDTH_MM / 25.4) * 96);
+      const NATIVE_H = Math.round((PAGE_HEIGHT_MM / 25.4) * 96);
       for (let i = 0; i < pageElements.length; i++) {
         const el = pageElements[i] as HTMLElement;
-        const png = await toPng(el, { quality: 1, pixelRatio: 4, backgroundColor: "#ffffff" });
+        const png = await toPng(el, {
+          quality: 1,
+          pixelRatio: 4,
+          backgroundColor: "#ffffff",
+          width: NATIVE_W,
+          height: NATIVE_H,
+          style: { transform: "none", transformOrigin: "top left" },
+        });
         imageUrls.push(png);
       }
 
