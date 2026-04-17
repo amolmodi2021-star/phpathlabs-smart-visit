@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFoo
 import { Loader2, Download, Lock, CalendarIcon, Search, X } from "lucide-react";
 import { format, startOfDay, endOfDay, parseISO } from "date-fns";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
-import * as XLSX from "xlsx";
+import * as XLSX from "@e965/xlsx";
 
 const TRANSACTION_LABELS: Record<string, string> = {
   registration_payment: "Registration",

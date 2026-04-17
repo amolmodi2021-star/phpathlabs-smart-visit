@@ -15,7 +15,7 @@ import AutoScaleContent from "@/components/report/AutoScaleContent";
 import type { TestResult, ProfileMeta } from "@/components/report/ReportResultsSection";
 import { toast } from "sonner";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.mjs";
 
 // ── Height constants (mm) ──
 const PAGE_HEIGHT_MM = 297;
