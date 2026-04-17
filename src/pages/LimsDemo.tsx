@@ -106,7 +106,12 @@ const LimsDemo = () => {
       .on("postgres_changes", { event: "*", schema: "public", table: "lims_unmapped_results" }, () => {
         queryClient.invalidateQueries({ queryKey: ["lims-unmapped"] });
       }).subscribe();
-    return () => { supabase.removeChannel(ch1); supabase.removeChannel(ch2); supabase.removeChannel(ch3); supabase.removeChannel(ch4); };
+    const ch5 = supabase.channel("lims-no-map-rt")
+      .on("postgres_changes", { event: "*", schema: "public", table: "lims_no_map_required" }, () => {
+        queryClient.invalidateQueries({ queryKey: ["lims-no-map-required"] });
+        queryClient.invalidateQueries({ queryKey: ["lims-unmapped"] });
+      }).subscribe();
+    return () => { supabase.removeChannel(ch1); supabase.removeChannel(ch2); supabase.removeChannel(ch3); supabase.removeChannel(ch4); supabase.removeChannel(ch5); };
   }, [queryClient]);
 
   const { data: orders = [] } = useQuery({
@@ -148,6 +153,17 @@ const LimsDemo = () => {
       return data || [];
     },
   });
+
+  const { data: noMapRequired = [] } = useQuery({
+    queryKey: ["lims-no-map-required"],
+    queryFn: async () => {
+      const { data } = await (supabase as any).from("lims_no_map_required").select("*").order("created_at", { ascending: false });
+      return data || [];
+    },
+  });
+
+  const noMapCodes = new Set<string>((noMapRequired as any[]).map((n: any) => n.machine_code));
+  const visibleUnmappedResults = (unmappedResults as any[]).filter((u: any) => !noMapCodes.has(u.machine_code));
 
   const { data: allParams = [] } = useQuery({
     queryKey: ["all-params-for-mapping"],
@@ -408,6 +424,43 @@ const LimsDemo = () => {
       setNewMachineId("");
       setNewParamCode("");
       queryClient.invalidateQueries({ queryKey: ["lims-code-mappings"] });
+      queryClient.invalidateQueries({ queryKey: ["lims-unmapped"] });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const markNoMapRequired = useMutation({
+    mutationFn: async ({ machineCode, machineId }: { machineCode: string; machineId?: string }) => {
+      const { error } = await (supabase as any).from("lims_no_map_required").insert({
+        machine_code: machineCode,
+        machine_id: machineId || "",
+      });
+      // Ignore unique-violation duplicates
+      if (error && !String(error.message).toLowerCase().includes("duplicate")) throw error;
+      // Soft-resolve all existing unmapped rows with this machine_code
+      await supabase.from("lims_unmapped_results")
+        .update({ is_resolved: true })
+        .eq("machine_code", machineCode)
+        .eq("is_resolved", false);
+      return machineCode;
+    },
+    onSuccess: (machineCode) => {
+      toast({ title: "Marked as No Map Required", description: `Code ${machineCode} will be ignored on future submissions.` });
+      queryClient.invalidateQueries({ queryKey: ["lims-no-map-required"] });
+      queryClient.invalidateQueries({ queryKey: ["lims-unmapped"] });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const unmarkNoMapRequired = useMutation({
+    mutationFn: async ({ id, machineCode }: { id: string; machineCode: string }) => {
+      const { error } = await (supabase as any).from("lims_no_map_required").delete().eq("id", id);
+      if (error) throw error;
+      return machineCode;
+    },
+    onSuccess: (machineCode) => {
+      toast({ title: "Moved back to Unmapped Results", description: `Future submissions of ${machineCode} will appear in Unmapped Results.` });
+      queryClient.invalidateQueries({ queryKey: ["lims-no-map-required"] });
       queryClient.invalidateQueries({ queryKey: ["lims-unmapped"] });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -695,12 +748,12 @@ const LimsDemo = () => {
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4 text-destructive" />
-                Unmapped Results ({unmappedResults.length})
+                Unmapped Results ({visibleUnmappedResults.length})
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {unmappedResults.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No unmapped results. All incoming codes are mapped correctly.</p>
+              {visibleUnmappedResults.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No unmapped results. All incoming codes are mapped or marked as No Map Required.</p>
               ) : (
                 <Table>
                   <TableHeader>
@@ -714,10 +767,11 @@ const LimsDemo = () => {
                       <TableHead>Received</TableHead>
                       <TableHead>Map To Parameter</TableHead>
                       <TableHead></TableHead>
+                      <TableHead></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {unmappedResults.map((ur) => (
+                    {visibleUnmappedResults.map((ur: any) => (
                       <TableRow key={ur.id}>
                         <TableCell className="font-mono text-xs">{ur.sample_id}</TableCell>
                         <TableCell className="font-mono font-medium">{ur.machine_code}</TableCell>
@@ -785,6 +839,16 @@ const LimsDemo = () => {
                             })}
                           >
                             <Link2 className="h-3 w-3 mr-1" /> Map
+                          </Button>
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={markNoMapRequired.isPending}
+                            onClick={() => markNoMapRequired.mutate({ machineCode: ur.machine_code, machineId: ur.machine_id })}
+                          >
+                            <X className="h-3 w-3 mr-1" /> No Map Required
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -983,9 +1047,53 @@ const LimsDemo = () => {
               )}
             </CardContent>
           </Card>
+
+          {/* No Map Required */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <X className="h-4 w-4 text-muted-foreground" />
+                No Map Required ({(noMapRequired as any[]).length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {(noMapRequired as any[]).length === 0 ? (
+                <p className="text-sm text-muted-foreground">No codes are being ignored. Use "No Map Required" on an unmapped row to add it here.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Machine Code</TableHead>
+                      <TableHead>Machine ID</TableHead>
+                      <TableHead>Added At</TableHead>
+                      <TableHead></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(noMapRequired as any[]).map((n: any) => (
+                      <TableRow key={n.id}>
+                        <TableCell className="font-mono font-medium">{n.machine_code}</TableCell>
+                        <TableCell className="font-mono text-xs">{n.machine_id || "—"}</TableCell>
+                        <TableCell className="text-xs">{new Date(n.created_at).toLocaleString()}</TableCell>
+                        <TableCell>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={unmarkNoMapRequired.isPending}
+                            onClick={() => unmarkNoMapRequired.mutate({ id: n.id, machineCode: n.machine_code })}
+                          >
+                            <RefreshCw className="h-3 w-3 mr-1" /> Move to Unmapped Results
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
-        {/* ───── API REFERENCE TAB ───── */}
         <TabsContent value="api">
           <Card>
             <CardHeader><CardTitle className="text-base">API Reference for Middleware</CardTitle></CardHeader>

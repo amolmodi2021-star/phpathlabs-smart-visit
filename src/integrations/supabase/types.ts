@@ -1451,6 +1451,27 @@ export type Database = {
         }
         Relationships: []
       }
+      lims_no_map_required: {
+        Row: {
+          created_at: string
+          id: string
+          machine_code: string
+          machine_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          machine_code: string
+          machine_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          machine_code?: string
+          machine_id?: string | null
+        }
+        Relationships: []
+      }
       lims_test_orders: {
         Row: {
           created_at: string

@@ -271,9 +271,27 @@ Deno.serve(async (req) => {
         if (insertErr) throw insertErr;
       }
 
-      // Insert unmapped results
+      // Filter out unmapped rows whose machine_code is on the No Map Required ignore list
+      let ignoredCount = 0;
+      let finalUnmappedRows = unmappedRows;
       if (unmappedRows.length > 0) {
-        const { error: unmappedErr } = await supabase.from("lims_unmapped_results").insert(unmappedRows);
+        const unmappedCodes = Array.from(new Set(unmappedRows.map((r) => r.machine_code).filter(Boolean)));
+        if (unmappedCodes.length > 0) {
+          const { data: ignoreList } = await supabase
+            .from("lims_no_map_required")
+            .select("machine_code")
+            .in("machine_code", unmappedCodes);
+          const ignoreSet = new Set((ignoreList || []).map((i: any) => i.machine_code));
+          if (ignoreSet.size > 0) {
+            finalUnmappedRows = unmappedRows.filter((r) => !ignoreSet.has(r.machine_code));
+            ignoredCount = unmappedRows.length - finalUnmappedRows.length;
+          }
+        }
+      }
+
+      // Insert unmapped results (after ignore-list filter)
+      if (finalUnmappedRows.length > 0) {
+        const { error: unmappedErr } = await supabase.from("lims_unmapped_results").insert(finalUnmappedRows);
         if (unmappedErr) throw unmappedErr;
       }
 
@@ -435,7 +453,8 @@ Deno.serve(async (req) => {
         sample_id,
         results_received: results.length,
         mapped: mappedRows.length,
-        unmapped: unmappedRows.length,
+        unmapped: finalUnmappedRows.length,
+        ignored: ignoredCount,
         order_id: orderId,
         registration_resolved: registrationResolved,
         patient_results_written: patientResultsWritten,
