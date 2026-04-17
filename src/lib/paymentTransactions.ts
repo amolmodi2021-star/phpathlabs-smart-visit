@@ -85,11 +85,7 @@ export function logPaymentTransaction(params: LogTransactionParams) {
     });
 }
 
-/**
- * Update the original `registration_payment` row in-place when payment mode split changes.
- * If no original row exists (legacy), inserts a fresh one so Daily Report stays correct.
- */
-export async function updateRegistrationPaymentSplit(params: {
+export interface SyncRegistrationPaymentRowParams {
   registration_id: string;
   invoice_number: string;
   patient_name?: string;
@@ -99,7 +95,25 @@ export async function updateRegistrationPaymentSplit(params: {
   due_amount: number;
   gross_amount?: number;
   discount_amount?: number;
-}) {
+  /** Short label describing the edit, e.g. "Discount edited", "Tests cancelled", "Bill cancelled" */
+  change_reason?: string;
+}
+
+/**
+ * Sync the original `registration_payment` row with the latest authoritative
+ * registration numbers so Daily Report (which sums payment_transactions rows)
+ * always reflects the current state.
+ *
+ * Updates in-place:
+ *   - per-mode amounts (cash/gpay/paytm/credit_card/neft) from `payments` split
+ *   - total_amount = paid_amount
+ *   - gross/discount/final/paid/due amounts
+ *   - appends a remark line describing the change + timestamp + user
+ *
+ * If no original row exists (legacy registration), inserts a fresh one.
+ * Never throws.
+ */
+export async function syncRegistrationPaymentRow(params: SyncRegistrationPaymentRowParams) {
   try {
     const user = getCurrentUser();
     const modes = splitPaymentModes(params.payments);
@@ -109,7 +123,8 @@ export async function updateRegistrationPaymentSplit(params: {
       day: "2-digit", month: "2-digit", year: "numeric",
       hour: "2-digit", minute: "2-digit", hour12: true,
     });
-    const editRemark = `Payment mode edited on ${stamp} by ${performer}`;
+    const reasonLabel = params.change_reason || "Payment details edited";
+    const editRemark = `${reasonLabel} on ${stamp} by ${performer}`;
 
     const { data: existing, error: findErr } = await supabase
       .from("payment_transactions" as any)
@@ -144,7 +159,7 @@ export async function updateRegistrationPaymentSplit(params: {
           remarks: newRemarks,
         })
         .eq("id", row.id);
-      if (updErr) console.error("Failed to update payment transaction split:", updErr);
+      if (updErr) console.error("Failed to sync registration payment row:", updErr);
     } else {
       // Fallback: legacy registration with no audit row — create one now
       logPaymentTransaction({
@@ -164,6 +179,12 @@ export async function updateRegistrationPaymentSplit(params: {
       });
     }
   } catch (e) {
-    console.error("updateRegistrationPaymentSplit failed:", e);
+    console.error("syncRegistrationPaymentRow failed:", e);
   }
 }
+
+/**
+ * @deprecated Use `syncRegistrationPaymentRow` instead.
+ * Kept as an alias for backwards-compatibility.
+ */
+export const updateRegistrationPaymentSplit = syncRegistrationPaymentRow;
