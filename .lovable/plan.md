@@ -1,66 +1,59 @@
 
-## Goal
-Make Refund rows in Daily Payment Register represent ONLY the money-out delta — no duplicated gross/discount/final/paid/due, and the refund amount as a **negative** in the actual payment mode column (Cash/GPay/NEFT/etc). Daily mode totals will then naturally net to the real cash-drawer count.
 
-## Problem (from screenshot of invoice 2604160005)
-Current Refund row shows:
-- Gross ₹50, Discount ₹10, Final ₹40, Paid ₹40 → these are the registration snapshot, not refund-specific. They inflate the Totals row → bookkeeping confusion.
-- Cash ₹10 (positive) → adds to "Cash today" total instead of subtracting → end-of-day cash count won't match.
+## Problem
+Invoice **2604150003** appears as TWO `due_collection` rows in Daily Report. Each row carries the registration's full `gross=1400`, `final=1400`, plus its own `paid` & `due` snapshots. When the totals row SUMs all rows for the day, those snapshots stack:
+- Gross 1400 + 1400 = 2800 added (only ₹150 cash actually collected across both)
+- Final 1400 + 1400 = 2800 added
+- Paid 100 + 200 = 300 (200 already counted again from later snapshot)
+- Due 1000 + 900 = 1900 added (already on the original Registration row)
 
-## Fix
+The original `registration_payment` row separately holds the true gross/discount/final/paid/due. Due-collection rows duplicate them → grand totals inflate every time a due is collected.
 
-### A. `logPaymentTransaction` calls for refunds (`EditRegistrationDialog.tsx`)
-Two call sites: `processOverpaymentRefund` (~line 348) and `processCancelTests` refund (~line 530). Change both so the refund row:
-- Sets `gross_amount = 0`, `discount_amount = 0`, `final_amount = 0`, `paid_amount = 0`, `due_amount = 0`
-- Sets the mode amount to **negative** refund value (e.g. cash_amount = -10)
-- Keeps `refund_amount` (positive) as the audit value
-- Keeps `total_amount` as negative refund (so Total Out summary still works)
+## Fix (mirrors the Refund fix)
+Treat `due_collection` rows the same way as `refund` / `bill_cancellation` rows: they represent ONLY the money-in delta. They must NOT duplicate registration snapshot fields.
 
-### B. `splitPaymentModes` helper (`paymentTransactions.ts`)
-No change needed for normal "in" use. To support negative for refunds, the simplest path: add an optional `direction` parameter to `logPaymentTransaction` that, when `"out"`, negates the per-mode values before insert. This keeps callers ergonomic — they still pass positive amounts.
+### A. `src/components/lims/DuePayments.tsx` — `handleCollect`
+Change the `logPaymentTransaction` call so the due-collection row stores ONLY the delta:
+- `gross_amount = 0`
+- `discount_amount = 0`
+- `final_amount = 0`
+- `paid_amount = 0` (this is the per-row payment delta — already represented by `total_amount` and the per-mode columns)
+- `due_amount = 0`
+- `total_amount` = amount collected this time (unchanged)
+- `cash/gpay/paytm/credit_card/neft_amount` = the split for this collection (unchanged)
 
-Implementation in `logPaymentTransaction`:
-```ts
-const sign = params.direction === "out" ? -1 : 1;
-const row = {
-  ...
-  cash_amount: modes.cash * sign,
-  gpay_amount: modes.gpay * sign,
-  ...
-  total_amount: (params.total_amount ?? 0) * sign,
-  refund_amount: params.refund_amount ?? 0,  // stays positive (audit)
-  ...
-};
+The original `registration_payment` row continues to hold the authoritative gross/discount/final. Daily Report totals then naturally show:
+- Gross/Final = registration's actual values (counted once)
+- Cash/GPay etc. = SUM of registration row + each due-collection row = real cash drawer
+- Paid = registration's initial paid + each due collection (correct delta sum)
+
+### B. Daily Report display
+No change needed. The current renderer already shows ₹0 for zero values which is fine for delta rows.
+
+Optionally (cleanup): for `due_collection` / `refund` / `bill_cancellation` / `discount_applied` rows, render the snapshot columns (Gross/Discount/Final/Paid/Due) as `-` instead of `₹0` so the eye doesn't try to read them as money. Small UX polish.
+
+### C. One-time data fix
+Update existing `due_collection`, `discount_applied` (and any other supplemental) rows in `payment_transactions` to zero out the snapshot fields:
+```sql
+UPDATE payment_transactions
+SET gross_amount = 0, discount_amount = 0, final_amount = 0,
+    paid_amount = 0, due_amount = 0
+WHERE transaction_type IN ('due_collection', 'discount_applied');
 ```
+This corrects the historical data (including both rows for invoice 2604150003) so today's Daily Report immediately reflects accurate totals.
 
-This auto-applies to BOTH refund call sites without further edits, AND auto-applies to bill-cancellation rows (which are also `direction: "out"`).
-
-### C. `bill_cancellation` row (`processCancelBill`)
-Same logic flows through — the cancelled bill's paid amount becomes negative in the original mode columns, so Daily totals net to zero across the registration row + cancellation row.
-
-### D. `DailyReport.tsx` display
-- Cell rendering: change "show only if > 0" to "show if != 0" so negative mode amounts appear (in red). Update lines 267–272 to render negatives like `-₹10` in destructive color.
-- Totals row: already does plain SUM → negative values will correctly subtract. No formula change.
-- Summary mode cards (Cash/GPay/...): already SUM — will reflect net automatically.
-- "Total Out (Refunds)" card (line 192): currently sums positive total_amount where direction = "out". Since we'll store negative `total_amount` for out, change to `Math.abs(total_amount)` to keep card display positive while individual rows show negatives.
-
-### E. Filter logic for `modeFilter` (line 64–67)
-Currently `Number(t[key] || 0) <= 0` → would hide negative refund rows when filtering by Cash. Change to `Number(t[key] || 0) === 0` (i.e. only hide rows with zero in that mode), so refunds appear in their mode filter.
-
-### F. Existing data
-The stale Refund row visible in the screenshot (invoice 2604160005, ₹10 cash refund) needs a one-time UPDATE to match the new schema:
-- gross/discount/final/paid/due → 0
-- cash_amount → -10
-- total_amount → -10
+### Note on `discount_applied` rows
+Same conceptual issue — discount audit rows carry a snapshot too. Including them in the same backfill prevents future inflation when discounts are edited later.
 
 ## Files
-- `src/lib/paymentTransactions.ts` — apply `sign` based on `direction` in `logPaymentTransaction`
-- `src/components/lims/EditRegistrationDialog.tsx` — clear gross/discount/final/paid/due fields for refund logging calls (two sites)
-- `src/components/lims/DailyReport.tsx` — render non-zero negative mode cells in red; fix mode filter; abs() the Total Out card
-- One-time SQL UPDATE to fix existing refund + bill_cancellation rows in `payment_transactions` (no schema change)
+- `src/components/lims/DuePayments.tsx` — set snapshot fields to 0 in `logPaymentTransaction` call (lines 144–148)
+- `src/components/lims/DailyReport.tsx` *(optional polish)* — render `-` instead of `₹0` for snapshot columns when row type is `due_collection` / `refund` / `bill_cancellation` / `discount_applied`
+- One-time SQL UPDATE on `payment_transactions` (no schema change)
 
 ## What stays the same
 - Schema unchanged
-- Audit trail intact — refund row still tagged `transaction_type: "refund"` with full remarks
-- Discount-applied / due-collection / registration_payment behavior unchanged
-- Net Collection card already correct (in − out)
+- Audit trail intact — due-collection row still tagged with `transaction_type: "due_collection"`, full mode split, and remarks
+- `EditRegistrationDialog` flows already correct (in-place sync of registration row)
+- Refund / bill-cancellation handling unchanged
+- Net Collection card stays accurate (in − out)
+
