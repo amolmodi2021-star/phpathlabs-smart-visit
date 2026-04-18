@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, ChevronLeft, ChevronRight, Pencil, Download, Eye, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, Pencil, Download, Eye, ChevronDown, ChevronUp, Trash2, CalendarIcon, X } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -14,8 +14,11 @@ import { exportToExcel } from "@/lib/excel";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 import EditRegistrationDialog from "./EditRegistrationDialog";
 import InvoicePreview from "./InvoicePreview";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { cn } from "@/lib/utils";
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 50;
 
 const RegisteredPatients = () => {
   const qc = useQueryClient();
@@ -28,10 +31,15 @@ const RegisteredPatients = () => {
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [showClearPwd, setShowClearPwd] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [fromDate, setFromDate] = useState<Date | undefined>();
+  const [toDate, setToDate] = useState<Date | undefined>();
 
   const registrationSearchFilter = debouncedSearch
     ? `patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%,umr_number.ilike.%${debouncedSearch}%`
     : "";
+
+  const fromIso = fromDate ? new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate(), 0, 0, 0).toISOString() : null;
+  const toIso = toDate ? new Date(toDate.getFullYear(), toDate.getMonth(), toDate.getDate(), 23, 59, 59, 999).toISOString() : null;
 
   const handleSearch = (val: string) => {
     setSearch(val);
@@ -39,6 +47,10 @@ const RegisteredPatients = () => {
     clearTimeout((window as any).__regSearchTimeout);
     (window as any).__regSearchTimeout = setTimeout(() => setDebouncedSearch(val), 400);
   };
+
+  const handleFromDate = (d: Date | undefined) => { setFromDate(d); setPage(0); };
+  const handleToDate = (d: Date | undefined) => { setToDate(d); setPage(0); };
+  const clearDates = () => { setFromDate(undefined); setToDate(undefined); setPage(0); };
 
   const { data: channels = [] } = useQuery({
     queryKey: ["channels_lookup"],
@@ -51,10 +63,12 @@ const RegisteredPatients = () => {
   const channelMap = Object.fromEntries(channels.map(c => [c.id, c.name]));
 
   const { data: count = 0 } = useQuery({
-    queryKey: ["patient_registrations_count", debouncedSearch],
+    queryKey: ["patient_registrations_count", debouncedSearch, fromIso, toIso],
     queryFn: async () => {
       let query = supabase.from("patient_registrations").select("id", { count: "exact", head: true });
       if (registrationSearchFilter) query = query.or(registrationSearchFilter);
+      if (fromIso) query = query.gte("created_at", fromIso);
+      if (toIso) query = query.lte("created_at", toIso);
       const { count, error } = await query;
       if (error) throw error;
       return count || 0;
@@ -62,7 +76,7 @@ const RegisteredPatients = () => {
   });
 
   const { data: registrations = [], isLoading } = useQuery({
-    queryKey: ["patient_registrations", page, debouncedSearch],
+    queryKey: ["patient_registrations", page, debouncedSearch, fromIso, toIso],
     queryFn: async () => {
       let query = supabase
         .from("patient_registrations")
@@ -70,6 +84,8 @@ const RegisteredPatients = () => {
         .order("created_at", { ascending: false })
         .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
       if (registrationSearchFilter) query = query.or(registrationSearchFilter);
+      if (fromIso) query = query.gte("created_at", fromIso);
+      if (toIso) query = query.lte("created_at", toIso);
       const { data, error } = await query;
       if (error) throw error;
       const rows = (data || []) as any[];
@@ -182,6 +198,33 @@ const RegisteredPatients = () => {
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input value={search} onChange={e => handleSearch(e.target.value)} placeholder="Search by name, mobile, invoice, UMR..." className="pl-8" />
         </div>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className={cn("justify-start text-left font-normal", !fromDate && "text-muted-foreground")}>
+              <CalendarIcon className="h-4 w-4 mr-1" />
+              {fromDate ? format(fromDate, "dd-MM-yyyy") : "From date"}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar mode="single" selected={fromDate} onSelect={handleFromDate} initialFocus className={cn("p-3 pointer-events-auto")} />
+          </PopoverContent>
+        </Popover>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className={cn("justify-start text-left font-normal", !toDate && "text-muted-foreground")}>
+              <CalendarIcon className="h-4 w-4 mr-1" />
+              {toDate ? format(toDate, "dd-MM-yyyy") : "To date"}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar mode="single" selected={toDate} onSelect={handleToDate} initialFocus className={cn("p-3 pointer-events-auto")} />
+          </PopoverContent>
+        </Popover>
+        {(fromDate || toDate) && (
+          <Button variant="ghost" size="sm" onClick={clearDates}>
+            <X className="h-4 w-4 mr-1" />Clear dates
+          </Button>
+        )}
         <Button variant="outline" size="sm" onClick={() => setShowExportPwd(true)}>
           <Download className="h-4 w-4 mr-1" />Export All
         </Button>
@@ -191,8 +234,6 @@ const RegisteredPatients = () => {
           </Button>
         )}
       </div>
-
-      <div className="text-sm text-muted-foreground">{count} registration(s) found</div>
 
       <div className="rounded-md border">
         <Table>
