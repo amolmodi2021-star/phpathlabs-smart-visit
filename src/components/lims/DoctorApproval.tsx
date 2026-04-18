@@ -570,10 +570,12 @@ const DoctorApproval = () => {
             </Select>
           ) :
            p.rangeType === "descriptive" && p.descriptiveOptions.length > 0 ? (
-            <Select value={currentValue || undefined} onValueChange={(v) => handleValueChange(regId, p.parameterId, v, entry)}>
-              <SelectTrigger className="h-7 text-sm !w-[180px]"><SelectValue placeholder="Select..." /></SelectTrigger>
-              <SelectContent className="max-w-[400px]">{p.descriptiveOptions.map((opt: string) => (<SelectItem key={opt} value={opt} className="whitespace-normal">{opt}</SelectItem>))}</SelectContent>
-            </Select>
+            <DescriptiveCombobox
+              value={currentValue}
+              options={p.descriptiveOptions}
+              onChange={(v) => handleValueChange(regId, p.parameterId, v, entry)}
+              className="!w-[180px]"
+            />
           ) : (<Input value={currentValue} onChange={e => handleValueChange(regId, p.parameterId, e.target.value, entry)} className={`h-7 text-sm w-[180px] ${flag === "H" || flag === "L" || flag === "A" ? "border-destructive text-destructive font-bold" : ""}`} placeholder="Enter result" />)}
         </TableCell>
         <TableCell className="py-1.5 text-xs text-muted-foreground">
