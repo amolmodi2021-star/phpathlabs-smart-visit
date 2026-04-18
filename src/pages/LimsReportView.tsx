@@ -245,7 +245,8 @@ const LimsReportView = () => {
         let sigUrl: string | null = null;
         if (sig.signature_image_path) {
           const { data: sigUrlData } = supabase.storage.from("signatures").getPublicUrl(sig.signature_image_path);
-          sigUrl = sigUrlData.publicUrl;
+          // Inline as data URL for reliable canvas rasterization in PDF/print capture
+          sigUrl = await urlToDataUrl(sigUrlData.publicUrl) || sigUrlData.publicUrl;
         }
         const info: SignatureInfo = {
           pathologist_name: sig.pathologist_name,
