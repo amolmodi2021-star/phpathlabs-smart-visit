@@ -84,7 +84,7 @@ const MessageLog = () => {
           <Input
             placeholder="Search name, mobile, UMR, or type..."
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+            onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
           />
         </div>
