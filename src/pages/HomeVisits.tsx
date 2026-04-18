@@ -91,10 +91,29 @@ const HomeVisits = () => {
   const [addPatientDialogOpen, setAddPatientDialogOpen] = useState(false);
   const [consolidatedPaymentVisits, setConsolidatedPaymentVisits] = useState<any[] | null>(null);
 
+  // Compute the date window for the server query based on the active date filter.
+  // This prevents fetching the entire home_visits table as data grows.
+  const queryDateWindow = useMemo(() => {
+    const today = format(new Date(), "yyyy-MM-dd");
+    const tomorrow = format(addDays(new Date(), 1), "yyyy-MM-dd");
+    const dayAfter = format(addDays(new Date(), 2), "yyyy-MM-dd");
+    if (dateFilter === "today") return { from: today, to: today };
+    if (dateFilter === "tomorrow") return { from: tomorrow, to: tomorrow };
+    if (dateFilter === "dayafter") return { from: dayAfter, to: dayAfter };
+    return { from: filterFromDate || today, to: filterToDate || today };
+  }, [dateFilter, filterFromDate, filterToDate]);
+
   const { data: visits = [], isLoading } = useQuery({
-    queryKey: ["home_visits"],
+    queryKey: ["home_visits", queryDateWindow.from, queryDateWindow.to],
     queryFn: async () => {
-      const { data } = await supabase.from("home_visits").select("*, estimates(*, estimate_tests(*)), phlebotomists(name, mobile)").order("visit_date", { ascending: false }).order("created_at", { ascending: false });
+      const { data } = await supabase
+        .from("home_visits")
+        .select("*, estimates(*, estimate_tests(*)), phlebotomists(name, mobile)")
+        .gte("visit_date", queryDateWindow.from)
+        .lte("visit_date", queryDateWindow.to)
+        .order("visit_date", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(2000);
       return data || [];
     },
   });
