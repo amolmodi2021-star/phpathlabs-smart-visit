@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -16,15 +16,11 @@ const MessageLog = () => {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(0);
 
-  // Debounce search and reset page on search change
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  // (using inline timer to avoid extra import — same pattern as elsewhere in the project)
-  if (typeof window !== "undefined") {
-    // noop guard
-  }
+  useEffect(() => { const t = setTimeout(() => setDebouncedSearch(search), 400); return () => clearTimeout(t); }, [search]);
+  useEffect(() => { setPage(0); }, [debouncedSearch]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["message_send_log", search, page],
+    queryKey: ["message_send_log", debouncedSearch, page],
     queryFn: async () => {
       let query = supabase
         .from("message_send_log")
@@ -32,9 +28,10 @@ const MessageLog = () => {
         .order("sent_at", { ascending: false })
         .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
-      if (search.trim()) {
+      if (debouncedSearch.trim()) {
+        const s = debouncedSearch.trim();
         query = query.or(
-          `patient_name.ilike.%${search.trim()}%,mobile_number.ilike.%${search.trim()}%,message_type.ilike.%${search.trim()}%,umr_number.ilike.%${search.trim()}%,primary_key.ilike.%${search.trim()}%`
+          `patient_name.ilike.%${s}%,mobile_number.ilike.%${s}%,message_type.ilike.%${s}%,umr_number.ilike.%${s}%,primary_key.ilike.%${s}%`
         );
       }
 
