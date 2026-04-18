@@ -776,6 +776,7 @@ const LimsReportView = () => {
                     <img
                       data-snip-image="true"
                       src={page.snipImage}
+                      crossOrigin="anonymous"
                       alt="Outsourced Report"
                       className="max-w-full object-contain"
                       style={{
