@@ -33,6 +33,7 @@ const ALL_TABS = [
     sections: [
       { key: "send", label: "Send Messages" },
       { key: "automated", label: "Automated" },
+      { key: "retry", label: "Retry" },
       { key: "log", label: "Message Log" },
       { key: "new", label: "New Numbers" },
     ],
