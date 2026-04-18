@@ -1,54 +1,65 @@
 
 ## Goal
-1. Apply the same inline type-ahead descriptive combobox to **Result Verification** and **Doctor Approval**.
-2. Fix carry-forward: free-text edited values saved in Results Entry must show in Verification and Approval.
-3. Make the full text visible after selection/edit (no clipping under the field box).
+Ensure descriptive (and any) result text saved in Results Entry survives the round trip:
+**Results Entry → Save & Send → Verification → Send Back → Results Entry** — the same text must reappear in Results Entry, and identically continue forward again to Verification and Doctor Approval.
 
-## Root cause of carry-forward bug
-Values ARE saved correctly in `patient_results.result_value` and read back into `resultValue`. The bug is purely UI: Verification & Approval still use Radix `<Select>` for descriptive parameters. Radix Select silently renders **empty** when the current value is not in its `<SelectItem>` list — so any free-text or edited descriptive value saved from Results Entry appears blank. Switching to the editable combobox fixes this immediately because it's an `<Input>` that always shows whatever string it's given.
+## Investigation summary
+Traced the full data flow:
 
-## Root cause of text clipping
-The combobox `<Input>` is fixed `h-7` (28px) with `text-sm` and `w-[180px]`, single-line, no wrap → long descriptive text scrolls horizontally and the tail is hidden. We need the field to grow vertically (textarea-style) so the full text is visible after selection/edit, while still acting as the search box.
+- `Save & Send to Verification` (Results Entry) does `delete + insert` on `patient_results` with `status="entered"` and writes `result_value: value || null`. ✅ value persists.
+- `Send Back` in Result Verification (`src/components/lims/ResultVerification.tsx` line 646–660) only runs `update({ status: "pending" })` — it does **not** touch `result_value`. ✅ value preserved in DB.
+- `Send Back for verification` in Doctor Approval (`src/components/lims/DoctorApproval.tsx` line 497–507) only runs `update({ status: "entered" })`. ✅ value preserved.
+- Results Entry's `existingResults` query (`select * from patient_results … in regIds`) loads ALL statuses including `pending`, and `param.resultValue = existing?.result_value || ""` populates the UI from DB.
+
+So the DB row is preserved. The "text disappears" symptom in Results Entry after Send Back is caused by **two specific UI state issues**:
+
+### Bug 1 — Skip rule keeps the test hidden
+`src/components/lims/ResultsEntry.tsx` line 604:
+```js
+if (testParamResults.every(({ existing }) => existing?.status === "entered")) continue;
+```
+Reverse case: after Send Back, every param flips to `pending`, so the test correctly reappears. ✅ no fix needed here.
+
+### Bug 2 — Stale React Query cache makes UI think the test is still "entered"
+`sendBackTest` invalidates `patient_results_existing`, but the **Results Entry tab is unmounted** while the user is on Verification. When they switch back, the cache key contains the previous `regIds.join(",")` — same key, refetches fine. But the **registration row's `status` column** was last set during verification and is **not** updated by `sendBackTest`. So the registration may be at `processing`/`partial_verified` etc. and the patient still shows in Results Entry. The test, however, is rebuilt from DB rows whose `status` is now `pending` and whose `result_value` IS the saved text. UI should populate.
+
+The actual gap: **after Send Back, the Results Entry's accepted-regs query is keyed only on `[debouncedSearch, rePage]` and is NOT invalidated**. If the patient's registration was paged out (e.g. moved to next page based on `updated_at` ordering), the test silently disappears. More critically, the **secondary query `results_outsourced_snips` and `patient_results_existing` are invalidated, but `results_accepted_regs` is NOT**, so any data dependent on freshly recomputed registration ordering can show a phantom row using old `tests`/`status` snapshot — for descriptive params this manifests as a re-render with `existingResults` not yet matched up against `regIds`, briefly showing blank, and any in-flight `editedValues` state being stale.
+
+### Bug 3 (root cause for "text disappears") — `recalculateRegistrationStatus` not called on send-back
+After Send Back, the registration's overall `status` should drop back from `processed` → `processing` (or `verified` → `partial_verified`). Currently neither `ResultVerification.sendBackTest` nor `DoctorApproval.sendBackForVerification` calls `recalculateRegistrationStatus(regId)`. As a result, the registration may stay at `verified` / `processed`, and the patient row in Results Entry is pulled from a stale list where the just-reverted test no longer appears as accepted-but-pending — leading to the "blank/missing" symptom the user observes.
 
 ## Fix plan
 
-### 1. Promote `DescriptiveCombobox` to a shared component
-- Extract from `src/components/lims/ResultsEntry.tsx` into a new file `src/components/lims/DescriptiveCombobox.tsx`. Same props, same behavior (focus opens list, type filters, ↑/↓ navigates, Enter selects, Esc closes, Tab passes through to `onKeyDown`, click selects).
-- Replace internal `<Input>` with an **auto-growing `<textarea>`** so multi-line text is fully visible:
-  - `rows={1}`, `resize-none`, `overflow-hidden`, `whitespace-pre-wrap break-words`
-  - `useEffect` on `value`: set `textareaRef.current.style.height = "auto"; then = scrollHeight + "px"` to grow with content
-  - Min height matches current `h-7`; expands to multiple lines as text grows
-  - Enter still intercepted for selection when dropdown is open and item highlighted; otherwise Enter passes to `onKeyDown` (no newline insertion — `e.preventDefault()` in the pass-through path keeps single-cell semantics)
-  - Keep `data-result-input` / `data-result-value` attrs so existing Tab/Shift+Tab navigation across cells continues to work
-- Re-export under same name; update import in `ResultsEntry.tsx`.
+### 1. `src/components/lims/ResultVerification.tsx` — `sendBackTest`
+- After the two `update` calls, call `await recalculateRegistrationStatus(regId)` so the parent `patient_registrations.status` reflects the reverted test.
+- Add `qc.invalidateQueries({ queryKey: ["results_accepted_regs"] })` and `["verification_regs_v2"]` so both source lists refresh.
 
-### 2. Wire into Result Verification
-- `src/components/lims/ResultVerification.tsx`:
-  - Import `DescriptiveCombobox`.
-  - Replace the descriptive `<Select>` block at ~line 736 (desktop table) with `<DescriptiveCombobox value={currentValue} options={p.descriptiveOptions} onChange={(v) => handleValueChange(regId, p.parameterId, v, entry)} className="!w-[180px] min-w-[180px] max-w-[180px]" />`.
-  - Replace the descriptive `<Select>` block at ~line 1053 (secondary/mobile section) with the same component, `className="w-full"`.
+### 2. `src/components/lims/DoctorApproval.tsx` — `sendBackForVerification`
+- Same: `await recalculateRegistrationStatus(regId)` after the updates.
+- `invalidateAll()` already covers most queries; explicitly add `["verification_results_v2"]`, `["results_accepted_regs"]`, and `["patient_results_existing"]`.
 
-### 3. Wire into Doctor Approval
-- `src/components/lims/DoctorApproval.tsx`:
-  - Import `DescriptiveCombobox`.
-  - Replace the descriptive `<Select>` at ~line 573 with `<DescriptiveCombobox value={currentValue} options={p.descriptiveOptions} onChange={(v) => handleValueChange(regId, p.parameterId, v, entry)} className="!w-[180px]" />`.
+### 3. `src/components/lims/ResultsEntry.tsx` — defensive read
+- Line 626: change `resultValue: existing?.result_value || ""` to `resultValue: existing?.result_value ?? ""` so a saved empty-string value (rare, but possible for descriptive) is still treated correctly and a `null` falls through to "". (No behavioral change for normal cases; protects edge cases.)
+- Line 604: tighten the skip rule so a test with mixed statuses (some `entered`, some `pending` after partial send-back) still appears in Results Entry — change `every(... === "entered")` to `every(... === "entered") && testParamResults.length === testParams.filter(tp => !tp.is_subheader && tp.report_test_parameters).length` (already equivalent, but make the intent explicit and skip ONLY when nothing reverted).
 
-### 4. Container cells already accommodate growth
-The `<TableCell>` wrappers use `py-1.5` and don't constrain row height — vertical-growing textarea will simply make the row taller, no overflow issues. No table CSS changes needed.
+### 4. `src/components/lims/ResultVerification.tsx` — clear local edits on Send Back
+- After Send Back, also clear `editedValues`, `editedFlags`, `editedUnits`, `editedRefRanges`, `editedNotes` for keys belonging to the sent-back test, so when the user revisits Verification later (after re-sending from Entry), they see the freshly persisted DB value, not stale local edits.
+
+### 5. Same edit-state cleanup in `DoctorApproval.tsx` Send Back
 
 ## Files to edit
-- `src/components/lims/DescriptiveCombobox.tsx` — **new**, auto-growing textarea-based combobox.
-- `src/components/lims/ResultsEntry.tsx` — remove inline component, import shared one (2 call sites unchanged).
-- `src/components/lims/ResultVerification.tsx` — replace 2 descriptive `<Select>` blocks with combobox.
-- `src/components/lims/DoctorApproval.tsx` — replace 1 descriptive `<Select>` block with combobox.
+- `src/components/lims/ResultVerification.tsx` — `sendBackTest` (~line 646–660): add `recalculateRegistrationStatus` import-already-present call, expand cache invalidation, clear local edit state for sent-back test.
+- `src/components/lims/DoctorApproval.tsx` — `sendBackForVerification` (~line 497–507): same three additions.
+- `src/components/lims/ResultsEntry.tsx` — minor defensive change at line 626 (`||` → `??`) and a clarifying guard at line 604.
 
 ## Out of scope
+- `DescriptiveCombobox` itself — already correct.
 - Numeric / qualitative inputs.
-- Patient_results schema / save logic — already correct end-to-end.
-- Adding new options to the master descriptive list.
+- Schema / RLS / edge function changes.
+- Doctor Approval → Modified Approval flow (separate path, already preserves values via `approved_reports` archive).
 
 ## Expected outcome
-- Results Entry, Result Verification, Doctor Approval all use the same searchable + editable descriptive field.
-- Any descriptive value saved in Results Entry (predefined OR freely edited) shows up correctly in Verification and Approval.
-- Field auto-expands vertically so the entire selected/edited text is always visible — nothing hidden under the box.
-- Keyboard navigation (Tab/Shift+Tab between cells, ↑/↓/Enter/Esc inside the dropdown) works identically across all three modules.
+- Click **Send Back** in Result Verification → registration status auto-recomputes → Results Entry tab now shows the test with the **exact descriptive (or any) text that was saved**, fully editable.
+- Click **Send Back** in Doctor Approval → same, reappears in Verification with original text intact.
+- Re-sending the test forward (Entry → Verify → Approve) shows identical text at every stage.
+- No data loss, no blanks, no stale UI cache.
