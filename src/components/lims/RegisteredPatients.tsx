@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, ChevronLeft, ChevronRight, Pencil, Download, Eye, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, Pencil, Download, Eye, ChevronDown, ChevronUp, Trash2, CalendarIcon, X } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -14,8 +14,11 @@ import { exportToExcel } from "@/lib/excel";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 import EditRegistrationDialog from "./EditRegistrationDialog";
 import InvoicePreview from "./InvoicePreview";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { cn } from "@/lib/utils";
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 50;
 
 const RegisteredPatients = () => {
   const qc = useQueryClient();
