@@ -1,52 +1,51 @@
 
+## Goals
+1. Shrink PDF size from ~170MB → 1–2MB.
+2. Keep snip-on-letterhead images at native quality (no blur).
+3. Honour top/bottom margins; never overflow into doctor signature.
 
-## Problem
-The View Report screen renders each page as a fixed A4 sheet (`width: 210mm`, `height: 297mm`). On mobile (e.g. 931×641 or smaller real phones at ~390px), this means:
-- The page is wider than the screen → horizontal scroll + pinch-zoom required.
-- Toolbar (Back, title, With Letterhead toggle, Print, Download PDF) is laid out in a single horizontal row with `ml-auto` — wraps badly / overflows on narrow screens.
-- Title `Report — {patient_name} ({invoice_number})` is `text-xl` and fights for space.
-- `flex items-center gap-3` toolbar doesn't wrap.
+## Root cause recap
+- `LimsReportView.handleDownloadPdf` rasterizes each A4 page as **PNG @ pixelRatio 4** → ~14 MP per page → ~40MB/page.
+- Snip pages are *already* the source-quality screenshot embedded in the page. Re-rasterizing the whole page at high DPI doesn't improve them — it just bloats every other page.
+- Signature overflow: snip placement uses a single `topMarginPct` but no bottom guard, so a tall snip can extend past the signature band.
 
-## Constraint (must preserve)
-- The A4 page DOM (`#print-container > [data-page]`) MUST stay at exactly 210mm × 297mm because:
-  - `html-to-image` + `jsPDF` capture this DOM at fixed dimensions for PDF download.
-  - Print uses the same DOM.
-  - All clinical pagination math (`PAGE_HEIGHT_MM`, `AutoScaleContent`, signature placement) depends on it.
-- So we cannot simply make the page responsive — we must **scale the A4 view down to fit the mobile viewport** purely as a CSS visual transform, leaving the underlying DOM untouched.
+## Fix plan
 
-## Fix plan (single file: `src/pages/LimsReportView.tsx`)
+### 1. Smart per-page rasterization (`src/pages/LimsReportView.tsx`)
+Detect snip pages vs. text pages and rasterize differently:
 
-### 1. Responsive toolbar
-Replace the single-row toolbar (`flex items-center gap-3`) with a wrapping layout:
-- On mobile: stack into 2 rows — row 1 = Back button + compact title (truncated), row 2 = Letterhead toggle + Print + Download PDF (icon-only on smallest screens).
-- On desktop: keep current single-row layout.
-- Use `flex-wrap`, `text-base sm:text-xl`, `truncate`, and hide button labels at `<sm` (icon only, with `aria-label`).
+- **Text/results pages** (no `<img data-snip>` inside): JPEG, `quality 0.92`, `pixelRatio 2`. → ~250–500 KB/page.
+- **Snip pages** (contains a snip image): embed the **original snip image bytes directly** into the PDF via `pdf.addImage(snipUrl, ...)` positioned over the letterhead background, instead of rasterizing the whole page. Letterhead + header + signature band get rendered as a separate light JPEG layer. This preserves snip pixels 1:1 (zero re-encoding) while keeping everything else small.
+  - Simpler fallback if dual-layer is risky: rasterize snip page as **PNG @ pixelRatio 2** (snip is already the bottleneck for clarity, pixelRatio 2 ≈ 192 DPI which matches snip native resolution without upscaling artifacts). Keep all other pages as JPEG.
+  - Will go with the **simpler fallback** first — it's deterministic and matches existing layout math.
 
-### 2. Auto-scaling A4 preview on mobile
-Wrap the rendered pages in a container that:
-- Measures the available viewport width (`window.innerWidth` minus side padding).
-- Computes A4 width in px at 96dpi: `210mm ≈ 794px`.
-- If viewport width < 794 + margin → apply CSS `transform: scale(viewportWidth / 794)` with `transform-origin: top center` to each page wrapper.
-- Adjust the wrapper's effective `height` (`pageHeightPx * scale`) and `margin-bottom` so vertical spacing stays correct after scaling (otherwise scaled pages overlap their layout box).
-- The capture/PDF/print path is unaffected because it operates on `printRef` DOM at native 210mm sizing — we only scale the on-screen preview wrapper, not the print container itself for capture.
+Net result: 4-page mixed report ≈ 1–3 MB; snip clarity unchanged from current.
 
-Implementation approach:
-- Add a `useState` for `previewScale`, `useEffect` with `ResizeObserver` on the parent to recompute on resize/orientation change.
-- During PDF capture (`handleDownloadPdf`) temporarily reset scale to 1 before `toPng` runs, then restore (the existing capture already operates element-by-element via `data-page`, so we'll set scale only on a CSS variable / wrapper class that capture bypasses by reading the inner `[data-page]` element directly at its natural 210mm size — which it already does via `getBoundingClientRect`-independent fixed mm sizing).
-- Safer pattern: apply scale to an outer wrapper `<div className="page-shell">` containing the existing `[data-page]`. The capture code reads `[data-page]` → unaffected by ancestor transform when using `html-to-image` with explicit `width`/`height` options matching the native size. Quick verification needed via the existing `handleDownloadPdf` code; if it does rely on layout box, we wrap capture in a `scale=1` toggle.
+### 2. Mark snip pages
+Add `data-has-snip="true"` on the page wrapper in `ReportResultsSection` (or detect at capture time via `el.querySelector('img[alt^="Snip"]')`). Detection at capture time avoids touching the renderer.
 
-### 3. Padding & overflow
-- Reduce outer `p-4` to `p-2 sm:p-4` on the root container.
-- Allow horizontal scrolling as a fallback only when scaling is at the floor (just in case).
+### 3. Bottom-margin guard for snips (`src/components/lims/SnipOnLetterhead.tsx` is the editor; the **renderer** lives in the report page generator — likely `ReportResultsSection` or a dedicated snip page component)
+Need to inspect where snips render inside the A4 page during report generation (not the editor). Add CSS:
+- Snip image container: `max-height: calc(297mm - topMargin - bottomReservedForSignature)`.
+- Reserve ~35mm at bottom for signature band (matches existing signature block height).
+- `object-fit: contain` so tall snips scale down rather than overflow.
 
-### 4. Verification step needed
-Need to peek at `handleDownloadPdf` to confirm it captures from the native-mm DOM independent of ancestor transforms. If it captures the parent, we'll temporarily strip the transform during capture (already a known pattern). Will inspect during implementation.
+### 4. Print path (`handlePrint`)
+Same JPEG-for-text / PNG-pixelRatio-2-for-snip split. Faster print preview, identical visual output.
 
-## Files
-- `src/pages/LimsReportView.tsx` — toolbar refactor + scaling wrapper + resize listener (~40 lines net).
+## Files to edit
+- `src/pages/LimsReportView.tsx` — capture logic split (text=JPEG, snip=PNG@2), apply to both PDF and Print paths.
+- Snip render component inside the report (to be located — likely `src/components/report/ReportResultsSection.tsx` or a dedicated snip page) — add `max-height` + bottom signature reservation.
 
 ## Out of scope
-- No change to PDF output, print output, A4 dimensions, pagination, signatures, or `ReportResultsSection`.
-- No change to `LimsReportHeader` (it stays inside the fixed-width A4 page; it scales with the page).
-- No new component files unless capture-isolation requires one.
+- No change to snip editor (`SnipOnLetterhead.tsx`) — capture quality on the snipping side is unchanged.
+- No change to A4 dimensions, pagination engine, or signature snapshotting.
+- `pixelRatio: 4` stays for loyalty cards / abnormal cards / receipts.
 
+## Expected outcome
+| Metric | Before | After |
+|---|---|---|
+| 4-page PDF (mixed) | ~170 MB | ~1–3 MB |
+| Snip clarity | current | identical |
+| Signature overflow | possible | prevented (max-height + reserve) |
+| Generation time | 30–60s | 4–8s |
