@@ -210,6 +210,21 @@ const LimsReportView = () => {
       }
     }
 
+    // Helper: convert cross-origin image URL to inline data URL so html-to-image can rasterize reliably
+    const urlToDataUrl = async (url: string): Promise<string | null> => {
+      try {
+        const res = await fetch(url, { mode: "cors", cache: "no-cache" });
+        if (!res.ok) return null;
+        const blob = await res.blob();
+        return await new Promise((resolve) => {
+          const r = new FileReader();
+          r.onloadend = () => resolve(r.result as string);
+          r.onerror = () => resolve(null);
+          r.readAsDataURL(blob);
+        });
+      } catch { return null; }
+    };
+
     // Build signature map: approver display_name → signature info
     const sigMap: Record<string, SignatureInfo> = {};
     if (signatures && signatures.length > 0) {
@@ -230,7 +245,8 @@ const LimsReportView = () => {
         let sigUrl: string | null = null;
         if (sig.signature_image_path) {
           const { data: sigUrlData } = supabase.storage.from("signatures").getPublicUrl(sig.signature_image_path);
-          sigUrl = sigUrlData.publicUrl;
+          // Inline as data URL for reliable canvas rasterization in PDF/print capture
+          sigUrl = await urlToDataUrl(sigUrlData.publicUrl) || sigUrlData.publicUrl;
         }
         const info: SignatureInfo = {
           pathologist_name: sig.pathologist_name,
@@ -247,15 +263,32 @@ const LimsReportView = () => {
       }
     }
 
-    // Snip images
+    // Snip images — inline as data URLs for reliable PDF/print capture
     const snipPages: SnipPage[] = [];
+    const rawSnipUrls: string[] = [];
     (snips || []).forEach((s: any) => {
       if (selectedTestIds && !selectedTestIds.has(s.test_id)) return;
       const urls = Array.isArray(s.snip_image_urls) ? s.snip_image_urls : [];
       if (s.result_mode === "snip" || urls.length > 0) {
-        urls.forEach((url: string) => snipPages.push({ imageUrl: url }));
+        urls.forEach((url: string) => rawSnipUrls.push(url));
       }
     });
+    const inlinedSnipUrls = await Promise.all(rawSnipUrls.map(async (u) => (await urlToDataUrl(u)) || u));
+    inlinedSnipUrls.forEach((url) => snipPages.push({ imageUrl: url }));
+
+    // Inline snapshot signature URLs embedded in approved_reports.test_results JSONB
+    for (const r of filteredReports) {
+      const trs = (r.test_results || []) as any[];
+      for (const tr of trs) {
+        const params = (tr.parameters || []) as any[];
+        for (const p of params) {
+          if (p.approved_by_signature_url && typeof p.approved_by_signature_url === "string" && !p.approved_by_signature_url.startsWith("data:")) {
+            const dataUrl = await urlToDataUrl(p.approved_by_signature_url);
+            if (dataUrl) p.approved_by_signature_url = dataUrl;
+          }
+        }
+      }
+    }
 
     // Fetch test_parameters for hierarchy
     let computedTpMap: Record<string, any[]> = {};
@@ -743,6 +776,7 @@ const LimsReportView = () => {
                     <img
                       data-snip-image="true"
                       src={page.snipImage}
+                      crossOrigin="anonymous"
                       alt="Outsourced Report"
                       className="max-w-full object-contain"
                       style={{
@@ -803,7 +837,7 @@ const LimsReportView = () => {
                     <div className="pt-1 border-t flex justify-end gap-8 print:break-inside-avoid">
                       {uniqueSigs.map((sig, idx) => (
                         <div key={idx} className="text-center">
-                          {sig.signatureUrl && <img src={sig.signatureUrl} alt="Signature" className="h-8 mx-auto mb-0" />}
+                          {sig.signatureUrl && <img src={sig.signatureUrl} crossOrigin="anonymous" alt="Signature" className="h-8 mx-auto mb-0" />}
                           <p className="font-semibold text-[10px] leading-tight">{sig.pathologist_name}</p>
                           {sig.qualification && <p className="text-[9px] leading-tight" style={{ color: "hsl(var(--muted-foreground))" }}>{sig.qualification}</p>}
                           {sig.designation && <p className="text-[9px] leading-tight" style={{ color: "hsl(var(--muted-foreground))" }}>{sig.designation}</p>}
