@@ -210,6 +210,21 @@ const LimsReportView = () => {
       }
     }
 
+    // Helper: convert cross-origin image URL to inline data URL so html-to-image can rasterize reliably
+    const urlToDataUrl = async (url: string): Promise<string | null> => {
+      try {
+        const res = await fetch(url, { mode: "cors", cache: "no-cache" });
+        if (!res.ok) return null;
+        const blob = await res.blob();
+        return await new Promise((resolve) => {
+          const r = new FileReader();
+          r.onloadend = () => resolve(r.result as string);
+          r.onerror = () => resolve(null);
+          r.readAsDataURL(blob);
+        });
+      } catch { return null; }
+    };
+
     // Build signature map: approver display_name → signature info
     const sigMap: Record<string, SignatureInfo> = {};
     if (signatures && signatures.length > 0) {
