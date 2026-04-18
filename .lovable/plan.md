@@ -1,32 +1,35 @@
 
 
-## Goal
-In LIMS → Registered Patients tab, replace the "20 registration(s) found" line with a date range filter (From / To) and load latest 50 by default.
+## Root cause
+`src/lib/barcodePrint.ts` builds an iframe whose `srcdoc` contains an `<embed type="application/pdf" src="blob:...">` and then calls `iframe.contentWindow.print()`. In current Chrome the wrapper HTML document is what gets printed (which is empty) — the embedded PDF plugin runs in a separate context that doesn't proxy `print()` from the parent. Result: no print dialog appears, but the rest of the flow (toast "Samples marked as collected", iframe cleanup after 60s) runs normally — which is exactly what the session replay shows.
 
-## Changes — single file: `src/components/lims/RegisteredPatients.tsx`
+## Fix — single file: `src/lib/barcodePrint.ts`
 
-1. **Remove count text**: Delete the `<div className="text-sm text-muted-foreground">{count} registration(s) found</div>` line.
+Replace the srcdoc-with-embed approach with the standard, reliable pattern:
 
-2. **Add date range pickers** in the toolbar row (next to search):
-   - Two `Popover + Calendar` shadcn date pickers (From, To) — same pattern used elsewhere in the codebase.
-   - "Clear" button to reset both dates.
-   - Default: both empty → show latest 50 (page 0 of paginated results, ordered by `created_at desc` as today).
+1. Set `iframe.src = blobUrl` directly. Chrome's built-in PDF viewer loads as the iframe's document and exposes `print()` to `contentWindow`.
+2. Call `iframe.contentWindow.focus()` then `iframe.contentWindow.print()` after the PDF is fully ready.
+3. Detect "ready" robustly:
+   - Listen for `iframe.onload` (fires when the PDF viewer finishes loading).
+   - Add a small post-load delay (~600ms) so Chrome's PDF viewer finishes initializing its print pipeline.
+   - Keep the 2s safety-net fallback.
+4. If `print()` still throws (rare, sandboxed previews), fall back to `window.open(blobUrl)` so the user can print from the new tab — and surface a toast explaining what happened.
+5. Keep all existing behavior:
+   - Multi-page PDF, layout, bwip-js barcode rendering — untouched.
+   - Resolves the promise immediately after triggering print so Sample Collection isn't blocked.
+   - Cleanup of blob URL + iframe after 60s.
 
-3. **Wire dates into the query**:
-   - Extend `useQuery` keys for both `patient_registrations_count` and `patient_registrations` to include `fromDate`, `toDate`.
-   - Currently it uses RPC `get_all_patient_registrations` for export and direct table query for the list. The list query already paginates 20/page using `.range()`. Switch `PAGE_SIZE` from `20` → `50`.
-   - Add `.gte("created_at", fromDateISO)` and `.lte("created_at", toDateEndOfDayISO)` to BOTH the count and list queries when set.
-   - Reset `page` to 0 whenever dates or search change.
-
-4. **Pagination footer**: Keep the existing Prev/Next that already shows "Page X of Y" — that replaces the removed count line cleanly.
+## Why this works
+- Same-origin blob URL → no SecurityError.
+- Iframe document IS the PDF viewer → `print()` prints the PDF, not a blank wrapper.
+- This is the standard jsPDF/printJS pattern used in production apps.
 
 ## Out of scope
-- No change to export, edit, view bill, clear-all-data, expanded row, or status logic.
-- No DB migration (created_at on patient_registrations is already indexed via existing project indexes).
-- Other tabs (Sample Collection, etc.) untouched.
+- No change to barcode layout, sticker size, content, or the Sample Collection UI.
+- No change to the "Print & Collect" mutation, status updates, or toasts.
+- All other callers of `printBarcodes` (reprint dialog, "Print All" in collected tab, single tube print) automatically benefit.
 
 ## Expected outcome
-- Default view: latest 50 registrations, no date filter, no count line.
-- Selecting From/To filters server-side; pagination + search keep working in combination.
-- Cleaner toolbar; faster default load.
+- Clicking Print & Collect (or any reprint button) immediately opens the browser print dialog with the barcode stickers preview.
+- "Samples marked as collected" toast continues to appear in parallel — collection is not blocked by print.
 
