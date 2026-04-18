@@ -836,7 +836,7 @@ const LimsReportView = () => {
                     <div className="pt-1 border-t flex justify-end gap-8 print:break-inside-avoid">
                       {uniqueSigs.map((sig, idx) => (
                         <div key={idx} className="text-center">
-                          {sig.signatureUrl && <img src={sig.signatureUrl} alt="Signature" className="h-8 mx-auto mb-0" />}
+                          {sig.signatureUrl && <img src={sig.signatureUrl} crossOrigin="anonymous" alt="Signature" className="h-8 mx-auto mb-0" />}
                           <p className="font-semibold text-[10px] leading-tight">{sig.pathologist_name}</p>
                           {sig.qualification && <p className="text-[9px] leading-tight" style={{ color: "hsl(var(--muted-foreground))" }}>{sig.qualification}</p>}
                           {sig.designation && <p className="text-[9px] leading-tight" style={{ color: "hsl(var(--muted-foreground))" }}>{sig.designation}</p>}
