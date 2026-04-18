@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,11 +11,15 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import EditAndRegisterHomeVisitDialog from "@/components/lims/EditAndRegisterHomeVisitDialog";
 import { logPaymentTransaction } from "@/lib/paymentTransactions";
+import PaginatedTableFooter from "@/components/ui/PaginatedTableFooter";
+
+const PAGE_SIZE = 50;
 
 const CompletedHomeVisits = () => {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(0);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [reviewVisit, setReviewVisit] = useState<any>(null);
   const [editVisit, setEditVisit] = useState<any>(null);
@@ -26,37 +30,39 @@ const CompletedHomeVisits = () => {
     (window as any).__chvSearchTimeout = setTimeout(() => setDebouncedSearch(val), 400);
   };
 
-  // Fetch completed home visits with estimate details
-  const { data: completedVisits = [], isLoading } = useQuery({
-    queryKey: ["completed_home_visits", debouncedSearch],
+  // Reset to first page whenever search changes
+  useEffect(() => { setPage(0); }, [debouncedSearch]);
+
+  // Fetch completed home visits — server-side paginated
+  const { data: pagedData, isLoading } = useQuery({
+    queryKey: ["completed_home_visits", debouncedSearch, page],
     queryFn: async () => {
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
       let query = supabase
         .from("home_visits")
-        .select("*, estimates(*)")
+        .select("*, estimates!inner(*)", { count: "exact" })
         .in("status", ["Completed", "Registered"])
-        .order("visit_date", { ascending: false });
+        .order("visit_date", { ascending: false })
+        .range(from, to);
 
-      const { data, error } = await query;
-      if (error) throw error;
-
-      let visits = (data || []) as any[];
-
-      // Filter by search
       if (debouncedSearch) {
-        const s = debouncedSearch.toLowerCase();
-        visits = visits.filter((v: any) => {
-          const e = v.estimates;
-          return (
-            e?.patient_name?.toLowerCase().includes(s) ||
-            e?.whatsapp_number?.includes(s) ||
-            e?.umr_number?.toLowerCase().includes(s)
-          );
-        });
+        const s = debouncedSearch.trim();
+        query = query.or(
+          `patient_name.ilike.%${s}%,whatsapp_number.ilike.%${s}%,umr_number.ilike.%${s}%`,
+          { foreignTable: "estimates" }
+        );
       }
 
-      return visits;
+      const { data, count, error } = await query;
+      if (error) throw error;
+      return { rows: (data || []) as any[], total: count || 0 };
     },
+    placeholderData: keepPreviousData,
   });
+
+  const completedVisits = pagedData?.rows || [];
+  const total = pagedData?.total || 0;
 
   // Fetch already registered home_visit_ids
   const { data: registeredIds = new Set() } = useQuery({
@@ -209,7 +215,7 @@ const CompletedHomeVisits = () => {
       </div>
 
       <div className="text-sm text-muted-foreground">
-        {pending.length} pending registration(s), {registered.length} already registered
+        {pending.length} pending registration(s), {registered.length} already registered (this page) • {total.toLocaleString()} total
       </div>
 
       <div className="rounded-md border">
@@ -311,6 +317,8 @@ const CompletedHomeVisits = () => {
           </TableBody>
         </Table>
       </div>
+
+      <PaginatedTableFooter page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
 
       {/* Review & Register Dialog */}
       <Dialog open={!!reviewVisit} onOpenChange={o => !o && setReviewVisit(null)}>

@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -13,10 +13,14 @@ const PAGE_SIZE = 50;
 
 const MessageLog = () => {
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(0);
 
+  useEffect(() => { const t = setTimeout(() => setDebouncedSearch(search), 400); return () => clearTimeout(t); }, [search]);
+  useEffect(() => { setPage(0); }, [debouncedSearch]);
+
   const { data, isLoading } = useQuery({
-    queryKey: ["message_send_log", search, page],
+    queryKey: ["message_send_log", debouncedSearch, page],
     queryFn: async () => {
       let query = supabase
         .from("message_send_log")
@@ -24,9 +28,10 @@ const MessageLog = () => {
         .order("sent_at", { ascending: false })
         .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
-      if (search.trim()) {
+      if (debouncedSearch.trim()) {
+        const s = debouncedSearch.trim();
         query = query.or(
-          `patient_name.ilike.%${search.trim()}%,mobile_number.ilike.%${search.trim()}%,message_type.ilike.%${search.trim()}%,umr_number.ilike.%${search.trim()}%,primary_key.ilike.%${search.trim()}%`
+          `patient_name.ilike.%${s}%,mobile_number.ilike.%${s}%,message_type.ilike.%${s}%,umr_number.ilike.%${s}%,primary_key.ilike.%${s}%`
         );
       }
 
@@ -79,7 +84,7 @@ const MessageLog = () => {
           <Input
             placeholder="Search name, mobile, UMR, or type..."
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+            onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
           />
         </div>

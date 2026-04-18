@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { Button } from "@/components/ui/button";
@@ -12,25 +12,46 @@ import { parseExcelFile } from "@/lib/excel";
 import { shareOnWhatsApp } from "@/lib/whatsapp";
 import { logMessageSend } from "@/lib/messageLog";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
+import PaginatedTableFooter from "@/components/ui/PaginatedTableFooter";
+
+const PAGE_SIZE = 50;
 
 const AbnormalHistory = () => {
   useRealtimeSync("abnormal_history", ["abnormal_history", "abnormal_history_counts"]);
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [deleteDialog, setDeleteDialog] = useState<{ type: "all" | "single"; id?: string } | null>(null);
   const [resetDialog, setResetDialog] = useState(false);
 
-  const { data: records = [], isLoading } = useQuery({
-    queryKey: ["abnormal_history"],
+  useEffect(() => { const t = setTimeout(() => setDebouncedSearch(search), 400); return () => clearTimeout(t); }, [search]);
+  useEffect(() => { setPage(0); }, [debouncedSearch]);
+
+  const { data: pagedData, isLoading } = useQuery({
+    queryKey: ["abnormal_history", debouncedSearch, page],
     queryFn: async () => {
-      const { data } = await supabase
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+      let query = supabase
         .from("abnormal_history")
-        .select("*")
-        .order("created_at", { ascending: false });
-      return data || [];
+        .select("*", { count: "exact" })
+        .order("created_at", { ascending: false })
+        .range(from, to);
+      if (debouncedSearch.trim()) {
+        const s = debouncedSearch.trim();
+        query = query.or(`mobile_number.ilike.%${s}%,message.ilike.%${s}%`);
+      }
+      const { data, count, error } = await query;
+      if (error) throw error;
+      return { rows: (data || []) as any[], total: count || 0 };
     },
+    placeholderData: keepPreviousData,
   });
+
+  const records = pagedData?.rows || [];
+  const total = pagedData?.total || 0;
 
   const { data: counts } = useQuery({
     queryKey: ["abnormal_history_counts"],
@@ -142,11 +163,8 @@ const AbnormalHistory = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const filtered = records.filter((r: any) => {
-    if (!search.trim()) return true;
-    const q = search.toLowerCase();
-    return r.mobile_number.includes(q) || r.message.toLowerCase().includes(q);
-  });
+  // Server-side filtering already applied; "filtered" === "records"
+  const filtered = records;
 
   const totalCount = counts?.total_records ?? 0;
   const unsentCount = counts?.unsent_records ?? 0;
@@ -243,6 +261,8 @@ const AbnormalHistory = () => {
           ))}
         </div>
       )}
+
+      <PaginatedTableFooter page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
 
       <DeletePasswordDialog
         open={!!deleteDialog}

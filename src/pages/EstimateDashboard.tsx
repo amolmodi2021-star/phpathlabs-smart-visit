@@ -132,11 +132,8 @@ const EstimateDashboard = () => {
     })), "estimates_export");
   };
 
-  const filteredEstimates = estimates.filter((e: any) => {
-    if (!search.trim()) return true;
-    const q = search.toLowerCase();
-    return (e.patient_name || "").toLowerCase().includes(q) || (e.whatsapp_number || "").includes(q);
-  });
+  // Server-side search applied
+  const filteredEstimates = estimates;
 
   return (
     <div className="space-y-4 animate-fade-in">

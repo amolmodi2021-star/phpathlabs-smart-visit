@@ -11,11 +11,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Search, ChevronDown, ChevronUp, Loader2, Save, Eye, FileCheck, Calculator } from "lucide-react";
 import { toast } from "sonner";
+import PaginatedTableFooter from "@/components/ui/PaginatedTableFooter";
+
+const PAGE_SIZE = 50;
 
 const ModifiedApproval = () => {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(0);
   const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
   const [editedUnits, setEditedUnits] = useState<Record<string, string>>({});
@@ -25,17 +29,23 @@ const ModifiedApproval = () => {
   const [viewSnipImages, setViewSnipImages] = useState<string[] | null>(null);
 
   useEffect(() => { const t = setTimeout(() => setDebouncedSearch(search), 400); return () => clearTimeout(t); }, [search]);
+  useEffect(() => { setPage(0); }, [debouncedSearch]);
 
-  // Fetch approved_reports
-  const { data: approvedReports = [], isLoading } = useQuery({
-    queryKey: ["modified_approval_reports", debouncedSearch],
+  // Fetch approved_reports — server-side paginated
+  const { data: pagedReports, isLoading } = useQuery({
+    queryKey: ["modified_approval_reports", debouncedSearch, page],
     queryFn: async () => {
-      let query = supabase.from("approved_reports").select("*").order("approval_date", { ascending: false });
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+      let query = supabase.from("approved_reports").select("*", { count: "exact" }).order("approval_date", { ascending: false }).range(from, to);
       if (debouncedSearch) query = query.or(`patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%,umr_number.ilike.%${debouncedSearch}%`);
-      const { data } = await query;
-      return (data || []) as any[];
+      const { data, count } = await query;
+      return { rows: (data || []) as any[], total: count || 0 };
     },
   });
+
+  const approvedReports = pagedReports?.rows || [];
+  const totalReports = pagedReports?.total || 0;
 
   const regIds = approvedReports.map((r: any) => r.registration_id);
 
@@ -412,6 +422,8 @@ const ModifiedApproval = () => {
           <div className="space-y-4">{viewSnipImages?.map((url, idx) => (<div key={idx} className="border rounded-lg overflow-hidden"><img src={url} alt={`Snip page ${idx + 1}`} className="w-full object-contain" /></div>))}</div>
         </DialogContent>
       </Dialog>
+
+      <PaginatedTableFooter page={page} pageSize={PAGE_SIZE} total={totalReports} onPageChange={setPage} />
     </div>
   );
 };
