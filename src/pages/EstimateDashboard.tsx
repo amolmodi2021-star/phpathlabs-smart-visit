@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import PaginatedTableFooter from "@/components/ui/PaginatedTableFooter";
 import { supabase } from "@/integrations/supabase/client";
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { Button } from "@/components/ui/button";
@@ -37,16 +38,41 @@ const EstimateDashboard = () => {
   const [exportDialog, setExportDialog] = useState(false);
   const [editEstimate, setEditEstimate] = useState<any>(null);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 50;
   const [deleteDialog, setDeleteDialog] = useState<{ ids: string[]; description: string } | null>(null);
   const [previewMessage, setPreviewMessage] = useState<string | null>(null);
 
-  const { data: estimates = [], isLoading } = useQuery({
-    queryKey: ["estimates", "dashboard"],
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 400);
+    return () => clearTimeout(t);
+  }, [search]);
+  useEffect(() => { setPage(0); }, [debouncedSearch]);
+
+  const { data: pagedEstimates, isLoading } = useQuery({
+    queryKey: ["estimates", "dashboard", debouncedSearch, page],
     queryFn: async () => {
-      const { data } = await supabase.from("estimates").select("*, estimate_tests(*)").eq("status", "Estimate Created").order("created_at", { ascending: false });
-      return data || [];
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+      let q = supabase
+        .from("estimates")
+        .select("*, estimate_tests(*)", { count: "exact" })
+        .eq("status", "Estimate Created")
+        .order("created_at", { ascending: false })
+        .range(from, to);
+      if (debouncedSearch) {
+        q = q.or(`patient_name.ilike.%${debouncedSearch}%,whatsapp_number.ilike.%${debouncedSearch}%`);
+      }
+      const { data, count, error } = await q;
+      if (error) throw error;
+      return { rows: (data || []) as any[], total: count || 0 };
     },
+    placeholderData: keepPreviousData,
   });
+
+  const estimates = pagedEstimates?.rows || [];
+  const totalEstimates = pagedEstimates?.total || 0;
 
   const { getForMobile, sendMutation: abnormalSend } = useAbnormalHistory((estimates as any[]).map((e: any) => e.whatsapp_number));
 
@@ -226,6 +252,8 @@ const EstimateDashboard = () => {
           ))}
         </div>
       )}
+
+      <PaginatedTableFooter page={page} pageSize={PAGE_SIZE} total={totalEstimates} onPageChange={setPage} />
 
       {/* Book Home Visit Dialog */}
       <Dialog open={!!bookingEstimate} onOpenChange={(o) => !o && setBookingEstimate(null)}>
