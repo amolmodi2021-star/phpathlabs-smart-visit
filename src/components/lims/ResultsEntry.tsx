@@ -12,7 +12,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Search, User, Monitor, Save, Calculator, Wifi, WifiOff, ChevronDown, ChevronUp, Check, Loader2, FlaskConical, Package, SendHorizonal, ArrowRightLeft, Eye, Trash2, StickyNote, RefreshCw } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Search, User, Monitor, Save, Calculator, Wifi, WifiOff, ChevronDown, ChevronUp, Check, Loader2, FlaskConical, Package, SendHorizonal, ArrowRightLeft, Eye, Trash2, StickyNote, RefreshCw, ChevronsUpDown } from "lucide-react";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import OutsourcedResults from "./OutsourcedResults";
@@ -34,6 +36,71 @@ const getQualitativeOptions = (expectedValue: string): string[] => {
     if (p.values.some(v => v.toLowerCase() === expectedValue.toLowerCase())) return p.values;
   }
   return [];
+};
+
+// ─── Descriptive Combobox: searchable + editable ───
+interface DescriptiveComboboxProps {
+  value: string;
+  options: string[];
+  onChange: (val: string) => void;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  className?: string;
+  placeholder?: string;
+}
+const DescriptiveCombobox = ({ value, options, onChange, onKeyDown, className, placeholder }: DescriptiveComboboxProps) => {
+  const [open, setOpen] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  return (
+    <div className={`relative flex items-center ${className || ""}`}>
+      <Input
+        ref={inputRef}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        onKeyDown={onKeyDown}
+        placeholder={placeholder || "Select or type..."}
+        className="h-7 text-sm pr-7"
+        data-result-input=""
+        data-result-value={value || ""}
+      />
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5"
+            tabIndex={-1}
+            aria-label="Open options"
+          >
+            <ChevronsUpDown className="h-3.5 w-3.5" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[360px] p-0" align="end">
+          <Command>
+            <CommandInput placeholder="Search options..." className="h-9" />
+            <CommandList>
+              <CommandEmpty>No matching option.</CommandEmpty>
+              <CommandGroup>
+                {options.map((opt) => (
+                  <CommandItem
+                    key={opt}
+                    value={opt}
+                    onSelect={() => {
+                      onChange(opt);
+                      setOpen(false);
+                      setTimeout(() => inputRef.current?.focus(), 0);
+                    }}
+                    className="whitespace-normal"
+                  >
+                    <Check className={`mr-2 h-4 w-4 ${value === opt ? "opacity-100" : "opacity-0"}`} />
+                    <span className="whitespace-normal">{opt}</span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
 };
 
 // ─── Types ───
@@ -1143,19 +1210,13 @@ const ResultsEntry = () => {
               </SelectContent>
             </Select>
           ) : p.rangeType === "descriptive" && p.descriptiveOptions.length > 0 ? (
-            <Select
-              value={currentValue || undefined}
-              onValueChange={(v) => handleValueChange(regId, p.parameterId, v, entry)}
-            >
-              <SelectTrigger className="h-7 text-sm !w-[180px] min-w-[180px] max-w-[180px]" data-result-input="" data-result-value={currentValue || ""} onKeyDown={handleResultTabKey}>
-                <SelectValue placeholder="Select..." />
-              </SelectTrigger>
-              <SelectContent className="max-w-[400px]">
-                {p.descriptiveOptions.map((opt: string) => (
-                  <SelectItem key={opt} value={opt} className="whitespace-normal">{opt}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <DescriptiveCombobox
+              value={currentValue}
+              options={p.descriptiveOptions}
+              onChange={(v) => handleValueChange(regId, p.parameterId, v, entry)}
+              onKeyDown={handleResultTabKey}
+              className="w-[180px]"
+            />
           ) : (
             <Input
               value={currentValue}
@@ -1713,19 +1774,13 @@ const ResultsEntry = () => {
                                 </SelectContent>
                               </Select>
                             ) : p.rangeType === "descriptive" && p.descriptiveOptions.length > 0 ? (
-                              <Select
-                                value={currentValue || undefined}
-                                onValueChange={(v) => handleValueChange(reg.id, p.parameterId, v, entry)}
-                              >
-                              <SelectTrigger className="h-7 text-sm w-full" data-result-input="" data-result-value={currentValue || ""} onKeyDown={handleResultTabKey}>
-                                  <SelectValue placeholder="Select..." />
-                                </SelectTrigger>
-                                <SelectContent className="max-w-[400px]">
-                                  {p.descriptiveOptions.map((opt: string) => (
-                                    <SelectItem key={opt} value={opt} className="whitespace-normal">{opt}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                              <DescriptiveCombobox
+                                value={currentValue}
+                                options={p.descriptiveOptions}
+                                onChange={(v) => handleValueChange(reg.id, p.parameterId, v, entry)}
+                                onKeyDown={handleResultTabKey}
+                                className="w-full"
+                              />
                             ) : (
                               <Input
                                 value={currentValue}
