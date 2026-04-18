@@ -642,10 +642,43 @@ const ResultVerification = () => {
     }
   };
 
-  // Send back to Results Entry
+  // Send back to Results Entry — persist edits FIRST, then flip status to pending
   const sendBackTest = async (regId: string, testId: string, testName: string) => {
     try {
-      await supabase.from("patient_results").update({ status: "pending" } as any).eq("registration_id", regId).eq("test_id", testId).eq("status", "entered");
+      // Find the patient entry + parameters for this (regId, testId)
+      const entry = patientEntries.find(e => e.registration.id === regId);
+      const testParams = entry ? entry.parameters.filter(p => p.testId === testId) : [];
+
+      // Build upserts that include verifier's edits, with status = "pending"
+      const upserts: any[] = [];
+      for (const p of testParams) {
+        const k = `${regId}||${p.parameterId}`;
+        const value = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
+        const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+        const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
+        const unit = p.isOutsourced && editedUnits[k] !== undefined ? editedUnits[k] : p.unit;
+        const refRange = p.isOutsourced && editedRefRanges[k] !== undefined ? editedRefRanges[k] : p.referenceRange;
+        upserts.push({
+          registration_id: regId, test_id: p.testId, parameter_id: p.parameterId,
+          param_code: p.paramCode, parameter_name: p.parameterName,
+          result_value: value || null, unit, reference_range: refRange,
+          normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh,
+          flag: flag || null, status: "pending",
+          is_calculated: p.isCalculated, is_from_interface: p.isFromInterface,
+          entered_at: p.enteredAt || null, entered_by: p.enteredBy || null,
+          verified_at: null, verified_by: null,
+          note: editedNotes[k] !== undefined ? (editedNotes[k] || null) : (p.note || null),
+        });
+      }
+
+      if (upserts.length > 0) {
+        await supabase.from("patient_results").delete().eq("registration_id", regId).eq("test_id", testId).in("status", ["entered", "pending"]);
+        await supabase.from("patient_results").insert(upserts as any);
+      } else {
+        // Fallback (e.g. snip-only tests with no params) — keep prior behavior
+        await supabase.from("patient_results").update({ status: "pending" } as any).eq("registration_id", regId).eq("test_id", testId).eq("status", "entered");
+      }
+
       await supabase.from("outsourced_test_snips").update({ outsource_status: "results_saved" } as any).eq("registration_id", regId).eq("test_id", testId).in("outsource_status", ["results_entered", "entered"]);
 
       // Recompute the parent registration status so Results Entry sees this test as pending again
@@ -653,12 +686,7 @@ const ResultVerification = () => {
 
       // Clear local edits for parameters belonging to this test (so re-entry shows freshly persisted DB values)
       const paramIdsForTest = new Set<string>();
-      for (const entry of patientEntries) {
-        if (entry.registration.id !== regId) continue;
-        for (const p of entry.parameters) {
-          if (p.testId === testId) paramIdsForTest.add(p.parameterId);
-        }
-      }
+      for (const p of testParams) paramIdsForTest.add(p.parameterId);
       const stripKeys = (obj: Record<string, any>) => {
         const next = { ...obj };
         for (const k of Object.keys(next)) {
