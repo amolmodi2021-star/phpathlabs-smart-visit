@@ -31,10 +31,15 @@ const RegisteredPatients = () => {
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [showClearPwd, setShowClearPwd] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [fromDate, setFromDate] = useState<Date | undefined>();
+  const [toDate, setToDate] = useState<Date | undefined>();
 
   const registrationSearchFilter = debouncedSearch
     ? `patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%,umr_number.ilike.%${debouncedSearch}%`
     : "";
+
+  const fromIso = fromDate ? new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate(), 0, 0, 0).toISOString() : null;
+  const toIso = toDate ? new Date(toDate.getFullYear(), toDate.getMonth(), toDate.getDate(), 23, 59, 59, 999).toISOString() : null;
 
   const handleSearch = (val: string) => {
     setSearch(val);
@@ -42,6 +47,10 @@ const RegisteredPatients = () => {
     clearTimeout((window as any).__regSearchTimeout);
     (window as any).__regSearchTimeout = setTimeout(() => setDebouncedSearch(val), 400);
   };
+
+  const handleFromDate = (d: Date | undefined) => { setFromDate(d); setPage(0); };
+  const handleToDate = (d: Date | undefined) => { setToDate(d); setPage(0); };
+  const clearDates = () => { setFromDate(undefined); setToDate(undefined); setPage(0); };
 
   const { data: channels = [] } = useQuery({
     queryKey: ["channels_lookup"],
