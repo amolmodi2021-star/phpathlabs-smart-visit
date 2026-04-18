@@ -623,7 +623,7 @@ const ResultsEntry = () => {
             referenceRange: savedRefRange,
             normalRangeLow: rangeLow,
             normalRangeHigh: rangeHigh,
-            resultValue: existing?.result_value || "",
+            resultValue: existing?.result_value ?? "",
             flag: existing?.flag || "",
             isCalculated: p.is_calculated || false,
             calculationFormula: p.calculation_formula || [],
