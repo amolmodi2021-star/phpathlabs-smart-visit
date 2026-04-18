@@ -38,6 +38,71 @@ const getQualitativeOptions = (expectedValue: string): string[] => {
   return [];
 };
 
+// ─── Descriptive Combobox: searchable + editable ───
+interface DescriptiveComboboxProps {
+  value: string;
+  options: string[];
+  onChange: (val: string) => void;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  className?: string;
+  placeholder?: string;
+}
+const DescriptiveCombobox = ({ value, options, onChange, onKeyDown, className, placeholder }: DescriptiveComboboxProps) => {
+  const [open, setOpen] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  return (
+    <div className={`relative flex items-center ${className || ""}`}>
+      <Input
+        ref={inputRef}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        onKeyDown={onKeyDown}
+        placeholder={placeholder || "Select or type..."}
+        className="h-7 text-sm pr-7"
+        data-result-input=""
+        data-result-value={value || ""}
+      />
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5"
+            tabIndex={-1}
+            aria-label="Open options"
+          >
+            <ChevronsUpDown className="h-3.5 w-3.5" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[360px] p-0" align="end">
+          <Command>
+            <CommandInput placeholder="Search options..." className="h-9" />
+            <CommandList>
+              <CommandEmpty>No matching option.</CommandEmpty>
+              <CommandGroup>
+                {options.map((opt) => (
+                  <CommandItem
+                    key={opt}
+                    value={opt}
+                    onSelect={() => {
+                      onChange(opt);
+                      setOpen(false);
+                      setTimeout(() => inputRef.current?.focus(), 0);
+                    }}
+                    className="whitespace-normal"
+                  >
+                    <Check className={`mr-2 h-4 w-4 ${value === opt ? "opacity-100" : "opacity-0"}`} />
+                    <span className="whitespace-normal">{opt}</span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+};
+
 // ─── Types ───
 interface ParameterResult {
   parameterId: string;
