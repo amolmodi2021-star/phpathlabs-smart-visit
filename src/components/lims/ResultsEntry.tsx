@@ -1210,19 +1210,13 @@ const ResultsEntry = () => {
               </SelectContent>
             </Select>
           ) : p.rangeType === "descriptive" && p.descriptiveOptions.length > 0 ? (
-            <Select
-              value={currentValue || undefined}
-              onValueChange={(v) => handleValueChange(regId, p.parameterId, v, entry)}
-            >
-              <SelectTrigger className="h-7 text-sm !w-[180px] min-w-[180px] max-w-[180px]" data-result-input="" data-result-value={currentValue || ""} onKeyDown={handleResultTabKey}>
-                <SelectValue placeholder="Select..." />
-              </SelectTrigger>
-              <SelectContent className="max-w-[400px]">
-                {p.descriptiveOptions.map((opt: string) => (
-                  <SelectItem key={opt} value={opt} className="whitespace-normal">{opt}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <DescriptiveCombobox
+              value={currentValue}
+              options={p.descriptiveOptions}
+              onChange={(v) => handleValueChange(regId, p.parameterId, v, entry)}
+              onKeyDown={handleResultTabKey}
+              className="w-[180px]"
+            />
           ) : (
             <Input
               value={currentValue}
