@@ -1,60 +1,35 @@
 
-
 ## Goal
-Show real "Collection" date/time on the LIMS report header. It should be the **first time any barcode for that visit was printed** (i.e. first sample collection event). Reprints must NEVER overwrite it.
+Replace the plain `<Select>` dropdown for **descriptive-range parameters** in Results Entry with a **searchable + editable combobox**: user can type to filter the predefined options, click one to select it, and then freely edit the chosen text inline before saving.
 
-## Why it's missing today
-- `LimsReportHeader` reads `report.sample_collection_date` from `approved_reports`.
-- Nothing in the LIMS approval flow ever populates this column — it's only used by the legacy "AI extracted reports" path. So it's always `NULL` → header shows "—".
-- Meanwhile, the actual first-print timestamp already exists in `sample_tubes.collected_at`, which is set when "Print & Collect" flips a tube from `pending → collected`. The mutation has `.eq("status", "pending")` so reprints (tubes already collected/accepted) **never overwrite** `collected_at`. → it's already a stable "first print" timestamp per tube.
+## Current behavior
+In `src/components/lims/ResultsEntry.tsx`, descriptive parameters render a Radix `<Select>` (two render sites: line ~1145 desktop accordion, line ~1715 mobile/secondary list). Options come from `p.descriptiveOptions`. User can only pick one verbatim — no search, no edit.
 
-## Source of truth
-For a given registration, the visit-level "Sample Collection Date" = `MIN(sample_tubes.collected_at)` across all tubes for that registration. This represents the moment the *first* barcode was printed and the tube was marked collected. Reprints don't move it.
+## Approach
+Build a small inline component `DescriptiveCombobox` reused in both render sites:
 
-## Fix plan
-
-### 1. Populate `approved_reports.sample_collection_date` at approval time
-In `src/components/lims/DoctorApproval.tsx`, in both upsert sites (single-test approval ~line 393 and approve-all ~line 469, plus the snip-only path ~line 636):
-
-- Before the upsert, fetch `MIN(collected_at)` from `sample_tubes` for `reg.id`:
-  ```ts
-  const { data: tubes } = await supabase
-    .from("sample_tubes")
-    .select("collected_at")
-    .eq("registration_id", reg.id)
-    .not("collected_at", "is", null);
-  const firstCollectedAt = tubes?.length
-    ? tubes.map(t => t.collected_at).sort()[0]
-    : null;
-  ```
-- Add `sample_collection_date: firstCollectedAt` to the upsert payload.
-
-This ensures every newly approved (or re-approved) test snapshot carries the correct first-print timestamp. Subsequent re-approvals re-compute it from the same source — still safe because reprints never alter `collected_at`.
-
-### 2. Render-time fallback for legacy records (already-approved before this fix)
-In `src/pages/LimsReportView.tsx → loadAllData`:
-
-- After fetching `reports` and `regData`, if `report.sample_collection_date` is null/empty for any row, fetch the same `MIN(collected_at)` once and patch it onto each report object before render.
-- Cheap: one extra small query per report view, only when missing.
-
-This fixes historical approved reports without requiring a data migration.
-
-### 3. Header formatting (no code change needed)
-`LimsReportHeader.formatDate` already formats as `dd-MMM-yyyy hh:mm a` — matches the requested style ("18-Apr-2026 10:24 AM"). Just feeding it a non-null value will make the field appear.
+- Renders an `<Input>` (so the chosen value is fully editable like any free-text result).
+- Right side has a small chevron button that opens a `Popover` containing `Command` + `CommandInput` (search) + `CommandList` of `p.descriptiveOptions` filtered by typed query.
+- Selecting an option fills the input with that option's text and closes the popover; the input remains focused and editable.
+- onChange of the input fires the existing `handleValueChange(regId, p.parameterId, value, entry)` — same data path as the free-text branch, so persistence/flag/save logic is unchanged.
+- Preserves existing keyboard nav: keep `data-result-input`, `data-result-value`, and `onKeyDown={handleResultTabKey}` on the input so Tab/Shift+Tab navigation across results still works.
+- Width and styling match current 180px / `w-full` variants via a `className` prop.
 
 ## Files to edit
-- `src/components/lims/DoctorApproval.tsx` — 3 upsert sites get `sample_collection_date` from `MIN(sample_tubes.collected_at)`.
-- `src/pages/LimsReportView.tsx` — render-time fallback in `loadAllData` when the column is null on existing approved records.
+- `src/components/lims/ResultsEntry.tsx`
+  - Add a small `DescriptiveCombobox` component (uses existing `Popover`, `Command`, `CommandInput`, `CommandList`, `CommandItem`, `CommandEmpty` from `@/components/ui/command` and `@/components/ui/popover` — both already in the project).
+  - Replace the two descriptive `<Select>` blocks (~lines 1145-1158 and ~1715-1728) with `<DescriptiveCombobox ...>`.
 
 ## Out of scope
-- No schema change (column already exists).
-- No change to `printBarcodes`, `collectMutation`, or sample tube lifecycle — they already give us a reprint-safe "first print" timestamp via `collected_at`.
-- No change to PDF capture / signature / pagination logic.
-- No change to legacy "extracted reports" header.
+- Numeric and qualitative parameter inputs — unchanged.
+- Adding new options to the master descriptive list — that still happens in Test Parameter Manager.
+- No DB / RLS changes; no edge function changes.
+- No change to flag computation (descriptive still has no flag).
 
 ## Expected outcome
-- New approvals: header shows the exact moment the first barcode was printed, e.g. "Collection: 18-Apr-2026 10:36 AM".
-- Existing approved reports: same value appears via the fallback, no data migration needed.
-- Reprinting a barcode never changes the displayed Collection date.
-- If absolutely no tube was ever collected (edge case), the field still shows "—" gracefully.
-
+For descriptive-range parameters in Results Entry:
+- Click input → see all options in a searchable dropdown.
+- Type to filter; click to pick.
+- After picking, cursor stays in the input — user can append/edit any text freely.
+- Saved value = whatever is in the input at save time (matches existing free-text behavior).
+- Tab/Shift+Tab navigation across result cells unchanged.
