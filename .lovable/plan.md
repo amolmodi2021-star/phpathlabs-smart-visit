@@ -1,51 +1,76 @@
 
-## Goals
-1. Shrink PDF size from ~170MB → 1–2MB.
-2. Keep snip-on-letterhead images at native quality (no blur).
-3. Honour top/bottom margins; never overflow into doctor signature.
+## Root cause
 
-## Root cause recap
-- `LimsReportView.handleDownloadPdf` rasterizes each A4 page as **PNG @ pixelRatio 4** → ~14 MP per page → ~40MB/page.
-- Snip pages are *already* the source-quality screenshot embedded in the page. Re-rasterizing the whole page at high DPI doesn't improve them — it just bloats every other page.
-- Signature overflow: snip placement uses a single `topMarginPct` but no bottom guard, so a tall snip can extend past the signature band.
+Signatures in the report are rendered via:
+```tsx
+<img src={sig.signatureUrl} ... />
+```
+where `signatureUrl` is a Supabase Storage public URL (cross-origin from `lovable.app`).
+
+`html-to-image` (used by both PDF download and image-based print) inlines images by drawing them to a canvas. For cross-origin images **without** `crossOrigin="anonymous"` set BEFORE the image loads, two things can happen:
+1. Image renders fine on screen (browser doesn't care).
+2. During capture, `html-to-image` tries to fetch/inline it. If CORS isn't pre-established (or the cached copy was loaded without `crossOrigin`), the image is silently skipped or the canvas is tainted and the request fails → **signature missing in PDF**.
+
+This is exactly why the PDF intermittently misses signatures (Dr. Hemang Jadawala on pages 1 & 3) while the on-screen preview always shows them. Whether it works depends on browser image cache state and the order of loads — explaining the inconsistency between which signatures appear.
+
+The same risk applies to:
+- Letterhead image (already handled — it's converted to data URL via `convertPdfToImage` → toDataURL → safe ✓).
+- Snip images (also Supabase Storage public URLs — same risk; user reported these are sometimes missing/blurry too).
 
 ## Fix plan
 
-### 1. Smart per-page rasterization (`src/pages/LimsReportView.tsx`)
-Detect snip pages vs. text pages and rasterize differently:
+Convert all cross-origin images used in capture to **inline data URLs** before render, so `html-to-image` sees same-origin payloads it can rasterize without CORS issues.
 
-- **Text/results pages** (no `<img data-snip>` inside): JPEG, `quality 0.92`, `pixelRatio 2`. → ~250–500 KB/page.
-- **Snip pages** (contains a snip image): embed the **original snip image bytes directly** into the PDF via `pdf.addImage(snipUrl, ...)` positioned over the letterhead background, instead of rasterizing the whole page. Letterhead + header + signature band get rendered as a separate light JPEG layer. This preserves snip pixels 1:1 (zero re-encoding) while keeping everything else small.
-  - Simpler fallback if dual-layer is risky: rasterize snip page as **PNG @ pixelRatio 2** (snip is already the bottleneck for clarity, pixelRatio 2 ≈ 192 DPI which matches snip native resolution without upscaling artifacts). Keep all other pages as JPEG.
-  - Will go with the **simpler fallback** first — it's deterministic and matches existing layout math.
+### Changes in `src/pages/LimsReportView.tsx`
 
-Net result: 4-page mixed report ≈ 1–3 MB; snip clarity unchanged from current.
+**1. Preload signature images as data URLs (in `loadAllData`)**
 
-### 2. Mark snip pages
-Add `data-has-snip="true"` on the page wrapper in `ReportResultsSection` (or detect at capture time via `el.querySelector('img[alt^="Snip"]')`). Detection at capture time avoids touching the renderer.
+After building `sigMap`, fetch each `signatureUrl` and convert to a base64 data URL:
 
-### 3. Bottom-margin guard for snips (`src/components/lims/SnipOnLetterhead.tsx` is the editor; the **renderer** lives in the report page generator — likely `ReportResultsSection` or a dedicated snip page component)
-Need to inspect where snips render inside the A4 page during report generation (not the editor). Add CSS:
-- Snip image container: `max-height: calc(297mm - topMargin - bottomReservedForSignature)`.
-- Reserve ~35mm at bottom for signature band (matches existing signature block height).
-- `object-fit: contain` so tall snips scale down rather than overflow.
+```ts
+const urlToDataUrl = async (url: string): Promise<string | null> => {
+  try {
+    const res = await fetch(url, { mode: "cors", cache: "no-cache" });
+    const blob = await res.blob();
+    return await new Promise((resolve) => {
+      const r = new FileReader();
+      r.onloadend = () => resolve(r.result as string);
+      r.onerror = () => resolve(null);
+      r.readAsDataURL(blob);
+    });
+  } catch { return null; }
+};
 
-### 4. Print path (`handlePrint`)
-Same JPEG-for-text / PNG-pixelRatio-2-for-snip split. Faster print preview, identical visual output.
+// After building info per signature:
+if (sigUrl) {
+  const dataUrl = await urlToDataUrl(sigUrl);
+  if (dataUrl) info.signatureUrl = dataUrl;
+}
+```
 
-## Files to edit
-- `src/pages/LimsReportView.tsx` — capture logic split (text=JPEG, snip=PNG@2), apply to both PDF and Print paths.
-- Snip render component inside the report (to be located — likely `src/components/report/ReportResultsSection.tsx` or a dedicated snip page) — add `max-height` + bottom signature reservation.
+This makes the signature `<img src="data:image/png;base64,...">` — guaranteed to rasterize.
+
+**2. Same treatment for snip images (in `loadAllData`)**
+
+After building `snipPages`, replace each `imageUrl` with its data URL equivalent. Snips are already at native resolution; converting to data URL doesn't re-encode pixels.
+
+**3. Defensive: also add `crossOrigin="anonymous"` to the `<img>` tags**
+
+For the signature `<img>` and snip `<img>`, add `crossOrigin="anonymous"` as a belt-and-braces measure (helps if step 1/2 ever falls back to original URL).
+
+**4. Show a brief loader while images preload**
+
+The data-URL conversion is asynchronous — keep the existing `setLoading(true)` covering it (it already does, since it's all inside `loadAllData`).
+
+## Files
+- `src/pages/LimsReportView.tsx` — add `urlToDataUrl` helper, preload signatures + snips into data URLs (~25 lines), add `crossOrigin` attrs on the two `<img>` tags.
 
 ## Out of scope
-- No change to snip editor (`SnipOnLetterhead.tsx`) — capture quality on the snipping side is unchanged.
-- No change to A4 dimensions, pagination engine, or signature snapshotting.
-- `pixelRatio: 4` stays for loyalty cards / abnormal cards / receipts.
+- No layout/pagination changes.
+- No schema or RLS changes.
+- No change to capture logic (JPEG/PNG split stays).
 
 ## Expected outcome
-| Metric | Before | After |
-|---|---|---|
-| 4-page PDF (mixed) | ~170 MB | ~1–3 MB |
-| Snip clarity | current | identical |
-| Signature overflow | possible | prevented (max-height + reserve) |
-| Generation time | 30–60s | 4–8s |
+- All approved doctors' signatures appear correctly on every page of the downloaded PDF and printed output, matching the on-screen preview exactly.
+- Snip images also become deterministic in the PDF (no more occasional missing/empty snips).
+- File size unchanged (data URL is only used during render; the PDF still encodes via JPEG/PNG capture).
