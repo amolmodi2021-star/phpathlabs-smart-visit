@@ -496,11 +496,44 @@ const DoctorApproval = () => {
     finally { setActionKey(null); }
   };
 
-  // Send back for verification
+  // Send back for verification — persist doctor's edits FIRST, then flip status to entered
   const sendBackForVerification = async (regId: string, testId: string, testName: string) => {
     setActionKey(`${regId}||${testId}||back`);
     try {
-      await supabase.from("patient_results").update({ status: "entered" } as any).eq("registration_id", regId).eq("test_id", testId).eq("status", "verified");
+      // Find the patient entry + parameters for this (regId, testId)
+      const entry = patientEntries.find(e => e.registration.id === regId);
+      const testParams = entry ? entry.parameters.filter(p => p.testId === testId) : [];
+
+      // Build upserts that include doctor's edits, with status = "entered"
+      const upserts: any[] = [];
+      for (const p of testParams) {
+        const k = `${regId}||${p.parameterId}`;
+        const value = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
+        const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+        const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
+        const unit = p.isOutsourced && editedUnits[k] !== undefined ? editedUnits[k] : p.unit;
+        const refRange = p.isOutsourced && editedRefRanges[k] !== undefined ? editedRefRanges[k] : p.referenceRange;
+        upserts.push({
+          registration_id: regId, test_id: p.testId, parameter_id: p.parameterId,
+          param_code: p.paramCode, parameter_name: p.parameterName,
+          result_value: value || null, unit, reference_range: refRange,
+          normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh,
+          flag: flag || null, status: "entered",
+          is_calculated: p.isCalculated, is_from_interface: p.isFromInterface,
+          entered_at: p.enteredAt || new Date().toISOString(), entered_by: p.enteredBy || null,
+          verified_at: null, verified_by: null,
+          note: editedNotes[k] !== undefined ? (editedNotes[k] || null) : (p.note || null),
+        });
+      }
+
+      if (upserts.length > 0) {
+        await supabase.from("patient_results").delete().eq("registration_id", regId).eq("test_id", testId).in("status", ["verified", "entered"]);
+        await supabase.from("patient_results").insert(upserts as any);
+      } else {
+        // Fallback for snip-only tests
+        await supabase.from("patient_results").update({ status: "entered" } as any).eq("registration_id", regId).eq("test_id", testId).eq("status", "verified");
+      }
+
       await supabase.from("outsourced_test_snips").update({ outsource_status: "results_entered" } as any).eq("registration_id", regId).eq("test_id", testId).eq("outsource_status", "verified");
 
       // Recompute parent registration status so Verification sees this test as entered again
@@ -508,12 +541,7 @@ const DoctorApproval = () => {
 
       // Clear local edits for parameters belonging to this test
       const paramIdsForTest = new Set<string>();
-      for (const entry of patientEntries) {
-        if (entry.registration.id !== regId) continue;
-        for (const p of entry.parameters) {
-          if (p.testId === testId) paramIdsForTest.add(p.parameterId);
-        }
-      }
+      for (const p of testParams) paramIdsForTest.add(p.parameterId);
       const stripKeys = (obj: Record<string, any>) => {
         const next = { ...obj };
         for (const k of Object.keys(next)) {
