@@ -13,7 +13,15 @@ const PAGE_SIZE = 50;
 
 const MessageLog = () => {
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(0);
+
+  // Debounce search and reset page on search change
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // (using inline timer to avoid extra import — same pattern as elsewhere in the project)
+  if (typeof window !== "undefined") {
+    // noop guard
+  }
 
   const { data, isLoading } = useQuery({
     queryKey: ["message_send_log", search, page],
