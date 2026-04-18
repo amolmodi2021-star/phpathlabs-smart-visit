@@ -263,15 +263,32 @@ const LimsReportView = () => {
       }
     }
 
-    // Snip images
+    // Snip images — inline as data URLs for reliable PDF/print capture
     const snipPages: SnipPage[] = [];
+    const rawSnipUrls: string[] = [];
     (snips || []).forEach((s: any) => {
       if (selectedTestIds && !selectedTestIds.has(s.test_id)) return;
       const urls = Array.isArray(s.snip_image_urls) ? s.snip_image_urls : [];
       if (s.result_mode === "snip" || urls.length > 0) {
-        urls.forEach((url: string) => snipPages.push({ imageUrl: url }));
+        urls.forEach((url: string) => rawSnipUrls.push(url));
       }
     });
+    const inlinedSnipUrls = await Promise.all(rawSnipUrls.map(async (u) => (await urlToDataUrl(u)) || u));
+    inlinedSnipUrls.forEach((url) => snipPages.push({ imageUrl: url }));
+
+    // Inline snapshot signature URLs embedded in approved_reports.test_results JSONB
+    for (const r of filteredReports) {
+      const trs = (r.test_results || []) as any[];
+      for (const tr of trs) {
+        const params = (tr.parameters || []) as any[];
+        for (const p of params) {
+          if (p.approved_by_signature_url && typeof p.approved_by_signature_url === "string" && !p.approved_by_signature_url.startsWith("data:")) {
+            const dataUrl = await urlToDataUrl(p.approved_by_signature_url);
+            if (dataUrl) p.approved_by_signature_url = dataUrl;
+          }
+        }
+      }
+    }
 
     // Fetch test_parameters for hierarchy
     let computedTpMap: Record<string, any[]> = {};
