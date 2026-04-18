@@ -122,9 +122,6 @@ export const printBarcodes = async (reg: any, tubes: BarcodeTube[]): Promise<voi
     iframe.style.height = "0";
     iframe.style.border = "0";
     iframe.style.visibility = "hidden";
-    // Use srcdoc with an embedded PDF — keeps the iframe document same-origin
-    // so iframe.contentWindow.print() doesn't throw a SecurityError on lovable.app preview.
-    iframe.srcdoc = `<!doctype html><html><head><style>html,body,embed{margin:0;padding:0;width:100%;height:100%;border:0;}</style></head><body><embed type="application/pdf" src="${blobUrl}" /></body></html>`;
 
     let cleaned = false;
     const cleanup = () => {
@@ -138,25 +135,34 @@ export const printBarcodes = async (reg: any, tubes: BarcodeTube[]): Promise<voi
     const triggerPrint = () => {
       if (printed) return;
       printed = true;
-      // Give the embedded PDF viewer a tick to fully initialize
+      // Wait for Chrome's built-in PDF viewer to fully initialize its print pipeline
       setTimeout(() => {
         try {
           iframe.contentWindow?.focus();
           iframe.contentWindow?.print();
         } catch (err) {
-          console.error("Print failed:", err);
-          toast.error("Print failed. Please try again.");
+          console.error("Print failed, opening PDF in new tab:", err);
+          toast.message("Opening barcode PDF in a new tab — press Ctrl+P to print.");
+          try {
+            window.open(blobUrl, "_blank");
+          } catch (openErr) {
+            console.error("Fallback window.open failed:", openErr);
+            toast.error("Print failed. Please allow popups and try again.");
+          }
         }
         // Resolve immediately so the caller (e.g. sample collection) isn't blocked
         resolve();
-        // Cleanup after a generous delay so the print job has time to dispatch
+        // Cleanup after a generous delay so the print job / new tab can use the blob
         setTimeout(cleanup, 60_000);
-      }, 400);
+      }, 600);
     };
 
     iframe.onload = triggerPrint;
+    // Point the iframe directly at the PDF blob — Chrome's PDF viewer becomes the
+    // iframe document, so contentWindow.print() prints the PDF (not a blank wrapper).
+    iframe.src = blobUrl;
     document.body.appendChild(iframe);
-    // Safety net — if onload never fires (e.g. embed plugin issue), still resolve
+    // Safety net — if onload never fires (e.g. PDF viewer disabled), still try to print
     setTimeout(() => { if (!printed) { triggerPrint(); } }, 2_000);
   });
 };
