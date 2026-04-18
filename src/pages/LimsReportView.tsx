@@ -182,12 +182,29 @@ const LimsReportView = () => {
       supabase.from("pathologist_signatures").select("*"),
     ]);
 
+    // Fallback: if any report is missing sample_collection_date (legacy approvals before
+    // collection-date capture), derive it from MIN(sample_tubes.collected_at) for this registration.
+    const reportsArr = reports || [];
+    const needsCollectionFallback = reportsArr.some((r: any) => !r.sample_collection_date);
+    let fallbackCollectionDate: string | null = null;
+    if (needsCollectionFallback) {
+      const { data: tubes } = await supabase
+        .from("sample_tubes")
+        .select("collected_at")
+        .eq("registration_id", registrationId)
+        .not("collected_at", "is", null);
+      if (tubes && tubes.length > 0) {
+        fallbackCollectionDate = tubes.map((t: any) => t.collected_at).sort()[0];
+      }
+    }
+
     // Filter approved reports test_results by selected test IDs if provided
-    const filteredReports = (reports || []).map((r: any) => {
-      if (!selectedTestIds) return r;
+    const filteredReports = reportsArr.map((r: any) => {
+      const patched = r.sample_collection_date ? r : { ...r, sample_collection_date: fallbackCollectionDate };
+      if (!selectedTestIds) return patched;
       return {
-        ...r,
-        test_results: ((r.test_results || []) as any[]).filter((tr: any) => selectedTestIds.has(tr.test_id)),
+        ...patched,
+        test_results: ((patched.test_results || []) as any[]).filter((tr: any) => selectedTestIds.has(tr.test_id)),
       };
     });
 
