@@ -1,76 +1,55 @@
 
-## Root cause
+## Root cause (two issues, one observable)
 
-Signatures in the report are rendered via:
-```tsx
-<img src={sig.signatureUrl} ... />
+### Issue 1 — "Print failed" toast (the visible error)
+Console shows:
 ```
-where `signatureUrl` is a Supabase Storage public URL (cross-origin from `lovable.app`).
+SecurityError: Failed to read a named property 'print' from 'Window':
+Blocked a frame with origin "...lovable.app" from accessing a cross-origin frame.
+```
 
-`html-to-image` (used by both PDF download and image-based print) inlines images by drawing them to a canvas. For cross-origin images **without** `crossOrigin="anonymous"` set BEFORE the image loads, two things can happen:
-1. Image renders fine on screen (browser doesn't care).
-2. During capture, `html-to-image` tries to fetch/inline it. If CORS isn't pre-established (or the cached copy was loaded without `crossOrigin`), the image is silently skipped or the canvas is tainted and the request fails → **signature missing in PDF**.
+In `src/lib/barcodePrint.ts`, the PDF blob is loaded into a hidden iframe via `iframe.src = blobUrl`. The browser treats the blob URL frame as **cross-origin** in some sandboxed/preview contexts → `iframe.contentWindow.print()` throws `SecurityError` → toast "Print failed. Please try again." appears even when the print sometimes works.
 
-This is exactly why the PDF intermittently misses signatures (Dr. Hemang Jadawala on pages 1 & 3) while the on-screen preview always shows them. Whether it works depends on browser image cache state and the order of loads — explaining the inconsistency between which signatures appear.
-
-The same risk applies to:
-- Letterhead image (already handled — it's converted to data URL via `convertPdfToImage` → toDataURL → safe ✓).
-- Snip images (also Supabase Storage public URLs — same risk; user reported these are sometimes missing/blurry too).
-
-## Fix plan
-
-Convert all cross-origin images used in capture to **inline data URLs** before render, so `html-to-image` sees same-origin payloads it can rasterize without CORS issues.
-
-### Changes in `src/pages/LimsReportView.tsx`
-
-**1. Preload signature images as data URLs (in `loadAllData`)**
-
-After building `sigMap`, fetch each `signatureUrl` and convert to a base64 data URL:
+### Issue 2 — Sample takes long to mark as "collected"
+This is **not** caused by a long backend query. It's a UI sequencing problem in `SampleCollection.tsx → handlePrintAndCollect`:
 
 ```ts
-const urlToDataUrl = async (url: string): Promise<string | null> => {
-  try {
-    const res = await fetch(url, { mode: "cors", cache: "no-cache" });
-    const blob = await res.blob();
-    return await new Promise((resolve) => {
-      const r = new FileReader();
-      r.onloadend = () => resolve(r.result as string);
-      r.onerror = () => resolve(null);
-      r.readAsDataURL(blob);
-    });
-  } catch { return null; }
-};
-
-// After building info per signature:
-if (sigUrl) {
-  const dataUrl = await urlToDataUrl(sigUrl);
-  if (dataUrl) info.signatureUrl = dataUrl;
-}
+await doPrintBarcodes(reg, selected);   // ← awaits the iframe Promise
+collectMutation.mutate(...);            // ← only fires after print Promise resolves
 ```
 
-This makes the signature `<img src="data:image/png;base64,...">` — guaranteed to rasterize.
+The `printBarcodes` Promise only `resolve()`s inside the iframe's `cleanup()` — and the cleanup is scheduled with `setTimeout(cleanup, 60_000)` (60 seconds!) after the print dispatch. So `await doPrintBarcodes` blocks the collect mutation for up to **60 seconds** in the happy path, and even longer / never if the print errors out.
 
-**2. Same treatment for snip images (in `loadAllData`)**
+So: print starts → user dismisses dialog → tube *eventually* gets marked as collected ~60s later. Exactly matches the user's report.
 
-After building `snipPages`, replace each `imageUrl` with its data URL equivalent. Snips are already at native resolution; converting to data URL doesn't re-encode pixels.
+There is no slow DB query — `recalculateRegistrationStatus` runs 3 small parallel queries on indexed columns. Sub-second.
 
-**3. Defensive: also add `crossOrigin="anonymous"` to the `<img>` tags**
+## Fix
 
-For the signature `<img>` and snip `<img>`, add `crossOrigin="anonymous"` as a belt-and-braces measure (helps if step 1/2 ever falls back to original URL).
+### `src/lib/barcodePrint.ts`
+1. **Replace iframe-blob approach with a same-origin printing trick** that avoids the cross-origin SecurityError:
+   - Use `window.open(blobUrl)` → call `print()` from a `load` handler on the *opened window* (same origin as opener — no SecurityError).
+   - Fallback: if popup blocked, fall back to current iframe approach.
+   - Even better for thermal label printing: keep the iframe, but switch from `iframe.src = blobUrl` to writing the blob into a same-origin `<embed>`/`srcdoc` wrapper, OR simply trigger a download + use system print.
+   - Cleanest fix: use `iframe.srcdoc` containing an `<embed src="${blobUrl}">` — the iframe document is then same-origin and `iframe.contentWindow.print()` works in all browsers.
 
-**4. Show a brief loader while images preload**
+2. **Fire-and-forget the print, don't await 60s.** Make `printBarcodes` return as soon as `iframe.contentWindow.print()` is invoked (or a short ~500ms safety delay), so the caller can immediately update DB state. Cleanup of iframe/blob URL still happens on its own 60s timer in the background.
 
-The data-URL conversion is asynchronous — keep the existing `setLoading(true)` covering it (it already does, since it's all inside `loadAllData`).
+### `src/components/lims/SampleCollection.tsx`
+3. **Decouple collection from print completion.** In `handlePrintAndCollect` and `handleSinglePrintAndCollect`:
+   - Kick off the collect mutation **immediately** (before/parallel to `doPrintBarcodes`), so the tube flips to "collected" within ~200ms regardless of printer dialog state.
+   - Don't await print before mutating DB — they're independent operations.
+
+### Out of scope
+- No change to barcode layout / sticker dimensions / DPI.
+- No change to `recalculateRegistrationStatus` (it's already fast).
+- No backend / edge function changes — there is no slow query.
 
 ## Files
-- `src/pages/LimsReportView.tsx` — add `urlToDataUrl` helper, preload signatures + snips into data URLs (~25 lines), add `crossOrigin` attrs on the two `<img>` tags.
-
-## Out of scope
-- No layout/pagination changes.
-- No schema or RLS changes.
-- No change to capture logic (JPEG/PNG split stays).
+- `src/lib/barcodePrint.ts` — switch to `srcdoc` embed wrapper + return early after print invocation (~30 lines).
+- `src/components/lims/SampleCollection.tsx` — fire collect mutation in parallel with print (~6 lines in 2 handlers).
 
 ## Expected outcome
-- All approved doctors' signatures appear correctly on every page of the downloaded PDF and printed output, matching the on-screen preview exactly.
-- Snip images also become deterministic in the PDF (no more occasional missing/empty snips).
-- File size unchanged (data URL is only used during render; the PDF still encodes via JPEG/PNG capture).
+- "Print failed" toast disappears (cross-origin print issue fixed).
+- Tube flips to "Collected" within ~300ms of clicking Print & Collect, regardless of print dialog timing.
+- Print dialog still appears once per click (browser security requirement).
