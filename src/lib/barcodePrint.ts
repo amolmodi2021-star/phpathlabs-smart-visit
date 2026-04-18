@@ -122,7 +122,9 @@ export const printBarcodes = async (reg: any, tubes: BarcodeTube[]): Promise<voi
     iframe.style.height = "0";
     iframe.style.border = "0";
     iframe.style.visibility = "hidden";
-    iframe.src = blobUrl;
+    // Use srcdoc with an embedded PDF — keeps the iframe document same-origin
+    // so iframe.contentWindow.print() doesn't throw a SecurityError on lovable.app preview.
+    iframe.srcdoc = `<!doctype html><html><head><style>html,body,embed{margin:0;padding:0;width:100%;height:100%;border:0;}</style></head><body><embed type="application/pdf" src="${blobUrl}" /></body></html>`;
 
     let cleaned = false;
     const cleanup = () => {
@@ -130,11 +132,13 @@ export const printBarcodes = async (reg: any, tubes: BarcodeTube[]): Promise<voi
       cleaned = true;
       try { URL.revokeObjectURL(blobUrl); } catch { /* ignore */ }
       try { iframe.parentNode?.removeChild(iframe); } catch { /* ignore */ }
-      resolve();
     };
 
-    iframe.onload = () => {
-      // Give the PDF viewer a tick to fully initialize before invoking print
+    let printed = false;
+    const triggerPrint = () => {
+      if (printed) return;
+      printed = true;
+      // Give the embedded PDF viewer a tick to fully initialize
       setTimeout(() => {
         try {
           iframe.contentWindow?.focus();
@@ -143,11 +147,16 @@ export const printBarcodes = async (reg: any, tubes: BarcodeTube[]): Promise<voi
           console.error("Print failed:", err);
           toast.error("Print failed. Please try again.");
         }
+        // Resolve immediately so the caller (e.g. sample collection) isn't blocked
+        resolve();
         // Cleanup after a generous delay so the print job has time to dispatch
         setTimeout(cleanup, 60_000);
-      }, 250);
+      }, 400);
     };
 
+    iframe.onload = triggerPrint;
     document.body.appendChild(iframe);
+    // Safety net — if onload never fires (e.g. embed plugin issue), still resolve
+    setTimeout(() => { if (!printed) { triggerPrint(); } }, 2_000);
   });
 };
