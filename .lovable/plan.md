@@ -1,55 +1,60 @@
 
-## Root cause (two issues, one observable)
 
-### Issue 1 — "Print failed" toast (the visible error)
-Console shows:
-```
-SecurityError: Failed to read a named property 'print' from 'Window':
-Blocked a frame with origin "...lovable.app" from accessing a cross-origin frame.
-```
+## Goal
+Show real "Collection" date/time on the LIMS report header. It should be the **first time any barcode for that visit was printed** (i.e. first sample collection event). Reprints must NEVER overwrite it.
 
-In `src/lib/barcodePrint.ts`, the PDF blob is loaded into a hidden iframe via `iframe.src = blobUrl`. The browser treats the blob URL frame as **cross-origin** in some sandboxed/preview contexts → `iframe.contentWindow.print()` throws `SecurityError` → toast "Print failed. Please try again." appears even when the print sometimes works.
+## Why it's missing today
+- `LimsReportHeader` reads `report.sample_collection_date` from `approved_reports`.
+- Nothing in the LIMS approval flow ever populates this column — it's only used by the legacy "AI extracted reports" path. So it's always `NULL` → header shows "—".
+- Meanwhile, the actual first-print timestamp already exists in `sample_tubes.collected_at`, which is set when "Print & Collect" flips a tube from `pending → collected`. The mutation has `.eq("status", "pending")` so reprints (tubes already collected/accepted) **never overwrite** `collected_at`. → it's already a stable "first print" timestamp per tube.
 
-### Issue 2 — Sample takes long to mark as "collected"
-This is **not** caused by a long backend query. It's a UI sequencing problem in `SampleCollection.tsx → handlePrintAndCollect`:
+## Source of truth
+For a given registration, the visit-level "Sample Collection Date" = `MIN(sample_tubes.collected_at)` across all tubes for that registration. This represents the moment the *first* barcode was printed and the tube was marked collected. Reprints don't move it.
 
-```ts
-await doPrintBarcodes(reg, selected);   // ← awaits the iframe Promise
-collectMutation.mutate(...);            // ← only fires after print Promise resolves
-```
+## Fix plan
 
-The `printBarcodes` Promise only `resolve()`s inside the iframe's `cleanup()` — and the cleanup is scheduled with `setTimeout(cleanup, 60_000)` (60 seconds!) after the print dispatch. So `await doPrintBarcodes` blocks the collect mutation for up to **60 seconds** in the happy path, and even longer / never if the print errors out.
+### 1. Populate `approved_reports.sample_collection_date` at approval time
+In `src/components/lims/DoctorApproval.tsx`, in both upsert sites (single-test approval ~line 393 and approve-all ~line 469, plus the snip-only path ~line 636):
 
-So: print starts → user dismisses dialog → tube *eventually* gets marked as collected ~60s later. Exactly matches the user's report.
+- Before the upsert, fetch `MIN(collected_at)` from `sample_tubes` for `reg.id`:
+  ```ts
+  const { data: tubes } = await supabase
+    .from("sample_tubes")
+    .select("collected_at")
+    .eq("registration_id", reg.id)
+    .not("collected_at", "is", null);
+  const firstCollectedAt = tubes?.length
+    ? tubes.map(t => t.collected_at).sort()[0]
+    : null;
+  ```
+- Add `sample_collection_date: firstCollectedAt` to the upsert payload.
 
-There is no slow DB query — `recalculateRegistrationStatus` runs 3 small parallel queries on indexed columns. Sub-second.
+This ensures every newly approved (or re-approved) test snapshot carries the correct first-print timestamp. Subsequent re-approvals re-compute it from the same source — still safe because reprints never alter `collected_at`.
 
-## Fix
+### 2. Render-time fallback for legacy records (already-approved before this fix)
+In `src/pages/LimsReportView.tsx → loadAllData`:
 
-### `src/lib/barcodePrint.ts`
-1. **Replace iframe-blob approach with a same-origin printing trick** that avoids the cross-origin SecurityError:
-   - Use `window.open(blobUrl)` → call `print()` from a `load` handler on the *opened window* (same origin as opener — no SecurityError).
-   - Fallback: if popup blocked, fall back to current iframe approach.
-   - Even better for thermal label printing: keep the iframe, but switch from `iframe.src = blobUrl` to writing the blob into a same-origin `<embed>`/`srcdoc` wrapper, OR simply trigger a download + use system print.
-   - Cleanest fix: use `iframe.srcdoc` containing an `<embed src="${blobUrl}">` — the iframe document is then same-origin and `iframe.contentWindow.print()` works in all browsers.
+- After fetching `reports` and `regData`, if `report.sample_collection_date` is null/empty for any row, fetch the same `MIN(collected_at)` once and patch it onto each report object before render.
+- Cheap: one extra small query per report view, only when missing.
 
-2. **Fire-and-forget the print, don't await 60s.** Make `printBarcodes` return as soon as `iframe.contentWindow.print()` is invoked (or a short ~500ms safety delay), so the caller can immediately update DB state. Cleanup of iframe/blob URL still happens on its own 60s timer in the background.
+This fixes historical approved reports without requiring a data migration.
 
-### `src/components/lims/SampleCollection.tsx`
-3. **Decouple collection from print completion.** In `handlePrintAndCollect` and `handleSinglePrintAndCollect`:
-   - Kick off the collect mutation **immediately** (before/parallel to `doPrintBarcodes`), so the tube flips to "collected" within ~200ms regardless of printer dialog state.
-   - Don't await print before mutating DB — they're independent operations.
+### 3. Header formatting (no code change needed)
+`LimsReportHeader.formatDate` already formats as `dd-MMM-yyyy hh:mm a` — matches the requested style ("18-Apr-2026 10:24 AM"). Just feeding it a non-null value will make the field appear.
 
-### Out of scope
-- No change to barcode layout / sticker dimensions / DPI.
-- No change to `recalculateRegistrationStatus` (it's already fast).
-- No backend / edge function changes — there is no slow query.
+## Files to edit
+- `src/components/lims/DoctorApproval.tsx` — 3 upsert sites get `sample_collection_date` from `MIN(sample_tubes.collected_at)`.
+- `src/pages/LimsReportView.tsx` — render-time fallback in `loadAllData` when the column is null on existing approved records.
 
-## Files
-- `src/lib/barcodePrint.ts` — switch to `srcdoc` embed wrapper + return early after print invocation (~30 lines).
-- `src/components/lims/SampleCollection.tsx` — fire collect mutation in parallel with print (~6 lines in 2 handlers).
+## Out of scope
+- No schema change (column already exists).
+- No change to `printBarcodes`, `collectMutation`, or sample tube lifecycle — they already give us a reprint-safe "first print" timestamp via `collected_at`.
+- No change to PDF capture / signature / pagination logic.
+- No change to legacy "extracted reports" header.
 
 ## Expected outcome
-- "Print failed" toast disappears (cross-origin print issue fixed).
-- Tube flips to "Collected" within ~300ms of clicking Print & Collect, regardless of print dialog timing.
-- Print dialog still appears once per click (browser security requirement).
+- New approvals: header shows the exact moment the first barcode was printed, e.g. "Collection: 18-Apr-2026 10:36 AM".
+- Existing approved reports: same value appears via the fallback, no data migration needed.
+- Reprinting a barcode never changes the displayed Collection date.
+- If absolutely no tube was ever collected (edge case), the field still shows "—" gracefully.
+
