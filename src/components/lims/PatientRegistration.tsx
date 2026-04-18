@@ -547,7 +547,14 @@ const PatientRegistration = () => {
                 onFocus={() => patientMatches.length > 0 && setShowDropdown(true)}
                 placeholder="Paste number (any format)"
                 className="pl-8"
-                type="tel"
+                type="text"
+                inputMode="tel"
+                name="lims-mobile-search"
+                autoComplete="new-password"
+                data-form-type="other"
+                data-lpignore="true"
+                role="combobox"
+                aria-autocomplete="list"
               />
             </div>
             {mobileNumber && (
