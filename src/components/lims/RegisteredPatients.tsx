@@ -198,6 +198,33 @@ const RegisteredPatients = () => {
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input value={search} onChange={e => handleSearch(e.target.value)} placeholder="Search by name, mobile, invoice, UMR..." className="pl-8" />
         </div>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className={cn("justify-start text-left font-normal", !fromDate && "text-muted-foreground")}>
+              <CalendarIcon className="h-4 w-4 mr-1" />
+              {fromDate ? format(fromDate, "dd-MM-yyyy") : "From date"}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar mode="single" selected={fromDate} onSelect={handleFromDate} initialFocus className={cn("p-3 pointer-events-auto")} />
+          </PopoverContent>
+        </Popover>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className={cn("justify-start text-left font-normal", !toDate && "text-muted-foreground")}>
+              <CalendarIcon className="h-4 w-4 mr-1" />
+              {toDate ? format(toDate, "dd-MM-yyyy") : "To date"}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar mode="single" selected={toDate} onSelect={handleToDate} initialFocus className={cn("p-3 pointer-events-auto")} />
+          </PopoverContent>
+        </Popover>
+        {(fromDate || toDate) && (
+          <Button variant="ghost" size="sm" onClick={clearDates}>
+            <X className="h-4 w-4 mr-1" />Clear dates
+          </Button>
+        )}
         <Button variant="outline" size="sm" onClick={() => setShowExportPwd(true)}>
           <Download className="h-4 w-4 mr-1" />Export All
         </Button>
@@ -207,8 +234,6 @@ const RegisteredPatients = () => {
           </Button>
         )}
       </div>
-
-      <div className="text-sm text-muted-foreground">{count} registration(s) found</div>
 
       <div className="rounded-md border">
         <Table>
