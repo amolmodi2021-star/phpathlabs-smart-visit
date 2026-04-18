@@ -390,6 +390,9 @@ const DoctorApproval = () => {
       // Remove old entries for this test, then add new ones
       const mergedResults = existingResults.filter((r: any) => r.test_id !== testId).concat(testResultsSnapshot);
       const mergedSnipUrls = [...new Set([...existingSnipUrls.filter((u: string) => !u.includes(testId)), ...snipUrls])];
+      // First barcode print timestamp = MIN(sample_tubes.collected_at) — reprint-safe
+      const { data: tubesForCol } = await supabase.from("sample_tubes").select("collected_at").eq("registration_id", reg.id).not("collected_at", "is", null);
+      const firstCollectedAt = tubesForCol?.length ? (tubesForCol.map((t: any) => t.collected_at).sort()[0] as string) : null;
       await supabase.from("approved_reports").upsert({
         registration_id: reg.id, invoice_number: reg.invoice_number, umr_number: reg.umr_number,
         patient_name: reg.patient_name, title: reg.title, gender: reg.gender, dob: reg.dob,
@@ -397,6 +400,7 @@ const DoctorApproval = () => {
         doctor_name: reg.doctor_name, visit_type: reg.visit_type, is_stat: reg.is_stat,
         report_language: reg.report_language, approved_by: approver.pathologistName,
         registration_date: reg.created_at, approval_date: new Date().toISOString(),
+        sample_collection_date: firstCollectedAt,
         test_results: mergedResults, outsourced_snip_urls: mergedSnipUrls,
       } as any, { onConflict: "registration_id" as any, ignoreDuplicates: false });
 
