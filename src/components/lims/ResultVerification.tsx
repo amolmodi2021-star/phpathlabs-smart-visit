@@ -647,9 +647,37 @@ const ResultVerification = () => {
     try {
       await supabase.from("patient_results").update({ status: "pending" } as any).eq("registration_id", regId).eq("test_id", testId).eq("status", "entered");
       await supabase.from("outsourced_test_snips").update({ outsource_status: "results_saved" } as any).eq("registration_id", regId).eq("test_id", testId).in("outsource_status", ["results_entered", "entered"]);
+
+      // Recompute the parent registration status so Results Entry sees this test as pending again
+      await recalculateRegistrationStatus(regId);
+
+      // Clear local edits for parameters belonging to this test (so re-entry shows freshly persisted DB values)
+      const paramIdsForTest = new Set<string>();
+      for (const entry of patientEntries) {
+        if (entry.registration.id !== regId) continue;
+        for (const p of entry.parameters) {
+          if (p.testId === testId) paramIdsForTest.add(p.parameterId);
+        }
+      }
+      const stripKeys = (obj: Record<string, any>) => {
+        const next = { ...obj };
+        for (const k of Object.keys(next)) {
+          const [rid, pid] = k.split("||");
+          if (rid === regId && paramIdsForTest.has(pid)) delete next[k];
+        }
+        return next;
+      };
+      setEditedValues((prev) => stripKeys(prev));
+      setEditedFlags((prev) => stripKeys(prev));
+      setEditedUnits((prev) => stripKeys(prev));
+      setEditedRefRanges((prev) => stripKeys(prev));
+      setEditedNotes((prev) => stripKeys(prev));
+
       toast.success(`${testName} sent back to Results Entry`);
       qc.invalidateQueries({ queryKey: ["verification_results_v2"] });
       qc.invalidateQueries({ queryKey: ["verification_outsourced_v2"] });
+      qc.invalidateQueries({ queryKey: ["verification_regs_v2"] });
+      qc.invalidateQueries({ queryKey: ["results_accepted_regs"] });
       qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
       qc.invalidateQueries({ queryKey: ["outsourced_manual_results"] });
       qc.invalidateQueries({ queryKey: ["outsourced_snips"] });

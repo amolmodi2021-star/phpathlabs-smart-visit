@@ -335,6 +335,8 @@ const DoctorApproval = () => {
     qc.invalidateQueries({ queryKey: ["doctor_approval_history"] });
     qc.invalidateQueries({ queryKey: ["verification_results_v2"] });
     qc.invalidateQueries({ queryKey: ["verification_outsourced_v2"] });
+    qc.invalidateQueries({ queryKey: ["verification_regs_v2"] });
+    qc.invalidateQueries({ queryKey: ["results_accepted_regs"] });
     qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
     qc.invalidateQueries({ queryKey: ["dispatch_regs"] });
     qc.invalidateQueries({ queryKey: ["dispatch_results"] });
@@ -500,6 +502,32 @@ const DoctorApproval = () => {
     try {
       await supabase.from("patient_results").update({ status: "entered" } as any).eq("registration_id", regId).eq("test_id", testId).eq("status", "verified");
       await supabase.from("outsourced_test_snips").update({ outsource_status: "results_entered" } as any).eq("registration_id", regId).eq("test_id", testId).eq("outsource_status", "verified");
+
+      // Recompute parent registration status so Verification sees this test as entered again
+      await recalculateRegistrationStatus(regId);
+
+      // Clear local edits for parameters belonging to this test
+      const paramIdsForTest = new Set<string>();
+      for (const entry of patientEntries) {
+        if (entry.registration.id !== regId) continue;
+        for (const p of entry.parameters) {
+          if (p.testId === testId) paramIdsForTest.add(p.parameterId);
+        }
+      }
+      const stripKeys = (obj: Record<string, any>) => {
+        const next = { ...obj };
+        for (const k of Object.keys(next)) {
+          const [rid, pid] = k.split("||");
+          if (rid === regId && paramIdsForTest.has(pid)) delete next[k];
+        }
+        return next;
+      };
+      setEditedValues((prev) => stripKeys(prev));
+      setEditedFlags((prev) => stripKeys(prev));
+      setEditedUnits((prev) => stripKeys(prev));
+      setEditedRefRanges((prev) => stripKeys(prev));
+      setEditedNotes((prev) => stripKeys(prev));
+
       toast.success(`${testName} sent back for verification`);
       invalidateAll();
     } catch (err: any) { toast.error(err.message || "Failed"); }
