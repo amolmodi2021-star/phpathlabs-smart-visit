@@ -38,7 +38,7 @@ const getQualitativeOptions = (expectedValue: string): string[] => {
   return [];
 };
 
-// ─── Descriptive Combobox: searchable + editable ───
+// ─── Descriptive Combobox: inline type-ahead (search + select + edit) ───
 interface DescriptiveComboboxProps {
   value: string;
   options: string[];
@@ -49,56 +49,113 @@ interface DescriptiveComboboxProps {
 }
 const DescriptiveCombobox = ({ value, options, onChange, onKeyDown, className, placeholder }: DescriptiveComboboxProps) => {
   const [open, setOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const blurTimerRef = useRef<number | null>(null);
+
+  const filtered = useMemo(() => {
+    const q = (value || "").trim().toLowerCase();
+    if (!q) return options;
+    return options.filter(o => o.toLowerCase().includes(q));
+  }, [options, value]);
+
+  // Reset highlight when filter changes
+  useEffect(() => {
+    setHighlightedIndex(filtered.length > 0 ? 0 : -1);
+  }, [filtered.length, value]);
+
+  // Auto-scroll highlighted item into view
+  useEffect(() => {
+    if (!open || highlightedIndex < 0 || !listRef.current) return;
+    const item = listRef.current.querySelectorAll<HTMLLIElement>("li")[highlightedIndex];
+    item?.scrollIntoView({ block: "nearest" });
+  }, [highlightedIndex, open]);
+
+  const selectOption = (opt: string) => {
+    onChange(opt);
+    setOpen(false);
+    setHighlightedIndex(-1);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (open && filtered.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setHighlightedIndex(i => (i + 1) % filtered.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setHighlightedIndex(i => (i <= 0 ? filtered.length - 1 : i - 1));
+        return;
+      }
+      if (e.key === "Enter" && highlightedIndex >= 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        selectOption(filtered[highlightedIndex]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setOpen(false);
+        return;
+      }
+    }
+    if (e.key === "Tab") {
+      setOpen(false);
+    }
+    onKeyDown?.(e);
+  };
+
   return (
-    <div className={`relative flex items-center ${className || ""}`}>
+    <div className={`relative ${className || ""}`}>
       <Input
         ref={inputRef}
         value={value}
-        onChange={e => onChange(e.target.value)}
-        onKeyDown={onKeyDown}
-        placeholder={placeholder || "Select or type..."}
-        className="h-7 text-sm pr-7"
+        onChange={e => {
+          onChange(e.target.value);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => {
+          blurTimerRef.current = window.setTimeout(() => setOpen(false), 150);
+        }}
+        onKeyDown={handleKeyDown}
+        placeholder={placeholder || "Type to search..."}
+        className="h-7 text-sm"
         data-result-input=""
         data-result-value={value || ""}
+        autoComplete="off"
       />
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5"
-            tabIndex={-1}
-            aria-label="Open options"
-          >
-            <ChevronsUpDown className="h-3.5 w-3.5" />
-          </button>
-        </PopoverTrigger>
-        <PopoverContent className="w-[360px] p-0" align="end">
-          <Command>
-            <CommandInput placeholder="Search options..." className="h-9" />
-            <CommandList>
-              <CommandEmpty>No matching option.</CommandEmpty>
-              <CommandGroup>
-                {options.map((opt) => (
-                  <CommandItem
-                    key={opt}
-                    value={opt}
-                    onSelect={() => {
-                      onChange(opt);
-                      setOpen(false);
-                      setTimeout(() => inputRef.current?.focus(), 0);
-                    }}
-                    className="whitespace-normal"
-                  >
-                    <Check className={`mr-2 h-4 w-4 ${value === opt ? "opacity-100" : "opacity-0"}`} />
-                    <span className="whitespace-normal">{opt}</span>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
+      {open && filtered.length > 0 && (
+        <ul
+          ref={listRef}
+          className="absolute top-full left-0 mt-1 w-full max-h-60 overflow-y-auto z-50 bg-popover border border-border rounded-md shadow-md py-1"
+          onMouseDown={e => {
+            // Prevent input blur before click registers
+            e.preventDefault();
+            if (blurTimerRef.current) {
+              window.clearTimeout(blurTimerRef.current);
+              blurTimerRef.current = null;
+            }
+          }}
+        >
+          {filtered.map((opt, idx) => (
+            <li
+              key={opt}
+              onClick={() => selectOption(opt)}
+              onMouseEnter={() => setHighlightedIndex(idx)}
+              className={`px-2 py-1.5 text-sm cursor-pointer whitespace-normal ${
+                idx === highlightedIndex ? "bg-accent text-accent-foreground" : "text-popover-foreground"
+              }`}
+            >
+              {opt}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 };
