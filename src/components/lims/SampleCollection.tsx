@@ -265,12 +265,12 @@ const SampleCollection = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const handlePrintAndCollect = async (reg: any, tubes: SampleTubeRow[]) => {
+  const handlePrintAndCollect = (reg: any, tubes: SampleTubeRow[]) => {
     const regSel = selectedTubes[reg.id] || new Set();
     const selected = tubes.filter(t => regSel.has(t.id));
     if (selected.length === 0) { toast.error("Please select at least one barcode"); return; }
-    // Print all selected tubes (reprint is OK for any status)
-    await doPrintBarcodes(reg, selected);
+    // Fire print in parallel — don't await; collection should not be blocked by the print dialog
+    void doPrintBarcodes(reg, selected);
     // Only collect tubes still pending — never demote accepted/processed tubes
     const toCollect = selected.filter(t => t.status === "pending");
     if (toCollect.length === 0) {
@@ -281,8 +281,9 @@ const SampleCollection = () => {
     collectMutation.mutate({ regId: reg.id, tubeIds: toCollect.map(t => t.id) });
   };
 
-  const handleSinglePrintAndCollect = async (reg: any, tube: SampleTubeRow) => {
-    await doPrintBarcodes(reg, [tube]);
+  const handleSinglePrintAndCollect = (reg: any, tube: SampleTubeRow) => {
+    // Fire print in parallel — don't await; collection should not be blocked by the print dialog
+    void doPrintBarcodes(reg, [tube]);
     if (tube.status !== "pending") {
       toast.info("Tube already collected/accepted — barcode reprinted only");
       return;
