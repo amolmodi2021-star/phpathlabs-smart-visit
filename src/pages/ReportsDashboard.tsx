@@ -11,6 +11,9 @@ import { Upload, Eye, Search, RefreshCw, Loader2, Trash2, Pencil } from "lucide-
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
+import PaginatedTableFooter from "@/components/ui/PaginatedTableFooter";
+
+const PAGE_SIZE = 50;
 
 const statusColors: Record<string, string> = {
   Pending: "bg-yellow-100 text-yellow-800",
@@ -22,31 +25,63 @@ const statusColors: Record<string, string> = {
 
 const ReportsDashboard = () => {
   const [reports, setReports] = useState<any[]>([]);
+  const [total, setTotal] = useState(0);
+  const [stats, setStats] = useState({ total: 0, pending: 0, review: 0, completed: 0, dispatched: 0 });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(0);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  useEffect(() => { const t = setTimeout(() => setDebouncedSearch(search), 400); return () => clearTimeout(t); }, [search]);
+  useEffect(() => { setPage(0); }, [debouncedSearch]);
+
   const loadReports = async () => {
     setLoading(true);
-    const { data } = await supabase.from("uploaded_reports").select("*").order("created_at", { ascending: false }).limit(200);
+    const from = page * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+    let q = supabase
+      .from("uploaded_reports")
+      .select("*", { count: "exact" })
+      .order("created_at", { ascending: false })
+      .range(from, to);
+    if (debouncedSearch.trim()) {
+      const s = debouncedSearch.trim();
+      q = q.or(`patient_name.ilike.%${s}%,umr_id.ilike.%${s}%,reg_no.ilike.%${s}%`);
+    }
+    const { data, count } = await q;
     setReports(data || []);
+    setTotal(count || 0);
+
+    // Aggregate counts via head queries (no rows fetched)
+    const baseHead = () => supabase.from("uploaded_reports").select("*", { count: "exact", head: true });
+    const [t1, p1, p2, r1, c1, d1] = await Promise.all([
+      baseHead(),
+      baseHead().eq("status", "Pending"),
+      baseHead().eq("status", "Processing"),
+      baseHead().eq("status", "Awaiting Review"),
+      baseHead().eq("status", "Completed"),
+      baseHead().eq("status", "Dispatched"),
+    ]);
+    setStats({
+      total: t1.count || 0,
+      pending: (p1.count || 0) + (p2.count || 0),
+      review: r1.count || 0,
+      completed: c1.count || 0,
+      dispatched: d1.count || 0,
+    });
+
     setSelectedIds(new Set());
     setLoading(false);
   };
 
-  useEffect(() => { loadReports(); }, []);
+  useEffect(() => { loadReports(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [debouncedSearch, page]);
 
-  const filtered = reports.filter((r) =>
-    (r.patient_name || "").toLowerCase().includes(search.toLowerCase()) ||
-    (r.umr_id || "").toLowerCase().includes(search.toLowerCase()) ||
-    ((r as any).reg_no || "").toLowerCase().includes(search.toLowerCase())
-  );
-
-  // (stats now stored in state; updated on each loadReports call)
+  const filtered = reports;
 
   const allFilteredSelected = filtered.length > 0 && filtered.every((r) => selectedIds.has(r.id));
 
@@ -175,6 +210,7 @@ const ReportsDashboard = () => {
               </TableBody>
             </Table>
           )}
+          <PaginatedTableFooter page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
         </CardContent>
       </Card>
 
