@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -7,46 +7,47 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Search } from "lucide-react";
 import { format } from "date-fns";
+import PaginatedTableFooter from "@/components/ui/PaginatedTableFooter";
+
+const PAGE_SIZE = 50;
 
 const CRMSentHistory = () => {
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(0);
 
-  const { data: records = [], isLoading } = useQuery({
-    queryKey: ["crm-sent-history"],
+  useEffect(() => { const t = setTimeout(() => setDebouncedSearch(search), 400); return () => clearTimeout(t); }, [search]);
+  useEffect(() => { setPage(0); }, [debouncedSearch]);
+
+  const { data: pagedData, isLoading } = useQuery({
+    queryKey: ["crm-sent-history", debouncedSearch, page],
     queryFn: async () => {
-      const BATCH = 900;
-      let all: any[] = [];
-      let from = 0;
-      while (true) {
-        const { data } = await supabase
-          .from("crm_contacts")
-          .select("primary_key, patient_name, mobile_number, last_sent_type, last_sent_date")
-          .not("last_sent_date", "is", null)
-          .order("last_sent_date", { ascending: false })
-          .range(from, from + BATCH - 1);
-        if (!data || data.length === 0) break;
-        all.push(...data);
-        if (data.length < BATCH) break;
-        from += BATCH;
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+      let q = supabase
+        .from("crm_contacts")
+        .select("primary_key, patient_name, mobile_number, last_sent_type, last_sent_date", { count: "exact" })
+        .not("last_sent_date", "is", null)
+        .order("last_sent_date", { ascending: false })
+        .range(from, to);
+      if (debouncedSearch.trim()) {
+        const s = debouncedSearch.trim();
+        q = q.or(`patient_name.ilike.%${s}%,mobile_number.ilike.%${s}%,last_sent_type.ilike.%${s}%`);
       }
-      return all;
+      const { data, count, error } = await q;
+      if (error) throw error;
+      return { rows: (data || []) as any[], total: count || 0 };
     },
+    placeholderData: keepPreviousData,
   });
 
-  const filtered = records.filter((r: any) => {
-    if (!search) return true;
-    const s = search.toLowerCase();
-    return (
-      (r.patient_name || "").toLowerCase().includes(s) ||
-      (r.mobile_number || "").includes(s) ||
-      (r.last_sent_type || "").toLowerCase().includes(s)
-    );
-  });
+  const records = pagedData?.rows || [];
+  const total = pagedData?.total || 0;
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Sent History ({filtered.length} records)</CardTitle>
+        <CardTitle>Sent History ({total.toLocaleString()} records)</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex gap-2 items-center">
@@ -61,7 +62,7 @@ const CRMSentHistory = () => {
 
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Loading...</p>
-        ) : filtered.length === 0 ? (
+        ) : records.length === 0 ? (
           <p className="text-sm text-muted-foreground">No sent records found.</p>
         ) : (
           <div className="overflow-auto max-h-[60vh] border rounded">
@@ -76,9 +77,9 @@ const CRMSentHistory = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map((r: any, i: number) => (
+                {records.map((r: any, i: number) => (
                   <TableRow key={r.primary_key}>
-                    <TableCell className="text-muted-foreground">{i + 1}</TableCell>
+                    <TableCell className="text-muted-foreground">{page * PAGE_SIZE + i + 1}</TableCell>
                     <TableCell>{r.patient_name || "—"}</TableCell>
                     <TableCell className="font-mono text-sm">{r.mobile_number || "—"}</TableCell>
                     <TableCell>
@@ -95,6 +96,8 @@ const CRMSentHistory = () => {
             </Table>
           </div>
         )}
+
+        <PaginatedTableFooter page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
       </CardContent>
     </Card>
   );
