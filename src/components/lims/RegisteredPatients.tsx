@@ -63,10 +63,12 @@ const RegisteredPatients = () => {
   const channelMap = Object.fromEntries(channels.map(c => [c.id, c.name]));
 
   const { data: count = 0 } = useQuery({
-    queryKey: ["patient_registrations_count", debouncedSearch],
+    queryKey: ["patient_registrations_count", debouncedSearch, fromIso, toIso],
     queryFn: async () => {
       let query = supabase.from("patient_registrations").select("id", { count: "exact", head: true });
       if (registrationSearchFilter) query = query.or(registrationSearchFilter);
+      if (fromIso) query = query.gte("created_at", fromIso);
+      if (toIso) query = query.lte("created_at", toIso);
       const { count, error } = await query;
       if (error) throw error;
       return count || 0;
@@ -74,7 +76,7 @@ const RegisteredPatients = () => {
   });
 
   const { data: registrations = [], isLoading } = useQuery({
-    queryKey: ["patient_registrations", page, debouncedSearch],
+    queryKey: ["patient_registrations", page, debouncedSearch, fromIso, toIso],
     queryFn: async () => {
       let query = supabase
         .from("patient_registrations")
@@ -82,6 +84,8 @@ const RegisteredPatients = () => {
         .order("created_at", { ascending: false })
         .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
       if (registrationSearchFilter) query = query.or(registrationSearchFilter);
+      if (fromIso) query = query.gte("created_at", fromIso);
+      if (toIso) query = query.lte("created_at", toIso);
       const { data, error } = await query;
       if (error) throw error;
       const rows = (data || []) as any[];
