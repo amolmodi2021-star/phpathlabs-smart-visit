@@ -5,7 +5,7 @@ import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Loader2, Printer, ArrowLeft, Download } from "lucide-react";
-import { toPng } from "html-to-image";
+import { toPng, toJpeg } from "html-to-image";
 import jsPDF from "jspdf";
 import * as pdfjsLib from "pdfjs-dist";
 import LimsReportHeader from "@/components/report/LimsReportHeader";
@@ -445,15 +445,30 @@ const LimsReportView = () => {
       for (let i = 0; i < pageElements.length; i++) {
         if (i > 0) pdf.addPage();
         const el = pageElements[i] as HTMLElement;
-        const png = await toPng(el, {
-          quality: 1,
-          pixelRatio: 4,
-          backgroundColor: "#ffffff",
-          width: NATIVE_W,
-          height: NATIVE_H,
-          style: { transform: "none", transformOrigin: "top left" },
-        });
-        pdf.addImage(png, "PNG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM);
+        const isSnipPage = !!el.querySelector('img[data-snip-image]');
+        if (isSnipPage) {
+          // Snip pages: PNG @ pixelRatio 2 (~192 DPI). Matches snip native res; preserves clarity without upscaling.
+          const png = await toPng(el, {
+            quality: 1,
+            pixelRatio: 2,
+            backgroundColor: "#ffffff",
+            width: NATIVE_W,
+            height: NATIVE_H,
+            style: { transform: "none", transformOrigin: "top left" },
+          });
+          pdf.addImage(png, "PNG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM);
+        } else {
+          // Text/results pages: JPEG @ pixelRatio 2, q=0.92. ~250–500 KB/page.
+          const jpeg = await toJpeg(el, {
+            quality: 0.92,
+            pixelRatio: 2,
+            backgroundColor: "#ffffff",
+            width: NATIVE_W,
+            height: NATIVE_H,
+            style: { transform: "none", transformOrigin: "top left" },
+          });
+          pdf.addImage(jpeg, "JPEG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, undefined, "FAST");
+        }
       }
 
       const patientName = approvedReports[0]?.patient_name || "Report";
@@ -491,15 +506,28 @@ const LimsReportView = () => {
       const NATIVE_H = Math.round((PAGE_HEIGHT_MM / 25.4) * 96);
       for (let i = 0; i < pageElements.length; i++) {
         const el = pageElements[i] as HTMLElement;
-        const png = await toPng(el, {
-          quality: 1,
-          pixelRatio: 4,
-          backgroundColor: "#ffffff",
-          width: NATIVE_W,
-          height: NATIVE_H,
-          style: { transform: "none", transformOrigin: "top left" },
-        });
-        imageUrls.push(png);
+        const isSnipPage = !!el.querySelector('img[data-snip-image]');
+        if (isSnipPage) {
+          const png = await toPng(el, {
+            quality: 1,
+            pixelRatio: 2,
+            backgroundColor: "#ffffff",
+            width: NATIVE_W,
+            height: NATIVE_H,
+            style: { transform: "none", transformOrigin: "top left" },
+          });
+          imageUrls.push(png);
+        } else {
+          const jpeg = await toJpeg(el, {
+            quality: 0.92,
+            pixelRatio: 2,
+            backgroundColor: "#ffffff",
+            width: NATIVE_W,
+            height: NATIVE_H,
+            style: { transform: "none", transformOrigin: "top left" },
+          });
+          imageUrls.push(jpeg);
+        }
       }
 
       // Restore styles after capturing
@@ -711,13 +739,15 @@ const LimsReportView = () => {
                 })()}
 
                 {page.type === "snip" && page.snipImage && (
-                  <div className="flex items-start justify-center h-full pt-1">
+                  <div className="flex items-start justify-center h-full pt-1 overflow-hidden">
                     <img
+                      data-snip-image="true"
                       src={page.snipImage}
                       alt="Outsourced Report"
                       className="max-w-full object-contain"
                       style={{
-                        maxHeight: `${PAGE_HEIGHT_MM - topMm - bottomMm - HEADER_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM - 4}mm`,
+                        // Reserve full margins + header + signature band + page number + safety gap so snip never overlaps signature.
+                        maxHeight: `${PAGE_HEIGHT_MM - topMm - bottomMm - HEADER_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM - 6}mm`,
                       }}
                     />
                   </div>
