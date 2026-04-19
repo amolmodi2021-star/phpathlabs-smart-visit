@@ -29,17 +29,6 @@ interface FailedRow {
   primary_key: string | null;
 }
 
-interface AbcConfig {
-  apiBaseUrl: string;
-  apiKey: string;
-  authHeaderName: string;
-  authHeaderPrefix: string;
-  fromNumber: string;
-  templateName: string;
-  campaignName: string;
-  mapping: Record<string, string>;
-}
-
 const MarketingRetry = () => {
   const queryClient = useQueryClient();
   const [retrying, setRetrying] = useState(false);
@@ -55,7 +44,7 @@ const MarketingRetry = () => {
       const { data, error } = await supabase
         .from("message_send_log")
         .select("id, patient_name, mobile_number, sent_at, failed_at, retry_count, retry_payload, message_type, umr_number, primary_key")
-        .in("message_type", ["Marketing", "ABC", "Abnormal History"])
+        .in("message_type", ["Marketing", "ABC", "Abnormal History", "Promotion"])
         .eq("delivery_status", "failed")
         .lt("retry_count", 1)
         .order("failed_at", { ascending: false, nullsFirst: false })
@@ -69,112 +58,47 @@ const MarketingRetry = () => {
 
   const fmt = (iso: string | null) => iso ? format(new Date(iso), "dd-MM-yyyy hh:mm a") : "—";
 
-  // Load ABC config once per retry batch
-  const loadAbcConfig = async (): Promise<AbcConfig | null> => {
-    const { data: settings } = await supabase
-      .from("app_settings")
-      .select("setting_key, setting_value")
-      .like("setting_key", "wa_global_%");
-    const cfg: Record<string, string> = {};
-    (settings || []).forEach((r: any) => { cfg[r.setting_key] = r.setting_value; });
+  // Count rows that cannot be retried because no payload was captured (legacy failures
+  // logged before the retry-payload snapshot fix).
+  const missingPayloadCount = failed.filter((r) => !r.retry_payload).length;
 
-    const { data: tmpl } = await supabase
-      .from("marketing_templates")
-      .select("whatsapp_template_name, body_mapping, api_base_url")
-      .eq("template_name", "ABC Card")
-      .maybeSingle();
+  // Dispatch one retry. Returns true if WhatsApp API accepted the message.
+  const retryOne = async (row: FailedRow): Promise<"sent" | "failed" | "skipped"> => {
+    const rp = row.retry_payload;
+    if (!rp) return "skipped";
 
-    const apiBaseUrl = cfg["wa_global_baseUrl"];
-    const apiKey = cfg["wa_global_apiKey"];
-    const templateName = tmpl?.whatsapp_template_name || "";
-    if (!apiBaseUrl || !apiKey || !templateName) return null;
-
-    let mapping: Record<string, string> = {};
-    try { mapping = tmpl?.body_mapping ? JSON.parse(tmpl.body_mapping) : {}; } catch { mapping = {}; }
-
-    return {
-      apiBaseUrl,
-      apiKey,
-      authHeaderName: cfg["wa_global_authHeaderName"] || "apikey",
-      authHeaderPrefix: cfg["wa_global_authHeaderPrefix"] || "",
-      fromNumber: cfg["wa_global_fromNumber"] || "",
-      templateName,
-      campaignName: tmpl?.api_base_url || "",
-      mapping,
-    };
-  };
-
-  const retryAbc = async (row: FailedRow, abcCfg: AbcConfig): Promise<boolean> => {
-    // Look up CRM contact for context
-    let contact: any = null;
-    if (row.primary_key) {
-      const { data } = await supabase
-        .from("crm_contacts")
-        .select("patient_name, mobile_number, umr_number, default_discount_pct")
-        .eq("primary_key", row.primary_key)
-        .maybeSingle();
-      contact = data;
-    }
-    const patientName = contact?.patient_name || row.patient_name || "";
-    const umr = contact?.umr_number || row.umr_number || "";
-    const discount = contact?.default_discount_pct ?? 20;
-    const rawMobile = (contact?.mobile_number || row.mobile_number || "").replace(/\D/g, "");
-    const normalizedMobile = rawMobile.length > 10 ? rawMobile.slice(-10) : rawMobile;
-    const toNumber = normalizedMobile ? `+91${normalizedMobile}` : "";
-    if (!toNumber) return false;
-
-    const components: Record<string, unknown> = {};
-    if (Object.keys(abcCfg.mapping).length > 0) {
-      const sortedKeys = Object.keys(abcCfg.mapping).sort((a, b) => Number(a) - Number(b));
-      const params: string[] = sortedKeys.map((key) => {
-        const field = abcCfg.mapping[key];
-        switch (field) {
-          case "Name": return patientName;
-          case "Mobile": return rawMobile;
-          case "UMR": return umr;
-          case "Discount %": return `${discount}%`;
-          case "Expiry Date": return "";
-          default: return "";
-        }
-      });
-      components.body = { params };
+    // Drip-originated rows (ABC, Abnormal History, Promotion) — call whatsapp-proxy directly
+    // with the snapshotted payload. This is the same code path the original drip used.
+    if (rp.kind === "drip-proxy") {
+      try {
+        const proxyRes = await supabase.functions.invoke("whatsapp-proxy", {
+          body: {
+            apiBaseUrl: rp.apiBaseUrl,
+            apiKey: rp.apiKey,
+            authHeaderName: rp.authHeaderName,
+            authHeaderPrefix: rp.authHeaderPrefix,
+            payload: rp.payload,
+          },
+        });
+        return !proxyRes.error && (proxyRes.data?.status ?? 500) < 400 ? "sent" : "failed";
+      } catch {
+        return "failed";
+      }
     }
 
-    const payload: Record<string, unknown> = {
-      from: abcCfg.fromNumber,
-      to: toNumber,
-      templateName: abcCfg.templateName,
-      campaignName: abcCfg.campaignName,
-      type: "template",
-    };
-    if (Object.keys(components).length > 0) payload.components = components;
-
-    try {
-      const proxyRes = await supabase.functions.invoke("whatsapp-proxy", {
-        body: {
-          apiBaseUrl: abcCfg.apiBaseUrl,
-          apiKey: abcCfg.apiKey,
-          authHeaderName: abcCfg.authHeaderName,
-          authHeaderPrefix: abcCfg.authHeaderPrefix,
-          payload,
-        },
-      });
-      return !proxyRes.error && (proxyRes.data?.status ?? 500) < 400;
-    } catch {
-      return false;
+    // Legacy Marketing-tab rows: send-marketing-message edge function with apiUrl shape.
+    if (rp.apiUrl) {
+      try {
+        const { data: resp, error } = await supabase.functions.invoke("send-marketing-message", {
+          body: rp,
+        });
+        return !error && resp && resp.status >= 200 && resp.status < 300 ? "sent" : "failed";
+      } catch {
+        return "failed";
+      }
     }
-  };
 
-  const retryMarketing = async (row: FailedRow): Promise<boolean> => {
-    if (!row.retry_payload || !row.retry_payload.apiUrl) return false;
-    try {
-      const { data: resp, error } = await supabase.functions.invoke("send-marketing-message", {
-        body: row.retry_payload,
-      });
-      return !error && resp && resp.status >= 200 && resp.status < 300;
-    } catch {
-      return false;
-    }
+    return "skipped";
   };
 
   const retryAll = async () => {
@@ -189,61 +113,56 @@ const MarketingRetry = () => {
     const activeDelay = await getMarketingSendDelayMs();
     setDelayMs(activeDelay);
 
-    // Pre-load ABC config if any ABC rows present
-    const hasAbc = failed.some((r) => r.message_type === "ABC");
-    const abcCfg = hasAbc ? await loadAbcConfig() : null;
-    if (hasAbc && !abcCfg) {
-      setRetrying(false);
-      return toast.error("WhatsApp API not configured for ABC retries. Configure in WhatsApp Settings.");
-    }
-
     for (let i = 0; i < failed.length; i++) {
       const row = failed[i];
 
-      // Mark as retried first (so even on hard error, it's not retried again)
-      await supabase
-        .from("message_send_log")
-        .update({ retry_count: 1 })
-        .eq("id", row.id);
+      const result = await retryOne(row);
 
-      let ok = false;
-      if (row.message_type === "Marketing") {
-        ok = await retryMarketing(row);
-      } else if (row.message_type === "ABC" && abcCfg) {
-        ok = await retryAbc(row, abcCfg);
-      } else {
-        // Abnormal History (manual share via wa.me) — cannot auto-retry
-        skipped++;
-        setProgress({ current: i + 1, total: failed.length });
-        if (i < failed.length - 1) await new Promise((r) => setTimeout(r, 100));
-        continue;
-      }
-
-      if (ok) {
+      if (result === "sent") {
         succeeded++;
         await supabase
           .from("message_send_log")
-          .update({ delivery_status: "sent", failed_at: null })
+          .update({ delivery_status: "sent", failed_at: null, retry_count: 1 })
+          .eq("id", row.id);
+      } else if (result === "failed") {
+        stillFailed++;
+        // Increment retry_count so the row drops out of the queue on next load
+        // (user can manually re-set if they want to try again later).
+        await supabase
+          .from("message_send_log")
+          .update({ retry_count: 1 })
           .eq("id", row.id);
       } else {
-        stillFailed++;
+        // "skipped" — no payload to retry from. Mark as retried so it doesn't
+        // keep showing in the queue forever.
+        skipped++;
+        await supabase
+          .from("message_send_log")
+          .update({ retry_count: 1 })
+          .eq("id", row.id);
       }
 
       setProgress({ current: i + 1, total: failed.length });
-      if (activeDelay > 0 && i < failed.length - 1) {
+      // Only delay between actual API calls (not skipped rows)
+      if (result !== "skipped" && activeDelay > 0 && i < failed.length - 1) {
         await new Promise((r) => setTimeout(r, activeDelay));
       }
     }
 
     setRetrying(false);
     refresh();
+    const skippedNote = skipped ? `, ${skipped} skipped (no payload)` : "";
     toast.success(
-      `Retried ${failed.length} — ${succeeded} succeeded, ${stillFailed} still failed${skipped ? `, ${skipped} skipped (manual)` : ""}`
+      `Retried ${failed.length} — ${succeeded} succeeded, ${stillFailed} still failed${skippedNote}`
     );
   };
 
   const typeBadge = (type: string) => {
-    const variant = type === "Marketing" ? "default" : type === "ABC" ? "secondary" : "outline";
+    const variant =
+      type === "Marketing" ? "default" :
+      type === "ABC" ? "secondary" :
+      type === "Promotion" ? "default" :
+      "outline";
     return <Badge variant={variant} className="text-[10px]">{type}</Badge>;
   };
 
@@ -269,7 +188,13 @@ const MarketingRetry = () => {
               <AlertDialogHeader>
                 <AlertDialogTitle>Retry {failed.length} failed messages?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Each message will be re-sent {delayMs === 0 ? "with no delay between sends" : `with a ${(delayMs / 1000).toString()}-second delay`} (configured in WhatsApp Settings). ABC cards rebuild the payload from CRM data; Marketing rows reuse the original payload. Abnormal History rows (manual shares) are skipped. Failed retries are removed from this list.
+                  Each message will be re-sent {activeDelayCopy(delayMs)} (configured in WhatsApp Settings).
+                  {missingPayloadCount > 0 && (
+                    <>
+                      {" "}<strong>{missingPayloadCount} of {failed.length}</strong> rows are legacy failures with no captured payload and will be skipped — new failures going forward are fully retryable.
+                    </>
+                  )}
+                  {" "}Retried rows are removed from this list regardless of outcome.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -303,7 +228,7 @@ const MarketingRetry = () => {
                   <TableHead>Mobile</TableHead>
                   <TableHead>UMR / Primary Key</TableHead>
                   <TableHead>Failed At</TableHead>
-                  <TableHead>Retry Count</TableHead>
+                  <TableHead>Retryable</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -315,7 +240,13 @@ const MarketingRetry = () => {
                     <TableCell className="font-mono text-xs">{r.mobile_number}</TableCell>
                     <TableCell className="font-mono text-xs">{r.primary_key || r.umr_number || "—"}</TableCell>
                     <TableCell className="text-xs">{fmt(r.failed_at || r.sent_at)}</TableCell>
-                    <TableCell>{r.retry_count}</TableCell>
+                    <TableCell>
+                      {r.retry_payload ? (
+                        <Badge variant="secondary" className="text-[10px]">Yes</Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-[10px]">No payload</Badge>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -326,5 +257,8 @@ const MarketingRetry = () => {
     </Card>
   );
 };
+
+const activeDelayCopy = (ms: number) =>
+  ms === 0 ? "with no delay between sends" : `with a ${(ms / 1000).toString()}-second delay`;
 
 export default MarketingRetry;
