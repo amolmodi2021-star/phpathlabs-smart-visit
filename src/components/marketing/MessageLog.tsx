@@ -117,6 +117,9 @@ const MessageLog = () => {
                     <TableCell className="whitespace-nowrap">
                       {row.read_at ? format(new Date(row.read_at), "dd-MM-yyyy hh:mm a") : "—"}
                     </TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {row.failed_at ? format(new Date(row.failed_at), "dd-MM-yyyy hh:mm a") : "—"}
+                    </TableCell>
                     <TableCell className="text-center">{daysAgo}</TableCell>
                   </TableRow>
                 );
