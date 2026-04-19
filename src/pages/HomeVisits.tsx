@@ -995,19 +995,30 @@ const HomeVisits = () => {
               <Button className="flex-1" onClick={async () => {
                 // Proceed to payment for primary visit (consolidated)
                 await qc.refetchQueries({ queryKey: ["home_visits"] });
-                const primaryVisit = qc.getQueryData<any[]>(["home_visits"])?.find((v: any) => v.id === multiPatientSession?.primaryVisitId);
                 const allIds = multiPatientSession?.allVisitIds || [];
+                const primaryId = multiPatientSession?.primaryVisitId;
+                let primaryVisit: any = visits.find((v: any) => v.id === primaryId);
+                let allVisits: any[] = allIds.map(id => visits.find((v: any) => v.id === id)).filter(Boolean);
+
+                // Fallback: fetch directly from Supabase if not in cache (e.g., visit outside current date window)
+                if (!primaryVisit && primaryId) {
+                  const { data } = await supabase.from("home_visits").select("*, estimates(*), phlebotomists(name)").eq("id", primaryId).maybeSingle();
+                  if (data) primaryVisit = data;
+                }
+                if (allVisits.length !== allIds.length && allIds.length > 0) {
+                  const { data } = await supabase.from("home_visits").select("*, estimates(*), phlebotomists(name)").in("id", allIds);
+                  if (data && data.length) allVisits = data;
+                }
+
                 setMultiPatientSession(null);
                 if (primaryVisit) {
-                  // For multi-patient, we'll process payment for each visit
-                  // But show consolidated payment dialog with primary visit first
                   if (allIds.length > 1) {
-                    // Store all visit IDs for consolidated payment
-                    const allVisits = allIds.map(id => qc.getQueryData<any[]>(["home_visits"])?.find((v: any) => v.id === id)).filter(Boolean);
                     setConsolidatedPaymentVisits(allVisits);
                   } else {
                     setPaymentVisit(primaryVisit);
                   }
+                } else {
+                  toast.error("Could not load visit — please refresh and try again.");
                 }
               }}>
                 Proceed to Payment →
