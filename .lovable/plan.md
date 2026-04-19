@@ -1,71 +1,54 @@
 
 
-## Root cause
+## Goal
+Add a **Failed Date & Time** column to the Message Log table that shows when a message failed (either at send time or via webhook status callback), and ensure the Marketing Retry tab continues to use the same data point so the two views stay in sync.
 
-AOC's status callbacks are arriving correctly at the webhook. The webhook tries two-pass matching:
-1. **Exact** match (e.g. `403ab5cf-...:1`)  
-2. **Base** fallback (strip `:1` → `403ab5cf-...`) — **but only when the exact pass returns 0 rows**
+## Current state
+- `message_send_log.delivery_status` can be `sent` / `delivered` / `read` / `failed`.
+- Failures are written in two places:
+  1. **`MarketingSender.tsx`** — on send error, inserts a row with `delivery_status: 'failed'` + `retry_payload` (used by Retry tab). The `sent_at` default is `now()` so it currently doubles as "failed at" for these rows. But there is NO dedicated `failed_at` column.
+  2. **`whatsapp-webhook/index.ts` `message_status` branch** — updates an existing row's `delivery_status` to whatever AOC reports (which includes `failed`). No timestamp is captured for the failure event today.
+- `MarketingRetry.tsx` already reads `delivery_status='failed'` + `message_type='Marketing'` + `retry_count<1`. No change needed to its query — it will keep working unchanged.
+- `MessageLog.tsx` shows Sent / Delivered / Read columns, no Failed column yet.
 
-Edge logs show **every single status update logs `wm_exact: 0, msl_exact: 0`** → the exact pass always misses (correct, AOC adds `:1`) → the code then enters the fallback branch which updates `message_send_log.delivery_status` to `delivered`/`read` on the base UUID row… **but it does NOT write the timestamp** (`delivered_at` / `read_at`).
+## Fix — three coordinated changes
 
-So `message_send_log.delivery_status` is being updated to `delivered`/`read` correctly. The problem is two-fold:
-
-### Problem 1 — `MessageLog.tsx` reads timestamps from the wrong place
-The component looks up `delivered_at` / `read_at` by joining to `webhook_messages` rows where `direction='outbound'` and `delivery_status in ('delivered','read')`. But the marketing message_ids **don't exist** in `webhook_messages` at all — only auto-reply outbound messages get inserted there. The webhook has NO row to update for marketing sends, so the `JOIN` returns `[]` → both columns show `—`.
-
-### Problem 2 — `message_send_log` has no timestamp columns for delivery/read
-Even if we read directly from `message_send_log`, the only timestamp on that table is `sent_at`. Status transitions are stored as a single `delivery_status` enum string with no `delivered_at` / `read_at` columns.
-
-Combined: **the system never persists a timestamp for the delivered or read events of marketing sends**, so the column will always render `—`.
-
-## Fix — two coordinated changes
-
-### 1. Schema: add timestamp columns to `message_send_log`
+### 1. Schema — add one column
 ```sql
-ALTER TABLE message_send_log
-  ADD COLUMN IF NOT EXISTS delivered_at timestamptz,
-  ADD COLUMN IF NOT EXISTS read_at      timestamptz;
+ALTER TABLE public.message_send_log
+  ADD COLUMN IF NOT EXISTS failed_at timestamptz;
 ```
-No backfill possible (timestamps weren't captured historically) — old rows stay `NULL` and render `—`. New status events from now on populate correctly.
+Old rows stay `NULL` and render `—`. Going forward, any failure event stamps this column.
 
-### 2. `supabase/functions/whatsapp-webhook/index.ts`
-In the `message_status` branch, when status is `delivered` or `read`, also stamp the corresponding column. Use the AOC `statuses.timestamp` (Unix seconds) when present, otherwise `now()`:
-
+### 2. Webhook — `supabase/functions/whatsapp-webhook/index.ts`
+In the `message_status` branch, when status is `failed` (AOC reports `failed` / `undelivered`), also stamp `failed_at`. Same timestamp source as delivered/read:
 ```ts
-const ts = statusData.timestamp
-  ? new Date(Number(statusData.timestamp) * 1000).toISOString()
-  : new Date().toISOString();
-
-const mslPayload: Record<string, any> = { delivery_status: status };
-if (status === "delivered") mslPayload.delivered_at = ts;
-if (status === "read")      mslPayload.read_at      = ts;
+if (status === "failed" || status === "undelivered") mslPayload.failed_at = ts;
 ```
-Apply the same payload in both the exact-match and the base-id fallback branches for `message_send_log` (the `webhook_messages` updates stay as-is — they only matter for inbound/auto-reply rows).
+Apply in both the exact-match and base-id fallback updates.
 
-### 3. `src/components/marketing/MessageLog.tsx`
-Stop the secondary `webhook_messages` lookup. Read `delivered_at` and `read_at` directly from the `message_send_log` row. Removes ~30 lines of dead JOIN code and a redundant query per page render.
+### 3. Marketing send-time failures — `src/components/marketing/MarketingSender.tsx`
+The two places that insert `delivery_status: 'failed'` rows (lines 158 and 181) also need to set `failed_at: new Date().toISOString()` so the new column is populated for client-side send failures (not just webhook-reported ones).
 
-```ts
-// remove the messageIds → webhook_messages query block entirely
-const enrichedRows = rows || [];   // delivered_at / read_at come from the row itself
-```
-The existing column rendering (`row.delivered_at ? format(...) : "—"`) already works against these fields once they exist.
+### 4. UI — `src/components/marketing/MessageLog.tsx`
+Add a new column **"Failed Date & Time"** between *Read Date & Time* and *Days Ago*:
+- Header: `<TableHead>Failed Date & Time</TableHead>`
+- Cell: `{row.failed_at ? format(new Date(row.failed_at), "dd-MM-yyyy hh:mm a") : "—"}`
+- Update `colSpan` from 11 to 12 in the Loading / Empty rows.
+- For visual clarity, wrap failed rows' status text in a red badge — actually keep it simple, just the timestamp column is enough.
 
-## Why this is the right fix
-- One source of truth: `message_send_log` owns the lifecycle of every outbound send.
-- Webhook writes both the status **and** its timestamp atomically, so the UI never has to reconcile two tables.
-- Removes one extra query per Message Log page load.
-- Old rows (no captured timestamps) gracefully render `—`; future rows show correct delivered/read times.
+## Retry tab — no changes needed
+`MarketingRetry.tsx` already filters `delivery_status='failed'` + `retry_count<1`. Adding `failed_at` doesn't affect this query. The same row that shows up as "failed" in Message Log is exactly the same row Retry sees → fully in sync, single source of truth.
 
 ## Out of scope
-- No change to inbound auto-reply logging.
-- No change to `whatsapp-proxy` or marketing send code.
-- No change to RLS — `message_send_log` already has the necessary policies.
-- No backfill of historical rows (data was never captured; cannot be recovered).
+- No change to `MarketingRetry.tsx` (already correct).
+- No change to `whatsapp-proxy` or `send-marketing-message` edge functions.
+- No backfill of historical failed rows (timestamp wasn't captured before — old rows render `—`). The Retry tab already shows `sent_at` as the failure time, which is acceptable for old rows.
+- No change to `logMessageSend()` helper (it only logs successful sends).
 
 ## Expected outcome
-- Send a marketing message → row appears in Message Log with `Sent` time only (as today).
-- ~5 seconds later AOC fires `delivered` callback → webhook writes `delivered_at` → row shows delivered time on next refresh.
-- When recipient opens the message → AOC fires `read` callback → `read_at` populated → column shows read time.
-- Both columns format as `dd-MM-yyyy hh:mm AM/PM` per project standard.
+- **Send a marketing campaign with bad numbers** → failed rows appear in Message Log with the new "Failed Date & Time" column populated; `sent_at` and `failed_at` will be ~identical for client-side failures.
+- **AOC reports a delivery failure later** → webhook updates the existing row → Failed column populates with AOC's timestamp on next refresh.
+- **Marketing Retry tab** continues to show the same failed rows; clicking Retry All works exactly as today.
+- All timestamps render as `dd-MM-yyyy hh:mm AM/PM` per project standard.
 
