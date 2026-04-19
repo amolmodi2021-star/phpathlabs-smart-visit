@@ -24,6 +24,7 @@ interface EditTest {
   discount_applicable: boolean;
   individual_discount_type: "percent" | "amount" | null;
   individual_discount_value: number;
+  item_type?: "test" | "profile" | "package";
 }
 
 interface AddPatientToVisitDialogProps {
@@ -114,6 +115,7 @@ const AddPatientToVisitDialog = ({ open, onClose, visitDate, visitTime, address,
       test_id: t.id, test_name: t.test_name, price: Number(t.price),
       fasting_required: t.fasting_required, discount_applicable: t.discount_applicable,
       individual_discount_type: null, individual_discount_value: 0,
+      item_type: (t as any).item_type || "test",
     }]);
     setTestSearch("");
     setTimeout(() => searchRef.current?.focus(), 50);
@@ -187,6 +189,7 @@ const AddPatientToVisitDialog = ({ open, onClose, visitDate, visitTime, address,
         individual_discount_type: t.individual_discount_type,
         individual_discount_value: t.individual_discount_value,
         discounted_price: t.discountedPrice,
+        item_type: (t as any).item_type || "test",
       }));
       const { error: testError } = await supabase.from("estimate_tests").insert(testRows);
       if (testError) throw testError;

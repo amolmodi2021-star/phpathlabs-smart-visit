@@ -11,6 +11,7 @@ import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, A
 import { toast } from "sonner";
 import { X, Search } from "lucide-react";
 import { getAllSelectableTests } from "@/lib/allSelectableTests";
+import { buildSampleTubeGroups } from "@/lib/sampleTubeGrouping";
 import { format, parse, isValid, differenceInYears } from "date-fns";
 import { logPaymentTransaction } from "@/lib/paymentTransactions";
 
@@ -22,6 +23,7 @@ interface EditTest {
   discount_applicable: boolean;
   individual_discount_type: "percent" | "amount" | null;
   individual_discount_value: number;
+  item_type?: "test" | "profile" | "package";
 }
 
 interface Props {
@@ -126,6 +128,7 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
       discount_applicable: t.discount_applicable,
       individual_discount_type: t.individual_discount_type || null,
       individual_discount_value: Number(t.individual_discount_value) || 0,
+      item_type: t.item_type || "test",
     }));
     setSelectedTests(existingTests);
     setTestSearch("");
@@ -163,6 +166,7 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
         fasting_required: t.fasting_required, discount_applicable: t.discount_applicable,
         individual_discount_type: t.individual_discount_type || null,
         individual_discount_value: Number(t.individual_discount_value) || 0,
+        item_type: t.item_type || "test",
       })));
     }
   }, [fetchedEstTests]);
@@ -179,6 +183,7 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
       test_id: t.id, test_name: t.test_name, price: Number(t.price),
       fasting_required: t.fasting_required, discount_applicable: t.discount_applicable,
       individual_discount_type: null, individual_discount_value: 0,
+      item_type: (t as any).item_type || "test",
     }]);
     setTestSearch("");
     setTimeout(() => searchRef.current?.focus(), 50);
@@ -261,6 +266,7 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
         individual_discount_type: t.individual_discount_type,
         individual_discount_value: t.individual_discount_value,
         discounted_price: t.discountedPrice,
+        item_type: (t as any).item_type || "test",
       }));
       await supabase.from("estimate_tests").insert(testRows);
 
@@ -315,41 +321,17 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
       } as any).select().single();
       if (error) throw error;
 
-      // Create sample_tubes for this registration (so it appears in Sample Collection)
+      // Create sample_tubes for this registration (expands profiles/checkups to leaf tests)
       try {
-        const testIds = calculations.testDetails.map((t: any) => t.test_id);
-        const { data: testRows } = await supabase.from("tests").select("id, sample_tube, tube_color, sample_type").in("id", testIds);
-        const testInfoMap: Record<string, any> = {};
-        (testRows || []).forEach((t: any) => { testInfoMap[t.id] = t; });
+        const groups = await buildSampleTubeGroups(
+          calculations.testDetails.map((t: any) => ({
+            test_id: t.test_id,
+            test_name: t.test_name,
+            item_type: (t as any).item_type || "test",
+          })),
+        );
 
-        const { data: suffixRows } = await supabase
-          .from("test_parameters")
-          .select("test_id, report_test_parameters!inner(custom_sample_suffix_enabled, custom_sample_suffix)")
-          .in("test_id", testIds)
-          .eq("report_test_parameters.custom_sample_suffix_enabled", true);
-        const suffixMap: Record<string, string> = {};
-        (suffixRows || []).forEach((tp: any) => {
-          const suffix = tp.report_test_parameters?.custom_sample_suffix;
-          if (tp.test_id && suffix) suffixMap[tp.test_id] = suffix;
-        });
-
-        const groupMap: Record<string, { tubeType: string; tubeColor: string; sampleType: string; suffix: string; testIds: string[]; testNames: string[] }> = {};
-        for (const t of calculations.testDetails) {
-          const info = testInfoMap[t.test_id] || {};
-          const tube = info.sample_tube || "DEFAULT";
-          const suffix = suffixMap[t.test_id] || "";
-          const groupKey = `${tube}||${suffix}`;
-          if (!groupMap[groupKey]) {
-            groupMap[groupKey] = {
-              tubeType: tube, tubeColor: info.tube_color || "", sampleType: info.sample_type || "",
-              suffix, testIds: [], testNames: [],
-            };
-          }
-          groupMap[groupKey].testIds.push(t.test_id);
-          groupMap[groupKey].testNames.push(t.test_name);
-        }
-
-        for (const g of Object.values(groupMap)) {
+        for (const g of groups) {
           const { data: uid } = await supabase.rpc("generate_sample_uid" as any);
           await supabase.from("sample_tubes" as any).insert({
             sample_uid: uid as string,
