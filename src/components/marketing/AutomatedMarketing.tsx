@@ -142,6 +142,41 @@ const AutomatedMarketing = () => {
     return () => clearInterval(interval);
   }, []);
 
+  // === SERVER-SIDE RUN: load any active drip_runs row + subscribe for live updates ===
+  const [activeRun, setActiveRun] = useState<DripRun | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadActive = async () => {
+      const { data } = await supabase
+        .from("drip_runs")
+        .select("*")
+        .in("status", ["queued", "running", "paused"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!cancelled) setActiveRun((data as DripRun) || null);
+    };
+    loadActive();
+
+    // Realtime subscription on drip_runs (any change triggers reload)
+    const channel = supabase
+      .channel("drip-runs-active")
+      .on("postgres_changes", { event: "*", schema: "public", table: "drip_runs" }, () => {
+        loadActive();
+      })
+      .subscribe();
+
+    // Fallback poll every 3 s in case realtime is misbehaving
+    const poll = setInterval(loadActive, 3000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(poll);
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   // Test mode
   const [testMobile, setTestMobile] = useState("");
   const isTrialMode = /^\d{10}$/.test(testMobile.replace(/\D/g, ""));
