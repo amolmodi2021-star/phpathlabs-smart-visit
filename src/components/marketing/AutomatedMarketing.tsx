@@ -1050,6 +1050,16 @@ const AutomatedMarketing = () => {
       logType: string,
       crmUpdate: Record<string, unknown> | null,
     ): Promise<boolean> => {
+      // Snapshot of everything needed to re-send this exact message later from the Retry tab.
+      const retryPayload: Record<string, unknown> = {
+        kind: "drip-proxy",
+        message_type: logType,
+        apiBaseUrl,
+        apiKey,
+        authHeaderName,
+        authHeaderPrefix,
+        payload,
+      };
       try {
         const proxyRes = await supabase.functions.invoke("whatsapp-proxy", {
           body: { apiBaseUrl, apiKey, authHeaderName, authHeaderPrefix, payload },
@@ -1067,17 +1077,17 @@ const AutomatedMarketing = () => {
               last_sent_date: new Date().toISOString(),
             }).eq("id", r.id);
           }
-          await logMessageSend(mob, r.patient_name, logType, r.umr_number, r.primary_key, messageId, "sent");
+          await logMessageSend(mob, r.patient_name, logType, r.umr_number, r.primary_key, null, messageId);
           return true;
         } else {
           await logDripAction(filter, r, "failed", "wa_api_error");
-          await logMessageSend(mob, r.patient_name, logType, r.umr_number, r.primary_key, messageId, "failed");
+          await logMessageSend(mob, r.patient_name, logType, r.umr_number, r.primary_key, null, "failed", retryPayload);
           return false;
         }
       } catch (err) {
         const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
         await logDripAction(filter, r, "failed", "wa_exception");
-        await logMessageSend(mob, r.patient_name, logType, r.umr_number, r.primary_key, null, "failed");
+        await logMessageSend(mob, r.patient_name, logType, r.umr_number, r.primary_key, null, "failed", retryPayload);
         return false;
       }
     };

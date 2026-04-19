@@ -3,6 +3,16 @@ import { supabase } from "@/integrations/supabase/client";
 /**
  * Log every outgoing WhatsApp message to the universal message_send_log table.
  * Fire-and-forget — errors are silently ignored so they don't break the send flow.
+ *
+ * Backward-compatible signature: existing callers passing (mobile, name, type)
+ * or (mobile, name, type, umr, primaryKey, messageContent, messageId) still work.
+ *
+ * Drip/marketing callers pass a 7th arg `messageIdOrStatus` that may be either a
+ * messageId OR a status string ("sent" / "failed"). We auto-detect: if it's
+ * exactly "sent" or "failed", it's treated as deliveryStatus; otherwise as messageId.
+ *
+ * 8th arg `retryPayload` is the snapshot needed by the Retry tab to re-send the
+ * same message later. Pass it ONLY on failure.
  */
 export async function logMessageSend(
   mobile: string,
@@ -11,22 +21,39 @@ export async function logMessageSend(
   umrNumber?: string | null,
   primaryKey?: string | null,
   messageContent?: string | null,
-  messageId?: string | null,
+  messageIdOrStatus?: string | null,
+  retryPayload?: Record<string, unknown> | null,
 ) {
   const mobile10 = (mobile || "").replace(/\D/g, "").slice(-10);
   if (!mobile10) return;
 
+  // Auto-detect: 7th arg can be a status keyword or a messageId.
+  let deliveryStatus: "sent" | "failed" = "sent";
+  let messageId: string | null = null;
+  if (messageIdOrStatus === "sent" || messageIdOrStatus === "failed") {
+    deliveryStatus = messageIdOrStatus;
+  } else if (messageIdOrStatus) {
+    messageId = messageIdOrStatus;
+  }
+
+  const insertRow: Record<string, unknown> = {
+    mobile_number: mobile10,
+    patient_name: patientName || null,
+    message_type: messageType,
+    umr_number: umrNumber || null,
+    primary_key: primaryKey || null,
+    message_content: messageContent || null,
+    message_id: messageId,
+    delivery_status: deliveryStatus,
+  };
+  if (deliveryStatus === "failed") {
+    insertRow.failed_at = new Date().toISOString();
+    if (retryPayload) insertRow.retry_payload = retryPayload;
+    insertRow.retry_count = 0;
+  }
+
   try {
-    await supabase.from("message_send_log").insert({
-      mobile_number: mobile10,
-      patient_name: patientName || null,
-      message_type: messageType,
-      umr_number: umrNumber || null,
-      primary_key: primaryKey || null,
-      message_content: messageContent || null,
-      message_id: messageId || null,
-      delivery_status: "sent",
-    } as any);
+    await supabase.from("message_send_log").insert(insertRow as any);
   } catch {
     // silently ignore — logging must never break the send flow
   }
