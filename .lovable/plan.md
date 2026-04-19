@@ -1,47 +1,45 @@
 
 
-## Goal
-Revert Automated/Drip sending to **client-side only** (as it was before the server-side migration). Add a browser-close warning when a send is in progress so the user doesn't accidentally interrupt it.
+## Problem (root cause)
+Retry shows messages but the WhatsApp API never receives anything because:
 
-## Changes
+1. **Drip-originated failures have `retry_payload = NULL`** — `AutomatedMarketing` calls `logMessageSend(..., "failed")` which only inserts the row; it never snapshots the payload. (Confirmed: all 202 failed ABC rows + 2 Abnormal History rows in the DB have `retry_payload IS NULL`.)
+2. **`MarketingRetry` Marketing path** returns `false` immediately when `retry_payload?.apiUrl` is missing — no API call happens.
+3. **`MarketingRetry` ABC path** rebuilds from a hard-coded `"ABC Card"` template that may not exist; for drip-ABC failures this silently fails.
+4. **Abnormal History** is hard-coded to "skip" — but drip-originated Abnormal History rows actually went through the WhatsApp proxy and should be retryable.
+5. **`retry_count` is set to 1 BEFORE the send attempt** (line 204) — so even if nothing reaches WhatsApp, the row vanishes from the queue forever, masking the bug.
 
-### 1. `src/components/marketing/AutomatedMarketing.tsx`
-- **Remove** the server-side handoff: no more `drip_runs` insert, no `supabase.functions.invoke("run-drip-campaign", …)`.
-- **Remove** the persistent progress card driven by `drip_runs` realtime subscription, the resume-on-mount query, and the Cancel-via-DB flag.
-- **Restore** the original client-side send loop (the version that existed before the previous server-side change), keeping:
-  - Global delay via `getMarketingSendDelayMs()`.
-  - CRM `last_sent_type`/`last_sent_date` written **only on successful proxy response** (preserve the correctness fix from the previous round so failures don't get marked sent).
-  - Existing trial-mode path unchanged.
-  - Logging to `message_send_log` (sent/failed) unchanged.
-- **Local progress UI** comes back: React state drives the progress bar, sent/failed/skipped counters, current phase, and Cancel button (sets a local `cancelRef.current = true` checked each iteration).
+## Fix
 
-### 2. Browser-close warning (in-progress guard)
-- Add a `useEffect` in `AutomatedMarketing.tsx` that, while `isSending === true`, attaches a `beforeunload` listener:
-  ```ts
-  const handler = (e: BeforeUnloadEvent) => {
-    e.preventDefault();
-    e.returnValue = "Sending is in progress. Closing this tab will stop the campaign. Are you sure?";
-    return e.returnValue;
-  };
-  window.addEventListener("beforeunload", handler);
-  return () => window.removeEventListener("beforeunload", handler);
-  ```
-- Browsers display their native confirmation dialog (custom text is ignored by modern browsers, but the prompt still appears). This covers tab close, window close, refresh, and navigation away.
-- Listener is removed automatically when sending completes or is cancelled.
+### 1. Snapshot payload on every drip failure — `src/components/marketing/AutomatedMarketing.tsx`
+Wherever the drip catches a WhatsApp API error (the three send paths: ABC, Abnormal History, Promotion at ~lines 970-1080 and the loyalty card path at ~lines 990-1000), immediately after `logMessageSend(..., "failed", ...)` call, **also update that just-inserted row** with:
+- `failed_at = now()`
+- `retry_payload = { kind: "drip-abc" | "drip-abnormal" | "drip-promotion" | "drip-loyalty", apiBaseUrl, apiKey, authHeaderName, authHeaderPrefix, payload }`
 
-### 3. Cleanup
-- **Delete** edge function `supabase/functions/run-drip-campaign/` (no longer needed) — call `supabase--delete_edge_functions` to remove the deployed copy.
-- **Drop** the `drip_runs` table via a new migration (it's only used by the now-removed code; safe to drop). Also remove from `supabase_realtime` publication.
-- Remove any `drip_runs` block from `supabase/config.toml` if present.
+The cleanest path: extend `logMessageSend` (in `src/lib/messageLog.ts`) with optional `failedAt` + `retryPayload` parameters and pass them in. Inspect the file first to confirm signature.
 
-### 4. Out of scope
-- Marketing → Send Messages tab and Retry tab (already client-side; unchanged).
-- Trial mode (already client-side; unchanged).
-- Global `wa_global_delayMs` setting (kept; still used).
+### 2. Backfill button (one-time helper) — optional
+Add a small "Rebuild from CRM" path in `MarketingRetry.tsx` for legacy rows that have `retry_payload IS NULL`. The existing ABC rebuild logic stays as a fallback when payload is missing, but corrected:
+- Drop the hard-coded `"ABC Card"` template lookup. Instead, find the most recent `marketing_templates` row referenced by drip filters, OR read the active drip campaign config (`drip_loyalty_*` settings) — same source of truth the drip engine uses. Pick the right template based on `message_type`.
+
+### 3. Fix Retry orchestration — `src/components/marketing/MarketingRetry.tsx`
+- **Move `retry_count = 1` to AFTER the send attempt** so failed retries can be diagnosed (or keep at 0 on hard error so user can retry again).
+- **Generic dispatcher**: if `retry_payload?.kind` exists, use it to call `whatsapp-proxy` directly with the snapshotted payload — this works for all three drip types (ABC, Abnormal History, Promotion) and for legacy `Marketing` rows once they're written with the same shape.
+- **Legacy Marketing rows** (with `apiUrl` field): keep current path via `send-marketing-message`.
+- **Remove the "Abnormal History → skip"** branch. Only skip if `retry_payload IS NULL` AND we can't rebuild it.
+- Show clearer toast counts: "Retried N — X succeeded, Y still failed, Z skipped (no payload)".
+
+### 4. Self-check before "Retry All"
+At start of `retryAll`, count rows with `retry_payload IS NULL`. If >0, show a warning in the AlertDialog: "K of N rows are missing retry payloads (legacy failures) and will be skipped. New failures going forward will be fully retryable."
+
+## Out of scope
+- Retroactively rebuilding payloads for the existing 202 legacy failures (no source data captured at the time). They will remain skipped with a clear toast.
+- Changes to `MarketingSender.tsx` (already snapshots `retry_payload` correctly).
+- Edge function changes to `whatsapp-proxy` / `send-marketing-message`.
 
 ## Expected outcome
-- Click **Send** in Automated tab → sending runs in the browser tab as before, with live progress.
-- If the user tries to close the tab / refresh / navigate away while sending, the browser shows a native "Leave site?" warning.
-- If the user confirms leaving, sending stops (same as the original client-side behavior).
-- No `drip_runs` row written; edge function gone.
+- Any **future** failure from Marketing tab, Drip tab, or any send path is logged with a complete `retry_payload` snapshot.
+- Clicking **Retry All** re-invokes the WhatsApp proxy with the exact original payload — messages actually reach WhatsApp and AOC dashboard shows them.
+- `retry_count` increments only after a real attempt (success or hard fail), so failed retries are visible (not silently hidden).
+- Legacy rows with no payload are clearly reported as "skipped" instead of pretending they were tried.
 
