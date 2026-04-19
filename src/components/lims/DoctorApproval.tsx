@@ -160,7 +160,7 @@ const DoctorApproval = () => {
       let query = supabase.from("patient_registrations")
         .select("id, invoice_number, patient_name, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, gender, dob, created_at, updated_at, bill_cancelled, doctor_name")
         .in("status", ["partial_verified", "verified", "partially_approved", "approved", "partially_dispatched", "dispatched"])
-        .eq("bill_cancelled", false).order("is_stat", { ascending: false }).order("updated_at", { ascending: false })
+        .eq("bill_cancelled", false).order("is_stat", { ascending: false }).order("invoice_number", { ascending: false })
         .range(daPage * DA_PAGE_SIZE, daPage * DA_PAGE_SIZE + DA_PAGE_SIZE - 1);
       if (debouncedSearch) query = query.or(`patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%,umr_number.ilike.%${debouncedSearch}%`);
       const { data } = await query;

@@ -188,7 +188,7 @@ const ResultsEntry = () => {
         .in("status", ["sample_accepted", "partially_accepted", "processing", "partial_processing", "processed", "partial_verified", "verified", "partially_approved", "approved", "partially_dispatched", "dispatched"])
         .eq("bill_cancelled", false)
         .order("is_stat", { ascending: false })
-        .order("updated_at", { ascending: false })
+        .order("invoice_number", { ascending: false })
         .range(rePage * RE_PAGE_SIZE, rePage * RE_PAGE_SIZE + RE_PAGE_SIZE - 1);
       if (debouncedSearch) {
         query = query.or(
