@@ -1746,29 +1746,6 @@ const AutomatedMarketing = () => {
         </Card>
       </div>
 
-      {/* Persistent server-side run progress (survives browser close) */}
-      {activeRun && (activeRun.status === "queued" || activeRun.status === "running") && (
-        <div className="space-y-2 p-3 border-2 border-primary rounded-lg bg-primary/5">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold flex items-center gap-2">
-                <span className="inline-block h-2 w-2 rounded-full bg-primary animate-pulse" />
-                Server-side campaign {activeRun.status === "queued" ? "queued" : "running"} — safe to close this tab
-              </p>
-              <p className="text-xs text-muted-foreground truncate mt-1">
-                {activeRun.current_phase || activeRun.campaign_label || ""}
-              </p>
-            </div>
-            <Button size="sm" variant="destructive" onClick={cancelActiveRun} disabled={activeRun.cancel_requested}>
-              {activeRun.cancel_requested ? "Cancelling..." : "⛔ Cancel"}
-            </Button>
-          </div>
-          <Progress value={activeRun.total_count > 0 ? Math.round((activeRun.current_index / activeRun.total_count) * 100) : 0} />
-          <p className="text-xs text-muted-foreground">
-            {activeRun.current_index}/{activeRun.total_count} processed — Sent: {activeRun.sent_count}, Failed: {activeRun.failed_count}, Skipped: {activeRun.skipped_count}
-          </p>
-        </div>
-      )}
 
       {sending && (
         <div className="space-y-2 p-3 border rounded-lg bg-muted/50">
