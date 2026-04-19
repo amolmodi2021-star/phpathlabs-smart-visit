@@ -75,6 +75,7 @@ const MessageLog = () => {
               <TableHead>Sent Date & Time</TableHead>
               <TableHead>Delivered Date & Time</TableHead>
               <TableHead>Read Date & Time</TableHead>
+              <TableHead>Failed Date & Time</TableHead>
               <TableHead>Days Ago</TableHead>
             </TableRow>
           </TableHeader>
