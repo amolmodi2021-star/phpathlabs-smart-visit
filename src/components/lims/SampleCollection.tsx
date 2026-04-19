@@ -131,7 +131,8 @@ const SampleCollection = () => {
         .select("*")
         .in("id", regIds)
         .eq("bill_cancelled", false)
-        .order("created_at", { ascending: false });
+        .order("is_stat", { ascending: false })
+        .order("invoice_number", { ascending: false });
       if (debouncedSearch) {
         query = query.or(
           `patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%`
@@ -139,9 +140,7 @@ const SampleCollection = () => {
       }
       const { data, error } = await query;
       if (error) throw error;
-      const rows = (data || []) as any[];
-      rows.sort((a: any, b: any) => (b.is_stat ? 1 : 0) - (a.is_stat ? 1 : 0));
-      return rows;
+      return (data || []) as any[];
     },
   });
 

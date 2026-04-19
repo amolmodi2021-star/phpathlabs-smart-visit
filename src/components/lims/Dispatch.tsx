@@ -91,7 +91,7 @@ const Dispatch = () => {
         .gte("created_at", dateFrom.toISOString())
         .lte("created_at", dateTo.toISOString())
         .order("is_stat", { ascending: false })
-        .order("updated_at", { ascending: false })
+        .order("invoice_number", { ascending: false })
         .range(dispatchPage * DISPATCH_PAGE_SIZE, dispatchPage * DISPATCH_PAGE_SIZE + DISPATCH_PAGE_SIZE - 1);
       if (debouncedSearch) query = query.or(`patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%,umr_number.ilike.%${debouncedSearch}%`);
       const { data } = await query;
@@ -261,7 +261,7 @@ const Dispatch = () => {
       const aActivestat = a.registration.is_stat && a.completionStatus !== "all_done" ? 1 : 0;
       const bActivestat = b.registration.is_stat && b.completionStatus !== "all_done" ? 1 : 0;
       if (bActivestat !== aActivestat) return bActivestat - aActivestat;
-      return new Date(b.registration.updated_at).getTime() - new Date(a.registration.updated_at).getTime();
+      return String(b.registration.invoice_number || "").localeCompare(String(a.registration.invoice_number || ""));
     });
   }, [dispatchEntries]);
 

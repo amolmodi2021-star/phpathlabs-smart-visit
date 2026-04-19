@@ -126,7 +126,7 @@ const ResultVerification = () => {
         .in("status", ["processing", "partial_processing", "processed", "partial_verified", "verified", "partially_approved", "approved", "partially_dispatched", "dispatched"])
         .eq("bill_cancelled", false)
         .order("is_stat", { ascending: false })
-        .order("updated_at", { ascending: false })
+        .order("invoice_number", { ascending: false })
         .range(rvPage * RV_PAGE_SIZE, rvPage * RV_PAGE_SIZE + RV_PAGE_SIZE - 1);
       if (debouncedSearch) {
         query = query.or(
