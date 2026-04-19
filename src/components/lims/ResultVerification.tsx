@@ -407,7 +407,7 @@ const ResultVerification = () => {
       }
       return { registration: reg, parameters, snipOnlyTests };
     }).filter(e => e.parameters.length > 0 || e.snipOnlyTests.length > 0);
-  }, [registrations, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails]);
+  }, [registrations, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails, leafIdsByReg]);
 
   // Calculate flag
   const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string): string => {
