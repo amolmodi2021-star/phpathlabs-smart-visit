@@ -1,45 +1,60 @@
 
 
-## Problem (root cause)
-Retry shows messages but the WhatsApp API never receives anything because:
+## Goal
+On **Retry All**, regenerate the actual ABC card / Abnormal History card from the live CRM data and the active drip configuration, then send via `whatsapp-proxy` — so retries work even when the original `retry_payload` is missing (legacy rows) or contains a stale loyalty card image URL that storage cleanup has purged.
 
-1. **Drip-originated failures have `retry_payload = NULL`** — `AutomatedMarketing` calls `logMessageSend(..., "failed")` which only inserts the row; it never snapshots the payload. (Confirmed: all 202 failed ABC rows + 2 Abnormal History rows in the DB have `retry_payload IS NULL`.)
-2. **`MarketingRetry` Marketing path** returns `false` immediately when `retry_payload?.apiUrl` is missing — no API call happens.
-3. **`MarketingRetry` ABC path** rebuilds from a hard-coded `"ABC Card"` template that may not exist; for drip-ABC failures this silently fails.
-4. **Abnormal History** is hard-coded to "skip" — but drip-originated Abnormal History rows actually went through the WhatsApp proxy and should be retryable.
-5. **`retry_count` is set to 1 BEFORE the send attempt** (line 204) — so even if nothing reaches WhatsApp, the row vanishes from the queue forever, masking the bug.
+## Why this matters
+- Legacy failed rows (e.g. `7874559630`) have `retry_payload = NULL` → currently shown as "No payload" and skipped.
+- Even rows WITH a snapshotted payload reference an `imageUrl` from `loyalty-cards`/`outsourced-snips` storage that the daily cleanup cron deletes → retry succeeds at API level but WhatsApp rejects the broken image link.
+- Source of truth for cards is already in CRM (`crm_contacts`, `crm_abnormal_tests`) + drip config (`app_settings`, `loyalty_card_templates`, `abnormal_card_templates`, `marketing_templates`). We rebuild from there.
 
-## Fix
+## Approach
 
-### 1. Snapshot payload on every drip failure — `src/components/marketing/AutomatedMarketing.tsx`
-Wherever the drip catches a WhatsApp API error (the three send paths: ABC, Abnormal History, Promotion at ~lines 970-1080 and the loyalty card path at ~lines 990-1000), immediately after `logMessageSend(..., "failed", ...)` call, **also update that just-inserted row** with:
-- `failed_at = now()`
-- `retry_payload = { kind: "drip-abc" | "drip-abnormal" | "drip-promotion" | "drip-loyalty", apiBaseUrl, apiKey, authHeaderName, authHeaderPrefix, payload }`
+### 1. Extract shared card-rendering helpers — `src/lib/dripCardSenders.ts` (NEW)
+Move 3 self-contained helpers out of `AutomatedMarketing.tsx` into a reusable module (no UI/state dependencies):
+- `sendABCCard({ contact, cfg, abcTmpl, cardTemplates }) → { ok, retryPayload }`
+- `sendAbnormalCard({ contact, cfg, abnTmpl, abnormalTemplates }) → { ok, retryPayload }`
+- `sendPromotion({ contact, cfg, template }) → { ok, retryPayload }`
 
-The cleanest path: extend `logMessageSend` (in `src/lib/messageLog.ts`) with optional `failedAt` + `retryPayload` parameters and pass them in. Inspect the file first to confirm signature.
+Each helper: looks up the active template, regenerates the card via existing `generateAndUploadCard` / `generateAbnormalCardForDrip` (also moved), calls `whatsapp-proxy`, returns success flag + a fresh retry payload.
 
-### 2. Backfill button (one-time helper) — optional
-Add a small "Rebuild from CRM" path in `MarketingRetry.tsx` for legacy rows that have `retry_payload IS NULL`. The existing ABC rebuild logic stays as a fallback when payload is missing, but corrected:
-- Drop the hard-coded `"ABC Card"` template lookup. Instead, find the most recent `marketing_templates` row referenced by drip filters, OR read the active drip campaign config (`drip_loyalty_*` settings) — same source of truth the drip engine uses. Pick the right template based on `message_type`.
+`AutomatedMarketing.tsx` is refactored to use these helpers (no behaviour change in drip path, including CRM-update-only-on-success and message-log writes).
 
-### 3. Fix Retry orchestration — `src/components/marketing/MarketingRetry.tsx`
-- **Move `retry_count = 1` to AFTER the send attempt** so failed retries can be diagnosed (or keep at 0 on hard error so user can retry again).
-- **Generic dispatcher**: if `retry_payload?.kind` exists, use it to call `whatsapp-proxy` directly with the snapshotted payload — this works for all three drip types (ABC, Abnormal History, Promotion) and for legacy `Marketing` rows once they're written with the same shape.
-- **Legacy Marketing rows** (with `apiUrl` field): keep current path via `send-marketing-message`.
-- **Remove the "Abnormal History → skip"** branch. Only skip if `retry_payload IS NULL` AND we can't rebuild it.
-- Show clearer toast counts: "Retried N — X succeeded, Y still failed, Z skipped (no payload)".
+### 2. Rewrite `MarketingRetry.tsx` retry orchestration
+For each failed row, branch on `message_type`:
+- `"ABC"` → look up CRM contact by `primary_key` (or by `mobile_number`); call `sendABCCard`. Skip if contact not found.
+- `"Abnormal History"` → look up CRM contact + `crm_abnormal_tests` rows; call `sendAbnormalCard`. Skip if no abnormal history.
+- `"Promotion"` → reuse the snapshotted `retry_payload` if present (no card to regenerate), else skip.
+- `"Marketing"` (legacy bulk send tab) → keep the existing `send-marketing-message` path.
 
-### 4. Self-check before "Retry All"
-At start of `retryAll`, count rows with `retry_payload IS NULL`. If >0, show a warning in the AlertDialog: "K of N rows are missing retry payloads (legacy failures) and will be skipped. New failures going forward will be fully retryable."
+`retry_payload` stops being a hard requirement for ABC / Abnormal History retries. It's only required for `Promotion` and legacy `Marketing`.
+
+### 3. Update the "Retryable" column + AlertDialog warning
+- Recompute the "skipped count" based on new rules: row is non-retryable only if (a) type is Promotion/Marketing AND no payload, or (b) ABC/Abnormal History but the CRM lookup will fail (we approximate by checking row has `mobile_number` or `primary_key` — actual contact lookup happens at retry time).
+- Update the badge: ABC/Abnormal rows always show "Yes (regenerate)".
+- Reword AlertDialog: "ABC and Abnormal History rows will be regenerated from CRM. Promotion/Marketing rows without payload (K of N) will be skipped."
+
+### 4. Increment + status semantics (unchanged from previous round)
+- Increment `retry_count` only after the attempt finishes.
+- On success → `delivery_status='sent'`, clear `failed_at`.
+- On hard failure → keep `failed`, increment count; row stays in queue until `retry_count >= maxRetries`.
+- On skip (no contact found / no abnormal history) → set `retry_count = maxRetries` to remove from queue, log toast as "skipped".
+
+### 5. Toast clarity
+`Retried N — X succeeded, Y still failed, Z skipped (no CRM data / no payload)`
 
 ## Out of scope
-- Retroactively rebuilding payloads for the existing 202 legacy failures (no source data captured at the time). They will remain skipped with a clear toast.
-- Changes to `MarketingSender.tsx` (already snapshots `retry_payload` correctly).
-- Edge function changes to `whatsapp-proxy` / `send-marketing-message`.
+- Changes to drip preview/eligibility logic.
+- Changes to `whatsapp-proxy` / `send-marketing-message` edge functions.
+- Backfilling old `retry_payload` rows (no longer needed — regeneration replaces them).
+
+## Files
+- NEW: `src/lib/dripCardSenders.ts` — shared ABC/Abnormal/Promotion senders.
+- EDIT: `src/components/marketing/AutomatedMarketing.tsx` — switch to new helpers (behaviour-preserving refactor of three branches in `handleSend`).
+- EDIT: `src/components/marketing/MarketingRetry.tsx` — new dispatcher branching by `message_type`, regenerate cards on retry, updated badges/dialog/toast.
 
 ## Expected outcome
-- Any **future** failure from Marketing tab, Drip tab, or any send path is logged with a complete `retry_payload` snapshot.
-- Clicking **Retry All** re-invokes the WhatsApp proxy with the exact original payload — messages actually reach WhatsApp and AOC dashboard shows them.
-- `retry_count` increments only after a real attempt (success or hard fail), so failed retries are visible (not silently hidden).
-- Legacy rows with no payload are clearly reported as "skipped" instead of pretending they were tried.
+- Click **Retry All** with `7874559630` in queue → CRM is queried, ABC card freshly rendered and uploaded, fresh image URL sent to WhatsApp proxy → message reaches the patient.
+- Future failures of any kind retry the same way — no dependency on stale snapshot URLs or storage retention.
+- Promotion/legacy Marketing rows without payload still cleanly reported as "skipped".
 
