@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Upload, Send, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { parseExcelFile } from "@/lib/excel";
+import { getMarketingSendDelayMs } from "@/lib/marketingDelay";
 
 interface Variable {
   name: string;
@@ -24,7 +25,6 @@ const MarketingSender = () => {
   const [excelData, setExcelData] = useState<Record<string, unknown>[]>([]);
   const [variableMapping, setVariableMapping] = useState<Record<string, string>>({});
   const [mobileColumn, setMobileColumn] = useState("");
-  const [delayMs, setDelayMs] = useState(3000);
   const [sending, setSending] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
 
@@ -89,6 +89,9 @@ const MarketingSender = () => {
       toast.error("WhatsApp API settings not configured. Configure in Loyalty Cards → WhatsApp API Settings.");
       return;
     }
+
+    // Load global delay (configured in WhatsApp Settings)
+    const delayMs = await getMarketingSendDelayMs();
 
     // Create campaign record
     const { data: campaign, error: campErr } = await supabase.from("marketing_campaigns").insert({
@@ -193,7 +196,7 @@ const MarketingSender = () => {
 
       setProgress({ current: i + 1, total: excelData.length });
 
-      if (i < excelData.length - 1) {
+      if (delayMs > 0 && i < excelData.length - 1) {
         await new Promise((r) => setTimeout(r, delayMs));
       }
     }
@@ -295,11 +298,7 @@ const MarketingSender = () => {
             </div>
           )}
 
-          {/* Delay */}
-          <div>
-            <Label>Delay Between Messages (ms)</Label>
-            <Input type="number" value={delayMs} onChange={(e) => setDelayMs(Number(e.target.value))} min={1000} step={500} />
-          </div>
+          {/* Delay is configured globally in WhatsApp Settings → API Settings */}
 
           {/* Preview */}
           {excelData.length > 0 && (
