@@ -325,11 +325,7 @@ const HomeVisits = () => {
 
 
   const openEditDialog = (v: any) => {
-    if (v.status === "Registered") {
-      toast.error("This visit has been registered. Changes are no longer allowed.");
-      return;
-    }
-    if (v.status === "Completed") {
+    if (v.status === "Completed" || v.status === "Registered") {
       setPendingEditVisit(v);
       setEditPasswordDialog(true);
     } else {
@@ -1131,7 +1127,7 @@ const HomeVisits = () => {
         open={editPasswordDialog}
         onOpenChange={(o) => { setEditPasswordDialog(o); if (!o) setPendingEditVisit(null); }}
         onSuccess={() => { setEditVisit(pendingEditVisit); setPendingEditVisit(null); }}
-        description="Enter password to edit a completed visit record."
+        description="Enter password to edit a completed or registered visit record."
       />
 
       {/* Password dialog for editing payment details of completed visits */}
