@@ -17,6 +17,7 @@ import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { printBarcodes } from "@/lib/barcodePrint";
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
+import { buildSampleTubeGroups, TubeGroupingItem } from "@/lib/sampleTubeGrouping";
 
 const TUBE_COLOR_MAP: Record<string, string> = {
   red: "#e53e3e", lavender: "#b794f4", purple: "#9f7aea", yellow: "#ecc94b",
@@ -86,42 +87,6 @@ const SampleCollection = () => {
     },
   });
 
-  // Sync tube types from latest test definitions
-  useEffect(() => {
-    if (allTubes.length === 0) return;
-    const syncTubeTypes = async () => {
-      const allTestIds = [...new Set(allTubes.flatMap(t => t.test_ids || []))];
-      if (allTestIds.length === 0) return;
-      const { data: tests } = await supabase
-        .from("tests")
-        .select("id, sample_tube, tube_color, sample_type")
-        .in("id", allTestIds);
-      if (!tests || tests.length === 0) return;
-      const testMap = Object.fromEntries(tests.map((t: any) => [t.id, t]));
-      const updates: { id: string; tube_type: string | null; tube_color: string | null; sample_type: string | null }[] = [];
-      for (const tube of allTubes) {
-        const firstTestId = (tube.test_ids || [])[0];
-        if (!firstTestId) continue;
-        const testDef = testMap[firstTestId];
-        if (!testDef) continue;
-        const newTubeType = testDef.sample_tube || null;
-        const newTubeColor = testDef.tube_color || null;
-        const newSampleType = testDef.sample_type || null;
-        if (tube.tube_type !== newTubeType || tube.tube_color !== newTubeColor || tube.sample_type !== newSampleType) {
-          updates.push({ id: tube.id, tube_type: newTubeType, tube_color: newTubeColor, sample_type: newSampleType });
-        }
-      }
-      if (updates.length === 0) return;
-      for (const u of updates) {
-        await supabase.from("sample_tubes" as any)
-          .update({ tube_type: u.tube_type, tube_color: u.tube_color, sample_type: u.sample_type } as any)
-          .eq("id", u.id);
-      }
-      qc.invalidateQueries({ queryKey: ["sample_tubes_collection"] });
-    };
-    syncTubeTypes();
-  }, [allTubes]);
-
   // Get unique registration IDs from tubes
   const regIds = useMemo(() => [...new Set(allTubes.map(t => t.registration_id))], [allTubes]);
 
@@ -188,7 +153,89 @@ const SampleCollection = () => {
     }, []);
   };
 
-  // Group tubes by registration
+  // Recalculate tubes for a registration based on the latest test/profile/checkup definitions.
+  // Only touches PENDING tubes — already-collected/accepted tubes are preserved untouched.
+  const recalcTubesForRegistration = useCallback(async (regId: string) => {
+    const reg = registrations.find((r: any) => r.id === regId);
+    if (!reg) return;
+    const tests = Array.isArray(reg.tests) ? reg.tests : [];
+    if (tests.length === 0) return;
+
+    const allIds = tests.map((t: any) => t.test_id).filter(Boolean);
+    if (allIds.length === 0) return;
+    const [profRes, pkgRes] = await Promise.all([
+      supabase.from("billing_profiles").select("id").in("id", allIds),
+      supabase.from("health_checkups").select("id").in("id", allIds),
+    ]);
+    const profileIds = new Set((profRes.data || []).map((r: any) => r.id));
+    const packageIds = new Set((pkgRes.data || []).map((r: any) => r.id));
+
+    const items: TubeGroupingItem[] = tests.map((t: any) => ({
+      test_id: t.test_id,
+      test_name: t.test_name || "",
+      item_type: t.item_type || (packageIds.has(t.test_id) ? "package" : profileIds.has(t.test_id) ? "profile" : "test"),
+    }));
+
+    const cancelledIds = getCancelledIds(reg);
+    const desiredGroups = await buildSampleTubeGroups(items, cancelledIds);
+
+    const { data: existingTubes } = await supabase
+      .from("sample_tubes" as any)
+      .select("*")
+      .eq("registration_id", regId)
+      .eq("status", "pending");
+    const pendingExisting = (existingTubes || []) as any[];
+
+    const { data: lockedTubes } = await supabase
+      .from("sample_tubes" as any)
+      .select("test_ids, status")
+      .eq("registration_id", regId)
+      .neq("status", "pending");
+    const lockedTestIds = new Set<string>();
+    (lockedTubes || []).forEach((t: any) => (t.test_ids || []).forEach((id: string) => lockedTestIds.add(id)));
+
+    const sig = (tubeType: string | null, suffix: string | null, testIds: string[]) =>
+      `${tubeType || "DEFAULT"}||${suffix || ""}||${[...testIds].sort().join(",")}`;
+
+    const filteredDesired = desiredGroups
+      .map(g => {
+        const keepIdx = g.testIds.map((id, i) => lockedTestIds.has(id) ? -1 : i).filter(i => i >= 0);
+        return {
+          ...g,
+          testIds: keepIdx.map(i => g.testIds[i]),
+          testNames: keepIdx.map(i => g.testNames[i]),
+        };
+      })
+      .filter(g => g.testIds.length > 0);
+
+    const desiredSigs = new Set(filteredDesired.map(g => sig(g.tubeType, g.suffix, g.testIds)));
+    const existingSigs = new Set(pendingExisting.map(t => sig(t.tube_type, t.suffix, t.test_ids || [])));
+
+    const matches = desiredSigs.size === existingSigs.size &&
+      [...desiredSigs].every(s => existingSigs.has(s));
+    if (matches) return;
+
+    if (pendingExisting.length > 0) {
+      await supabase.from("sample_tubes" as any).delete().in("id", pendingExisting.map(t => t.id));
+    }
+    for (const g of filteredDesired) {
+      const { data: uidRes } = await supabase.rpc("generate_sample_uid");
+      await supabase.from("sample_tubes" as any).insert({
+        sample_uid: uidRes,
+        registration_id: regId,
+        tube_type: g.tubeType,
+        tube_color: g.tubeColor,
+        sample_type: g.sampleType,
+        suffix: g.suffix,
+        test_ids: g.testIds,
+        test_names: g.testNames,
+        status: "pending",
+      });
+    }
+    qc.invalidateQueries({ queryKey: ["sample_tubes_collection"] });
+    toast.success("Sample tubes recalculated from latest test setup");
+  }, [registrations, qc]);
+
   const pendingGroups = useMemo((): GroupedRegistration[] => {
     return registrations.filter(reg => {
       const tubes = allTubes.filter(t => t.registration_id === reg.id && !isTubeFullyCancelled(t, reg));
@@ -455,7 +502,11 @@ const SampleCollection = () => {
               <>
                 <TableRow key={reg.id}
                   className={`cursor-pointer hover:bg-muted/50 ${reg.is_stat ? "bg-destructive/5 border-l-2 border-l-destructive" : ""}`}
-                  onClick={() => setExpandedRow(isExpanded ? null : reg.id)}>
+                  onClick={() => {
+                    const next = isExpanded ? null : reg.id;
+                    setExpandedRow(next);
+                    if (next) void recalcTubesForRegistration(reg.id);
+                  }}>
                   <TableCell>
                     {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                   </TableCell>
