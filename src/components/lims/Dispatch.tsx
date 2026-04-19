@@ -20,6 +20,7 @@ import { Search, Loader2, CheckCircle2, Send, Eye, Truck, MessageSquare, Circle,
 import { toast } from "sonner";
 import { format, startOfDay, endOfDay, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
+import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 
 type TestStatus = "registered" | "sample_collected" | "sample_accepted" | "results_entered" | "verified" | "approved" | "dispatched";
 
