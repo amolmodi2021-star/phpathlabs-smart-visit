@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { X, Search, Send } from "lucide-react";
+import { X, Search, Send, Lock } from "lucide-react";
+import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import TimeSlotPicker from "@/components/TimeSlotPicker";
 import { usePhlebotomistAvailability } from "@/hooks/usePhlebotomistAvailability";
@@ -72,6 +73,8 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
   const [pendingGender, setPendingGender] = useState<"Male" | "Female" | "">("");
   const [attempted, setAttempted] = useState(false);
   const [phlebotomistId, setPhlebotomistId] = useState("");
+  const [phleboLocked, setPhleboLocked] = useState(false);
+  const [phleboPasswordOpen, setPhleboPasswordOpen] = useState(false);
 
   const handleTitleChange = (val: string) => {
     setTitle(val);
@@ -169,6 +172,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
     setVisitTime(visit.visit_time || "");
     setAddress(visit.address || "");
     setPhlebotomistId(visit.phlebotomist_id || "");
+    setPhleboLocked(visit?.status === "Registered");
     setGlobalDiscountType((est.global_discount_type as "percent" | "amount") || "percent");
     setGlobalDiscountValue(Number(est.global_discount_value) || 0);
     setHomeVisitCharges(String(Number(est.home_visit_charges) || 0));
@@ -498,19 +502,32 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
                 {/* Assign Phlebotomist - before time so slots show */}
                 <div>
                   <Label>Assign Phlebotomist</Label>
-                  <Select value={phlebotomistId} onValueChange={setPhlebotomistId}>
-                    <SelectTrigger><SelectValue placeholder="Select phlebotomist..." /></SelectTrigger>
-                    <SelectContent>
-                      {phlebotomists.map((p: any) => {
-                        const reason = getUnavailableReason(p, visitDate);
-                        return (
-                          <SelectItem key={p.id} value={p.id} disabled={!!reason}>
-                            {p.name}{reason ? ` (${reason})` : ""}
-                          </SelectItem>
-                        );
-                      })}
-                    </SelectContent>
-                  </Select>
+                  {phleboLocked ? (
+                    <div className="flex gap-2">
+                      <Input
+                        value={phlebotomists.find((p: any) => p.id === phlebotomistId)?.name || "Not assigned"}
+                        disabled
+                        className="bg-muted flex-1"
+                      />
+                      <Button type="button" variant="outline" size="sm" onClick={() => setPhleboPasswordOpen(true)}>
+                        <Lock className="h-4 w-4 mr-1" /> Unlock
+                      </Button>
+                    </div>
+                  ) : (
+                    <Select value={phlebotomistId} onValueChange={setPhlebotomistId}>
+                      <SelectTrigger><SelectValue placeholder="Select phlebotomist..." /></SelectTrigger>
+                      <SelectContent>
+                        {phlebotomists.map((p: any) => {
+                          const reason = getUnavailableReason(p, visitDate);
+                          return (
+                            <SelectItem key={p.id} value={p.id} disabled={!!reason}>
+                              {p.name}{reason ? ` (${reason})` : ""}
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
 
                 <div>
@@ -653,6 +670,12 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+        <DeletePasswordDialog
+          open={phleboPasswordOpen}
+          onOpenChange={setPhleboPasswordOpen}
+          onSuccess={() => setPhleboLocked(false)}
+          description="Enter password to change phlebotomist for a registered visit."
+        />
       </DialogContent>
     </Dialog>
   );
