@@ -127,17 +127,10 @@ const AutomatedMarketing = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Local sending state used as the source of truth for the beforeunload guard
-  const [isSending, setIsSending] = useState(_moduleSending);
-  useEffect(() => {
-    const interval = setInterval(() => setIsSending(_moduleSending), 500);
-    return () => clearInterval(interval);
-  }, []);
-
   // Browser-close warning: while a campaign is sending, prompt the user before
   // they close/refresh/navigate away (closing the tab WILL stop the run).
   useEffect(() => {
-    if (!isSending) return;
+    if (!sending) return;
     const handler = (e: BeforeUnloadEvent) => {
       e.preventDefault();
       e.returnValue = "Sending is in progress. Closing this tab will stop the campaign. Are you sure?";
@@ -145,7 +138,7 @@ const AutomatedMarketing = () => {
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
-  }, [isSending]);
+  }, [sending]);
 
   // Test mode
   const [testMobile, setTestMobile] = useState("");
