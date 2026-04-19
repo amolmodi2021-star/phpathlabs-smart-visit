@@ -32,3 +32,6 @@ verify_jwt = false
 
 [functions.user-auth]
 verify_jwt = false
+
+[functions.run-drip-campaign]
+verify_jwt = false

@@ -897,6 +897,69 @@ export type Database = {
         }
         Relationships: []
       }
+      drip_runs: {
+        Row: {
+          campaign_label: string | null
+          cancel_requested: boolean
+          config: Json
+          contact_queue: Json
+          created_at: string
+          current_index: number
+          current_phase: string | null
+          error: string | null
+          failed_count: number
+          finished_at: string | null
+          id: string
+          sent_count: number
+          skipped_count: number
+          started_at: string | null
+          started_by: string | null
+          status: string
+          total_count: number
+          updated_at: string
+        }
+        Insert: {
+          campaign_label?: string | null
+          cancel_requested?: boolean
+          config?: Json
+          contact_queue?: Json
+          created_at?: string
+          current_index?: number
+          current_phase?: string | null
+          error?: string | null
+          failed_count?: number
+          finished_at?: string | null
+          id?: string
+          sent_count?: number
+          skipped_count?: number
+          started_at?: string | null
+          started_by?: string | null
+          status?: string
+          total_count?: number
+          updated_at?: string
+        }
+        Update: {
+          campaign_label?: string | null
+          cancel_requested?: boolean
+          config?: Json
+          contact_queue?: Json
+          created_at?: string
+          current_index?: number
+          current_phase?: string | null
+          error?: string | null
+          failed_count?: number
+          finished_at?: string | null
+          id?: string
+          sent_count?: number
+          skipped_count?: number
+          started_at?: string | null
+          started_by?: string | null
+          status?: string
+          total_count?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       estimate_tests: {
         Row: {
           created_at: string

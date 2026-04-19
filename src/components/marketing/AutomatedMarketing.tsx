@@ -52,12 +52,28 @@ const MESSAGE_TYPES = [
 
 const LOCATIONS = ["ALL", "PH VESU", "NON PHPL"];
 
-// Module-level state so it survives component unmount/remount
+// Module-level state so it survives component unmount/remount (used only for trial mode now)
 let _moduleAbort = false;
 let _moduleSending = false;
 let _modulePaused = false;
 let _moduleProgress = 0;
 let _modulePhase = "";
+
+interface DripRun {
+  id: string;
+  status: string;
+  total_count: number;
+  sent_count: number;
+  failed_count: number;
+  skipped_count: number;
+  current_index: number;
+  current_phase: string | null;
+  campaign_label: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  cancel_requested: boolean;
+  error: string | null;
+}
 
 const SEQUENCE_OPTIONS = [
   { value: "__none__", label: "No sequencing (any)" },
@@ -124,6 +140,41 @@ const AutomatedMarketing = () => {
       }
     }, 500);
     return () => clearInterval(interval);
+  }, []);
+
+  // === SERVER-SIDE RUN: load any active drip_runs row + subscribe for live updates ===
+  const [activeRun, setActiveRun] = useState<DripRun | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadActive = async () => {
+      const { data } = await supabase
+        .from("drip_runs")
+        .select("*")
+        .in("status", ["queued", "running", "paused"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!cancelled) setActiveRun((data as DripRun) || null);
+    };
+    loadActive();
+
+    // Realtime subscription on drip_runs (any change triggers reload)
+    const channel = supabase
+      .channel("drip-runs-active")
+      .on("postgres_changes", { event: "*", schema: "public", table: "drip_runs" }, () => {
+        loadActive();
+      })
+      .subscribe();
+
+    // Fallback poll every 3 s in case realtime is misbehaving
+    const poll = setInterval(loadActive, 3000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(poll);
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   // Test mode
@@ -874,18 +925,19 @@ const AutomatedMarketing = () => {
   };
 
   const handleSend = async () => {
-    // Prevent double-click: guard with module-level flag
+    // Prevent double-click while a server-side run is active
+    if (activeRun && (activeRun.status === "running" || activeRun.status === "queued")) {
+      return toast.error("A campaign is already running. Wait for it to finish or cancel it.");
+    }
     if (_moduleSending) return;
     if (!previewResults || previewResults.every((r) => r.eligible === 0)) {
       return toast.error("Run preview first and ensure there are eligible records");
     }
 
-    const trialMax = 3;
     const trial = isTrialMode;
     const trialMob = testMobile.replace(/\D/g, "").slice(-10);
-
     const enabledFilters = filters.filter((f) => f.enabled).sort((a, b) => a.priority - b.priority);
-    
+
     // Fetch global WA settings + template-specific data
     const { data: allSettings } = await supabase
       .from("app_settings")
@@ -898,406 +950,310 @@ const AutomatedMarketing = () => {
     const { data: abcTmpl } = await supabase.from("marketing_templates").select("whatsapp_template_name, body_mapping, api_base_url, from_number").eq("template_name", "ABC Card").maybeSingle();
     const { data: abnTmpl } = await supabase.from("marketing_templates").select("whatsapp_template_name, body_mapping, api_base_url, from_number").eq("template_name", "Abnormal PNG").maybeSingle();
 
-    _moduleAbort = false;
-    _modulePaused = false;
-    abortRef.current = false;
+    // ============= TRIAL MODE: keep client-side for instant feedback (max 3, no DB writes) =============
+    if (trial) {
+      const trialMax = 3;
+      _moduleAbort = false;
+      _modulePaused = false;
+      abortRef.current = false;
+      _moduleSending = true;
+      _moduleProgress = 0;
+      _modulePhase = "";
+      setSending(true);
+      setPaused(false);
+      setSendProgress(0);
+
+      const _setSendProgress = (v: number) => { _moduleProgress = v; setSendProgress(v); };
+      const _setSendPhase = (v: string) => { _modulePhase = v; setSendPhase(v); };
+      const _checkAbort = () => abortRef.current || _moduleAbort;
+
+      let totalMessages = Math.min(previewResults.reduce((sum, r) => sum + r.eligible, 0), trialMax);
+      let processedCount = 0;
+      let trialSentCount = 0;
+      let totalSent = 0;
+      let totalFailed = 0;
+
+      outer:
+      for (const preview of previewResults) {
+        if (preview.eligible === 0) continue;
+        if (_checkAbort()) break;
+        const filter = enabledFilters.find((f) => f.id === preview.filterId);
+        if (!filter) continue;
+
+        if (filter.message_type === "abc_card") {
+          const loyaltyApiBaseUrl = cfg["wa_global_baseUrl"];
+          const loyaltyApiKey = cfg["wa_global_apiKey"];
+          const loyaltyTemplateName = abcTmpl?.whatsapp_template_name || "";
+          const loyaltyAuthHeaderName = cfg["wa_global_authHeaderName"] || "apikey";
+          const loyaltyAuthHeaderPrefix = cfg["wa_global_authHeaderPrefix"] || "";
+          const loyaltyFromNumber = cfg["wa_global_fromNumber"] || "";
+          const loyaltyCampaignName = abcTmpl?.api_base_url || "";
+          const bodyMappingStr = abcTmpl?.body_mapping || "";
+          const staticExpiryDate = cfg["loyalty_static_expiry_date"] || "";
+          if (!loyaltyApiBaseUrl || !loyaltyApiKey || !loyaltyTemplateName) {
+            toast.error("Loyalty WhatsApp API not configured");
+            continue;
+          }
+          let mapping: Record<string, string> = {};
+          try { mapping = bodyMappingStr ? JSON.parse(bodyMappingStr) : {}; } catch { mapping = {}; }
+          const templateId = filter.template_id || (cardTemplates.length > 0 ? cardTemplates[0].id : null);
+          if (!templateId) continue;
+          const templateAssets = await getTemplateAssets(templateId);
+          if (!templateAssets) continue;
+          const { bgImg, canvas, ctx, placeholders } = templateAssets;
+
+          for (const r of preview.records) {
+            if (_checkAbort() || trialSentCount >= trialMax) break outer;
+            _setSendPhase(`🧪 TRIAL [${filter.name}] ${trialSentCount + 1}/${trialMax}`);
+            const cardData: CardData = {
+              Name: r.patient_name || "", Mobile: r.mobile_number || "", UMR: r.umr_number || "",
+              "Discount %": `${r.default_discount_pct ?? 20}%`, "Expiry Date": staticExpiryDate,
+            };
+            const imageUrl = await generateAndUploadCard(templateId, cardData, bgImg, canvas, ctx, placeholders);
+            if (!imageUrl) { totalFailed++; processedCount++; continue; }
+            const components: Record<string, unknown> = {};
+            if (Object.keys(mapping).length > 0) {
+              const sortedKeys = Object.keys(mapping).sort((a, b) => Number(a) - Number(b));
+              components.body = { params: sortedKeys.map((key) => {
+                const f = mapping[key];
+                if (f === "Name") return r.patient_name || "";
+                if (f === "Mobile") return r.mobile_number || "";
+                if (f === "UMR") return r.umr_number || "";
+                if (f === "Discount %") return `${r.default_discount_pct ?? 20}%`;
+                if (f === "Expiry Date") return staticExpiryDate;
+                return "";
+              })};
+            }
+            components.header = { type: "image", image: { link: imageUrl } };
+            const payload: Record<string, unknown> = {
+              from: loyaltyFromNumber, to: `+91${trialMob}`, templateName: loyaltyTemplateName,
+              campaignName: loyaltyCampaignName, type: "template", components,
+            };
+            try {
+              const proxyRes = await supabase.functions.invoke("whatsapp-proxy", {
+                body: { apiBaseUrl: loyaltyApiBaseUrl, apiKey: loyaltyApiKey, authHeaderName: loyaltyAuthHeaderName, authHeaderPrefix: loyaltyAuthHeaderPrefix, payload },
+              });
+              if (proxyRes.error || proxyRes.data?.status >= 400) totalFailed++;
+              else { totalSent++; trialSentCount++; }
+            } catch { totalFailed++; }
+            processedCount++;
+            _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+          }
+        }
+        // Trial mode supports abc_card only for now (matches previous quick-test behavior)
+      }
+
+      _moduleSending = false; _modulePaused = false; _moduleProgress = 0; _modulePhase = "";
+      setSending(false); setPaused(false); _setSendPhase("");
+      setPreviewResults(null);
+      const aborted = abortRef.current;
+      abortRef.current = false;
+      toast[aborted ? "warning" : "success"](`Trial complete! Sent: ${totalSent}, Failed: ${totalFailed}`);
+      return;
+    }
+
+    // ============= LIVE MODE: build queue + pre-generate images + handoff to edge function =============
+    toast.info("Preparing campaign — generating card images...");
     _moduleSending = true;
-    _moduleProgress = 0;
-    _modulePhase = "";
+    _modulePhase = "Preparing campaign...";
     setSending(true);
-    setPaused(false);
+    setSendPhase("Preparing campaign — generating card images...");
     setSendProgress(0);
 
-    // Wrap state setters to also update module-level vars for cross-navigation persistence
-    const _setSendProgress = (v: number) => { _moduleProgress = v; setSendProgress(v); };
-    const _setSendPhase = (v: string) => { _modulePhase = v; setSendPhase(v); };
-    const _checkAbort = () => abortRef.current || _moduleAbort;
-    const _waitWhilePaused = async () => {
-      while (_modulePaused && !_checkAbort()) {
-        await new Promise((r) => setTimeout(r, 500));
-      }
-    };
+    try {
+      // Build queue: { filterId, filterName, messageType, cycle, contact: {...} }
+      const queue: any[] = [];
+      const promotionConfig: Record<string, any> = {};
 
-    let totalMessages = previewResults.reduce((sum, r) => sum + r.eligible, 0);
-    if (trial) totalMessages = Math.min(totalMessages, trialMax);
-    let processedCount = 0;
-    let totalSent = 0;
-    let totalFailed = 0;
-    let totalSkipped = 0;
-    let trialSentCount = 0;
+      for (const preview of previewResults) {
+        if (preview.eligible === 0) continue;
+        const filter = enabledFilters.find((f) => f.id === preview.filterId);
+        if (!filter) continue;
 
-    for (const preview of previewResults) {
-      if (preview.eligible === 0) continue;
-      await _waitWhilePaused();
-      if (_checkAbort()) break;
-      const filter = enabledFilters.find((f) => f.id === preview.filterId);
-      if (!filter) continue;
-
-      _setSendPhase(`Processing filter: ${filter.name} (${preview.eligible} records)`);
-
-      if (filter.message_type === "abc_card") {
-        // Send ABC loyalty cards
-        const loyaltyApiBaseUrl = cfg["wa_global_baseUrl"];
-        const loyaltyApiKey = cfg["wa_global_apiKey"];
-        const loyaltyTemplateName = abcTmpl?.whatsapp_template_name || "";
-        const loyaltyAuthHeaderName = cfg["wa_global_authHeaderName"] || "apikey";
-        const loyaltyAuthHeaderPrefix = cfg["wa_global_authHeaderPrefix"] || "";
-        const loyaltyFromNumber = cfg["wa_global_fromNumber"] || "";
-        const loyaltyCampaignName = abcTmpl?.api_base_url || "";
-        const bodyMappingStr = abcTmpl?.body_mapping || "";
-        const staticExpiryDate = cfg["loyalty_static_expiry_date"] || "";
-        const delayMs = Number(cfg["wa_global_delayMs"]) || 3000;
-
-        if (!loyaltyApiBaseUrl || !loyaltyApiKey || !loyaltyTemplateName) {
-          toast.error("Loyalty WhatsApp API not configured");
-          for (const c of preview.records) {
-            await logDripAction(filter, c, "failed", "wa_not_configured");
-            totalFailed++;
-            processedCount++;
-            _setSendProgress(Math.round((processedCount / totalMessages) * 100));
-          }
-          continue;
-        }
-
-        let mapping: Record<string, string> = {};
-        try { mapping = bodyMappingStr ? JSON.parse(bodyMappingStr) : {}; } catch { mapping = {}; }
-
-        // Use first available card template
-        const templateId = filter.template_id || (cardTemplates.length > 0 ? cardTemplates[0].id : null);
-        if (!templateId) {
-          toast.error("No loyalty card template available for filter: " + filter.name);
-          for (const c of preview.records) {
-            await logDripAction(filter, c, "failed", "no_template");
-            totalFailed++;
-            processedCount++;
-            _setSendProgress(Math.round((processedCount / totalMessages) * 100));
-          }
-          continue;
-        }
-
-        let templateAssets: Awaited<ReturnType<typeof getTemplateAssets>>;
-        try {
-          templateAssets = await getTemplateAssets(templateId);
-          if (!templateAssets) throw new Error("Template not found");
-        } catch {
-          toast.error("Failed to load card template for filter: " + filter.name);
-          for (const c of preview.records) {
-            await logDripAction(filter, c, "failed", "template_load_error");
-            totalFailed++;
-            processedCount++;
-            _setSendProgress(Math.round((processedCount / totalMessages) * 100));
-          }
-          continue;
-        }
-
-        const { bgImg, canvas, ctx, placeholders } = templateAssets;
-
-        for (let i = 0; i < preview.records.length; i++) {
-          await _waitWhilePaused();
-          if (_checkAbort()) break;
-          if (trial && trialSentCount >= trialMax) break;
-          const r = preview.records[i];
-          const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
-          const destMob = trial ? trialMob : mob;
-          _setSendPhase(`${trial ? "🧪 TRIAL " : ""}[${filter.name}] Generating & sending ${i + 1}/${preview.eligible}...`);
-
-          const cardData: CardData = {
-            Name: r.patient_name || "",
-            Mobile: mob,
-            UMR: r.umr_number || "",
-            "Discount %": `${r.default_discount_pct ?? 20}%`,
-            "Expiry Date": staticExpiryDate,
-          };
-
-          const imageUrl = await generateAndUploadCard(templateId, cardData, bgImg, canvas, ctx, placeholders);
-          if (!imageUrl) {
-            await logDripAction(filter, r, "failed", "card_generation_error");
-            totalFailed++;
-            processedCount++;
-            _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+        if (filter.message_type === "abc_card") {
+          const templateId = filter.template_id || (cardTemplates.length > 0 ? cardTemplates[0].id : null);
+          if (!templateId) {
+            for (const r of preview.records) await logDripAction(filter, r, "failed", "no_template");
             continue;
           }
-
-          const components: Record<string, unknown> = {};
-          if (Object.keys(mapping).length > 0) {
-            const sortedKeys = Object.keys(mapping).sort((a, b) => Number(a) - Number(b));
-            const params = sortedKeys.map((key) => {
-              const field = mapping[key];
-              switch (field) {
-                case "Name": return r.patient_name || "";
-                case "Mobile": return r.mobile_number || "";
-                case "UMR": return r.umr_number || "";
-                case "Discount %": return `${r.default_discount_pct ?? 20}%`;
-                case "Expiry Date": return staticExpiryDate;
-                default: return "";
-              }
-            });
-            components.body = { params };
-          }
-          components.header = { type: "image", image: { link: imageUrl } };
-
-          const payload: Record<string, unknown> = {
-            from: loyaltyFromNumber,
-            to: `+91${destMob}`,
-            templateName: loyaltyTemplateName,
-            campaignName: loyaltyCampaignName,
-            type: "template",
-          };
-          if (Object.keys(components).length > 0) payload.components = components;
-
-          try {
-            const proxyRes = await supabase.functions.invoke("whatsapp-proxy", {
-              body: { apiBaseUrl: loyaltyApiBaseUrl, apiKey: loyaltyApiKey, authHeaderName: loyaltyAuthHeaderName, authHeaderPrefix: loyaltyAuthHeaderPrefix, payload },
-            });
-            if (proxyRes.error || proxyRes.data?.status >= 400) {
-              if (!trial) await logDripAction(filter, r, "failed", "wa_api_error");
-              totalFailed++;
-            } else {
-              if (!trial) {
-                await logDripAction(filter, r, "sent");
-                await supabase.from("crm_contacts").update({
-                  last_sent_type: "ABC",
-                  last_sent_date: new Date().toISOString(),
-                  record_tag: null,
-                }).eq("id", r.id);
-                const _msgId1 = extractMessageId(proxyRes.data);
-                await logMessageSend(destMob, r.patient_name, "ABC", r.umr_number, r.primary_key, undefined, _msgId1);
-              }
-              totalSent++;
-              if (trial) trialSentCount++;
-            }
-          } catch {
-            if (!trial) await logDripAction(filter, r, "failed", "wa_exception");
-            totalFailed++;
-          }
-
-          processedCount++;
-          _setSendProgress(Math.round((processedCount / totalMessages) * 100));
-          if (delayMs > 0 && i < preview.records.length - 1) {
-            await new Promise((res) => setTimeout(res, delayMs));
-          }
-        }
-
-      } else if (filter.message_type === "abnormal_card") {
-        // Send Abnormal History cards
-        const abnormalApiBaseUrl = cfg["wa_global_baseUrl"];
-        const abnormalApiKey = cfg["wa_global_apiKey"];
-        const abnormalTemplateName = abnTmpl?.whatsapp_template_name || "";
-        const abnormalAuthHeaderName = cfg["wa_global_authHeaderName"] || "apikey";
-        const abnormalAuthHeaderPrefix = cfg["wa_global_authHeaderPrefix"] || "";
-        const abnormalFromNumber = cfg["wa_global_fromNumber"] || "";
-        const abnormalCampaignName = abnTmpl?.api_base_url || "";
-        const includeMediaHeader = abnTmpl?.from_number === "media_header_enabled";
-        const delayMs = Number(cfg["wa_global_delayMs"]) || 3000;
-        const staticExpiryDate = cfg["abnormal_static_expiry_date"] || "";
-
-        if (!abnormalApiBaseUrl || !abnormalApiKey || !abnormalTemplateName) {
-          toast.error("Abnormal WhatsApp API not configured");
-          for (const c of preview.records) {
-            await logDripAction(filter, c, "failed", "wa_not_configured");
-            totalFailed++;
-            processedCount++;
-          }
-          _setSendProgress(Math.round((processedCount / totalMessages) * 100));
-          continue;
-        }
-
-        // Fetch abnormal card template
-        const abnTemplateId = filter.template_id || (abnormalTemplates.length > 0 ? abnormalTemplates[0].id : null);
-        let abnTemplate: any = null;
-        if (abnTemplateId) {
-          const { data } = await supabase.from("abnormal_card_templates").select("*").eq("id", abnTemplateId).single();
-          abnTemplate = data;
-        }
-
-        for (let i = 0; i < preview.records.length; i++) {
-          await _waitWhilePaused();
-          if (_checkAbort()) break;
-          if (trial && trialSentCount >= trialMax) break;
-          const r = preview.records[i];
-          const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
-          const destMob = trial ? trialMob : mob;
-          _setSendPhase(`${trial ? "🧪 TRIAL " : ""}[${filter.name}] Processing ${i + 1}/${preview.eligible}...`);
-
-          // Fetch abnormal tests for this contact
-          const { data: tests } = await supabase
-            .from("crm_abnormal_tests")
-            .select("*")
-            .eq("contact_primary_key", r.primary_key)
-            .order("test_name");
-
-          if (!tests || tests.length === 0) {
-            if (!trial) await logDripAction(filter, r, "skipped", "no_abnormal_history");
-            totalSkipped++;
-            processedCount++;
-            _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+          const templateAssets = await getTemplateAssets(templateId);
+          if (!templateAssets) {
+            for (const r of preview.records) await logDripAction(filter, r, "failed", "template_load_error");
             continue;
           }
+          const { bgImg, canvas, ctx, placeholders } = templateAssets;
+          const staticExpiryDate = cfg["loyalty_static_expiry_date"] || "";
 
-          // Generate abnormal card image (simplified - use template if available)
-          const imageResult = await generateAbnormalCardForDrip(r, tests, abnTemplate, staticExpiryDate);
-          if (!imageResult) {
-            if (!trial) await logDripAction(filter, r, "failed", "card_generation_error");
-            totalFailed++;
-            processedCount++;
-            _setSendProgress(Math.round((processedCount / totalMessages) * 100));
-            continue;
-          }
-
-          const components: Record<string, unknown> = {};
-          if (includeMediaHeader) {
-            components.header = { type: "image", image: { link: imageResult } };
-          }
-          components.body = { params: [(r.patient_name || "").toUpperCase()] };
-
-          const payload: Record<string, unknown> = {
-            from: abnormalFromNumber,
-            to: `+91${destMob}`,
-            templateName: abnormalTemplateName,
-            campaignName: abnormalCampaignName,
-            type: "template",
-            components,
-          };
-
-          try {
-            const proxyRes = await supabase.functions.invoke("whatsapp-proxy", {
-              body: { apiBaseUrl: abnormalApiBaseUrl, apiKey: abnormalApiKey, authHeaderName: abnormalAuthHeaderName, authHeaderPrefix: abnormalAuthHeaderPrefix, payload },
-            });
-            if (proxyRes.error || proxyRes.data?.status >= 400) {
-              if (!trial) await logDripAction(filter, r, "failed", "wa_api_error");
-              totalFailed++;
-            } else {
-              if (!trial) {
-                await logDripAction(filter, r, "sent");
-                await supabase.from("crm_contacts").update({
-                  last_sent_type: "Abnormal History",
-                  last_sent_date: new Date().toISOString(),
-                }).eq("id", r.id);
-                const _msgId2 = extractMessageId(proxyRes.data);
-                await logMessageSend(destMob, r.patient_name, "Abnormal History", r.umr_number, r.primary_key, undefined, _msgId2);
-              }
-              totalSent++;
-              if (trial) trialSentCount++;
-            }
-          } catch {
-            if (!trial) await logDripAction(filter, r, "failed", "wa_exception");
-            totalFailed++;
-          }
-
-          processedCount++;
-          _setSendProgress(Math.round((processedCount / totalMessages) * 100));
-          if (delayMs > 0 && i < preview.records.length - 1) {
-            await new Promise((res) => setTimeout(res, delayMs));
-          }
-        }
-
-      } else if (filter.message_type === "promotion") {
-        // Send promotion via marketing template
-        if (!filter.template_id) {
-          toast.error("No marketing template selected for filter: " + filter.name);
-          for (const c of preview.records) {
-            await logDripAction(filter, c, "failed", "no_template");
-            totalFailed++;
-            processedCount++;
-          }
-          _setSendProgress(Math.round((processedCount / totalMessages) * 100));
-          continue;
-        }
-
-        const { data: tmpl } = await supabase.from("marketing_templates").select("*").eq("id", filter.template_id).single();
-        if (!tmpl) {
-          toast.error("Marketing template not found for filter: " + filter.name);
-          continue;
-        }
-
-        const delayMs = Number(cfg["wa_global_delayMs"]) || 3000;
-
-        for (let i = 0; i < preview.records.length; i++) {
-          await _waitWhilePaused();
-          if (_checkAbort()) break;
-          if (trial && trialSentCount >= trialMax) break;
-          const r = preview.records[i];
-          const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
-          const destMob = trial ? trialMob : mob;
-          _setSendPhase(`${trial ? "🧪 TRIAL " : ""}[${filter.name}] Sending promo ${i + 1}/${preview.eligible}...`);
-
-          const toNumber = `+91${destMob}`;
-          const payload: Record<string, unknown> = {
-            from: cfg["wa_global_fromNumber"] || "",
-            to: toNumber,
-            templateName: tmpl.whatsapp_template_name,
-            type: "template",
-          };
-
-          // Parse body mapping
-          let bodyMapping: Record<string, string> = {};
-          try { bodyMapping = tmpl.body_mapping ? JSON.parse(tmpl.body_mapping) : {}; } catch { bodyMapping = {}; }
-
-          if (Object.keys(bodyMapping).length > 0) {
-            const sortedKeys = Object.keys(bodyMapping).sort((a, b) => Number(a) - Number(b));
-            const params = sortedKeys.map((key) => {
-              const field = bodyMapping[key];
-              switch (field) {
-                case "Name": return r.patient_name || "";
-                case "Mobile": return r.mobile_number || "";
-                default: return field || "";
-              }
-            });
-            payload.components = { body: { params } };
-          }
-
-          try {
-            const proxyRes = await supabase.functions.invoke("send-marketing-message", {
-              body: {
-                apiUrl: cfg["wa_global_baseUrl"],
-                apiKey: cfg["wa_global_apiKey"],
-                headerName: cfg["wa_global_authHeaderName"] || "apikey",
-                headerPrefix: cfg["wa_global_authHeaderPrefix"] || "",
-                payload,
+          for (let i = 0; i < preview.records.length; i++) {
+            const r = preview.records[i];
+            setSendPhase(`Generating ABC card ${i + 1}/${preview.records.length} (${filter.name})...`);
+            const cardData: CardData = {
+              Name: r.patient_name || "", Mobile: r.mobile_number || "", UMR: r.umr_number || "",
+              "Discount %": `${r.default_discount_pct ?? 20}%`, "Expiry Date": staticExpiryDate,
+            };
+            const imageUrl = await generateAndUploadCard(templateId, cardData, bgImg, canvas, ctx, placeholders);
+            queue.push({
+              filterId: filter.id,
+              filterName: filter.name,
+              messageType: "abc_card",
+              cycle: r._cycle || 1,
+              contact: {
+                id: r.id,
+                primary_key: r.primary_key,
+                patient_name: r.patient_name,
+                mobile_number: r.mobile_number,
+                umr_number: r.umr_number,
+                default_discount_pct: r.default_discount_pct,
+                image_url: imageUrl || null,
               },
             });
-            if (proxyRes.error || proxyRes.data?.status >= 400) {
-              if (!trial) await logDripAction(filter, r, "failed", "wa_api_error");
-              totalFailed++;
-            } else {
-              if (!trial) {
-                await logDripAction(filter, r, "sent");
-                await supabase.from("crm_contacts").update({
-                  last_sent_type: "Promotion",
-                  last_sent_date: new Date().toISOString(),
-                }).eq("id", r.id);
-                const _msgId3 = extractMessageId(proxyRes.data);
-                await logMessageSend(destMob, r.patient_name, "Promotion", r.umr_number, r.primary_key, undefined, _msgId3);
-              }
-              totalSent++;
-              if (trial) trialSentCount++;
-            }
-          } catch {
-            if (!trial) await logDripAction(filter, r, "failed", "wa_exception");
-            totalFailed++;
           }
-
-          processedCount++;
-          _setSendProgress(Math.round((processedCount / totalMessages) * 100));
-          if (delayMs > 0 && i < preview.records.length - 1) {
-            await new Promise((res) => setTimeout(res, delayMs));
+        } else if (filter.message_type === "abnormal_card") {
+          const abnTemplateId = filter.template_id || (abnormalTemplates.length > 0 ? abnormalTemplates[0].id : null);
+          let abnTemplate: any = null;
+          if (abnTemplateId) {
+            const { data } = await supabase.from("abnormal_card_templates").select("*").eq("id", abnTemplateId).single();
+            abnTemplate = data;
+          }
+          const staticExpiryDate = cfg["abnormal_static_expiry_date"] || "";
+          for (let i = 0; i < preview.records.length; i++) {
+            const r = preview.records[i];
+            setSendPhase(`Generating Abnormal card ${i + 1}/${preview.records.length} (${filter.name})...`);
+            const { data: tests } = await supabase
+              .from("crm_abnormal_tests").select("*").eq("contact_primary_key", r.primary_key).order("test_name");
+            if (!tests || tests.length === 0) {
+              await logDripAction(filter, r, "skipped", "no_abnormal_history");
+              continue;
+            }
+            const imageResult = await generateAbnormalCardForDrip(r, tests, abnTemplate, staticExpiryDate);
+            queue.push({
+              filterId: filter.id,
+              filterName: filter.name,
+              messageType: "abnormal_card",
+              cycle: r._cycle || 1,
+              contact: {
+                id: r.id,
+                primary_key: r.primary_key,
+                patient_name: r.patient_name,
+                mobile_number: r.mobile_number,
+                umr_number: r.umr_number,
+                abnormal_image_url: imageResult || null,
+              },
+            });
+          }
+        } else if (filter.message_type === "promotion") {
+          if (!filter.template_id) {
+            for (const r of preview.records) await logDripAction(filter, r, "failed", "no_template");
+            continue;
+          }
+          const { data: tmpl } = await supabase.from("marketing_templates").select("*").eq("id", filter.template_id).single();
+          if (!tmpl) continue;
+          let bodyMapping: Record<string, string> = {};
+          try { bodyMapping = tmpl.body_mapping ? JSON.parse(tmpl.body_mapping) : {}; } catch { bodyMapping = {}; }
+          promotionConfig[filter.id] = {
+            apiUrl: cfg["wa_global_baseUrl"],
+            apiKey: cfg["wa_global_apiKey"],
+            headerName: cfg["wa_global_authHeaderName"] || "apikey",
+            headerPrefix: cfg["wa_global_authHeaderPrefix"] || "",
+            templateName: tmpl.whatsapp_template_name,
+            fromNumber: cfg["wa_global_fromNumber"] || "",
+            bodyMapping,
+          };
+          for (const r of preview.records) {
+            queue.push({
+              filterId: filter.id,
+              filterName: filter.name,
+              messageType: "promotion",
+              cycle: r._cycle || 1,
+              contact: {
+                id: r.id,
+                primary_key: r.primary_key,
+                patient_name: r.patient_name,
+                mobile_number: r.mobile_number,
+                umr_number: r.umr_number,
+              },
+            });
           }
         }
       }
-    }
 
-    _moduleSending = false; _modulePaused = false; _moduleProgress = 0; _modulePhase = ''; setSending(false); setPaused(false);
-    _setSendPhase("");
-    setPreviewResults(null);
-    if (!trial) {
-      qc.invalidateQueries({ queryKey: ["drip-campaign-logs"] });
-      qc.invalidateQueries({ queryKey: ["crm-contacts"] });
+      if (queue.length === 0) {
+        _moduleSending = false; setSending(false);
+        setSendPhase(""); setSendProgress(0);
+        toast.error("Nothing to send — queue is empty after preparation.");
+        return;
+      }
+
+      const runConfig = {
+        baseUrl: cfg["wa_global_baseUrl"],
+        apiKey: cfg["wa_global_apiKey"],
+        authHeaderName: cfg["wa_global_authHeaderName"] || "apikey",
+        authHeaderPrefix: cfg["wa_global_authHeaderPrefix"] || "",
+        fromNumber: cfg["wa_global_fromNumber"] || "",
+        delayMs: Number(cfg["wa_global_delayMs"]) || 3000,
+        abc: {
+          templateName: abcTmpl?.whatsapp_template_name || "",
+          campaignName: abcTmpl?.api_base_url || "",
+          bodyMapping: (() => { try { return abcTmpl?.body_mapping ? JSON.parse(abcTmpl.body_mapping) : {}; } catch { return {}; } })(),
+          staticExpiryDate: cfg["loyalty_static_expiry_date"] || "",
+        },
+        abnormal: {
+          templateName: abnTmpl?.whatsapp_template_name || "",
+          campaignName: abnTmpl?.api_base_url || "",
+          includeMediaHeader: abnTmpl?.from_number === "media_header_enabled",
+          staticExpiryDate: cfg["abnormal_static_expiry_date"] || "",
+        },
+        promotion: promotionConfig,
+      };
+
+      const campaignLabel = previewResults
+        .filter((p) => p.eligible > 0)
+        .map((p) => `${p.filterName} (${p.eligible})`)
+        .join(", ");
+
+      const { data: insertedRun, error: insertErr } = await supabase
+        .from("drip_runs")
+        .insert({
+          status: "queued",
+          campaign_label: campaignLabel,
+          total_count: queue.length,
+          contact_queue: queue,
+          config: runConfig,
+        })
+        .select()
+        .single();
+
+      if (insertErr || !insertedRun) {
+        _moduleSending = false; setSending(false);
+        setSendPhase(""); setSendProgress(0);
+        toast.error("Failed to create campaign run: " + (insertErr?.message || "unknown"));
+        return;
+      }
+
+      // Fire-and-forget: server starts processing immediately
+      await supabase.functions.invoke("run-drip-campaign", { body: { runId: insertedRun.id } });
+
+      _moduleSending = false; setSending(false);
+      setSendPhase(""); setSendProgress(0);
+      setPreviewResults(null);
+      setActiveRun(insertedRun as DripRun);
+      toast.success(`Campaign queued! ${queue.length} messages will be sent server-side. You can close this tab safely.`);
+    } catch (err) {
+      _moduleSending = false; setSending(false);
+      setSendPhase(""); setSendProgress(0);
+      console.error(err);
+      toast.error("Failed to start campaign: " + String(err));
     }
-    const aborted = abortRef.current;
-    abortRef.current = false;
-    const modeLabel = aborted ? "⛔ STOPPED!" : trial ? "Trial complete!" : "Campaign complete!";
-    toast[aborted ? "warning" : "success"](`${modeLabel} Sent: ${totalSent}, Failed: ${totalFailed}, Skipped: ${totalSkipped}`);
   };
+
+  const cancelActiveRun = async () => {
+    if (!activeRun) return;
+    if (!confirm("Cancel the running campaign? Already-sent messages will not be undone.")) return;
+    await supabase.from("drip_runs").update({ cancel_requested: true }).eq("id", activeRun.id);
+    toast.info("Cancellation requested — will stop after the current message.");
+  };
+
+
 
   const logDripAction = async (filter: DripFilter, contact: any, status: string, skipReason?: string) => {
     const mob = (contact.mobile_number || "").replace(/\D/g, "").slice(-10);
@@ -1723,6 +1679,30 @@ const AutomatedMarketing = () => {
         </Card>
       </div>
 
+      {/* Persistent server-side run progress (survives browser close) */}
+      {activeRun && (activeRun.status === "queued" || activeRun.status === "running") && (
+        <div className="space-y-2 p-3 border-2 border-primary rounded-lg bg-primary/5">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold flex items-center gap-2">
+                <span className="inline-block h-2 w-2 rounded-full bg-primary animate-pulse" />
+                Server-side campaign {activeRun.status === "queued" ? "queued" : "running"} — safe to close this tab
+              </p>
+              <p className="text-xs text-muted-foreground truncate mt-1">
+                {activeRun.current_phase || activeRun.campaign_label || ""}
+              </p>
+            </div>
+            <Button size="sm" variant="destructive" onClick={cancelActiveRun} disabled={activeRun.cancel_requested}>
+              {activeRun.cancel_requested ? "Cancelling..." : "⛔ Cancel"}
+            </Button>
+          </div>
+          <Progress value={activeRun.total_count > 0 ? Math.round((activeRun.current_index / activeRun.total_count) * 100) : 0} />
+          <p className="text-xs text-muted-foreground">
+            {activeRun.current_index}/{activeRun.total_count} processed — Sent: {activeRun.sent_count}, Failed: {activeRun.failed_count}, Skipped: {activeRun.skipped_count}
+          </p>
+        </div>
+      )}
+
       {sending && (
         <div className="space-y-2 p-3 border rounded-lg bg-muted/50">
           <div className="flex items-center justify-between">
@@ -1892,7 +1872,7 @@ const AutomatedMarketing = () => {
                 </Button>
                 <Button
                   onClick={handleSend}
-                  disabled={sending || !previewResults}
+                  disabled={sending || !previewResults || !!(activeRun && (activeRun.status === "queued" || activeRun.status === "running"))}
                   variant={isTrialMode ? "outline" : "default"}
                   className={isTrialMode ? "border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100" : ""}
                 >
