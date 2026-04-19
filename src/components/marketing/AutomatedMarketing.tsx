@@ -1916,7 +1916,7 @@ const AutomatedMarketing = () => {
                 </Button>
                 <Button
                   onClick={handleSend}
-                  disabled={sending || !previewResults || !!(activeRun && (activeRun.status === "queued" || activeRun.status === "running"))}
+                  disabled={sending || !previewResults}
                   variant={isTrialMode ? "outline" : "default"}
                   className={isTrialMode ? "border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100" : ""}
                 >
