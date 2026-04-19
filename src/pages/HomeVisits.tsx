@@ -1127,7 +1127,7 @@ const HomeVisits = () => {
         open={editPasswordDialog}
         onOpenChange={(o) => { setEditPasswordDialog(o); if (!o) setPendingEditVisit(null); }}
         onSuccess={() => { setEditVisit(pendingEditVisit); setPendingEditVisit(null); }}
-        description="Enter password to edit a completed visit record."
+        description="Enter password to edit a completed or registered visit record."
       />
 
       {/* Password dialog for editing payment details of completed visits */}
