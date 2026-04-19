@@ -502,19 +502,32 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
                 {/* Assign Phlebotomist - before time so slots show */}
                 <div>
                   <Label>Assign Phlebotomist</Label>
-                  <Select value={phlebotomistId} onValueChange={setPhlebotomistId}>
-                    <SelectTrigger><SelectValue placeholder="Select phlebotomist..." /></SelectTrigger>
-                    <SelectContent>
-                      {phlebotomists.map((p: any) => {
-                        const reason = getUnavailableReason(p, visitDate);
-                        return (
-                          <SelectItem key={p.id} value={p.id} disabled={!!reason}>
-                            {p.name}{reason ? ` (${reason})` : ""}
-                          </SelectItem>
-                        );
-                      })}
-                    </SelectContent>
-                  </Select>
+                  {phleboLocked ? (
+                    <div className="flex gap-2">
+                      <Input
+                        value={phlebotomists.find((p: any) => p.id === phlebotomistId)?.name || "Not assigned"}
+                        disabled
+                        className="bg-muted flex-1"
+                      />
+                      <Button type="button" variant="outline" size="sm" onClick={() => setPhleboPasswordOpen(true)}>
+                        <Lock className="h-4 w-4 mr-1" /> Unlock
+                      </Button>
+                    </div>
+                  ) : (
+                    <Select value={phlebotomistId} onValueChange={setPhlebotomistId}>
+                      <SelectTrigger><SelectValue placeholder="Select phlebotomist..." /></SelectTrigger>
+                      <SelectContent>
+                        {phlebotomists.map((p: any) => {
+                          const reason = getUnavailableReason(p, visitDate);
+                          return (
+                            <SelectItem key={p.id} value={p.id} disabled={!!reason}>
+                              {p.name}{reason ? ` (${reason})` : ""}
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
 
                 <div>
