@@ -20,6 +20,7 @@ import OutsourcedResults from "./OutsourcedResults";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { formatDateDDMMYYYY } from "@/lib/utils";
+import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 
 const QUALITATIVE_PAIRS = [
   { label: "Absent / Present", values: ["Absent", "Present"] },
