@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { RefreshCw, Send, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -29,24 +31,63 @@ interface FailedRow {
   primary_key: string | null;
 }
 
+const MAX_RETRIES_KEY = "marketing_max_retries";
+const DEFAULT_MAX_RETRIES = 1;
+
 const MarketingRetry = () => {
   const queryClient = useQueryClient();
   const [retrying, setRetrying] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [delayMs, setDelayMs] = useState<number>(3000);
+  const [maxRetries, setMaxRetries] = useState<number>(DEFAULT_MAX_RETRIES);
+  const [maxRetriesInput, setMaxRetriesInput] = useState<string>(String(DEFAULT_MAX_RETRIES));
+  const [savingMax, setSavingMax] = useState(false);
 
-  // Load global delay for the confirmation dialog copy
-  useEffect(() => { getMarketingSendDelayMs().then(setDelayMs); }, []);
+  // Load global delay + persisted max-retries setting
+  useEffect(() => {
+    getMarketingSendDelayMs().then(setDelayMs);
+    (async () => {
+      const { data } = await supabase
+        .from("app_settings")
+        .select("setting_value")
+        .eq("setting_key", MAX_RETRIES_KEY)
+        .maybeSingle();
+      const n = data?.setting_value ? parseInt(data.setting_value, 10) : DEFAULT_MAX_RETRIES;
+      const safe = Number.isFinite(n) && n >= 1 ? n : DEFAULT_MAX_RETRIES;
+      setMaxRetries(safe);
+      setMaxRetriesInput(String(safe));
+    })();
+  }, []);
+
+  const saveMaxRetries = async () => {
+    const n = parseInt(maxRetriesInput, 10);
+    if (!Number.isFinite(n) || n < 1) {
+      toast.error("Max retries must be at least 1");
+      return;
+    }
+    setSavingMax(true);
+    const { error } = await supabase
+      .from("app_settings")
+      .upsert({ setting_key: MAX_RETRIES_KEY, setting_value: String(n) }, { onConflict: "setting_key" });
+    setSavingMax(false);
+    if (error) {
+      toast.error("Failed to save: " + error.message);
+      return;
+    }
+    setMaxRetries(n);
+    toast.success(`Max retries set to ${n}`);
+    queryClient.invalidateQueries({ queryKey: ["marketing_failed_messages"] });
+  };
 
   const { data: failed = [], isLoading } = useQuery({
-    queryKey: ["marketing_failed_messages"],
+    queryKey: ["marketing_failed_messages", maxRetries],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("message_send_log")
         .select("id, patient_name, mobile_number, sent_at, failed_at, retry_count, retry_payload, message_type, umr_number, primary_key")
         .in("message_type", ["Marketing", "ABC", "Abnormal History", "Promotion"])
         .eq("delivery_status", "failed")
-        .lt("retry_count", 1)
+        .lt("retry_count", maxRetries)
         .order("failed_at", { ascending: false, nullsFirst: false })
         .limit(1000);
       if (error) throw error;
@@ -117,20 +158,20 @@ const MarketingRetry = () => {
       const row = failed[i];
 
       const result = await retryOne(row);
+      const nextCount = (row.retry_count || 0) + 1;
 
       if (result === "sent") {
         succeeded++;
         await supabase
           .from("message_send_log")
-          .update({ delivery_status: "sent", failed_at: null, retry_count: 1 })
+          .update({ delivery_status: "sent", failed_at: null, retry_count: nextCount })
           .eq("id", row.id);
       } else if (result === "failed") {
         stillFailed++;
-        // Increment retry_count so the row drops out of the queue on next load
-        // (user can manually re-set if they want to try again later).
+        // Increment retry_count; row stays visible until retry_count >= maxRetries.
         await supabase
           .from("message_send_log")
-          .update({ retry_count: 1 })
+          .update({ retry_count: nextCount })
           .eq("id", row.id);
       } else {
         // "skipped" — no payload to retry from. Mark as retried so it doesn't
@@ -138,7 +179,7 @@ const MarketingRetry = () => {
         skipped++;
         await supabase
           .from("message_send_log")
-          .update({ retry_count: 1 })
+          .update({ retry_count: maxRetries })
           .eq("id", row.id);
       }
 
@@ -168,9 +209,29 @@ const MarketingRetry = () => {
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 gap-4 flex-wrap">
         <CardTitle className="text-base">Failed Messages — Retry Queue</CardTitle>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Label htmlFor="max-retries" className="text-xs whitespace-nowrap">Max retries / row:</Label>
+            <Input
+              id="max-retries"
+              type="number"
+              min={1}
+              value={maxRetriesInput}
+              onChange={(e) => setMaxRetriesInput(e.target.value)}
+              className="h-8 w-20"
+              disabled={retrying || savingMax}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={saveMaxRetries}
+              disabled={retrying || savingMax || maxRetriesInput === String(maxRetries)}
+            >
+              {savingMax ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+            </Button>
+          </div>
           <Button variant="outline" size="sm" onClick={refresh} disabled={retrying}>
             <RefreshCw className="h-4 w-4" />
           </Button>
@@ -189,12 +250,12 @@ const MarketingRetry = () => {
                 <AlertDialogTitle>Retry {failed.length} failed messages?</AlertDialogTitle>
                 <AlertDialogDescription>
                   Each message will be re-sent {activeDelayCopy(delayMs)} (configured in WhatsApp Settings).
+                  Rows stay in this queue until they reach <strong>{maxRetries}</strong> retr{maxRetries === 1 ? "y" : "ies"}.
                   {missingPayloadCount > 0 && (
                     <>
                       {" "}<strong>{missingPayloadCount} of {failed.length}</strong> rows are legacy failures with no captured payload and will be skipped — new failures going forward are fully retryable.
                     </>
                   )}
-                  {" "}Retried rows are removed from this list regardless of outcome.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -228,6 +289,7 @@ const MarketingRetry = () => {
                   <TableHead>Mobile</TableHead>
                   <TableHead>UMR / Primary Key</TableHead>
                   <TableHead>Failed At</TableHead>
+                  <TableHead>Retries</TableHead>
                   <TableHead>Retryable</TableHead>
                 </TableRow>
               </TableHeader>
@@ -240,6 +302,7 @@ const MarketingRetry = () => {
                     <TableCell className="font-mono text-xs">{r.mobile_number}</TableCell>
                     <TableCell className="font-mono text-xs">{r.primary_key || r.umr_number || "—"}</TableCell>
                     <TableCell className="text-xs">{fmt(r.failed_at || r.sent_at)}</TableCell>
+                    <TableCell className="text-xs font-mono">{r.retry_count} / {maxRetries}</TableCell>
                     <TableCell>
                       {r.retry_payload ? (
                         <Badge variant="secondary" className="text-[10px]">Yes</Badge>
