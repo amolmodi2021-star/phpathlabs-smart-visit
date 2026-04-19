@@ -52,28 +52,13 @@ const MESSAGE_TYPES = [
 
 const LOCATIONS = ["ALL", "PH VESU", "NON PHPL"];
 
-// Module-level state so it survives component unmount/remount (used only for trial mode now)
+// Module-level state so the in-progress send survives component unmount/remount
+// (e.g. user navigates between tabs) — sending still stops if the BROWSER tab is closed.
 let _moduleAbort = false;
 let _moduleSending = false;
 let _modulePaused = false;
 let _moduleProgress = 0;
 let _modulePhase = "";
-
-interface DripRun {
-  id: string;
-  status: string;
-  total_count: number;
-  sent_count: number;
-  failed_count: number;
-  skipped_count: number;
-  current_index: number;
-  current_phase: string | null;
-  campaign_label: string | null;
-  started_at: string | null;
-  finished_at: string | null;
-  cancel_requested: boolean;
-  error: string | null;
-}
 
 const SEQUENCE_OPTIONS = [
   { value: "__none__", label: "No sequencing (any)" },
