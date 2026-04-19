@@ -1456,6 +1456,9 @@ const AutomatedMarketing = () => {
       completion_lock: "Locked by Higher Priority",
       already_complete: "Already Complete (this cycle)",
       already_sent_this_cycle: "Already Sent (this cycle)",
+      loop_error: "Filter Aborted (loop error)",
+      record_error: "Record Error (skipped)",
+      campaign_aborted: "Campaign Aborted",
     };
     return labels[r] || r;
   };
