@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { RefreshCw, Send, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { getMarketingSendDelayMs } from "@/lib/marketingDelay";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -43,6 +44,10 @@ const MarketingRetry = () => {
   const queryClient = useQueryClient();
   const [retrying, setRetrying] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
+  const [delayMs, setDelayMs] = useState<number>(3000);
+
+  // Load global delay for the confirmation dialog copy
+  useState(() => { getMarketingSendDelayMs().then(setDelayMs); return undefined; });
 
   const { data: failed = [], isLoading } = useQuery({
     queryKey: ["marketing_failed_messages"],
@@ -180,6 +185,10 @@ const MarketingRetry = () => {
     let stillFailed = 0;
     let skipped = 0;
 
+    // Refresh global delay just-in-time
+    const activeDelay = await getMarketingSendDelayMs();
+    setDelayMs(activeDelay);
+
     // Pre-load ABC config if any ABC rows present
     const hasAbc = failed.some((r) => r.message_type === "ABC");
     const abcCfg = hasAbc ? await loadAbcConfig() : null;
@@ -221,7 +230,9 @@ const MarketingRetry = () => {
       }
 
       setProgress({ current: i + 1, total: failed.length });
-      if (i < failed.length - 1) await new Promise((r) => setTimeout(r, 3000));
+      if (activeDelay > 0 && i < failed.length - 1) {
+        await new Promise((r) => setTimeout(r, activeDelay));
+      }
     }
 
     setRetrying(false);
@@ -258,7 +269,7 @@ const MarketingRetry = () => {
               <AlertDialogHeader>
                 <AlertDialogTitle>Retry {failed.length} failed messages?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Each message will be re-sent with a 3-second delay. ABC cards rebuild the payload from CRM data; Marketing rows reuse the original payload. Abnormal History rows (manual shares) are skipped. Failed retries are removed from this list.
+                  Each message will be re-sent {delayMs === 0 ? "with no delay between sends" : `with a ${(delayMs / 1000).toString()}-second delay`} (configured in WhatsApp Settings). ABC cards rebuild the payload from CRM data; Marketing rows reuse the original payload. Abnormal History rows (manual shares) are skipped. Failed retries are removed from this list.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>

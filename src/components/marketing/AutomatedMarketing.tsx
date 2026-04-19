@@ -1210,7 +1210,7 @@ const AutomatedMarketing = () => {
           continue;
         }
 
-        const delayMs = 3000;
+        const delayMs = Number(cfg["wa_global_delayMs"]) || 3000;
 
         for (let i = 0; i < preview.records.length; i++) {
           await _waitWhilePaused();
