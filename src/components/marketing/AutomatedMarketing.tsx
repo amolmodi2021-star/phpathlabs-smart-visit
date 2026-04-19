@@ -895,10 +895,6 @@ const AutomatedMarketing = () => {
   };
 
   const handleSend = async () => {
-    // Prevent double-click while a server-side run is active
-    if (activeRun && (activeRun.status === "running" || activeRun.status === "queued")) {
-      return toast.error("A campaign is already running. Wait for it to finish or cancel it.");
-    }
     if (_moduleSending) return;
     if (!previewResults || previewResults.every((r) => r.eligible === 0)) {
       return toast.error("Run preview first and ensure there are eligible records");
