@@ -670,6 +670,12 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+        <DeletePasswordDialog
+          open={phleboPasswordOpen}
+          onOpenChange={setPhleboPasswordOpen}
+          onSuccess={() => setPhleboLocked(false)}
+          description="Enter password to change phlebotomist for a registered visit."
+        />
       </DialogContent>
     </Dialog>
   );
