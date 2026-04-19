@@ -160,6 +160,7 @@ const MarketingSender = () => {
               patient_name: patientName || null,
               message_type: "Marketing",
               delivery_status: "failed",
+              failed_at: new Date().toISOString(),
               retry_payload: retryPayloadSnapshot as any,
               retry_count: 0,
             } as any);
@@ -183,6 +184,7 @@ const MarketingSender = () => {
             patient_name: patientName || null,
             message_type: "Marketing",
             delivery_status: "failed",
+            failed_at: new Date().toISOString(),
             retry_payload: retryPayloadSnapshot as any,
             retry_count: 0,
           } as any);

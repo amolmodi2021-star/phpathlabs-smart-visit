@@ -75,19 +75,20 @@ const MessageLog = () => {
               <TableHead>Sent Date & Time</TableHead>
               <TableHead>Delivered Date & Time</TableHead>
               <TableHead>Read Date & Time</TableHead>
+              <TableHead>Failed Date & Time</TableHead>
               <TableHead>Days Ago</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={12} className="text-center py-8 text-muted-foreground">
                   Loading...
                 </TableCell>
               </TableRow>
             ) : rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={12} className="text-center py-8 text-muted-foreground">
                   No messages logged yet
                 </TableCell>
               </TableRow>
@@ -115,6 +116,9 @@ const MessageLog = () => {
                     </TableCell>
                     <TableCell className="whitespace-nowrap">
                       {row.read_at ? format(new Date(row.read_at), "dd-MM-yyyy hh:mm a") : "—"}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {row.failed_at ? format(new Date(row.failed_at), "dd-MM-yyyy hh:mm a") : "—"}
                     </TableCell>
                     <TableCell className="text-center">{daysAgo}</TableCell>
                   </TableRow>

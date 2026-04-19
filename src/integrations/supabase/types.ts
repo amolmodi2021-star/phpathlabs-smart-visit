@@ -1862,6 +1862,7 @@ export type Database = {
           created_at: string
           delivered_at: string | null
           delivery_status: string | null
+          failed_at: string | null
           id: string
           message_content: string | null
           message_id: string | null
@@ -1879,6 +1880,7 @@ export type Database = {
           created_at?: string
           delivered_at?: string | null
           delivery_status?: string | null
+          failed_at?: string | null
           id?: string
           message_content?: string | null
           message_id?: string | null
@@ -1896,6 +1898,7 @@ export type Database = {
           created_at?: string
           delivered_at?: string | null
           delivery_status?: string | null
+          failed_at?: string | null
           id?: string
           message_content?: string | null
           message_id?: string | null

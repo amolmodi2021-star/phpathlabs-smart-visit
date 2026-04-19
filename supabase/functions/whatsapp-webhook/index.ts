@@ -47,6 +47,7 @@ Deno.serve(async (req) => {
         const mslPayload: Record<string, any> = { delivery_status: status };
         if (status === "delivered") mslPayload.delivered_at = ts;
         if (status === "read") mslPayload.read_at = ts;
+        if (status === "failed" || status === "undelivered") mslPayload.failed_at = ts;
 
         // Only derive baseId if messageId matches AOC pattern: UUID:digit(s)
         const aocSuffixPattern = /^[0-9a-f-]{36}:\d+$/;
