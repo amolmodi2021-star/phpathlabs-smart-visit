@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { printBarcodes } from "@/lib/barcodePrint";
+import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 
 const TUBE_COLOR_MAP: Record<string, string> = {
   red: "#e53e3e", lavender: "#b794f4", purple: "#9f7aea", yellow: "#ecc94b",
@@ -46,6 +47,9 @@ interface GroupedRegistration {
 
 const SampleCollection = () => {
   const qc = useQueryClient();
+  // Auto-refresh when new tubes are inserted (e.g. fresh registration) or registrations change
+  useRealtimeSync("sample_tubes", ["sample_tubes_collection", "sample_collection_regs"]);
+  useRealtimeSync("patient_registrations", ["sample_collection_regs", "sample_tubes_collection"]);
   const [activeTab, setActiveTab] = useState("pending");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
