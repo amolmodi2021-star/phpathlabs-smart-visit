@@ -172,6 +172,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
     setVisitTime(visit.visit_time || "");
     setAddress(visit.address || "");
     setPhlebotomistId(visit.phlebotomist_id || "");
+    setPhleboLocked(visit?.status === "Registered");
     setGlobalDiscountType((est.global_discount_type as "percent" | "amount") || "percent");
     setGlobalDiscountValue(Number(est.global_discount_value) || 0);
     setHomeVisitCharges(String(Number(est.home_visit_charges) || 0));
