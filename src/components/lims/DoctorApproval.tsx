@@ -16,6 +16,7 @@ import { DescriptiveCombobox } from "./DescriptiveCombobox";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { toast } from "sonner";
 import { formatDateDDMMYYYY } from "@/lib/utils";
+import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 import ModifiedApproval from "./ModifiedApproval";
 import SelectApproverDialog, { ApproverChoice } from "./SelectApproverDialog";
 
