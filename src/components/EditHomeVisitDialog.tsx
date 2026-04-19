@@ -73,7 +73,8 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
   const [pendingGender, setPendingGender] = useState<"Male" | "Female" | "">("");
   const [attempted, setAttempted] = useState(false);
   const [phlebotomistId, setPhlebotomistId] = useState("");
-  const [phleboLocked, setPhleboLocked] = useState(false);
+  const [phleboUnlockedForVisitId, setPhleboUnlockedForVisitId] = useState<string | null>(null);
+  const phleboLocked = visit?.status === "Registered" && phleboUnlockedForVisitId !== visit?.id;
   const [phleboPasswordOpen, setPhleboPasswordOpen] = useState(false);
 
   const handleTitleChange = (val: string) => {
