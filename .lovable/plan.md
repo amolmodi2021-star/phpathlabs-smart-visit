@@ -1,54 +1,51 @@
 
 
-## Goal
-For Registered home visits (registered via Completed Home Visits → Edit & Register in LIMS), allow opening the edit dialog (already done — password gate at the row level), but lock the **Assign Phlebotomist** field specifically. Changing it requires entering password `9819111107` again.
+## Diagnosis
 
-## Why
-Once a visit is registered in LIMS, the assigned phlebotomist becomes part of the clinical/operational audit trail. Other logistics (address, time, contact) can be amended freely after the row-level password unlock, but the phlebotomist assignment must stay intentional and auditable.
+The lock logic in `src/components/EditHomeVisitDialog.tsx` is currently driven by `useState(false)` + `useEffect` (lines 76, 175). On first render after the dialog opens, `phleboLocked` is still `false` until the effect runs — and there are several scenarios where the effect can be skipped or stale:
 
-## Fix — `src/components/EditHomeVisitDialog.tsx`
+1. The effect bails out via `if (!visit || !est) return;` (line 160) **before** the lock state gets reset, so if the dialog was previously opened on a Pending visit (lock=false) and the new Registered visit's `est` is briefly null between renders, the lock stays `false`.
+2. The dialog component is mounted persistently in `HomeVisits.tsx` (line 1083), so `phleboLocked` state survives between opens. If the previous open was a non-Registered visit, the stale `false` value is shown.
+3. `useState`/`useEffect` round-trip means the very first paint after the visit prop changes shows the editable `<Select>` before the effect fires the lock.
 
-1. Add local state `phleboLocked` initialised to `visit?.status === "Registered"` (in the same effect that resets fields when the dialog opens).
-2. Add `phleboPasswordOpen` state for the unlock dialog.
-3. In the Assign Phlebotomist block (lines 498–514):
-   - When `phleboLocked === true`, render the field as a **disabled** input showing the current phleb name + a small "Unlock" button (lock icon) next to it.
-   - Clicking Unlock opens `DeletePasswordDialog` (already enforces `9819111107` project-wide).
-   - On successful password → `setPhleboLocked(false)` → the existing `<Select>` becomes editable.
-4. Non-registered visits: unchanged — Select stays editable as today.
-5. Once unlocked within the session, it stays unlocked until the dialog closes (re-locks automatically on next open).
+## Fix — single file: `src/components/EditHomeVisitDialog.tsx`
 
-### Pseudocode for the affected block
-```tsx
-{phleboLocked ? (
-  <div className="flex gap-2">
-    <Input value={phleboName} disabled className="bg-muted flex-1" />
-    <Button type="button" variant="outline" size="sm" onClick={() => setPhleboPasswordOpen(true)}>
-      <Lock className="h-4 w-4 mr-1" /> Unlock
-    </Button>
-  </div>
-) : (
-  <Select value={phlebotomistId} onValueChange={setPhlebotomistId}> … </Select>
-)}
+Replace the `phleboLocked` state with a **derived value** computed every render directly from the current `visit` prop. Lock state then can never go stale and there is no first-paint flash of the editable Select. The unlock action (password success) is tracked by a separate "unlocked override" state that resets whenever the visit changes.
 
-<DeletePasswordDialog
-  open={phleboPasswordOpen}
-  onOpenChange={setPhleboPasswordOpen}
-  onSuccess={() => setPhleboLocked(false)}
-  description="Enter password to change phlebotomist for a registered visit."
-/>
-```
+### Changes
+
+1. **Remove** `const [phleboLocked, setPhleboLocked] = useState(false);` (line 76).
+2. **Add** in its place:
+   ```ts
+   const [phleboUnlockedForVisitId, setPhleboUnlockedForVisitId] = useState<string | null>(null);
+   const phleboLocked = visit?.status === "Registered" && phleboUnlockedForVisitId !== visit?.id;
+   ```
+3. **Remove** `setPhleboLocked(visit?.status === "Registered");` from the effect (line 175). The derived value handles it automatically.
+4. **Update** the password-success handler (line 676):
+   ```tsx
+   onSuccess={() => setPhleboUnlockedForVisitId(visit?.id || null)}
+   ```
+5. Reset `phleboUnlockedForVisitId` to `null` when the dialog closes, so re-opening the same Registered visit re-locks it:
+   ```ts
+   onClose={() => { setPhleboUnlockedForVisitId(null); onClose(); }}
+   ```
+   Wire this through the existing `<Dialog open={open} onOpenChange={(o) => !o && onClose()}>` — call `setPhleboUnlockedForVisitId(null)` inline before `onClose()`.
+
+### Why this is robust
+
+- `phleboLocked` is a pure function of the live `visit` prop → no stale state, no useEffect timing race.
+- Reopening any Registered visit always starts locked (override is per-visit-id and reset on close).
+- Non-Registered visits: `phleboLocked` is always `false` → Select is editable as today.
+- Password gate (`9819111107`) and the existing locked UI block (lines 505–530) stay exactly as they are.
 
 ## Out of scope
-- No DB / migration changes.
-- No change to `HomeVisits.tsx` row-level gate (already in place for Completed + Registered).
-- Phlebotomist Management page (staff records) — untouched.
-- Phlebo Dashboard — read-only, untouched.
-- Wrong password → existing toast from `DeletePasswordDialog`, no unlock.
+- No DB changes.
+- No change to `HomeVisits.tsx` row-level password gate.
+- No change to completion-mode disabled phleb input (already read-only by design).
 
 ## Expected outcome
-- Open a Registered home visit → password prompt (existing) → dialog opens.
-- Phlebotomist field is locked (greyed out, with current name + Unlock button).
-- Click Unlock → enter `9819111107` → field becomes a Select; pick a different phleb → Save updates `home_visits.phlebotomist_id`.
-- All other fields (address, time, contact, tests, payment) remain editable as before.
-- Non-Registered visits behave exactly as today.
+- Clicking pencil on a Registered visit → password (existing) → dialog opens → **Assign Phlebotomist immediately shows the disabled name + Unlock button**, with no flash of the editable Select.
+- Clicking Unlock → enter `9819111107` → field becomes the searchable Select. Pick a different phleb → Save persists.
+- Closing and reopening the same visit re-locks the field.
+- Pending / Cancelled / Completed visits behave exactly as today (Select editable for non-Registered).
 
