@@ -746,7 +746,7 @@ const DoctorApproval = () => {
               return (
                 <div key={tg.testId} className="ml-1">
                   <div className="flex items-center justify-between px-1 py-0.5 bg-muted/40 rounded-t">
-                    <span className="text-xs font-medium text-muted-foreground">{tg.testName}</span>
+                    <span className="text-base font-bold text-foreground">{tg.testName}</span>
                     <div className="flex items-center gap-1">
                       <Button size="sm" variant="ghost" className="h-6 text-[11px] gap-1 text-orange-600" disabled={isSendingBack} onClick={() => sendBackForVerification(reg.id, tg.testId, tg.testName)}>
                         {isSendingBack ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />} Send Back

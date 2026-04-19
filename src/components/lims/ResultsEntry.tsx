@@ -1385,7 +1385,7 @@ const ResultsEntry = () => {
                   >
                     <div className="flex items-center gap-2 flex-wrap">
                       {isTestExpanded ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
-                      <span className="text-xs font-medium text-muted-foreground">{tg.testName}</span>
+                      <span className="text-base font-bold text-foreground">{tg.testName}</span>
                       <Badge variant="outline" className="text-[10px]">{filledCount}/{tg.params.length}</Badge>
                       {isFullTestOutsourced && (() => {
                         const allHaveResults = tg.params.every(p => {
