@@ -115,15 +115,26 @@ const GlobalApiSettings = () => {
               <Switch checked={queueEnabled} onCheckedChange={setQueueEnabled} />
               <Label className="text-xs">Queue Mode</Label>
             </div>
-            {queueEnabled && (
-              <div className="flex items-center gap-2">
-                <Label className="text-xs">Delay (ms)</Label>
-                <Input type="number" value={delayMs} onChange={(e) => setDelayMs(Number(e.target.value))} className="w-24 h-8" min={500} step={500} />
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              <Label className="text-xs whitespace-nowrap">Delay between messages (ms)</Label>
+              <Select value={[0, 1000, 3000, 5000, 10000].includes(delayMs) ? String(delayMs) : "custom"} onValueChange={(v) => { if (v !== "custom") setDelayMs(Number(v)); }}>
+                <SelectTrigger className="w-36 h-8"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">No delay</SelectItem>
+                  <SelectItem value="1000">1 second</SelectItem>
+                  <SelectItem value="3000">3 seconds (default)</SelectItem>
+                  <SelectItem value="5000">5 seconds</SelectItem>
+                  <SelectItem value="10000">10 seconds</SelectItem>
+                  <SelectItem value="custom">Custom…</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input type="number" value={delayMs} onChange={(e) => setDelayMs(Math.max(0, Number(e.target.value) || 0))} className="w-24 h-8" min={0} step={100} />
+            </div>
           </div>
         </div>
-        <p className="text-xs text-muted-foreground">Settings are auto-saved.</p>
+        <p className="text-xs text-muted-foreground">
+          Settings are auto-saved. The delay applies to all marketing campaigns (Send Messages, Automated/Drip, Retry). Set to <span className="font-mono">0</span> for back-to-back sends.
+        </p>
       </CardContent>
     </Card>
   );
