@@ -20,6 +20,7 @@ import { Search, Loader2, CheckCircle2, Send, Eye, Truck, MessageSquare, Circle,
 import { toast } from "sonner";
 import { format, startOfDay, endOfDay, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
+import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 
 type TestStatus = "registered" | "sample_collected" | "sample_accepted" | "results_entered" | "verified" | "approved" | "dispatched";
 
@@ -150,7 +151,15 @@ const Dispatch = () => {
     return registrations.filter((reg: any) => !heldSet.has(reg.id)).map((reg: any) => {
       const tests = (reg.tests || []) as any[];
       const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
-      const activeTests = tests.filter((t: any) => !cancelledIds.has(t.test_id));
+      // Build leaf-id set from this registration's tubes (handles PRL/HLT expansion)
+      const leafIds = new Set<string>();
+      for (const tb of allTubes) {
+        if (tb.registration_id !== reg.id) continue;
+        const ids = Array.isArray(tb.test_ids) ? tb.test_ids : [];
+        ids.forEach((id: string) => leafIds.add(id));
+      }
+      const expandedTests = expandRegistrationTests(tests, leafIds, testsMap);
+      const activeTests = expandedTests.filter((t: any) => !cancelledIds.has(t.test_id));
       if (activeTests.length === 0) return null;
 
       const dispatchTests: DispatchTest[] = [];

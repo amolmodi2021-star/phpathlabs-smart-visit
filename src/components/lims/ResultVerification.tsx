@@ -16,6 +16,7 @@ import { DescriptiveCombobox } from "./DescriptiveCombobox";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { toast } from "sonner";
 import { formatDateDDMMYYYY } from "@/lib/utils";
+import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 
 const QUALITATIVE_PAIRS = [
   { label: "Absent / Present", values: ["Absent", "Present"] },
@@ -155,6 +156,29 @@ const ResultVerification = () => {
       return (data || []) as any[];
     },
   });
+
+  // Fetch sample tubes (used to expand PRL/HLT container test rows into leaf test ids)
+  const { data: regTubes = [] } = useQuery({
+    queryKey: ["verification_tubes", regIds.join(",")],
+    enabled: regIds.length > 0,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("sample_tubes" as any)
+        .select("registration_id, test_ids")
+        .in("registration_id", regIds);
+      return (data || []) as any[];
+    },
+  });
+
+  const leafIdsByReg = useMemo(() => {
+    const map: Record<string, Set<string>> = {};
+    for (const tb of regTubes) {
+      if (!map[tb.registration_id]) map[tb.registration_id] = new Set();
+      const ids = Array.isArray(tb.test_ids) ? tb.test_ids : [];
+      ids.forEach((id: string) => map[tb.registration_id].add(id));
+    }
+    return map;
+  }, [regTubes]);
 
   // Fetch outsourced snips with results_entered status
   const { data: outsourcedSnips = [] } = useQuery({
@@ -325,7 +349,8 @@ const ResultVerification = () => {
     return registrations.map((reg: any) => {
       const tests = (reg.tests || []) as any[];
       const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
-      const activeTests = tests.filter((t: any) => !cancelledIds.has(t.test_id));
+      const expandedTests = expandRegistrationTests(tests, leafIdsByReg[reg.id] ?? new Set<string>(), testsMap);
+      const activeTests = expandedTests.filter((t: any) => !cancelledIds.has(t.test_id));
       const parameters: ParameterResult[] = [];
       const snipOnlyTests: SnipOnlyTest[] = [];
       for (const t of activeTests) {
@@ -382,7 +407,7 @@ const ResultVerification = () => {
       }
       return { registration: reg, parameters, snipOnlyTests };
     }).filter(e => e.parameters.length > 0 || e.snipOnlyTests.length > 0);
-  }, [registrations, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails]);
+  }, [registrations, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails, leafIdsByReg]);
 
   // Calculate flag
   const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string): string => {
