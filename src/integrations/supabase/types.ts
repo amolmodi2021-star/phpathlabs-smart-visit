@@ -1860,6 +1860,7 @@ export type Database = {
       message_send_log: {
         Row: {
           created_at: string
+          delivered_at: string | null
           delivery_status: string | null
           id: string
           message_content: string | null
@@ -1868,6 +1869,7 @@ export type Database = {
           mobile_number: string
           patient_name: string | null
           primary_key: string | null
+          read_at: string | null
           retry_count: number
           retry_payload: Json | null
           sent_at: string
@@ -1875,6 +1877,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          delivered_at?: string | null
           delivery_status?: string | null
           id?: string
           message_content?: string | null
@@ -1883,6 +1886,7 @@ export type Database = {
           mobile_number: string
           patient_name?: string | null
           primary_key?: string | null
+          read_at?: string | null
           retry_count?: number
           retry_payload?: Json | null
           sent_at?: string
@@ -1890,6 +1894,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          delivered_at?: string | null
           delivery_status?: string | null
           id?: string
           message_content?: string | null
@@ -1898,6 +1903,7 @@ export type Database = {
           mobile_number?: string
           patient_name?: string | null
           primary_key?: string | null
+          read_at?: string | null
           retry_count?: number
           retry_payload?: Json | null
           sent_at?: string

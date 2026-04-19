@@ -40,6 +40,14 @@ Deno.serve(async (req) => {
         const updatePayload: Record<string, any> = { delivery_status: status };
         if (errorInfo) updatePayload.error_info = errorInfo;
 
+        // Stamp delivered_at / read_at on message_send_log rows
+        const ts = statusData.timestamp
+          ? new Date(Number(statusData.timestamp) * 1000).toISOString()
+          : new Date().toISOString();
+        const mslPayload: Record<string, any> = { delivery_status: status };
+        if (status === "delivered") mslPayload.delivered_at = ts;
+        if (status === "read") mslPayload.read_at = ts;
+
         // Only derive baseId if messageId matches AOC pattern: UUID:digit(s)
         const aocSuffixPattern = /^[0-9a-f-]{36}:\d+$/;
         const baseId = aocSuffixPattern.test(messageId) ? messageId.split(":")[0] : null;
@@ -61,14 +69,14 @@ Deno.serve(async (req) => {
         // --- message_send_log: exact match first, fallback only if 0 rows ---
         const exactMsl = await supabase
           .from("message_send_log")
-          .update({ delivery_status: status } as any)
+          .update(mslPayload as any)
           .eq("message_id", messageId)
           .select("id");
 
         if (baseId && (!exactMsl.data || exactMsl.data.length === 0)) {
           await supabase
             .from("message_send_log")
-            .update({ delivery_status: status } as any)
+            .update(mslPayload as any)
             .eq("message_id", baseId);
         }
 

@@ -38,37 +38,8 @@ const MessageLog = () => {
       const { data: rows, count, error } = await query;
       if (error) throw error;
 
-      // Fetch delivered/read timestamps from webhook_messages for message_ids
-      const messageIds = (rows || [])
-        .map((r: any) => r.message_id)
-        .filter(Boolean);
-
-      let statusMap: Record<string, { delivered_at?: string; read_at?: string }> = {};
-      if (messageIds.length > 0) {
-        const { data: statuses } = await supabase
-          .from("webhook_messages")
-          .select("message_id, delivery_status, created_at")
-          .in("message_id", messageIds)
-          .eq("direction", "outbound")
-          .in("delivery_status", ["delivered", "read"]);
-
-        for (const s of statuses || []) {
-          if (!statusMap[s.message_id]) statusMap[s.message_id] = {};
-          if (s.delivery_status === "delivered") {
-            statusMap[s.message_id].delivered_at = s.created_at;
-          } else if (s.delivery_status === "read") {
-            statusMap[s.message_id].read_at = s.created_at;
-          }
-        }
-      }
-
-      const enrichedRows = (rows || []).map((r: any) => ({
-        ...r,
-        delivered_at: r.message_id ? statusMap[r.message_id]?.delivered_at : null,
-        read_at: r.message_id ? statusMap[r.message_id]?.read_at : null,
-      }));
-
-      return { rows: enrichedRows, total: count || 0 };
+      // delivered_at / read_at are stamped directly on message_send_log by the webhook
+      return { rows: rows || [], total: count || 0 };
     },
   });
 
