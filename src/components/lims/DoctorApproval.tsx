@@ -662,12 +662,12 @@ const DoctorApproval = () => {
     return (
       <div className="space-y-3 p-3 bg-muted/20 rounded-lg border">
         <div className="flex items-center gap-3">
-          <span className="font-semibold">{reg.patient_name}</span>
+          <span className="font-semibold">{reg.invoice_number}</span>
           {!["sample_accepted","entered","verified"].includes(reg.status) && Array.isArray(reg.accepted_samples) && reg.accepted_samples.length > 0 && (
             <Badge className="bg-amber-100 text-amber-700 text-[10px]">PARTIAL</Badge>
           )}
           {reg.is_stat && <span className="relative inline-flex h-2.5 w-2.5 ml-1.5 align-middle"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" /><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive" /></span>}
-          <span className="text-sm text-muted-foreground">{reg.invoice_number}</span>
+          <span className="text-sm text-muted-foreground">{reg.patient_name}</span>
         </div>
         {/* Snip-only outsourced tests */}
         {entry.snipOnlyTests.length > 0 && entry.snipOnlyTests.map(st => {
@@ -816,12 +816,12 @@ const DoctorApproval = () => {
                   {isExpanded ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium">{reg.patient_name}</span>
+                      <span className="font-medium font-mono">{reg.invoice_number}</span>
                       {!["sample_accepted","entered","verified"].includes(reg.status) && Array.isArray(reg.accepted_samples) && reg.accepted_samples.length > 0 && (
                         <Badge className="bg-amber-100 text-amber-700 text-[10px]">PARTIAL</Badge>
                       )}
                       {reg.is_stat && <span className="relative inline-flex h-2.5 w-2.5"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" /><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive" /></span>}
-                      <span className="text-sm text-muted-foreground font-mono">{reg.invoice_number}</span>
+                      <span className="text-sm text-muted-foreground">{reg.patient_name}</span>
                     </div>
                     <div className="text-xs text-muted-foreground">{reg.mobile_number} • {entry.parameters.length} parameters</div>
                   </div>

@@ -1295,7 +1295,7 @@ const ResultsEntry = () => {
       <div className="space-y-3 p-3 bg-muted/20 rounded-lg border">
         <div className="flex items-center gap-3">
           <div>
-            <span className="font-semibold">{reg.patient_name}</span>
+            <span className="font-semibold">{reg.invoice_number}</span>
             {reg.status !== "sample_accepted" && Array.isArray(reg.accepted_samples) && reg.accepted_samples.length > 0 && (
               <Badge className="bg-amber-100 text-amber-700 text-[10px] ml-1">PARTIAL</Badge>
             )}
@@ -1305,7 +1305,7 @@ const ResultsEntry = () => {
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive" />
               </span>
             )}
-            <span className="text-sm text-muted-foreground ml-2">{reg.invoice_number}</span>
+            <span className="text-sm text-muted-foreground ml-2">{reg.patient_name}</span>
           </div>
           <Badge variant={completion === 100 ? "default" : "outline"} className="text-xs">
             {completion}% Complete
@@ -1576,7 +1576,7 @@ const ResultsEntry = () => {
                       {isExpanded ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="font-medium">{reg.patient_name}</span>
+                          <span className="font-medium font-mono">{reg.invoice_number}</span>
                           {reg.status !== "sample_accepted" && Array.isArray(reg.accepted_samples) && reg.accepted_samples.length > 0 && (
                             <Badge className="bg-amber-100 text-amber-700 text-[10px]">PARTIAL</Badge>
                           )}
@@ -1586,7 +1586,7 @@ const ResultsEntry = () => {
                               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive" />
                             </span>
                           )}
-                          <span className="text-sm text-muted-foreground font-mono">{reg.invoice_number}</span>
+                          <span className="text-sm text-muted-foreground">{reg.patient_name}</span>
                         </div>
                         <div className="text-xs text-muted-foreground">
                           {reg.mobile_number} • {entry.parameters.length} parameters
