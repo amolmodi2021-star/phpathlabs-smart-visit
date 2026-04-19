@@ -255,7 +255,7 @@ const AutomatedMarketing = () => {
         .from("drip_campaign_log")
         .select("*")
         .order("created_at", { ascending: false })
-        .limit(500);
+        .limit(10000);
       if (error) throw error;
       return data || [];
     },
