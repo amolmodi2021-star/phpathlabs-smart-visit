@@ -182,6 +182,25 @@ const DoctorApproval = () => {
     },
   });
 
+  // Fetch sample tubes to expand PRL/HLT container rows into leaf tests
+  const { data: regTubes = [] } = useQuery({
+    queryKey: ["doctor_approval_tubes", regIds.join(",")],
+    enabled: regIds.length > 0,
+    queryFn: async () => {
+      const { data } = await supabase.from("sample_tubes" as any).select("registration_id, test_ids").in("registration_id", regIds);
+      return (data || []) as any[];
+    },
+  });
+  const leafIdsByReg = useMemo(() => {
+    const map: Record<string, Set<string>> = {};
+    for (const tb of regTubes) {
+      if (!map[tb.registration_id]) map[tb.registration_id] = new Set();
+      const ids = Array.isArray(tb.test_ids) ? tb.test_ids : [];
+      ids.forEach((id: string) => map[tb.registration_id].add(id));
+    }
+    return map;
+  }, [regTubes]);
+
   const { data: outsourcedSnips = [] } = useQuery({
     queryKey: ["doctor_approval_snips", regIds.join(",")],
     enabled: regIds.length > 0,
@@ -243,7 +262,8 @@ const DoctorApproval = () => {
     return registrations.map((reg: any) => {
       const tests = (reg.tests || []) as any[];
       const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
-      const activeTests = tests.filter((t: any) => !cancelledIds.has(t.test_id));
+      const expandedTests = expandRegistrationTests(tests, leafIdsByReg[reg.id] ?? new Set<string>(), testsMap);
+      const activeTests = expandedTests.filter((t: any) => !cancelledIds.has(t.test_id));
       const parameters: ParameterResult[] = [];
       const snipOnlyTests: SnipOnlyTest[] = [];
       for (const t of activeTests) {
