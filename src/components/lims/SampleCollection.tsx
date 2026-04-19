@@ -502,7 +502,11 @@ const SampleCollection = () => {
               <>
                 <TableRow key={reg.id}
                   className={`cursor-pointer hover:bg-muted/50 ${reg.is_stat ? "bg-destructive/5 border-l-2 border-l-destructive" : ""}`}
-                  onClick={() => setExpandedRow(isExpanded ? null : reg.id)}>
+                  onClick={() => {
+                    const next = isExpanded ? null : reg.id;
+                    setExpandedRow(next);
+                    if (next) void recalcTubesForRegistration(reg.id);
+                  }}>
                   <TableCell>
                     {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                   </TableCell>
