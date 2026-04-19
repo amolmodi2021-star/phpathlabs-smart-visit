@@ -141,6 +141,23 @@ const AutomatedMarketing = () => {
     return () => window.removeEventListener("beforeunload", handler);
   }, [sending]);
 
+  // Tab-backgrounded warning: browsers throttle setTimeout in background tabs,
+  // which can stall the send loop. Warn the user every time the tab is hidden
+  // during an active campaign so they keep this tab in the foreground.
+  useEffect(() => {
+    if (!sending) return;
+    const onVis = () => {
+      if (document.hidden && _moduleSending) {
+        toast.warning(
+          "Keep this tab in the foreground while sending. Background tabs slow down or stall the campaign.",
+          { duration: 8000 }
+        );
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [sending]);
+
   // Test mode
   const [testMobile, setTestMobile] = useState("");
   const isTrialMode = /^\d{10}$/.test(testMobile.replace(/\D/g, ""));
