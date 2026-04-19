@@ -907,6 +907,7 @@ export type Database = {
           id: string
           individual_discount_type: string | null
           individual_discount_value: number | null
+          item_type: string
           price: number
           report_date: string | null
           report_time: string | null
@@ -922,6 +923,7 @@ export type Database = {
           id?: string
           individual_discount_type?: string | null
           individual_discount_value?: number | null
+          item_type?: string
           price: number
           report_date?: string | null
           report_time?: string | null
@@ -937,6 +939,7 @@ export type Database = {
           id?: string
           individual_discount_type?: string | null
           individual_discount_value?: number | null
+          item_type?: string
           price?: number
           report_date?: string | null
           report_time?: string | null
