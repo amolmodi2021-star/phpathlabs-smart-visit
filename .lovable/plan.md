@@ -1,51 +1,71 @@
 
 
-## Diagnosis
+## Root cause
 
-The lock logic in `src/components/EditHomeVisitDialog.tsx` is currently driven by `useState(false)` + `useEffect` (lines 76, 175). On first render after the dialog opens, `phleboLocked` is still `false` until the effect runs — and there are several scenarios where the effect can be skipped or stale:
+AOC's status callbacks are arriving correctly at the webhook. The webhook tries two-pass matching:
+1. **Exact** match (e.g. `403ab5cf-...:1`)  
+2. **Base** fallback (strip `:1` → `403ab5cf-...`) — **but only when the exact pass returns 0 rows**
 
-1. The effect bails out via `if (!visit || !est) return;` (line 160) **before** the lock state gets reset, so if the dialog was previously opened on a Pending visit (lock=false) and the new Registered visit's `est` is briefly null between renders, the lock stays `false`.
-2. The dialog component is mounted persistently in `HomeVisits.tsx` (line 1083), so `phleboLocked` state survives between opens. If the previous open was a non-Registered visit, the stale `false` value is shown.
-3. `useState`/`useEffect` round-trip means the very first paint after the visit prop changes shows the editable `<Select>` before the effect fires the lock.
+Edge logs show **every single status update logs `wm_exact: 0, msl_exact: 0`** → the exact pass always misses (correct, AOC adds `:1`) → the code then enters the fallback branch which updates `message_send_log.delivery_status` to `delivered`/`read` on the base UUID row… **but it does NOT write the timestamp** (`delivered_at` / `read_at`).
 
-## Fix — single file: `src/components/EditHomeVisitDialog.tsx`
+So `message_send_log.delivery_status` is being updated to `delivered`/`read` correctly. The problem is two-fold:
 
-Replace the `phleboLocked` state with a **derived value** computed every render directly from the current `visit` prop. Lock state then can never go stale and there is no first-paint flash of the editable Select. The unlock action (password success) is tracked by a separate "unlocked override" state that resets whenever the visit changes.
+### Problem 1 — `MessageLog.tsx` reads timestamps from the wrong place
+The component looks up `delivered_at` / `read_at` by joining to `webhook_messages` rows where `direction='outbound'` and `delivery_status in ('delivered','read')`. But the marketing message_ids **don't exist** in `webhook_messages` at all — only auto-reply outbound messages get inserted there. The webhook has NO row to update for marketing sends, so the `JOIN` returns `[]` → both columns show `—`.
 
-### Changes
+### Problem 2 — `message_send_log` has no timestamp columns for delivery/read
+Even if we read directly from `message_send_log`, the only timestamp on that table is `sent_at`. Status transitions are stored as a single `delivery_status` enum string with no `delivered_at` / `read_at` columns.
 
-1. **Remove** `const [phleboLocked, setPhleboLocked] = useState(false);` (line 76).
-2. **Add** in its place:
-   ```ts
-   const [phleboUnlockedForVisitId, setPhleboUnlockedForVisitId] = useState<string | null>(null);
-   const phleboLocked = visit?.status === "Registered" && phleboUnlockedForVisitId !== visit?.id;
-   ```
-3. **Remove** `setPhleboLocked(visit?.status === "Registered");` from the effect (line 175). The derived value handles it automatically.
-4. **Update** the password-success handler (line 676):
-   ```tsx
-   onSuccess={() => setPhleboUnlockedForVisitId(visit?.id || null)}
-   ```
-5. Reset `phleboUnlockedForVisitId` to `null` when the dialog closes, so re-opening the same Registered visit re-locks it:
-   ```ts
-   onClose={() => { setPhleboUnlockedForVisitId(null); onClose(); }}
-   ```
-   Wire this through the existing `<Dialog open={open} onOpenChange={(o) => !o && onClose()}>` — call `setPhleboUnlockedForVisitId(null)` inline before `onClose()`.
+Combined: **the system never persists a timestamp for the delivered or read events of marketing sends**, so the column will always render `—`.
 
-### Why this is robust
+## Fix — two coordinated changes
 
-- `phleboLocked` is a pure function of the live `visit` prop → no stale state, no useEffect timing race.
-- Reopening any Registered visit always starts locked (override is per-visit-id and reset on close).
-- Non-Registered visits: `phleboLocked` is always `false` → Select is editable as today.
-- Password gate (`9819111107`) and the existing locked UI block (lines 505–530) stay exactly as they are.
+### 1. Schema: add timestamp columns to `message_send_log`
+```sql
+ALTER TABLE message_send_log
+  ADD COLUMN IF NOT EXISTS delivered_at timestamptz,
+  ADD COLUMN IF NOT EXISTS read_at      timestamptz;
+```
+No backfill possible (timestamps weren't captured historically) — old rows stay `NULL` and render `—`. New status events from now on populate correctly.
+
+### 2. `supabase/functions/whatsapp-webhook/index.ts`
+In the `message_status` branch, when status is `delivered` or `read`, also stamp the corresponding column. Use the AOC `statuses.timestamp` (Unix seconds) when present, otherwise `now()`:
+
+```ts
+const ts = statusData.timestamp
+  ? new Date(Number(statusData.timestamp) * 1000).toISOString()
+  : new Date().toISOString();
+
+const mslPayload: Record<string, any> = { delivery_status: status };
+if (status === "delivered") mslPayload.delivered_at = ts;
+if (status === "read")      mslPayload.read_at      = ts;
+```
+Apply the same payload in both the exact-match and the base-id fallback branches for `message_send_log` (the `webhook_messages` updates stay as-is — they only matter for inbound/auto-reply rows).
+
+### 3. `src/components/marketing/MessageLog.tsx`
+Stop the secondary `webhook_messages` lookup. Read `delivered_at` and `read_at` directly from the `message_send_log` row. Removes ~30 lines of dead JOIN code and a redundant query per page render.
+
+```ts
+// remove the messageIds → webhook_messages query block entirely
+const enrichedRows = rows || [];   // delivered_at / read_at come from the row itself
+```
+The existing column rendering (`row.delivered_at ? format(...) : "—"`) already works against these fields once they exist.
+
+## Why this is the right fix
+- One source of truth: `message_send_log` owns the lifecycle of every outbound send.
+- Webhook writes both the status **and** its timestamp atomically, so the UI never has to reconcile two tables.
+- Removes one extra query per Message Log page load.
+- Old rows (no captured timestamps) gracefully render `—`; future rows show correct delivered/read times.
 
 ## Out of scope
-- No DB changes.
-- No change to `HomeVisits.tsx` row-level password gate.
-- No change to completion-mode disabled phleb input (already read-only by design).
+- No change to inbound auto-reply logging.
+- No change to `whatsapp-proxy` or marketing send code.
+- No change to RLS — `message_send_log` already has the necessary policies.
+- No backfill of historical rows (data was never captured; cannot be recovered).
 
 ## Expected outcome
-- Clicking pencil on a Registered visit → password (existing) → dialog opens → **Assign Phlebotomist immediately shows the disabled name + Unlock button**, with no flash of the editable Select.
-- Clicking Unlock → enter `9819111107` → field becomes the searchable Select. Pick a different phleb → Save persists.
-- Closing and reopening the same visit re-locks the field.
-- Pending / Cancelled / Completed visits behave exactly as today (Select editable for non-Registered).
+- Send a marketing message → row appears in Message Log with `Sent` time only (as today).
+- ~5 seconds later AOC fires `delivered` callback → webhook writes `delivered_at` → row shows delivered time on next refresh.
+- When recipient opens the message → AOC fires `read` callback → `read_at` populated → column shows read time.
+- Both columns format as `dd-MM-yyyy hh:mm AM/PM` per project standard.
 
