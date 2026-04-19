@@ -173,7 +173,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
     setVisitTime(visit.visit_time || "");
     setAddress(visit.address || "");
     setPhlebotomistId(visit.phlebotomist_id || "");
-    setPhleboLocked(visit?.status === "Registered");
+    // phleboLocked is derived from visit.status — no setter needed
     setGlobalDiscountType((est.global_discount_type as "percent" | "amount") || "percent");
     setGlobalDiscountValue(Number(est.global_discount_value) || 0);
     setHomeVisitCharges(String(Number(est.home_visit_charges) || 0));
@@ -360,7 +360,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
   if (!visit) return null;
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) { setPhleboUnlockedForVisitId(null); onClose(); } }}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>{completionMode ? "Complete Missing Details" : "Edit Home Visit Record"}</DialogTitle></DialogHeader>
         <div className="space-y-4">
@@ -674,7 +674,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
         <DeletePasswordDialog
           open={phleboPasswordOpen}
           onOpenChange={setPhleboPasswordOpen}
-          onSuccess={() => setPhleboLocked(false)}
+          onSuccess={() => setPhleboUnlockedForVisitId(visit?.id || null)}
           description="Enter password to change phlebotomist for a registered visit."
         />
       </DialogContent>
