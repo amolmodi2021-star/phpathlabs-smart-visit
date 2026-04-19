@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -47,7 +47,7 @@ const MarketingRetry = () => {
   const [delayMs, setDelayMs] = useState<number>(3000);
 
   // Load global delay for the confirmation dialog copy
-  useState(() => { getMarketingSendDelayMs().then(setDelayMs); return undefined; });
+  useEffect(() => { getMarketingSendDelayMs().then(setDelayMs); }, []);
 
   const { data: failed = [], isLoading } = useQuery({
     queryKey: ["marketing_failed_messages"],
