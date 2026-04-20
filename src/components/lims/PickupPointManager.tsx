@@ -76,15 +76,35 @@ const PickupPointManager = () => {
       if (editingId) {
         const { error } = await supabase.from("pickup_points").update(payload as any).eq("id", editingId);
         if (error) throw error;
+        return { clonedCount: 0 };
       } else {
-        const { error } = await supabase.from("pickup_points").insert(payload as any);
+        const { data: inserted, error } = await supabase.from("pickup_points").insert(payload as any).select("id").single();
         if (error) throw error;
+        let clonedCount = 0;
+        if (cloneFromId && inserted?.id) {
+          const { data: srcPrices } = await supabase.from("pickup_point_prices")
+            .select("test_id, custom_price").eq("pickup_point_id", cloneFromId);
+          if (srcPrices && srcPrices.length > 0) {
+            const rows = srcPrices.map((p: any) => ({
+              pickup_point_id: inserted.id, test_id: p.test_id, custom_price: p.custom_price,
+            }));
+            const { error: insErr } = await supabase.from("pickup_point_prices").insert(rows as any);
+            if (insErr) throw insErr;
+            clonedCount = rows.length;
+          }
+        }
+        return { clonedCount };
       }
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ["pickup_points_all"] });
       qc.invalidateQueries({ queryKey: ["pickup_points"] });
-      toast.success(editingId ? "Pickup point updated" : "Pickup point created");
+      const msg = editingId
+        ? "Pickup point updated"
+        : result?.clonedCount
+          ? `Pickup point created with ${result.clonedCount} cloned prices`
+          : "Pickup point created";
+      toast.success(msg);
       setFormOpen(false); resetForm();
     },
     onError: (e: any) => toast.error(e.message),
