@@ -473,6 +473,9 @@ const TestManagement = () => {
         <TabsContent value="health_checkups">
           <HealthCheckUpManagement />
         </TabsContent>
+        <TabsContent value="combos">
+          <ComboManagement />
+        </TabsContent>
         <TabsContent value="profiles">
           <ProfileManagement />
         </TabsContent>
