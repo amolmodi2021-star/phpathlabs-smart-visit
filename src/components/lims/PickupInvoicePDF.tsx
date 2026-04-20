@@ -142,12 +142,12 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
         ) : (
           <div className="p-4 bg-muted/30">
             <div
-              id="pickup-invoice-print"
+              id="pickup-invoice-print-page1"
               style={{
                 width: "210mm",
                 minHeight: "297mm",
                 margin: "0 auto",
-                padding: "12mm 14mm",
+                padding: "10mm 12mm",
                 background: "#ffffff",
                 color: "#111",
                 fontFamily: "Arial, Helvetica, sans-serif",
