@@ -263,31 +263,50 @@ const PickupPointManager = () => {
       </Dialog>
 
       {/* Pricing Dialog */}
-      <Dialog open={pricingOpen} onOpenChange={o => { if (!o) setPricingOpen(false); }}>
+      <Dialog open={pricingOpen} onOpenChange={o => { if (!o) { setPricingOpen(false); setPricingSearch(""); } }}>
         <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Custom Pricing — {pricingPoint?.name}</DialogTitle></DialogHeader>
           <p className="text-sm text-muted-foreground mb-2">Set custom prices for specific tests. Tests without custom prices use the default MRP.</p>
+          <div className="sticky top-0 bg-background pb-2 z-10">
+            <Input
+              placeholder="Search tests by name or code…"
+              value={pricingSearch}
+              onChange={e => setPricingSearch(e.target.value)}
+              className="h-8 text-sm"
+            />
+          </div>
           <div className="space-y-2">
-            {tests.map(t => {
-              const existing = prices.find((p: any) => p.test_id === t.id);
-              return (
-                <div key={t.id} className="flex items-center gap-2 text-sm">
-                  <span className="flex-1 truncate">{t.test_name}</span>
-                  <span className="text-muted-foreground w-16 text-right">₹{t.price}</span>
-                  <Input
-                    type="number"
-                    className="w-24 h-8 text-xs"
-                    placeholder="Custom"
-                    defaultValue={existing?.custom_price || ""}
-                    onBlur={e => {
-                      const val = parseFloat(e.target.value);
-                      if (val > 0) savePrice.mutate({ testId: t.id, price: val });
-                      else if (existing) deletePrice.mutate(t.id);
-                    }}
-                  />
-                </div>
-              );
-            })}
+            {(() => {
+              const q = pricingSearch.trim().toLowerCase();
+              const filtered = q
+                ? tests.filter((t: any) =>
+                    (t.test_name || "").toLowerCase().includes(q) ||
+                    (t.test_code || "").toLowerCase().includes(q))
+                : tests;
+              if (filtered.length === 0) {
+                return <p className="text-sm text-muted-foreground text-center py-4">No tests match</p>;
+              }
+              return filtered.map((t: any) => {
+                const existing = prices.find((p: any) => p.test_id === t.id);
+                return (
+                  <div key={t.id} className="flex items-center gap-2 text-sm">
+                    <span className="flex-1 truncate">{t.test_name}</span>
+                    <span className="text-muted-foreground w-16 text-right">₹{t.price}</span>
+                    <Input
+                      type="number"
+                      className="w-24 h-8 text-xs"
+                      placeholder="Custom"
+                      defaultValue={existing?.custom_price || ""}
+                      onBlur={e => {
+                        const val = parseFloat(e.target.value);
+                        if (val > 0) savePrice.mutate({ testId: t.id, price: val });
+                        else if (existing) deletePrice.mutate(t.id);
+                      }}
+                    />
+                  </div>
+                );
+              });
+            })()}
           </div>
         </DialogContent>
       </Dialog>
