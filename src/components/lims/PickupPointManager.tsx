@@ -4,14 +4,106 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Edit, Trash2, DollarSign } from "lucide-react";
+import { Plus, Edit, Trash2, DollarSign, ListChecks } from "lucide-react";
 import { getTests } from "@/lib/tests";
+
+type PriceRow = { test_id: string; custom_price: number };
+
+// Reusable price editor — works against either pickup_point_prices or standard_price_list_items
+function PriceEditor({
+  ownerId,
+  ownerType, // 'pickup' | 'standard'
+  tests,
+}: {
+  ownerId: string;
+  ownerType: "pickup" | "standard";
+  tests: any[];
+}) {
+  const qc = useQueryClient();
+  const [search, setSearch] = useState("");
+
+  const table = ownerType === "pickup" ? "pickup_point_prices" : "standard_price_list_items";
+  const ownerCol = ownerType === "pickup" ? "pickup_point_id" : "price_list_id";
+  const queryKey = [table, ownerId];
+
+  const { data: prices = [] } = useQuery({
+    queryKey,
+    queryFn: async () => {
+      const { data } = await supabase.from(table as any).select("test_id, custom_price").eq(ownerCol, ownerId);
+      return (data || []) as PriceRow[];
+    },
+    enabled: !!ownerId,
+  });
+
+  const saveMut = useMutation({
+    mutationFn: async ({ testId, price }: { testId: string; price: number }) => {
+      const { error } = await supabase.from(table as any).upsert(
+        { [ownerCol]: ownerId, test_id: testId, custom_price: price } as any,
+        { onConflict: `${ownerCol},test_id` },
+      );
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey });
+      toast.success("Price saved");
+    },
+  });
+
+  const delMut = useMutation({
+    mutationFn: async (testId: string) => {
+      const { error } = await supabase.from(table as any).delete().eq(ownerCol, ownerId).eq("test_id", testId);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey }),
+  });
+
+  const q = search.trim().toLowerCase();
+  const filtered = q
+    ? tests.filter((t: any) => (t.test_name || "").toLowerCase().includes(q) || (t.test_code || "").toLowerCase().includes(q))
+    : tests;
+
+  return (
+    <>
+      <div className="sticky top-0 bg-background pb-2 z-10">
+        <Input placeholder="Search tests by name or code…" value={search} onChange={e => setSearch(e.target.value)} className="h-8 text-sm" />
+      </div>
+      <div className="space-y-2">
+        {filtered.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-4">No tests match</p>
+        ) : (
+          filtered.map((t: any) => {
+            const existing = prices.find(p => p.test_id === t.id);
+            return (
+              <div key={t.id} className="flex items-center gap-2 text-sm">
+                <span className="flex-1 truncate">{t.test_name}</span>
+                <span className="text-muted-foreground w-16 text-right">₹{t.price}</span>
+                <Input
+                  type="number"
+                  className="w-24 h-8 text-xs"
+                  placeholder="Custom"
+                  defaultValue={existing?.custom_price || ""}
+                  key={`${t.id}-${existing?.custom_price ?? ""}`}
+                  onBlur={e => {
+                    const val = parseFloat(e.target.value);
+                    if (val > 0) saveMut.mutate({ testId: t.id, price: val });
+                    else if (existing) delMut.mutate(t.id);
+                  }}
+                />
+              </div>
+            );
+          })
+        )}
+      </div>
+    </>
+  );
+}
 
 const PickupPointManager = () => {
   const qc = useQueryClient();
@@ -20,7 +112,7 @@ const PickupPointManager = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [pricingPointId, setPricingPointId] = useState("");
 
-  // Form state
+  // Pickup point form state
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
@@ -29,7 +121,14 @@ const PickupPointManager = () => {
   const [billingCycle, setBillingCycle] = useState("monthly");
   const [discountPct, setDiscountPct] = useState(0);
   const [cloneFromId, setCloneFromId] = useState("");
-  const [pricingSearch, setPricingSearch] = useState("");
+  const [applyStdListId, setApplyStdListId] = useState("");
+
+  // Standard list state
+  const [stdListOpen, setStdListOpen] = useState(false);
+  const [stdListEditId, setStdListEditId] = useState<string | null>(null);
+  const [stdName, setStdName] = useState("");
+  const [stdDescription, setStdDescription] = useState("");
+  const [stdPricesOpenId, setStdPricesOpenId] = useState<string | null>(null);
 
   const { data: pickupPoints = [], isLoading } = useQuery({
     queryKey: ["pickup_points_all"],
@@ -41,20 +140,28 @@ const PickupPointManager = () => {
 
   const { data: tests = [] } = useQuery({ queryKey: ["tests"], queryFn: getTests });
 
-  const { data: prices = [] } = useQuery({
-    queryKey: ["pickup_point_prices", pricingPointId],
+  const { data: standardLists = [] } = useQuery({
+    queryKey: ["standard_price_lists"],
     queryFn: async () => {
-      if (!pricingPointId) return [];
-      const { data } = await supabase.from("pickup_point_prices").select("*").eq("pickup_point_id", pricingPointId);
+      const { data } = await supabase.from("standard_price_lists" as any).select("*").order("name");
       return (data || []) as any[];
     },
-    enabled: !!pricingPointId,
+  });
+
+  const { data: stdListCounts = {} } = useQuery({
+    queryKey: ["standard_price_list_counts"],
+    queryFn: async () => {
+      const { data } = await supabase.from("standard_price_list_items" as any).select("price_list_id");
+      const counts: Record<string, number> = {};
+      (data || []).forEach((r: any) => { counts[r.price_list_id] = (counts[r.price_list_id] || 0) + 1; });
+      return counts;
+    },
   });
 
   const resetForm = () => {
     setName(""); setPhone(""); setAddress(""); setContactPerson("");
     setBillingType("credit"); setBillingCycle("monthly"); setDiscountPct(0);
-    setEditingId(null); setCloneFromId("");
+    setEditingId(null); setCloneFromId(""); setApplyStdListId("");
   };
 
   const openEdit = (pp: any) => {
@@ -62,7 +169,21 @@ const PickupPointManager = () => {
     setName(pp.name); setPhone(pp.phone || ""); setAddress(pp.address || "");
     setContactPerson(pp.contact_person || ""); setBillingType(pp.billing_type);
     setBillingCycle(pp.billing_cycle); setDiscountPct(pp.default_discount_pct || 0);
+    setApplyStdListId("");
     setFormOpen(true);
+  };
+
+  // Helper: apply a standard list's items to a pickup point (upsert)
+  const applyStdListToPickup = async (pickupId: string, stdListId: string) => {
+    const { data: items } = await supabase.from("standard_price_list_items" as any)
+      .select("test_id, custom_price").eq("price_list_id", stdListId);
+    if (!items || items.length === 0) return 0;
+    const rows = (items as any[]).map(i => ({
+      pickup_point_id: pickupId, test_id: i.test_id, custom_price: i.custom_price,
+    }));
+    const { error } = await supabase.from("pickup_point_prices").upsert(rows as any, { onConflict: "pickup_point_id,test_id" });
+    if (error) throw error;
+    return rows.length;
   };
 
   const saveMutation = useMutation({
@@ -73,37 +194,47 @@ const PickupPointManager = () => {
         contact_person: contactPerson.toUpperCase(), billing_type: billingType,
         billing_cycle: billingCycle, default_discount_pct: discountPct,
       };
+      let pickupId = editingId;
+      let appliedCount = 0;
+      let appliedListName = "";
+
       if (editingId) {
         const { error } = await supabase.from("pickup_points").update(payload as any).eq("id", editingId);
         if (error) throw error;
-        return { clonedCount: 0 };
       } else {
         const { data: inserted, error } = await supabase.from("pickup_points").insert(payload as any).select("id").single();
         if (error) throw error;
-        let clonedCount = 0;
-        if (cloneFromId && inserted?.id) {
+        pickupId = inserted!.id;
+        // Clone from another pickup point (only when no standard list selected)
+        if (cloneFromId && !applyStdListId && pickupId) {
           const { data: srcPrices } = await supabase.from("pickup_point_prices")
             .select("test_id, custom_price").eq("pickup_point_id", cloneFromId);
           if (srcPrices && srcPrices.length > 0) {
             const rows = srcPrices.map((p: any) => ({
-              pickup_point_id: inserted.id, test_id: p.test_id, custom_price: p.custom_price,
+              pickup_point_id: pickupId, test_id: p.test_id, custom_price: p.custom_price,
             }));
             const { error: insErr } = await supabase.from("pickup_point_prices").insert(rows as any);
             if (insErr) throw insErr;
-            clonedCount = rows.length;
+            appliedCount = rows.length;
+            appliedListName = "cloned source";
           }
         }
-        return { clonedCount };
       }
+
+      // Apply standard list (Add or Edit; takes precedence over clone)
+      if (applyStdListId && pickupId) {
+        appliedCount = await applyStdListToPickup(pickupId, applyStdListId);
+        appliedListName = standardLists.find((l: any) => l.id === applyStdListId)?.name || "list";
+      }
+      return { appliedCount, appliedListName };
     },
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ["pickup_points_all"] });
       qc.invalidateQueries({ queryKey: ["pickup_points"] });
-      const msg = editingId
-        ? "Pickup point updated"
-        : result?.clonedCount
-          ? `Pickup point created with ${result.clonedCount} cloned prices`
-          : "Pickup point created";
+      const base = editingId ? "Pickup point updated" : "Pickup point created";
+      const msg = result?.appliedCount
+        ? `${base} — ${result.appliedCount} prices applied from ${result.appliedListName}`
+        : base;
       toast.success(msg);
       setFormOpen(false); resetForm();
     },
@@ -130,35 +261,104 @@ const PickupPointManager = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["pickup_points_all"] }),
   });
 
-  // Pricing
-  const savePrice = useMutation({
-    mutationFn: async ({ testId, price }: { testId: string; price: number }) => {
-      const { error } = await supabase.from("pickup_point_prices").upsert({
-        pickup_point_id: pricingPointId, test_id: testId, custom_price: price,
-      } as any, { onConflict: "pickup_point_id,test_id" });
+  // Standard list mutations
+  const saveStdList = useMutation({
+    mutationFn: async () => {
+      if (!stdName.trim()) throw new Error("Name is required");
+      const payload = { name: stdName.trim(), description: stdDescription.trim() || null };
+      if (stdListEditId) {
+        const { error } = await supabase.from("standard_price_lists" as any).update(payload as any).eq("id", stdListEditId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("standard_price_lists" as any).insert(payload as any);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["standard_price_lists"] });
+      toast.success("Saved");
+      setStdListOpen(false); setStdListEditId(null); setStdName(""); setStdDescription("");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const delStdList = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("standard_price_lists" as any).delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["pickup_point_prices", pricingPointId] });
-      toast.success("Price saved");
+      qc.invalidateQueries({ queryKey: ["standard_price_lists"] });
+      qc.invalidateQueries({ queryKey: ["standard_price_list_counts"] });
+      toast.success("Deleted");
     },
   });
 
-  const deletePrice = useMutation({
-    mutationFn: async (testId: string) => {
-      const { error } = await supabase.from("pickup_point_prices").delete()
-        .eq("pickup_point_id", pricingPointId).eq("test_id", testId);
-      if (error) throw error;
+  // Apply std list inside the pricing dialog (re-sync)
+  const [applyInPricing, setApplyInPricing] = useState("");
+  const applyInPricingMut = useMutation({
+    mutationFn: async () => {
+      if (!applyInPricing || !pricingPointId) throw new Error("Select a list");
+      const count = await applyStdListToPickup(pricingPointId, applyInPricing);
+      return { count, name: standardLists.find((l: any) => l.id === applyInPricing)?.name };
     },
-    onSuccess: () => {
+    onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ["pickup_point_prices", pricingPointId] });
+      toast.success(`${r.count} prices applied from ${r.name}`);
+      setApplyInPricing("");
     },
+    onError: (e: any) => toast.error(e.message),
   });
 
   const pricingPoint = pickupPoints.find((p: any) => p.id === pricingPointId);
+  const stdPricesPoint = standardLists.find((l: any) => l.id === stdPricesOpenId);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      {/* Standard Price Lists */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle className="text-base flex items-center gap-2"><ListChecks className="h-4 w-4" />Standard Price Lists</CardTitle>
+          <Button size="sm" onClick={() => { setStdListEditId(null); setStdName(""); setStdDescription(""); setStdListOpen(true); }}>
+            <Plus className="h-4 w-4 mr-1" />Add Standard List
+          </Button>
+        </CardHeader>
+        <CardContent>
+          <p className="text-xs text-muted-foreground mb-2">Define reusable price lists once, then apply them to any pickup point.</p>
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead># Tests</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {standardLists.length === 0 ? (
+                  <TableRow><TableCell colSpan={4} className="text-center py-4 text-muted-foreground text-sm">No standard price lists yet</TableCell></TableRow>
+                ) : standardLists.map((sl: any) => (
+                  <TableRow key={sl.id}>
+                    <TableCell className="font-medium">{sl.name}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{sl.description || "—"}</TableCell>
+                    <TableCell>{stdListCounts[sl.id] || 0}</TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button size="icon" variant="ghost" onClick={() => setStdPricesOpenId(sl.id)} title="Edit prices"><DollarSign className="h-4 w-4" /></Button>
+                        <Button size="icon" variant="ghost" onClick={() => { setStdListEditId(sl.id); setStdName(sl.name); setStdDescription(sl.description || ""); setStdListOpen(true); }}><Edit className="h-4 w-4" /></Button>
+                        <Button size="icon" variant="ghost" onClick={() => { if (confirm(`Delete "${sl.name}"? Pickup points already using it keep their prices.`)) delStdList.mutate(sl.id); }}><Trash2 className="h-4 w-4" /></Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Pickup Points */}
       <div className="flex justify-between items-center">
         <h2 className="text-lg font-semibold">Pickup Points</h2>
         <Button onClick={() => { resetForm(); setFormOpen(true); }}><Plus className="h-4 w-4 mr-1" />Add Pickup Point</Button>
@@ -211,7 +411,7 @@ const PickupPointManager = () => {
         </Table>
       </div>
 
-      {/* Add/Edit Dialog */}
+      {/* Add/Edit Pickup Point Dialog */}
       <Dialog open={formOpen} onOpenChange={o => { if (!o) { setFormOpen(false); resetForm(); } }}>
         <DialogContent>
           <DialogHeader><DialogTitle>{editingId ? "Edit" : "Add"} Pickup Point</DialogTitle></DialogHeader>
@@ -243,10 +443,25 @@ const PickupPointManager = () => {
               </div>
             </div>
             <div><Label>Default Discount %</Label><Input type="number" value={discountPct || ""} onChange={e => setDiscountPct(parseFloat(e.target.value) || 0)} /></div>
+
+            <div>
+              <Label>Apply Standard Price List (optional)</Label>
+              <Select value={applyStdListId || "__none__"} onValueChange={v => setApplyStdListId(v === "__none__" ? "" : v)}>
+                <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">None</SelectItem>
+                  {standardLists.map((l: any) => (
+                    <SelectItem key={l.id} value={l.id}>{l.name} ({stdListCounts[l.id] || 0} tests)</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {applyStdListId && <p className="text-xs text-muted-foreground mt-1">Existing custom prices for matching tests will be overwritten.</p>}
+            </div>
+
             {!editingId && (
               <div>
                 <Label>Clone Pricing From (optional)</Label>
-                <Select value={cloneFromId || "__none__"} onValueChange={v => setCloneFromId(v === "__none__" ? "" : v)}>
+                <Select value={cloneFromId || "__none__"} onValueChange={v => setCloneFromId(v === "__none__" ? "" : v)} disabled={!!applyStdListId}>
                   <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">None</SelectItem>
@@ -255,6 +470,7 @@ const PickupPointManager = () => {
                     ))}
                   </SelectContent>
                 </Select>
+                {applyStdListId && <p className="text-xs text-muted-foreground mt-1">Disabled — standard list takes precedence.</p>}
               </div>
             )}
             <Button className="w-full" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>Save</Button>
@@ -262,52 +478,51 @@ const PickupPointManager = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Pricing Dialog */}
-      <Dialog open={pricingOpen} onOpenChange={o => { if (!o) { setPricingOpen(false); setPricingSearch(""); } }}>
+      {/* Pickup Point Pricing Dialog */}
+      <Dialog open={pricingOpen} onOpenChange={o => { if (!o) { setPricingOpen(false); setApplyInPricing(""); } }}>
         <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Custom Pricing — {pricingPoint?.name}</DialogTitle></DialogHeader>
           <p className="text-sm text-muted-foreground mb-2">Set custom prices for specific tests. Tests without custom prices use the default MRP.</p>
-          <div className="sticky top-0 bg-background pb-2 z-10">
-            <Input
-              placeholder="Search tests by name or code…"
-              value={pricingSearch}
-              onChange={e => setPricingSearch(e.target.value)}
-              className="h-8 text-sm"
-            />
+
+          {standardLists.length > 0 && (
+            <div className="flex gap-2 mb-3 p-2 rounded-md bg-muted/40 border">
+              <Select value={applyInPricing || "__none__"} onValueChange={v => setApplyInPricing(v === "__none__" ? "" : v)}>
+                <SelectTrigger className="h-8 text-xs flex-1"><SelectValue placeholder="Apply Standard List…" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Select a list…</SelectItem>
+                  {standardLists.map((l: any) => (
+                    <SelectItem key={l.id} value={l.id}>{l.name} ({stdListCounts[l.id] || 0})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button size="sm" disabled={!applyInPricing || applyInPricingMut.isPending} onClick={() => applyInPricingMut.mutate()}>
+                Apply
+              </Button>
+            </div>
+          )}
+
+          {pricingPointId && <PriceEditor ownerId={pricingPointId} ownerType="pickup" tests={tests} />}
+        </DialogContent>
+      </Dialog>
+
+      {/* Standard List Add/Edit Dialog */}
+      <Dialog open={stdListOpen} onOpenChange={o => { if (!o) { setStdListOpen(false); setStdListEditId(null); } }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>{stdListEditId ? "Edit" : "Add"} Standard Price List</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label>Name *</Label><Input value={stdName} onChange={e => setStdName(e.target.value)} placeholder="e.g. Standard Hospital Rates" /></div>
+            <div><Label>Description</Label><Textarea value={stdDescription} onChange={e => setStdDescription(e.target.value)} rows={2} /></div>
+            <Button className="w-full" onClick={() => saveStdList.mutate()} disabled={saveStdList.isPending}>Save</Button>
           </div>
-          <div className="space-y-2">
-            {(() => {
-              const q = pricingSearch.trim().toLowerCase();
-              const filtered = q
-                ? tests.filter((t: any) =>
-                    (t.test_name || "").toLowerCase().includes(q) ||
-                    (t.test_code || "").toLowerCase().includes(q))
-                : tests;
-              if (filtered.length === 0) {
-                return <p className="text-sm text-muted-foreground text-center py-4">No tests match</p>;
-              }
-              return filtered.map((t: any) => {
-                const existing = prices.find((p: any) => p.test_id === t.id);
-                return (
-                  <div key={t.id} className="flex items-center gap-2 text-sm">
-                    <span className="flex-1 truncate">{t.test_name}</span>
-                    <span className="text-muted-foreground w-16 text-right">₹{t.price}</span>
-                    <Input
-                      type="number"
-                      className="w-24 h-8 text-xs"
-                      placeholder="Custom"
-                      defaultValue={existing?.custom_price || ""}
-                      onBlur={e => {
-                        const val = parseFloat(e.target.value);
-                        if (val > 0) savePrice.mutate({ testId: t.id, price: val });
-                        else if (existing) deletePrice.mutate(t.id);
-                      }}
-                    />
-                  </div>
-                );
-              });
-            })()}
-          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Standard List Pricing Dialog */}
+      <Dialog open={!!stdPricesOpenId} onOpenChange={o => { if (!o) setStdPricesOpenId(null); }}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Standard List Prices — {stdPricesPoint?.name}</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground mb-2">Edit the master prices for this list. Apply to pickup points from the pickup point dialog.</p>
+          {stdPricesOpenId && <PriceEditor ownerId={stdPricesOpenId} ownerType="standard" tests={tests} />}
         </DialogContent>
       </Dialog>
     </div>
