@@ -28,6 +28,8 @@ const PickupPointManager = () => {
   const [billingType, setBillingType] = useState("credit");
   const [billingCycle, setBillingCycle] = useState("monthly");
   const [discountPct, setDiscountPct] = useState(0);
+  const [cloneFromId, setCloneFromId] = useState("");
+  const [pricingSearch, setPricingSearch] = useState("");
 
   const { data: pickupPoints = [], isLoading } = useQuery({
     queryKey: ["pickup_points_all"],
