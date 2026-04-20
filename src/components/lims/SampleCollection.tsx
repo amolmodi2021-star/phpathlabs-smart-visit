@@ -163,17 +163,22 @@ const SampleCollection = () => {
 
     const allIds = tests.map((t: any) => t.test_id).filter(Boolean);
     if (allIds.length === 0) return;
-    const [profRes, pkgRes] = await Promise.all([
+    const [profRes, pkgRes, cmbRes] = await Promise.all([
       supabase.from("billing_profiles").select("id").in("id", allIds),
       supabase.from("health_checkups").select("id").in("id", allIds),
+      supabase.from("combos").select("id").in("id", allIds),
     ]);
     const profileIds = new Set((profRes.data || []).map((r: any) => r.id));
     const packageIds = new Set((pkgRes.data || []).map((r: any) => r.id));
+    const comboIds = new Set((cmbRes.data || []).map((r: any) => r.id));
 
     const items: TubeGroupingItem[] = tests.map((t: any) => ({
       test_id: t.test_id,
       test_name: t.test_name || "",
-      item_type: t.item_type || (packageIds.has(t.test_id) ? "package" : profileIds.has(t.test_id) ? "profile" : "test"),
+      item_type: t.item_type || (packageIds.has(t.test_id) ? "package"
+                                : comboIds.has(t.test_id) ? "combo"
+                                : profileIds.has(t.test_id) ? "profile"
+                                : "test"),
     }));
 
     const cancelledIds = getCancelledIds(reg);

@@ -25,7 +25,7 @@ interface SelectedTest {
   discount_applicable: boolean;
   individual_discount_type: "percent" | "amount" | null;
   individual_discount_value: number;
-  item_type?: "test" | "profile" | "package";
+  item_type?: "test" | "profile" | "package" | "combo";
 }
 
 interface AddHomeVisitDialogProps {

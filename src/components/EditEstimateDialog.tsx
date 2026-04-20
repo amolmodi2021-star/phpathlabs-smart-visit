@@ -22,7 +22,7 @@ interface EditTest {
   discount_applicable: boolean;
   individual_discount_type: "percent" | "amount" | null;
   individual_discount_value: number;
-  item_type?: "test" | "profile" | "package";
+  item_type?: "test" | "profile" | "package" | "combo";
 }
 
 interface EditEstimateDialogProps {
@@ -239,7 +239,7 @@ const EditEstimateDialog = ({ estimate, open, onClose }: EditEstimateDialogProps
                     onClick={() => { addTest(t.id); setTestHighlightIndex(0); }}
                     onMouseEnter={() => setTestHighlightIndex(i)}
                   >
-                    {t.test_name} — ₹{t.price}{t.item_type === "package" ? " 📦" : t.item_type === "profile" ? " 📋" : ""}
+                    {t.test_name} — ₹{t.price}{t.item_type === "package" ? " 📦" : t.item_type === "combo" ? " 🧩" : t.item_type === "profile" ? " 📋" : ""}
                   </button>
                 ))}
               </div>
