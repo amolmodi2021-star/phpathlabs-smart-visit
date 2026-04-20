@@ -527,7 +527,7 @@ const PickupPointManager = () => {
 
       {/* Standard List Pricing Dialog */}
       <Dialog open={!!stdPricesOpenId} onOpenChange={o => { if (!o) setStdPricesOpenId(null); }}>
-        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl w-[95vw] max-h-[85vh] flex flex-col">
           <DialogHeader><DialogTitle>Standard List Prices — {stdPricesPoint?.name}</DialogTitle></DialogHeader>
           <p className="text-sm text-muted-foreground mb-2">Edit the master prices for this list. Apply to pickup points from the pickup point dialog.</p>
           {stdPricesOpenId && <PriceEditor ownerId={stdPricesOpenId} ownerType="standard" tests={tests} />}
