@@ -9,17 +9,18 @@ export interface SelectableTestItem {
   discount_applicable: boolean;
   incentive_allowed: boolean;
   incentive_amount: number;
-  item_type: "test" | "package" | "profile";
+  item_type: "test" | "package" | "profile" | "combo";
 }
 
 /**
- * Returns a unified list of Tests + Health Check-Ups + Profiles for selection dropdowns.
+ * Returns a unified list of Tests + Health Check-Ups + Profiles + Combos for selection dropdowns.
  */
 export const getAllSelectableTests = async (): Promise<SelectableTestItem[]> => {
-  const [testsRes, checkupsRes, profilesRes] = await Promise.all([
+  const [testsRes, checkupsRes, profilesRes, combosRes] = await Promise.all([
     supabase.from("tests").select("id, test_name, test_code, price, fasting_required, discount_applicable, incentive_allowed, incentive_amount").eq("is_active", true).order("test_name"),
     supabase.from("health_checkups").select("id, health_checkup_name, health_checkup_code, price, fasting_required, discount_applicable, incentive_allowed, incentive_amount").eq("is_active", true).order("health_checkup_name"),
     supabase.from("billing_profiles").select("id, profile_name, profile_code, price, fasting_required, discount_applicable, incentive_allowed, incentive_amount").eq("is_active", true).order("profile_name"),
+    (supabase as any).from("combos").select("id, combo_name, combo_code, price, fasting_required, discount_applicable, incentive_allowed, incentive_amount").eq("is_active", true).order("combo_name"),
   ]);
 
   const tests: SelectableTestItem[] = (testsRes.data || []).map((t: any) => ({
@@ -43,5 +44,12 @@ export const getAllSelectableTests = async (): Promise<SelectableTestItem[]> => 
     item_type: "profile" as const,
   }));
 
-  return [...tests, ...checkups, ...profiles].sort((a, b) => a.test_name.localeCompare(b.test_name));
+  const combos: SelectableTestItem[] = (combosRes.data || []).map((c: any) => ({
+    id: c.id, test_name: c.combo_name, test_code: c.combo_code, price: Number(c.price),
+    fasting_required: c.fasting_required, discount_applicable: c.discount_applicable,
+    incentive_allowed: c.incentive_allowed, incentive_amount: Number(c.incentive_amount),
+    item_type: "combo" as const,
+  }));
+
+  return [...tests, ...checkups, ...profiles, ...combos].sort((a, b) => a.test_name.localeCompare(b.test_name));
 };

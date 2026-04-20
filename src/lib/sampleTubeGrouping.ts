@@ -12,7 +12,7 @@ export interface TubeGroup {
 export interface TubeGroupingItem {
   test_id: string;
   test_name: string;
-  item_type?: "test" | "profile" | "package" | null;
+  item_type?: "test" | "profile" | "package" | "combo" | null;
 }
 
 /**
@@ -35,11 +35,13 @@ export const buildSampleTubeGroups = async (
   const directTestIds = new Set<string>();
   const profileIds = new Set<string>();
   const packageIds = new Set<string>();
+  const comboIds = new Set<string>();
 
   for (const item of selectedItems) {
     const type = item.item_type || "test";
     if (type === "profile") profileIds.add(item.test_id);
     else if (type === "package") packageIds.add(item.test_id);
+    else if (type === "combo") comboIds.add(item.test_id);
     else directTestIds.add(item.test_id);
   }
 
@@ -53,6 +55,17 @@ export const buildSampleTubeGroups = async (
     ]);
     (pkgTestsRes.data || []).forEach((row: any) => row.test_id && directTestIds.add(row.test_id));
     (pkgProfilesRes.data || []).forEach((row: any) => row.profile_id && nestedProfileIds.add(row.profile_id));
+  }
+
+  // Expand combos: direct leaf tests + nested profile IDs (analogous to packages)
+  if (comboIds.size > 0) {
+    const cmbIdArr = Array.from(comboIds);
+    const [cmbTestsRes, cmbProfilesRes] = await Promise.all([
+      (supabase as any).from("combo_tests").select("test_id").in("combo_id", cmbIdArr),
+      (supabase as any).from("combo_profiles").select("profile_id").in("combo_id", cmbIdArr),
+    ]);
+    (cmbTestsRes.data || []).forEach((row: any) => row.test_id && directTestIds.add(row.test_id));
+    (cmbProfilesRes.data || []).forEach((row: any) => row.profile_id && nestedProfileIds.add(row.profile_id));
   }
 
   // Expand all profiles (top-level + nested) into leaf tests
