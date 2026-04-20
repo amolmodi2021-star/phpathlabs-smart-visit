@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 
@@ -70,6 +70,30 @@ const TestManagement = () => {
   const [incentiveLocked, setIncentiveLocked] = useState(true);
   const [incentivePassword, setIncentivePassword] = useState("");
   const [form, setForm] = useState(defaultForm);
+  const [sampleTubes, setSampleTubes] = useState<TestSampleTube[]>([]);
+
+  // Load multi-tubes when editing
+  useEffect(() => {
+    if (editing?.id) {
+      getTestSampleTubes(editing.id).then((tubes) => {
+        if (tubes.length > 0) {
+          setSampleTubes(tubes);
+        } else if (editing.sample_tube) {
+          // Seed from legacy single-tube column so user sees current value
+          setSampleTubes([{
+            tube_value: editing.sample_tube,
+            sample_type: editing.sample_type || "",
+            tube_color: editing.tube_color || "",
+            display_order: 0,
+          }]);
+        } else {
+          setSampleTubes([]);
+        }
+      }).catch(() => setSampleTubes([]));
+    } else {
+      setSampleTubes([]);
+    }
+  }, [editing?.id]);
 
   const { data: tests = [], isLoading, isError, error: queryError, refetch } = useQuery({
     queryKey: ["tests"],
