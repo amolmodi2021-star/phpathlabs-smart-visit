@@ -3291,6 +3291,65 @@ export type Database = {
           },
         ]
       }
+      standard_price_list_items: {
+        Row: {
+          created_at: string
+          custom_price: number
+          id: string
+          price_list_id: string
+          test_id: string
+        }
+        Insert: {
+          created_at?: string
+          custom_price?: number
+          id?: string
+          price_list_id: string
+          test_id: string
+        }
+        Update: {
+          created_at?: string
+          custom_price?: number
+          id?: string
+          price_list_id?: string
+          test_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "standard_price_list_items_price_list_id_fkey"
+            columns: ["price_list_id"]
+            isOneToOne: false
+            referencedRelation: "standard_price_lists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      standard_price_lists: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       test_parameters: {
         Row: {
           created_at: string | null
