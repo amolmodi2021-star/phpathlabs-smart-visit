@@ -272,9 +272,18 @@ const PatientRegistration = () => {
     setSelectedTests(prev => prev.map(t => t.test_id === testId ? { ...t, [field]: value } : t));
   };
 
+  // Pickup-point eligibility filter: when a pickup point is selected and it does NOT
+  // allow all tests, restrict the catalog to tests that have a configured custom price.
+  const restrictToPickupPrices =
+    visitType === "pickup_point" && !!pickupPointId && !selectedPickup?.allow_all_tests;
+  const eligiblePickupTestIds = restrictToPickupPrices
+    ? new Set(pickupPrices.map((pp: any) => pp.test_id))
+    : null;
+
   const availableTests = tests.filter((t) =>
     !selectedTests.find(s => s.test_id === t.id) &&
-    (testSearch === "" || t.test_name.toLowerCase().includes(testSearch.toLowerCase()))
+    (testSearch === "" || t.test_name.toLowerCase().includes(testSearch.toLowerCase())) &&
+    (!eligiblePickupTestIds || eligiblePickupTestIds.has(t.id))
   );
 
   // Auto-apply channel discount when channel is selected
@@ -738,6 +747,16 @@ const PatientRegistration = () => {
                 }}
               />
             </div>
+            {restrictToPickupPrices && pickupPrices.length === 0 && (
+              <p className="text-xs text-destructive mt-1">
+                No tests configured for this pickup point. Add prices in Settings → Pickup Points → Custom Pricing, or enable "Allow all tests during registration".
+              </p>
+            )}
+            {restrictToPickupPrices && pickupPrices.length > 0 && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Showing only tests configured for this pickup point ({pickupPrices.length} eligible).
+              </p>
+            )}
             {testSearch && availableTests.length > 0 && (
               <div className="border rounded-md mt-1 max-h-48 overflow-y-auto">
                 {availableTests.slice(0, 20).map((t, i) => (

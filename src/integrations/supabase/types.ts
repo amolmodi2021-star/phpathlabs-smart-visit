@@ -2838,6 +2838,7 @@ export type Database = {
       pickup_points: {
         Row: {
           address: string | null
+          allow_all_tests: boolean
           billing_cycle: string
           billing_type: string
           contact_person: string | null
@@ -2851,6 +2852,7 @@ export type Database = {
         }
         Insert: {
           address?: string | null
+          allow_all_tests?: boolean
           billing_cycle?: string
           billing_type?: string
           contact_person?: string | null
@@ -2864,6 +2866,7 @@ export type Database = {
         }
         Update: {
           address?: string | null
+          allow_all_tests?: boolean
           billing_cycle?: string
           billing_type?: string
           contact_person?: string | null

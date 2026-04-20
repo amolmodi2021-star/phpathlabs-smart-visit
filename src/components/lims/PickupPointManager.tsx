@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Plus, Edit, Trash2, DollarSign, ListChecks } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { getTests } from "@/lib/tests";
 
 type PriceRow = { test_id: string; custom_price: number };
@@ -128,6 +129,7 @@ const PickupPointManager = () => {
   const [billingType, setBillingType] = useState("credit");
   const [billingCycle, setBillingCycle] = useState("monthly");
   const [discountPct, setDiscountPct] = useState(0);
+  const [allowAllTests, setAllowAllTests] = useState(false);
   const [cloneFromId, setCloneFromId] = useState("");
   const [applyStdListId, setApplyStdListId] = useState("");
 
@@ -169,6 +171,7 @@ const PickupPointManager = () => {
   const resetForm = () => {
     setName(""); setPhone(""); setAddress(""); setContactPerson("");
     setBillingType("credit"); setBillingCycle("monthly"); setDiscountPct(0);
+    setAllowAllTests(false);
     setEditingId(null); setCloneFromId(""); setApplyStdListId("");
   };
 
@@ -177,6 +180,7 @@ const PickupPointManager = () => {
     setName(pp.name); setPhone(pp.phone || ""); setAddress(pp.address || "");
     setContactPerson(pp.contact_person || ""); setBillingType(pp.billing_type);
     setBillingCycle(pp.billing_cycle); setDiscountPct(pp.default_discount_pct || 0);
+    setAllowAllTests(!!pp.allow_all_tests);
     setApplyStdListId("");
     setFormOpen(true);
   };
@@ -201,6 +205,7 @@ const PickupPointManager = () => {
         name: name.toUpperCase(), phone, address: address.toUpperCase(),
         contact_person: contactPerson.toUpperCase(), billing_type: billingType,
         billing_cycle: billingCycle, default_discount_pct: discountPct,
+        allow_all_tests: allowAllTests,
       };
       let pickupId = editingId;
       let appliedCount = 0;
@@ -381,15 +386,16 @@ const PickupPointManager = () => {
               <TableHead>Phone</TableHead>
               <TableHead>Billing</TableHead>
               <TableHead>Discount %</TableHead>
+              <TableHead>Tests</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-8">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center py-8">Loading...</TableCell></TableRow>
             ) : pickupPoints.length === 0 ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No pickup points</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No pickup points</TableCell></TableRow>
             ) : pickupPoints.map((pp: any) => (
               <TableRow key={pp.id}>
                 <TableCell className="font-medium">{pp.name}</TableCell>
@@ -400,6 +406,11 @@ const PickupPointManager = () => {
                   <span className="text-xs text-muted-foreground ml-1">({pp.billing_cycle})</span>
                 </TableCell>
                 <TableCell>{pp.default_discount_pct}%</TableCell>
+                <TableCell>
+                  <Badge variant={pp.allow_all_tests ? "secondary" : "outline"}>
+                    {pp.allow_all_tests ? "All tests" : "Restricted"}
+                  </Badge>
+                </TableCell>
                 <TableCell>
                   <Badge variant={pp.status === "active" ? "default" : "secondary"} className="cursor-pointer"
                     onClick={() => toggleStatus.mutate({ id: pp.id, status: pp.status })}>
@@ -451,6 +462,16 @@ const PickupPointManager = () => {
               </div>
             </div>
             <div><Label>Default Discount %</Label><Input type="number" value={discountPct || ""} onChange={e => setDiscountPct(parseFloat(e.target.value) || 0)} /></div>
+
+            <div className="flex items-start justify-between gap-3 rounded-md border p-3 bg-muted/30">
+              <div className="flex-1">
+                <Label className="text-sm">Allow all tests during registration</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  When OFF, only tests with a configured custom price appear during registration for this pickup point.
+                </p>
+              </div>
+              <Switch checked={allowAllTests} onCheckedChange={setAllowAllTests} />
+            </div>
 
             <div>
               <Label>Apply Standard Price List (optional)</Label>
