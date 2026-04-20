@@ -86,6 +86,48 @@ export const bulkInsertTests = async (tests: SaveTestPayload[]) => {
   });
 };
 
+// ── Multi-tube helpers ──
+
+export interface TestSampleTube {
+  id?: string;
+  tube_value: string;
+  sample_type: string | null;
+  tube_color: string | null;
+  display_order: number;
+}
+
+export const getTestSampleTubes = async (testId: string): Promise<TestSampleTube[]> => {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from("test_sample_tubes")
+      .select("id, tube_value, sample_type, tube_color, display_order")
+      .eq("test_id", testId)
+      .order("display_order");
+    if (error) throw new Error(error.message);
+    return (data || []) as TestSampleTube[];
+  });
+};
+
+export const saveTestSampleTubes = async (testId: string, tubes: TestSampleTube[]) => {
+  return withRetry(async () => {
+    // Replace strategy: delete all then insert
+    const { error: delErr } = await supabase.from("test_sample_tubes").delete().eq("test_id", testId);
+    if (delErr) throw new Error(delErr.message);
+    const cleaned = tubes
+      .filter(t => t.tube_value && t.tube_value.trim() !== "")
+      .map((t, idx) => ({
+        test_id: testId,
+        tube_value: t.tube_value.trim(),
+        sample_type: t.sample_type || null,
+        tube_color: t.tube_color || null,
+        display_order: idx,
+      }));
+    if (cleaned.length === 0) return;
+    const { error: insErr } = await supabase.from("test_sample_tubes").insert(cleaned as any);
+    if (insErr) throw new Error(insErr.message);
+  });
+};
+
 // ── Test-Parameter junction helpers ──
 
 export interface TestParameterLink {
