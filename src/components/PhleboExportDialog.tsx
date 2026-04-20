@@ -60,13 +60,14 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
       const phleboIds = [...new Set(visits.filter((v) => v.phlebotomist_id).map((v) => v.phlebotomist_id!))];
 
       // Fetch all related data in parallel
-      const [estimatesRes, phleboRes, estTestsRes, testsRes, checkupsRes, profilesRes] = await Promise.all([
+      const [estimatesRes, phleboRes, estTestsRes, testsRes, checkupsRes, profilesRes, combosRes] = await Promise.all([
         supabase.from("estimates").select("id, patient_name, home_visit_charges").in("id", estimateIds),
         supabase.from("phlebotomists").select("id, name").in("id", phleboIds),
         supabase.from("estimate_tests").select("estimate_id, test_id, test_name").in("estimate_id", estimateIds),
         supabase.from("tests").select("id, test_name, incentive_allowed, incentive_amount"),
         supabase.from("health_checkups").select("id, health_checkup_name, incentive_allowed, incentive_amount"),
         supabase.from("billing_profiles").select("id, profile_name, incentive_allowed, incentive_amount"),
+        (supabase as any).from("combos").select("id, combo_name, incentive_allowed, incentive_amount"),
       ]);
 
       const estimateMap: Record<string, { patient_name: string; home_visit_charges: number }> = {};
@@ -86,6 +87,9 @@ const PhleboExportDialog = ({ open, onOpenChange }: PhleboExportDialogProps) => 
       });
       (profilesRes.data || []).forEach((p: any) => {
         if (p.incentive_allowed) testIncentiveMap[p.id] = { name: p.profile_name + " (Profile)", amount: Number(p.incentive_amount) || 0, type: "Profile" };
+      });
+      (combosRes.data || []).forEach((c: any) => {
+        if (c.incentive_allowed) testIncentiveMap[c.id] = { name: c.combo_name + " (Combo)", amount: Number(c.incentive_amount) || 0, type: "Combo" };
       });
 
       // Map estimate -> incentive test names and total incentive
