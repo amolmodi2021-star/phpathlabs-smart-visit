@@ -28,6 +28,8 @@ const PickupPointManager = () => {
   const [billingType, setBillingType] = useState("credit");
   const [billingCycle, setBillingCycle] = useState("monthly");
   const [discountPct, setDiscountPct] = useState(0);
+  const [cloneFromId, setCloneFromId] = useState("");
+  const [pricingSearch, setPricingSearch] = useState("");
 
   const { data: pickupPoints = [], isLoading } = useQuery({
     queryKey: ["pickup_points_all"],
@@ -52,7 +54,7 @@ const PickupPointManager = () => {
   const resetForm = () => {
     setName(""); setPhone(""); setAddress(""); setContactPerson("");
     setBillingType("credit"); setBillingCycle("monthly"); setDiscountPct(0);
-    setEditingId(null);
+    setEditingId(null); setCloneFromId("");
   };
 
   const openEdit = (pp: any) => {
@@ -74,15 +76,35 @@ const PickupPointManager = () => {
       if (editingId) {
         const { error } = await supabase.from("pickup_points").update(payload as any).eq("id", editingId);
         if (error) throw error;
+        return { clonedCount: 0 };
       } else {
-        const { error } = await supabase.from("pickup_points").insert(payload as any);
+        const { data: inserted, error } = await supabase.from("pickup_points").insert(payload as any).select("id").single();
         if (error) throw error;
+        let clonedCount = 0;
+        if (cloneFromId && inserted?.id) {
+          const { data: srcPrices } = await supabase.from("pickup_point_prices")
+            .select("test_id, custom_price").eq("pickup_point_id", cloneFromId);
+          if (srcPrices && srcPrices.length > 0) {
+            const rows = srcPrices.map((p: any) => ({
+              pickup_point_id: inserted.id, test_id: p.test_id, custom_price: p.custom_price,
+            }));
+            const { error: insErr } = await supabase.from("pickup_point_prices").insert(rows as any);
+            if (insErr) throw insErr;
+            clonedCount = rows.length;
+          }
+        }
+        return { clonedCount };
       }
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ["pickup_points_all"] });
       qc.invalidateQueries({ queryKey: ["pickup_points"] });
-      toast.success(editingId ? "Pickup point updated" : "Pickup point created");
+      const msg = editingId
+        ? "Pickup point updated"
+        : result?.clonedCount
+          ? `Pickup point created with ${result.clonedCount} cloned prices`
+          : "Pickup point created";
+      toast.success(msg);
       setFormOpen(false); resetForm();
     },
     onError: (e: any) => toast.error(e.message),
@@ -221,37 +243,70 @@ const PickupPointManager = () => {
               </div>
             </div>
             <div><Label>Default Discount %</Label><Input type="number" value={discountPct || ""} onChange={e => setDiscountPct(parseFloat(e.target.value) || 0)} /></div>
+            {!editingId && (
+              <div>
+                <Label>Clone Pricing From (optional)</Label>
+                <Select value={cloneFromId || "__none__"} onValueChange={v => setCloneFromId(v === "__none__" ? "" : v)}>
+                  <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">None</SelectItem>
+                    {pickupPoints.filter((p: any) => p.status === "active").map((p: any) => (
+                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <Button className="w-full" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>Save</Button>
           </div>
         </DialogContent>
       </Dialog>
 
       {/* Pricing Dialog */}
-      <Dialog open={pricingOpen} onOpenChange={o => { if (!o) setPricingOpen(false); }}>
+      <Dialog open={pricingOpen} onOpenChange={o => { if (!o) { setPricingOpen(false); setPricingSearch(""); } }}>
         <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Custom Pricing — {pricingPoint?.name}</DialogTitle></DialogHeader>
           <p className="text-sm text-muted-foreground mb-2">Set custom prices for specific tests. Tests without custom prices use the default MRP.</p>
+          <div className="sticky top-0 bg-background pb-2 z-10">
+            <Input
+              placeholder="Search tests by name or code…"
+              value={pricingSearch}
+              onChange={e => setPricingSearch(e.target.value)}
+              className="h-8 text-sm"
+            />
+          </div>
           <div className="space-y-2">
-            {tests.map(t => {
-              const existing = prices.find((p: any) => p.test_id === t.id);
-              return (
-                <div key={t.id} className="flex items-center gap-2 text-sm">
-                  <span className="flex-1 truncate">{t.test_name}</span>
-                  <span className="text-muted-foreground w-16 text-right">₹{t.price}</span>
-                  <Input
-                    type="number"
-                    className="w-24 h-8 text-xs"
-                    placeholder="Custom"
-                    defaultValue={existing?.custom_price || ""}
-                    onBlur={e => {
-                      const val = parseFloat(e.target.value);
-                      if (val > 0) savePrice.mutate({ testId: t.id, price: val });
-                      else if (existing) deletePrice.mutate(t.id);
-                    }}
-                  />
-                </div>
-              );
-            })}
+            {(() => {
+              const q = pricingSearch.trim().toLowerCase();
+              const filtered = q
+                ? tests.filter((t: any) =>
+                    (t.test_name || "").toLowerCase().includes(q) ||
+                    (t.test_code || "").toLowerCase().includes(q))
+                : tests;
+              if (filtered.length === 0) {
+                return <p className="text-sm text-muted-foreground text-center py-4">No tests match</p>;
+              }
+              return filtered.map((t: any) => {
+                const existing = prices.find((p: any) => p.test_id === t.id);
+                return (
+                  <div key={t.id} className="flex items-center gap-2 text-sm">
+                    <span className="flex-1 truncate">{t.test_name}</span>
+                    <span className="text-muted-foreground w-16 text-right">₹{t.price}</span>
+                    <Input
+                      type="number"
+                      className="w-24 h-8 text-xs"
+                      placeholder="Custom"
+                      defaultValue={existing?.custom_price || ""}
+                      onBlur={e => {
+                        const val = parseFloat(e.target.value);
+                        if (val > 0) savePrice.mutate({ testId: t.id, price: val });
+                        else if (existing) deletePrice.mutate(t.id);
+                      }}
+                    />
+                  </div>
+                );
+              });
+            })()}
           </div>
         </DialogContent>
       </Dialog>
