@@ -3121,6 +3121,44 @@ export type Database = {
           },
         ]
       }
+      test_sample_tubes: {
+        Row: {
+          created_at: string
+          display_order: number
+          id: string
+          sample_type: string | null
+          test_id: string
+          tube_color: string | null
+          tube_value: string
+        }
+        Insert: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          sample_type?: string | null
+          test_id: string
+          tube_color?: string | null
+          tube_value: string
+        }
+        Update: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          sample_type?: string | null
+          test_id?: string
+          tube_color?: string | null
+          tube_value?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "test_sample_tubes_test_id_fkey"
+            columns: ["test_id"]
+            isOneToOne: false
+            referencedRelation: "tests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tests: {
         Row: {
           bold_in_report: boolean

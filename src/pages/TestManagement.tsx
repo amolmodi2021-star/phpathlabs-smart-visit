@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 
@@ -11,11 +11,11 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Search, Download, Upload, Trash2, Pencil, Loader2, Lock, Unlock } from "lucide-react";
+import { Plus, Search, Download, Upload, Trash2, Pencil, Loader2, Lock, Unlock, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { exportToExcel, parseExcelFile, downloadTemplate } from "@/lib/excel";
-import { getTests, saveTest, deleteTest, bulkInsertTests } from "@/lib/tests";
+import { getTests, saveTest, deleteTest, bulkInsertTests, getTestSampleTubes, saveTestSampleTubes, type TestSampleTube } from "@/lib/tests";
 import TestParameterManager from "@/components/TestParameterManager";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
@@ -70,6 +70,30 @@ const TestManagement = () => {
   const [incentiveLocked, setIncentiveLocked] = useState(true);
   const [incentivePassword, setIncentivePassword] = useState("");
   const [form, setForm] = useState(defaultForm);
+  const [sampleTubes, setSampleTubes] = useState<TestSampleTube[]>([]);
+
+  // Load multi-tubes when editing
+  useEffect(() => {
+    if (editing?.id) {
+      getTestSampleTubes(editing.id).then((tubes) => {
+        if (tubes.length > 0) {
+          setSampleTubes(tubes);
+        } else if (editing.sample_tube) {
+          // Seed from legacy single-tube column so user sees current value
+          setSampleTubes([{
+            tube_value: editing.sample_tube,
+            sample_type: editing.sample_type || "",
+            tube_color: editing.tube_color || "",
+            display_order: 0,
+          }]);
+        } else {
+          setSampleTubes([]);
+        }
+      }).catch(() => setSampleTubes([]));
+    } else {
+      setSampleTubes([]);
+    }
+  }, [editing?.id]);
 
   const { data: tests = [], isLoading, isError, error: queryError, refetch } = useQuery({
     queryKey: ["tests"],
@@ -88,6 +112,12 @@ const TestManagement = () => {
 
   const saveMutation = useMutation({
     mutationFn: async (values: typeof form) => {
+      // Sync legacy single columns from first multi-tube row (backward compat)
+      const firstTube = sampleTubes.find(t => t.tube_value && t.tube_value.trim() !== "");
+      const legacyTube = firstTube?.tube_value || values.sample_tube || null;
+      const legacyType = firstTube?.sample_type || values.sample_type || null;
+      const legacyColor = firstTube?.tube_color || values.tube_color || null;
+
       const payload = {
         test_name: values.test_name,
         price: parseFloat(values.price) || 0,
@@ -102,9 +132,9 @@ const TestManagement = () => {
         is_single_parameter: values.is_single_parameter,
         instrument_name: values.instrument_name || null,
         method: values.method || null,
-        sample_type: values.sample_type || null,
-        sample_tube: values.sample_tube || null,
-        tube_color: values.tube_color || null,
+        sample_type: legacyType,
+        sample_tube: legacyTube,
+        tube_color: legacyColor,
         interpretation: values.interpretation || null,
         is_outsourced: values.is_outsourced,
         outsourced_caption: values.outsourced_caption || null,
@@ -114,6 +144,22 @@ const TestManagement = () => {
         dedicated_page: values.dedicated_page,
       };
       await saveTest(payload, editing?.id);
+
+      // Save multi-tubes — need test id; for new tests fetch the just-inserted row by name
+      let testId: string | undefined = editing?.id;
+      if (!testId) {
+        const { data: latest } = await supabase
+          .from("tests")
+          .select("id")
+          .eq("test_name", values.test_name)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        testId = latest?.id;
+      }
+      if (testId) {
+        await saveTestSampleTubes(testId, sampleTubes);
+      }
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["tests"] }); setDialogOpen(false); resetForm(); toast.success("Test saved"); },
     onError: (e: Error) => toast.error("Save failed: " + e.message),
@@ -144,7 +190,7 @@ const TestManagement = () => {
     onError: (e: Error) => toast.error("Upload failed: " + e.message),
   });
 
-  const resetForm = () => { setForm(defaultForm); setEditing(null); setIncentiveLocked(true); setIncentivePassword(""); };
+  const resetForm = () => { setForm(defaultForm); setEditing(null); setIncentiveLocked(true); setIncentivePassword(""); setSampleTubes([]); };
 
   const openEdit = (t: any) => {
     setEditing(t);
@@ -265,9 +311,67 @@ const TestManagement = () => {
                   <div className="grid grid-cols-2 gap-3">
                     <div><Label className="text-sm">Instrument Name</Label><MasterLookupSelect category="machine_name" value={form.instrument_name} onChange={(v) => setForm(p => ({ ...p, instrument_name: v }))} placeholder="Select machine" /></div>
                     <div><Label className="text-sm">Method</Label><MasterLookupSelect category="method" value={form.method} onChange={(v) => setForm(p => ({ ...p, method: v }))} placeholder="Select method" /></div>
-                    <div><Label className="text-sm">Sample Tube</Label><MasterLookupSelect category="sample_tube" value={form.sample_tube} onChange={(v) => setForm(p => ({ ...p, sample_tube: v }))} onMappedValue={(v) => setForm(p => ({ ...p, sample_type: v }))} onMappedValue2={(v) => setForm(p => ({ ...p, tube_color: v }))} placeholder="Select sample tube" /></div>
-                    <div><Label className="text-sm">Sample Type</Label><Input value={form.sample_type} onChange={(e) => setForm(p => ({ ...p, sample_type: e.target.value }))} placeholder="Auto-filled from mapping" /></div>
-                    <div><Label className="text-sm">Tube Color</Label><div className="flex items-center gap-2"><Input value={form.tube_color} onChange={(e) => setForm(p => ({ ...p, tube_color: e.target.value }))} placeholder="Auto-filled from mapping" />{form.tube_color && <TubeColorDot color={form.tube_color} />}</div></div>
+                  </div>
+
+                  {/* Multi sample tubes */}
+                  <div className="space-y-2 border-t pt-3">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm font-semibold">Sample Tubes</Label>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setSampleTubes(prev => [...prev, { tube_value: "", sample_type: "", tube_color: "", display_order: prev.length }])}
+                      >
+                        <Plus className="h-3.5 w-3.5 mr-1" />Add Tube
+                      </Button>
+                    </div>
+                    {sampleTubes.length === 0 && (
+                      <p className="text-xs text-muted-foreground">No tubes assigned. Click "Add Tube" if this test requires one or more sample tubes.</p>
+                    )}
+                    {sampleTubes.map((tube, idx) => (
+                      <div key={idx} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-end p-2 rounded-md border bg-background/40">
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Tube</Label>
+                          <MasterLookupSelect
+                            category="sample_tube"
+                            value={tube.tube_value}
+                            onChange={(v) => setSampleTubes(prev => prev.map((t, i) => i === idx ? { ...t, tube_value: v } : t))}
+                            onMappedValue={(v) => setSampleTubes(prev => prev.map((t, i) => i === idx ? { ...t, sample_type: v } : t))}
+                            onMappedValue2={(v) => setSampleTubes(prev => prev.map((t, i) => i === idx ? { ...t, tube_color: v } : t))}
+                            placeholder="Select tube"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Sample Type</Label>
+                          <Input
+                            value={tube.sample_type || ""}
+                            onChange={(e) => setSampleTubes(prev => prev.map((t, i) => i === idx ? { ...t, sample_type: e.target.value } : t))}
+                            placeholder="Auto-filled"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Tube Color</Label>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              value={tube.tube_color || ""}
+                              onChange={(e) => setSampleTubes(prev => prev.map((t, i) => i === idx ? { ...t, tube_color: e.target.value } : t))}
+                              placeholder="Auto-filled"
+                            />
+                            {tube.tube_color && <TubeColorDot color={tube.tube_color} />}
+                          </div>
+                        </div>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setSampleTubes(prev => prev.filter((_, i) => i !== idx))}
+                          title="Remove tube"
+                        >
+                          <X className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    ))}
                   </div>
                   <div><Label className="text-sm">Interpretation</Label><Textarea value={form.interpretation} onChange={(e) => setForm(p => ({ ...p, interpretation: e.target.value }))} placeholder="Clinical interpretation notes" rows={3} /></div>
                 </div>
