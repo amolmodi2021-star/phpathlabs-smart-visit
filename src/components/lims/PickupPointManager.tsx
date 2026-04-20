@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Plus, Edit, Trash2, DollarSign, ListChecks } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { getTests } from "@/lib/tests";
 
 type PriceRow = { test_id: string; custom_price: number };
@@ -128,6 +129,7 @@ const PickupPointManager = () => {
   const [billingType, setBillingType] = useState("credit");
   const [billingCycle, setBillingCycle] = useState("monthly");
   const [discountPct, setDiscountPct] = useState(0);
+  const [allowAllTests, setAllowAllTests] = useState(false);
   const [cloneFromId, setCloneFromId] = useState("");
   const [applyStdListId, setApplyStdListId] = useState("");
 
@@ -169,6 +171,7 @@ const PickupPointManager = () => {
   const resetForm = () => {
     setName(""); setPhone(""); setAddress(""); setContactPerson("");
     setBillingType("credit"); setBillingCycle("monthly"); setDiscountPct(0);
+    setAllowAllTests(false);
     setEditingId(null); setCloneFromId(""); setApplyStdListId("");
   };
 
@@ -177,6 +180,7 @@ const PickupPointManager = () => {
     setName(pp.name); setPhone(pp.phone || ""); setAddress(pp.address || "");
     setContactPerson(pp.contact_person || ""); setBillingType(pp.billing_type);
     setBillingCycle(pp.billing_cycle); setDiscountPct(pp.default_discount_pct || 0);
+    setAllowAllTests(!!pp.allow_all_tests);
     setApplyStdListId("");
     setFormOpen(true);
   };
@@ -201,6 +205,7 @@ const PickupPointManager = () => {
         name: name.toUpperCase(), phone, address: address.toUpperCase(),
         contact_person: contactPerson.toUpperCase(), billing_type: billingType,
         billing_cycle: billingCycle, default_discount_pct: discountPct,
+        allow_all_tests: allowAllTests,
       };
       let pickupId = editingId;
       let appliedCount = 0;
