@@ -707,24 +707,6 @@ const PatientRegistration = () => {
             </div>
           )}
 
-          {visitType === "pickup_point" && !channelId && (
-            <div>
-              <Label>Select Pickup Point *</Label>
-              <Select value={pickupPointId} onValueChange={setPickupPointId}>
-                <SelectTrigger><SelectValue placeholder="Choose pickup point" /></SelectTrigger>
-                <SelectContent>
-                  {pickupPoints.map((pp: any) => (
-                    <SelectItem key={pp.id} value={pp.id}>{pp.name} ({pp.billing_type})</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {selectedPickup && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  {selectedPickup.billing_type === "credit" ? "Credit billing — no payment required now" : `Debit billing • Default discount: ${selectedPickup.default_discount_pct}%`}
-                </p>
-              )}
-            </div>
-          )}
 
 
           {/* Test Selection */}
