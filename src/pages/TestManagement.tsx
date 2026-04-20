@@ -112,30 +112,6 @@ const TestManagement = () => {
 
   const saveMutation = useMutation({
     mutationFn: async (values: typeof form) => {
-      const payload = {
-        test_name: values.test_name,
-        price: parseFloat(values.price) || 0,
-        fasting_required: values.fasting_required,
-        discount_applicable: values.discount_applicable,
-        description: values.description,
-        incentive_allowed: values.incentive_allowed,
-        incentive_amount: parseFloat(values.incentive_amount) || 0,
-        display_name: values.display_name || null,
-        bold_in_report: values.bold_in_report,
-        show_in_report: values.show_in_report,
-        is_single_parameter: values.is_single_parameter,
-        instrument_name: values.instrument_name || null,
-        method: values.method || null,
-        sample_type: values.sample_type || null,
-        sample_tube: values.sample_tube || null,
-        tube_color: values.tube_color || null,
-        interpretation: values.interpretation || null,
-        is_outsourced: values.is_outsourced,
-        outsourced_caption: values.outsourced_caption || null,
-        department_id: values.department_id || null,
-        is_active: values.is_active,
-  const saveMutation = useMutation({
-    mutationFn: async (values: typeof form) => {
       // Sync legacy single columns from first multi-tube row (backward compat)
       const firstTube = sampleTubes.find(t => t.tube_value && t.tube_value.trim() !== "");
       const legacyTube = firstTube?.tube_value || values.sample_tube || null;
