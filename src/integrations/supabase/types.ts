@@ -557,6 +557,13 @@ export type Database = {
             referencedRelation: "combos"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "combo_profiles_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "billing_profiles"
+            referencedColumns: ["id"]
+          },
         ]
       }
       combo_tests: {
@@ -587,6 +594,13 @@ export type Database = {
             columns: ["combo_id"]
             isOneToOne: false
             referencedRelation: "combos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "combo_tests_test_id_fkey"
+            columns: ["test_id"]
+            isOneToOne: false
+            referencedRelation: "tests"
             referencedColumns: ["id"]
           },
         ]
