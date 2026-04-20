@@ -488,7 +488,7 @@ const PickupPointManager = () => {
 
       {/* Pickup Point Pricing Dialog */}
       <Dialog open={pricingOpen} onOpenChange={o => { if (!o) { setPricingOpen(false); setApplyInPricing(""); } }}>
-        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl w-[95vw] max-h-[85vh] flex flex-col">
           <DialogHeader><DialogTitle>Custom Pricing — {pricingPoint?.name}</DialogTitle></DialogHeader>
           <p className="text-sm text-muted-foreground mb-2">Set custom prices for specific tests. Tests without custom prices use the default MRP.</p>
 
