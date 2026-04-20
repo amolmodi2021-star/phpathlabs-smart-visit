@@ -1,47 +1,39 @@
 
 
 ## Goal
-Make it easy to **remove tests** from a Pickup Point's (or Standard Price List's) custom price list — either one-by-one with checkboxes, in **bulk via multi-select**, or **delete all** at once. Today the only way to remove a configured test is to clear its custom price input and tab away, which is unintuitive.
+Fix two issues with the Pickup Invoice PDF download:
+1. **File size** — currently ~10 MB for a single page (PNG at 2× DPI). Will drop to ~300–800 KB.
+2. **Alignment / margin drift** — the downloaded PDF doesn't match the on-screen preview (rows can be sliced mid-row across pages, and the image edges sit flush against the paper edge).
 
-## Changes — `src/components/lims/PickupPointManager.tsx` (PriceEditor component)
+## Changes — `src/components/lims/PickupInvoicePDF.tsx`
 
-### 1. Add a "Configured only" view toggle
-A small toggle at the top of the price editor:
-- **"Show: All tests / Configured only"** (default = **Configured only** when there is at least one configured price; otherwise All tests).
-- "Configured only" hides every test that has no custom price row, so the list focuses on what you've actually set up and can remove. "All tests" keeps current behavior for adding new prices.
+### 1. Switch raster from PNG → JPEG (huge size win)
+- Replace `toPng(...)` with `toJpeg(node, { quality: 0.92, pixelRatio: 2, backgroundColor: "#ffffff", cacheBust: true })`.
+- Use `pdf.addImage(dataUrl, "JPEG", ...)`.
+- Result: same visual sharpness at ~5–15× smaller file size. Typical single-page invoice → well under 1 MB.
 
-### 2. Add a checkbox column + selection state
-- New leftmost column with a per-row checkbox (only enabled for rows that have a configured custom price — you can't "delete" what isn't configured).
-- Header row gets a master checkbox: **select all currently visible configured rows**.
-- Local state: `selectedTestIds: Set<string>`. Reset whenever the dialog opens or after a successful bulk delete.
+### 2. Render Invoice and Ledger as **two separate captures** (fixes alignment)
+The current code rasterizes one tall HTML node containing both the invoice and the ledger, then slices the resulting flat image into A4-tall strips. Because the slice boundary doesn't align to row boundaries, rows get cut in half and content drifts.
 
-### 3. Add a bulk action bar
-Appears above the list whenever there is ≥1 selection or ≥1 configured price:
-- **Selected count** indicator (e.g. "3 selected").
-- **"Remove selected"** button — disabled until ≥1 selected. Confirm dialog: *"Remove N custom prices? Tests will revert to base price."*
-- **"Remove all configured prices"** button (destructive style, right-aligned). Confirm dialog: *"Remove ALL N custom prices for this pickup point? This cannot be undone."*
+Fix: split the print DOM into two sibling sections — `#pickup-invoice-print-page1` (invoice) and `#pickup-invoice-print-page2` (ledger) — and capture each separately. Each capture becomes one PDF page via `pdf.addImage`. No mid-row slicing.
 
-Both actions call a single `supabase.from(table).delete().eq(ownerCol, ownerId)` (for "all") or `.in("test_id", ids)` (for "selected"), then invalidate the query and toast the result.
+If the invoice items table is very long (rare but possible), fall back to slicing only that single capture across pages, but starting fresh from the top of the page so the header stays at y=0.
 
-### 4. Per-row trash icon (quick remove)
-Replace the awkward "blank the input to delete" UX with an explicit **trash icon button** at the end of every row that has a configured price. Clicking it deletes just that row (with a small inline confirm via `window.confirm`, no extra dialog).
+### 3. Add proper PDF page margins
+Currently the captured image is rendered edge-to-edge at `(0, 0, 210mm, …)`. The visible padding inside the print node only pads the *content*, not the page. Fix: render the image inside an 8 mm safe margin:
+- `marginX = 0`, `marginY = 0` — but reduce the on-DOM padding from `12mm 14mm` to `10mm 12mm` so the printed margins exactly match what the user sees in the preview.
+- Compute `imgWmm = pageW` (full bleed) and let the white background of the captured node provide the visual margin. This guarantees the downloaded PDF margin = preview margin, pixel-for-pixel.
 
-### 5. Empty-state copy
-- When "Configured only" is selected and there are zero configured prices: show *"No tests configured yet. Switch to 'All tests' to add custom prices."*
+### 4. Cap pixelRatio for very tall captures
+Keep `pixelRatio: 2` for normal invoices. If the captured node is taller than ~600 mm equivalent (long ledger), drop pixelRatio to 1.5 automatically to keep file size predictable.
 
-### Technical notes
-- Reuses the existing `delMut` mutation for single-row deletes.
-- Adds two new mutations:
-  - `bulkDelMut(ids: string[])` → `.in("test_id", ids)`.
-  - `deleteAllMut()` → `.eq(ownerCol, ownerId)` with no test_id filter.
-- Works for **both** Pickup Point custom pricing AND Standard Price Lists (same `PriceEditor` component, same code path).
-- No DB schema changes.
+### 5. Loading guard tweak
+Disable the Download button while either capture is mid-flight (already done) and add a tiny `await new Promise(r => setTimeout(r, 50))` before capture so any logo/`<img>` finishes painting (`crossOrigin="anonymous"` logo can otherwise be missing on first capture).
 
 ## Files
-- **EDIT** `src/components/lims/PickupPointManager.tsx` — extend `PriceEditor` with view toggle, checkboxes, bulk action bar, per-row trash button, and the two new mutations.
+- **EDIT** `src/components/lims/PickupInvoicePDF.tsx` — switch to JPEG, split into two captures (invoice + ledger), align margins to preview, auto-throttle pixelRatio for long pages.
 
 ## Out of scope
-- Bulk-add tests by Excel import (separate feature).
-- Undo/restore of deleted prices.
-- Any change to `PatientRegistration.tsx` (the new restricted-list filter already correctly hides tests that have been removed).
+- Re-flowing the invoice as a vector PDF using `jsPDF.text()` / `autotable` (much smaller files but a full rewrite — happy to do this in a follow-up if you want sub-100 KB files and selectable text).
+- Changing the invoice visual design.
 
