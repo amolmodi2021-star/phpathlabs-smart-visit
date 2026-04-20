@@ -6,7 +6,7 @@ import { Download, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import jsPDF from "jspdf";
-import { toPng } from "html-to-image";
+import { toJpeg } from "html-to-image";
 import { getInvoiceItems, getInvoiceLedger, amountInWords, type PickupInvoice } from "@/lib/pickupBilling";
 
 interface Props {
@@ -59,36 +59,59 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
     })();
   }, [open, invoice]);
 
+  const captureNode = async (id: string) => {
+    const node = document.getElementById(id);
+    if (!node) return null;
+    // Decide pixel ratio based on rendered height (roughly mm: 1mm ≈ 3.78px at 96dpi)
+    const heightMm = node.offsetHeight / 3.78;
+    const pixelRatio = heightMm > 600 ? 1.5 : 2;
+    const dataUrl = await toJpeg(node, {
+      quality: 0.92,
+      pixelRatio,
+      cacheBust: true,
+      backgroundColor: "#ffffff",
+    });
+    const img = new Image();
+    img.src = dataUrl;
+    await new Promise((r) => (img.onload = r));
+    return { dataUrl, ratio: img.height / img.width };
+  };
+
   const download = async () => {
     if (!invoice || !pickup) return;
     setDownloading(true);
     try {
-      const node = document.getElementById("pickup-invoice-print");
-      if (!node) throw new Error("Print node not found");
-      const dataUrl = await toPng(node, { pixelRatio: 2, cacheBust: true, backgroundColor: "#ffffff" });
+      // Wait for any pending image paints (logo)
+      await new Promise((r) => setTimeout(r, 80));
+
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       const pageW = pdf.internal.pageSize.getWidth();
       const pageH = pdf.internal.pageSize.getHeight();
-      // Fit image: capture at A4 ratio, may need multiple pages for ledger
-      const img = new Image();
-      img.src = dataUrl;
-      await new Promise((r) => (img.onload = r));
-      const imgRatio = img.height / img.width;
-      const imgWmm = pageW;
-      const imgHmm = pageW * imgRatio;
-      if (imgHmm <= pageH) {
-        pdf.addImage(dataUrl, "PNG", 0, 0, imgWmm, imgHmm);
-      } else {
-        // Multi-page: slice the image
-        let remaining = imgHmm;
-        let position = 0;
-        while (remaining > 0) {
-          pdf.addImage(dataUrl, "PNG", 0, -position, imgWmm, imgHmm);
-          remaining -= pageH;
-          position += pageH;
-          if (remaining > 0) pdf.addPage();
+
+      const addCapture = async (id: string, isFirst: boolean) => {
+        const cap = await captureNode(id);
+        if (!cap) return;
+        const imgWmm = pageW;
+        const imgHmm = pageW * cap.ratio;
+        if (!isFirst) pdf.addPage();
+        if (imgHmm <= pageH) {
+          pdf.addImage(cap.dataUrl, "JPEG", 0, 0, imgWmm, imgHmm);
+        } else {
+          // Long capture — slice across pages, fresh top each page
+          let position = 0;
+          let pageIndex = 0;
+          while (position < imgHmm) {
+            if (pageIndex > 0) pdf.addPage();
+            pdf.addImage(cap.dataUrl, "JPEG", 0, -position, imgWmm, imgHmm);
+            position += pageH;
+            pageIndex++;
+          }
         }
-      }
+      };
+
+      await addCapture("pickup-invoice-print-page1", true);
+      await addCapture("pickup-invoice-print-page2", false);
+
       const safeName = (pickup.name || "PICKUP").replace(/[^A-Z0-9_-]/gi, "_");
       pdf.save(`${safeName}_${invoice.invoice_number}.pdf`);
       toast.success("PDF downloaded");
