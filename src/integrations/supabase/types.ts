@@ -2642,6 +2642,160 @@ export type Database = {
         }
         Relationships: []
       }
+      pickup_point_invoice_items: {
+        Row: {
+          created_at: string
+          display_order: number
+          id: string
+          invoice_id: string
+          net_amount: number
+          patient_name: string | null
+          registration_date: string | null
+          registration_id: string | null
+          registration_invoice: string | null
+          test_names: string | null
+        }
+        Insert: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          invoice_id: string
+          net_amount?: number
+          patient_name?: string | null
+          registration_date?: string | null
+          registration_id?: string | null
+          registration_invoice?: string | null
+          test_names?: string | null
+        }
+        Update: {
+          created_at?: string
+          display_order?: number
+          id?: string
+          invoice_id?: string
+          net_amount?: number
+          patient_name?: string | null
+          registration_date?: string | null
+          registration_id?: string | null
+          registration_invoice?: string | null
+          test_names?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pickup_point_invoice_items_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "pickup_point_invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pickup_point_invoice_payments: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          invoice_id: string
+          payment_date: string
+          payment_mode: string
+          recorded_by: string | null
+          reference_no: string | null
+          remarks: string | null
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          id?: string
+          invoice_id: string
+          payment_date?: string
+          payment_mode: string
+          recorded_by?: string | null
+          reference_no?: string | null
+          remarks?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          invoice_id?: string
+          payment_date?: string
+          payment_mode?: string
+          recorded_by?: string | null
+          reference_no?: string | null
+          remarks?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pickup_point_invoice_payments_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "pickup_point_invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pickup_point_invoices: {
+        Row: {
+          created_at: string
+          due_amount: number
+          id: string
+          invoice_month: number
+          invoice_number: string | null
+          invoice_year: number
+          last_reminder_sent_at: string | null
+          no_reminder: boolean
+          notes: string | null
+          paid_amount: number
+          patient_count: number
+          period_from: string
+          period_to: string
+          pickup_point_id: string
+          reminder_days: number | null
+          status: string
+          total_amount: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          due_amount?: number
+          id?: string
+          invoice_month: number
+          invoice_number?: string | null
+          invoice_year: number
+          last_reminder_sent_at?: string | null
+          no_reminder?: boolean
+          notes?: string | null
+          paid_amount?: number
+          patient_count?: number
+          period_from: string
+          period_to: string
+          pickup_point_id: string
+          reminder_days?: number | null
+          status?: string
+          total_amount?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          due_amount?: number
+          id?: string
+          invoice_month?: number
+          invoice_number?: string | null
+          invoice_year?: number
+          last_reminder_sent_at?: string | null
+          no_reminder?: boolean
+          notes?: string | null
+          paid_amount?: number
+          patient_count?: number
+          period_from?: string
+          period_to?: string
+          pickup_point_id?: string
+          reminder_days?: number | null
+          status?: string
+          total_amount?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       pickup_point_prices: {
         Row: {
           created_at: string

@@ -338,13 +338,15 @@ const PatientRegistration = () => {
       const { data: invoiceNum, error: invErr } = await supabase.rpc("generate_invoice_number" as any);
       if (invErr) throw new Error("Failed to generate invoice number");
 
-      // Determine UMR: reuse existing or generate new
-      let finalUmr = umrNumber;
-      if (!finalUmr) {
+      // Determine UMR: pickup_point registrations skip UMR entirely
+      let finalUmr: string | null = umrNumber || null;
+      if (visitType !== "pickup_point" && !finalUmr) {
         const { data: newUmr, error: umrErr } = await supabase.rpc("generate_umr_number" as any);
         if (umrErr) throw new Error("Failed to generate UMR number");
         finalUmr = newUmr as string;
         setUmrNumber(finalUmr);
+      } else if (visitType === "pickup_point") {
+        finalUmr = null;
       }
 
       const payments = Array.from(selectedModes)
@@ -418,42 +420,44 @@ const PatientRegistration = () => {
         // Non-fatal: registration was saved successfully
       }
 
-      // Upsert patient_master
-      const { data: existing } = await supabase.from("patient_master").select("id").eq("mobile_number", cleanMobile).limit(1).single();
-      const pmData: any = {
-        patient_name: patientName.replace(/\s+/g, ' ').trim().toUpperCase(),
-        mobile_number: cleanMobile,
-        gender,
-        date_of_birth: dob || null,
-        email: email || null,
-        ref_doctor: (doctorName || "SELF").toUpperCase(),
-        umr_id: finalUmr,
-        last_visit_date: new Date().toISOString(),
-      };
-      if (existing) {
-        await supabase.from("patient_master").update(pmData).eq("id", existing.id);
-      } else {
-        pmData.first_visit_date = new Date().toISOString();
-        await supabase.from("patient_master").insert(pmData);
-      }
-
-      // Sync demographics across all previous registrations with same UMR
-      if (finalUmr) {
-        const demoUpdates: any = {
+      // Upsert patient_master — skip for pickup_point (no UMR, B2B aggregator)
+      if (visitType !== "pickup_point") {
+        const { data: existing } = await supabase.from("patient_master").select("id").eq("mobile_number", cleanMobile).limit(1).single();
+        const pmData: any = {
           patient_name: patientName.replace(/\s+/g, ' ').trim().toUpperCase(),
-          title,
-          gender,
-          dob: dob || null,
-          email: email || null,
-          address: visitType === "pickup_point" ? (selectedPickup?.address || "") : address.toUpperCase(),
-          doctor_name: (doctorName || "SELF").toUpperCase(),
           mobile_number: cleanMobile,
+          gender,
+          date_of_birth: dob || null,
+          email: email || null,
+          ref_doctor: (doctorName || "SELF").toUpperCase(),
+          umr_id: finalUmr,
+          last_visit_date: new Date().toISOString(),
         };
-        await supabase
-          .from("patient_registrations")
-          .update(demoUpdates)
-          .eq("umr_number", finalUmr)
-          .neq("id", reg.id);
+        if (existing) {
+          await supabase.from("patient_master").update(pmData).eq("id", existing.id);
+        } else {
+          pmData.first_visit_date = new Date().toISOString();
+          await supabase.from("patient_master").insert(pmData);
+        }
+
+        // Sync demographics across all previous registrations with same UMR
+        if (finalUmr) {
+          const demoUpdates: any = {
+            patient_name: patientName.replace(/\s+/g, ' ').trim().toUpperCase(),
+            title,
+            gender,
+            dob: dob || null,
+            email: email || null,
+            address: address.toUpperCase(),
+            doctor_name: (doctorName || "SELF").toUpperCase(),
+            mobile_number: cleanMobile,
+          };
+          await supabase
+            .from("patient_registrations")
+            .update(demoUpdates)
+            .eq("umr_number", finalUmr)
+            .neq("id", reg.id);
+        }
       }
 
       return reg;

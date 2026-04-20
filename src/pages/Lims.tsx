@@ -14,6 +14,7 @@ import DoctorApproval from "@/components/lims/DoctorApproval";
 import Dispatch from "@/components/lims/Dispatch";
 import LimsSettings from "@/components/lims/LimsSettings";
 import DailyReport from "@/components/lims/DailyReport";
+import Billing from "@/components/lims/Billing";
 
 const allLimsTabs = [
   { key: "register", label: "New Registration" },
@@ -26,6 +27,7 @@ const allLimsTabs = [
   { key: "dispatch", label: "Dispatch" },
   { key: "due_payments", label: "Due Payments" },
   { key: "bad_debts", label: "Bad Debts" },
+  { key: "billing", label: "Billing" },
   { key: "daily_report", label: "Daily Report" },
   { key: "completed_hv", label: "Completed Home Visits" },
   { key: "settings", label: "Settings" },
@@ -73,6 +75,9 @@ const Lims = () => {
         </TabsContent>
         <TabsContent value="bad_debts">
           <BadDebts />
+        </TabsContent>
+        <TabsContent value="billing">
+          <Billing />
         </TabsContent>
         <TabsContent value="daily_report">
           <DailyReport />
