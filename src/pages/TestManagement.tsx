@@ -311,9 +311,67 @@ const TestManagement = () => {
                   <div className="grid grid-cols-2 gap-3">
                     <div><Label className="text-sm">Instrument Name</Label><MasterLookupSelect category="machine_name" value={form.instrument_name} onChange={(v) => setForm(p => ({ ...p, instrument_name: v }))} placeholder="Select machine" /></div>
                     <div><Label className="text-sm">Method</Label><MasterLookupSelect category="method" value={form.method} onChange={(v) => setForm(p => ({ ...p, method: v }))} placeholder="Select method" /></div>
-                    <div><Label className="text-sm">Sample Tube</Label><MasterLookupSelect category="sample_tube" value={form.sample_tube} onChange={(v) => setForm(p => ({ ...p, sample_tube: v }))} onMappedValue={(v) => setForm(p => ({ ...p, sample_type: v }))} onMappedValue2={(v) => setForm(p => ({ ...p, tube_color: v }))} placeholder="Select sample tube" /></div>
-                    <div><Label className="text-sm">Sample Type</Label><Input value={form.sample_type} onChange={(e) => setForm(p => ({ ...p, sample_type: e.target.value }))} placeholder="Auto-filled from mapping" /></div>
-                    <div><Label className="text-sm">Tube Color</Label><div className="flex items-center gap-2"><Input value={form.tube_color} onChange={(e) => setForm(p => ({ ...p, tube_color: e.target.value }))} placeholder="Auto-filled from mapping" />{form.tube_color && <TubeColorDot color={form.tube_color} />}</div></div>
+                  </div>
+
+                  {/* Multi sample tubes */}
+                  <div className="space-y-2 border-t pt-3">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm font-semibold">Sample Tubes</Label>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setSampleTubes(prev => [...prev, { tube_value: "", sample_type: "", tube_color: "", display_order: prev.length }])}
+                      >
+                        <Plus className="h-3.5 w-3.5 mr-1" />Add Tube
+                      </Button>
+                    </div>
+                    {sampleTubes.length === 0 && (
+                      <p className="text-xs text-muted-foreground">No tubes assigned. Click "Add Tube" if this test requires one or more sample tubes.</p>
+                    )}
+                    {sampleTubes.map((tube, idx) => (
+                      <div key={idx} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 items-end p-2 rounded-md border bg-background/40">
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Tube</Label>
+                          <MasterLookupSelect
+                            category="sample_tube"
+                            value={tube.tube_value}
+                            onChange={(v) => setSampleTubes(prev => prev.map((t, i) => i === idx ? { ...t, tube_value: v } : t))}
+                            onMappedValue={(v) => setSampleTubes(prev => prev.map((t, i) => i === idx ? { ...t, sample_type: v } : t))}
+                            onMappedValue2={(v) => setSampleTubes(prev => prev.map((t, i) => i === idx ? { ...t, tube_color: v } : t))}
+                            placeholder="Select tube"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Sample Type</Label>
+                          <Input
+                            value={tube.sample_type || ""}
+                            onChange={(e) => setSampleTubes(prev => prev.map((t, i) => i === idx ? { ...t, sample_type: e.target.value } : t))}
+                            placeholder="Auto-filled"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Tube Color</Label>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              value={tube.tube_color || ""}
+                              onChange={(e) => setSampleTubes(prev => prev.map((t, i) => i === idx ? { ...t, tube_color: e.target.value } : t))}
+                              placeholder="Auto-filled"
+                            />
+                            {tube.tube_color && <TubeColorDot color={tube.tube_color} />}
+                          </div>
+                        </div>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setSampleTubes(prev => prev.filter((_, i) => i !== idx))}
+                          title="Remove tube"
+                        >
+                          <X className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    ))}
                   </div>
                   <div><Label className="text-sm">Interpretation</Label><Textarea value={form.interpretation} onChange={(e) => setForm(p => ({ ...p, interpretation: e.target.value }))} placeholder="Clinical interpretation notes" rows={3} /></div>
                 </div>
