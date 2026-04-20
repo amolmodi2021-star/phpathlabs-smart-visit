@@ -70,23 +70,31 @@ function PriceEditor({
     : tests;
 
   return (
-    <>
-      <div className="sticky top-0 bg-background pb-2 z-10">
-        <Input placeholder="Search tests by name or code…" value={search} onChange={e => setSearch(e.target.value)} className="h-8 text-sm" />
+    <div className="flex flex-col flex-1 min-h-0">
+      <div className="sticky top-0 bg-background pb-2 z-10 flex items-center gap-2">
+        <Input placeholder="Search tests by name or code…" value={search} onChange={e => setSearch(e.target.value)} className="h-8 text-sm flex-1" />
+        <span className="text-xs text-muted-foreground whitespace-nowrap">{filtered.length} test{filtered.length === 1 ? "" : "s"}</span>
       </div>
-      <div className="space-y-2">
+      <div className="flex items-center gap-2 px-1 py-1 border-b text-xs font-medium text-muted-foreground sticky top-10 bg-background z-10">
+        <span className="w-32">Test Code</span>
+        <span className="flex-1">Test Name</span>
+        <span className="w-28 text-right">Base Price</span>
+        <span className="w-32 text-right">Custom Price</span>
+      </div>
+      <div className="flex-1 overflow-y-auto space-y-1 pr-1">
         {filtered.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-4">No tests match</p>
         ) : (
           filtered.map((t: any) => {
             const existing = prices.find(p => p.test_id === t.id);
             return (
-              <div key={t.id} className="flex items-center gap-2 text-sm">
+              <div key={t.id} className="flex items-center gap-2 text-sm py-1 border-b border-border/40">
+                <span className="w-32 truncate text-xs text-muted-foreground">{t.test_code || "—"}</span>
                 <span className="flex-1 truncate">{t.test_name}</span>
-                <span className="text-muted-foreground w-16 text-right">₹{t.price}</span>
+                <span className="text-muted-foreground w-28 text-right">₹{t.price}</span>
                 <Input
                   type="number"
-                  className="w-24 h-8 text-xs"
+                  className="w-32 h-8 text-xs text-right"
                   placeholder="Custom"
                   defaultValue={existing?.custom_price || ""}
                   key={`${t.id}-${existing?.custom_price ?? ""}`}
@@ -101,7 +109,7 @@ function PriceEditor({
           })
         )}
       </div>
-    </>
+    </div>
   );
 }
 
@@ -480,7 +488,7 @@ const PickupPointManager = () => {
 
       {/* Pickup Point Pricing Dialog */}
       <Dialog open={pricingOpen} onOpenChange={o => { if (!o) { setPricingOpen(false); setApplyInPricing(""); } }}>
-        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl w-[95vw] max-h-[85vh] flex flex-col">
           <DialogHeader><DialogTitle>Custom Pricing — {pricingPoint?.name}</DialogTitle></DialogHeader>
           <p className="text-sm text-muted-foreground mb-2">Set custom prices for specific tests. Tests without custom prices use the default MRP.</p>
 
@@ -519,7 +527,7 @@ const PickupPointManager = () => {
 
       {/* Standard List Pricing Dialog */}
       <Dialog open={!!stdPricesOpenId} onOpenChange={o => { if (!o) setStdPricesOpenId(null); }}>
-        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl w-[95vw] max-h-[85vh] flex flex-col">
           <DialogHeader><DialogTitle>Standard List Prices — {stdPricesPoint?.name}</DialogTitle></DialogHeader>
           <p className="text-sm text-muted-foreground mb-2">Edit the master prices for this list. Apply to pickup points from the pickup point dialog.</p>
           {stdPricesOpenId && <PriceEditor ownerId={stdPricesOpenId} ownerType="standard" tests={tests} />}
