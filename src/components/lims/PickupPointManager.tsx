@@ -54,7 +54,7 @@ const PickupPointManager = () => {
   const resetForm = () => {
     setName(""); setPhone(""); setAddress(""); setContactPerson("");
     setBillingType("credit"); setBillingCycle("monthly"); setDiscountPct(0);
-    setEditingId(null);
+    setEditingId(null); setCloneFromId("");
   };
 
   const openEdit = (pp: any) => {
