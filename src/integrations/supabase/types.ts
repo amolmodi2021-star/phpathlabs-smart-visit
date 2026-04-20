@@ -527,6 +527,121 @@ export type Database = {
         }
         Relationships: []
       }
+      combo_profiles: {
+        Row: {
+          combo_id: string
+          created_at: string
+          display_order: number
+          id: string
+          profile_id: string
+        }
+        Insert: {
+          combo_id: string
+          created_at?: string
+          display_order?: number
+          id?: string
+          profile_id: string
+        }
+        Update: {
+          combo_id?: string
+          created_at?: string
+          display_order?: number
+          id?: string
+          profile_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "combo_profiles_combo_id_fkey"
+            columns: ["combo_id"]
+            isOneToOne: false
+            referencedRelation: "combos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      combo_tests: {
+        Row: {
+          combo_id: string
+          created_at: string
+          display_order: number
+          id: string
+          test_id: string
+        }
+        Insert: {
+          combo_id: string
+          created_at?: string
+          display_order?: number
+          id?: string
+          test_id: string
+        }
+        Update: {
+          combo_id?: string
+          created_at?: string
+          display_order?: number
+          id?: string
+          test_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "combo_tests_combo_id_fkey"
+            columns: ["combo_id"]
+            isOneToOne: false
+            referencedRelation: "combos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      combos: {
+        Row: {
+          bold_in_report: boolean
+          combo_code: string | null
+          combo_name: string
+          created_at: string
+          discount_applicable: boolean
+          display_name: string | null
+          fasting_required: boolean
+          id: string
+          incentive_allowed: boolean
+          incentive_amount: number
+          is_active: boolean
+          price: number
+          show_in_report: boolean
+          updated_at: string
+        }
+        Insert: {
+          bold_in_report?: boolean
+          combo_code?: string | null
+          combo_name: string
+          created_at?: string
+          discount_applicable?: boolean
+          display_name?: string | null
+          fasting_required?: boolean
+          id?: string
+          incentive_allowed?: boolean
+          incentive_amount?: number
+          is_active?: boolean
+          price?: number
+          show_in_report?: boolean
+          updated_at?: string
+        }
+        Update: {
+          bold_in_report?: boolean
+          combo_code?: string | null
+          combo_name?: string
+          created_at?: string
+          discount_applicable?: boolean
+          display_name?: string | null
+          fasting_required?: boolean
+          id?: string
+          incentive_allowed?: boolean
+          incentive_amount?: number
+          is_active?: boolean
+          price?: number
+          show_in_report?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
       crm_abnormal_tests: {
         Row: {
           contact_primary_key: string
