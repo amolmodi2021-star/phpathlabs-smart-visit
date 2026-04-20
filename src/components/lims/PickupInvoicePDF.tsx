@@ -254,39 +254,52 @@ const PickupInvoicePDF = ({ open, onClose, invoice }: Props) => {
                   For billing queries, contact {settings.invoice_contact || ""}.
                 </div>
               </div>
+            </div>
 
-              {/* Ledger - second page */}
-              <div style={{ pageBreakBefore: "always", paddingTop: 12 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6, color: "#0d9488" }}>
-                  Ledger Report — {pickup?.name}
-                </div>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
-                  <thead>
-                    <tr style={{ background: "#0d9488", color: "#fff" }}>
-                      <th style={th}>Date</th>
-                      <th style={th}>Voucher Type</th>
-                      <th style={th}>Voucher No</th>
-                      <th style={{ ...th, textAlign: "right" }}>Debit</th>
-                      <th style={{ ...th, textAlign: "right" }}>Credit</th>
-                      <th style={{ ...th, textAlign: "right" }}>Balance</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {ledger.length === 0 ? (
-                      <tr><td style={td} colSpan={6}>No ledger entries</td></tr>
-                    ) : ledger.map((r, i) => (
-                      <tr key={i} style={{ background: i % 2 ? "#fafafa" : "#fff" }}>
-                        <td style={td}>{r.date ? format(new Date(r.date), "dd-MM-yyyy") : ""}</td>
-                        <td style={td}>{r.voucher_type}</td>
-                        <td style={{ ...td, fontSize: 9 }}>{r.voucher_no}</td>
-                        <td style={{ ...td, textAlign: "right" }}>{r.debit ? r.debit.toFixed(2) : ""}</td>
-                        <td style={{ ...td, textAlign: "right" }}>{r.credit ? r.credit.toFixed(2) : ""}</td>
-                        <td style={{ ...td, textAlign: "right", fontWeight: 600 }}>{r.balance.toFixed(2)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            {/* Ledger - second page (separate capture) */}
+            <div
+              id="pickup-invoice-print-page2"
+              style={{
+                width: "210mm",
+                minHeight: "297mm",
+                margin: "12px auto 0",
+                padding: "10mm 12mm",
+                background: "#ffffff",
+                color: "#111",
+                fontFamily: "Arial, Helvetica, sans-serif",
+                fontSize: 11,
+                boxSizing: "border-box",
+              }}
+            >
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6, color: "#0d9488" }}>
+                Ledger Report — {pickup?.name}
               </div>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
+                <thead>
+                  <tr style={{ background: "#0d9488", color: "#fff" }}>
+                    <th style={th}>Date</th>
+                    <th style={th}>Voucher Type</th>
+                    <th style={th}>Voucher No</th>
+                    <th style={{ ...th, textAlign: "right" }}>Debit</th>
+                    <th style={{ ...th, textAlign: "right" }}>Credit</th>
+                    <th style={{ ...th, textAlign: "right" }}>Balance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ledger.length === 0 ? (
+                    <tr><td style={td} colSpan={6}>No ledger entries</td></tr>
+                  ) : ledger.map((r, i) => (
+                    <tr key={i} style={{ background: i % 2 ? "#fafafa" : "#fff" }}>
+                      <td style={td}>{r.date ? format(new Date(r.date), "dd-MM-yyyy") : ""}</td>
+                      <td style={td}>{r.voucher_type}</td>
+                      <td style={{ ...td, fontSize: 9 }}>{r.voucher_no}</td>
+                      <td style={{ ...td, textAlign: "right" }}>{r.debit ? r.debit.toFixed(2) : ""}</td>
+                      <td style={{ ...td, textAlign: "right" }}>{r.credit ? r.credit.toFixed(2) : ""}</td>
+                      <td style={{ ...td, textAlign: "right", fontWeight: 600 }}>{r.balance.toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
