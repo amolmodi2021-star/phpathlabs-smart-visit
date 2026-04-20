@@ -89,11 +89,11 @@ const BillingDashboard = () => {
     const period = `${format(new Date(inv.period_from), "dd-MM-yyyy")} to ${format(new Date(inv.period_to), "dd-MM-yyyy")}`;
     const overdue = differenceInDays(new Date(), new Date(inv.last_reminder_sent_at || inv.created_at));
     const msg = (tpl?.template_value || "Reminder for invoice {invoice_no} — outstanding ₹{amount}.")
-      .replaceAll("{pickup_name}", pickup.name)
-      .replaceAll("{invoice_no}", inv.invoice_number)
-      .replaceAll("{amount}", inv.due_amount.toFixed(2))
-      .replaceAll("{period}", period)
-      .replaceAll("{days_overdue}", String(overdue));
+      .split("{pickup_name}").join(pickup.name)
+      .split("{invoice_no}").join(inv.invoice_number)
+      .split("{amount}").join(inv.due_amount.toFixed(2))
+      .split("{period}").join(period)
+      .split("{days_overdue}").join(String(overdue));
     shareOnWhatsApp(pickup.phone, msg);
     await markReminderSent(inv.id);
     await supabase.from("message_send_log").insert({
