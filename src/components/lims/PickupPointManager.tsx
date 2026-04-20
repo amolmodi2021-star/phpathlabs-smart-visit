@@ -243,6 +243,20 @@ const PickupPointManager = () => {
               </div>
             </div>
             <div><Label>Default Discount %</Label><Input type="number" value={discountPct || ""} onChange={e => setDiscountPct(parseFloat(e.target.value) || 0)} /></div>
+            {!editingId && (
+              <div>
+                <Label>Clone Pricing From (optional)</Label>
+                <Select value={cloneFromId || "__none__"} onValueChange={v => setCloneFromId(v === "__none__" ? "" : v)}>
+                  <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">None</SelectItem>
+                    {pickupPoints.filter((p: any) => p.status === "active").map((p: any) => (
+                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <Button className="w-full" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>Save</Button>
           </div>
         </DialogContent>
