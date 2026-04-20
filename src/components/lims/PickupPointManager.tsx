@@ -37,7 +37,7 @@ function PriceEditor({
     queryKey,
     queryFn: async () => {
       const { data } = await supabase.from(table as any).select("test_id, custom_price").eq(ownerCol, ownerId);
-      return (data || []) as PriceRow[];
+      return ((data || []) as unknown) as PriceRow[];
     },
     enabled: !!ownerId,
   });
