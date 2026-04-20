@@ -1,28 +1,63 @@
 
-The error: `Could not find a relationship between 'combo_profiles' and 'billing_profiles' in the schema cache`.
 
-In `src/lib/combos.ts`, `getComboProfiles` does:
-```
-.select("id, combo_id, profile_id, display_order, billing_profiles(profile_name, profile_code, price)")
-```
+## Diagnosis
 
-This embedded join requires a FK from `combo_profiles.profile_id` → `billing_profiles.id`. The migration likely created `combo_profiles.profile_id` without that FK (the plan said "uuid NOT NULL" — no FK).
+`Invoice 2604200019 → ANTENATAL PROFILE` is actually a **combo** (`CMB0001`), but the registration row stores it as a plain test (no `item_type:"combo"`). So `buildSampleTubeGroups` never expands it into its leaf tests → no tube created → "No tubes" shown.
 
-Same risk for `combo_tests.test_id` → `tests.id`. Let me check `getComboTests` — it embeds `tests(...)` similarly. User hasn't reported that error but probably hits it after profiles works.
+Two root causes:
 
-Fix: add the missing FKs via migration, then PostgREST schema cache resolves the embed.
+1. **Type unions weren't widened to include `"combo"`** in the `SelectedTest` interface across these files:
+   - `src/components/lims/PatientRegistration.tsx`
+   - `src/components/AddPatientToVisitDialog.tsx`
+   - `src/components/lims/EditAndRegisterHomeVisitDialog.tsx`
+   - (likely `EditEstimateDialog.tsx`, `AddHomeVisitDialog.tsx`, `EditHomeVisitDialog.tsx`, `CreateEstimate.tsx` too — will audit)
+   
+   TypeScript narrowing then dropped `"combo"` and stored it as `"test"`.
+
+2. **`SampleCollection.recalcTubesForRegistration` doesn't detect combos**. When `item_type` is missing on legacy/saved rows, it queries only `billing_profiles` + `health_checkups` to back-fill type — combos are not checked, so they're treated as plain tests and never expanded.
 
 ## Plan
 
-Add foreign keys so PostgREST embedded selects work:
+### 1. Widen the `item_type` union to include `"combo"` (8 files)
+In each `SelectedTest` interface and any `as` casts, change:
+```
+item_type?: "test" | "profile" | "package"
+```
+to:
+```
+item_type?: "test" | "profile" | "package" | "combo"
+```
+Files: `PatientRegistration.tsx`, `AddPatientToVisitDialog.tsx`, `EditAndRegisterHomeVisitDialog.tsx`, `EditEstimateDialog.tsx`, `AddHomeVisitDialog.tsx`, `EditHomeVisitDialog.tsx`, `CreateEstimate.tsx`, `EditRegistrationDialog.tsx`. Also add the 🧩 icon for combos in the dropdown render (`item_type === "combo" ? " 🧩" : ...`).
 
-1. **Migration**:
-   - `ALTER TABLE public.combo_profiles ADD CONSTRAINT combo_profiles_profile_id_fkey FOREIGN KEY (profile_id) REFERENCES public.billing_profiles(id) ON DELETE CASCADE;`
-   - `ALTER TABLE public.combo_tests ADD CONSTRAINT combo_tests_test_id_fkey FOREIGN KEY (test_id) REFERENCES public.tests(id) ON DELETE CASCADE;`
-   - (Cleanup any orphan rows first if needed — combos table is brand new so should be empty.)
+### 2. Fix `SampleCollection.recalcTubesForRegistration`
+Add a third lookup against `combos` table so legacy registrations whose JSONB is missing `item_type:"combo"` (like invoice **2604200019**) get correctly classified at recalc time:
 
-2. No code changes needed; `src/lib/combos.ts` queries will start working once the FKs exist and PostgREST refreshes its schema cache (automatic).
+```ts
+const [profRes, pkgRes, cmbRes] = await Promise.all([
+  supabase.from("billing_profiles").select("id").in("id", allIds),
+  supabase.from("health_checkups").select("id").in("id", allIds),
+  supabase.from("combos").select("id").in("id", allIds),
+]);
+const comboIds = new Set((cmbRes.data || []).map((r: any) => r.id));
+// fallback chain: package > combo > profile > test
+item_type: t.item_type || (packageIds.has(t.test_id) ? "package"
+                          : comboIds.has(t.test_id) ? "combo"
+                          : profileIds.has(t.test_id) ? "profile"
+                          : "test"),
+```
+
+### 3. Backfill the existing broken registration
+One-time migration: for any `patient_registrations` row whose `tests[].test_id` matches an existing `combos.id`, set `tests[].item_type = "combo"`. This unsticks invoice 2604200019 and any other combos saved before the fix without manual re-entry.
+
+### 4. Trigger a tube recalc
+After the backfill migration runs, the user just needs to expand the patient row in Sample Collection — `recalcTubesForRegistration` will now correctly expand the combo and create the right tube(s). No manual button needed.
 
 ## Files
-- **MIGRATION** new SQL adding the two FK constraints.
+- **EDIT** `src/components/lims/SampleCollection.tsx` — add combos to the type-detection lookup.
+- **EDIT** the 8 selection components — widen `item_type` union to include `"combo"` + add 🧩 icon in dropdowns.
+- **MIGRATION** SQL: backfill `patient_registrations.tests` JSONB to set `item_type:"combo"` for existing combo entries; same for `estimates` → `estimate_tests` rows.
+
+## Out of scope
+- UI showing the combo as a "Combo" badge in registration summaries (cosmetic).
+- Backfill of invoices/receipts (they only need the tube grouping working forward).
 
