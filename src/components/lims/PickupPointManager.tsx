@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "sonner";
 import { Plus, Edit, Trash2, DollarSign, ListChecks } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { getTests } from "@/lib/tests";
 
 type PriceRow = { test_id: string; custom_price: number };
