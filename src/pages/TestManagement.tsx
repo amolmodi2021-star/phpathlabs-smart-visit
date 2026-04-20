@@ -190,7 +190,7 @@ const TestManagement = () => {
     onError: (e: Error) => toast.error("Upload failed: " + e.message),
   });
 
-  const resetForm = () => { setForm(defaultForm); setEditing(null); setIncentiveLocked(true); setIncentivePassword(""); };
+  const resetForm = () => { setForm(defaultForm); setEditing(null); setIncentiveLocked(true); setIncentivePassword(""); setSampleTubes([]); };
 
   const openEdit = (t: any) => {
     setEditing(t);
