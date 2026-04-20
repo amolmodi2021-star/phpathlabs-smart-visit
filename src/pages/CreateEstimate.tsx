@@ -248,7 +248,7 @@ const CreateEstimate = () => {
                     onClick={() => { addTest(t.id); setTestHighlightIndex(0); }}
                     onMouseEnter={() => setTestHighlightIndex(i)}
                   >
-                    {t.test_name} — ₹{t.price}{t.item_type === "package" ? " 📦" : t.item_type === "profile" ? " 📋" : ""}
+                    {t.test_name} — ₹{t.price}{t.item_type === "package" ? " 📦" : t.item_type === "combo" ? " 🧩" : t.item_type === "profile" ? " 📋" : ""}
                   </button>
                 ))}
               </div>

@@ -308,7 +308,7 @@ const AddPatientToVisitDialog = ({ open, onClose, visitDate, visitTime, address,
                 <div className="border rounded-md mt-1 max-h-48 overflow-y-auto">
                   {availableTests.slice(0, 20).map((t: any, i: number) => (
                     <button key={t.id} type="button" className={`w-full text-left px-3 py-2 text-sm transition-colors ${i === testHighlightIndex ? "bg-accent" : "hover:bg-accent"}`} onClick={() => { addTest(t.id); setTestHighlightIndex(0); }} onMouseEnter={() => setTestHighlightIndex(i)}>
-                      {t.test_name} — ₹{t.price}{t.item_type === "package" ? " 📦" : t.item_type === "profile" ? " 📋" : ""}
+                      {t.test_name} — ₹{t.price}{t.item_type === "package" ? " 📦" : t.item_type === "combo" ? " 🧩" : t.item_type === "profile" ? " 📋" : ""}
                     </button>
                   ))}
                 </div>
