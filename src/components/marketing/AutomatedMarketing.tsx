@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { generateAndUploadCard, getTemplateAssets, type CardData } from "@/lib/cardRenderer";
 import { generateAbnormalCardForDrip as _sharedGenerateAbnormalCardForDrip } from "@/lib/dripCardSenders";
+import { makeRateGate } from "@/lib/marketingDelay";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -1102,6 +1103,8 @@ const AutomatedMarketing = () => {
     };
 
     const delayMs = Number(cfg["wa_global_delayMs"]) || 3000;
+    const concurrency = Math.max(1, Math.min(10, Math.floor(Number(cfg["wa_global_concurrency"]) || 5)));
+    const rateGate = makeRateGate(delayMs);
     const totalMessages = previewResults.reduce((sum, r) => sum + r.eligible, 0);
     let processedCount = 0;
     let totalSent = 0;
@@ -1130,6 +1133,7 @@ const AutomatedMarketing = () => {
         payload,
       };
       try {
+        await rateGate.acquire();
         const proxyRes = await supabase.functions.invoke("whatsapp-proxy", {
           body: { apiBaseUrl, apiKey, authHeaderName, authHeaderPrefix, payload },
         });
@@ -1240,61 +1244,72 @@ const AutomatedMarketing = () => {
             }
             const { bgImg, canvas, ctx, placeholders } = templateAssets;
 
-            for (let i = 0; i < preview.records.length; i++) {
-              if (_checkAbort()) break outer;
-              await _waitWhilePaused();
-              if (_checkAbort()) break outer;
-              const r = preview.records[i];
-              try {
-                const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
-                _setSendPhase(`Filter ${filterIndex} of ${totalFilters}: ${filter.name} — ABC ${i + 1}/${preview.records.length} → ${r.patient_name || mob}`);
+            // Bounded worker pool: N workers process records in parallel.
+            // Per-record work (card render + storage upload) runs concurrently;
+            // the WhatsApp API call itself is serialised via rateGate inside callProxyAndLog.
+            {
+              const records = preview.records;
+              const total = records.length;
+              let nextIdx = 0;
+              let aborted = false;
+              const worker = async () => {
+                while (true) {
+                  if (_checkAbort()) { aborted = true; return; }
+                  await _waitWhilePaused();
+                  if (_checkAbort()) { aborted = true; return; }
+                  const i = nextIdx++;
+                  if (i >= total) return;
+                  const r = records[i];
+                  try {
+                    const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
+                    _setSendPhase(`Filter ${filterIndex} of ${totalFilters}: ${filter.name} — ABC ${i + 1}/${total} → ${r.patient_name || mob}`);
 
-                const cardData: CardData = {
-                  Name: r.patient_name || "", Mobile: r.mobile_number || "", UMR: r.umr_number || "",
-                  "Discount %": `${r.default_discount_pct ?? 20}%`, "Expiry Date": staticExpiryDate,
-                };
-                const imageUrl = await generateAndUploadCard(templateId, cardData, bgImg, canvas, ctx, placeholders);
-                if (!imageUrl) {
-                  await logDripAction(filter, r, "failed", "card_generation_error");
-                  totalFailed++; processedCount++;
-                  _setSendProgress(Math.round((processedCount / totalMessages) * 100));
-                  continue;
+                    const cardData: CardData = {
+                      Name: r.patient_name || "", Mobile: r.mobile_number || "", UMR: r.umr_number || "",
+                      "Discount %": `${r.default_discount_pct ?? 20}%`, "Expiry Date": staticExpiryDate,
+                    };
+                    const imageUrl = await generateAndUploadCard(templateId, cardData, bgImg, canvas, ctx, placeholders);
+                    if (!imageUrl) {
+                      await logDripAction(filter, r, "failed", "card_generation_error");
+                      totalFailed++; processedCount++;
+                      _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+                      continue;
+                    }
+                    const components: Record<string, unknown> = {};
+                    if (Object.keys(mapping).length > 0) {
+                      const sortedKeys = Object.keys(mapping).sort((a, b) => Number(a) - Number(b));
+                      components.body = { params: sortedKeys.map((key) => {
+                        const f = mapping[key];
+                        if (f === "Name") return r.patient_name || "";
+                        if (f === "Mobile") return r.mobile_number || "";
+                        if (f === "UMR") return r.umr_number || "";
+                        if (f === "Discount %") return `${r.default_discount_pct ?? 20}%`;
+                        if (f === "Expiry Date") return staticExpiryDate;
+                        return "";
+                      })};
+                    }
+                    components.header = { type: "image", image: { link: imageUrl } };
+                    const payload: Record<string, unknown> = {
+                      from: loyaltyFromNumber, to: `+91${mob}`, templateName: loyaltyTemplateName,
+                      campaignName: loyaltyCampaignName, type: "template", components,
+                    };
+                    const ok = await callProxyAndLog(
+                      payload, loyaltyApiBaseUrl, loyaltyApiKey, loyaltyAuthHeaderName, loyaltyAuthHeaderPrefix,
+                      r, filter, "ABC", { last_sent_type: "ABC", record_tag: null },
+                    );
+                    if (ok) totalSent++; else totalFailed++;
+                    processedCount++;
+                    _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+                  } catch (recErr) {
+                    console.error("[record_error]", recErr);
+                    await logDiagnostic(filter, r, "record_error", String((recErr as Error)?.message || recErr));
+                    totalFailed++; processedCount++;
+                    _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+                  }
                 }
-                const components: Record<string, unknown> = {};
-                if (Object.keys(mapping).length > 0) {
-                  const sortedKeys = Object.keys(mapping).sort((a, b) => Number(a) - Number(b));
-                  components.body = { params: sortedKeys.map((key) => {
-                    const f = mapping[key];
-                    if (f === "Name") return r.patient_name || "";
-                    if (f === "Mobile") return r.mobile_number || "";
-                    if (f === "UMR") return r.umr_number || "";
-                    if (f === "Discount %") return `${r.default_discount_pct ?? 20}%`;
-                    if (f === "Expiry Date") return staticExpiryDate;
-                    return "";
-                  })};
-                }
-                components.header = { type: "image", image: { link: imageUrl } };
-                const payload: Record<string, unknown> = {
-                  from: loyaltyFromNumber, to: `+91${mob}`, templateName: loyaltyTemplateName,
-                  campaignName: loyaltyCampaignName, type: "template", components,
-                };
-                const ok = await callProxyAndLog(
-                  payload, loyaltyApiBaseUrl, loyaltyApiKey, loyaltyAuthHeaderName, loyaltyAuthHeaderPrefix,
-                  r, filter, "ABC", { last_sent_type: "ABC", record_tag: null },
-                );
-                if (ok) totalSent++; else totalFailed++;
-                processedCount++;
-                _setSendProgress(Math.round((processedCount / totalMessages) * 100));
-                if (delayMs > 0 && (i < preview.records.length - 1)) {
-                  await new Promise((r) => setTimeout(r, delayMs));
-                }
-              } catch (recErr) {
-                console.error("[record_error]", recErr);
-                await logDiagnostic(filter, r, "record_error", String((recErr as Error)?.message || recErr));
-                totalFailed++; processedCount++;
-                _setSendProgress(Math.round((processedCount / totalMessages) * 100));
-                continue;
-              }
+              };
+              await Promise.all(Array.from({ length: Math.min(concurrency, Math.max(1, total)) }, () => worker()));
+              if (aborted) break outer;
             }
           } else if (filter.message_type === "abnormal_card") {
             const apiBaseUrl = cfg["wa_global_baseUrl"];
@@ -1320,53 +1335,62 @@ const AutomatedMarketing = () => {
             }
             const staticExpiryDate = cfg["abnormal_static_expiry_date"] || "";
 
-            for (let i = 0; i < preview.records.length; i++) {
-              if (_checkAbort()) break outer;
-              await _waitWhilePaused();
-              if (_checkAbort()) break outer;
-              const r = preview.records[i];
-              try {
-                const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
-                _setSendPhase(`Filter ${filterIndex} of ${totalFilters}: ${filter.name} — Abnormal ${i + 1}/${preview.records.length} → ${r.patient_name || mob}`);
+            // Bounded worker pool — see ABC branch for details.
+            {
+              const records = preview.records;
+              const total = records.length;
+              let nextIdx = 0;
+              let aborted = false;
+              const worker = async () => {
+                while (true) {
+                  if (_checkAbort()) { aborted = true; return; }
+                  await _waitWhilePaused();
+                  if (_checkAbort()) { aborted = true; return; }
+                  const i = nextIdx++;
+                  if (i >= total) return;
+                  const r = records[i];
+                  try {
+                    const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
+                    _setSendPhase(`Filter ${filterIndex} of ${totalFilters}: ${filter.name} — Abnormal ${i + 1}/${total} → ${r.patient_name || mob}`);
 
-                const { data: tests } = await supabase
-                  .from("crm_abnormal_tests").select("*").eq("contact_primary_key", r.primary_key).order("test_name");
-                if (!tests || tests.length === 0) {
-                  await logDripAction(filter, r, "skipped", "no_abnormal_history");
-                  totalSkipped++; processedCount++;
-                  _setSendProgress(Math.round((processedCount / totalMessages) * 100));
-                  continue;
-                }
-                const imageUrl = includeMediaHeader
-                  ? await generateAbnormalCardForDrip(r, tests, abnTemplate, staticExpiryDate)
-                  : null;
+                    const { data: tests } = await supabase
+                      .from("crm_abnormal_tests").select("*").eq("contact_primary_key", r.primary_key).order("test_name");
+                    if (!tests || tests.length === 0) {
+                      await logDripAction(filter, r, "skipped", "no_abnormal_history");
+                      totalSkipped++; processedCount++;
+                      _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+                      continue;
+                    }
+                    const imageUrl = includeMediaHeader
+                      ? await generateAbnormalCardForDrip(r, tests, abnTemplate, staticExpiryDate)
+                      : null;
 
-                const components: Record<string, unknown> = {};
-                if (includeMediaHeader && imageUrl) {
-                  components.header = { type: "image", image: { link: imageUrl } };
+                    const components: Record<string, unknown> = {};
+                    if (includeMediaHeader && imageUrl) {
+                      components.header = { type: "image", image: { link: imageUrl } };
+                    }
+                    components.body = { params: [(r.patient_name || "").toUpperCase()] };
+                    const payload: Record<string, unknown> = {
+                      from: fromNumber, to: `+91${mob}`, templateName,
+                      campaignName, type: "template", components,
+                    };
+                    const ok = await callProxyAndLog(
+                      payload, apiBaseUrl, apiKey, headerName, headerPrefix,
+                      r, filter, "Abnormal History", { last_sent_type: "Abnormal History" },
+                    );
+                    if (ok) totalSent++; else totalFailed++;
+                    processedCount++;
+                    _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+                  } catch (recErr) {
+                    console.error("[record_error]", recErr);
+                    await logDiagnostic(filter, r, "record_error", String((recErr as Error)?.message || recErr));
+                    totalFailed++; processedCount++;
+                    _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+                  }
                 }
-                components.body = { params: [(r.patient_name || "").toUpperCase()] };
-                const payload: Record<string, unknown> = {
-                  from: fromNumber, to: `+91${mob}`, templateName,
-                  campaignName, type: "template", components,
-                };
-                const ok = await callProxyAndLog(
-                  payload, apiBaseUrl, apiKey, headerName, headerPrefix,
-                  r, filter, "Abnormal History", { last_sent_type: "Abnormal History" },
-                );
-                if (ok) totalSent++; else totalFailed++;
-                processedCount++;
-                _setSendProgress(Math.round((processedCount / totalMessages) * 100));
-                if (delayMs > 0 && (i < preview.records.length - 1)) {
-                  await new Promise((r) => setTimeout(r, delayMs));
-                }
-              } catch (recErr) {
-                console.error("[record_error]", recErr);
-                await logDiagnostic(filter, r, "record_error", String((recErr as Error)?.message || recErr));
-                totalFailed++; processedCount++;
-                _setSendProgress(Math.round((processedCount / totalMessages) * 100));
-                continue;
-              }
+              };
+              await Promise.all(Array.from({ length: Math.min(concurrency, Math.max(1, total)) }, () => worker()));
+              if (aborted) break outer;
             }
           } else if (filter.message_type === "promotion") {
             if (!filter.template_id) {
@@ -1392,46 +1416,55 @@ const AutomatedMarketing = () => {
             const headerPrefix = cfg["wa_global_authHeaderPrefix"] || "";
             const fromNumber = cfg["wa_global_fromNumber"] || "";
 
-            for (let i = 0; i < preview.records.length; i++) {
-              if (_checkAbort()) break outer;
-              await _waitWhilePaused();
-              if (_checkAbort()) break outer;
-              const r = preview.records[i];
-              try {
-                const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
-                _setSendPhase(`Filter ${filterIndex} of ${totalFilters}: ${filter.name} — Promotion ${i + 1}/${preview.records.length} → ${r.patient_name || mob}`);
+            // Bounded worker pool — see ABC branch for details.
+            {
+              const records = preview.records;
+              const total = records.length;
+              let nextIdx = 0;
+              let aborted = false;
+              const worker = async () => {
+                while (true) {
+                  if (_checkAbort()) { aborted = true; return; }
+                  await _waitWhilePaused();
+                  if (_checkAbort()) { aborted = true; return; }
+                  const i = nextIdx++;
+                  if (i >= total) return;
+                  const r = records[i];
+                  try {
+                    const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
+                    _setSendPhase(`Filter ${filterIndex} of ${totalFilters}: ${filter.name} — Promotion ${i + 1}/${total} → ${r.patient_name || mob}`);
 
-                const components: Record<string, unknown> = {};
-                if (Object.keys(bodyMapping).length > 0) {
-                  const sortedKeys = Object.keys(bodyMapping).sort((a, b) => Number(a) - Number(b));
-                  components.body = { params: sortedKeys.map((key) => {
-                    const f = bodyMapping[key];
-                    if (f === "Name") return r.patient_name || "";
-                    if (f === "Mobile") return r.mobile_number || "";
-                    return f || "";
-                  })};
+                    const components: Record<string, unknown> = {};
+                    if (Object.keys(bodyMapping).length > 0) {
+                      const sortedKeys = Object.keys(bodyMapping).sort((a, b) => Number(a) - Number(b));
+                      components.body = { params: sortedKeys.map((key) => {
+                        const f = bodyMapping[key];
+                        if (f === "Name") return r.patient_name || "";
+                        if (f === "Mobile") return r.mobile_number || "";
+                        return f || "";
+                      })};
+                    }
+                    const payload: Record<string, unknown> = {
+                      from: fromNumber, to: `+91${mob}`, templateName: tmpl.whatsapp_template_name,
+                      type: "template", ...(Object.keys(components).length > 0 ? { components } : {}),
+                    };
+                    const ok = await callProxyAndLog(
+                      payload, apiBaseUrl, apiKey, headerName, headerPrefix,
+                      r, filter, "Promotion", { last_sent_type: "Promotion" },
+                    );
+                    if (ok) totalSent++; else totalFailed++;
+                    processedCount++;
+                    _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+                  } catch (recErr) {
+                    console.error("[record_error]", recErr);
+                    await logDiagnostic(filter, r, "record_error", String((recErr as Error)?.message || recErr));
+                    totalFailed++; processedCount++;
+                    _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+                  }
                 }
-                const payload: Record<string, unknown> = {
-                  from: fromNumber, to: `+91${mob}`, templateName: tmpl.whatsapp_template_name,
-                  type: "template", ...(Object.keys(components).length > 0 ? { components } : {}),
-                };
-                const ok = await callProxyAndLog(
-                  payload, apiBaseUrl, apiKey, headerName, headerPrefix,
-                  r, filter, "Promotion", { last_sent_type: "Promotion" },
-                );
-                if (ok) totalSent++; else totalFailed++;
-                processedCount++;
-                _setSendProgress(Math.round((processedCount / totalMessages) * 100));
-                if (delayMs > 0 && (i < preview.records.length - 1)) {
-                  await new Promise((r) => setTimeout(r, delayMs));
-                }
-              } catch (recErr) {
-                console.error("[record_error]", recErr);
-                await logDiagnostic(filter, r, "record_error", String((recErr as Error)?.message || recErr));
-                totalFailed++; processedCount++;
-                _setSendProgress(Math.round((processedCount / totalMessages) * 100));
-                continue;
-              }
+              };
+              await Promise.all(Array.from({ length: Math.min(concurrency, Math.max(1, total)) }, () => worker()));
+              if (aborted) break outer;
             }
           }
         } catch (branchErr) {
