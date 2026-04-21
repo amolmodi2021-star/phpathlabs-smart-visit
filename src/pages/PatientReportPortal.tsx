@@ -716,12 +716,22 @@ const PatientReportPortal = () => {
                 Download will be available once at least one test is approved.
               </p>
             ) : (
-              <Button onClick={goDownloadApproved} className="gap-2">
-                <Download className="h-4 w-4" />
-                {allApproved
-                  ? "Download Full Report"
-                  : `Download Approved Reports (${approvedCount} of ${totalCount})`}
-              </Button>
+              <div className="flex flex-col items-center gap-2">
+                <Button onClick={goDownloadApproved} className="gap-2">
+                  <Download className="h-4 w-4" />
+                  {allApproved
+                    ? "Download Full Report"
+                    : `Download Approved Reports (${approvedCount} of ${totalCount})`}
+                </Button>
+                <Button
+                  onClick={handleShareWhatsApp}
+                  variant="outline"
+                  className="gap-2 border-emerald-600 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/30"
+                >
+                  <Share2 className="h-4 w-4" />
+                  Share on WhatsApp
+                </Button>
+              </div>
             )}
           </Card>
         )}
