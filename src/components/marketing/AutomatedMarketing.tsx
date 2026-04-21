@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { generateAndUploadCard, getTemplateAssets, type CardData } from "@/lib/cardRenderer";
 import { generateAbnormalCardForDrip as _sharedGenerateAbnormalCardForDrip } from "@/lib/dripCardSenders";
-import { makeRateGate } from "@/lib/marketingDelay";
+import { makeTokenBucket, sleepResilient } from "@/lib/marketingDelay";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -1098,13 +1098,13 @@ const AutomatedMarketing = () => {
     const _checkAbort = () => abortRef.current || _moduleAbort;
     const _waitWhilePaused = async () => {
       while (_modulePaused && !_checkAbort()) {
-        await new Promise((r) => setTimeout(r, 300));
+        await sleepResilient(300);
       }
     };
 
     const delayMs = Number(cfg["wa_global_delayMs"]) || 3000;
     const concurrency = Math.max(1, Math.min(10, Math.floor(Number(cfg["wa_global_concurrency"]) || 5)));
-    const rateGate = makeRateGate(delayMs);
+    const rateGate = makeTokenBucket(delayMs, concurrency);
     const totalMessages = previewResults.reduce((sum, r) => sum + r.eligible, 0);
     let processedCount = 0;
     let totalSent = 0;
@@ -1133,10 +1133,15 @@ const AutomatedMarketing = () => {
         payload,
       };
       try {
-        await rateGate.acquire();
-        const proxyRes = await supabase.functions.invoke("whatsapp-proxy", {
-          body: { apiBaseUrl, apiKey, authHeaderName, authHeaderPrefix, payload },
-        });
+        await rateGate.take();
+        const proxyRes: any = await Promise.race([
+          supabase.functions.invoke("whatsapp-proxy", {
+            body: { apiBaseUrl, apiKey, authHeaderName, authHeaderPrefix, payload },
+          }),
+          new Promise((_, rej) =>
+            setTimeout(() => rej(new Error("proxy_timeout_45s")), 45000)
+          ),
+        ]);
         const proxyData: any = proxyRes.data;
         const apiOk = !proxyRes.error && (proxyData?.status ?? 200) < 400;
         const messageId = extractMessageId(proxyData);
