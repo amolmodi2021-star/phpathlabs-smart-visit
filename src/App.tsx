@@ -30,6 +30,8 @@ import WhatsAppChat from "./pages/WhatsAppChat";
 import LimsReportView from "./pages/LimsReportView";
 import UserManagement from "./pages/UserManagement";
 import CloudUsage from "./pages/CloudUsage";
+import ReportAnalytics from "./pages/ReportAnalytics";
+import PatientReportPortal from "./pages/PatientReportPortal";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -48,6 +50,7 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/r/:token" element={<PatientReportPortal />} />
           <Route path="/" element={<ProtectedRoute route="/"><CreateEstimate /></ProtectedRoute>} />
           <Route path="/dashboard" element={<ProtectedRoute route="/dashboard"><EstimateDashboard /></ProtectedRoute>} />
           <Route path="/home-visits" element={<ProtectedRoute route="/home-visits"><HomeVisits /></ProtectedRoute>} />
@@ -70,7 +73,8 @@ const App = () => (
           <Route path="/signature-management" element={<ProtectedRoute route="/signature-management"><SignatureManagement /></ProtectedRoute>} />
           <Route path="/users" element={<ProtectedRoute route="/users"><UserManagement /></ProtectedRoute>} />
           <Route path="/cloud-usage" element={<ProtectedRoute route="/cloud-usage"><CloudUsage /></ProtectedRoute>} />
-          <Route path="/lims/report/:registrationId" element={<ProtectedRoute route="/lims"><LimsReportView /></ProtectedRoute>} />
+          <Route path="/report-analytics" element={<ProtectedRoute route="/report-analytics"><ReportAnalytics /></ProtectedRoute>} />
+          <Route path="/lims/report/:registrationId" element={<LimsReportRouteGuard />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
