@@ -474,6 +474,30 @@ const PatientReportPortal = () => {
     navigate(`/lims/report/${registrationId}?public=${encodeURIComponent(token)}`);
   };
 
+  // Share portal link on WhatsApp
+  const handleShareWhatsApp = async () => {
+    if (state.kind !== "ready") return;
+    const reg = state.registration;
+    const portalUrl = `${window.location.origin}/r/${token}`;
+    const text = `My PH PathLabs report — Invoice ${reg.invoice_number}\n${portalUrl}`;
+    await logEvent(token, "shared_whatsapp", sessionIdRef.current || undefined, {
+      invoice: reg.invoice_number,
+    });
+    if (typeof navigator !== "undefined" && (navigator as any).share) {
+      try {
+        await (navigator as any).share({
+          title: "PH PathLabs Report",
+          text,
+          url: portalUrl,
+        });
+        return;
+      } catch {
+        // fall through to wa.me
+      }
+    }
+    const waUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    window.open(waUrl, "_blank", "noopener,noreferrer");
+  };
 
   // ── Render states ──
   if (state.kind === "loading") {
