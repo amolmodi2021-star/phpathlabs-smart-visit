@@ -324,7 +324,36 @@ const SampleCollection = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const handlePrintAndCollect = (reg: any, tubes: SampleTubeRow[]) => {
+  // Cancel collection — revert a single tube back to pending. Guarded so accepted tubes cannot be reverted.
+  const cancelCollectMutation = useMutation({
+    mutationFn: async ({ regId, tubeId }: { regId: string; tubeId: string }) => {
+      const { data: tubeRow, error: fetchErr } = await supabase
+        .from("sample_tubes" as any)
+        .select("status")
+        .eq("id", tubeId)
+        .maybeSingle();
+      if (fetchErr) throw fetchErr;
+      if (!tubeRow || (tubeRow as any).status !== "collected") {
+        throw new Error("Tube is no longer in 'collected' state — cannot revert");
+      }
+      const { error } = await supabase
+        .from("sample_tubes" as any)
+        .update({ status: "pending", collected_at: null, collected_by: null })
+        .eq("id", tubeId)
+        .eq("status", "collected");
+      if (error) throw error;
+      await recalculateRegistrationStatus(regId);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sample_tubes_collection"] });
+      qc.invalidateQueries({ queryKey: ["sample_collection_regs"] });
+      qc.invalidateQueries({ queryKey: ["patient_registrations"] });
+      qc.invalidateQueries({ queryKey: ["sample_tubes_acceptance"] });
+      setCancelCollectDialog({ open: false, reg: null, tube: null });
+      toast.success("Collection cancelled — tube reverted to pending");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
     const regSel = selectedTubes[reg.id] || new Set();
     const selected = tubes.filter(t => regSel.has(t.id));
     if (selected.length === 0) { toast.error("Please select at least one barcode"); return; }
