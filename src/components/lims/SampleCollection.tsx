@@ -692,6 +692,31 @@ const SampleCollection = () => {
         </DialogContent>
       </Dialog>
 
+      {/* Cancel Collection confirmation */}
+      <AlertDialog open={cancelCollectDialog.open} onOpenChange={(open) => { if (!open) setCancelCollectDialog({ open: false, reg: null, tube: null }); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel Collection?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will revert tube <strong className="font-mono">{cancelCollectDialog.tube?.sample_uid}</strong> for patient <strong>{cancelCollectDialog.reg?.patient_name}</strong> back to <strong>Pending</strong>. Use this only if the sample was marked collected by mistake. If the tube has already been accepted in the lab, this action will fail.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep as Collected</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (cancelCollectDialog.reg && cancelCollectDialog.tube) {
+                  cancelCollectMutation.mutate({ regId: cancelCollectDialog.reg.id, tubeId: cancelCollectDialog.tube.id });
+                }
+              }}
+              disabled={cancelCollectMutation.isPending}>
+              {cancelCollectMutation.isPending ? "Reverting..." : "Yes, Revert to Pending"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <div ref={printRef} className="hidden" />
     </div>
   );
