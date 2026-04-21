@@ -724,7 +724,8 @@ const CRMAbnormalTests = () => {
     const includeMediaHeader = tmpl?.from_number === "media_header_enabled";
     
     const queueEnabled = cfg["wa_global_queueEnabled"] !== "false";
-    const delayMs = Number(cfg["wa_global_delayMs"]) || 3000;
+    const delayRaw = Number(cfg["wa_global_delayMs"]);
+    const delayMs = Number.isFinite(delayRaw) && delayRaw >= 0 ? delayRaw : 3000;
 
     if (!apiBaseUrl || !apiKey || !templateName) {
       return toast.error("WhatsApp API not configured. Set up in WhatsApp Settings page.");
