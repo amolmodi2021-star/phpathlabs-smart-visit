@@ -99,9 +99,11 @@ const LimsReportView = () => {
   const selectedTestIds = selectedTestIdsParam ? new Set(selectedTestIdsParam.split(",")) : null;
   const publicToken = searchParams.get("public");
   const isPublic = !!publicToken;
+  const autoShareRequested = searchParams.get("share") === "1";
   const printRef = useRef<HTMLDivElement>(null);
   const previewWrapRef = useRef<HTMLDivElement>(null);
   const autoDownloadStartedRef = useRef(false);
+  const autoShareStartedRef = useRef(false);
   const cachedPdfRef = useRef<{ blob: Blob; filename: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
