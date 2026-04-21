@@ -106,14 +106,15 @@ const CODE128_PATTERNS = [
 
 /**
  * Render an Abnormal History card (PNG) and upload to storage.
- * Returns the public image URL or null on failure.
+ * Returns `{ url, reason? }` — `url` is the public URL on success;
+ * `reason` is a tagged failure cause on failure (consumed by the drip log).
  */
-export async function generateAbnormalCardForDrip(
+export async function generateAbnormalCardForDripEx(
   contact: DripContact,
   tests: any[],
   template: any,
   expiryDate: string,
-): Promise<string | null> {
+): Promise<AbnormalCardResult> {
   try {
     const cw = template?.canvas_width || 900;
     const padding = 30;
