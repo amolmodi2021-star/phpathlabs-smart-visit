@@ -1176,161 +1176,6 @@ export type Database = {
         }
         Relationships: []
       }
-      extracted_report_data: {
-        Row: {
-          accession_date: string | null
-          age: string | null
-          authentication_date: string | null
-          collection_date: string | null
-          created_at: string | null
-          gender: string | null
-          id: string
-          location: string | null
-          pathologist_name: string | null
-          patient_name: string | null
-          print_date: string | null
-          ref_doctor: string | null
-          reg_date: string | null
-          reg_no: string | null
-          report_date: string | null
-          report_id: string | null
-          sample_collection_date: string | null
-          test_results: Json | null
-          umr_id: string | null
-          updated_at: string | null
-          verified: boolean | null
-        }
-        Insert: {
-          accession_date?: string | null
-          age?: string | null
-          authentication_date?: string | null
-          collection_date?: string | null
-          created_at?: string | null
-          gender?: string | null
-          id?: string
-          location?: string | null
-          pathologist_name?: string | null
-          patient_name?: string | null
-          print_date?: string | null
-          ref_doctor?: string | null
-          reg_date?: string | null
-          reg_no?: string | null
-          report_date?: string | null
-          report_id?: string | null
-          sample_collection_date?: string | null
-          test_results?: Json | null
-          umr_id?: string | null
-          updated_at?: string | null
-          verified?: boolean | null
-        }
-        Update: {
-          accession_date?: string | null
-          age?: string | null
-          authentication_date?: string | null
-          collection_date?: string | null
-          created_at?: string | null
-          gender?: string | null
-          id?: string
-          location?: string | null
-          pathologist_name?: string | null
-          patient_name?: string | null
-          print_date?: string | null
-          ref_doctor?: string | null
-          reg_date?: string | null
-          reg_no?: string | null
-          report_date?: string | null
-          report_id?: string | null
-          sample_collection_date?: string | null
-          test_results?: Json | null
-          umr_id?: string | null
-          updated_at?: string | null
-          verified?: boolean | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "extracted_report_data_report_id_fkey"
-            columns: ["report_id"]
-            isOneToOne: false
-            referencedRelation: "uploaded_reports"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      extraction_corrections: {
-        Row: {
-          corrected_value: string | null
-          created_at: string
-          field_corrected: string
-          id: string
-          original_value: string | null
-          parameter_name: string
-        }
-        Insert: {
-          corrected_value?: string | null
-          created_at?: string
-          field_corrected: string
-          id?: string
-          original_value?: string | null
-          parameter_name: string
-        }
-        Update: {
-          corrected_value?: string | null
-          created_at?: string
-          field_corrected?: string
-          id?: string
-          original_value?: string | null
-          parameter_name?: string
-        }
-        Relationships: []
-      }
-      generated_reports: {
-        Row: {
-          created_at: string | null
-          generated_at: string | null
-          id: string
-          pathologist_id: string | null
-          patient_name: string | null
-          report_html: string | null
-          report_id: string | null
-          umr_id: string | null
-        }
-        Insert: {
-          created_at?: string | null
-          generated_at?: string | null
-          id?: string
-          pathologist_id?: string | null
-          patient_name?: string | null
-          report_html?: string | null
-          report_id?: string | null
-          umr_id?: string | null
-        }
-        Update: {
-          created_at?: string | null
-          generated_at?: string | null
-          id?: string
-          pathologist_id?: string | null
-          patient_name?: string | null
-          report_html?: string | null
-          report_id?: string | null
-          umr_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "generated_reports_pathologist_id_fkey"
-            columns: ["pathologist_id"]
-            isOneToOne: false
-            referencedRelation: "pathologist_signatures"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "generated_reports_report_id_fkey"
-            columns: ["report_id"]
-            isOneToOne: false
-            referencedRelation: "uploaded_reports"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       health_checkup_profiles: {
         Row: {
           created_at: string
@@ -2962,15 +2807,7 @@ export type Database = {
           umr_id?: string | null
           upload_date?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "raw_report_data_report_id_fkey"
-            columns: ["report_id"]
-            isOneToOne: false
-            referencedRelation: "uploaded_reports"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       report_departments: {
         Row: {
@@ -3477,15 +3314,7 @@ export type Database = {
           umr_id?: string
           unit?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "test_result_history_report_id_fkey"
-            columns: ["report_id"]
-            isOneToOne: false
-            referencedRelation: "uploaded_reports"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       test_sample_tubes: {
         Row: {
@@ -3641,51 +3470,6 @@ export type Database = {
         Update: {
           counter_key?: string
           last_sequence?: number
-        }
-        Relationships: []
-      }
-      uploaded_reports: {
-        Row: {
-          created_at: string | null
-          file_name: string | null
-          file_path: string
-          id: string
-          mobile_number: string | null
-          patient_name: string | null
-          reg_date: string | null
-          reg_no: string | null
-          status: string | null
-          umr_id: string | null
-          updated_at: string | null
-          upload_time: string | null
-        }
-        Insert: {
-          created_at?: string | null
-          file_name?: string | null
-          file_path: string
-          id?: string
-          mobile_number?: string | null
-          patient_name?: string | null
-          reg_date?: string | null
-          reg_no?: string | null
-          status?: string | null
-          umr_id?: string | null
-          updated_at?: string | null
-          upload_time?: string | null
-        }
-        Update: {
-          created_at?: string | null
-          file_name?: string | null
-          file_path?: string
-          id?: string
-          mobile_number?: string | null
-          patient_name?: string | null
-          reg_date?: string | null
-          reg_no?: string | null
-          status?: string | null
-          umr_id?: string | null
-          updated_at?: string | null
-          upload_time?: string | null
         }
         Relationships: []
       }
