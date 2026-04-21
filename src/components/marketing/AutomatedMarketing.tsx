@@ -978,7 +978,7 @@ const AutomatedMarketing = () => {
           if (!templateId) continue;
           const templateAssets = await getTemplateAssets(templateId);
           if (!templateAssets) continue;
-          const { bgImg, canvas, ctx, placeholders } = templateAssets;
+          const { bgImg, placeholders } = templateAssets;
 
           for (const r of preview.records) {
             if (_checkAbort() || trialSentCount >= trialMax) break outer;
@@ -987,7 +987,7 @@ const AutomatedMarketing = () => {
               Name: r.patient_name || "", Mobile: r.mobile_number || "", UMR: r.umr_number || "",
               "Discount %": `${r.default_discount_pct ?? 20}%`, "Expiry Date": staticExpiryDate,
             };
-            const imageUrl = await generateAndUploadCard(templateId, cardData, bgImg, canvas, ctx, placeholders);
+            const imageUrl = await generateAndUploadCard(templateId, cardData, bgImg, placeholders);
             if (!imageUrl) { totalFailed++; processedCount++; continue; }
             const components: Record<string, unknown> = {};
             if (Object.keys(mapping).length > 0) {
@@ -1248,7 +1248,7 @@ const AutomatedMarketing = () => {
               _setSendProgress(Math.round((processedCount / totalMessages) * 100));
               continue;
             }
-            const { bgImg, canvas, ctx, placeholders } = templateAssets;
+            const { bgImg, placeholders } = templateAssets;
 
             // Bounded worker pool: N workers process records in parallel.
             // Per-record work (card render + storage upload) runs concurrently;
@@ -1274,7 +1274,7 @@ const AutomatedMarketing = () => {
                       Name: r.patient_name || "", Mobile: r.mobile_number || "", UMR: r.umr_number || "",
                       "Discount %": `${r.default_discount_pct ?? 20}%`, "Expiry Date": staticExpiryDate,
                     };
-                    const imageUrl = await generateAndUploadCard(templateId, cardData, bgImg, canvas, ctx, placeholders);
+                    const imageUrl = await generateAndUploadCard(templateId, cardData, bgImg, placeholders);
                     if (!imageUrl) {
                       await logDripAction(filter, r, "failed", "card_generation_error");
                       totalFailed++; processedCount++;
