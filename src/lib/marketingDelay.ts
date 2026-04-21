@@ -32,14 +32,28 @@ export async function getMarketingConcurrency(): Promise<number> {
 }
 
 /**
- * In-memory rate gate: ensures that successive `acquire()` calls are spaced
- * at least `minIntervalMs` apart globally across N parallel workers. With
- * `minIntervalMs = 0` the gate is a no-op (back-to-back parallel sends).
+ * Tab-throttle-resilient sleep. Browsers throttle setTimeout to ≥1s in
+ * background tabs, which would stretch a 3000ms wait into many seconds and
+ * freeze the marketing worker pool. By anchoring on Date.now() and polling
+ * in short slices we ensure the sleep finishes on time even when backgrounded.
+ */
+export async function sleepResilient(ms: number): Promise<void> {
+  if (ms <= 0) return;
+  const target = Date.now() + ms;
+  while (Date.now() < target) {
+    const remaining = target - Date.now();
+    await new Promise((r) => setTimeout(r, Math.min(250, remaining)));
+  }
+}
+
+/**
+ * @deprecated Use `makeTokenBucket` for the marketing worker pool. This serial
+ * gate funnels every parallel worker through one cursor, which causes the
+ * "burst then freeze" stutter when combined with concurrency > 1.
  *
- * Usage:
- *   const gate = makeRateGate(3000);
- *   // inside each worker, immediately before the WhatsApp API call:
- *   await gate.acquire();
+ * In-memory rate gate: ensures successive `acquire()` calls are spaced at
+ * least `minIntervalMs` apart globally. With `minIntervalMs = 0` the gate is
+ * a no-op (back-to-back parallel sends). Still exported for legacy callers.
  */
 export function makeRateGate(minIntervalMs: number) {
   let nextAvailable = 0;
@@ -49,7 +63,45 @@ export function makeRateGate(minIntervalMs: number) {
       const now = Date.now();
       const wait = Math.max(0, nextAvailable - now);
       nextAvailable = Math.max(now, nextAvailable) + minIntervalMs;
-      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      if (wait > 0) await sleepResilient(wait);
+    },
+  };
+}
+
+/**
+ * Token-bucket pacer for the parallel marketing worker pool.
+ *
+ * - `refillIntervalMs` = `delayMs` — one token is added every interval.
+ * - `capacity` = `concurrency` — up to N workers may burst in parallel
+ *   without waiting, but the long-run average rate is capped at
+ *   1 send per `refillIntervalMs`.
+ *
+ * This eliminates the per-call serial wait of `makeRateGate` while still
+ * honouring the user-configured average throughput. A hung individual call
+ * no longer blocks other workers — they simply consume their own tokens.
+ */
+export function makeTokenBucket(refillIntervalMs: number, capacity: number) {
+  const cap = Math.max(1, Math.floor(capacity || 1));
+  let tokens = cap;
+  let lastRefill = Date.now();
+  return {
+    async take() {
+      if (refillIntervalMs <= 0) return;
+      while (true) {
+        const now = Date.now();
+        const elapsed = now - lastRefill;
+        if (elapsed >= refillIntervalMs) {
+          const refill = Math.floor(elapsed / refillIntervalMs);
+          tokens = Math.min(cap, tokens + refill);
+          lastRefill += refill * refillIntervalMs;
+        }
+        if (tokens > 0) {
+          tokens--;
+          return;
+        }
+        const waitMs = refillIntervalMs - (Date.now() - lastRefill);
+        await sleepResilient(Math.max(50, waitMs));
+      }
     },
   };
 }
