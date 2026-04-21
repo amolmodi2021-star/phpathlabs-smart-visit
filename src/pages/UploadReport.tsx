@@ -1,9 +1,10 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Upload, FileText, Loader2, CheckCircle, RefreshCw } from "lucide-react";
+import { Upload, FileText, Loader2, CheckCircle, RefreshCw, Play } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { triggerReportQueue } from "@/lib/reportQueue";
 
 interface UploadingFile {
   file: File;
@@ -157,13 +158,30 @@ const UploadReport = () => {
   const pendingCount = recentReports.filter(r => r.status === "Pending").length;
   const processingCount = recentReports.filter(r => r.status === "Processing").length;
 
+  const [processingNow, setProcessingNow] = useState(false);
+  const handleProcessNow = async () => {
+    setProcessingNow(true);
+    try {
+      await triggerReportQueue();
+      await loadRecentReports();
+    } finally {
+      setProcessingNow(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Upload Pathology Reports</h1>
-        <Button variant="outline" onClick={loadRecentReports}>
-          <RefreshCw className="h-4 w-4 mr-2" />Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleProcessNow} disabled={processingNow}>
+            {processingNow ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
+            Process Queue Now
+          </Button>
+          <Button variant="outline" onClick={loadRecentReports}>
+            <RefreshCw className="h-4 w-4 mr-2" />Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Upload Zone */}
