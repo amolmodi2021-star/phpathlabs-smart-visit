@@ -1,130 +1,101 @@
 
 
-# Speed up Automated Marketing sending (ABC + Abnormal PNG)
+# Fix intermittent stalls in Automated Marketing sending
 
-Today the Automated Marketing loop sends **strictly one card at a time**, end-to-end: fetch abnormal tests → render canvas → upload PNG to storage → invoke `whatsapp-proxy` → write log → update CRM → wait `delayMs` → next. With the default 3-second inter-message delay and ~3-5 s of work per card, 500 cards take ~2-3 hours. We will keep the loop client-side (so pause/abort/trial-mode all keep working) but let multiple cards process **in parallel**, while still respecting the WhatsApp API rate limit globally.
+The "stops for a while, then resumes" pattern is **not random** — it's caused by three concrete defects in the current parallel sender. This plan removes all three so sending runs at a steady, predictable pace from start to finish.
 
-## What changes for the user
+## Root causes
 
-1. New "Parallel sends" control in **WhatsApp Settings → API Settings**, default `5`, range `1-10`.
-2. The existing "Inter-message delay (ms)" (default 3000) becomes a **shared rate-limit gate** instead of an idle wait — the slowest WhatsApp call still happens at most once every `delayMs`, but card rendering, storage upload, fetches, and logging for the **next** records run in parallel during that gap.
-3. Estimated speedup with the defaults (delay 3000ms, concurrency 5): **500 cards drop from ~3 hours to ~5–8 minutes.** Setting concurrency to 1 reproduces today's exact sequential behaviour (escape hatch).
-4. Pause / Stop, progress %, current-record phase indicator, trial mode (3-message cap), and execution log all keep working unchanged.
+1. **Global rate-gate is a serial bottleneck.** Every worker funnels through one `rateGate.acquire()` before its WhatsApp call. With `delayMs=3000` and 5 workers, the 5th worker is forced to wait ~12 s before its call is allowed. If a single proxy call is slow, the queue behind the gate piles up — progress freezes, then catches up in a burst. This is what you're seeing.
+2. **No timeout on the proxy call.** `supabase.functions.invoke("whatsapp-proxy", …)` can hang for minutes when the AOC provider lags. While it hangs, the worker that already advanced the gate's `nextAvailable` keeps the slot reserved, so the *other* workers stall too.
+3. **Background-tab throttling.** When the marketing tab loses focus, browsers throttle `setTimeout` to ≥1 s. The gate's wait timers stretch to many seconds, freezing all workers until the user returns.
 
-## How it works (technical)
+## What the user will see after the fix
 
-### 1. New setting
+1. Sending runs at a **steady cadence** instead of "5 sent → 12 s freeze → 5 sent → freeze". 500 cards complete in roughly the time predicted by `concurrency × throughput`, with no unexplained pauses.
+2. Sending **continues at full speed when the tab is in the background** (or even minimised).
+3. A single slow/hung WhatsApp call **no longer blocks the other workers** — it times out after 45 s, that record is logged as failed, and the worker picks the next record immediately.
+4. No UI changes, no new settings, no behaviour change to Pause / Stop / Trial mode / progress bar.
 
-`app_settings` row:
-- key = `wa_global_concurrency`, value = `"5"` (string, like other wa_global_* keys).
+## Technical changes
 
-Read alongside `wa_global_delayMs` in `loadSettings()` of `WhatsAppSettings.tsx` and shown as a numeric input next to the existing "Inter-message delay" field with helper text:
-> *Number of WhatsApp messages processed in parallel. Higher = faster, but check your provider's rate limit. Default 5.*
+### 1. Replace the global serial gate with a **per-worker token-bucket pacer** (`src/lib/marketingDelay.ts`)
 
-No DB migration needed — `app_settings` is a free-form key/value store already.
-
-### 2. Replace the sequential `for` loop with a bounded worker pool
-
-In `src/components/marketing/AutomatedMarketing.tsx`, both the **abc_card** branch (lines ~1243-1298) and the **abnormal_card** branch (lines ~1323-1370) get refactored to use a small worker pool:
-
-```text
-records  →  queue
-                ↓
-       ┌────────┴────────┐
-   worker1 worker2 ... workerN     (N = concurrency, default 5)
-       │       │          │
-       ↓       ↓          ↓
-  sendOne(r) sendOne(r) sendOne(r)
-       │
-       ↓
-  rateGate.acquire()  ── ensures ≥ delayMs between WhatsApp API calls globally
-       ↓
-  proxy invoke + log + CRM update
-       ↓
-  progress++
-```
-
-Implementation sketch (replaces the `for (let i ...)` block per branch):
+Today's `makeRateGate` queues every worker through a single `nextAvailable` cursor — that's the bottleneck. Replace it with a **token bucket**: tokens are refilled at a steady rate of `1 / delayMs` per ms, capacity = `concurrency`. Workers consume one token per send and wait only if the bucket is empty.
 
 ```typescript
-const concurrency = Math.max(1, Math.min(10, Number(cfg["wa_global_concurrency"]) || 5));
-const rateGate = makeRateGate(delayMs);   // global-to-this-campaign
-
-const queue = [...preview.records];
-let nextIdx = 0;
-const total = preview.records.length;
-
-const worker = async () => {
-  while (true) {
-    if (_checkAbort()) return;
-    await _waitWhilePaused();
-    if (_checkAbort()) return;
-    const i = nextIdx++;
-    if (i >= total) return;
-    const r = queue[i];
-    try {
-      // ALL the existing per-record work (fetch tests, render card, build payload)
-      // runs in parallel here — only the API call goes through the gate.
-      const payload = await buildPayloadForRecord(r);
-      await rateGate.acquire();
-      const ok = await callProxyAndLog(payload, ...);
-      if (ok) totalSent++; else totalFailed++;
-    } catch (e) { totalFailed++; await logDiagnostic(filter, r, "record_error", String(e)); }
-    processedCount++;
-    _setSendProgress(Math.round((processedCount / totalMessages) * 100));
-    _setSendPhase(`Filter ${filterIndex}/${totalFilters}: ${filter.name} — ${processedCount}/${totalMessages}`);
-  }
-};
-
-await Promise.all(Array.from({ length: concurrency }, () => worker()));
-```
-
-`makeRateGate(ms)` is a tiny in-memory helper (added to the same file or to `src/lib/marketingDelay.ts`):
-
-```typescript
-export function makeRateGate(minIntervalMs: number) {
-  let nextAvailable = 0;
+export function makeTokenBucket(refillIntervalMs: number, capacity: number) {
+  let tokens = capacity;
+  let lastRefill = Date.now();
   return {
-    async acquire() {
-      const now = Date.now();
-      const wait = Math.max(0, nextAvailable - now);
-      nextAvailable = Math.max(now, nextAvailable) + minIntervalMs;
-      if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    async take() {
+      if (refillIntervalMs <= 0) return;
+      while (true) {
+        const now = Date.now();
+        const elapsed = now - lastRefill;
+        const refill = Math.floor(elapsed / refillIntervalMs);
+        if (refill > 0) {
+          tokens = Math.min(capacity, tokens + refill);
+          lastRefill += refill * refillIntervalMs;
+        }
+        if (tokens > 0) { tokens--; return; }
+        const waitMs = refillIntervalMs - (now - lastRefill);
+        await sleepResilient(Math.max(50, waitMs));
+      }
     },
   };
 }
 ```
 
-This guarantees the WhatsApp provider sees calls spaced ≥ `delayMs` apart even with N parallel workers. Setting `delayMs = 0` removes the gate entirely (back-to-back parallel sends).
+This preserves the user-configured **average rate** (one send per `delayMs`) while letting bursts of up to `concurrency` calls happen in parallel — eliminating the per-call serial wait that causes today's stutter.
 
-### 3. Trial mode
+### 2. Add a **tab-throttle-resilient sleep** (same file)
 
-The trial branches (lines ~982-1018 and ~1040-1069) keep their existing serial `for` loops — trial sends are capped at 3 messages so concurrency offers nothing there. No changes.
+`setTimeout` is throttled in background tabs. Use a `Date.now()`-anchored loop so a 3000 ms sleep actually sleeps 3000 ms regardless of tab state:
 
-### 4. Promotion branch
+```typescript
+async function sleepResilient(ms: number) {
+  const target = Date.now() + ms;
+  while (Date.now() < target) {
+    await new Promise(r => setTimeout(r, Math.min(250, target - Date.now())));
+  }
+}
+```
 
-Promotion sending (lines ~1395-1435) gets the **same** worker-pool + rate-gate refactor. Promotions don't render cards but still benefit from parallel proxy calls (today they also wait `delayMs` between each).
+`_waitWhilePaused()` in `AutomatedMarketing.tsx` will use this same helper instead of `setTimeout(300)`, so paused campaigns also resume promptly when the tab is backgrounded.
+
+### 3. Add a **45 s timeout** to every proxy call (`src/components/marketing/AutomatedMarketing.tsx`, `callProxyAndLog`)
+
+A hung AOC call must not stall the entire pool. Wrap the invoke in a `Promise.race`:
+
+```typescript
+const proxyRes = await Promise.race([
+  supabase.functions.invoke("whatsapp-proxy", { body: { … } }),
+  new Promise((_, rej) => setTimeout(() => rej(new Error("proxy_timeout_45s")), 45000)),
+]) as any;
+```
+
+On timeout the catch branch already logs `wa_exception` and writes a retry-payload row — the record shows up in the Retry tab and the worker grabs the next record. Today these hangs silently freeze the whole pool.
+
+### 4. Wire the new pacer into the three branches
+
+In `AutomatedMarketing.tsx`:
+- Replace `const rateGate = makeRateGate(delayMs);` with `const rateGate = makeTokenBucket(delayMs, concurrency);`
+- Replace `await rateGate.acquire();` with `await rateGate.take();` inside `callProxyAndLog`.
+- No changes to the worker loops themselves — they keep their current pause/abort/progress logic.
 
 ### 5. Files changed
 
-- `src/components/marketing/AutomatedMarketing.tsx` — replace 3 sequential `for` loops with the worker-pool pattern; read `wa_global_concurrency` from `cfg`.
-- `src/lib/marketingDelay.ts` — add and export `makeRateGate(ms)` and a `getMarketingConcurrency()` helper.
-- `src/components/WhatsAppSettings.tsx` — add the "Parallel sends" numeric input in the API Settings card; persist to `app_settings` key `wa_global_concurrency`.
+- `src/lib/marketingDelay.ts` — add `makeTokenBucket` and `sleepResilient`. Keep `makeRateGate` exported (for any other call sites) but mark its JSDoc as deprecated in favour of `makeTokenBucket`.
+- `src/components/marketing/AutomatedMarketing.tsx` — switch to `makeTokenBucket`, add 45 s `Promise.race` timeout in `callProxyAndLog`, swap `_waitWhilePaused` sleep to `sleepResilient`.
 
-No DB migrations, no edge function changes, no schema changes.
+No DB migration. No edge function changes. No UI changes. No new settings.
 
-## Why not move it to an edge function?
+## Verification
 
-Edge functions hit CPU/wall-clock limits well before 500 cards finish (each card includes a canvas render + storage upload). The current client-side architecture is the right place for this work; the only real defect is that it's serial. A bounded worker pool fixes that without the operational cost of an async job system.
-
-## Verification after deploy
-
-1. WhatsApp Settings → API Settings shows new "Parallel sends" input with default 5; saving persists it.
-2. Set concurrency = 1, delay = 3000 → behaviour is byte-identical to today (one send every 3s).
-3. Set concurrency = 5, delay = 3000, run a campaign of 50 ABC cards on a test number → 50 cards complete in ~30-40 s (vs ~2.5 min today). Provider logs show calls spaced ~3s apart.
-4. Set concurrency = 5, delay = 0 → 50 cards complete in ~10-15 s, calls back-to-back.
-5. Pause mid-run with concurrency 5 → all 5 workers stop at their next pause check; resume continues correctly; total sent count matches eligible count.
-6. Stop mid-run → workers exit, no orphan log rows, success toast shows "campaign stopped".
-7. Trial mode (3-message cap) still sends only 3 messages and stops, regardless of concurrency setting.
-8. Execution Log still shows one row per record with correct sent/failed/skip status.
+1. Set `delayMs = 3000`, `concurrency = 5`, run 50 ABC cards — progress moves smoothly; no multi-second freezes between batches; total time ≈ 50 × (3000/5) ≈ 30 s.
+2. Switch to another browser tab during a run — sending continues at full speed; on return, processed count matches what the bucket predicts.
+3. Simulate a hung proxy (block `whatsapp-proxy` in DevTools) — that record fails after 45 s with `proxy_timeout_45s` in the Retry tab; other workers keep sending in the meantime.
+4. Set `concurrency = 1` — behaviour matches today's strictly sequential mode (one send every `delayMs`).
+5. Pause/Stop/Trial mode all behave exactly as today.
 
