@@ -26,6 +26,7 @@ import {
   Phone,
   User,
   Calendar as CalendarIcon,
+  Share2,
 } from "lucide-react";
 import { format } from "date-fns";
 import TestStatusTimeline from "@/components/report/TestStatusTimeline";
@@ -473,6 +474,30 @@ const PatientReportPortal = () => {
     navigate(`/lims/report/${registrationId}?public=${encodeURIComponent(token)}`);
   };
 
+  // Share portal link on WhatsApp
+  const handleShareWhatsApp = async () => {
+    if (state.kind !== "ready") return;
+    const reg = state.registration;
+    const portalUrl = `${window.location.origin}/r/${token}`;
+    const text = `My PH PathLabs report — Invoice ${reg.invoice_number}\n${portalUrl}`;
+    await logEvent(token, "shared_whatsapp", sessionIdRef.current || undefined, {
+      invoice: reg.invoice_number,
+    });
+    if (typeof navigator !== "undefined" && (navigator as any).share) {
+      try {
+        await (navigator as any).share({
+          title: "PH PathLabs Report",
+          text,
+          url: portalUrl,
+        });
+        return;
+      } catch {
+        // fall through to wa.me
+      }
+    }
+    const waUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    window.open(waUrl, "_blank", "noopener,noreferrer");
+  };
 
   // ── Render states ──
   if (state.kind === "loading") {
@@ -691,12 +716,22 @@ const PatientReportPortal = () => {
                 Download will be available once at least one test is approved.
               </p>
             ) : (
-              <Button onClick={goDownloadApproved} className="gap-2">
-                <Download className="h-4 w-4" />
-                {allApproved
-                  ? "Download Full Report"
-                  : `Download Approved Reports (${approvedCount} of ${totalCount})`}
-              </Button>
+              <div className="flex flex-col items-center gap-2">
+                <Button onClick={goDownloadApproved} className="gap-2">
+                  <Download className="h-4 w-4" />
+                  {allApproved
+                    ? "Download Full Report"
+                    : `Download Approved Reports (${approvedCount} of ${totalCount})`}
+                </Button>
+                <Button
+                  onClick={handleShareWhatsApp}
+                  variant="outline"
+                  className="gap-2 border-emerald-600 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/30"
+                >
+                  <Share2 className="h-4 w-4" />
+                  Share on WhatsApp
+                </Button>
+              </div>
             )}
           </Card>
         )}
