@@ -82,8 +82,15 @@ Deno.serve(async (req) => {
     }
 
     // Collect every file path recursively
-    const paths: string[] = [];
-    await listAllRecursive(supabase, bucket, "", paths);
+    const allPaths: string[] = [];
+    await listAllRecursive(supabase, bucket, "", allPaths);
+
+    // Filter out protected prefixes (e.g. reusable assets in loyalty-cards)
+    const protectedPrefixes = PROTECTED_PREFIXES[bucket] ?? [];
+    const paths = protectedPrefixes.length
+      ? allPaths.filter((p) => !protectedPrefixes.some((pre) => p.startsWith(pre)))
+      : allPaths;
+    const skipped = allPaths.length - paths.length;
 
     let filesRemoved = 0;
     for (let i = 0; i < paths.length; i += REMOVE_BATCH) {
@@ -96,7 +103,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    const summary = { bucket, files_removed: filesRemoved };
+    const summary = { bucket, files_removed: filesRemoved, protected_skipped: skipped };
     await supabase.from("cleanup_runs").insert({ function_name: "purge-bucket", summary });
 
     console.log("Purge complete:", summary);
