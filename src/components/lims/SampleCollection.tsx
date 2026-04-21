@@ -354,6 +354,8 @@ const SampleCollection = () => {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  const handlePrintAndCollect = (reg: any, tubes: SampleTubeRow[]) => {
     const regSel = selectedTubes[reg.id] || new Set();
     const selected = tubes.filter(t => regSel.has(t.id));
     if (selected.length === 0) { toast.error("Please select at least one barcode"); return; }
