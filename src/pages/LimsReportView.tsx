@@ -99,9 +99,11 @@ const LimsReportView = () => {
   const selectedTestIds = selectedTestIdsParam ? new Set(selectedTestIdsParam.split(",")) : null;
   const publicToken = searchParams.get("public");
   const isPublic = !!publicToken;
+  const autoShareRequested = searchParams.get("share") === "1";
   const printRef = useRef<HTMLDivElement>(null);
   const previewWrapRef = useRef<HTMLDivElement>(null);
   const autoDownloadStartedRef = useRef(false);
+  const autoShareStartedRef = useRef(false);
   const cachedPdfRef = useRef<{ blob: Blob; filename: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
@@ -574,6 +576,18 @@ const LimsReportView = () => {
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPublic, loading, pages.length]);
+
+  // ── Auto-share once PDF is ready (when share=1 in URL) ──
+  useEffect(() => {
+    if (!autoShareRequested) return;
+    if (!hasDownloadedOnce) return;
+    if (autoShareStartedRef.current) return;
+    if (!cachedPdfRef.current) return;
+    autoShareStartedRef.current = true;
+    const t = setTimeout(() => { handleShareWhatsApp(); }, 400);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoShareRequested, hasDownloadedOnce]);
 
   // ── Share on WhatsApp ──
   const handleShareWhatsApp = async () => {

@@ -474,29 +474,32 @@ const PatientReportPortal = () => {
     navigate(`/lims/report/${registrationId}?public=${encodeURIComponent(token)}`);
   };
 
-  // Share portal link on WhatsApp
+  // Share PDF on WhatsApp — navigates to the report viewer with share=1, which
+  // auto-generates the PDF and triggers the native share sheet with the file attached.
   const handleShareWhatsApp = async () => {
-    if (state.kind !== "ready") return;
-    const reg = state.registration;
-    const portalUrl = `${window.location.origin}/r/${token}`;
-    const text = `My PH PathLabs report — Invoice ${reg.invoice_number}\n${portalUrl}`;
-    await logEvent(token, "shared_whatsapp", sessionIdRef.current || undefined, {
-      invoice: reg.invoice_number,
-    });
-    if (typeof navigator !== "undefined" && (navigator as any).share) {
-      try {
-        await (navigator as any).share({
-          title: "PH PathLabs Report",
-          text,
-          url: portalUrl,
-        });
-        return;
-      } catch {
-        // fall through to wa.me
-      }
+    if (state.kind !== "ready" || !data) return;
+    if (dueAmount > 0) {
+      await logEvent(token, "blocked_due_pending", sessionIdRef.current || undefined);
+      return;
     }
-    const waUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
-    window.open(waUrl, "_blank", "noopener,noreferrer");
+    if (approvedCount === 0) return;
+    await logEvent(token, "shared_whatsapp", sessionIdRef.current || undefined, {
+      approved_count: approvedCount,
+      total_count: totalCount,
+    });
+    const byReg: Record<string, string[]> = {};
+    for (const e of testEntries) {
+      if (!e.approved) continue;
+      if (!byReg[e.registrationId]) byReg[e.registrationId] = [];
+      byReg[e.registrationId].push(e.testId);
+    }
+    const regIds = Object.keys(byReg);
+    if (regIds.length === 0) return;
+    const first = regIds[0];
+    const url = allApproved
+      ? `/lims/report/${first}?public=${encodeURIComponent(token)}&share=1`
+      : `/lims/report/${first}?tests=${byReg[first].join(",")}&public=${encodeURIComponent(token)}&share=1`;
+    navigate(url);
   };
 
   // ── Render states ──
