@@ -47,6 +47,10 @@ const GlobalApiSettings = () => {
         if (m[`${PREFIX}fromNumber`]) setFromNumber(m[`${PREFIX}fromNumber`]);
         if (m[`${PREFIX}queueEnabled`]) setQueueEnabled(m[`${PREFIX}queueEnabled`] === "true");
         if (m[`${PREFIX}delayMs`]) setDelayMs(Number(m[`${PREFIX}delayMs`]));
+        if (m[`${PREFIX}concurrency`]) {
+          const c = Number(m[`${PREFIX}concurrency`]);
+          if (Number.isFinite(c)) setConcurrency(Math.max(1, Math.min(10, Math.floor(c))));
+        }
       }
       setLoaded(true);
     })();
@@ -62,6 +66,7 @@ const GlobalApiSettings = () => {
       [`${PREFIX}fromNumber`]: fromNumber,
       [`${PREFIX}queueEnabled`]: String(queueEnabled),
       [`${PREFIX}delayMs`]: String(delayMs),
+      [`${PREFIX}concurrency`]: String(concurrency),
     };
     const timer = setTimeout(() => {
       Object.entries(settings).forEach(async ([key, value]) => {
@@ -72,7 +77,7 @@ const GlobalApiSettings = () => {
       });
     }, 500);
     return () => clearTimeout(timer);
-  }, [baseUrl, apiKey, authHeaderName, authHeaderPrefix, fromNumber, queueEnabled, delayMs, loaded]);
+  }, [baseUrl, apiKey, authHeaderName, authHeaderPrefix, fromNumber, queueEnabled, delayMs, concurrency, loaded]);
 
   return (
     <Card>
@@ -132,10 +137,25 @@ const GlobalApiSettings = () => {
               </Select>
               <Input type="number" value={delayMs} onChange={(e) => setDelayMs(Math.max(0, Number(e.target.value) || 0))} className="w-24 h-8" min={0} step={100} />
             </div>
+            <div className="flex items-center gap-2">
+              <Label className="text-xs whitespace-nowrap">Parallel sends</Label>
+              <Input
+                type="number"
+                value={concurrency}
+                onChange={(e) => {
+                  const v = Math.max(1, Math.min(10, Math.floor(Number(e.target.value) || 1)));
+                  setConcurrency(v);
+                }}
+                className="w-20 h-8"
+                min={1}
+                max={10}
+                step={1}
+              />
+            </div>
           </div>
         </div>
         <p className="text-xs text-muted-foreground">
-          Settings are auto-saved. The delay applies to all marketing campaigns (Send Messages, Automated/Drip, Retry). Set to <span className="font-mono">0</span> for back-to-back sends.
+          Settings are auto-saved. The delay applies to all marketing campaigns (Send Messages, Automated/Drip, Retry). Set to <span className="font-mono">0</span> for back-to-back sends. <strong>Parallel sends</strong> (1–10, default 5) controls how many Automated Marketing records are processed in parallel — higher = faster, but the delay above still rate-limits the actual WhatsApp API calls globally. Set to <span className="font-mono">1</span> to reproduce strictly sequential sending.
         </p>
       </CardContent>
     </Card>
