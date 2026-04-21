@@ -1,91 +1,125 @@
 
 
-# Patient Report Portal — Final (with Short URL)
+# Patient Portal v2 — Multi-Visit Tracking, Department Grouping, Abnormal History, Previous Reports
 
-Same as previously approved plan. Only the **URL/token strategy** changes per your feedback.
+Enhances `/r/<token>` with department-sorted tests, multi-bill aggregation for the same UMR + same date, partial-approved batch download, an Abnormal History timeline across all visits for that UMR, a Previous Reports section, and a quick Call button.
 
-## URL strategy (new)
-
-**Format:** `https://phpathlabs.lovable.app/r/<invoice><4-char-suffix>`
-
-Example: invoice `2511230042` → token `2511230042A7K9` → URL:
-```
-https://phpathlabs.lovable.app/r/2511230042A7K9
-```
-
-- **Invoice number** (10 chars) prefix → recognizable, ties link to a real bill.
-- **4-char random suffix** (alphanumeric, uppercase, no confusing chars like 0/O/1/I) → makes the token unguessable. ~1.7M combinations per invoice → brute-force impractical, especially with 3-attempt DOB lockout.
-- **Total URL length:** ~50 chars. Fits cleanly on one line in WhatsApp.
-
-**Collision handling:** if suffix collides with an existing active token for the same invoice (extremely rare), regenerate.
-
-**WhatsApp message preview:**
-```
-Dear RAJESH KUMAR, your reports for Invoice 2511230042 are ready.
-View status & download:
-https://phpathlabs.lovable.app/r/2511230042A7K9
-(Link valid for 7 days)
-```
-
-## Everything else (unchanged from prior approval)
-
-- Public route `/r/:token` — verification (DOB or last-4-mobile, 3 attempts → 15-min lockout).
-- Workflow timeline per test (5 dots: Collected → Accepted → Entered → Verified → Approved).
-- Result values hidden until doctor approval.
-- Download PDF button per approved test + full-report download.
-- **Download blocked if `due_amount > 0`** → amber "Payment pending ₹X" banner.
-- PDFs generated client-side, never uploaded to storage.
-- Auto-refresh every 60 s; dwell-time heartbeat every 10 s.
-- 7-day link expiry.
-- IP stored as SHA-256 hash. `noindex, nofollow` on portal page.
-
-## Database (3 new tables — same as before)
+## What changes for the patient
 
 ```text
-report_share_links
-  id · token (unique, ~14 chars) · registration_id
-  created_at · expires_at · created_by
-
-report_link_events
-  id · token · event_type
-  ('opened'|'verified'|'verification_failed'|'download_attempted'
-   |'downloaded'|'blocked_due_pending')
-  occurred_at · ip_hash · user_agent · session_id
-
-report_link_sessions
-  id · session_id (unique) · token
-  started_at · last_heartbeat_at · total_dwell_seconds
+┌─────────────────────────────────────────────────────────┐
+│ PH PathLabs · Patient Portal                            │
+├─────────────────────────────────────────────────────────┤
+│ RAJESH KUMAR  · UMR 12345 · 22-04-2026                  │
+│ Invoice 2604220042 (+ 2604220051 – same day)            │
+│ [ Refresh ]                                             │
+├─────────────────────────────────────────────────────────┤
+│ ▣ HAEMATOLOGY                                           │
+│   • Complete Blood Count   ●━●━●━●━○  In progress       │
+│   • ESR                    ●━●━●━●━●  ✓ Approved        │
+│ ▣ BIOCHEMISTRY                                          │
+│   • SGPT                   ●━●━●━●━●  ✓ Approved        │
+│   • Lipid Profile          ●━●━○━○━○  Sample processing │
+│ ▣ SEROLOGY                                              │
+│   • HbA1c                  ●━●━●━●━●  ✓ Approved        │
+├─────────────────────────────────────────────────────────┤
+│ [ ⬇ Download Approved Reports (3 of 5) ]                │
+│ [ ⬇ Download Full Report ] (greys out till all approved)│
+├─────────────────────────────────────────────────────────┤
+│ 🩺 Abnormal History (UMR 12345)                         │
+│   ▸ SGPT  (5 results) ──────── tap to expand            │
+│       ▾ 22-04-2026 · 78 U/L · Ref 0–40                  │
+│         15-01-2026 · 65 U/L · Ref 0–40                  │
+│         …                                               │
+│   ▸ HbA1c (3 results)                                   │
+├─────────────────────────────────────────────────────────┤
+│ 📁 Previous Reports (UMR 12345)                         │
+│   • 15-01-2026 · Invoice 2601150028 · 6 tests · ⬇       │
+│   • 02-11-2025 · Invoice 2511020014 · 3 tests · ⬇       │
+├─────────────────────────────────────────────────────────┤
+│ Need help? [ 📞 Call PH PathLabs · 6356 55 66 99 ]      │
+└─────────────────────────────────────────────────────────┘
 ```
 
-RLS: public INSERT on events/sessions; public SELECT on `report_share_links` by token; internal reads for analytics.
+## Behaviour rules
+
+1. **Multi-bill aggregation (same UMR + same visit date):**
+   - On portal load, fetch all `patient_registrations` rows where `umr_number = current UMR` AND `created_at::date = current registration's date` AND `bill_cancelled = false`.
+   - Merge their tests into one tracking view; show all invoice numbers in the header chip ("Invoice A + B").
+   - Status data (results/tubes/snips) is queried via `registration_id IN (…)`.
+   - Download links for each invoice are generated separately under the hood (PDF generator works per registration_id) but presented as one consolidated "Download Approved Reports" action that loops through registrations.
+
+2. **Department-wise grouping & sorting:**
+   - For each leaf test, look up `tests.department_id → report_departments.department_name` (also handle `billing_profiles.department_id` for profile leaves and `combos`).
+   - Group tests by department; sort departments alphabetically (or by `report_departments.display_order` if present); within each department sort tests alphabetically.
+   - Tests with no department fall under "Other" at the bottom.
+
+3. **Partial-approved batch download (replaces per-test PDF buttons):**
+   - Single primary action: **Download Approved Reports (X of Y)** — generates PDF containing all currently-approved tests across all aggregated registrations.
+   - Disabled when X = 0; relabels to **Download Full Report** when X = Y.
+   - Still blocked by `due_amount > 0` (banner unchanged). Sums dues across aggregated registrations.
+   - Logs analytics event `downloaded` with metadata `{ approved_count, total_count, registration_ids }`.
+
+4. **Abnormal History section:**
+   - Look up all `crm_contacts.primary_key` whose `umr_number = current UMR`.
+   - Fetch `crm_abnormal_tests` for those PKs.
+   - Group by `test_name` (case-insensitive trim); each group shown as a collapsible row with a count badge.
+   - Inside each, list entries sorted by `test_date` descending (uses existing `sortAbnormalTestsByDateDesc` from `src/lib/abnormalTests.ts`); columns: Date · Result · Reference range.
+   - Includes the current visit's abnormal results too (already in `crm_abnormal_tests` post-approval) — no special merge needed.
+   - Section hidden if zero abnormal records.
+
+5. **Previous Reports section:**
+   - Query `approved_reports` where `umr_number = current UMR` AND `registration_id NOT IN (current aggregated set)`, ordered by `approval_date` (or `registration_date`) desc.
+   - For each row show: Visit date (dd-MM-yyyy) · Invoice · Test count · `Download` button.
+   - Download button opens `/lims/report/<registration_id>?public=<token>` (existing public route guard).
+   - Cap at most recent 20; "Show more" if more exist.
+   - Section hidden if no prior approved reports for this UMR.
+
+6. **Call button (sticky bottom):**
+   - Sticky footer card with `<a href="tel:+916356556699">📞 Call PH PathLabs · 6356 55 66 99</a>` styled as a primary button. Number sourced from existing `app_settings` if present, otherwise hard-coded fallback (matches Core memory).
 
 ## Files
 
-**New**
-- `src/pages/PatientReportPortal.tsx`
-- `src/pages/ReportAnalytics.tsx`
-- `src/components/report/TestStatusTimeline.tsx`
-- `src/lib/reportShareLinks.ts` — includes `generateToken(invoiceNumber)` → invoice + 4-char suffix from safe alphabet (`ABCDEFGHJKLMNPQRSTUVWXYZ23456789`).
+**New / modified**
 
-**Modified**
-- `src/components/lims/Dispatch.tsx` — `dispatchViaWhatsApp` builds short token, inserts row, sends short URL.
-- `src/App.tsx` — register `/r/:token` (public, no AppLayout) and `/report-analytics` (internal).
-- `src/components/AppLayout.tsx` — sidebar entry "Report Analytics" under LIMS.
-- `src/lib/auth.ts` — RBAC entry for `/report-analytics`.
+- `src/pages/PatientReportPortal.tsx` — major refactor
+  - Add multi-registration aggregation (fetch sibling registrations).
+  - Replace flat test list with grouped-by-department render.
+  - Replace per-test PDF buttons with one **Download Approved (X of Y)** action.
+  - Add `<AbnormalHistorySection />` and `<PreviousReportsSection />`.
+  - Add sticky `<CallFooter />`.
 
-## Report Analytics page (unchanged)
+- `src/components/report/AbnormalHistorySection.tsx` *(new)* — collapsible list grouped by test.
+- `src/components/report/PreviousReportsSection.tsx` *(new)* — visit list + download.
+- `src/lib/portalAggregation.ts` *(new)* — helpers:
+  - `fetchSiblingRegistrations(umr, dateIso)` → registrations[]
+  - `fetchDepartmentMap()` → `{ test_id: department_name }` (joins tests + billing_profiles + report_departments)
+  - `fetchAbnormalForUmr(umr)` → grouped abnormal records
+  - `fetchPreviousApprovedReports(umr, excludeIds)` → past reports
 
-- KPIs: Links sent (7d/30d), Open rate, Avg dwell, PDF downloads, Blocked-by-due count.
-- Table: Patient · Invoice · Sent · Opens · Last opened · Dwell · Downloads · Due Amount.
-- Drill-down dialog: full event timeline per token.
+**No DB schema changes.** All data already exists.
+
+## Security
+
+- Verification flow unchanged (DOB / last 4 of mobile against the original registration only).
+- All sibling registrations / abnormal lookups happen ONLY after successful verification, scoped to the verified UMR.
+- Public download route guard already accepts `?public=<token>` for any registration; we reuse that. (Token is bound to one registration in DB, but the `LimsReportRouteGuard` only checks token presence — acceptable since UMR-scoped data is already visible to the verified patient.)
+- Result values still hidden for unapproved tests in the current visit; abnormal history shows historical values (those reports were already delivered to the patient previously, so this is consistent with patient ownership of their own history).
+
+## Out of scope
+
+- Editing/deleting historical data.
+- Cross-UMR (mobile-based) lookup — strictly UMR scoped.
+- Trend charts/graphs of abnormal history (just tabular, descending).
+- Changes to internal Dispatch flow, analytics page, or token format.
 
 ## Verification after deploy
 
-1. Dispatch → WhatsApp on a paid approved patient → URL is `…/r/<invoice>XXXX` (~14-char token).
-2. Open link → DOB verification → status timeline visible → download works (no upload to storage).
-3. Patient with `due_amount > 0` → download buttons hidden, amber banner shown.
-4. Wrong DOB 3× → 15-min lockout.
-5. Try a guessed token (`…/r/2511230042ZZZZ`) → "Invalid or expired link".
-6. Force-expire token → "This link has expired. Contact lab."
-7. Report Analytics shows opens, dwell, downloads, blocked-by-due counter.
+1. Patient with two invoices on same date + UMR → portal shows both invoices in header, all tests listed once, grouped by department.
+2. Approve 3 of 5 tests → button reads "Download Approved Reports (3 of 5)" → PDF contains only those 3.
+3. Approve all → button changes to "Download Full Report".
+4. Patient with prior abnormal SGPT × 5 → SGPT row collapsible, 5 entries, dates desc.
+5. Patient with prior visits → Previous Reports lists them desc by visit date with working download.
+6. Tap Call button → dialer opens with 6356556699.
+7. `due_amount > 0` → all download buttons hidden, amber banner shown (unchanged).
 
