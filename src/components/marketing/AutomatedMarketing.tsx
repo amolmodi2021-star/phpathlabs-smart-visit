@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { generateAndUploadCard, getTemplateAssets, type CardData } from "@/lib/cardRenderer";
 import { generateAbnormalCardForDrip as _sharedGenerateAbnormalCardForDrip } from "@/lib/dripCardSenders";
-import { makeRateGate } from "@/lib/marketingDelay";
+import { makeTokenBucket, sleepResilient } from "@/lib/marketingDelay";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
