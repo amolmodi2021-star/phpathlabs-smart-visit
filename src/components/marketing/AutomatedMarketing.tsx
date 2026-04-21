@@ -1133,6 +1133,7 @@ const AutomatedMarketing = () => {
         payload,
       };
       try {
+        await rateGate.acquire();
         const proxyRes = await supabase.functions.invoke("whatsapp-proxy", {
           body: { apiBaseUrl, apiKey, authHeaderName, authHeaderPrefix, payload },
         });
