@@ -1335,53 +1335,62 @@ const AutomatedMarketing = () => {
             }
             const staticExpiryDate = cfg["abnormal_static_expiry_date"] || "";
 
-            for (let i = 0; i < preview.records.length; i++) {
-              if (_checkAbort()) break outer;
-              await _waitWhilePaused();
-              if (_checkAbort()) break outer;
-              const r = preview.records[i];
-              try {
-                const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
-                _setSendPhase(`Filter ${filterIndex} of ${totalFilters}: ${filter.name} — Abnormal ${i + 1}/${preview.records.length} → ${r.patient_name || mob}`);
+            // Bounded worker pool — see ABC branch for details.
+            {
+              const records = preview.records;
+              const total = records.length;
+              let nextIdx = 0;
+              let aborted = false;
+              const worker = async () => {
+                while (true) {
+                  if (_checkAbort()) { aborted = true; return; }
+                  await _waitWhilePaused();
+                  if (_checkAbort()) { aborted = true; return; }
+                  const i = nextIdx++;
+                  if (i >= total) return;
+                  const r = records[i];
+                  try {
+                    const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
+                    _setSendPhase(`Filter ${filterIndex} of ${totalFilters}: ${filter.name} — Abnormal ${i + 1}/${total} → ${r.patient_name || mob}`);
 
-                const { data: tests } = await supabase
-                  .from("crm_abnormal_tests").select("*").eq("contact_primary_key", r.primary_key).order("test_name");
-                if (!tests || tests.length === 0) {
-                  await logDripAction(filter, r, "skipped", "no_abnormal_history");
-                  totalSkipped++; processedCount++;
-                  _setSendProgress(Math.round((processedCount / totalMessages) * 100));
-                  continue;
-                }
-                const imageUrl = includeMediaHeader
-                  ? await generateAbnormalCardForDrip(r, tests, abnTemplate, staticExpiryDate)
-                  : null;
+                    const { data: tests } = await supabase
+                      .from("crm_abnormal_tests").select("*").eq("contact_primary_key", r.primary_key).order("test_name");
+                    if (!tests || tests.length === 0) {
+                      await logDripAction(filter, r, "skipped", "no_abnormal_history");
+                      totalSkipped++; processedCount++;
+                      _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+                      continue;
+                    }
+                    const imageUrl = includeMediaHeader
+                      ? await generateAbnormalCardForDrip(r, tests, abnTemplate, staticExpiryDate)
+                      : null;
 
-                const components: Record<string, unknown> = {};
-                if (includeMediaHeader && imageUrl) {
-                  components.header = { type: "image", image: { link: imageUrl } };
+                    const components: Record<string, unknown> = {};
+                    if (includeMediaHeader && imageUrl) {
+                      components.header = { type: "image", image: { link: imageUrl } };
+                    }
+                    components.body = { params: [(r.patient_name || "").toUpperCase()] };
+                    const payload: Record<string, unknown> = {
+                      from: fromNumber, to: `+91${mob}`, templateName,
+                      campaignName, type: "template", components,
+                    };
+                    const ok = await callProxyAndLog(
+                      payload, apiBaseUrl, apiKey, headerName, headerPrefix,
+                      r, filter, "Abnormal History", { last_sent_type: "Abnormal History" },
+                    );
+                    if (ok) totalSent++; else totalFailed++;
+                    processedCount++;
+                    _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+                  } catch (recErr) {
+                    console.error("[record_error]", recErr);
+                    await logDiagnostic(filter, r, "record_error", String((recErr as Error)?.message || recErr));
+                    totalFailed++; processedCount++;
+                    _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+                  }
                 }
-                components.body = { params: [(r.patient_name || "").toUpperCase()] };
-                const payload: Record<string, unknown> = {
-                  from: fromNumber, to: `+91${mob}`, templateName,
-                  campaignName, type: "template", components,
-                };
-                const ok = await callProxyAndLog(
-                  payload, apiBaseUrl, apiKey, headerName, headerPrefix,
-                  r, filter, "Abnormal History", { last_sent_type: "Abnormal History" },
-                );
-                if (ok) totalSent++; else totalFailed++;
-                processedCount++;
-                _setSendProgress(Math.round((processedCount / totalMessages) * 100));
-                if (delayMs > 0 && (i < preview.records.length - 1)) {
-                  await new Promise((r) => setTimeout(r, delayMs));
-                }
-              } catch (recErr) {
-                console.error("[record_error]", recErr);
-                await logDiagnostic(filter, r, "record_error", String((recErr as Error)?.message || recErr));
-                totalFailed++; processedCount++;
-                _setSendProgress(Math.round((processedCount / totalMessages) * 100));
-                continue;
-              }
+              };
+              await Promise.all(Array.from({ length: Math.min(concurrency, Math.max(1, total)) }, () => worker()));
+              if (aborted) break outer;
             }
           } else if (filter.message_type === "promotion") {
             if (!filter.template_id) {
