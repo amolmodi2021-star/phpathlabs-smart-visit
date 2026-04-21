@@ -89,7 +89,8 @@ export async function logEvent(
     | "verification_failed"
     | "download_attempted"
     | "downloaded"
-    | "blocked_due_pending",
+    | "blocked_due_pending"
+    | "shared_whatsapp",
   sessionId?: string,
   metadata?: Record<string, any>
 ) {
