@@ -1,55 +1,61 @@
 
 
+# Reduce ABC/Abnormal Card Egress — JPEG Optimization (Phase 1)
+
 ## Goal
-Clarify what "Run Cleanup" can and should remove from `loyalty-cards`, and add a one-click way to nuke the reusable asset folders (`logos/`, `backgrounds/`) when you want a true zero-byte bucket.
 
-## Current state (verified against storage.objects)
-The `loyalty-cards` bucket holds only **5 files / 230 kB**:
-- `logos/abnormal_<ts>.png` × 4  (cached lab logo renders)
-- `backgrounds/<ts>.png` × 1  (cached campaign background)
+Cut WhatsApp image egress by ~55% with a tiny code change. Stays compatible with AOC's URL-based image header (the only option AOC supports per their public docs).
 
-All previous campaign output (`generated/<UUID>/<file>.png`, the 118 files that were 54 MB) is already deleted by the last cleanup run.
+## Why this is the right move now
 
-The `logos/` and `backgrounds/` files are **reusable assets** — re-uploaded automatically the next time a card is generated. Nothing is broken. The dashboard `54 MB` figure was a stale snapshot.
+AOC's documented WhatsApp template API only accepts `image: { link: "https://..." }` — there is **no media upload endpoint** in their public docs. So we cannot eliminate egress while staying on AOC. The next-best lever is making each JPEG significantly smaller. Combined with the existing daily cleanup cron, this keeps storage flat and slashes egress.
 
-## Why "Run Cleanup" leaves them
-By design, `cleanup-card-images` only walks `generated/` (the per-campaign output folder). `logos/` and `backgrounds/` are intentionally preserved to avoid re-uploading the same logo on every send.
+## Changes
 
-## Fix — three small additions
+### 1. `src/lib/cardRenderer.ts` — `generateAndUploadCard()`
 
-### 1. Expand the cleanup walker
-Update `cleanup-card-images/index.ts` to ALSO walk `logos/` and `backgrounds/` with the same 6-hour age filter. Files older than 6h get removed; the next card send re-creates them on demand. Same safety profile as `generated/`.
+Before calling `canvas.toBlob`, downscale the canvas to a max width of 800px (preserving aspect ratio), then export at JPEG quality 0.72 instead of 0.85.
 
-### 2. Show the real bucket size on the dashboard
-The Cloud Usage dashboard reads from a snapshot RPC `get_cloud_usage_stats`. Confirm the **Refresh** button on the page top forces a re-fetch (it should — but verify after the cleanup is rerun the number drops to ~0 kB).
-
-### 3. Add an explicit "Purge ALL" override for loyalty-cards
-For the rare case you want to wipe even fresh assets: enable the existing **Purge** button (currently shown only for `report-uploads`) for `loyalty-cards` too. It already uses the password-gated `purge-bucket` edge function.
-
-In `src/lib/cloudUsage.ts`, add `loyalty-cards` to `ORPHAN_BUCKETS`:
-```ts
-export const ORPHAN_BUCKETS = new Set(["report-uploads", "loyalty-cards"]);
+```text
+- toBlob(..., "image/jpeg", 0.85)
++ resize-canvas-to-max-800px-width
++ toBlob(..., "image/jpeg", 0.72)
 ```
-Then `StorageBreakdown.tsx` will render the red **Purge** button next to it automatically.
 
-## Files
+Implementation: render at full resolution onto the existing canvas (so placeholder math stays correct), then copy to a smaller off-screen canvas at the target width before exporting. This preserves all positioning logic and only affects the output file.
 
-### Edit
-- `supabase/functions/cleanup-card-images/index.ts` — add `logos` and `backgrounds` to the top-level folder list (one-line change to the `topFolders` array on line 113).
-- `src/lib/cloudUsage.ts` — add `"loyalty-cards"` to `ORPHAN_BUCKETS` so the **Purge** button appears.
+### 2. `src/components/LoyaltyCardSender.tsx` — `renderCard()` / on-screen render path
 
-### No changes
-- `purge-bucket` function (already handles arbitrary buckets).
-- Dashboard UI (button auto-renders for any orphan bucket).
-- Cron schedule.
+Same two changes (resize to 800px max, quality 0.72) applied to the in-component renderer used for ABC sends.
 
-## Verify after
-1. Click **Run Cleanup Now** on `loyalty-cards` → 4 logos + 1 background removed (they're all >6h old).
-2. Refresh dashboard → bucket shows 0 files / 0 B.
-3. Send any abnormal/loyalty card from the app → logos/backgrounds re-cached automatically (verify card renders correctly).
-4. **Purge** button now visible for `loyalty-cards` for emergency use.
+### 3. `src/lib/dripCardSenders.ts` — abnormal card render path
 
-## Out of scope
-- No changes to card-rendering logic.
-- No retention-window changes (still 6 hours — safe for in-flight WhatsApp deliveries).
+Same two changes for the drip engine's abnormal card flow.
+
+## Expected impact (5,000/day baseline)
+
+| Metric | Today | After Phase 1 |
+|---|---|---|
+| JPEG size | ~80 KB | ~35 KB |
+| Daily storage write | ~400 MB | ~175 MB |
+| Monthly egress (WhatsApp fetches) | ~12 GB | ~5 GB |
+
+At 80,000/day this scales linearly: monthly egress drops from ~190 GB to ~85 GB.
+
+## Out of scope (deferred)
+
+- **WhatsApp media upload (Option A)** — not supported by AOC per current public docs. If you confirm with AOC support that they offer an undocumented `/media` endpoint, we add it as Phase 2 and egress drops to ~0.
+- **Cloudinary migration** — only worthwhile if Supabase egress costs become painful after Phase 1 measurements. Not justified at current volume.
+- **BSP switch** — large migration, only consider if 80k/day economics demand it AND AOC confirms no media upload.
+
+## Verification after deploy
+
+1. Send 5 test ABC cards via the existing flow.
+2. Open the public URL of one and inspect: file should be ~30–40 KB and visually identical (text crisp, barcode scannable).
+3. Confirm the card displays correctly when delivered to a test WhatsApp number.
+4. Check `loyalty-cards` bucket in Cloud Usage — daily growth should drop ~55%.
+
+## Action item for you (parallel to this work)
+
+Email AOC support: *"Does your WhatsApp API support uploading media to receive a reusable media_id, as an alternative to sending `image.link` URLs?"* If yes, we plan Phase 2.
 
