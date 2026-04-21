@@ -738,6 +738,17 @@ const ReviewReport = () => {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Review Extracted Data</h1>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={async () => {
+              setQueueRunning(true);
+              try { await triggerReportQueue(); } finally { setQueueRunning(false); }
+            }}
+            disabled={queueRunning}
+          >
+            {queueRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
+            Process Queue Now
+          </Button>
           <Button variant="outline" onClick={() => navigate("/reports")}>Cancel</Button>
           <Button onClick={handleSaveAndGenerate} disabled={saving}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileCheck className="h-4 w-4 mr-2" />}
