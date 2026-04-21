@@ -171,34 +171,65 @@ const PatientReportPortal = () => {
     };
   }, [state.kind, token]);
 
-  // Load full status data
+  // Load full status data + siblings + departments + abnormal + previous
   useEffect(() => {
     if (state.kind !== "ready") return;
     (async () => {
       setLoadingData(true);
       try {
-        const regId = state.registration.id;
-        const [{ data: results }, { data: tubes }, { data: snips }, { data: testsData }] =
-          await Promise.all([
-            supabase
-              .from("patient_results")
-              .select("test_id, status, entered_at, verified_at, approved_at, dispatched_at")
-              .eq("registration_id", regId),
-            supabase
-              .from("sample_tubes" as any)
-              .select("test_ids, collected_at, accepted_at")
-              .eq("registration_id", regId),
-            supabase
-              .from("outsourced_test_snips")
-              .select("test_id, outsource_status, sent_at, updated_at")
-              .eq("registration_id", regId),
-            supabase.from("tests").select("id, test_name"),
-          ]);
+        const reg = state.registration;
+        const siblings = await fetchSiblingRegistrations(reg.umr_number, reg.created_at);
+        // Ensure current registration is included even if filter missed it.
+        const aggregated = (() => {
+          const map = new Map<string, any>();
+          siblings.forEach((s) => map.set(s.id, s));
+          map.set(reg.id, reg);
+          return Array.from(map.values()).sort((a, b) =>
+            (a.created_at || "").localeCompare(b.created_at || ""),
+          );
+        })();
+        const regIds = aggregated.map((r) => r.id);
+
+        const [
+          { data: results },
+          { data: tubes },
+          { data: snips },
+          { data: testsData },
+          deptMap,
+          abnormal,
+          previous,
+        ] = await Promise.all([
+          supabase
+            .from("patient_results")
+            .select("registration_id, test_id, status, entered_at, verified_at, approved_at, dispatched_at")
+            .in("registration_id", regIds),
+          supabase
+            .from("sample_tubes" as any)
+            .select("registration_id, test_ids, collected_at, accepted_at")
+            .in("registration_id", regIds),
+          supabase
+            .from("outsourced_test_snips")
+            .select("registration_id, test_id, outsource_status, sent_at, updated_at")
+            .in("registration_id", regIds),
+          supabase.from("tests").select("id, test_name"),
+          fetchDepartmentMap(),
+          fetchAbnormalForUmr(reg.umr_number),
+          fetchPreviousApprovedReports(reg.umr_number, regIds),
+        ]);
         const testsMap: Record<string, any> = {};
         (testsData || []).forEach((t: any) => {
           testsMap[t.id] = t;
         });
-        setData({ results: results || [], tubes: tubes || [], snips: snips || [], testsMap });
+        setData({
+          aggregated,
+          results: results || [],
+          tubes: tubes || [],
+          snips: snips || [],
+          testsMap,
+          deptMap,
+          abnormal,
+          previous,
+        });
       } finally {
         setLoadingData(false);
       }
