@@ -2839,6 +2839,66 @@ export type Database = {
         }
         Relationships: []
       }
+      report_link_events: {
+        Row: {
+          event_type: string
+          id: string
+          ip_hash: string | null
+          metadata: Json | null
+          occurred_at: string
+          session_id: string | null
+          token: string
+          user_agent: string | null
+        }
+        Insert: {
+          event_type: string
+          id?: string
+          ip_hash?: string | null
+          metadata?: Json | null
+          occurred_at?: string
+          session_id?: string | null
+          token: string
+          user_agent?: string | null
+        }
+        Update: {
+          event_type?: string
+          id?: string
+          ip_hash?: string | null
+          metadata?: Json | null
+          occurred_at?: string
+          session_id?: string | null
+          token?: string
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
+      report_link_sessions: {
+        Row: {
+          id: string
+          last_heartbeat_at: string
+          session_id: string
+          started_at: string
+          token: string
+          total_dwell_seconds: number
+        }
+        Insert: {
+          id?: string
+          last_heartbeat_at?: string
+          session_id: string
+          started_at?: string
+          token: string
+          total_dwell_seconds?: number
+        }
+        Update: {
+          id?: string
+          last_heartbeat_at?: string
+          session_id?: string
+          started_at?: string
+          token?: string
+          total_dwell_seconds?: number
+        }
+        Relationships: []
+      }
       report_profiles: {
         Row: {
           analyzer: string | null
@@ -2900,6 +2960,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      report_share_links: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          expires_at: string
+          id: string
+          invoice_number: string | null
+          registration_id: string
+          token: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string
+          id?: string
+          invoice_number?: string | null
+          registration_id: string
+          token: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string
+          id?: string
+          invoice_number?: string | null
+          registration_id?: string
+          token?: string
+        }
+        Relationships: []
       }
       report_templates: {
         Row: {

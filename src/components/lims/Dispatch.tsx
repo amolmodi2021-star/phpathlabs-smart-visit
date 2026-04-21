@@ -283,10 +283,22 @@ const Dispatch = () => {
 
   const selectedEntry = useMemo(() => sortedDispatchEntries.find(e => e.registration.id === selectedPatientId) || null, [sortedDispatchEntries, selectedPatientId]);
 
-  const dispatchViaWhatsApp = (reg: any) => {
+  const dispatchViaWhatsApp = async (reg: any) => {
     const phone = (reg.mobile_number || "").replace(/\D/g, "");
     if (!phone) { toast.error("No mobile number available"); return; }
-    const message = `Dear ${reg.patient_name},\n\nYour lab reports for Invoice ${reg.invoice_number} are ready.\n\nThank you for choosing PH PathLabs.\nLabLine: 6356 55 66 99`;
+    let portalUrl = "";
+    try {
+      const { createShareLink } = await import("@/lib/reportShareLinks");
+      const created = await createShareLink(reg.id, reg.invoice_number, getCurrentUserName());
+      portalUrl = created.url;
+    } catch (e: any) {
+      console.error("Failed to create share link", e);
+      toast.error("Couldn't generate report link, sending without it");
+    }
+    const linkLine = portalUrl
+      ? `\n\nView status & download:\n${portalUrl}\n(Link valid for 7 days)`
+      : "";
+    const message = `Dear ${reg.patient_name},\n\nYour lab reports for Invoice ${reg.invoice_number} are ready.${linkLine}\n\nThank you for choosing PH PathLabs.\nLabLine: 6356 55 66 99`;
     window.open(`https://wa.me/91${phone}?text=${encodeURIComponent(message)}`, "_blank");
   };
 
