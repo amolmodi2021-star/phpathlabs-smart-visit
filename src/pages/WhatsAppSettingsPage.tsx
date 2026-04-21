@@ -28,6 +28,7 @@ const GlobalApiSettings = () => {
   const [fromNumber, setFromNumber] = useState("");
   const [queueEnabled, setQueueEnabled] = useState(true);
   const [delayMs, setDelayMs] = useState(3000);
+  const [concurrency, setConcurrency] = useState(5);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
