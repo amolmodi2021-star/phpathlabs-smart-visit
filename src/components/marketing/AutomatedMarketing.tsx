@@ -1133,10 +1133,15 @@ const AutomatedMarketing = () => {
         payload,
       };
       try {
-        await rateGate.acquire();
-        const proxyRes = await supabase.functions.invoke("whatsapp-proxy", {
-          body: { apiBaseUrl, apiKey, authHeaderName, authHeaderPrefix, payload },
-        });
+        await rateGate.take();
+        const proxyRes: any = await Promise.race([
+          supabase.functions.invoke("whatsapp-proxy", {
+            body: { apiBaseUrl, apiKey, authHeaderName, authHeaderPrefix, payload },
+          }),
+          new Promise((_, rej) =>
+            setTimeout(() => rej(new Error("proxy_timeout_45s")), 45000)
+          ),
+        ]);
         const proxyData: any = proxyRes.data;
         const apiOk = !proxyRes.error && (proxyData?.status ?? 200) < 400;
         const messageId = extractMessageId(proxyData);
