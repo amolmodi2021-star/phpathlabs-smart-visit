@@ -17,9 +17,60 @@ import {
   getTemplateAssets,
   exportCanvasAsCompressedJpeg,
   type CardData,
+  type CardFailureReason,
 } from "@/lib/cardRenderer";
 import { sortAbnormalTestsByDateDesc } from "@/lib/abnormalTests";
 import { extractMessageId } from "@/lib/messageLog";
+
+export type AbnormalCardFailureReason = CardFailureReason;
+export interface AbnormalCardResult {
+  url: string | null;
+  reason?: AbnormalCardFailureReason;
+}
+
+function classifyAbnormalUploadError(err: unknown): AbnormalCardFailureReason {
+  const msg = String((err as { message?: string })?.message || err || "").toLowerCase();
+  if (msg.includes("exist") || msg.includes("duplicate")) return "upload_collision";
+  if (/\b(5\d\d|429|timeout|network|fetch)\b/.test(msg)) return "upload_5xx";
+  return "upload_failed";
+}
+
+function freshAbnormalFileName() {
+  const uuid = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+  return `generated/abnormal/${Date.now()}_${uuid}.jpg`;
+}
+
+async function uploadAbnormalWithRetry(
+  blobFn: () => Promise<Blob>,
+  initialPath: string,
+): Promise<{ path: string }> {
+  let path = initialPath;
+  let lastReason: AbnormalCardFailureReason = "upload_failed";
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const blob = await blobFn();
+      const { error } = await supabase.storage
+        .from("loyalty-cards")
+        .upload(path, blob, { contentType: "image/jpeg" });
+      if (!error) return { path };
+      lastErr = error;
+      lastReason = classifyAbnormalUploadError(error);
+      if (lastReason === "upload_collision") path = freshAbnormalFileName();
+    } catch (e) {
+      lastErr = e;
+      const msg = String((e as Error)?.message || e || "");
+      lastReason = msg === "toblob_null" ? "toblob_null" : classifyAbnormalUploadError(e);
+    }
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 250 * Math.pow(3, attempt)));
+  }
+  const tagged = new Error(lastReason) as Error & { reason: AbnormalCardFailureReason };
+  tagged.reason = lastReason;
+  (tagged as { cause?: unknown }).cause = lastErr;
+  throw tagged;
+}
 
 export interface DripContact {
   id?: string;
