@@ -2785,30 +2785,6 @@ export type Database = {
           },
         ]
       }
-      raw_report_data: {
-        Row: {
-          id: string
-          raw_json: Json | null
-          report_id: string | null
-          umr_id: string | null
-          upload_date: string | null
-        }
-        Insert: {
-          id?: string
-          raw_json?: Json | null
-          report_id?: string | null
-          umr_id?: string | null
-          upload_date?: string | null
-        }
-        Update: {
-          id?: string
-          raw_json?: Json | null
-          report_id?: string | null
-          umr_id?: string | null
-          upload_date?: string | null
-        }
-        Relationships: []
-      }
       report_departments: {
         Row: {
           created_at: string | null

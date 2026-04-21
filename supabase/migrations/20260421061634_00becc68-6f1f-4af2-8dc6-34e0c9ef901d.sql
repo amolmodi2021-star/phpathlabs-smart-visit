@@ -1,0 +1,1 @@
+DROP TABLE IF EXISTS public.raw_report_data CASCADE;
