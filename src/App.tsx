@@ -42,6 +42,15 @@ function ProtectedRoute({ children, route }: { children: React.ReactNode; route?
   return <AppLayout>{children}</AppLayout>;
 }
 
+function LimsReportRouteGuard() {
+  // Allow access with valid ?public=<token> for patient downloads, otherwise require auth
+  const hasPublicToken = new URLSearchParams(window.location.search).get("public");
+  if (hasPublicToken) return <LimsReportView />;
+  if (!isAuthenticated()) return <Navigate to="/login" replace />;
+  if (!isTabAllowed("/lims")) return <Navigate to={getFirstAllowedRoute()} replace />;
+  return <AppLayout><LimsReportView /></AppLayout>;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
