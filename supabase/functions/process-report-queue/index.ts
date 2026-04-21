@@ -47,6 +47,20 @@ serve(async (req) => {
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   try {
+    // FAST EARLY-EXIT: count pending rows with head:true (no row data fetched, ~5ms).
+    // Keeps on-demand calls cheap when the queue is empty.
+    const { count: pendingCount } = await supabase
+      .from("uploaded_reports")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "Pending");
+
+    if ((pendingCount ?? 0) === 0) {
+      return new Response(
+        JSON.stringify({ message: "No pending reports", processed: false, remainingPending: 0 }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Reset reports stuck in "Processing" for > 10 minutes
     const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
     await supabase
@@ -67,7 +81,7 @@ serve(async (req) => {
     if (fetchErr) throw fetchErr;
 
     if (!pending) {
-      return new Response(JSON.stringify({ message: "No pending reports", processed: false }), {
+      return new Response(JSON.stringify({ message: "No pending reports", processed: false, remainingPending: 0 }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
