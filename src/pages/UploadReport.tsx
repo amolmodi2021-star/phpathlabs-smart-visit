@@ -16,7 +16,8 @@ const UploadReport = () => {
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
   const [recentReports, setRecentReports] = useState<any[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  
+  const [processingNow, setProcessingNow] = useState(false);
+
   const { toast } = useToast();
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const triggerRef = useRef(false);
@@ -158,7 +159,6 @@ const UploadReport = () => {
   const pendingCount = recentReports.filter(r => r.status === "Pending").length;
   const processingCount = recentReports.filter(r => r.status === "Processing").length;
 
-  const [processingNow, setProcessingNow] = useState(false);
   const handleProcessNow = async () => {
     setProcessingNow(true);
     try {
