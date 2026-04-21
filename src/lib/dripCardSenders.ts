@@ -15,6 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   generateAndUploadCard,
   getTemplateAssets,
+  exportCanvasAsCompressedJpeg,
   type CardData,
 } from "@/lib/cardRenderer";
 import { sortAbnormalTestsByDateDesc } from "@/lib/abnormalTests";
