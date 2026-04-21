@@ -1276,9 +1276,9 @@ const AutomatedMarketing = () => {
                       "Discount %": `${r.default_discount_pct ?? 20}%`, "Expiry Date": staticExpiryDate,
                     };
                     // Phase A: render + upload (overlaps with the previous send still in flight)
-                    const imageUrl = await generateAndUploadCard(templateId, cardData, bgImg, placeholders);
+                    const { url: imageUrl, reason: renderReason } = await generateAndUploadCardEx(templateId, cardData, bgImg, placeholders);
                     if (!imageUrl) {
-                      await logDripAction(filter, r, "failed", "card_generation_error");
+                      await logDripAction(filter, r, "failed", renderReason || "card_generation_error");
                       totalFailed++; processedCount++;
                       _setSendPhase(`Filter ${filterIndex} of ${totalFilters}: ${filter.name} — ABC ${i + 1}/${total} (render failed)`);
                       _setSendProgress(Math.round((processedCount / totalMessages) * 100));
