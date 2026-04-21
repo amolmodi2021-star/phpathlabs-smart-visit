@@ -1,112 +1,88 @@
 
 
-# Make Automated Marketing send continuously (no batched freezes)
+# Fix "RENDER FAILED" status during high-concurrency sends
 
-## What you're seeing and why
+## Why it happens
 
-With concurrency=10 + delay=0, the first 10 messages fire in a flash, then the progress bar freezes for several seconds, then 10 more fire, repeat. 50 messages take 3–4 minutes — about 4 seconds per message — which is far too slow for "no delay" mode.
+Every "render failed" message comes from `generateAndUploadCard()` (or its abnormal-card twin in `dripCardSenders.ts`) returning `null`. Three concrete failure modes show up under concurrency 10:
 
-Two concrete defects in the current code cause this:
+1. **Filename collisions in storage.** Both renderers pick file names like:
+   ```
+   generated/crm/${Date.now()}_${Math.random().toString(36).slice(2, 6)}.jpg
+   ```
+   That's a millisecond timestamp + only **4** random base36 chars (~1.7 million combinations). With 10 workers uploading inside the same millisecond, birthday-paradox collisions happen often. Supabase Storage rejects the duplicate (`The resource already exists`), the renderer catches it, returns `null`, and the UI prints "render failed".
+2. **Transient storage errors.** Any 5xx, network blip, or rate-limit response from Supabase Storage during `.upload(...)` aborts the render with no retry — single failure = "render failed".
+3. **`canvas.toBlob` returning null** under brief memory pressure (many canvases in flight) — also a single-shot failure with no retry.
 
-1. **All ABC-card workers share ONE canvas.** `getTemplateAssets()` builds a single `<canvas>` + `ctx` object and the worker pool re-uses it. When 10 workers try to render at once they overwrite each other's pixels and serialize on `canvas.toBlob()`, so the "parallel" pool is effectively a queue of one. This is also a correctness bug — under load you can ship a card with another patient's data drawn on top.
-2. **Render + upload run inside the worker, blocking the next send.** Each worker does fetch tests → draw card → upload to storage → call WhatsApp → repeat. The WhatsApp call is fast; the render+upload is the slow part (~3–4 s combined). So between bursts of API calls, the entire pool is busy on render+upload — that's the freeze.
-
-There is no need for an Edge Function queue or DB-backed background worker — the freezes are pure client-side pipeline issues that can be fixed in the browser.
+None of these are "the render is broken" — they're all single transient errors with no retry/backoff.
 
 ## What you'll see after the fix
 
-1. Click Send → progress ticks up **smoothly and continuously** (1, 2, 3, …) with no multi-second freezes between batches.
-2. With concurrency=10, delay=0: 50 messages complete in roughly **30–60 s** instead of 3–4 minutes (≈10× faster), depending on network speed to storage and the WhatsApp proxy.
-3. ABC cards no longer risk cross-patient pixel contamination — each card renders on its own canvas.
-4. All other behaviour unchanged: Pause / Stop / Trial mode / Retry / per-record logging / progress bar / phase indicator / 45 s timeout / token-bucket pacing for non-zero delays / abort flag.
+1. "Render failed" disappears from normal operation. You'll only see it for genuine, persistent errors (e.g. malformed template, network down for 10+ seconds).
+2. Total throughput at concurrency=10, delay=0 is unchanged or slightly better (failed records no longer waste a slot).
+3. Failures that *do* occur are logged with the specific reason (`upload_collision`, `upload_5xx`, `toblob_null`) in `drip_action_log` so they're debuggable instead of opaque.
+4. No behaviour change for sequential / low-concurrency sends.
 
 ## Technical changes
 
-### 1. Per-worker canvas for ABC cards (`src/lib/cardRenderer.ts`)
+### 1. Stronger unique filenames (`src/lib/cardRenderer.ts`, `src/lib/dripCardSenders.ts`)
 
-Stop sharing one canvas across workers. Two small additions:
-
-- Modify `getTemplateAssets()` to return only the **immutable** assets: `bgImg` (already a decoded `HTMLImageElement` — safe to draw from concurrently) and `placeholders`. Drop `canvas`/`ctx` from the return shape.
-- Modify `generateAndUploadCard()` to **create its own canvas** internally each call:
+Replace the weak `Date.now() + 4 base36 chars` with a collision-proof name using `crypto.randomUUID()`:
 
 ```typescript
-const canvas = document.createElement("canvas");
-canvas.width = bgImg.naturalWidth;
-canvas.height = bgImg.naturalHeight;
-const ctx = canvas.getContext("2d");
+const fileName = `generated/crm/${Date.now()}_${crypto.randomUUID()}.jpg`;
 ```
 
-This is what the Abnormal-card path already does — no race, no contamination, true parallelism. The CPU cost of one extra `createElement("canvas")` per send is negligible (microseconds vs. the ~100 ms render).
+`crypto.randomUUID()` is available in every modern browser, gives 122 bits of entropy, and makes collisions effectively impossible even at 1000 parallel uploads.
 
-Update the single ABC call-site in `AutomatedMarketing.tsx` to call `generateAndUploadCard(templateId, cardData, bgImg, placeholders)` (drop the `canvas`/`ctx` args). No other call-sites use these args.
+### 2. Bounded retry around `toBlob` + `upload` (both renderers)
 
-### 2. Pipeline: prefetch the next record while the current one's API call is in flight
-
-Inside each worker's loop in `AutomatedMarketing.tsx` (all three branches — ABC, Abnormal, Promotion), separate the work into two phases and overlap them:
-
-```text
-Worker iteration N:
-  ├─ phase A: render card + upload to storage   (CPU + network-out)
-  └─ phase B: callProxyAndLog                    (network-out)
-
-Today:  A → B → A → B → A → B …    (B blocks the next A)
-After:  A → B
-              ↘
-                A (next record starts as soon as previous B is dispatched)
-                   → B …
-```
-
-Concretely: each worker keeps a `pendingSend: Promise<void>` slot. After kicking off `callProxyAndLog(...)` (which now runs in the background as a promise), the worker **immediately** grabs the next record and starts its render+upload. Only when the *next* record's render is done does the worker `await pendingSend` to keep at most one in-flight API call per worker (so back-pressure still applies and aborts/pauses work). Pseudocode:
+Wrap the export + upload in a small retry helper (3 attempts, 250 ms / 750 ms backoff):
 
 ```typescript
-let pendingSend: Promise<void> | null = null;
-while (true) {
-  /* abort/pause checks unchanged */
-  const i = nextIdx++;
-  if (i >= total) break;
-  const r = records[i];
-
-  /* phase A: render + upload (sync within the worker) */
-  const imageUrl = await generateAndUploadCard(...);
-
-  /* wait for the previous send to finish before launching the next one */
-  if (pendingSend) { await pendingSend; pendingSend = null; }
-
-  /* phase B: launch the API call but don't block the next render */
-  pendingSend = callProxyAndLog(...).then((ok) => {
-    if (ok) totalSent++; else totalFailed++;
-    processedCount++;
-    _setSendProgress(Math.round((processedCount / totalMessages) * 100));
-  });
+async function uploadWithRetry(blobFn: () => Promise<Blob>, path: string): Promise<void> {
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const blob = await blobFn();                         // re-encodes if first toBlob returned null
+      const { error } = await supabase.storage
+        .from("loyalty-cards")
+        .upload(path, blob, { contentType: "image/jpeg" });
+      if (!error) return;
+      lastErr = error;
+      // Collision → mint a new path and retry; transient → just retry same path
+      if (String(error.message || "").toLowerCase().includes("exist")) {
+        path = path.replace(/[^/]+\.jpg$/, `${Date.now()}_${crypto.randomUUID()}.jpg`);
+      }
+    } catch (e) { lastErr = e; }
+    await new Promise(r => setTimeout(r, 250 * Math.pow(3, attempt)));   // 250ms, 750ms
+  }
+  throw lastErr ?? new Error("upload_failed");
 }
-if (pendingSend) await pendingSend;   // drain the last in-flight send
 ```
 
-This change alone roughly halves wall-clock time per worker because rendering and sending no longer alternate sequentially — they overlap.
+Same pattern is used inside `generateAndUploadCard` (ABC) and inside the abnormal-card sender in `src/lib/dripCardSenders.ts`.
 
-The token bucket inside `callProxyAndLog` still enforces the user-configured `delayMs` (so non-zero delays behave exactly as today), and the 45 s `Promise.race` timeout still protects against hung proxy calls.
+### 3. Better failure reasons in the diagnostic log (`src/components/marketing/AutomatedMarketing.tsx`)
 
-### 3. No changes to
+Currently every render failure logs the same generic `card_generation_error`. Make `generateAndUploadCard` and the abnormal sender throw / return a tagged reason (`upload_collision`, `upload_5xx`, `toblob_null`, `template_load_error`) so the drip action log captures *why* it failed. The UI status string stays user-friendly ("render failed"), but the underlying log row is now useful for future debugging.
 
-- `src/lib/marketingDelay.ts` (token bucket and `sleepResilient` already correct)
-- `src/pages/WhatsAppSettingsPage.tsx` (no new settings)
-- Edge functions, DB schema, RLS, cron jobs — none needed
-- Pause / Stop / Trial mode / Retry tab logic
-- Abnormal-card and Promotion branches' rendering — already per-call canvases / no canvas
+### 4. No changes to
+
+- Worker-pool / pipeline structure in `AutomatedMarketing.tsx` — already correct.
+- `marketingDelay.ts`, `useRealtimeSync.ts`, edge functions, DB schema, storage RLS, cron jobs.
 
 ### Files changed
 
-- `src/lib/cardRenderer.ts` — `getTemplateAssets` returns `{ bgImg, placeholders }`; `generateAndUploadCard` creates its own canvas internally.
-- `src/components/marketing/AutomatedMarketing.tsx` — update the one ABC call-site to the new signature; introduce the `pendingSend` pipeline pattern in all three worker loops; drain the final in-flight send before the pool exits.
+- `src/lib/cardRenderer.ts` — UUID filenames, `uploadWithRetry`, tagged error reasons.
+- `src/lib/dripCardSenders.ts` — same three changes for the abnormal-card path.
+- `src/components/marketing/AutomatedMarketing.tsx` — pass the tagged reason into `logDripAction(filter, r, "failed", reason)` for both ABC and Abnormal branches.
 
 ## Verification
 
-1. Concurrency=10, delay=0, send 50 ABC cards on a test number → progress moves smoothly (no 3–4 s freezes between groups of 10); total time drops from 3–4 min to under a minute.
-2. Concurrency=5, delay=3000 → behaves like today: ~3 s between sends, smooth ramp, no regression.
-3. Concurrency=1, any delay → strictly sequential, identical to today.
-4. Pause mid-send → all workers stop after their current render+send completes; resume picks up cleanly.
-5. Stop mid-send → all workers exit; no orphaned in-flight send is "lost" (each worker awaits its `pendingSend` on the abort path).
-6. Trial mode (3-message cap) → still caps at 3, no behaviour change.
-7. Send 20 cards to 20 different real patients → spot-check the uploaded card images in storage; each card shows the correct patient's name/UMR (proves the per-worker canvas fix).
-8. Force `whatsapp-proxy` to hang on one record → that record fails after 45 s with `proxy_timeout_45s`; other workers continue rendering+sending.
+1. Send 200 ABC cards at concurrency=10, delay=0 → no "render failed" in the status bar; `drip_action_log` shows 200 `success` rows.
+2. Manually point the storage URL at a bad host for 1 second mid-run → those records succeed on retry attempt 2 or 3 instead of failing.
+3. Force a duplicate filename (debug toggle) → the helper renames and succeeds; no failure surfaces.
+4. Disconnect storage entirely for >2 s → record fails after 3 retries with `upload_5xx` reason in the log; campaign continues with the rest.
+5. Concurrency=1, delay=3000 → identical behaviour to today.
 
