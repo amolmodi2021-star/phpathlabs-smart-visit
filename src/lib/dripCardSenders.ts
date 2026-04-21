@@ -17,9 +17,60 @@ import {
   getTemplateAssets,
   exportCanvasAsCompressedJpeg,
   type CardData,
+  type CardFailureReason,
 } from "@/lib/cardRenderer";
 import { sortAbnormalTestsByDateDesc } from "@/lib/abnormalTests";
 import { extractMessageId } from "@/lib/messageLog";
+
+export type AbnormalCardFailureReason = CardFailureReason;
+export interface AbnormalCardResult {
+  url: string | null;
+  reason?: AbnormalCardFailureReason;
+}
+
+function classifyAbnormalUploadError(err: unknown): AbnormalCardFailureReason {
+  const msg = String((err as { message?: string })?.message || err || "").toLowerCase();
+  if (msg.includes("exist") || msg.includes("duplicate")) return "upload_collision";
+  if (/\b(5\d\d|429|timeout|network|fetch)\b/.test(msg)) return "upload_5xx";
+  return "upload_failed";
+}
+
+function freshAbnormalFileName() {
+  const uuid = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+  return `generated/abnormal/${Date.now()}_${uuid}.jpg`;
+}
+
+async function uploadAbnormalWithRetry(
+  blobFn: () => Promise<Blob>,
+  initialPath: string,
+): Promise<{ path: string }> {
+  let path = initialPath;
+  let lastReason: AbnormalCardFailureReason = "upload_failed";
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const blob = await blobFn();
+      const { error } = await supabase.storage
+        .from("loyalty-cards")
+        .upload(path, blob, { contentType: "image/jpeg" });
+      if (!error) return { path };
+      lastErr = error;
+      lastReason = classifyAbnormalUploadError(error);
+      if (lastReason === "upload_collision") path = freshAbnormalFileName();
+    } catch (e) {
+      lastErr = e;
+      const msg = String((e as Error)?.message || e || "");
+      lastReason = msg === "toblob_null" ? "toblob_null" : classifyAbnormalUploadError(e);
+    }
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 250 * Math.pow(3, attempt)));
+  }
+  const tagged = new Error(lastReason) as Error & { reason: AbnormalCardFailureReason };
+  tagged.reason = lastReason;
+  (tagged as { cause?: unknown }).cause = lastErr;
+  throw tagged;
+}
 
 export interface DripContact {
   id?: string;
@@ -55,14 +106,15 @@ const CODE128_PATTERNS = [
 
 /**
  * Render an Abnormal History card (PNG) and upload to storage.
- * Returns the public image URL or null on failure.
+ * Returns `{ url, reason? }` — `url` is the public URL on success;
+ * `reason` is a tagged failure cause on failure (consumed by the drip log).
  */
-export async function generateAbnormalCardForDrip(
+export async function generateAbnormalCardForDripEx(
   contact: DripContact,
   tests: any[],
   template: any,
   expiryDate: string,
-): Promise<string | null> {
+): Promise<AbnormalCardResult> {
   try {
     const cw = template?.canvas_width || 900;
     const padding = 30;
@@ -82,7 +134,7 @@ export async function generateAbnormalCardForDrip(
     canvas.width = cw;
     canvas.height = height;
     const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
+    if (!ctx) return { url: null, reason: "ctx_error" };
 
     const bgColor = template?.background_color || "#FFFFFF";
     const headerBg = template?.header_bg_color || "#2E3192";
@@ -306,18 +358,37 @@ export async function generateAbnormalCardForDrip(
     }
 
     // Downscaled JPEG (max 800px width, q=0.72) — ~55% smaller than full PNG, slashes WhatsApp egress.
-    const blob = await exportCanvasAsCompressedJpeg(canvas);
-
-    const fileName = `generated/abnormal/${Date.now()}_${Math.random().toString(36).slice(2, 6)}.jpg`;
-    const { error: uploadError } = await supabase.storage.from("loyalty-cards").upload(fileName, blob, { contentType: "image/jpeg" });
-    if (uploadError) throw uploadError;
-
-    const { data: urlData } = supabase.storage.from("loyalty-cards").getPublicUrl(fileName);
-    return urlData.publicUrl;
+    // Bounded retry around toBlob + upload absorbs transient storage errors and
+    // birthday-paradox filename collisions under high concurrency.
+    const blobFn = async () => {
+      try {
+        return await exportCanvasAsCompressedJpeg(canvas);
+      } catch {
+        throw new Error("toblob_null");
+      }
+    };
+    const { path } = await uploadAbnormalWithRetry(blobFn, freshAbnormalFileName());
+    const { data: urlData } = supabase.storage.from("loyalty-cards").getPublicUrl(path);
+    return { url: urlData.publicUrl };
   } catch (err) {
-    console.error("Drip abnormal card generation failed:", err);
-    return null;
+    const reason = (err as { reason?: AbnormalCardFailureReason })?.reason || "upload_failed";
+    console.error(`Drip abnormal card generation failed (${reason}):`, err);
+    return { url: null, reason };
   }
+}
+
+/**
+ * Back-compat wrapper that returns just the URL (or null on failure). New code
+ * should prefer `generateAbnormalCardForDripEx` to surface the tagged failure reason.
+ */
+export async function generateAbnormalCardForDrip(
+  contact: DripContact,
+  tests: any[],
+  template: any,
+  expiryDate: string,
+): Promise<string | null> {
+  const { url } = await generateAbnormalCardForDripEx(contact, tests, template, expiryDate);
+  return url;
 }
 
 // =================== Senders for Retry ===================

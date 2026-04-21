@@ -3,8 +3,8 @@ import { logMessageSend, extractMessageId } from "@/lib/messageLog";
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { generateAndUploadCard, getTemplateAssets, type CardData } from "@/lib/cardRenderer";
-import { generateAbnormalCardForDrip as _sharedGenerateAbnormalCardForDrip } from "@/lib/dripCardSenders";
+import { generateAndUploadCard, generateAndUploadCardEx, getTemplateAssets, type CardData } from "@/lib/cardRenderer";
+import { generateAbnormalCardForDrip as _sharedGenerateAbnormalCardForDrip, generateAbnormalCardForDripEx } from "@/lib/dripCardSenders";
 import { makeTokenBucket, sleepResilient } from "@/lib/marketingDelay";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1276,9 +1276,9 @@ const AutomatedMarketing = () => {
                       "Discount %": `${r.default_discount_pct ?? 20}%`, "Expiry Date": staticExpiryDate,
                     };
                     // Phase A: render + upload (overlaps with the previous send still in flight)
-                    const imageUrl = await generateAndUploadCard(templateId, cardData, bgImg, placeholders);
+                    const { url: imageUrl, reason: renderReason } = await generateAndUploadCardEx(templateId, cardData, bgImg, placeholders);
                     if (!imageUrl) {
-                      await logDripAction(filter, r, "failed", "card_generation_error");
+                      await logDripAction(filter, r, "failed", renderReason || "card_generation_error");
                       totalFailed++; processedCount++;
                       _setSendPhase(`Filter ${filterIndex} of ${totalFilters}: ${filter.name} — ABC ${i + 1}/${total} (render failed)`);
                       _setSendProgress(Math.round((processedCount / totalMessages) * 100));
@@ -1386,9 +1386,15 @@ const AutomatedMarketing = () => {
                       continue;
                     }
                     // Phase A: render (overlaps with the previous send still in flight)
-                    const imageUrl = includeMediaHeader
-                      ? await generateAbnormalCardForDrip(r, tests, abnTemplate, staticExpiryDate)
-                      : null;
+                    let imageUrl: string | null = null;
+                    if (includeMediaHeader) {
+                      const renderRes = await generateAbnormalCardForDripEx(r, tests, abnTemplate, staticExpiryDate);
+                      imageUrl = renderRes.url;
+                      if (!imageUrl && renderRes.reason) {
+                        // Render failed but we still attempt the text-only send below; log the cause for diagnostics.
+                        await logDiagnostic(filter, r, "abnormal_render_failed", renderRes.reason);
+                      }
+                    }
 
                     const components: Record<string, unknown> = {};
                     if (includeMediaHeader && imageUrl) {
@@ -1587,6 +1593,12 @@ const AutomatedMarketing = () => {
       wa_api_error: "WA API Error",
       wa_exception: "WA Exception",
       card_generation_error: "Card Generation Error",
+      upload_collision: "Upload Collision (retried)",
+      upload_5xx: "Storage 5xx / Network",
+      upload_failed: "Upload Failed",
+      toblob_null: "Canvas Encode Failed",
+      ctx_error: "Canvas Context Error",
+      abnormal_render_failed: "Abnormal Render Failed (sent text-only)",
       no_template: "No Template",
       template_load_error: "Template Load Error",
       completion_lock: "Locked by Higher Priority",
