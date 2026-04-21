@@ -6,11 +6,15 @@ const corsHeaders = {
 };
 
 // Per-table retention windows (days). Tune here.
+//
+// NOTE: Abnormal tables (crm_abnormal_tests, abnormal_history) are intentionally
+// NEVER pruned — they are required for long-term clinical analytics.
 const RETENTION = [
   { table: "message_send_log", column: "sent_at", days: 180 },
   { table: "drip_campaign_log", column: "created_at", days: 90 },
   { table: "lims_interface_logs", column: "created_at", days: 90 },
   { table: "app_user_login_history", column: "login_at", days: 365 },
+  { table: "webhook_messages", column: "created_at", days: 90 },
 ];
 
 Deno.serve(async (req) => {
