@@ -29,8 +29,19 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import TestStatusTimeline from "@/components/report/TestStatusTimeline";
+import AbnormalHistorySection from "@/components/report/AbnormalHistorySection";
+import PreviousReportsSection from "@/components/report/PreviousReportsSection";
 import { cn } from "@/lib/utils";
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
+import {
+  fetchSiblingRegistrations,
+  fetchDepartmentMap,
+  fetchAbnormalForUmr,
+  fetchPreviousApprovedReports,
+} from "@/lib/portalAggregation";
+
+const LAB_PHONE = "+916356556699";
+const LAB_PHONE_DISPLAY = "6356 55 66 99";
 
 type LinkState =
   | { kind: "loading" }
