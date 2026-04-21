@@ -113,24 +113,95 @@ export interface CardData {
 }
 
 /**
- * Generate a loyalty card image, upload to storage, insert into loyalty_cards table.
- * Returns the public URL of the generated image, or null on failure.
+ * Tagged error reasons surfaced from card generation. Used by the diagnostic
+ * log in AutomatedMarketing so failures are debuggable instead of opaque.
+ */
+export type CardFailureReason =
+  | "ctx_error"
+  | "toblob_null"
+  | "upload_collision"
+  | "upload_5xx"
+  | "upload_failed"
+  | "template_load_error";
+
+export interface GenerateCardResult {
+  url: string | null;
+  reason?: CardFailureReason;
+}
+
+function classifyUploadError(err: unknown): CardFailureReason {
+  const msg = String((err as { message?: string })?.message || err || "").toLowerCase();
+  if (msg.includes("exist") || msg.includes("duplicate")) return "upload_collision";
+  if (/\b(5\d\d|429|timeout|network|fetch)\b/.test(msg)) return "upload_5xx";
+  return "upload_failed";
+}
+
+function freshFileName() {
+  const uuid = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+  return `generated/crm/${Date.now()}_${uuid}.jpg`;
+}
+
+/**
+ * Upload a freshly-encoded JPEG with bounded retries. The blob is re-encoded
+ * each attempt so a transient `toBlob` null doesn't kill the whole record.
+ * On a duplicate-name collision (birthday paradox under concurrency), the path
+ * is regenerated. Other transient errors retry the same path.
+ */
+async function uploadWithRetry(
+  blobFn: () => Promise<Blob>,
+  initialPath: string,
+): Promise<{ path: string }> {
+  let path = initialPath;
+  let lastErr: unknown = null;
+  let lastReason: CardFailureReason = "upload_failed";
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const blob = await blobFn();
+      const { error } = await supabase.storage
+        .from("loyalty-cards")
+        .upload(path, blob, { contentType: "image/jpeg" });
+      if (!error) return { path };
+      lastErr = error;
+      lastReason = classifyUploadError(error);
+      if (lastReason === "upload_collision") {
+        path = freshFileName();
+      }
+    } catch (e) {
+      lastErr = e;
+      const msg = String((e as Error)?.message || e || "");
+      if (msg === "toblob_null") lastReason = "toblob_null";
+      else lastReason = classifyUploadError(e);
+    }
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 250 * Math.pow(3, attempt)));
+  }
+  const tagged = new Error(lastReason) as Error & { reason: CardFailureReason };
+  tagged.reason = lastReason;
+  (tagged as { cause?: unknown }).cause = lastErr;
+  throw tagged;
+}
+
+/**
+ * Generate a loyalty card image, upload to storage. Returns `{ url, reason? }`.
+ * The `url` is the public URL on success; `reason` is a tagged failure cause
+ * on failure (consumed by the drip diagnostic log).
  *
  * Each call creates its own offscreen canvas so multiple workers can render
  * concurrently without overwriting each other's pixels (critical for parallel sends).
  */
-export async function generateAndUploadCard(
+export async function generateAndUploadCardEx(
   templateId: string,
   data: CardData,
   bgImg: HTMLImageElement,
   placeholders: any[],
-): Promise<string | null> {
+): Promise<GenerateCardResult> {
   try {
     const canvas = document.createElement("canvas");
     canvas.width = bgImg.naturalWidth;
     canvas.height = bgImg.naturalHeight;
     const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("Failed to get 2d context for card canvas");
+    if (!ctx) return { url: null, reason: "ctx_error" };
     ctx.drawImage(bgImg, 0, 0);
 
     for (const p of placeholders) {
@@ -149,22 +220,38 @@ export async function generateAndUploadCard(
       ctx.fillText(text, x, y);
     }
 
-    // Downscale to max 800px width + JPEG @ 0.72 — ~55% smaller than 0.85 full-size,
-    // visually identical for these flat card designs. Slashes WhatsApp egress.
-    const blob = await exportCanvasAsCompressedJpeg(canvas);
+    // Downscale to max 800px width + JPEG @ 0.72; throws "toblob_null" if the browser
+    // returns null (memory pressure under concurrency) so the retry loop catches it.
+    const blobFn = async () => {
+      try {
+        return await exportCanvasAsCompressedJpeg(canvas);
+      } catch {
+        throw new Error("toblob_null");
+      }
+    };
 
-    const fileName = `generated/crm/${Date.now()}_${Math.random().toString(36).slice(2, 6)}.jpg`;
-    const { error: uploadError } = await supabase.storage
-      .from("loyalty-cards")
-      .upload(fileName, blob, { contentType: "image/jpeg" });
-    if (uploadError) throw uploadError;
-
-    const { data: urlData } = supabase.storage.from("loyalty-cards").getPublicUrl(fileName);
-    return urlData.publicUrl;
+    const { path } = await uploadWithRetry(blobFn, freshFileName());
+    const { data: urlData } = supabase.storage.from("loyalty-cards").getPublicUrl(path);
+    return { url: urlData.publicUrl };
   } catch (err) {
-    console.error("Card generation failed:", err);
-    return null;
+    const reason = (err as { reason?: CardFailureReason })?.reason || "upload_failed";
+    console.error(`Card generation failed (${reason}):`, err);
+    return { url: null, reason };
   }
+}
+
+/**
+ * Back-compat wrapper that returns just the URL (or null on failure). New code
+ * should prefer `generateAndUploadCardEx` to surface the tagged failure reason.
+ */
+export async function generateAndUploadCard(
+  templateId: string,
+  data: CardData,
+  bgImg: HTMLImageElement,
+  placeholders: any[],
+): Promise<string | null> {
+  const { url } = await generateAndUploadCardEx(templateId, data, bgImg, placeholders);
+  return url;
 }
 
 /**
