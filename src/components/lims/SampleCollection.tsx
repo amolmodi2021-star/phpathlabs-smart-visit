@@ -10,7 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Search, Printer, ChevronDown, ChevronUp, CheckCircle2, RotateCcw } from "lucide-react";
+import { Search, Printer, ChevronDown, ChevronUp, CheckCircle2, RotateCcw, Undo2 } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
@@ -62,6 +63,9 @@ const SampleCollection = () => {
   const [reprintDialog, setReprintDialog] = useState<{ open: boolean; reg: any; tubes: SampleTubeRow[] }>({ open: false, reg: null, tubes: [] });
   const [reprintReason, setReprintReason] = useState("");
   const [reprintSelectedTubes, setReprintSelectedTubes] = useState<Set<string>>(new Set());
+
+  // Cancel collection (revert to pending) dialog state
+  const [cancelCollectDialog, setCancelCollectDialog] = useState<{ open: boolean; reg: any; tube: SampleTubeRow | null }>({ open: false, reg: null, tube: null });
 
   const handleSearch = (val: string) => {
     setSearch(val);
@@ -320,6 +324,37 @@ const SampleCollection = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Cancel collection — revert a single tube back to pending. Guarded so accepted tubes cannot be reverted.
+  const cancelCollectMutation = useMutation({
+    mutationFn: async ({ regId, tubeId }: { regId: string; tubeId: string }) => {
+      const { data: tubeRow, error: fetchErr } = await supabase
+        .from("sample_tubes" as any)
+        .select("status")
+        .eq("id", tubeId)
+        .maybeSingle();
+      if (fetchErr) throw fetchErr;
+      if (!tubeRow || (tubeRow as any).status !== "collected") {
+        throw new Error("Tube is no longer in 'collected' state — cannot revert");
+      }
+      const { error } = await supabase
+        .from("sample_tubes" as any)
+        .update({ status: "pending", collected_at: null, collected_by: null })
+        .eq("id", tubeId)
+        .eq("status", "collected");
+      if (error) throw error;
+      await recalculateRegistrationStatus(regId);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sample_tubes_collection"] });
+      qc.invalidateQueries({ queryKey: ["sample_collection_regs"] });
+      qc.invalidateQueries({ queryKey: ["patient_registrations"] });
+      qc.invalidateQueries({ queryKey: ["sample_tubes_acceptance"] });
+      setCancelCollectDialog({ open: false, reg: null, tube: null });
+      toast.success("Collection cancelled — tube reverted to pending");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const handlePrintAndCollect = (reg: any, tubes: SampleTubeRow[]) => {
     const regSel = selectedTubes[reg.id] || new Set();
     const selected = tubes.filter(t => regSel.has(t.id));
@@ -461,10 +496,17 @@ const SampleCollection = () => {
                     </Button>
                   )}
                   {!isPending && isCollected && (
-                    <Button size="sm" variant="ghost" className="shrink-0" title="Reprint this barcode"
-                      onClick={(e) => { e.stopPropagation(); doPrintBarcodes(reg, [tube]); toast.success(`Reprinted barcode for ${tube.sample_uid}`); }}>
-                      <Printer className="h-3.5 w-3.5" />
-                    </Button>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button size="sm" variant="ghost" title="Reprint this barcode"
+                        onClick={(e) => { e.stopPropagation(); doPrintBarcodes(reg, [tube]); toast.success(`Reprinted barcode for ${tube.sample_uid}`); }}>
+                        <Printer className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button size="sm" variant="ghost" title="Cancel collection (revert to pending)"
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={(e) => { e.stopPropagation(); setCancelCollectDialog({ open: true, reg, tube }); }}>
+                        <Undo2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -649,6 +691,31 @@ const SampleCollection = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Cancel Collection confirmation */}
+      <AlertDialog open={cancelCollectDialog.open} onOpenChange={(open) => { if (!open) setCancelCollectDialog({ open: false, reg: null, tube: null }); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel Collection?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will revert tube <strong className="font-mono">{cancelCollectDialog.tube?.sample_uid}</strong> for patient <strong>{cancelCollectDialog.reg?.patient_name}</strong> back to <strong>Pending</strong>. Use this only if the sample was marked collected by mistake. If the tube has already been accepted in the lab, this action will fail.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep as Collected</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (cancelCollectDialog.reg && cancelCollectDialog.tube) {
+                  cancelCollectMutation.mutate({ regId: cancelCollectDialog.reg.id, tubeId: cancelCollectDialog.tube.id });
+                }
+              }}
+              disabled={cancelCollectMutation.isPending}>
+              {cancelCollectMutation.isPending ? "Reverting..." : "Yes, Revert to Pending"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div ref={printRef} className="hidden" />
     </div>
