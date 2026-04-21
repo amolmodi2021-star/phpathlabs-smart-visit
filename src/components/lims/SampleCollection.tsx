@@ -64,6 +64,9 @@ const SampleCollection = () => {
   const [reprintReason, setReprintReason] = useState("");
   const [reprintSelectedTubes, setReprintSelectedTubes] = useState<Set<string>>(new Set());
 
+  // Cancel collection (revert to pending) dialog state
+  const [cancelCollectDialog, setCancelCollectDialog] = useState<{ open: boolean; reg: any; tube: SampleTubeRow | null }>({ open: false, reg: null, tube: null });
+
   const handleSearch = (val: string) => {
     setSearch(val);
     clearTimeout((window as any).__scSearchTimeout);
