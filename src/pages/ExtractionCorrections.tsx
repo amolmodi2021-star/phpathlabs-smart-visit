@@ -9,9 +9,10 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Trash2, Plus, Eye, EyeOff, Copy } from "lucide-react";
+import { Trash2, Plus, Eye, EyeOff, Copy, Play, Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { triggerReportQueue } from "@/lib/reportQueue";
 
 const buildPromptPreview = (
   corrections: { parameter_name: string; field_corrected: string; original_value: string | null; corrected_value: string | null }[],
@@ -209,6 +210,18 @@ const ExtractionCorrections = () => {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">AI Extraction Corrections</h1>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              setQueueRunning(true);
+              try { await triggerReportQueue(); } finally { setQueueRunning(false); }
+            }}
+            disabled={queueRunning}
+          >
+            {queueRunning ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Play className="h-4 w-4 mr-1" />}
+            Process Queue Now
+          </Button>
           <Button size="sm" onClick={() => setAddOpen(true)}>
             <Plus className="h-4 w-4 mr-1" /> Add Correction
           </Button>
