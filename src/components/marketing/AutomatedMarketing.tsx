@@ -1098,7 +1098,7 @@ const AutomatedMarketing = () => {
     const _checkAbort = () => abortRef.current || _moduleAbort;
     const _waitWhilePaused = async () => {
       while (_modulePaused && !_checkAbort()) {
-        await new Promise((r) => setTimeout(r, 300));
+        await sleepResilient(300);
       }
     };
 
