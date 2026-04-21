@@ -1,43 +1,55 @@
 
 
 ## Goal
-Make `cleanup-outsourced-snips` actually delete old snip files. Two real bugs:
+Clarify what "Run Cleanup" can and should remove from `loyalty-cards`, and add a one-click way to nuke the reusable asset folders (`logos/`, `backgrounds/`) when you want a true zero-byte bucket.
 
-## Root cause
-1. **`outsourced_test_snips` table is empty** (0 rows) — every file in the bucket is an orphan from the lab's POV. The current code only deletes via this table → always 0.
-2. **Orphan path uses 365-day retention** — every file is currently <2 weeks old, so nothing qualifies. And the filename regex `/^(\d{12,16})_/` never matches because filenames are `<uuid>_<uuid>_<ms>.png` (timestamp is at the END, not the start).
-3. Storage `created_at` is the source of truth for age, but the code never reads it.
+## Current state (verified against storage.objects)
+The `loyalty-cards` bucket holds only **5 files / 230 kB**:
+- `logos/abnormal_<ts>.png` × 4  (cached lab logo renders)
+- `backgrounds/<ts>.png` × 1  (cached campaign background)
 
-## Fix
-Rewrite the function around two simple rules:
+All previous campaign output (`generated/<UUID>/<file>.png`, the 118 files that were 54 MB) is already deleted by the last cleanup run.
 
-**Rule A — Use storage `created_at`, not filename:**
-While walking the bucket with `.list()`, capture each file's `created_at` directly from the API response (already returned). Compare to cutoff. Delete if older.
+The `logos/` and `backgrounds/` files are **reusable assets** — re-uploaded automatically the next time a card is generated. Nothing is broken. The dashboard `54 MB` figure was a stale snapshot.
 
-**Rule B — Configurable retention, default 30 days:**
-365 days is far too long for transient lab snips (the loyalty-cards bucket uses 6 hours). Drop the default to **30 days**, override via request body `{ max_age_days: N }`. Cron will keep using the default; the dashboard "Run Cleanup Now" button can pass `max_age_days: 0` to purge all (it's still password-gated by the dashboard for any aggressive value).
+## Why "Run Cleanup" leaves them
+By design, `cleanup-card-images` only walks `generated/` (the per-campaign output folder). `logos/` and `backgrounds/` are intentionally preserved to avoid re-uploading the same logo on every send.
 
-**Rule C — Stop using the empty `outsourced_test_snips` table:**
-Skip the DB-driven branch entirely. Treat every file as bucket-owned and age-filtered. (The DB table can stay; we just don't need it for deletion.)
+## Fix — three small additions
+
+### 1. Expand the cleanup walker
+Update `cleanup-card-images/index.ts` to ALSO walk `logos/` and `backgrounds/` with the same 6-hour age filter. Files older than 6h get removed; the next card send re-creates them on demand. Same safety profile as `generated/`.
+
+### 2. Show the real bucket size on the dashboard
+The Cloud Usage dashboard reads from a snapshot RPC `get_cloud_usage_stats`. Confirm the **Refresh** button on the page top forces a re-fetch (it should — but verify after the cleanup is rerun the number drops to ~0 kB).
+
+### 3. Add an explicit "Purge ALL" override for loyalty-cards
+For the rare case you want to wipe even fresh assets: enable the existing **Purge** button (currently shown only for `report-uploads`) for `loyalty-cards` too. It already uses the password-gated `purge-bucket` edge function.
+
+In `src/lib/cloudUsage.ts`, add `loyalty-cards` to `ORPHAN_BUCKETS`:
+```ts
+export const ORPHAN_BUCKETS = new Set(["report-uploads", "loyalty-cards"]);
+```
+Then `StorageBreakdown.tsx` will render the red **Purge** button next to it automatically.
 
 ## Files
 
 ### Edit
-- `supabase/functions/cleanup-outsourced-snips/index.ts` — replace the listAllFiles-with-filename-regex path with: walk bucket → for each file capture `created_at` → delete if `now - created_at > max_age_days`. Default 30 days. Reads optional `max_age_days` from JSON body.
+- `supabase/functions/cleanup-card-images/index.ts` — add `logos` and `backgrounds` to the top-level folder list (one-line change to the `topFolders` array on line 113).
+- `src/lib/cloudUsage.ts` — add `"loyalty-cards"` to `ORPHAN_BUCKETS` so the **Purge** button appears.
 
 ### No changes
-- `cleanup_runs` schema, dashboard UI, cron schedule, or `outsourced_test_snips` table.
+- `purge-bucket` function (already handles arbitrary buckets).
+- Dashboard UI (button auto-renders for any orphan bucket).
+- Cron schedule.
 
 ## Verify after
-- Click **Run Cleanup Now** on `outsourced-snips` (default 30 days) → toast shows ~0 files (nothing is 30+ days old yet) — but it's now correct logic.
-- For an immediate test: temporarily invoke with `{ max_age_days: 7 }` from the dashboard → should remove ~25 files (the 26 dated 2026-04-08 to 2026-04-14).
-- Subsequent daily cron will keep the bucket trimmed automatically.
-
-## Optional follow-up (not in this fix)
-- Add a small input field on the Cloud Usage row for `outsourced-snips` letting you pick the age threshold per click. Skipping unless you want it.
+1. Click **Run Cleanup Now** on `loyalty-cards` → 4 logos + 1 background removed (they're all >6h old).
+2. Refresh dashboard → bucket shows 0 files / 0 B.
+3. Send any abnormal/loyalty card from the app → logos/backgrounds re-cached automatically (verify card renders correctly).
+4. **Purge** button now visible for `loyalty-cards` for emergency use.
 
 ## Out of scope
-- No DB schema change.
-- No new RPCs.
-- No change to `cleanup-card-images` (already fixed last round and working — logs show `deleted: 118`).
+- No changes to card-rendering logic.
+- No retention-window changes (still 6 hours — safe for in-flight WhatsApp deliveries).
 
