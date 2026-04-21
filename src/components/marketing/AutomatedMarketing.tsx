@@ -1461,12 +1461,13 @@ const AutomatedMarketing = () => {
               let nextIdx = 0;
               let aborted = false;
               const worker = async () => {
+                let pendingSend: Promise<void> | null = null;
                 while (true) {
-                  if (_checkAbort()) { aborted = true; return; }
+                  if (_checkAbort()) { aborted = true; break; }
                   await _waitWhilePaused();
-                  if (_checkAbort()) { aborted = true; return; }
+                  if (_checkAbort()) { aborted = true; break; }
                   const i = nextIdx++;
-                  if (i >= total) return;
+                  if (i >= total) break;
                   const r = records[i];
                   try {
                     const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
@@ -1486,13 +1487,20 @@ const AutomatedMarketing = () => {
                       from: fromNumber, to: `+91${mob}`, templateName: tmpl.whatsapp_template_name,
                       type: "template", ...(Object.keys(components).length > 0 ? { components } : {}),
                     };
-                    const ok = await callProxyAndLog(
+                    // Drain previous send (back-pressure), then launch new one without awaiting it
+                    if (pendingSend) { await pendingSend; pendingSend = null; }
+                    pendingSend = callProxyAndLog(
                       payload, apiBaseUrl, apiKey, headerName, headerPrefix,
                       r, filter, "Promotion", { last_sent_type: "Promotion" },
-                    );
-                    if (ok) totalSent++; else totalFailed++;
-                    processedCount++;
-                    _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+                    ).then((ok) => {
+                      if (ok) totalSent++; else totalFailed++;
+                      processedCount++;
+                      _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+                    }).catch((err) => {
+                      console.error("[send_error]", err);
+                      totalFailed++; processedCount++;
+                      _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+                    });
                   } catch (recErr) {
                     console.error("[record_error]", recErr);
                     await logDiagnostic(filter, r, "record_error", String((recErr as Error)?.message || recErr));
@@ -1500,6 +1508,7 @@ const AutomatedMarketing = () => {
                     _setSendProgress(Math.round((processedCount / totalMessages) * 100));
                   }
                 }
+                if (pendingSend) { try { await pendingSend; } catch { /* already counted */ } }
               };
               const _poolSize3 = Math.min(concurrency, Math.max(1, total));
               await Promise.all(Array.from({ length: _poolSize3 }, (_, i) => (async () => {
