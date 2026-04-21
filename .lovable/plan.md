@@ -1,47 +1,37 @@
 
 
 ## Goal
-Fix all action buttons on the **Cloud Usage** page. Two distinct bugs:
+Fix the `loyalty-cards` cleanup so it actually removes the 118 files (54 MB) currently sitting in `generated/<UUID>/...` subfolders. Apply the same fix to `outsourced-snips` for safety.
 
-## Bug 1 — Purge button: "Direct deletion from storage tables is not allowed"
-The `purge_bucket` SQL function uses `DELETE FROM storage.objects`, which Supabase blocks at the platform level. Only the Storage API can remove objects.
+## Root cause
+`cleanup-card-images` lists only 3 hardcoded folders (`generated/crm`, `generated/abnormal`, `generated`). The real layout is `generated/<campaign-UUID>/<file>.png` — dozens of UUID subfolders that are never traversed. `.list("generated")` returns those UUIDs as folder placeholders (null `id`), and the existing code explicitly skips them. Net result: `scanned: 0`.
 
-**Fix:** Replace the SQL purge with a new edge function `purge-bucket` that uses the Storage API:
-1. List every object in the bucket via `supabase.storage.from(bucket).list()` (paginated, 1000 per page, recursive across folders).
-2. Remove in batches of 100 via `supabase.storage.from(bucket).remove(paths)`.
-3. Verify password (`9819111107`) inside the function.
-4. Log result to `cleanup_runs`.
-5. Return `{ files_removed, bucket }`.
+## Fix
+Rewrite the listing logic to **recurse into every subfolder under `generated/`** instead of relying on a hardcoded list:
 
-Update `src/lib/cloudUsage.ts` → `purgeBucket()` to call `supabase.functions.invoke("purge-bucket", { body: { bucket, password } })` instead of the RPC.
+1. List `generated/` → get folder placeholders (entries with null `id`).
+2. For each subfolder, list its contents (paginated, 1000 per page).
+3. Apply the existing age filter (>6 hours old, via `created_at` or filename timestamp prefix).
+4. Batch-remove eligible paths (100 per call), keeping the existing safety caps.
 
-The old `public.purge_bucket()` SQL function will be dropped in the migration to avoid confusion.
+Also keep the original 3 hardcoded folders as a fallback in case any flat files exist directly under `generated/`.
 
-## Bug 2 — "Run Cleanup Now" / "Prune Now" / cron "Run Now" buttons silently fail
-Edge functions `cleanup-card-images`, `cleanup-outsourced-snips`, `prune-old-logs`, and the new `purge-bucket` are **not listed in `supabase/config.toml`**, so they default to `verify_jwt = true`. The dashboard invokes them with only the anon key (the app uses custom auth via `user-auth`, not Supabase Auth, so there is no real Supabase JWT to send) → every call returns 401 and the toast shows a generic failure.
-
-**Fix:** Add `[functions.<name>] verify_jwt = false` blocks for all four functions. They are already safe to call without JWT (cron calls them this way), and the destructive ones (`purge-bucket`, full-prune) are gated by the `9819111107` password dialog on the client.
+Apply the same recursive pattern to `cleanup-outsourced-snips` so future subfolders won't break it either.
 
 ## Files
 
-### New
-- `supabase/functions/purge-bucket/index.ts` — Storage-API-based bucket purger with password gate.
-
 ### Edit
-- `supabase/config.toml` — add 4 `verify_jwt = false` blocks (`cleanup-card-images`, `cleanup-outsourced-snips`, `prune-old-logs`, `purge-bucket`).
-- `src/lib/cloudUsage.ts` — change `purgeBucket()` to invoke the edge function instead of RPC; keep the same return shape so `StorageBreakdown.tsx` needs no change.
+- `supabase/functions/cleanup-card-images/index.ts` — replace the fixed-folder loop with a recursive walker (one level deep is enough; we don't need full recursion since files are always exactly one folder below `generated/`).
+- `supabase/functions/cleanup-outsourced-snips/index.ts` — apply the same recursive walker pattern (defensive — current snips may be flat, but this future-proofs it).
 
-### Migration
-- `DROP FUNCTION IF EXISTS public.purge_bucket(text, text);` (the broken SQL version).
+No changes to `supabase/config.toml`, no migration, no frontend changes. The existing "Run Cleanup" button will start working immediately after redeploy.
 
 ## Verify after
-- Click **Run Cleanup Now** on `loyalty-cards` → toast shows files removed.
-- Click **Run Cleanup Now** on `outsourced-snips` → toast shows files removed.
-- Click **Run Full Prune Now** in Database Tables → password prompt → toast shows per-table counts.
-- Click **Run Now** on each cron job → toast shows success.
-- Click **Purge** on `report-uploads` → password prompt → toast shows ~50 MB / file count freed.
+- Click **Run Cleanup Now** on `loyalty-cards` → toast should report ~118 files removed (~54 MB freed).
+- Refresh dashboard → `loyalty-cards` size drops near zero.
+- Edge function logs should show `scanned: 118, deleted: 118`.
 
 ## Out of scope
-- No new cron jobs; no schedule changes.
-- No UI redesign — only wiring fixes.
+- No new tables, no schema changes, no UI changes.
+- No change to the 6-hour age threshold (still safe — protects in-flight WhatsApp deliveries).
 
