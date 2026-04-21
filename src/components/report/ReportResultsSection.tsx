@@ -260,7 +260,7 @@ const ReportResultsSection = ({
                                     <div className="font-semibold text-gray-600 mb-0.5" style={{ fontSize: metaFontSize }}>Interpretation:</div>
                                     <div
                                       className="text-gray-700 prose prose-xs max-w-none [&_img]:max-h-[60mm] [&_img]:inline-block [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
-                                      style={{ fontSize: metaFontSize }}
+                                      style={{ fontSize: metaFontSize, whiteSpace: 'pre-wrap' }}
                                       dangerouslySetInnerHTML={{ __html: paramMeta.interpretation! }}
                                     />
                                   </td>
@@ -362,7 +362,7 @@ const ReportResultsSection = ({
                       <div className="font-semibold text-gray-600 mb-0.5" style={{ fontSize: metaFontSize }}>Interpretation:</div>
                       <div
                         className="text-gray-700 prose prose-xs max-w-none [&_img]:max-h-[60mm] [&_img]:inline-block [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4"
-                        style={{ fontSize: metaFontSize }}
+                        style={{ fontSize: metaFontSize, whiteSpace: 'pre-wrap' }}
                         dangerouslySetInnerHTML={{ __html: profMeta!.interpretation! }}
                       />
                     </div>
