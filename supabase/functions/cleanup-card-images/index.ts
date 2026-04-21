@@ -110,7 +110,8 @@ Deno.serve(async (req) => {
     const stats: Stats = { scanned: 0, deleted: 0, skippedRecent: 0 };
 
     // 1) Process flat top-level folders (legacy fallback for any flat files)
-    const topFolders = ["generated", "generated/crm", "generated/abnormal", "logos", "backgrounds"];
+    //    NOTE: logos/ and backgrounds/ are intentionally excluded — reusable assets.
+    const topFolders = ["generated", "generated/crm", "generated/abnormal"];
     for (const folder of topFolders) {
       await processFolder(supabase, folder, cutoff, stats);
     }
