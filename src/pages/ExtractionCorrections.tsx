@@ -122,6 +122,7 @@ const ExtractionCorrections = () => {
   const [newField, setNewField] = useState("parameter_name");
   const [newOriginal, setNewOriginal] = useState("");
   const [newCorrected, setNewCorrected] = useState("");
+  const [queueRunning, setQueueRunning] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: corrections = [], isLoading } = useQuery({

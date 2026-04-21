@@ -10,7 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Save, FileCheck, AlertTriangle, Trash2, Plus, Check, ShieldCheck, MessageSquarePlus, Search } from "lucide-react";
+import { Loader2, Save, FileCheck, AlertTriangle, Trash2, Plus, Check, ShieldCheck, MessageSquarePlus, Search, Play } from "lucide-react";
+import { triggerReportQueue } from "@/lib/reportQueue";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import AddParameterToMasterDialog from "@/components/AddParameterToMasterDialog";
 import { computeAbnormalFlag, normalizeTestResultFlags } from "@/lib/reportFlags";
@@ -75,6 +76,7 @@ const ReviewReport = () => {
   const [remarkIndex, setRemarkIndex] = useState<number | null>(null);
   const [remarkText, setRemarkText] = useState("");
   const [paramSearch, setParamSearch] = useState("");
+  const [queueRunning, setQueueRunning] = useState(false);
   const originalAiResultsRef = useRef<TestResult[] | null>(null);
 
   useEffect(() => {
