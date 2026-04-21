@@ -29,6 +29,7 @@ import WhatsAppSettingsPage from "./pages/WhatsAppSettingsPage";
 import WhatsAppChat from "./pages/WhatsAppChat";
 import LimsReportView from "./pages/LimsReportView";
 import UserManagement from "./pages/UserManagement";
+import CloudUsage from "./pages/CloudUsage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -68,6 +69,7 @@ const App = () => (
           <Route path="/report-layout" element={<ProtectedRoute route="/report-layout"><ReportLayoutSettings /></ProtectedRoute>} />
           <Route path="/signature-management" element={<ProtectedRoute route="/signature-management"><SignatureManagement /></ProtectedRoute>} />
           <Route path="/users" element={<ProtectedRoute route="/users"><UserManagement /></ProtectedRoute>} />
+          <Route path="/cloud-usage" element={<ProtectedRoute route="/cloud-usage"><CloudUsage /></ProtectedRoute>} />
           <Route path="/lims/report/:registrationId" element={<ProtectedRoute route="/lims"><LimsReportView /></ProtectedRoute>} />
           <Route path="*" element={<NotFound />} />
         </Routes>

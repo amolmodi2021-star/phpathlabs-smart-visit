@@ -4,7 +4,7 @@ import { logout, getCurrentUser, isTabAllowed, isActionAllowed, refreshCurrentUs
 import {
   FileText, LayoutDashboard, Home, Users, TestTubes, MessageSquare,
   Menu, X, LogOut, FlaskConical, AlertTriangle, BarChart3, CreditCard,
-  Layers, PenTool, Zap, Webhook, Megaphone, Contact, Activity, Settings, Trash2, Loader2, UserCog, MessageCircle, KeyRound,
+  Layers, PenTool, Zap, Webhook, Megaphone, Contact, Activity, Settings, Trash2, Loader2, UserCog, MessageCircle, KeyRound, Cloud,
 } from "lucide-react";
 import ChangePasswordDialog from "@/components/ChangePasswordDialog";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,7 @@ const allNavItems = [
   { to: "/report-layout", label: "Report Layout", icon: Layers },
   { to: "/signature-management", label: "Doctor & Signatures", icon: PenTool },
   { to: "/users", label: "Users", icon: UserCog },
+  { to: "/cloud-usage", label: "Cloud Usage", icon: Cloud },
 ];
 
 const StorageCleanupButton = ({ onClick }: { onClick?: () => void }) => {

@@ -98,6 +98,8 @@ Deno.serve(async (req) => {
     };
     console.log("Cleanup complete:", summary);
 
+    await supabase.from("cleanup_runs").insert({ function_name: "cleanup-card-images", summary });
+
     return new Response(JSON.stringify(summary), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

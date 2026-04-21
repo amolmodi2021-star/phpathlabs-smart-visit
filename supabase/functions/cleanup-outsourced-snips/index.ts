@@ -63,6 +63,11 @@ Deno.serve(async (req) => {
 
     if (deleteErr) throw deleteErr
 
+    await supabase.from("cleanup_runs").insert({
+      function_name: "cleanup-outsourced-snips",
+      summary: { deleted: oldIds.length, files_removed: filePaths.length },
+    });
+
     return new Response(
       JSON.stringify({ deleted: oldIds.length, files_removed: filePaths.length }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
