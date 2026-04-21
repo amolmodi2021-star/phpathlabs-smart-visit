@@ -4,7 +4,7 @@ import { Label } from "@/components/ui/label";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Loader2, Printer, ArrowLeft, Download } from "lucide-react";
+import { Loader2, Printer, ArrowLeft, Download, Share2 } from "lucide-react";
 import { toPng, toJpeg } from "html-to-image";
 import jsPDF from "jspdf";
 import * as pdfjsLib from "pdfjs-dist";
@@ -14,6 +14,7 @@ import ReportResultsSection from "@/components/report/ReportResultsSection";
 import AutoScaleContent from "@/components/report/AutoScaleContent";
 import type { TestResult, ProfileMeta } from "@/components/report/ReportResultsSection";
 import { toast } from "sonner";
+import { logEvent } from "@/lib/reportShareLinks";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.mjs";
 
@@ -96,10 +97,16 @@ const LimsReportView = () => {
   const [searchParams] = useSearchParams();
   const selectedTestIdsParam = searchParams.get("tests");
   const selectedTestIds = selectedTestIdsParam ? new Set(selectedTestIdsParam.split(",")) : null;
+  const publicToken = searchParams.get("public");
+  const isPublic = !!publicToken;
   const printRef = useRef<HTMLDivElement>(null);
   const previewWrapRef = useRef<HTMLDivElement>(null);
+  const autoDownloadStartedRef = useRef(false);
+  const cachedPdfRef = useRef<{ blob: Blob; filename: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
+  const [hasDownloadedOnce, setHasDownloadedOnce] = useState(false);
+  const [sharingWa, setSharingWa] = useState(false);
   const [showLetterhead, setShowLetterhead] = useState(true);
   const [previewScale, setPreviewScale] = useState(1);
 
@@ -497,7 +504,6 @@ const LimsReportView = () => {
         const el = pageElements[i] as HTMLElement;
         const isSnipPage = !!el.querySelector('img[data-snip-image]');
         if (isSnipPage) {
-          // Snip pages: PNG @ pixelRatio 2 (~192 DPI). Matches snip native res; preserves clarity without upscaling.
           const png = await toPng(el, {
             quality: 1,
             pixelRatio: 2,
@@ -508,7 +514,6 @@ const LimsReportView = () => {
           });
           pdf.addImage(png, "PNG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM);
         } else {
-          // Text/results pages: JPEG @ pixelRatio 2, q=0.92. ~250–500 KB/page.
           const jpeg = await toJpeg(el, {
             quality: 0.92,
             pixelRatio: 2,
@@ -523,18 +528,88 @@ const LimsReportView = () => {
 
       const patientName = approvedReports[0]?.patient_name || "Report";
       const invoiceNum = approvedReports[0]?.invoice_number || "";
-      pdf.save(`${patientName}_${invoiceNum}.pdf`);
+      const filename = `${patientName}_${invoiceNum}.pdf`;
+      pdf.save(filename);
+
+      // Cache blob for share + open-in-new-tab in public mode
+      const blob = pdf.output("blob") as Blob;
+      cachedPdfRef.current = { blob, filename };
+
+      if (isPublic) {
+        try {
+          const blobUrl = URL.createObjectURL(blob);
+          window.open(blobUrl, "_blank");
+          // Revoke after a delay so the new tab can load it
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+        } catch (e) {
+          console.warn("Could not open PDF in new tab:", e);
+        }
+        if (publicToken) {
+          logEvent(publicToken, "downloaded", undefined, { mode: "public", invoice: invoiceNum });
+        }
+      }
 
       // Update print_date
       if (registrationId) {
         await supabase.from("approved_reports").update({ print_date: new Date().toISOString() }).eq("registration_id", registrationId);
       }
 
+      setHasDownloadedOnce(true);
       toast.success("PDF downloaded successfully");
     } catch (err: any) {
       toast.error("PDF export failed: " + (err.message || "Unknown error"));
     }
     setDownloading(false);
+  };
+
+  // ── Auto-download once in public mode ──
+  useEffect(() => {
+    if (!isPublic) return;
+    if (loading) return;
+    if (pages.length === 0) return;
+    if (autoDownloadStartedRef.current) return;
+    autoDownloadStartedRef.current = true;
+    // Small delay to let layout settle (images, fonts)
+    const t = setTimeout(() => { handleDownloadPdf(); }, 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPublic, loading, pages.length]);
+
+  // ── Share on WhatsApp ──
+  const handleShareWhatsApp = async () => {
+    setSharingWa(true);
+    try {
+      const cached = cachedPdfRef.current;
+      const invoiceNum = approvedReports[0]?.invoice_number || "";
+      const portalUrl = typeof window !== "undefined" ? window.location.href : "";
+      const text = `My PH PathLabs report — Invoice ${invoiceNum}\n${portalUrl}`;
+
+      // Try Web Share API with file when supported
+      if (cached && typeof navigator !== "undefined" && (navigator as any).canShare) {
+        try {
+          const file = new File([cached.blob], cached.filename, { type: "application/pdf" });
+          const shareData: any = { files: [file], title: "PH PathLabs Report", text };
+          if ((navigator as any).canShare(shareData)) {
+            await (navigator as any).share(shareData);
+            if (publicToken) logEvent(publicToken, "shared_whatsapp", undefined, { mode: "file", invoice: invoiceNum });
+            setSharingWa(false);
+            return;
+          }
+        } catch (e: any) {
+          // user-cancel or unsupported → fall through to wa.me
+          if (e?.name === "AbortError") { setSharingWa(false); return; }
+          console.warn("Web Share with file failed, falling back:", e);
+        }
+      }
+
+      // Fallback: wa.me text link
+      const waUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
+      window.open(waUrl, "_blank");
+      if (publicToken) logEvent(publicToken, "shared_whatsapp", undefined, { mode: "link", invoice: invoiceNum });
+    } catch (err: any) {
+      toast.error("Share failed: " + (err.message || "Unknown error"));
+    }
+    setSharingWa(false);
   };
 
   // ── Image-based Print ──
@@ -680,30 +755,55 @@ const LimsReportView = () => {
     <div className="p-2 sm:p-4 space-y-3 sm:space-y-4">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2 sm:gap-3 print:hidden">
-        <Button variant="outline" size="sm" onClick={() => navigate("/lims?tab=dispatch")}>
-          <ArrowLeft className="h-4 w-4 sm:mr-1" />
-          <span className="hidden sm:inline">Back</span>
-        </Button>
+        {!isPublic && (
+          <Button variant="outline" size="sm" onClick={() => navigate("/lims?tab=dispatch")}>
+            <ArrowLeft className="h-4 w-4 sm:mr-1" />
+            <span className="hidden sm:inline">Back</span>
+          </Button>
+        )}
         <h1 className="text-sm sm:text-xl font-bold truncate flex-1 min-w-0">
-          <span className="hidden sm:inline">Report — </span>
+          <span className="hidden sm:inline">{isPublic ? "PH PathLabs · " : "Report — "}</span>
           {report.patient_name} ({report.invoice_number})
         </h1>
         <div className="flex items-center gap-2 sm:gap-4 ml-auto flex-wrap">
-          <div className="flex items-center gap-2">
-            <Switch id="letterhead-toggle" checked={showLetterhead} onCheckedChange={setShowLetterhead} />
-            <Label htmlFor="letterhead-toggle" className="text-xs sm:text-sm cursor-pointer whitespace-nowrap">
-              <span className="hidden sm:inline">With </span>Letterhead
-            </Label>
-          </div>
-          <Button size="sm" variant="outline" onClick={handlePrint} disabled={downloading} aria-label="Print">
-            <Printer className="h-4 w-4 sm:mr-1" />
-            <span className="hidden sm:inline">Print</span>
-          </Button>
+          {!isPublic && (
+            <>
+              <div className="flex items-center gap-2">
+                <Switch id="letterhead-toggle" checked={showLetterhead} onCheckedChange={setShowLetterhead} />
+                <Label htmlFor="letterhead-toggle" className="text-xs sm:text-sm cursor-pointer whitespace-nowrap">
+                  <span className="hidden sm:inline">With </span>Letterhead
+                </Label>
+              </div>
+              <Button size="sm" variant="outline" onClick={handlePrint} disabled={downloading} aria-label="Print">
+                <Printer className="h-4 w-4 sm:mr-1" />
+                <span className="hidden sm:inline">Print</span>
+              </Button>
+            </>
+          )}
           <Button size="sm" onClick={handleDownloadPdf} disabled={downloading} aria-label="Download PDF">
             {downloading ? <Loader2 className="h-4 w-4 sm:mr-1 animate-spin" /> : <Download className="h-4 w-4 sm:mr-1" />}
-            <span className="hidden sm:inline">Download PDF</span>
-            <span className="sm:hidden">PDF</span>
+            {isPublic ? (
+              <span>{downloading ? "Downloading…" : hasDownloadedOnce ? "Re-download PDF" : "Preparing report…"}</span>
+            ) : (
+              <>
+                <span className="hidden sm:inline">Download PDF</span>
+                <span className="sm:hidden">PDF</span>
+              </>
+            )}
           </Button>
+          {isPublic && hasDownloadedOnce && (
+            <Button
+              size="sm"
+              variant="default"
+              onClick={handleShareWhatsApp}
+              disabled={sharingWa}
+              className="bg-[#25D366] hover:bg-[#1ebe57] text-white"
+              aria-label="Share on WhatsApp"
+            >
+              {sharingWa ? <Loader2 className="h-4 w-4 sm:mr-1 animate-spin" /> : <Share2 className="h-4 w-4 sm:mr-1" />}
+              <span>Share on WhatsApp</span>
+            </Button>
+          )}
         </div>
       </div>
 
