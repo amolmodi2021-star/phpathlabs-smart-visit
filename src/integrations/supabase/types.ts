@@ -527,6 +527,27 @@ export type Database = {
         }
         Relationships: []
       }
+      cleanup_runs: {
+        Row: {
+          function_name: string
+          id: string
+          ran_at: string
+          summary: Json | null
+        }
+        Insert: {
+          function_name: string
+          id?: string
+          ran_at?: string
+          summary?: Json | null
+        }
+        Update: {
+          function_name?: string
+          id?: string
+          ran_at?: string
+          summary?: Json | null
+        }
+        Relationships: []
+      }
       combo_profiles: {
         Row: {
           combo_id: string
@@ -3791,6 +3812,7 @@ export type Database = {
           visit_type: string
         }[]
       }
+      get_cloud_usage_stats: { Args: never; Returns: Json }
       get_crm_contacts_count: {
         Args: { p_location?: string; p_search?: string; p_tag?: string }
         Returns: number
@@ -3913,6 +3935,10 @@ export type Database = {
           profile_name: string
           unread_count: number
         }[]
+      }
+      purge_bucket: {
+        Args: { p_bucket: string; p_password: string }
+        Returns: Json
       }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
