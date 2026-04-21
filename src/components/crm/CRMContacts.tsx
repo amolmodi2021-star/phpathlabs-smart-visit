@@ -697,7 +697,8 @@ const CRMContacts = () => {
     const campaignName = tmpl?.api_base_url || "";
     const bodyMapping = tmpl?.body_mapping || "";
     const queueEnabled = cfg["wa_global_queueEnabled"] !== "false";
-    const delayMs = Number(cfg["wa_global_delayMs"]) || 3000;
+    const delayRaw = Number(cfg["wa_global_delayMs"]);
+    const delayMs = Number.isFinite(delayRaw) && delayRaw >= 0 ? delayRaw : 3000;
     const staticExpiryDate = cfg["loyalty_static_expiry_date"] || "";
 
     if (!apiBaseUrl || !apiKey || !templateName) {

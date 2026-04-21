@@ -46,7 +46,10 @@ const GlobalApiSettings = () => {
         if (m[`${PREFIX}authHeaderPrefix`]) setAuthHeaderPrefix(m[`${PREFIX}authHeaderPrefix`]);
         if (m[`${PREFIX}fromNumber`]) setFromNumber(m[`${PREFIX}fromNumber`]);
         if (m[`${PREFIX}queueEnabled`]) setQueueEnabled(m[`${PREFIX}queueEnabled`] === "true");
-        if (m[`${PREFIX}delayMs`]) setDelayMs(Number(m[`${PREFIX}delayMs`]));
+        if (m[`${PREFIX}delayMs`] !== undefined) {
+          const d = Number(m[`${PREFIX}delayMs`]);
+          if (Number.isFinite(d) && d >= 0) setDelayMs(d);
+        }
         if (m[`${PREFIX}concurrency`]) {
           const c = Number(m[`${PREFIX}concurrency`]);
           if (Number.isFinite(c)) setConcurrency(Math.max(1, Math.min(10, Math.floor(c))));

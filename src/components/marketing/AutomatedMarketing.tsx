@@ -1102,7 +1102,8 @@ const AutomatedMarketing = () => {
       }
     };
 
-    const delayMs = Number(cfg["wa_global_delayMs"]) || 3000;
+    const delayRaw = Number(cfg["wa_global_delayMs"]);
+    const delayMs = Number.isFinite(delayRaw) && delayRaw >= 0 ? delayRaw : 3000;
     const concurrency = Math.max(1, Math.min(10, Math.floor(Number(cfg["wa_global_concurrency"]) || 5)));
     const rateGate = makeTokenBucket(delayMs, concurrency);
     const totalMessages = previewResults.reduce((sum, r) => sum + r.eligible, 0);
