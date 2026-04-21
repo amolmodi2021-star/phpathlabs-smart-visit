@@ -504,7 +504,6 @@ const LimsReportView = () => {
         const el = pageElements[i] as HTMLElement;
         const isSnipPage = !!el.querySelector('img[data-snip-image]');
         if (isSnipPage) {
-          // Snip pages: PNG @ pixelRatio 2 (~192 DPI). Matches snip native res; preserves clarity without upscaling.
           const png = await toPng(el, {
             quality: 1,
             pixelRatio: 2,
@@ -515,7 +514,6 @@ const LimsReportView = () => {
           });
           pdf.addImage(png, "PNG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM);
         } else {
-          // Text/results pages: JPEG @ pixelRatio 2, q=0.92. ~250–500 KB/page.
           const jpeg = await toJpeg(el, {
             quality: 0.92,
             pixelRatio: 2,
@@ -530,18 +528,88 @@ const LimsReportView = () => {
 
       const patientName = approvedReports[0]?.patient_name || "Report";
       const invoiceNum = approvedReports[0]?.invoice_number || "";
-      pdf.save(`${patientName}_${invoiceNum}.pdf`);
+      const filename = `${patientName}_${invoiceNum}.pdf`;
+      pdf.save(filename);
+
+      // Cache blob for share + open-in-new-tab in public mode
+      const blob = pdf.output("blob") as Blob;
+      cachedPdfRef.current = { blob, filename };
+
+      if (isPublic) {
+        try {
+          const blobUrl = URL.createObjectURL(blob);
+          window.open(blobUrl, "_blank");
+          // Revoke after a delay so the new tab can load it
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+        } catch (e) {
+          console.warn("Could not open PDF in new tab:", e);
+        }
+        if (publicToken) {
+          logEvent(publicToken, "downloaded", undefined, { mode: "public", invoice: invoiceNum });
+        }
+      }
 
       // Update print_date
       if (registrationId) {
         await supabase.from("approved_reports").update({ print_date: new Date().toISOString() }).eq("registration_id", registrationId);
       }
 
+      setHasDownloadedOnce(true);
       toast.success("PDF downloaded successfully");
     } catch (err: any) {
       toast.error("PDF export failed: " + (err.message || "Unknown error"));
     }
     setDownloading(false);
+  };
+
+  // ── Auto-download once in public mode ──
+  useEffect(() => {
+    if (!isPublic) return;
+    if (loading) return;
+    if (pages.length === 0) return;
+    if (autoDownloadStartedRef.current) return;
+    autoDownloadStartedRef.current = true;
+    // Small delay to let layout settle (images, fonts)
+    const t = setTimeout(() => { handleDownloadPdf(); }, 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPublic, loading, pages.length]);
+
+  // ── Share on WhatsApp ──
+  const handleShareWhatsApp = async () => {
+    setSharingWa(true);
+    try {
+      const cached = cachedPdfRef.current;
+      const invoiceNum = approvedReports[0]?.invoice_number || "";
+      const portalUrl = typeof window !== "undefined" ? window.location.href : "";
+      const text = `My PH PathLabs report — Invoice ${invoiceNum}\n${portalUrl}`;
+
+      // Try Web Share API with file when supported
+      if (cached && typeof navigator !== "undefined" && (navigator as any).canShare) {
+        try {
+          const file = new File([cached.blob], cached.filename, { type: "application/pdf" });
+          const shareData: any = { files: [file], title: "PH PathLabs Report", text };
+          if ((navigator as any).canShare(shareData)) {
+            await (navigator as any).share(shareData);
+            if (publicToken) logEvent(publicToken, "shared_whatsapp", undefined, { mode: "file", invoice: invoiceNum });
+            setSharingWa(false);
+            return;
+          }
+        } catch (e: any) {
+          // user-cancel or unsupported → fall through to wa.me
+          if (e?.name === "AbortError") { setSharingWa(false); return; }
+          console.warn("Web Share with file failed, falling back:", e);
+        }
+      }
+
+      // Fallback: wa.me text link
+      const waUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
+      window.open(waUrl, "_blank");
+      if (publicToken) logEvent(publicToken, "shared_whatsapp", undefined, { mode: "link", invoice: invoiceNum });
+    } catch (err: any) {
+      toast.error("Share failed: " + (err.message || "Unknown error"));
+    }
+    setSharingWa(false);
   };
 
   // ── Image-based Print ──
