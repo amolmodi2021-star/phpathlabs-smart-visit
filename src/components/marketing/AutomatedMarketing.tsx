@@ -1016,8 +1016,59 @@ const AutomatedMarketing = () => {
             processedCount++;
             _setSendProgress(Math.round((processedCount / totalMessages) * 100));
           }
+        } else if (filter.message_type === "abnormal_card") {
+          const apiBaseUrl = cfg["wa_global_baseUrl"];
+          const apiKey = cfg["wa_global_apiKey"];
+          const headerName = cfg["wa_global_authHeaderName"] || "apikey";
+          const headerPrefix = cfg["wa_global_authHeaderPrefix"] || "";
+          const fromNumber = cfg["wa_global_fromNumber"] || "";
+          const templateName = abnTmpl?.whatsapp_template_name || "";
+          const campaignName = abnTmpl?.api_base_url || "";
+          const includeMediaHeader = abnTmpl?.from_number === "media_header_enabled";
+          if (!apiBaseUrl || !apiKey || !templateName) {
+            toast.error("Abnormal PNG WhatsApp API not configured");
+            continue;
+          }
+          const abnTemplateId = filter.template_id || (abnormalTemplates.length > 0 ? abnormalTemplates[0].id : null);
+          let abnTemplate: any = null;
+          if (abnTemplateId) {
+            const { data } = await supabase.from("abnormal_card_templates").select("*").eq("id", abnTemplateId).single();
+            abnTemplate = data;
+          }
+          const staticExpiryDate = cfg["abnormal_static_expiry_date"] || "";
+
+          for (const r of preview.records) {
+            if (_checkAbort() || trialSentCount >= trialMax) break outer;
+            _setSendPhase(`🧪 TRIAL [${filter.name}] ${trialSentCount + 1}/${trialMax}`);
+            try {
+              const { data: tests } = await supabase
+                .from("crm_abnormal_tests").select("*").eq("contact_primary_key", r.primary_key).order("test_name");
+              if (!tests || tests.length === 0) { totalFailed++; processedCount++; continue; }
+
+              const imageUrl = includeMediaHeader
+                ? await generateAbnormalCardForDrip(r, tests, abnTemplate, staticExpiryDate)
+                : null;
+
+              const components: Record<string, unknown> = {};
+              if (includeMediaHeader && imageUrl) {
+                components.header = { type: "image", image: { link: imageUrl } };
+              }
+              components.body = { params: [(r.patient_name || "").toUpperCase()] };
+              const payload: Record<string, unknown> = {
+                from: fromNumber, to: `+91${trialMob}`, templateName,
+                campaignName, type: "template", components,
+              };
+              const proxyRes = await supabase.functions.invoke("whatsapp-proxy", {
+                body: { apiBaseUrl, apiKey, authHeaderName: headerName, authHeaderPrefix: headerPrefix, payload },
+              });
+              if (proxyRes.error || proxyRes.data?.status >= 400) totalFailed++;
+              else { totalSent++; trialSentCount++; }
+            } catch { totalFailed++; }
+            processedCount++;
+            _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+          }
         }
-        // Trial mode supports abc_card only for now (matches previous quick-test behavior)
+        // Trial mode: promotion type still skipped (no media generation needed; can be added later)
       }
 
       _moduleSending = false; _modulePaused = false; _moduleProgress = 0; _modulePhase = "";
