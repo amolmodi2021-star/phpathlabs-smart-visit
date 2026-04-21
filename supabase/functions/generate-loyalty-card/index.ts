@@ -23,7 +23,11 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Decode base64 PNG
+    // Decode base64 image (JPEG preferred; PNG still accepted for backward compat)
+    const mimeMatch = imageBase64.match(/^data:(image\/\w+);base64,/);
+    const detectedMime = mimeMatch?.[1] || "image/jpeg";
+    const isPng = detectedMime === "image/png";
+    const ext = isPng ? "png" : "jpg";
     const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
     const binaryStr = atob(base64Data);
     const bytes = new Uint8Array(binaryStr.length);
@@ -32,11 +36,11 @@ Deno.serve(async (req) => {
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const filePath = `generated/${jobId || "manual"}/${fileName || `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.png`}`;
+    const filePath = `generated/${jobId || "manual"}/${fileName || `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`}`;
 
     const { error: uploadError } = await supabase.storage
       .from("loyalty-cards")
-      .upload(filePath, bytes, { contentType: "image/png" });
+      .upload(filePath, bytes, { contentType: detectedMime });
 
     if (uploadError) throw uploadError;
 
