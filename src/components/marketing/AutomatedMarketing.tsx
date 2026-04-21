@@ -1244,61 +1244,72 @@ const AutomatedMarketing = () => {
             }
             const { bgImg, canvas, ctx, placeholders } = templateAssets;
 
-            for (let i = 0; i < preview.records.length; i++) {
-              if (_checkAbort()) break outer;
-              await _waitWhilePaused();
-              if (_checkAbort()) break outer;
-              const r = preview.records[i];
-              try {
-                const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
-                _setSendPhase(`Filter ${filterIndex} of ${totalFilters}: ${filter.name} — ABC ${i + 1}/${preview.records.length} → ${r.patient_name || mob}`);
+            // Bounded worker pool: N workers process records in parallel.
+            // Per-record work (card render + storage upload) runs concurrently;
+            // the WhatsApp API call itself is serialised via rateGate inside callProxyAndLog.
+            {
+              const records = preview.records;
+              const total = records.length;
+              let nextIdx = 0;
+              let aborted = false;
+              const worker = async () => {
+                while (true) {
+                  if (_checkAbort()) { aborted = true; return; }
+                  await _waitWhilePaused();
+                  if (_checkAbort()) { aborted = true; return; }
+                  const i = nextIdx++;
+                  if (i >= total) return;
+                  const r = records[i];
+                  try {
+                    const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
+                    _setSendPhase(`Filter ${filterIndex} of ${totalFilters}: ${filter.name} — ABC ${i + 1}/${total} → ${r.patient_name || mob}`);
 
-                const cardData: CardData = {
-                  Name: r.patient_name || "", Mobile: r.mobile_number || "", UMR: r.umr_number || "",
-                  "Discount %": `${r.default_discount_pct ?? 20}%`, "Expiry Date": staticExpiryDate,
-                };
-                const imageUrl = await generateAndUploadCard(templateId, cardData, bgImg, canvas, ctx, placeholders);
-                if (!imageUrl) {
-                  await logDripAction(filter, r, "failed", "card_generation_error");
-                  totalFailed++; processedCount++;
-                  _setSendProgress(Math.round((processedCount / totalMessages) * 100));
-                  continue;
+                    const cardData: CardData = {
+                      Name: r.patient_name || "", Mobile: r.mobile_number || "", UMR: r.umr_number || "",
+                      "Discount %": `${r.default_discount_pct ?? 20}%`, "Expiry Date": staticExpiryDate,
+                    };
+                    const imageUrl = await generateAndUploadCard(templateId, cardData, bgImg, canvas, ctx, placeholders);
+                    if (!imageUrl) {
+                      await logDripAction(filter, r, "failed", "card_generation_error");
+                      totalFailed++; processedCount++;
+                      _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+                      continue;
+                    }
+                    const components: Record<string, unknown> = {};
+                    if (Object.keys(mapping).length > 0) {
+                      const sortedKeys = Object.keys(mapping).sort((a, b) => Number(a) - Number(b));
+                      components.body = { params: sortedKeys.map((key) => {
+                        const f = mapping[key];
+                        if (f === "Name") return r.patient_name || "";
+                        if (f === "Mobile") return r.mobile_number || "";
+                        if (f === "UMR") return r.umr_number || "";
+                        if (f === "Discount %") return `${r.default_discount_pct ?? 20}%`;
+                        if (f === "Expiry Date") return staticExpiryDate;
+                        return "";
+                      })};
+                    }
+                    components.header = { type: "image", image: { link: imageUrl } };
+                    const payload: Record<string, unknown> = {
+                      from: loyaltyFromNumber, to: `+91${mob}`, templateName: loyaltyTemplateName,
+                      campaignName: loyaltyCampaignName, type: "template", components,
+                    };
+                    const ok = await callProxyAndLog(
+                      payload, loyaltyApiBaseUrl, loyaltyApiKey, loyaltyAuthHeaderName, loyaltyAuthHeaderPrefix,
+                      r, filter, "ABC", { last_sent_type: "ABC", record_tag: null },
+                    );
+                    if (ok) totalSent++; else totalFailed++;
+                    processedCount++;
+                    _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+                  } catch (recErr) {
+                    console.error("[record_error]", recErr);
+                    await logDiagnostic(filter, r, "record_error", String((recErr as Error)?.message || recErr));
+                    totalFailed++; processedCount++;
+                    _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+                  }
                 }
-                const components: Record<string, unknown> = {};
-                if (Object.keys(mapping).length > 0) {
-                  const sortedKeys = Object.keys(mapping).sort((a, b) => Number(a) - Number(b));
-                  components.body = { params: sortedKeys.map((key) => {
-                    const f = mapping[key];
-                    if (f === "Name") return r.patient_name || "";
-                    if (f === "Mobile") return r.mobile_number || "";
-                    if (f === "UMR") return r.umr_number || "";
-                    if (f === "Discount %") return `${r.default_discount_pct ?? 20}%`;
-                    if (f === "Expiry Date") return staticExpiryDate;
-                    return "";
-                  })};
-                }
-                components.header = { type: "image", image: { link: imageUrl } };
-                const payload: Record<string, unknown> = {
-                  from: loyaltyFromNumber, to: `+91${mob}`, templateName: loyaltyTemplateName,
-                  campaignName: loyaltyCampaignName, type: "template", components,
-                };
-                const ok = await callProxyAndLog(
-                  payload, loyaltyApiBaseUrl, loyaltyApiKey, loyaltyAuthHeaderName, loyaltyAuthHeaderPrefix,
-                  r, filter, "ABC", { last_sent_type: "ABC", record_tag: null },
-                );
-                if (ok) totalSent++; else totalFailed++;
-                processedCount++;
-                _setSendProgress(Math.round((processedCount / totalMessages) * 100));
-                if (delayMs > 0 && (i < preview.records.length - 1)) {
-                  await new Promise((r) => setTimeout(r, delayMs));
-                }
-              } catch (recErr) {
-                console.error("[record_error]", recErr);
-                await logDiagnostic(filter, r, "record_error", String((recErr as Error)?.message || recErr));
-                totalFailed++; processedCount++;
-                _setSendProgress(Math.round((processedCount / totalMessages) * 100));
-                continue;
-              }
+              };
+              await Promise.all(Array.from({ length: Math.min(concurrency, Math.max(1, total)) }, () => worker()));
+              if (aborted) break outer;
             }
           } else if (filter.message_type === "abnormal_card") {
             const apiBaseUrl = cfg["wa_global_baseUrl"];
