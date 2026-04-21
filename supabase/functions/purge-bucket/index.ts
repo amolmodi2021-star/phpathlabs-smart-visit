@@ -9,6 +9,11 @@ const PASSWORD = "9819111107";
 const PAGE_SIZE = 1000;
 const REMOVE_BATCH = 100;
 
+// Per-bucket protected prefixes — never deleted, even by purge.
+const PROTECTED_PREFIXES: Record<string, string[]> = {
+  "loyalty-cards": ["logos/", "backgrounds/"],
+};
+
 async function listAllRecursive(
   supabase: any,
   bucket: string,
