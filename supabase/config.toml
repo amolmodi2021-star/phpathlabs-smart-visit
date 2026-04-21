@@ -17,3 +17,15 @@ verify_jwt = false
 
 [functions.user-auth]
 verify_jwt = false
+
+[functions.cleanup-card-images]
+verify_jwt = false
+
+[functions.cleanup-outsourced-snips]
+verify_jwt = false
+
+[functions.prune-old-logs]
+verify_jwt = false
+
+[functions.purge-bucket]
+verify_jwt = false
