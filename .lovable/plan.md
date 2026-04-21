@@ -1,48 +1,91 @@
 
 
-# Round 2: Close Remaining PNG Leaks + Tighten JPEG for Photo Backgrounds
+# Patient Report Portal — Final (with Short URL)
 
-## What's already working
-The bulk ABC sender (`LoyaltyCardSender`) and drip abnormal sender (`dripCardSenders`) now correctly export downscaled JPEGs. Your new card was 86 KB (JPEG), confirmed in storage.
+Same as previously approved plan. Only the **URL/token strategy** changes per your feedback.
 
-## Why it wasn't ~35 KB
-Your card template uses a **136 KB photo/gradient PNG background**. Photo backgrounds compress to ~80–100 KB at JPEG q=0.72 (vs ~30 KB for flat-color designs). This is normal and unavoidable without changing the background or quality further.
+## URL strategy (new)
 
-## Remaining issues to fix
+**Format:** `https://phpathlabs.lovable.app/r/<invoice><4-char-suffix>`
 
-### Issue 1 — `CRMAbnormalTests.tsx` still exports PNG
-Manual abnormal card sends from the CRM Abnormal Tests page bypass our optimization entirely (line 555 uses `"image/png"`). At your scale this leaks full-size PNGs to storage every time someone sends from CRM directly.
+Example: invoice `2511230042` → token `2511230042A7K9` → URL:
+```
+https://phpathlabs.lovable.app/r/2511230042A7K9
+```
 
-**Fix**: Switch to `exportCanvasAsCompressedJpeg()` and upload as `image/jpeg` with `.jpg` extension.
+- **Invoice number** (10 chars) prefix → recognizable, ties link to a real bill.
+- **4-char random suffix** (alphanumeric, uppercase, no confusing chars like 0/O/1/I) → makes the token unguessable. ~1.7M combinations per invoice → brute-force impractical, especially with 3-attempt DOB lockout.
+- **Total URL length:** ~50 chars. Fits cleanly on one line in WhatsApp.
 
-### Issue 2 — `generate-loyalty-card` edge function still uploads PNG
-This edge function accepts a base64 PNG from the client and uploads it as PNG. Need to identify if it's still in use, and if so, switch the client to send JPEG instead (or keep as-is if unused).
+**Collision handling:** if suffix collides with an existing active token for the same invoice (extremely rare), regenerate.
 
-**Fix**: Find callers; if active, convert to JPEG path. If unused, mark for deletion.
+**WhatsApp message preview:**
+```
+Dear RAJESH KUMAR, your reports for Invoice 2511230042 are ready.
+View status & download:
+https://phpathlabs.lovable.app/r/2511230042A7K9
+(Link valid for 7 days)
+```
 
-### Issue 3 — Lower quality lever for photo-style backgrounds (optional)
-For your specific template (photo background → 86 KB at q=0.72), dropping to **q=0.62** would yield ~55–60 KB with minor visible compression artifacts on gradients. Acceptable for WhatsApp viewing on mobile.
+## Everything else (unchanged from prior approval)
 
-**Decision needed from you**: Apply the lower quality globally, or only for specific templates? My recommendation: keep q=0.72 for now since 86 KB is still acceptable, and revisit only if monthly egress becomes a problem.
+- Public route `/r/:token` — verification (DOB or last-4-mobile, 3 attempts → 15-min lockout).
+- Workflow timeline per test (5 dots: Collected → Accepted → Entered → Verified → Approved).
+- Result values hidden until doctor approval.
+- Download PDF button per approved test + full-report download.
+- **Download blocked if `due_amount > 0`** → amber "Payment pending ₹X" banner.
+- PDFs generated client-side, never uploaded to storage.
+- Auto-refresh every 60 s; dwell-time heartbeat every 10 s.
+- 7-day link expiry.
+- IP stored as SHA-256 hash. `noindex, nofollow` on portal page.
 
-## Changes
+## Database (3 new tables — same as before)
 
-1. **`src/components/crm/CRMAbnormalTests.tsx`** (lines ~554–561): Replace direct `toBlob("image/png")` + PNG upload with `exportCanvasAsCompressedJpeg(canvas)` + JPEG upload. Change file extension from `.png` to `.jpg`.
+```text
+report_share_links
+  id · token (unique, ~14 chars) · registration_id
+  created_at · expires_at · created_by
 
-2. **`supabase/functions/generate-loyalty-card/index.ts`** + callers: Search for any code that calls this edge function. If found, change client to send JPEG base64 and edge function to upload as `image/jpeg` with `.jpg` extension. If no callers, leave alone (cron will purge old PNGs anyway).
+report_link_events
+  id · token · event_type
+  ('opened'|'verified'|'verification_failed'|'download_attempted'
+   |'downloaded'|'blocked_due_pending')
+  occurred_at · ip_hash · user_agent · session_id
 
-## Expected result after fix
-- All card flows produce JPEGs only
-- Abnormal CRM sends drop from ~150 KB PNG → ~80 KB JPEG (~45% reduction)
-- Photo-background ABC cards stay at ~86 KB (already optimal at current quality)
+report_link_sessions
+  id · session_id (unique) · token
+  started_at · last_heartbeat_at · total_dwell_seconds
+```
 
-## Verification
-1. Send 1 abnormal card from CRM Abnormal Tests page → check Cloud Usage; new file should be `.jpg` ~80 KB.
-2. Send 1 ABC card from LoyaltyCardSender → already verified at 86 KB ✅.
-3. Confirm bucket size growth per send is now consistently 60–90 KB across all flows.
+RLS: public INSERT on events/sessions; public SELECT on `report_share_links` by token; internal reads for analytics.
 
-## What I will NOT change
-- Quality stays at 0.72 (your current optimum without visible degradation).
-- Width cap stays at 800px.
-- Template background swap (would need manual design work — let me know if you want guidance on which images compress better).
+## Files
+
+**New**
+- `src/pages/PatientReportPortal.tsx`
+- `src/pages/ReportAnalytics.tsx`
+- `src/components/report/TestStatusTimeline.tsx`
+- `src/lib/reportShareLinks.ts` — includes `generateToken(invoiceNumber)` → invoice + 4-char suffix from safe alphabet (`ABCDEFGHJKLMNPQRSTUVWXYZ23456789`).
+
+**Modified**
+- `src/components/lims/Dispatch.tsx` — `dispatchViaWhatsApp` builds short token, inserts row, sends short URL.
+- `src/App.tsx` — register `/r/:token` (public, no AppLayout) and `/report-analytics` (internal).
+- `src/components/AppLayout.tsx` — sidebar entry "Report Analytics" under LIMS.
+- `src/lib/auth.ts` — RBAC entry for `/report-analytics`.
+
+## Report Analytics page (unchanged)
+
+- KPIs: Links sent (7d/30d), Open rate, Avg dwell, PDF downloads, Blocked-by-due count.
+- Table: Patient · Invoice · Sent · Opens · Last opened · Dwell · Downloads · Due Amount.
+- Drill-down dialog: full event timeline per token.
+
+## Verification after deploy
+
+1. Dispatch → WhatsApp on a paid approved patient → URL is `…/r/<invoice>XXXX` (~14-char token).
+2. Open link → DOB verification → status timeline visible → download works (no upload to storage).
+3. Patient with `due_amount > 0` → download buttons hidden, amber banner shown.
+4. Wrong DOB 3× → 15-min lockout.
+5. Try a guessed token (`…/r/2511230042ZZZZ`) → "Invalid or expired link".
+6. Force-expire token → "This link has expired. Contact lab."
+7. Report Analytics shows opens, dwell, downloads, blocked-by-due counter.
 
