@@ -63,7 +63,7 @@ export const FOREVER_TABLES = new Set([
   "home_visits",
 ]);
 
-export const ORPHAN_BUCKETS = new Set(["report-uploads"]);
+export const ORPHAN_BUCKETS = new Set(["report-uploads", "loyalty-cards"]);
 
 export async function fetchCloudUsageStats(): Promise<CloudUsageStats> {
   const { data, error } = await supabase.rpc("get_cloud_usage_stats" as any);
