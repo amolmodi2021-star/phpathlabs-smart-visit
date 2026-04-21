@@ -29,8 +29,19 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import TestStatusTimeline from "@/components/report/TestStatusTimeline";
+import AbnormalHistorySection from "@/components/report/AbnormalHistorySection";
+import PreviousReportsSection from "@/components/report/PreviousReportsSection";
 import { cn } from "@/lib/utils";
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
+import {
+  fetchSiblingRegistrations,
+  fetchDepartmentMap,
+  fetchAbnormalForUmr,
+  fetchPreviousApprovedReports,
+} from "@/lib/portalAggregation";
+
+const LAB_PHONE = "+916356556699";
+const LAB_PHONE_DISPLAY = "6356 55 66 99";
 
 type LinkState =
   | { kind: "loading" }
@@ -160,34 +171,65 @@ const PatientReportPortal = () => {
     };
   }, [state.kind, token]);
 
-  // Load full status data
+  // Load full status data + siblings + departments + abnormal + previous
   useEffect(() => {
     if (state.kind !== "ready") return;
     (async () => {
       setLoadingData(true);
       try {
-        const regId = state.registration.id;
-        const [{ data: results }, { data: tubes }, { data: snips }, { data: testsData }] =
-          await Promise.all([
-            supabase
-              .from("patient_results")
-              .select("test_id, status, entered_at, verified_at, approved_at, dispatched_at")
-              .eq("registration_id", regId),
-            supabase
-              .from("sample_tubes" as any)
-              .select("test_ids, collected_at, accepted_at")
-              .eq("registration_id", regId),
-            supabase
-              .from("outsourced_test_snips")
-              .select("test_id, outsource_status, sent_at, updated_at")
-              .eq("registration_id", regId),
-            supabase.from("tests").select("id, test_name"),
-          ]);
+        const reg = state.registration;
+        const siblings = await fetchSiblingRegistrations(reg.umr_number, reg.created_at);
+        // Ensure current registration is included even if filter missed it.
+        const aggregated = (() => {
+          const map = new Map<string, any>();
+          siblings.forEach((s) => map.set(s.id, s));
+          map.set(reg.id, reg);
+          return Array.from(map.values()).sort((a, b) =>
+            (a.created_at || "").localeCompare(b.created_at || ""),
+          );
+        })();
+        const regIds = aggregated.map((r) => r.id);
+
+        const [
+          { data: results },
+          { data: tubes },
+          { data: snips },
+          { data: testsData },
+          deptMap,
+          abnormal,
+          previous,
+        ] = await Promise.all([
+          supabase
+            .from("patient_results")
+            .select("registration_id, test_id, status, entered_at, verified_at, approved_at, dispatched_at")
+            .in("registration_id", regIds),
+          supabase
+            .from("sample_tubes" as any)
+            .select("registration_id, test_ids, collected_at, accepted_at")
+            .in("registration_id", regIds),
+          supabase
+            .from("outsourced_test_snips")
+            .select("registration_id, test_id, outsource_status, sent_at, updated_at")
+            .in("registration_id", regIds),
+          supabase.from("tests").select("id, test_name"),
+          fetchDepartmentMap(),
+          fetchAbnormalForUmr(reg.umr_number),
+          fetchPreviousApprovedReports(reg.umr_number, regIds),
+        ]);
         const testsMap: Record<string, any> = {};
         (testsData || []).forEach((t: any) => {
           testsMap[t.id] = t;
         });
-        setData({ results: results || [], tubes: tubes || [], snips: snips || [], testsMap });
+        setData({
+          aggregated,
+          results: results || [],
+          tubes: tubes || [],
+          snips: snips || [],
+          testsMap,
+          deptMap,
+          abnormal,
+          previous,
+        });
       } finally {
         setLoadingData(false);
       }
@@ -248,100 +290,189 @@ const PatientReportPortal = () => {
     }
   };
 
-  // Build per-test status entries
+  // Build per-test status entries across ALL aggregated registrations
   const testEntries = useMemo(() => {
     if (state.kind !== "ready" || !data) return [];
-    const reg = state.registration;
-    const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
-    const leafIds = new Set<string>();
-    for (const tb of data.tubes || []) {
-      const ids = Array.isArray(tb.test_ids) ? tb.test_ids : [];
-      ids.forEach((id: string) => leafIds.add(id));
-    }
-    const expanded = expandRegistrationTests((reg.tests || []) as any[], leafIds, data.testsMap);
-    const active = expanded.filter((t: any) => !cancelledIds.has(t.test_id));
+    const aggregated = (data.aggregated || []) as any[];
+    const out: any[] = [];
+    const seenKey = new Set<string>(); // dedupe identical test across same reg
 
-    return active.map((t: any) => {
-      const tInfo = data.testsMap[t.test_id] || {};
-      const tube = (data.tubes || []).find(
-        (tb: any) => Array.isArray(tb.test_ids) && tb.test_ids.includes(t.test_id)
-      );
-      const tResults = (data.results || []).filter((r: any) => r.test_id === t.test_id);
-      const snip = (data.snips || []).find((s: any) => s.test_id === t.test_id);
+    for (const reg of aggregated) {
+      const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
+      const regTubes = (data.tubes || []).filter((t: any) => t.registration_id === reg.id);
+      const regResults = (data.results || []).filter((r: any) => r.registration_id === reg.id);
+      const regSnips = (data.snips || []).filter((s: any) => s.registration_id === reg.id);
 
-      const hasApproved =
-        tResults.some((r: any) => r.status === "approved" || r.status === "dispatched") ||
-        (snip && (snip.outsource_status === "approved" || snip.outsource_status === "dispatched"));
-      const hasVerified =
-        hasApproved ||
-        tResults.some((r: any) => r.status === "verified") ||
-        (snip && snip.outsource_status === "verified");
-      const hasEntered =
-        hasVerified ||
-        tResults.some((r: any) => ["entered", "results_entered", "results_saved"].includes(r.status)) ||
-        (snip && ["results_entered", "results_saved"].includes(snip.outsource_status));
-
-      const earliest = (field: string) => {
-        const vals = tResults.map((r: any) => r[field]).filter(Boolean);
-        return vals.length ? vals.sort()[0] : null;
-      };
-      let enteredAt = earliest("entered_at");
-      let verifiedAt = earliest("verified_at");
-      let approvedAt = earliest("approved_at");
-      if (snip && tResults.length === 0) {
-        const stime = snip.updated_at || snip.sent_at;
-        if (hasEntered && !enteredAt) enteredAt = stime;
-        if (hasVerified && !verifiedAt) verifiedAt = stime;
-        if (hasApproved && !approvedAt) approvedAt = stime;
+      const leafIds = new Set<string>();
+      for (const tb of regTubes) {
+        const ids = Array.isArray(tb.test_ids) ? tb.test_ids : [];
+        ids.forEach((id: string) => leafIds.add(id));
       }
+      const expanded = expandRegistrationTests((reg.tests || []) as any[], leafIds, data.testsMap);
+      const active = expanded.filter((t: any) => !cancelledIds.has(t.test_id));
 
-      const steps = [
-        { label: "Collected", shortLabel: "Coll", timestamp: tube?.collected_at || null },
-        { label: "Accepted", shortLabel: "Acpt", timestamp: tube?.accepted_at || null },
-        { label: "Entered", shortLabel: "Entr", timestamp: hasEntered ? enteredAt : null },
-        { label: "Verified", shortLabel: "Verf", timestamp: hasVerified ? verifiedAt : null },
-        { label: "Approved", shortLabel: "Aprv", timestamp: hasApproved ? approvedAt : null },
-      ];
+      for (const t of active) {
+        const key = `${reg.id}::${t.test_id}`;
+        if (seenKey.has(key)) continue;
+        seenKey.add(key);
+        const tInfo = data.testsMap[t.test_id] || {};
+        const tube = regTubes.find(
+          (tb: any) => Array.isArray(tb.test_ids) && tb.test_ids.includes(t.test_id),
+        );
+        const tResults = regResults.filter((r: any) => r.test_id === t.test_id);
+        const snip = regSnips.find((s: any) => s.test_id === t.test_id);
 
-      let statusLabel = "Awaiting sample collection";
-      if (hasApproved) statusLabel = "Report ready";
-      else if (hasVerified) statusLabel = "Awaiting doctor approval";
-      else if (hasEntered) statusLabel = "Awaiting verification";
-      else if (tube?.accepted_at) statusLabel = "Sample being processed";
-      else if (tube?.collected_at) statusLabel = "Sample collected";
+        const hasApproved =
+          tResults.some((r: any) => r.status === "approved" || r.status === "dispatched") ||
+          (snip && (snip.outsource_status === "approved" || snip.outsource_status === "dispatched"));
+        const hasVerified =
+          hasApproved ||
+          tResults.some((r: any) => r.status === "verified") ||
+          (snip && snip.outsource_status === "verified");
+        const hasEntered =
+          hasVerified ||
+          tResults.some((r: any) =>
+            ["entered", "results_entered", "results_saved"].includes(r.status),
+          ) ||
+          (snip && ["results_entered", "results_saved"].includes(snip.outsource_status));
 
-      return {
-        testId: t.test_id,
-        testName: t.test_name || tInfo.test_name || "Test",
-        steps,
-        statusLabel,
-        approved: hasApproved,
-      };
-    });
+        const earliest = (field: string) => {
+          const vals = tResults.map((r: any) => r[field]).filter(Boolean);
+          return vals.length ? vals.sort()[0] : null;
+        };
+        let enteredAt = earliest("entered_at");
+        let verifiedAt = earliest("verified_at");
+        let approvedAt = earliest("approved_at");
+        if (snip && tResults.length === 0) {
+          const stime = snip.updated_at || snip.sent_at;
+          if (hasEntered && !enteredAt) enteredAt = stime;
+          if (hasVerified && !verifiedAt) verifiedAt = stime;
+          if (hasApproved && !approvedAt) approvedAt = stime;
+        }
+
+        const steps = [
+          { label: "Collected", shortLabel: "Coll", timestamp: tube?.collected_at || null },
+          { label: "Accepted", shortLabel: "Acpt", timestamp: tube?.accepted_at || null },
+          { label: "Entered", shortLabel: "Entr", timestamp: hasEntered ? enteredAt : null },
+          { label: "Verified", shortLabel: "Verf", timestamp: hasVerified ? verifiedAt : null },
+          { label: "Approved", shortLabel: "Aprv", timestamp: hasApproved ? approvedAt : null },
+        ];
+
+        let statusLabel = "Awaiting sample collection";
+        if (hasApproved) statusLabel = "Report ready";
+        else if (hasVerified) statusLabel = "Awaiting doctor approval";
+        else if (hasEntered) statusLabel = "Awaiting verification";
+        else if (tube?.accepted_at) statusLabel = "Sample being processed";
+        else if (tube?.collected_at) statusLabel = "Sample collected";
+
+        const dept = data.deptMap?.testDept?.[t.test_id] || "Other";
+
+        out.push({
+          key,
+          registrationId: reg.id,
+          testId: t.test_id,
+          testName: t.test_name || tInfo.test_name || "Test",
+          steps,
+          statusLabel,
+          approved: hasApproved,
+          department: dept,
+        });
+      }
+    }
+    return out;
   }, [state, data]);
 
-  const allApproved = testEntries.length > 0 && testEntries.every((e) => e.approved);
-  const dueAmount = state.kind === "ready" ? Number(state.registration.due_amount || 0) : 0;
-  const downloadAllowed = allApproved && dueAmount <= 0;
+  // Group by department, sorted by display_order then alpha; tests sorted alpha within group.
+  const groupedEntries = useMemo(() => {
+    const deptOrder: Record<string, number> = (data?.deptMap?.deptOrder as any) || {};
+    const groups: Record<string, any[]> = {};
+    for (const e of testEntries) {
+      const d = e.department || "Other";
+      if (!groups[d]) groups[d] = [];
+      groups[d].push(e);
+    }
+    const keys = Object.keys(groups).sort((a, b) => {
+      if (a === "Other") return 1;
+      if (b === "Other") return -1;
+      const oa = deptOrder[a] ?? 999;
+      const ob = deptOrder[b] ?? 999;
+      if (oa !== ob) return oa - ob;
+      return a.localeCompare(b);
+    });
+    keys.forEach((k) =>
+      groups[k].sort((a, b) => a.testName.localeCompare(b.testName)),
+    );
+    return keys.map((k) => ({ department: k, tests: groups[k] }));
+  }, [testEntries, data]);
 
-  const goDownload = async (testId?: string) => {
-    if (state.kind !== "ready") return;
+  const approvedCount = testEntries.filter((e) => e.approved).length;
+  const totalCount = testEntries.length;
+  const allApproved = totalCount > 0 && approvedCount === totalCount;
+
+  // Sum dues across all aggregated registrations
+  const dueAmount = useMemo(() => {
+    if (state.kind !== "ready" || !data) return Number(state.kind === "ready" ? state.registration.due_amount || 0 : 0);
+    const agg = (data.aggregated || []) as any[];
+    return agg.reduce((s, r) => s + Number(r.due_amount || 0), 0);
+  }, [state, data]);
+
+  const downloadAllowed = approvedCount > 0 && dueAmount <= 0;
+
+  // Download approved reports across all aggregated registrations
+  const goDownloadApproved = async () => {
+    if (state.kind !== "ready" || !data) return;
     if (dueAmount > 0) {
       await logEvent(token, "blocked_due_pending", sessionIdRef.current || undefined);
       return;
     }
     await logEvent(token, "download_attempted", sessionIdRef.current || undefined, {
-      testId: testId || "all",
+      approved_count: approvedCount,
+      total_count: totalCount,
+      registration_ids: (data.aggregated || []).map((r: any) => r.id),
     });
-    const regId = state.registration.id;
-    const url = testId
-      ? `/lims/report/${regId}?tests=${testId}&public=${encodeURIComponent(token)}`
-      : `/lims/report/${regId}?public=${encodeURIComponent(token)}`;
+    // Group approved tests by registration
+    const byReg: Record<string, string[]> = {};
+    for (const e of testEntries) {
+      if (!e.approved) continue;
+      if (!byReg[e.registrationId]) byReg[e.registrationId] = [];
+      byReg[e.registrationId].push(e.testId);
+    }
+    const regIds = Object.keys(byReg);
+    if (regIds.length === 0) return;
     await logEvent(token, "downloaded", sessionIdRef.current || undefined, {
-      testId: testId || "all",
+      approved_count: approvedCount,
+      total_count: totalCount,
+      registration_ids: regIds,
     });
-    navigate(url);
+    // Open each (skip current tab for the first; new tab for the rest)
+    const first = regIds[0];
+    const firstUrl = allApproved
+      ? `/lims/report/${first}?public=${encodeURIComponent(token)}`
+      : `/lims/report/${first}?tests=${byReg[first].join(",")}&public=${encodeURIComponent(token)}`;
+    for (let i = 1; i < regIds.length; i++) {
+      const r = regIds[i];
+      const u = allApproved
+        ? `/lims/report/${r}?public=${encodeURIComponent(token)}`
+        : `/lims/report/${r}?tests=${byReg[r].join(",")}&public=${encodeURIComponent(token)}`;
+      window.open(u, "_blank", "noopener,noreferrer");
+    }
+    navigate(firstUrl);
   };
+
+  // Download a previous report by registration id
+  const goDownloadPrevious = async (registrationId: string) => {
+    if (state.kind !== "ready") return;
+    await logEvent(token, "download_attempted", sessionIdRef.current || undefined, {
+      previous: true,
+      registration_id: registrationId,
+    });
+    await logEvent(token, "downloaded", sessionIdRef.current || undefined, {
+      previous: true,
+      registration_id: registrationId,
+    });
+    navigate(`/lims/report/${registrationId}?public=${encodeURIComponent(token)}`);
+  };
+
 
   // ── Render states ──
   if (state.kind === "loading") {
@@ -433,9 +564,15 @@ const PatientReportPortal = () => {
 
   // ── READY ──
   const reg = state.registration;
+  const aggregated = (data?.aggregated || [reg]) as any[];
+  const otherInvoices = aggregated
+    .filter((r) => r.id !== reg.id)
+    .map((r) => r.invoice_number)
+    .filter(Boolean);
+
   return (
     <PortalShell>
-      <div className="max-w-3xl mx-auto space-y-4">
+      <div className="max-w-3xl mx-auto space-y-4 pb-24">
         {/* Patient header */}
         <Card className="p-4">
           <div className="flex items-start justify-between flex-wrap gap-3">
@@ -447,6 +584,11 @@ const PatientReportPortal = () => {
               <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground flex-wrap">
                 <span className="flex items-center gap-1">
                   <FileText className="h-3 w-3" /> Invoice {reg.invoice_number}
+                  {otherInvoices.length > 0 && (
+                    <span className="ml-1 text-primary">
+                      (+ {otherInvoices.join(", ")} – same day)
+                    </span>
+                  )}
                 </span>
                 {reg.umr_number && <span>UMR: {reg.umr_number}</span>}
                 <span className="flex items-center gap-1">
@@ -454,7 +596,7 @@ const PatientReportPortal = () => {
                 </span>
                 <span className="flex items-center gap-1">
                   <CalendarIcon className="h-3 w-3" />
-                  {format(new Date(reg.created_at), "dd MMM yyyy")}
+                  {format(new Date(reg.created_at), "dd-MM-yyyy")}
                 </span>
               </div>
             </div>
@@ -486,69 +628,110 @@ const PatientReportPortal = () => {
           </Card>
         )}
 
-        {/* Tests list */}
+        {/* Tests grouped by department */}
         {loadingData ? (
           <div className="flex justify-center py-8">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
-        ) : testEntries.length === 0 ? (
+        ) : groupedEntries.length === 0 ? (
           <Card className="p-8 text-center text-sm text-muted-foreground">
             No tests found for this report.
           </Card>
         ) : (
-          <div className="space-y-3">
-            {testEntries.map((t) => (
-              <Card key={t.testId} className="p-4">
-                <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
-                  <div className="min-w-0">
-                    <p className="font-medium text-sm">{t.testName}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{t.statusLabel}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {t.approved ? (
-                      <Badge className="bg-emerald-600 text-[10px]">
-                        <CheckCircle2 className="h-3 w-3 mr-1" /> Approved
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-[10px]">
-                        In progress
-                      </Badge>
-                    )}
-                    {t.approved && downloadAllowed && (
-                      <Button size="sm" variant="outline" className="gap-1" onClick={() => goDownload(t.testId)}>
-                        <Download className="h-3.5 w-3.5" /> PDF
-                      </Button>
-                    )}
-                  </div>
+          <div className="space-y-4">
+            {groupedEntries.map((group) => (
+              <Card key={group.department} className="p-4">
+                <div className="flex items-center gap-2 mb-3 pb-2 border-b">
+                  <FlaskConical className="h-4 w-4 text-primary" />
+                  <h2 className="font-semibold text-sm uppercase tracking-wide">
+                    {group.department}
+                  </h2>
+                  <Badge variant="secondary" className="text-[10px]">
+                    {group.tests.length}
+                  </Badge>
                 </div>
-                <TestStatusTimeline steps={t.steps} />
+                <div className="space-y-3">
+                  {group.tests.map((t: any) => (
+                    <div key={t.key} className="border-b last:border-0 pb-3 last:pb-0">
+                      <div className="flex items-start justify-between gap-3 mb-2 flex-wrap">
+                        <div className="min-w-0">
+                          <p className="font-medium text-sm">{t.testName}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {t.statusLabel}
+                          </p>
+                        </div>
+                        {t.approved ? (
+                          <Badge className="bg-emerald-600 text-[10px]">
+                            <CheckCircle2 className="h-3 w-3 mr-1" /> Approved
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[10px]">
+                            In progress
+                          </Badge>
+                        )}
+                      </div>
+                      <TestStatusTimeline steps={t.steps} />
+                    </div>
+                  ))}
+                </div>
               </Card>
             ))}
           </div>
         )}
 
-        {/* Full report download */}
-        {testEntries.length > 0 && (
+        {/* Consolidated download */}
+        {totalCount > 0 && (
           <Card className={cn("p-4 text-center", !downloadAllowed && "opacity-70")}>
-            {downloadAllowed ? (
-              <Button onClick={() => goDownload()} className="gap-2">
-                <Download className="h-4 w-4" /> Download Full Report
-              </Button>
-            ) : dueAmount > 0 ? (
+            {dueAmount > 0 ? (
               <p className="text-xs text-muted-foreground">
                 Download will be available once the pending balance is cleared.
               </p>
-            ) : (
+            ) : approvedCount === 0 ? (
               <p className="text-xs text-muted-foreground">
-                Full report download will be available once all tests are approved.
+                Download will be available once at least one test is approved.
               </p>
+            ) : (
+              <Button onClick={goDownloadApproved} className="gap-2">
+                <Download className="h-4 w-4" />
+                {allApproved
+                  ? "Download Full Report"
+                  : `Download Approved Reports (${approvedCount} of ${totalCount})`}
+              </Button>
             )}
           </Card>
+        )}
+
+        {/* Abnormal History */}
+        {data?.abnormal && Object.keys(data.abnormal).length > 0 && (
+          <AbnormalHistorySection grouped={data.abnormal} />
+        )}
+
+        {/* Previous Reports */}
+        {data?.previous && data.previous.length > 0 && (
+          <PreviousReportsSection
+            reports={data.previous}
+            token={token}
+            onDownload={goDownloadPrevious}
+          />
         )}
 
         <p className="text-[10px] text-center text-muted-foreground pt-2">
           PH PathLabs · Secure Patient Portal · Result values are released only after doctor approval.
         </p>
+      </div>
+
+      {/* Sticky call footer */}
+      <div className="fixed bottom-0 inset-x-0 z-50 bg-card border-t shadow-lg">
+        <div className="max-w-3xl mx-auto px-4 py-2.5 flex items-center justify-between gap-3">
+          <p className="text-xs text-muted-foreground hidden sm:block">Need help?</p>
+          <a
+            href={`tel:${LAB_PHONE}`}
+            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-md bg-primary text-primary-foreground font-medium text-sm hover:opacity-90 transition-opacity"
+          >
+            <Phone className="h-4 w-4" />
+            Call PH PathLabs · {LAB_PHONE_DISPLAY}
+          </a>
+        </div>
       </div>
     </PortalShell>
   );
