@@ -26,6 +26,7 @@ import {
   Phone,
   User,
   Calendar as CalendarIcon,
+  Share2,
 } from "lucide-react";
 import { format } from "date-fns";
 import TestStatusTimeline from "@/components/report/TestStatusTimeline";
