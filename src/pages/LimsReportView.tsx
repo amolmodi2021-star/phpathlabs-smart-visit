@@ -755,30 +755,55 @@ const LimsReportView = () => {
     <div className="p-2 sm:p-4 space-y-3 sm:space-y-4">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2 sm:gap-3 print:hidden">
-        <Button variant="outline" size="sm" onClick={() => navigate("/lims?tab=dispatch")}>
-          <ArrowLeft className="h-4 w-4 sm:mr-1" />
-          <span className="hidden sm:inline">Back</span>
-        </Button>
+        {!isPublic && (
+          <Button variant="outline" size="sm" onClick={() => navigate("/lims?tab=dispatch")}>
+            <ArrowLeft className="h-4 w-4 sm:mr-1" />
+            <span className="hidden sm:inline">Back</span>
+          </Button>
+        )}
         <h1 className="text-sm sm:text-xl font-bold truncate flex-1 min-w-0">
-          <span className="hidden sm:inline">Report — </span>
+          <span className="hidden sm:inline">{isPublic ? "PH PathLabs · " : "Report — "}</span>
           {report.patient_name} ({report.invoice_number})
         </h1>
         <div className="flex items-center gap-2 sm:gap-4 ml-auto flex-wrap">
-          <div className="flex items-center gap-2">
-            <Switch id="letterhead-toggle" checked={showLetterhead} onCheckedChange={setShowLetterhead} />
-            <Label htmlFor="letterhead-toggle" className="text-xs sm:text-sm cursor-pointer whitespace-nowrap">
-              <span className="hidden sm:inline">With </span>Letterhead
-            </Label>
-          </div>
-          <Button size="sm" variant="outline" onClick={handlePrint} disabled={downloading} aria-label="Print">
-            <Printer className="h-4 w-4 sm:mr-1" />
-            <span className="hidden sm:inline">Print</span>
-          </Button>
+          {!isPublic && (
+            <>
+              <div className="flex items-center gap-2">
+                <Switch id="letterhead-toggle" checked={showLetterhead} onCheckedChange={setShowLetterhead} />
+                <Label htmlFor="letterhead-toggle" className="text-xs sm:text-sm cursor-pointer whitespace-nowrap">
+                  <span className="hidden sm:inline">With </span>Letterhead
+                </Label>
+              </div>
+              <Button size="sm" variant="outline" onClick={handlePrint} disabled={downloading} aria-label="Print">
+                <Printer className="h-4 w-4 sm:mr-1" />
+                <span className="hidden sm:inline">Print</span>
+              </Button>
+            </>
+          )}
           <Button size="sm" onClick={handleDownloadPdf} disabled={downloading} aria-label="Download PDF">
             {downloading ? <Loader2 className="h-4 w-4 sm:mr-1 animate-spin" /> : <Download className="h-4 w-4 sm:mr-1" />}
-            <span className="hidden sm:inline">Download PDF</span>
-            <span className="sm:hidden">PDF</span>
+            {isPublic ? (
+              <span>{downloading ? "Downloading…" : hasDownloadedOnce ? "Re-download PDF" : "Preparing report…"}</span>
+            ) : (
+              <>
+                <span className="hidden sm:inline">Download PDF</span>
+                <span className="sm:hidden">PDF</span>
+              </>
+            )}
           </Button>
+          {isPublic && hasDownloadedOnce && (
+            <Button
+              size="sm"
+              variant="default"
+              onClick={handleShareWhatsApp}
+              disabled={sharingWa}
+              className="bg-[#25D366] hover:bg-[#1ebe57] text-white"
+              aria-label="Share on WhatsApp"
+            >
+              {sharingWa ? <Loader2 className="h-4 w-4 sm:mr-1 animate-spin" /> : <Share2 className="h-4 w-4 sm:mr-1" />}
+              <span>Share on WhatsApp</span>
+            </Button>
+          )}
         </div>
       </div>
 
