@@ -1479,7 +1479,12 @@ const AutomatedMarketing = () => {
                   }
                 }
               };
-              await Promise.all(Array.from({ length: Math.min(concurrency, Math.max(1, total)) }, () => worker()));
+              const _poolSize3 = Math.min(concurrency, Math.max(1, total));
+              await Promise.all(Array.from({ length: _poolSize3 }, (_, i) => (async () => {
+                if (i > 0) await sleepResilient(i * 200);
+                if (aborted) return;
+                await worker();
+              })()));
               if (aborted) break outer;
             }
           }
