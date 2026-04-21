@@ -58,6 +58,12 @@ Deno.serve(async (req) => {
     }
 
     console.log("Prune complete:", results);
+
+    await supabase.from("cleanup_runs").insert({
+      function_name: "prune-old-logs",
+      summary: { results },
+    });
+
     return new Response(JSON.stringify({ success: true, results }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
