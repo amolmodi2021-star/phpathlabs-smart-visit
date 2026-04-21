@@ -78,10 +78,10 @@ export async function invokeFunction(name: string, body?: any) {
 }
 
 export async function purgeBucket(bucket: string, password: string) {
-  const { data, error } = await supabase.rpc("purge_bucket" as any, {
-    p_bucket: bucket,
-    p_password: password,
+  const { data, error } = await supabase.functions.invoke("purge-bucket", {
+    body: { bucket, password },
   });
   if (error) throw error;
+  if (data?.error) throw new Error(data.error);
   return data as { bucket: string; files_removed: number };
 }
