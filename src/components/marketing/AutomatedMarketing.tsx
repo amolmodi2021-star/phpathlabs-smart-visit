@@ -1386,9 +1386,15 @@ const AutomatedMarketing = () => {
                       continue;
                     }
                     // Phase A: render (overlaps with the previous send still in flight)
-                    const imageUrl = includeMediaHeader
-                      ? await generateAbnormalCardForDrip(r, tests, abnTemplate, staticExpiryDate)
-                      : null;
+                    let imageUrl: string | null = null;
+                    if (includeMediaHeader) {
+                      const renderRes = await generateAbnormalCardForDripEx(r, tests, abnTemplate, staticExpiryDate);
+                      imageUrl = renderRes.url;
+                      if (!imageUrl && renderRes.reason) {
+                        // Render failed but we still attempt the text-only send below; log the cause for diagnostics.
+                        await logDiagnostic(filter, r, "abnormal_render_failed", renderRes.reason);
+                      }
+                    }
 
                     const components: Record<string, unknown> = {};
                     if (includeMediaHeader && imageUrl) {
