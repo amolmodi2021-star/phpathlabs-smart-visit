@@ -64,6 +64,7 @@ const ALL_TABS = [
       { key: "dispatch", label: "Dispatch" },
       { key: "due_payments", label: "Due Payments" },
       { key: "bad_debts", label: "Bad Debts" },
+      { key: "billing", label: "Billing" },
       { key: "daily_report", label: "Daily Report" },
       { key: "completed_hv", label: "Completed Home Visits" },
       { key: "settings", label: "Settings" },
@@ -75,6 +76,8 @@ const ALL_TABS = [
   { route: "/lims-demo", label: "LIMS Interface" },
   { route: "/report-layout", label: "Report Layout" },
   { route: "/signature-management", label: "Doctor & Signatures" },
+  { route: "/report-analytics", label: "Report Analytics" },
+  { route: "/cloud-usage", label: "Cloud Usage" },
   { route: "/users", label: "Users" },
 ];
 
