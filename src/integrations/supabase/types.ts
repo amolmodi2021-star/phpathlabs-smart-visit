@@ -3936,10 +3936,6 @@ export type Database = {
           unread_count: number
         }[]
       }
-      purge_bucket: {
-        Args: { p_bucket: string; p_password: string }
-        Returns: Json
-      }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
     }
