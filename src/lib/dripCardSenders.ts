@@ -134,7 +134,7 @@ export async function generateAbnormalCardForDripEx(
     canvas.width = cw;
     canvas.height = height;
     const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
+    if (!ctx) return { url: null, reason: "ctx_error" };
 
     const bgColor = template?.background_color || "#FFFFFF";
     const headerBg = template?.header_bg_color || "#2E3192";
@@ -358,18 +358,37 @@ export async function generateAbnormalCardForDripEx(
     }
 
     // Downscaled JPEG (max 800px width, q=0.72) — ~55% smaller than full PNG, slashes WhatsApp egress.
-    const blob = await exportCanvasAsCompressedJpeg(canvas);
-
-    const fileName = `generated/abnormal/${Date.now()}_${Math.random().toString(36).slice(2, 6)}.jpg`;
-    const { error: uploadError } = await supabase.storage.from("loyalty-cards").upload(fileName, blob, { contentType: "image/jpeg" });
-    if (uploadError) throw uploadError;
-
-    const { data: urlData } = supabase.storage.from("loyalty-cards").getPublicUrl(fileName);
-    return urlData.publicUrl;
+    // Bounded retry around toBlob + upload absorbs transient storage errors and
+    // birthday-paradox filename collisions under high concurrency.
+    const blobFn = async () => {
+      try {
+        return await exportCanvasAsCompressedJpeg(canvas);
+      } catch {
+        throw new Error("toblob_null");
+      }
+    };
+    const { path } = await uploadAbnormalWithRetry(blobFn, freshAbnormalFileName());
+    const { data: urlData } = supabase.storage.from("loyalty-cards").getPublicUrl(path);
+    return { url: urlData.publicUrl };
   } catch (err) {
-    console.error("Drip abnormal card generation failed:", err);
-    return null;
+    const reason = (err as { reason?: AbnormalCardFailureReason })?.reason || "upload_failed";
+    console.error(`Drip abnormal card generation failed (${reason}):`, err);
+    return { url: null, reason };
   }
+}
+
+/**
+ * Back-compat wrapper that returns just the URL (or null on failure). New code
+ * should prefer `generateAbnormalCardForDripEx` to surface the tagged failure reason.
+ */
+export async function generateAbnormalCardForDrip(
+  contact: DripContact,
+  tests: any[],
+  template: any,
+  expiryDate: string,
+): Promise<string | null> {
+  const { url } = await generateAbnormalCardForDripEx(contact, tests, template, expiryDate);
+  return url;
 }
 
 // =================== Senders for Retry ===================
