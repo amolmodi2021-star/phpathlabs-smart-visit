@@ -1416,46 +1416,55 @@ const AutomatedMarketing = () => {
             const headerPrefix = cfg["wa_global_authHeaderPrefix"] || "";
             const fromNumber = cfg["wa_global_fromNumber"] || "";
 
-            for (let i = 0; i < preview.records.length; i++) {
-              if (_checkAbort()) break outer;
-              await _waitWhilePaused();
-              if (_checkAbort()) break outer;
-              const r = preview.records[i];
-              try {
-                const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
-                _setSendPhase(`Filter ${filterIndex} of ${totalFilters}: ${filter.name} — Promotion ${i + 1}/${preview.records.length} → ${r.patient_name || mob}`);
+            // Bounded worker pool — see ABC branch for details.
+            {
+              const records = preview.records;
+              const total = records.length;
+              let nextIdx = 0;
+              let aborted = false;
+              const worker = async () => {
+                while (true) {
+                  if (_checkAbort()) { aborted = true; return; }
+                  await _waitWhilePaused();
+                  if (_checkAbort()) { aborted = true; return; }
+                  const i = nextIdx++;
+                  if (i >= total) return;
+                  const r = records[i];
+                  try {
+                    const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
+                    _setSendPhase(`Filter ${filterIndex} of ${totalFilters}: ${filter.name} — Promotion ${i + 1}/${total} → ${r.patient_name || mob}`);
 
-                const components: Record<string, unknown> = {};
-                if (Object.keys(bodyMapping).length > 0) {
-                  const sortedKeys = Object.keys(bodyMapping).sort((a, b) => Number(a) - Number(b));
-                  components.body = { params: sortedKeys.map((key) => {
-                    const f = bodyMapping[key];
-                    if (f === "Name") return r.patient_name || "";
-                    if (f === "Mobile") return r.mobile_number || "";
-                    return f || "";
-                  })};
+                    const components: Record<string, unknown> = {};
+                    if (Object.keys(bodyMapping).length > 0) {
+                      const sortedKeys = Object.keys(bodyMapping).sort((a, b) => Number(a) - Number(b));
+                      components.body = { params: sortedKeys.map((key) => {
+                        const f = bodyMapping[key];
+                        if (f === "Name") return r.patient_name || "";
+                        if (f === "Mobile") return r.mobile_number || "";
+                        return f || "";
+                      })};
+                    }
+                    const payload: Record<string, unknown> = {
+                      from: fromNumber, to: `+91${mob}`, templateName: tmpl.whatsapp_template_name,
+                      type: "template", ...(Object.keys(components).length > 0 ? { components } : {}),
+                    };
+                    const ok = await callProxyAndLog(
+                      payload, apiBaseUrl, apiKey, headerName, headerPrefix,
+                      r, filter, "Promotion", { last_sent_type: "Promotion" },
+                    );
+                    if (ok) totalSent++; else totalFailed++;
+                    processedCount++;
+                    _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+                  } catch (recErr) {
+                    console.error("[record_error]", recErr);
+                    await logDiagnostic(filter, r, "record_error", String((recErr as Error)?.message || recErr));
+                    totalFailed++; processedCount++;
+                    _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+                  }
                 }
-                const payload: Record<string, unknown> = {
-                  from: fromNumber, to: `+91${mob}`, templateName: tmpl.whatsapp_template_name,
-                  type: "template", ...(Object.keys(components).length > 0 ? { components } : {}),
-                };
-                const ok = await callProxyAndLog(
-                  payload, apiBaseUrl, apiKey, headerName, headerPrefix,
-                  r, filter, "Promotion", { last_sent_type: "Promotion" },
-                );
-                if (ok) totalSent++; else totalFailed++;
-                processedCount++;
-                _setSendProgress(Math.round((processedCount / totalMessages) * 100));
-                if (delayMs > 0 && (i < preview.records.length - 1)) {
-                  await new Promise((r) => setTimeout(r, delayMs));
-                }
-              } catch (recErr) {
-                console.error("[record_error]", recErr);
-                await logDiagnostic(filter, r, "record_error", String((recErr as Error)?.message || recErr));
-                totalFailed++; processedCount++;
-                _setSendProgress(Math.round((processedCount / totalMessages) * 100));
-                continue;
-              }
+              };
+              await Promise.all(Array.from({ length: Math.min(concurrency, Math.max(1, total)) }, () => worker()));
+              if (aborted) break outer;
             }
           }
         } catch (branchErr) {
