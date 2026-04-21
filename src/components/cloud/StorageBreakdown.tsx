@@ -75,6 +75,7 @@ const StorageBreakdown = ({ buckets, onRefetch }: Props) => {
               let actionBody: any = undefined;
               if (b.bucket === "loyalty-cards") { actionFn = "cleanup-card-images"; actionLabel = "Run Cleanup"; }
               if (b.bucket === "outsourced-snips") { actionFn = "cleanup-outsourced-snips"; actionLabel = "Run Cleanup"; actionBody = { max_age_days: 0 }; }
+              if (b.bucket === "prescriptions") { actionFn = "cleanup-prescriptions"; actionLabel = "Run Cleanup"; actionBody = { max_age_days: 0 }; }
               return (
                 <TableRow key={b.bucket}>
                   <TableCell className="font-medium">
