@@ -115,17 +115,22 @@ export interface CardData {
 /**
  * Generate a loyalty card image, upload to storage, insert into loyalty_cards table.
  * Returns the public URL of the generated image, or null on failure.
+ *
+ * Each call creates its own offscreen canvas so multiple workers can render
+ * concurrently without overwriting each other's pixels (critical for parallel sends).
  */
 export async function generateAndUploadCard(
   templateId: string,
   data: CardData,
   bgImg: HTMLImageElement,
-  canvas: HTMLCanvasElement,
-  ctx: CanvasRenderingContext2D,
   placeholders: any[],
 ): Promise<string | null> {
   try {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const canvas = document.createElement("canvas");
+    canvas.width = bgImg.naturalWidth;
+    canvas.height = bgImg.naturalHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Failed to get 2d context for card canvas");
     ctx.drawImage(bgImg, 0, 0);
 
     for (const p of placeholders) {
@@ -162,14 +167,14 @@ export async function generateAndUploadCard(
   }
 }
 
+/**
+ * Loads only the immutable assets (decoded background image + placeholders).
+ * Canvases are created per-call inside generateAndUploadCard so workers don't
+ * trample each other's pixels.
+ */
 export async function getTemplateAssets(templateId: string) {
   const { data: template } = await supabase.from("loyalty_card_templates").select("*").eq("id", templateId).single();
   if (!template?.background_image_url) return null;
   const bgImg = await loadImage(template.background_image_url);
-  const canvas = document.createElement("canvas");
-  canvas.width = bgImg.naturalWidth;
-  canvas.height = bgImg.naturalHeight;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return null;
-  return { bgImg, canvas, ctx, placeholders: (template.placeholders as any[]) || [] };
+  return { bgImg, placeholders: (template.placeholders as any[]) || [] };
 }

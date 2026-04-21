@@ -241,7 +241,7 @@ const CRMImportReview = () => {
       return toast.error(err.message || "Failed to load template");
     }
 
-    const { bgImg, canvas, ctx, placeholders } = templateAssets;
+    const { bgImg, placeholders } = templateAssets;
     const imageUrls: (string | null)[] = [];
     
 
@@ -258,7 +258,7 @@ const CRMImportReview = () => {
         "Expiry Date": staticExpiryDate,
       };
 
-      const imageUrl = await generateAndUploadCard(selectedTemplateId, cardData, bgImg, canvas, ctx, placeholders);
+      const imageUrl = await generateAndUploadCard(selectedTemplateId, cardData, bgImg, placeholders);
       imageUrls.push(imageUrl);
       setProgress(Math.round(((i + 1) / targets.length) * 50));
     }

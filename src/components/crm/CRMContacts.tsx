@@ -724,7 +724,7 @@ const CRMContacts = () => {
       return toast.error(err.message || "Failed to load template");
     }
 
-    const { bgImg, canvas, ctx, placeholders } = templateAssets;
+    const { bgImg, placeholders } = templateAssets;
     const imageUrls: (string | null)[] = [];
     
 
@@ -741,7 +741,7 @@ const CRMContacts = () => {
         "Expiry Date": staticExpiryDate,
       };
 
-      const imageUrl = await generateAndUploadCard(selectedTemplateId, cardData, bgImg, canvas, ctx, placeholders);
+      const imageUrl = await generateAndUploadCard(selectedTemplateId, cardData, bgImg, placeholders);
       imageUrls.push(imageUrl);
       setSendProgress(Math.round(((i + 1) / selectedContacts.length) * 50));
     }

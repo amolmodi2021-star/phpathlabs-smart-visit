@@ -978,7 +978,7 @@ const AutomatedMarketing = () => {
           if (!templateId) continue;
           const templateAssets = await getTemplateAssets(templateId);
           if (!templateAssets) continue;
-          const { bgImg, canvas, ctx, placeholders } = templateAssets;
+          const { bgImg, placeholders } = templateAssets;
 
           for (const r of preview.records) {
             if (_checkAbort() || trialSentCount >= trialMax) break outer;
@@ -987,7 +987,7 @@ const AutomatedMarketing = () => {
               Name: r.patient_name || "", Mobile: r.mobile_number || "", UMR: r.umr_number || "",
               "Discount %": `${r.default_discount_pct ?? 20}%`, "Expiry Date": staticExpiryDate,
             };
-            const imageUrl = await generateAndUploadCard(templateId, cardData, bgImg, canvas, ctx, placeholders);
+            const imageUrl = await generateAndUploadCard(templateId, cardData, bgImg, placeholders);
             if (!imageUrl) { totalFailed++; processedCount++; continue; }
             const components: Record<string, unknown> = {};
             if (Object.keys(mapping).length > 0) {
@@ -1248,7 +1248,7 @@ const AutomatedMarketing = () => {
               _setSendProgress(Math.round((processedCount / totalMessages) * 100));
               continue;
             }
-            const { bgImg, canvas, ctx, placeholders } = templateAssets;
+            const { bgImg, placeholders } = templateAssets;
 
             // Bounded worker pool: N workers process records in parallel.
             // Per-record work (card render + storage upload) runs concurrently;
@@ -1259,12 +1259,13 @@ const AutomatedMarketing = () => {
               let nextIdx = 0;
               let aborted = false;
               const worker = async () => {
+                let pendingSend: Promise<void> | null = null;
                 while (true) {
-                  if (_checkAbort()) { aborted = true; return; }
+                  if (_checkAbort()) { aborted = true; break; }
                   await _waitWhilePaused();
-                  if (_checkAbort()) { aborted = true; return; }
+                  if (_checkAbort()) { aborted = true; break; }
                   const i = nextIdx++;
-                  if (i >= total) return;
+                  if (i >= total) break;
                   const r = records[i];
                   try {
                     const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
@@ -1274,10 +1275,12 @@ const AutomatedMarketing = () => {
                       Name: r.patient_name || "", Mobile: r.mobile_number || "", UMR: r.umr_number || "",
                       "Discount %": `${r.default_discount_pct ?? 20}%`, "Expiry Date": staticExpiryDate,
                     };
-                    const imageUrl = await generateAndUploadCard(templateId, cardData, bgImg, canvas, ctx, placeholders);
+                    // Phase A: render + upload (overlaps with the previous send still in flight)
+                    const imageUrl = await generateAndUploadCard(templateId, cardData, bgImg, placeholders);
                     if (!imageUrl) {
                       await logDripAction(filter, r, "failed", "card_generation_error");
                       totalFailed++; processedCount++;
+                      _setSendPhase(`Filter ${filterIndex} of ${totalFilters}: ${filter.name} — ABC ${i + 1}/${total} (render failed)`);
                       _setSendProgress(Math.round((processedCount / totalMessages) * 100));
                       continue;
                     }
@@ -1299,13 +1302,20 @@ const AutomatedMarketing = () => {
                       from: loyaltyFromNumber, to: `+91${mob}`, templateName: loyaltyTemplateName,
                       campaignName: loyaltyCampaignName, type: "template", components,
                     };
-                    const ok = await callProxyAndLog(
+                    // Phase B: drain previous send (back-pressure: at most 1 in-flight per worker), then launch new one
+                    if (pendingSend) { await pendingSend; pendingSend = null; }
+                    pendingSend = callProxyAndLog(
                       payload, loyaltyApiBaseUrl, loyaltyApiKey, loyaltyAuthHeaderName, loyaltyAuthHeaderPrefix,
                       r, filter, "ABC", { last_sent_type: "ABC", record_tag: null },
-                    );
-                    if (ok) totalSent++; else totalFailed++;
-                    processedCount++;
-                    _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+                    ).then((ok) => {
+                      if (ok) totalSent++; else totalFailed++;
+                      processedCount++;
+                      _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+                    }).catch((err) => {
+                      console.error("[send_error]", err);
+                      totalFailed++; processedCount++;
+                      _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+                    });
                   } catch (recErr) {
                     console.error("[record_error]", recErr);
                     await logDiagnostic(filter, r, "record_error", String((recErr as Error)?.message || recErr));
@@ -1313,6 +1323,8 @@ const AutomatedMarketing = () => {
                     _setSendProgress(Math.round((processedCount / totalMessages) * 100));
                   }
                 }
+                // Drain the last in-flight send before the worker exits
+                if (pendingSend) { try { await pendingSend; } catch { /* already counted */ } }
               };
               const _poolSize1 = Math.min(concurrency, Math.max(1, total));
               await Promise.all(Array.from({ length: _poolSize1 }, (_, i) => (async () => {
@@ -1353,12 +1365,13 @@ const AutomatedMarketing = () => {
               let nextIdx = 0;
               let aborted = false;
               const worker = async () => {
+                let pendingSend: Promise<void> | null = null;
                 while (true) {
-                  if (_checkAbort()) { aborted = true; return; }
+                  if (_checkAbort()) { aborted = true; break; }
                   await _waitWhilePaused();
-                  if (_checkAbort()) { aborted = true; return; }
+                  if (_checkAbort()) { aborted = true; break; }
                   const i = nextIdx++;
-                  if (i >= total) return;
+                  if (i >= total) break;
                   const r = records[i];
                   try {
                     const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
@@ -1372,6 +1385,7 @@ const AutomatedMarketing = () => {
                       _setSendProgress(Math.round((processedCount / totalMessages) * 100));
                       continue;
                     }
+                    // Phase A: render (overlaps with the previous send still in flight)
                     const imageUrl = includeMediaHeader
                       ? await generateAbnormalCardForDrip(r, tests, abnTemplate, staticExpiryDate)
                       : null;
@@ -1385,13 +1399,20 @@ const AutomatedMarketing = () => {
                       from: fromNumber, to: `+91${mob}`, templateName,
                       campaignName, type: "template", components,
                     };
-                    const ok = await callProxyAndLog(
+                    // Phase B: drain previous send (back-pressure), then launch new one
+                    if (pendingSend) { await pendingSend; pendingSend = null; }
+                    pendingSend = callProxyAndLog(
                       payload, apiBaseUrl, apiKey, headerName, headerPrefix,
                       r, filter, "Abnormal History", { last_sent_type: "Abnormal History" },
-                    );
-                    if (ok) totalSent++; else totalFailed++;
-                    processedCount++;
-                    _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+                    ).then((ok) => {
+                      if (ok) totalSent++; else totalFailed++;
+                      processedCount++;
+                      _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+                    }).catch((err) => {
+                      console.error("[send_error]", err);
+                      totalFailed++; processedCount++;
+                      _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+                    });
                   } catch (recErr) {
                     console.error("[record_error]", recErr);
                     await logDiagnostic(filter, r, "record_error", String((recErr as Error)?.message || recErr));
@@ -1399,6 +1420,7 @@ const AutomatedMarketing = () => {
                     _setSendProgress(Math.round((processedCount / totalMessages) * 100));
                   }
                 }
+                if (pendingSend) { try { await pendingSend; } catch { /* already counted */ } }
               };
               const _poolSize2 = Math.min(concurrency, Math.max(1, total));
               await Promise.all(Array.from({ length: _poolSize2 }, (_, i) => (async () => {
@@ -1439,12 +1461,13 @@ const AutomatedMarketing = () => {
               let nextIdx = 0;
               let aborted = false;
               const worker = async () => {
+                let pendingSend: Promise<void> | null = null;
                 while (true) {
-                  if (_checkAbort()) { aborted = true; return; }
+                  if (_checkAbort()) { aborted = true; break; }
                   await _waitWhilePaused();
-                  if (_checkAbort()) { aborted = true; return; }
+                  if (_checkAbort()) { aborted = true; break; }
                   const i = nextIdx++;
-                  if (i >= total) return;
+                  if (i >= total) break;
                   const r = records[i];
                   try {
                     const mob = (r.mobile_number || "").replace(/\D/g, "").slice(-10);
@@ -1464,13 +1487,20 @@ const AutomatedMarketing = () => {
                       from: fromNumber, to: `+91${mob}`, templateName: tmpl.whatsapp_template_name,
                       type: "template", ...(Object.keys(components).length > 0 ? { components } : {}),
                     };
-                    const ok = await callProxyAndLog(
+                    // Drain previous send (back-pressure), then launch new one without awaiting it
+                    if (pendingSend) { await pendingSend; pendingSend = null; }
+                    pendingSend = callProxyAndLog(
                       payload, apiBaseUrl, apiKey, headerName, headerPrefix,
                       r, filter, "Promotion", { last_sent_type: "Promotion" },
-                    );
-                    if (ok) totalSent++; else totalFailed++;
-                    processedCount++;
-                    _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+                    ).then((ok) => {
+                      if (ok) totalSent++; else totalFailed++;
+                      processedCount++;
+                      _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+                    }).catch((err) => {
+                      console.error("[send_error]", err);
+                      totalFailed++; processedCount++;
+                      _setSendProgress(Math.round((processedCount / totalMessages) * 100));
+                    });
                   } catch (recErr) {
                     console.error("[record_error]", recErr);
                     await logDiagnostic(filter, r, "record_error", String((recErr as Error)?.message || recErr));
@@ -1478,6 +1508,7 @@ const AutomatedMarketing = () => {
                     _setSendProgress(Math.round((processedCount / totalMessages) * 100));
                   }
                 }
+                if (pendingSend) { try { await pendingSend; } catch { /* already counted */ } }
               };
               const _poolSize3 = Math.min(concurrency, Math.max(1, total));
               await Promise.all(Array.from({ length: _poolSize3 }, (_, i) => (async () => {

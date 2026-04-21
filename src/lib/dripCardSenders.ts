@@ -374,7 +374,7 @@ export async function sendABCCard(opts: {
     "Expiry Date": staticExpiryDate,
   };
   const imageUrl = await generateAndUploadCard(
-    templateId, cardData, assets.bgImg, assets.canvas, assets.ctx, assets.placeholders,
+    templateId, cardData, assets.bgImg, assets.placeholders,
   );
   if (!imageUrl) return { ok: false, retryPayload: null, messageId: null, reason: "card_generation_error" };
 
