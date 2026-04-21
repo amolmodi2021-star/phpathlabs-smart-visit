@@ -4,7 +4,7 @@ import { Label } from "@/components/ui/label";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Loader2, Printer, ArrowLeft, Download } from "lucide-react";
+import { Loader2, Printer, ArrowLeft, Download, Share2 } from "lucide-react";
 import { toPng, toJpeg } from "html-to-image";
 import jsPDF from "jspdf";
 import * as pdfjsLib from "pdfjs-dist";
@@ -14,6 +14,7 @@ import ReportResultsSection from "@/components/report/ReportResultsSection";
 import AutoScaleContent from "@/components/report/AutoScaleContent";
 import type { TestResult, ProfileMeta } from "@/components/report/ReportResultsSection";
 import { toast } from "sonner";
+import { logEvent } from "@/lib/reportShareLinks";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.mjs";
 
