@@ -564,9 +564,15 @@ const PatientReportPortal = () => {
 
   // ── READY ──
   const reg = state.registration;
+  const aggregated = (data?.aggregated || [reg]) as any[];
+  const otherInvoices = aggregated
+    .filter((r) => r.id !== reg.id)
+    .map((r) => r.invoice_number)
+    .filter(Boolean);
+
   return (
     <PortalShell>
-      <div className="max-w-3xl mx-auto space-y-4">
+      <div className="max-w-3xl mx-auto space-y-4 pb-24">
         {/* Patient header */}
         <Card className="p-4">
           <div className="flex items-start justify-between flex-wrap gap-3">
@@ -578,6 +584,11 @@ const PatientReportPortal = () => {
               <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground flex-wrap">
                 <span className="flex items-center gap-1">
                   <FileText className="h-3 w-3" /> Invoice {reg.invoice_number}
+                  {otherInvoices.length > 0 && (
+                    <span className="ml-1 text-primary">
+                      (+ {otherInvoices.join(", ")} – same day)
+                    </span>
+                  )}
                 </span>
                 {reg.umr_number && <span>UMR: {reg.umr_number}</span>}
                 <span className="flex items-center gap-1">
@@ -585,7 +596,7 @@ const PatientReportPortal = () => {
                 </span>
                 <span className="flex items-center gap-1">
                   <CalendarIcon className="h-3 w-3" />
-                  {format(new Date(reg.created_at), "dd MMM yyyy")}
+                  {format(new Date(reg.created_at), "dd-MM-yyyy")}
                 </span>
               </div>
             </div>
@@ -617,69 +628,110 @@ const PatientReportPortal = () => {
           </Card>
         )}
 
-        {/* Tests list */}
+        {/* Tests grouped by department */}
         {loadingData ? (
           <div className="flex justify-center py-8">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
-        ) : testEntries.length === 0 ? (
+        ) : groupedEntries.length === 0 ? (
           <Card className="p-8 text-center text-sm text-muted-foreground">
             No tests found for this report.
           </Card>
         ) : (
-          <div className="space-y-3">
-            {testEntries.map((t) => (
-              <Card key={t.testId} className="p-4">
-                <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
-                  <div className="min-w-0">
-                    <p className="font-medium text-sm">{t.testName}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{t.statusLabel}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {t.approved ? (
-                      <Badge className="bg-emerald-600 text-[10px]">
-                        <CheckCircle2 className="h-3 w-3 mr-1" /> Approved
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-[10px]">
-                        In progress
-                      </Badge>
-                    )}
-                    {t.approved && downloadAllowed && (
-                      <Button size="sm" variant="outline" className="gap-1" onClick={() => goDownload(t.testId)}>
-                        <Download className="h-3.5 w-3.5" /> PDF
-                      </Button>
-                    )}
-                  </div>
+          <div className="space-y-4">
+            {groupedEntries.map((group) => (
+              <Card key={group.department} className="p-4">
+                <div className="flex items-center gap-2 mb-3 pb-2 border-b">
+                  <FlaskConical className="h-4 w-4 text-primary" />
+                  <h2 className="font-semibold text-sm uppercase tracking-wide">
+                    {group.department}
+                  </h2>
+                  <Badge variant="secondary" className="text-[10px]">
+                    {group.tests.length}
+                  </Badge>
                 </div>
-                <TestStatusTimeline steps={t.steps} />
+                <div className="space-y-3">
+                  {group.tests.map((t: any) => (
+                    <div key={t.key} className="border-b last:border-0 pb-3 last:pb-0">
+                      <div className="flex items-start justify-between gap-3 mb-2 flex-wrap">
+                        <div className="min-w-0">
+                          <p className="font-medium text-sm">{t.testName}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {t.statusLabel}
+                          </p>
+                        </div>
+                        {t.approved ? (
+                          <Badge className="bg-emerald-600 text-[10px]">
+                            <CheckCircle2 className="h-3 w-3 mr-1" /> Approved
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[10px]">
+                            In progress
+                          </Badge>
+                        )}
+                      </div>
+                      <TestStatusTimeline steps={t.steps} />
+                    </div>
+                  ))}
+                </div>
               </Card>
             ))}
           </div>
         )}
 
-        {/* Full report download */}
-        {testEntries.length > 0 && (
+        {/* Consolidated download */}
+        {totalCount > 0 && (
           <Card className={cn("p-4 text-center", !downloadAllowed && "opacity-70")}>
-            {downloadAllowed ? (
-              <Button onClick={() => goDownload()} className="gap-2">
-                <Download className="h-4 w-4" /> Download Full Report
-              </Button>
-            ) : dueAmount > 0 ? (
+            {dueAmount > 0 ? (
               <p className="text-xs text-muted-foreground">
                 Download will be available once the pending balance is cleared.
               </p>
-            ) : (
+            ) : approvedCount === 0 ? (
               <p className="text-xs text-muted-foreground">
-                Full report download will be available once all tests are approved.
+                Download will be available once at least one test is approved.
               </p>
+            ) : (
+              <Button onClick={goDownloadApproved} className="gap-2">
+                <Download className="h-4 w-4" />
+                {allApproved
+                  ? "Download Full Report"
+                  : `Download Approved Reports (${approvedCount} of ${totalCount})`}
+              </Button>
             )}
           </Card>
+        )}
+
+        {/* Abnormal History */}
+        {data?.abnormal && Object.keys(data.abnormal).length > 0 && (
+          <AbnormalHistorySection grouped={data.abnormal} />
+        )}
+
+        {/* Previous Reports */}
+        {data?.previous && data.previous.length > 0 && (
+          <PreviousReportsSection
+            reports={data.previous}
+            token={token}
+            onDownload={goDownloadPrevious}
+          />
         )}
 
         <p className="text-[10px] text-center text-muted-foreground pt-2">
           PH PathLabs · Secure Patient Portal · Result values are released only after doctor approval.
         </p>
+      </div>
+
+      {/* Sticky call footer */}
+      <div className="fixed bottom-0 inset-x-0 z-50 bg-card border-t shadow-lg">
+        <div className="max-w-3xl mx-auto px-4 py-2.5 flex items-center justify-between gap-3">
+          <p className="text-xs text-muted-foreground hidden sm:block">Need help?</p>
+          <a
+            href={`tel:${LAB_PHONE}`}
+            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-md bg-primary text-primary-foreground font-medium text-sm hover:opacity-90 transition-opacity"
+          >
+            <Phone className="h-4 w-4" />
+            Call PH PathLabs · {LAB_PHONE_DISPLAY}
+          </a>
+        </div>
       </div>
     </PortalShell>
   );
