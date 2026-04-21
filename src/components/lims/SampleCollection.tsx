@@ -496,10 +496,17 @@ const SampleCollection = () => {
                     </Button>
                   )}
                   {!isPending && isCollected && (
-                    <Button size="sm" variant="ghost" className="shrink-0" title="Reprint this barcode"
-                      onClick={(e) => { e.stopPropagation(); doPrintBarcodes(reg, [tube]); toast.success(`Reprinted barcode for ${tube.sample_uid}`); }}>
-                      <Printer className="h-3.5 w-3.5" />
-                    </Button>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button size="sm" variant="ghost" title="Reprint this barcode"
+                        onClick={(e) => { e.stopPropagation(); doPrintBarcodes(reg, [tube]); toast.success(`Reprinted barcode for ${tube.sample_uid}`); }}>
+                        <Printer className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button size="sm" variant="ghost" title="Cancel collection (revert to pending)"
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={(e) => { e.stopPropagation(); setCancelCollectDialog({ open: true, reg, tube }); }}>
+                        <Undo2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   )}
                 </CardContent>
               </Card>
