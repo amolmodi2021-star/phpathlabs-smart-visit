@@ -15,6 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   generateAndUploadCard,
   getTemplateAssets,
+  exportCanvasAsCompressedJpeg,
   type CardData,
 } from "@/lib/cardRenderer";
 import { sortAbnormalTestsByDateDesc } from "@/lib/abnormalTests";
@@ -304,12 +305,11 @@ export async function generateAbnormalCardForDrip(
       ctx.fillText(`UMR: ${contact.umr_number || ""}`, padding + 400, 88);
     }
 
-    const blob = await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/png");
-    });
+    // Downscaled JPEG (max 800px width, q=0.72) — ~55% smaller than full PNG, slashes WhatsApp egress.
+    const blob = await exportCanvasAsCompressedJpeg(canvas);
 
-    const fileName = `generated/abnormal/${Date.now()}_${Math.random().toString(36).slice(2, 6)}.png`;
-    const { error: uploadError } = await supabase.storage.from("loyalty-cards").upload(fileName, blob, { contentType: "image/png" });
+    const fileName = `generated/abnormal/${Date.now()}_${Math.random().toString(36).slice(2, 6)}.jpg`;
+    const { error: uploadError } = await supabase.storage.from("loyalty-cards").upload(fileName, blob, { contentType: "image/jpeg" });
     if (uploadError) throw uploadError;
 
     const { data: urlData } = supabase.storage.from("loyalty-cards").getPublicUrl(fileName);
