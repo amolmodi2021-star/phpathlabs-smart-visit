@@ -18,10 +18,10 @@ const StorageBreakdown = ({ buckets, onRefetch }: Props) => {
   const [purgeOpen, setPurgeOpen] = useState(false);
   const [purgeTarget, setPurgeTarget] = useState<string | null>(null);
 
-  const runCleanup = async (fn: string, label: string) => {
+  const runCleanup = async (fn: string, label: string, body?: any) => {
     setBusy(fn);
     try {
-      const data = await invokeFunction(fn);
+      const data = await invokeFunction(fn, body);
       toast.success(`${label} complete`, {
         description: `Removed ${data?.deleted ?? data?.files_removed ?? 0} file(s).`,
       });
@@ -72,8 +72,9 @@ const StorageBreakdown = ({ buckets, onRefetch }: Props) => {
               const isOrphan = ORPHAN_BUCKETS.has(b.bucket);
               let actionFn: string | null = null;
               let actionLabel = "";
+              let actionBody: any = undefined;
               if (b.bucket === "loyalty-cards") { actionFn = "cleanup-card-images"; actionLabel = "Run Cleanup"; }
-              if (b.bucket === "outsourced-snips") { actionFn = "cleanup-outsourced-snips"; actionLabel = "Run Cleanup"; }
+              if (b.bucket === "outsourced-snips") { actionFn = "cleanup-outsourced-snips"; actionLabel = "Run Cleanup"; actionBody = { max_age_days: 0 }; }
               return (
                 <TableRow key={b.bucket}>
                   <TableCell className="font-medium">
@@ -102,7 +103,7 @@ const StorageBreakdown = ({ buckets, onRefetch }: Props) => {
                         variant="outline"
                         size="sm"
                         disabled={busy !== null}
-                        onClick={() => runCleanup(actionFn!, actionLabel)}
+                        onClick={() => runCleanup(actionFn!, actionLabel, actionBody)}
                       >
                         {busy === actionFn ? <Loader2 className="h-3 w-3 animate-spin" /> : actionLabel}
                       </Button>
