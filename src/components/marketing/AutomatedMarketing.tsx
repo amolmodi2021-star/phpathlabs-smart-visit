@@ -1868,49 +1868,61 @@ const AutomatedMarketing = () => {
               <p className="text-[11px] text-muted-foreground">
                 Filters loaded: <strong>{filters.length}</strong> (enabled: <strong>{filters.filter(f => f.enabled).length}</strong>)
                 {rpcLastClickAt && <> · Last click: <strong>{rpcLastClickAt}</strong></>}
+                {jsElapsedMs !== null && <> · JS: <strong>{jsElapsedMs} ms</strong></>}
                 {rpcElapsedMs !== null && <> · RPC: <strong>{rpcElapsedMs} ms</strong></>}
               </p>
               {rpcError ? (
                 <p className="text-destructive font-medium">RPC failed: {rpcError}</p>
               ) : rpcFetching && !rpcPending ? (
-                <p className="text-muted-foreground">Running RPC… (will time out after 30s if the database hangs)</p>
-              ) : !rpcPending ? (
-                <p className="text-muted-foreground">Click "Run RPC" — RPC result will appear here. JS preflight remains the source of truth.</p>
+                <p className="text-muted-foreground">Running JS pipeline + RPC in parallel… (will time out after 30s if the database hangs)</p>
+              ) : !rpcPending || !jsPipeline ? (
+                <p className="text-muted-foreground">Click "Run RPC" — JS pipeline (capped) vs RPC comparison will appear here.</p>
               ) : (
                 <>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="border rounded p-2">
-                      <p className="font-medium mb-1">Pending ABC Cards</p>
-                      <p>JS: <strong>{pendingCounts?.pendingAbc ?? 0}</strong></p>
+                      <p className="font-medium mb-1">Pending ABC Cards (capped)</p>
+                      <p>JS pipeline: <strong>{jsPipeline.pendingAbc}</strong></p>
                       <p>RPC: <strong>{Number((rpcPending as any).pending_abc) || 0}</strong></p>
-                      <p className={Number((rpcPending as any).pending_abc) === (pendingCounts?.pendingAbc ?? 0) ? "text-primary" : "text-destructive"}>
-                        {Number((rpcPending as any).pending_abc) === (pendingCounts?.pendingAbc ?? 0) ? "✓ MATCH" : `✗ DIFF: ${Number((rpcPending as any).pending_abc) - (pendingCounts?.pendingAbc ?? 0)}`}
+                      <p className={Number((rpcPending as any).pending_abc) === jsPipeline.pendingAbc ? "text-primary" : "text-destructive"}>
+                        {Number((rpcPending as any).pending_abc) === jsPipeline.pendingAbc ? "✓ MATCH" : `✗ DIFF: ${Number((rpcPending as any).pending_abc) - jsPipeline.pendingAbc}`}
                       </p>
                     </div>
                     <div className="border rounded p-2">
-                      <p className="font-medium mb-1">Pending Abnormal History</p>
-                      <p>JS: <strong>{pendingCounts?.pendingAbnormal ?? 0}</strong></p>
+                      <p className="font-medium mb-1">Pending Abnormal History (capped)</p>
+                      <p>JS pipeline: <strong>{jsPipeline.pendingAbnormal}</strong></p>
                       <p>RPC: <strong>{Number((rpcPending as any).pending_abnormal) || 0}</strong></p>
-                      <p className={Number((rpcPending as any).pending_abnormal) === (pendingCounts?.pendingAbnormal ?? 0) ? "text-primary" : "text-destructive"}>
-                        {Number((rpcPending as any).pending_abnormal) === (pendingCounts?.pendingAbnormal ?? 0) ? "✓ MATCH" : `✗ DIFF: ${Number((rpcPending as any).pending_abnormal) - (pendingCounts?.pendingAbnormal ?? 0)}`}
+                      <p className={Number((rpcPending as any).pending_abnormal) === jsPipeline.pendingAbnormal ? "text-primary" : "text-destructive"}>
+                        {Number((rpcPending as any).pending_abnormal) === jsPipeline.pendingAbnormal ? "✓ MATCH" : `✗ DIFF: ${Number((rpcPending as any).pending_abnormal) - jsPipeline.pendingAbnormal}`}
                       </p>
                     </div>
                   </div>
                   {(() => {
-                    const jsAbcPks = new Set((pendingCounts?.pendingAbcRecords || []).map((r: any) => r["Primary Key"]));
-                    const rpcAbcPks = new Set(((rpcPending as any).pending_abc_records || []).map((r: any) => r["Primary Key"]));
+                    // JS pipeline records use lowercase `primary_key`, RPC records use `Primary Key`
+                    const getRpcPk = (r: any) => r["Primary Key"] ?? r.primary_key;
+                    const jsAbcPks = new Set(jsPipeline.abcRecords.map((r: any) => r.primary_key));
+                    const rpcAbcPks = new Set(((rpcPending as any).pending_abc_records || []).map(getRpcPk));
                     const onlyJs = [...jsAbcPks].filter(k => !rpcAbcPks.has(k));
                     const onlyRpc = [...rpcAbcPks].filter(k => !jsAbcPks.has(k));
-                    const jsAbnPks = new Set((pendingCounts?.pendingAbnormalRecords || []).map((r: any) => r["Primary Key"]));
-                    const rpcAbnPks = new Set(((rpcPending as any).pending_abnormal_records || []).map((r: any) => r["Primary Key"]));
+                    const jsAbnPks = new Set(jsPipeline.abnormalRecords.map((r: any) => r.primary_key));
+                    const rpcAbnPks = new Set(((rpcPending as any).pending_abnormal_records || []).map(getRpcPk));
                     const onlyJsAbn = [...jsAbnPks].filter(k => !rpcAbnPks.has(k));
                     const onlyRpcAbn = [...rpcAbnPks].filter(k => !jsAbnPks.has(k));
                     return (
                       <div className="text-[11px] text-muted-foreground space-y-1 pt-1 border-t">
                         <p>ABC diff — only-in-JS: <strong>{onlyJs.length}</strong> | only-in-RPC: <strong>{onlyRpc.length}</strong></p>
                         <p>Abnormal diff — only-in-JS: <strong>{onlyJsAbn.length}</strong> | only-in-RPC: <strong>{onlyRpcAbn.length}</strong></p>
-                        {(onlyJs.length + onlyRpc.length + onlyJsAbn.length + onlyRpcAbn.length) > 0 && (
-                          <p>First 5 only-in-JS ABC primary keys: {onlyJs.slice(0, 5).join(", ") || "—"}</p>
+                        {onlyJs.length > 0 && (
+                          <p>First 5 only-in-JS ABC primary keys: {onlyJs.slice(0, 5).join(", ")}</p>
+                        )}
+                        {onlyRpc.length > 0 && (
+                          <p>First 5 only-in-RPC ABC primary keys: {onlyRpc.slice(0, 5).join(", ")}</p>
+                        )}
+                        {onlyJsAbn.length > 0 && (
+                          <p>First 5 only-in-JS Abnormal primary keys: {onlyJsAbn.slice(0, 5).join(", ")}</p>
+                        )}
+                        {onlyRpcAbn.length > 0 && (
+                          <p>First 5 only-in-RPC Abnormal primary keys: {onlyRpcAbn.slice(0, 5).join(", ")}</p>
                         )}
                       </div>
                     );
