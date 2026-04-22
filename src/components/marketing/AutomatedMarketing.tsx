@@ -2047,6 +2047,17 @@ const AutomatedMarketing = () => {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Execution Log</CardTitle>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => refetchLogs()}
+                disabled={logsFetching}
+                title="Refresh execution log"
+              >
+                <RefreshCw className={`h-4 w-4 mr-1 ${logsFetching ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
             <Button variant="outline" size="sm" disabled={recentLogs.length === 0} onClick={() => {
               const rows = recentLogs.map((l: any) => ({
                 "Date": new Date(l.created_at).toLocaleDateString("en-GB"),
