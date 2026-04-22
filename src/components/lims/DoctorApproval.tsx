@@ -331,10 +331,14 @@ const DoctorApproval = () => {
     return loadedTestNotes[k] || "";
   }, [editedTestNotes, loadedTestNotes]);
 
-  const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string): string => {
+  const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string, descriptiveOptions?: string[]): string => {
     if (!value || !value.trim()) return "";
-    if (rangeType === "qualitative") { if (!expectedValue) return ""; return value.trim().toLowerCase() === expectedValue.trim().toLowerCase() ? "N" : "A"; }
-    if (rangeType === "descriptive") return "";
+    if (rangeType === "qualitative") { if (!expectedValue) return ""; return value.trim().toLowerCase() === expectedValue.trim().toLowerCase() ? "N" : "X"; }
+    if (rangeType === "descriptive") {
+      const opts = (descriptiveOptions || []).map(o => (o || "").trim().toLowerCase()).filter(Boolean);
+      if (opts.length === 0) return "";
+      return opts.includes(value.trim().toLowerCase()) ? "N" : "X";
+    }
     const num = parseFloat(value); if (isNaN(num)) return "";
     if (low != null && num < low) return "L"; if (high != null && num > high) return "H"; return "N";
   };
@@ -393,7 +397,7 @@ const DoctorApproval = () => {
       for (const p of testParams) {
         const k = `${reg.id}||${p.parameterId}`;
         const value = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
-        const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+        const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions);
         const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
         const unit = p.isOutsourced && editedUnits[k] !== undefined ? editedUnits[k] : p.unit;
         const refRange = p.isOutsourced && editedRefRanges[k] !== undefined ? editedRefRanges[k] : p.referenceRange;
@@ -476,7 +480,7 @@ const DoctorApproval = () => {
         for (const p of testParams) {
           const k = `${reg.id}||${p.parameterId}`;
           const value = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
-          const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+          const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions);
           const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
           const noteVal = editedNotes[k] !== undefined ? editedNotes[k] : p.note;
           const testNoteVal = editedTestNotes[`${reg.id}||${testId}`] !== undefined ? editedTestNotes[`${reg.id}||${testId}`] : (loadedTestNotes[`${reg.id}||${testId}`] || "");
@@ -550,7 +554,7 @@ const DoctorApproval = () => {
       for (const p of testParams) {
         const k = `${regId}||${p.parameterId}`;
         const value = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
-        const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+        const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions);
         const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
         const unit = p.isOutsourced && editedUnits[k] !== undefined ? editedUnits[k] : p.unit;
         const refRange = p.isOutsourced && editedRefRanges[k] !== undefined ? editedRefRanges[k] : p.referenceRange;
@@ -633,9 +637,9 @@ const DoctorApproval = () => {
     const regId = entry.registration.id;
     const key = `${regId}||${p.parameterId}`;
     const currentValue = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
-    const autoFlag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+    const autoFlag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions);
     const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : autoFlag;
-    const rowBg = (flag === "H" || flag === "L" || flag === "A") ? "bg-destructive/5" : "";
+    const rowBg = (flag === "H" || flag === "L" || flag === "A" || flag === "X") ? "bg-destructive/5" : "";
     return (
       <TableRow key={key} className={rowBg}>
         <TableCell className="py-1.5 text-xs font-mono text-muted-foreground">{p.paramCode}</TableCell>
@@ -676,7 +680,7 @@ const DoctorApproval = () => {
               onChange={(v) => handleValueChange(regId, p.parameterId, v, entry)}
               className="!w-[180px]"
             />
-          ) : (<Input value={currentValue} onChange={e => handleValueChange(regId, p.parameterId, e.target.value, entry)} className={`h-7 text-sm w-[180px] ${flag === "H" || flag === "L" || flag === "A" ? "border-destructive text-destructive font-bold" : ""}`} placeholder="Enter result" />)}
+          ) : (<Input value={currentValue} onChange={e => handleValueChange(regId, p.parameterId, e.target.value, entry)} className={`h-7 text-sm w-[180px] ${flag === "H" || flag === "L" || flag === "A" || flag === "X" ? "border-destructive text-destructive font-bold" : ""}`} placeholder="Enter result" />)}
         </TableCell>
         <TableCell className="py-1.5 text-xs text-muted-foreground">
           {p.isOutsourced && !p.isSnipMode ? (<Input value={editedUnits[key] !== undefined ? editedUnits[key] : (p.unit || "")} onChange={e => setEditedUnits(prev => ({ ...prev, [key]: e.target.value }))} className="h-6 text-xs w-[70px]" />) : p.unit}
@@ -686,8 +690,8 @@ const DoctorApproval = () => {
         </TableCell>
         <TableCell className="py-1.5 text-center">
           {p.isOutsourced && !p.isSnipMode ? (
-            <Select value={flag || "none"} onValueChange={(v) => setEditedFlags(prev => ({ ...prev, [key]: v === "none" ? "" : v }))}><SelectTrigger className="h-6 text-xs w-[80px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">—</SelectItem><SelectItem value="N">Normal</SelectItem><SelectItem value="H">HIGH</SelectItem><SelectItem value="L">LOW</SelectItem><SelectItem value="A">Abnormal</SelectItem></SelectContent></Select>
-          ) : (<>{flag === "H" && <Badge variant="destructive" className="text-xs">HIGH</Badge>}{flag === "L" && <Badge variant="destructive" className="text-xs">LOW</Badge>}{flag === "A" && <Badge variant="destructive" className="text-xs">Abnormal</Badge>}{flag === "N" && <Badge variant="secondary" className="text-xs text-green-700">Normal</Badge>}{!flag && currentValue && <Badge variant="outline" className="text-xs">—</Badge>}</>)}
+            <Select value={flag || "none"} onValueChange={(v) => setEditedFlags(prev => ({ ...prev, [key]: v === "none" ? "" : v }))}><SelectTrigger className="h-6 text-xs w-[80px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">—</SelectItem><SelectItem value="N">Normal</SelectItem><SelectItem value="H">HIGH</SelectItem><SelectItem value="L">LOW</SelectItem></SelectContent></Select>
+          ) : (<>{flag === "H" && <Badge variant="destructive" className="text-xs">HIGH</Badge>}{flag === "L" && <Badge variant="destructive" className="text-xs">LOW</Badge>}{flag === "N" && <Badge variant="secondary" className="text-xs text-green-700">Normal</Badge>}{!flag && currentValue && <Badge variant="outline" className="text-xs">—</Badge>}</>)}
         </TableCell>
         <TableCell className="py-1.5 text-center">
           {p.isOutsourced ? (p.outsourceLabName ? <Badge variant="outline" className="text-xs text-green-600 border-green-300 whitespace-nowrap">{p.outsourceLabName}</Badge> : <Badge variant="outline" className="text-xs text-purple-600 border-purple-300">Outsourced</Badge>) : <Badge className="text-xs bg-blue-600">Verified</Badge>}

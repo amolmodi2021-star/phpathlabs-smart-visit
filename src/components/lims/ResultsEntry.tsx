@@ -673,13 +673,17 @@ const ResultsEntry = () => {
   }, [editedTestNotes, loadedTestNotes]);
 
   // ─── Calculate flag ───
-  const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string): string => {
+  const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string, descriptiveOptions?: string[]): string => {
     if (!value || value.trim() === "") return "";
     if (rangeType === "qualitative") {
       if (!expectedValue) return "";
-      return value.trim().toLowerCase() === expectedValue.trim().toLowerCase() ? "N" : "A";
+      return value.trim().toLowerCase() === expectedValue.trim().toLowerCase() ? "N" : "X";
     }
-    if (rangeType === "descriptive") return ""; // no flag for descriptive
+    if (rangeType === "descriptive") {
+      const opts = (descriptiveOptions || []).map(o => (o || "").trim().toLowerCase()).filter(Boolean);
+      if (opts.length === 0) return "";
+      return opts.includes(value.trim().toLowerCase()) ? "N" : "X";
+    }
     const num = parseFloat(value);
     if (isNaN(num)) return "";
     if (low != null && num < low) return "L";
@@ -770,7 +774,7 @@ const ResultsEntry = () => {
     for (const p of testParams) {
       const key = `${regId}||${p.parameterId}`;
       const value = currentEdits[key] !== undefined ? currentEdits[key] : p.resultValue;
-      const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+      const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions);
       const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : autoFlag;
       const unit = p.isOutsourced && editedUnits[key] !== undefined ? editedUnits[key] : p.unit;
       const refRange = p.isOutsourced && editedRefRanges[key] !== undefined ? editedRefRanges[key] : p.referenceRange;
@@ -827,7 +831,7 @@ const ResultsEntry = () => {
       for (const p of testParams) {
         const key = `${reg.id}||${p.parameterId}`;
         const value = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
-        const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+        const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions);
         const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : autoFlag;
         const unit = p.isOutsourced && editedUnits[key] !== undefined ? editedUnits[key] : p.unit;
         const refRange = p.isOutsourced && editedRefRanges[key] !== undefined ? editedRefRanges[key] : p.referenceRange;
@@ -1065,14 +1069,14 @@ const ResultsEntry = () => {
     const regId = entry.registration.id;
     const key = `${regId}||${p.parameterId}`;
     const currentValue = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
-    const autoFlag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+    const autoFlag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions);
     const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : autoFlag;
     const isInterfaceParameter = p.sendForInterface && !p.isCalculated;
     const isAwaiting = isInterfaceParameter && !currentValue;
 
     const isBlank = !currentValue || currentValue.trim() === "";
     const shouldHighlightBlanks = highlightBlanksForRegs.has(`${regId}||${p.testId}`);
-    const rowBg = (flag === "H" || flag === "L" || flag === "A") ? "bg-destructive/5" : (isBlank && !p.isCalculated && shouldHighlightBlanks ? "bg-yellow-50" : "");
+    const rowBg = (flag === "H" || flag === "L" || flag === "A" || flag === "X") ? "bg-destructive/5" : (isBlank && !p.isCalculated && shouldHighlightBlanks ? "bg-yellow-50" : "");
 
     return (
       <TableRow key={key} className={rowBg}>
@@ -1180,7 +1184,7 @@ const ResultsEntry = () => {
             <Input
               value={currentValue}
               onChange={e => handleValueChange(regId, p.parameterId, e.target.value, entry)}
-              className={`h-7 text-sm w-[180px] ${flag === "H" || flag === "L" || flag === "A" ? "border-destructive text-destructive font-bold" : ""}`}
+              className={`h-7 text-sm w-[180px] ${flag === "H" || flag === "L" || flag === "A" || flag === "X" ? "border-destructive text-destructive font-bold" : ""}`}
               placeholder="Enter result"
               data-result-input=""
               onKeyDown={handleResultTabKey}
@@ -1232,7 +1236,6 @@ const ResultsEntry = () => {
                   <SelectItem value="N">Normal</SelectItem>
                   <SelectItem value="H">HIGH</SelectItem>
                   <SelectItem value="L">LOW</SelectItem>
-                  <SelectItem value="A">Abnormal</SelectItem>
                 </SelectContent>
               </Select>
             )
@@ -1240,7 +1243,6 @@ const ResultsEntry = () => {
             <>
               {flag === "H" && <Badge variant="destructive" className="text-xs">HIGH</Badge>}
               {flag === "L" && <Badge variant="destructive" className="text-xs">LOW</Badge>}
-              {flag === "A" && <Badge variant="destructive" className="text-xs">Abnormal</Badge>}
               {flag === "N" && <Badge variant="secondary" className="text-xs text-green-700">Normal</Badge>}
               {!flag && currentValue && <Badge variant="outline" className="text-xs">—</Badge>}
             </>
@@ -1742,7 +1744,7 @@ const ResultsEntry = () => {
                     {blankParams.map(p => {
                       const key = `${reg.id}||${p.parameterId}`;
                       const currentValue = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
-                      const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+                      const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions);
                       const isInterfaceParameter = p.sendForInterface && !p.isCalculated;
                       const isAwaiting = isInterfaceParameter && !currentValue;
                       return (
@@ -1817,14 +1819,12 @@ const ResultsEntry = () => {
                                   <SelectItem value="N">Normal</SelectItem>
                                   <SelectItem value="H">HIGH</SelectItem>
                                   <SelectItem value="L">LOW</SelectItem>
-                                  <SelectItem value="A">Abnormal</SelectItem>
                                 </SelectContent>
                               </Select>
                             ) : (
                               <>
                                 {flag === "H" && <Badge variant="destructive" className="text-xs">HIGH</Badge>}
                                 {flag === "L" && <Badge variant="destructive" className="text-xs">LOW</Badge>}
-                                {flag === "A" && <Badge variant="destructive" className="text-xs">Abnormal</Badge>}
                                 {!flag && <Badge variant="outline" className="text-xs">—</Badge>}
                               </>
                             )}

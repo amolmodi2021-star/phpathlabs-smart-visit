@@ -1,4 +1,4 @@
-export type AbnormalFlag = "H" | "L" | "N";
+export type AbnormalFlag = "H" | "L" | "N" | "X";
 
 export interface FlagEvaluationInput {
   result_value?: string | number | null;

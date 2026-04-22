@@ -88,6 +88,10 @@ const isDescriptiveResult = (r: TestResult): boolean => {
 };
 
 const isAbnormalFlag = (flag?: string): boolean => {
+  return flag === "H" || flag === "L" || flag === "High" || flag === "Low" || flag === "X" || flag === "A";
+};
+
+const showFlagBadge = (flag?: string): boolean => {
   return flag === "H" || flag === "L" || flag === "High" || flag === "Low";
 };
 
@@ -128,7 +132,7 @@ const ParamRow = ({ r, rowKey, compact, isMorph, showFlagText, rowFontSize, colC
       </td>
       {!showFlagText && (
         <td className={`text-right ${py}`} style={{ width: '24px' }}>
-          {isAbnormal && <span className="flag-badge inline-flex items-center justify-center min-w-[18px] h-[18px] rounded bg-red-600 text-white text-xs leading-none font-bold">{r.flag}</span>}
+          {showFlagBadge(r.flag) && <span className="flag-badge inline-flex items-center justify-center min-w-[18px] h-[18px] rounded bg-red-600 text-white text-xs leading-none font-bold">{r.flag}</span>}
         </td>
       )}
       {isDescriptive ? (
@@ -145,7 +149,7 @@ const ParamRow = ({ r, rowKey, compact, isMorph, showFlagText, rowFontSize, colC
           </td>
           {showFlagText && (
             <td className={`text-center ${py}`}>
-              {r.flag && r.flag !== "N" && r.flag !== "Normal" && (
+              {showFlagBadge(r.flag) && (
                 <span className={`font-bold ${r.flag === "H" || r.flag === "High" ? "text-red-600" : "text-blue-600"}`}>
                   {r.flag === "H" ? "HIGH" : r.flag === "L" ? "LOW" : r.flag}
                 </span>
