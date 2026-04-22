@@ -153,6 +153,16 @@ const ModifiedApproval = () => {
     return loadedTestNotes[k] || "";
   };
 
+  // Resolve range_type + display "normal" text for a parameter
+  const resolveRangeMeta = (parameterId: string): { rangeType: string; normalRangeText: string } => {
+    const ranges = (normalRangesMap as any)[parameterId] || [];
+    if (ranges.length > 0) {
+      const r = ranges[0];
+      return { rangeType: r.range_type || "numeric", normalRangeText: r.normal_range_text || "" };
+    }
+    return { rangeType: "numeric", normalRangeText: "" };
+  };
+
   const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string, descriptiveOptions?: string[], normalRangeText?: string): string => {
     if (!value || !value.trim()) return "";
     if (rangeType === "qualitative" || rangeType === "descriptive") {
