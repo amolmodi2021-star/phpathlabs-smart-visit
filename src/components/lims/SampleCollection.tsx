@@ -67,6 +67,14 @@ const SampleCollection = () => {
   // Cancel collection (revert to pending) dialog state
   const [cancelCollectDialog, setCancelCollectDialog] = useState<{ open: boolean; reg: any; tube: SampleTubeRow | null }>({ open: false, reg: null, tube: null });
 
+  // Print confirmation dialog state — shown before any print action
+  const [printConfirmDialog, setPrintConfirmDialog] = useState<{ open: boolean; reg: any; tubes: SampleTubeRow[]; action: (() => void) | null }>({ open: false, reg: null, tubes: [], action: null });
+
+  const getBarcodeLabel = (reg: any, tube: SampleTubeRow) => {
+    const suffix = tube.suffix?.trim();
+    return suffix ? `${reg.invoice_number}${suffix}` : String(reg.invoice_number);
+  };
+
   const handleSearch = (val: string) => {
     setSearch(val);
     clearTimeout((window as any).__scSearchTimeout);
@@ -355,13 +363,16 @@ const SampleCollection = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const handlePrintAndCollect = (reg: any, tubes: SampleTubeRow[]) => {
+  const requestPrintConfirm = (reg: any, tubes: SampleTubeRow[], action: () => void) => {
+    if (tubes.length === 0) { toast.error("No tubes to print"); return; }
+    setPrintConfirmDialog({ open: true, reg, tubes, action });
+  };
+
+  const doPrintAndCollect = (reg: any, tubes: SampleTubeRow[]) => {
     const regSel = selectedTubes[reg.id] || new Set();
     const selected = tubes.filter(t => regSel.has(t.id));
     if (selected.length === 0) { toast.error("Please select at least one barcode"); return; }
-    // Fire print in parallel — don't await; collection should not be blocked by the print dialog
     void doPrintBarcodes(reg, selected);
-    // Only collect tubes still pending — never demote accepted/processed tubes
     const toCollect = selected.filter(t => t.status === "pending");
     if (toCollect.length === 0) {
       toast.info("Tubes already collected/accepted — barcode reprinted only");
@@ -371,14 +382,24 @@ const SampleCollection = () => {
     collectMutation.mutate({ regId: reg.id, tubeIds: toCollect.map(t => t.id) });
   };
 
-  const handleSinglePrintAndCollect = (reg: any, tube: SampleTubeRow) => {
-    // Fire print in parallel — don't await; collection should not be blocked by the print dialog
+  const handlePrintAndCollect = (reg: any, tubes: SampleTubeRow[]) => {
+    const regSel = selectedTubes[reg.id] || new Set();
+    const selected = tubes.filter(t => regSel.has(t.id));
+    if (selected.length === 0) { toast.error("Please select at least one barcode"); return; }
+    requestPrintConfirm(reg, selected, () => doPrintAndCollect(reg, tubes));
+  };
+
+  const doSinglePrintAndCollect = (reg: any, tube: SampleTubeRow) => {
     void doPrintBarcodes(reg, [tube]);
     if (tube.status !== "pending") {
       toast.info("Tube already collected/accepted — barcode reprinted only");
       return;
     }
     collectMutation.mutate({ regId: reg.id, tubeIds: [tube.id] });
+  };
+
+  const handleSinglePrintAndCollect = (reg: any, tube: SampleTubeRow) => {
+    requestPrintConfirm(reg, [tube], () => doSinglePrintAndCollect(reg, tube));
   };
 
   // Reprint
@@ -443,7 +464,7 @@ const SampleCollection = () => {
             )}
             {!isPending && collectedTubes.length > 0 && (
               <Button size="sm" variant="outline" className="gap-1"
-                onClick={() => { doPrintBarcodes(reg, collectedTubes); toast.success(`Reprinted all ${collectedTubes.length} barcode(s)`); }}>
+                onClick={() => requestPrintConfirm(reg, collectedTubes, () => { doPrintBarcodes(reg, collectedTubes); toast.success(`Reprinted all ${collectedTubes.length} barcode(s)`); })}>
                 <Printer className="h-3.5 w-3.5" /> Print All ({collectedTubes.length})
               </Button>
             )}
@@ -467,7 +488,7 @@ const SampleCollection = () => {
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono font-bold text-sm">{tube.sample_uid}</span>
+                      <span className="font-mono font-bold text-sm">{getBarcodeLabel(reg, tube)}</span>
                       <Badge variant="outline" className="text-xs">
                         {(tube.tube_type || "DEFAULT") === "DEFAULT" ? "No Tube" : tube.tube_type}
                       </Badge>
@@ -498,7 +519,7 @@ const SampleCollection = () => {
                   {!isPending && isCollected && (
                     <div className="flex items-center gap-1 shrink-0">
                       <Button size="sm" variant="ghost" title="Reprint this barcode"
-                        onClick={(e) => { e.stopPropagation(); doPrintBarcodes(reg, [tube]); toast.success(`Reprinted barcode for ${tube.sample_uid}`); }}>
+                        onClick={(e) => { e.stopPropagation(); requestPrintConfirm(reg, [tube], () => { doPrintBarcodes(reg, [tube]); toast.success(`Reprinted barcode for ${getBarcodeLabel(reg, tube)}`); }); }}>
                         <Printer className="h-3.5 w-3.5" />
                       </Button>
                       <Button size="sm" variant="ghost" title="Cancel collection (revert to pending)"
@@ -666,7 +687,7 @@ const SampleCollection = () => {
                         style={{ backgroundColor: colorHex }} />
                     )}
                     <div className="flex-1 min-w-0">
-                      <span className="font-mono font-bold text-sm">{tube.sample_uid}</span>
+                      <span className="font-mono font-bold text-sm">{getBarcodeLabel(reprintDialog.reg, tube)}</span>
                       <Badge variant="outline" className="text-xs ml-2">
                         {(tube.tube_type || "DEFAULT") === "DEFAULT" ? "No Tube" : tube.tube_type}
                       </Badge>
@@ -698,7 +719,7 @@ const SampleCollection = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Cancel Collection?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will revert tube <strong className="font-mono">{cancelCollectDialog.tube?.sample_uid}</strong> for patient <strong>{cancelCollectDialog.reg?.patient_name}</strong> back to <strong>Pending</strong>. Use this only if the sample was marked collected by mistake. If the tube has already been accepted in the lab, this action will fail.
+              This will revert tube <strong className="font-mono">{cancelCollectDialog.tube ? getBarcodeLabel(cancelCollectDialog.reg, cancelCollectDialog.tube) : ""}</strong> for patient <strong>{cancelCollectDialog.reg?.patient_name}</strong> back to <strong>Pending</strong>. Use this only if the sample was marked collected by mistake. If the tube has already been accepted in the lab, this action will fail.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -712,6 +733,50 @@ const SampleCollection = () => {
               }}
               disabled={cancelCollectMutation.isPending}>
               {cancelCollectMutation.isPending ? "Reverting..." : "Yes, Revert to Pending"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Print Confirmation Dialog */}
+      <AlertDialog open={printConfirmDialog.open} onOpenChange={(open) => { if (!open) setPrintConfirmDialog({ open: false, reg: null, tubes: [], action: null }); }}>
+        <AlertDialogContent className="max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Print</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm">
+                <div className="space-y-1">
+                  <div><span className="text-muted-foreground">Patient Name:</span> <strong>{printConfirmDialog.reg?.patient_name}</strong></div>
+                  <div>
+                    <span className="text-muted-foreground">Age / Gender:</span>{" "}
+                    <strong>{calcAge(printConfirmDialog.reg?.dob) || "—"} / {printConfirmDialog.reg?.gender || "—"}</strong>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground mb-1">Tubes to print: <strong className="text-foreground">{printConfirmDialog.tubes.length}</strong></div>
+                  <ul className="max-h-48 overflow-auto space-y-1 border rounded p-2 bg-muted/30">
+                    {printConfirmDialog.tubes.map((t) => (
+                      <li key={t.id} className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-xs">{printConfirmDialog.reg ? getBarcodeLabel(printConfirmDialog.reg, t) : ""}</span>
+                        <span className="text-xs text-muted-foreground">
+                          ({(t.tube_type || "DEFAULT") === "DEFAULT" ? "No Tube" : t.tube_type})
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const fn = printConfirmDialog.action;
+                setPrintConfirmDialog({ open: false, reg: null, tubes: [], action: null });
+                if (fn) fn();
+              }}>
+              <Printer className="h-3.5 w-3.5 mr-1" /> Print
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
