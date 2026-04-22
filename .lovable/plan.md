@@ -1,87 +1,60 @@
 
 
-# Add a "Parameter Description" sub-line under parameter names in reports
+# Hide "Old Bill Cancelled" marker rows from Daily Report
 
-## What you'll get
+## The current behavior
 
-In Test Management → Parameters, each parameter gets a new optional **Description** field. When a value is entered, the report renders that description as a small italic line **directly under the parameter name** (smaller font, muted color, left-aligned in the Parameter column). Empty descriptions render nothing — existing reports stay unchanged.
+When a bill from a previous day is cancelled today, `processCancelBill` (in `EditRegistrationDialog.tsx`) inserts **two rows** dated today:
 
-Example:
+1. **`old_bill_refund`** — the actual cash outflow (Cash or NEFT, negative).
+2. **`old_bill_cancellation`** — a marker row with all mode amounts = 0 and negative gross/discount/final, purely for audit visibility.
 
-```
-Triglycerides                    140    < 150 mg/dL
-   Used to assess cardiovascular risk.
-HDL Cholesterol                   45    > 40 mg/dL
-LDL Cholesterol                  110    < 100 mg/dL
-   Calculated using Friedewald formula.
-```
+Both rows then appear in today's Daily Report. The screenshot shows the marker row (`Old Bill Cancelled`, ₹-100 final, no mode movement) — which the user says is redundant. The refund line above it already carries the patient context and the actual cash impact.
 
-## Changes
+## The fix
 
-### 1. Database — add column
-- `report_test_parameters.parameter_description` (text, nullable). One additive migration.
+Suppress `old_bill_cancellation` rows from the Daily Report view (table + summary totals + Excel export), but keep writing them to the database (audit trail and historical immutability are preserved). Same-day `bill_cancellation` rows continue to display unchanged.
 
-### 2. Test Management → Parameters dialog (`src/pages/ReportParameters.tsx`)
-- Add `parameter_description` to the form state, the save payload, the edit handler, and the reset handler.
-- Add a `Textarea` input under the "Parameter Name" field labelled **"Description (shown below parameter name on report)"** with helper text "Keep it short — one short line.".
-- Include the column in Excel import/export rows.
+### Single-file change — `src/components/lims/DailyReport.tsx`
 
-### 3. Carry the field through the read paths
-Three queries that hydrate parameters need the new column added to their `select(...)`:
-- `src/lib/tests.ts` → `getTestParameters` (also propagate to the returned object).
-- `src/components/lims/ResultsEntry.tsx` → params query at line 226.
-- `src/components/lims/ModifiedApproval.tsx` → identical query at line 81.
+1. **`filtered` memo (line 100)** — add a guard that drops `old_bill_cancellation` rows before any other filter logic runs:
+   ```ts
+   const rows = transactions.filter((t: any) => {
+     if (t.transaction_type === "old_bill_cancellation") return false;
+     // … existing filters
+   });
+   ```
 
-Then thread `parameter_description` into the result rows produced for the report:
-- `ResultsEntry.tsx` writes `lims_test_results` rows. Add `parameter_description: p.parameterDescription` (or pull it from the param def) when persisting, OR — to avoid storing redundant data — read it live from the param map at render time. **Recommended:** read at render time so edits to the description propagate to old results without rewriting history.
+2. **Type filter dropdown (line 210)** — remove the `old_bill_cancellation` option from the Select so admin filters can't surface it either:
+   ```ts
+   {Object.entries(TRANSACTION_LABELS)
+     .filter(([k]) => k !== "old_bill_cancellation")
+     .map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+   ```
 
-### 4. Render the description in the report
-- `src/components/report/ReportResultsSection.tsx` — extend `TestResult` with optional `parameter_description?: string`. In `ParamRow`, after `{r.parameter_name}` render:
-  ```tsx
-  {r.parameter_description && (
-    <div className="italic text-gray-500 leading-tight" style={{ fontSize: '0.75em', marginTop: '1px' }}>
-      {r.parameter_description}
-    </div>
-  )}
-  ```
-  Same `<td>`, just a second line.
-- `src/pages/LimsReportView.tsx` — in `transformBlocksToGrouped` / `mapParamToTestResult`, look up the parameter description from `testParamsMap[testId]` (already loaded) by `parameter_id` and attach it to the `TestResult`. Skip for single-parameter tests where the parameter row is overridden by the test name.
+3. **`TRANSACTION_LABELS` map** — keep the `old_bill_cancellation` label entry (still needed if the row ever surfaces, e.g. via invoice search on a historical day where it was originally inserted), but it's effectively dormant in today's view.
 
-### 5. Approved reports archive
-- `approved_reports.test_results` (JSONB snapshot at approval time) does **not** carry the description today. Two options:
-  - **A. Live lookup at view time** — re-read description from `report_test_parameters` when rendering an approved report. Pros: edits propagate; no archive change. Cons: one extra small read.
-  - **B. Snapshot at approval** — write `parameter_description` into the JSONB at approval. Pros: fully immutable. Cons: edits to description don't reflect on past reports.
-
-Going with **A (live lookup)** — descriptions are explanatory text, not clinical data, so propagating fixes is desirable and it keeps the immutability rule (`mem://logic/lims/report-immutability-archive`) intact for actual results.
-
-## Files changing
-
-| File | Change |
-|---|---|
-| `supabase/migrations/<new>` | `ALTER TABLE report_test_parameters ADD COLUMN parameter_description text` |
-| `src/pages/ReportParameters.tsx` | Form field, save/edit/reset, Excel import/export |
-| `src/lib/tests.ts` | Add column to `getTestParameters` select + return shape |
-| `src/components/lims/ResultsEntry.tsx` | Add column to params query select |
-| `src/components/lims/ModifiedApproval.tsx` | Add column to params query select |
-| `src/pages/LimsReportView.tsx` | Look up description from param map; attach to `TestResult`; skip for single-parameter override |
-| `src/components/report/ReportResultsSection.tsx` | Extend `TestResult` type; render small italic line under parameter name |
+That's it. Because `filtered` is the source for both the summary totals memo and the Excel export, both automatically exclude the marker rows.
 
 ## What stays untouched
 
-- Abnormal summary table, trend charts, PDF pagination engine, all other report sections.
-- Existing parameters: description is `null` by default → renders nothing → zero visual change to existing reports.
-- Schema for `lims_test_results`, `approved_reports`, `parameter_normal_ranges`.
-- Sample collection, billing, dispatch, doctor approval flows.
+- `processCancelBill` in `EditRegistrationDialog.tsx` — still writes both audit rows (refund + cancellation marker). DB schema and audit trail are intact.
+- Same-day `bill_cancellation` rows — still display normally (only the cross-day "old" marker is hidden).
+- `old_bill_refund` row — continues to display with patient name, invoice, refund mode, and ₹-100 cash impact.
+- Cash drawer totals — already correct, since the marker row had all mode amounts = 0.
 
 ## Verification
 
-1. Test Management → Parameters → edit any parameter → fill **Description** = "Used to assess cardiovascular risk." → Save.
-2. Open an approved report containing that parameter → the line appears in italic small grey text directly under the parameter name.
-3. Clear the description → reload report → line disappears.
-4. Parameters without a description render exactly as today.
-5. Excel export contains a "Description" column; re-importing preserves the value.
+1. Cancel a bill registered on a previous day. The Daily Report (today) should show only the **Old Bill Refund** row (e.g. invoice 2604210003, MANISH, -₹100 in chosen refund mode). The "Old Bill Cancelled" row should not appear.
+2. Same-day bill cancellation still produces both `bill_cancellation` and `refund` rows visible — unchanged.
+3. Excel export of today's report excludes the marker row.
+4. Database `payment_transactions` still contains the `old_bill_cancellation` row for full audit (visible only via direct query, not in UI).
 
 ## Risk
 
-Low. Additive column, optional UI field, presentational-only render change. No impact on result calculation, status flow, PDF pagination, or archived data.
+Negligible. Pure presentation filter; no DB or business-logic change. Audit trail in `payment_transactions` is preserved. Cash drawer totals were already independent of the marker row.
+
+## Memory update
+
+Update `mem://features/lims/bill-cancellation-rule.md` to note: "The `old_bill_cancellation` marker is written to DB for audit but hidden from the Daily Report UI to avoid redundancy with the `old_bill_refund` row that already shows the cash impact."
 
