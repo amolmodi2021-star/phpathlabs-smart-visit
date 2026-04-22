@@ -7,12 +7,17 @@ const corsHeaders = {
 
 // Per-table retention windows (days). Tune here.
 //
+// COST OPTIMIZATION (2026-04): tightened message_send_log to 30 days (was 180)
+// and lims_interface_logs to 30 days (was 90). The send log only stores
+// metadata (no captions), and the LIMS logs hold verbose request/response JSON
+// that's only useful for short-term debugging.
+//
 // NOTE: Abnormal tables (crm_abnormal_tests, abnormal_history) are intentionally
 // NEVER pruned — they are required for long-term clinical analytics.
 const RETENTION = [
-  { table: "message_send_log", column: "sent_at", days: 180 },
+  { table: "message_send_log", column: "sent_at", days: 30 },
   { table: "drip_campaign_log", column: "created_at", days: 90 },
-  { table: "lims_interface_logs", column: "created_at", days: 90 },
+  { table: "lims_interface_logs", column: "created_at", days: 30 },
   { table: "app_user_login_history", column: "login_at", days: 365 },
   { table: "webhook_messages", column: "created_at", days: 90 },
 ];

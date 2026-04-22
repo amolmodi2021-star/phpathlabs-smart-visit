@@ -113,32 +113,14 @@ const LimsDemo = () => {
   const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID || "rpbkilhzulaugzrlatts";
   const apiUrl = `https://${projectId}.supabase.co/functions/v1/lims-interface`;
 
-  // Realtime subscriptions
-  useEffect(() => {
-    const ch1 = supabase.channel("lims-orders-rt")
-      .on("postgres_changes", { event: "*", schema: "public", table: "lims_test_orders" }, () => {
-        queryClient.invalidateQueries({ queryKey: ["lims-orders"] });
-      }).subscribe();
-    const ch2 = supabase.channel("lims-results-rt")
-      .on("postgres_changes", { event: "*", schema: "public", table: "lims_test_results" }, () => {
-        queryClient.invalidateQueries({ queryKey: ["lims-results"] });
-        queryClient.invalidateQueries({ queryKey: ["lims-orders"] });
-      }).subscribe();
-    const ch3 = supabase.channel("lims-logs-rt")
-      .on("postgres_changes", { event: "*", schema: "public", table: "lims_interface_logs" }, () => {
-        queryClient.invalidateQueries({ queryKey: ["lims-logs"] });
-      }).subscribe();
-    const ch4 = supabase.channel("lims-unmapped-rt")
-      .on("postgres_changes", { event: "*", schema: "public", table: "lims_unmapped_results" }, () => {
-        queryClient.invalidateQueries({ queryKey: ["lims-unmapped"] });
-      }).subscribe();
-    const ch5 = supabase.channel("lims-no-map-rt")
-      .on("postgres_changes", { event: "*", schema: "public", table: "lims_no_map_required" }, () => {
-        queryClient.invalidateQueries({ queryKey: ["lims-no-map-required"] });
-        queryClient.invalidateQueries({ queryKey: ["lims-unmapped"] });
-      }).subscribe();
-    return () => { supabase.removeChannel(ch1); supabase.removeChannel(ch2); supabase.removeChannel(ch3); supabase.removeChannel(ch4); supabase.removeChannel(ch5); };
-  }, [queryClient]);
+  // Realtime subscriptions — routed through useRealtimeSync so the central
+  // debounce + `enabled` flag work consistently across the app. Five separate
+  // tables but the hook coalesces invalidations into one batch per quiet window.
+  useRealtimeSync("lims_test_orders", ["lims-orders"]);
+  useRealtimeSync("lims_test_results", ["lims-results", "lims-orders"]);
+  useRealtimeSync("lims_interface_logs", ["lims-logs"]);
+  useRealtimeSync("lims_unmapped_results", ["lims-unmapped"]);
+  useRealtimeSync("lims_no_map_required", ["lims-no-map-required", "lims-unmapped"]);
 
   const { data: orders = [] } = useQuery({
     queryKey: ["lims-orders"],
