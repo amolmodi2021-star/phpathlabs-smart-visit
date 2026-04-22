@@ -1794,7 +1794,11 @@ const AutomatedMarketing = () => {
               </div>
             </CardHeader>
             <CardContent className="py-2 text-xs space-y-2">
-              {!rpcPending ? (
+              {rpcError ? (
+                <p className="text-destructive font-medium">RPC failed: {(rpcError as Error).message}</p>
+              ) : rpcFetching && !rpcPending ? (
+                <p className="text-muted-foreground">Running RPC… (will time out after 30s if the database hangs)</p>
+              ) : !rpcPending ? (
                 <p className="text-muted-foreground">Click "Run RPC" — RPC result will appear here. JS preflight remains the source of truth.</p>
               ) : (
                 <>
