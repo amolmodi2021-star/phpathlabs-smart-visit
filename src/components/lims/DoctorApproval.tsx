@@ -690,6 +690,8 @@ const DoctorApproval = () => {
         </TableCell>
         <TableCell className="py-1.5 text-center">
           {p.isOutsourced && !p.isSnipMode ? (
+            <Select value={flag || "none"} onValueChange={(v) => setEditedFlags(prev => ({ ...prev, [key]: v === "none" ? "" : v }))}><SelectTrigger className="h-6 text-xs w-[80px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">—</SelectItem><SelectItem value="N">Normal</SelectItem><SelectItem value="H">HIGH</SelectItem><SelectItem value="L">LOW</SelectItem></SelectContent></Select>
+          ) : (<>{flag === "H" && <Badge variant="destructive" className="text-xs">HIGH</Badge>}{flag === "L" && <Badge variant="destructive" className="text-xs">LOW</Badge>}{flag === "N" && <Badge variant="secondary" className="text-xs text-green-700">Normal</Badge>}{!flag && currentValue && <Badge variant="outline" className="text-xs">—</Badge>}</>)}
         </TableCell>
         <TableCell className="py-1.5 text-center">
           {p.isOutsourced ? (p.outsourceLabName ? <Badge variant="outline" className="text-xs text-green-600 border-green-300 whitespace-nowrap">{p.outsourceLabName}</Badge> : <Badge variant="outline" className="text-xs text-purple-600 border-purple-300">Outsourced</Badge>) : <Badge className="text-xs bg-blue-600">Verified</Badge>}
