@@ -3703,7 +3703,12 @@ export type Database = {
         }[]
       }
       get_drip_pending_summary: {
-        Args: { p_exclude_blacklist?: boolean; p_filter_ids: string[] }
+        Args: {
+          p_exclude_blacklist?: boolean
+          p_filter_ids: string[]
+          p_max_per_day?: number
+          p_min_interval_days?: number
+        }
         Returns: {
           pending_abc: number
           pending_abc_records: Json
