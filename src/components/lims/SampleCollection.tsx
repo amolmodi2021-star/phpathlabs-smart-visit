@@ -67,6 +67,14 @@ const SampleCollection = () => {
   // Cancel collection (revert to pending) dialog state
   const [cancelCollectDialog, setCancelCollectDialog] = useState<{ open: boolean; reg: any; tube: SampleTubeRow | null }>({ open: false, reg: null, tube: null });
 
+  // Print confirmation dialog state — shown before any print action
+  const [printConfirmDialog, setPrintConfirmDialog] = useState<{ open: boolean; reg: any; tubes: SampleTubeRow[]; action: (() => void) | null }>({ open: false, reg: null, tubes: [], action: null });
+
+  const getBarcodeLabel = (reg: any, tube: SampleTubeRow) => {
+    const suffix = tube.suffix?.trim();
+    return suffix ? `${reg.invoice_number}${suffix}` : String(reg.invoice_number);
+  };
+
   const handleSearch = (val: string) => {
     setSearch(val);
     clearTimeout((window as any).__scSearchTimeout);
