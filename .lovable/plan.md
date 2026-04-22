@@ -1,81 +1,88 @@
 
 
-# Add note editing (parameter + test level) in Modified Approval
+# Qualitative / Descriptive parameters: highlight on mismatch, no flag letter
 
 ## What you'll get
 
-In **Modified Approval**, every test card and every parameter row gets the same 📝 sticky-note icon already used in Results, Verification, and Doctor Approval:
+For parameters where **Range Type = Qualitative** or **Descriptive**:
 
-- **Test-level note** (📝 next to test name) — defaults to "Kindly correlate clinically" on first click; editable; trash-icon to clear. Renders above Interpretation in the report.
-- **Parameter-level note** (📝 next to parameter name) — same pattern; renders as italic line under the parameter name in the report.
+- If the entered result **matches** the configured normal (Qualitative `Display Text` / Descriptive `Normal Findings` from the parameter's normal-range entry), the row stays plain — no highlight, no flag.
+- If the result **does not match**, the row in the **report** is highlighted (light red row background + bold red parameter name and result, same look used today for abnormal numeric H/L), but the **Flag column stays blank** (no "H", "L", "A", or any badge).
+- Numeric parameters keep H/L exactly as today.
 
-Edits save together with the existing Result/Unit/Ref-range/Flag edits via the existing **Save Changes** button. The re-saved snapshot in `approved_reports` carries both notes, so report rendering picks them up immediately (live `patient_results` AND the JSONB snapshot are both updated).
+In LIMS entry/verification/approval screens, the existing red "Abnormal" badge is replaced for these two range types with a subtle row tint only (so technicians still see something is off, but no misleading H/L/Abnormal label is stored).
 
-## Single-file change — `src/components/lims/ModifiedApproval.tsx`
+## How matching is decided
 
-### 1. New state
+- **Qualitative**: result must equal `normal_range.expected_value` (the "Expected Normal Value" picked from the pair, e.g. *Absent*, *Non Reactive*, *Negative*) — case-insensitive, trimmed. Mismatch → highlight only.
+  - Today's behavior writes `flag = "A"`. We change it to `flag = "X"` (sentinel meaning *highlight without label*).
+- **Descriptive**: result must equal one of `normal_range.descriptive_options` listed under "Normal Findings" (case-insensitive, trimmed). Empty → no highlight (today: also no flag).
+  - Today's behavior writes `flag = ""` always. We change it to write `flag = "X"` when the result is non-empty AND not in the configured normal list, otherwise `""`.
+
+`"X"` is invisible to the report's Flag column (only "H"/"L" render badges) but is recognised by a new branch of `isAbnormalFlag` to apply the row highlight.
+
+## Files touched
+
+### 1. `src/lib/reportFlags.ts`
+- Extend `AbnormalFlag` type to include `"X"`.
+- No change to numeric path. (Util is only used for normalisation in a few callers — leaving qualitative handling there alone is fine because the LIMS save paths below are the source of truth.)
+
+### 2. `src/components/lims/ResultsEntry.tsx` — `calculateFlag` (line 676)
 ```ts
-const [editedNotes, setEditedNotes] = useState<Record<string, string>>({});           // key: regId||parameterId
-const [activeNoteKey, setActiveNoteKey] = useState<string | null>(null);
-const [editedTestNotes, setEditedTestNotes] = useState<Record<string, string>>({});   // key: regId||testId
-const [activeTestNoteKey, setActiveTestNoteKey] = useState<string | null>(null);
+if (rangeType === "qualitative") {
+  if (!expectedValue) return "";
+  return value.trim().toLowerCase() === expectedValue.trim().toLowerCase() ? "N" : "X";
+}
+if (rangeType === "descriptive") {
+  const opts = (descriptiveOptions || []).map(o => o.trim().toLowerCase()).filter(Boolean);
+  if (opts.length === 0) return "";                          // nothing configured → no highlight
+  return opts.includes(value.trim().toLowerCase()) ? "N" : "X";
+}
 ```
-Add `StickyNote, Trash2` to the `lucide-react` import.
+Pass `descriptiveOptions` through (already on `ParameterResult`). Update the row styling branches that today react to `flag === "A"` to also react to `"X"` (red border on input, light row bg). Replace any `<Badge>Abnormal</Badge>` rendering for these two types with no badge — only the row tint.
 
-### 2. Pull `note` and `test_note` from `patient_results`
-The existing `approvedResults` query already does `select("*")` so both fields arrive. Build a `loadedTestNotes` map (first non-null `test_note` per `regId||testId`) inside `entries` memo, just like `ResultVerification.tsx` lines 414–421.
+### 3. `src/components/lims/ResultVerification.tsx`
+Same `calculateFlag` change (line 430). Same UI tweaks: drop the "Abnormal" badge for qualitative/descriptive, keep `bg-destructive/5` row tint when `flag === "X"`. Remove the `"A"` `<SelectItem>` for the manual-flag override on outsourced rows for these two range types (keep H/L/N selectable — only relevant for outsourced numeric anyway).
 
-### 3. UI additions
-- **Test header (line 327, next to `{tg.testName}`)**: insert `<StickyNote>` icon + inline edit row + saved-note display row, mirroring `ResultVerification.tsx` lines 976–1009.
-- **Parameter cell (line 369, next to `{p.parameterName}`)**: insert `<StickyNote>` icon + inline edit row + saved-note display row, mirroring `ResultVerification.tsx` lines 805–821. Key = `${report.registration_id}||${p.parameter_id}`.
+### 4. `src/components/lims/DoctorApproval.tsx`
+Same `calculateFlag` change (line 334). Same badge/highlight cleanup. Snapshot saved into `approved_reports.test_results` will carry `flag: "X"` (or `""`) instead of `"A"`.
 
-### 4. Persist on save (`saveChanges`, lines 185–247)
-For each parameter, extend the `patient_results` UPDATE and the JSONB snapshot row:
-```ts
-const noteKey = `${regId}||${p.parameter_id}`;
-const testNoteKey = `${regId}||${tg.testId}`;
-const newNote = editedNotes[noteKey] !== undefined ? (editedNotes[noteKey] || null) : (p.note ?? null);
-const newTestNote = editedTestNotes[testNoteKey] !== undefined
-  ? (editedTestNotes[testNoteKey] || null)
-  : (loadedTestNotes[testNoteKey] || null);
+### 5. `src/components/lims/ModifiedApproval.tsx` — `calculateFlag` (line 156)
+Currently numeric-only. Extend signature to accept `rangeType`, `expectedValue`, `descriptiveOptions` (already available on `p` because the query is `select("*")`; expose them on the `tg.params` rows). Apply the same three-branch logic. Drop any "A"/"Abnormal" UI; preserve highlight only via `"X"`.
 
-await supabase.from("patient_results").update({
-  result_value: newValue || null,
-  unit: newUnit || null,
-  reference_range: newRefRange || null,
-  flag: newFlag || null,
-  note: newNote,
-  test_note: newTestNote,
-}).eq("id", p.id);
+### 6. `src/components/report/ReportResultsSection.tsx`
+- `isAbnormalFlag` (line 90): include `"X"` so row tint + bold red name/result fire.
+- Flag-column render branches (lines 131 and the equivalent `showFlagText` branch lower down): only render the badge/text when the flag is **H/L/High/Low** — when flag is `"X"`, render nothing in the Flag cell. Add a tiny helper:
+  ```ts
+  const isHighlightOnly = (f?: string) => f === "X";
+  const showFlagBadge = (f?: string) => f === "H" || f === "L" || f === "High" || f === "Low";
+  ```
+  Use `showFlagBadge` to gate the badge; `isAbnormalFlag` (now true for X too) gates the row styling.
 
-allTestResults.push({
-  // …existing fields…
-  note: newNote,
-  test_note: newTestNote,
-});
-```
-For snip-only test rows (no params), still push `test_note: newTestNote` so the test-level note survives in the snapshot.
+### 7. One-time data normalisation (no migration needed)
+Existing rows in `patient_results` and `approved_reports.test_results` may already contain `flag = "A"` from the previous logic. Two options:
+- **A.** Leave them as-is. Report renderer should also treat legacy `"A"` as highlight-only (don't display the letter, do tint the row). I'll add `"A"` alongside `"X"` in `isAbnormalFlag` and **exclude `"A"` from `showFlagBadge`** so historical reports retroactively render correctly.
+- **B.** Backfill `UPDATE patient_results SET flag = 'X' WHERE flag = 'A'` + JSONB rewrite.
 
-### 5. Hook into `hasEdits` and the post-save reset
-Add `editedNotes` and `editedTestNotes` to both `hasEdits` (line 249) and the per-prefix clear loop (lines 239–242) so the Save button enables/disables correctly and edits clear after saving.
+Plan goes with **A** (additive, zero risk to historical immutability).
 
 ## What stays untouched
 
-- `LimsReportView.tsx` — already reads `note` (rendered as `remark` → small italic line) and `test_note` (rendered above Interpretation) from both live `patient_results` and the `approved_reports.test_results` JSONB snapshot. No change needed.
-- `ReportResultsSection.tsx` — already renders both notes.
-- `DoctorApproval.tsx`, `ResultsEntry.tsx`, `ResultVerification.tsx` — unchanged.
-- DB schema — `patient_results.note` and `patient_results.test_note` already exist.
+- Numeric flagging (H/L/N) — unchanged in entry, verification, approval, report.
+- `normal_range_text` parsing and `parameter_normal_ranges` schema — unchanged.
+- CRM Abnormal Tests and `useAbnormalHistory` — they currently key off `flag IN ('H','L','A')`; after this change, qualitative/descriptive mismatches use `'X'`. I'll add `'X'` to those filters (one-line change in `src/lib/abnormalTests.ts` and `src/hooks/useAbnormalHistory.ts` if they exist with that pattern — confirmed in passing).
+- Outsourced manual-flag override stays for numeric tests.
 
 ## Verification
 
-1. `/lims?tab=modified` → expand any approved report.
-2. Click 📝 next to a parameter name → edits to "Kindly correlate clinically" → tweak text → Save Changes.
-3. Click 📝 next to the test name → edit/clear → Save Changes.
-4. Open the report (View Report from Dispatch or Modified Approval) → parameter note shows as italic line under parameter name; test note shows above Interpretation.
-5. Clear a note (trash icon) → Save → reload report → note disappears.
-6. Existing reports with no notes render unchanged.
+1. **Qualitative** (e.g. *HIV — Expected Normal: Non Reactive*). Enter `Reactive` → row tinted red in Results, Verification, Approval; Flag cell empty; report shows red row, no H/L badge.
+2. Enter `Non Reactive` → no tint, no flag.
+3. **Descriptive** (e.g. *Mantoux REMARK — Normal Findings: Negative*). Enter `Negative` → plain row. Enter `Positive` → row tinted, Flag column blank in report.
+4. **Numeric** (e.g. FBS) — H/L badge and tint behave exactly as before.
+5. Open an old approved report that has `flag = "A"` → row tints red but no "A" letter shown in the Flag column (legacy compatibility).
+6. CRM Abnormal Tests still surfaces qualitative/descriptive mismatches (X added to the abnormal predicate).
 
 ## Risk
 
-Low. Single-file UI addition, mirrors well-tested pattern from `ResultVerification.tsx`. Schema unchanged. The save path already re-writes both `patient_results` rows and the `approved_reports` JSONB, so adding two more columns to those writes is safe.
+Low. Single new sentinel value `"X"`, presentational + lightweight save-path change. Numeric flow untouched. Historical `"A"` rows render correctly without backfill.
 
