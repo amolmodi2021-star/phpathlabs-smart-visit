@@ -280,7 +280,7 @@ const AutomatedMarketing = () => {
 
   // Pending counters for ABC cards and Abnormal History — manual refresh only.
   // Was auto-refetching every 2 min and pulling ~100K rows each time.
-  const { data: pendingCounts, isLoading: pendingLoading, isFetching: pendingFetching, refetch: refetchPending } = useQuery({
+  const { data: pendingCounts, isLoading: pendingLoading, isFetching: pendingFetching, refetch: refetchPending, dataUpdatedAt: pendingUpdatedAt } = useQuery({
     queryKey: ["drip-pending-counts", filters.map(f => f.id).join(","), excludeBlacklist],
     enabled: filters.length > 0,
     staleTime: Infinity,
@@ -544,17 +544,22 @@ const AutomatedMarketing = () => {
     const intervalDate = new Date();
     intervalDate.setDate(intervalDate.getDate() - minInterval);
 
-    // Run ALL queries in parallel for speed
-    const [allContacts, blacklistData, abnormalPks, cyclesData, allLogs, recentLogEntries] = await Promise.all([
-      fetchAll(supabase.from("crm_contacts").select("id,primary_key,mobile_number,patient_name,umr_number,location,last_sent_date,last_sent_type,record_tag,default_discount_pct,visit_date")),
+    // Run ALL queries in parallel for speed.
+    // Slim RPCs replace the two heavy reads against crm_contacts + crm_abnormal_tests
+    // (drops `remarks`, `created_by`, etc. and pre-deduplicates abnormal PKs server-side).
+    const [contactSliceRes, blacklistData, abnormalRpcRes, cyclesData, allLogs, recentLogEntries] = await Promise.all([
+      supabase.rpc("get_drip_contact_slice"),
       excludeBlacklist
         ? supabase.from("crm_blacklist").select("mobile_number").then(r => r.data || [])
         : Promise.resolve([]),
-      fetchAll(supabase.from("crm_abnormal_tests").select("contact_primary_key")),
+      supabase.rpc("get_abnormal_pks"),
       fetchAll(supabase.from("drip_mobile_cycles").select("mobile_number,current_cycle")),
       fetchAll(supabase.from("drip_campaign_log").select("filter_id,mobile_number,contact_primary_key,cycle_number").eq("status", "sent")),
       fetchAll(supabase.from("message_send_log").select("mobile_number,sent_at").gte("sent_at", intervalDate.toISOString())),
     ]);
+
+    const allContacts = (contactSliceRes.data as any[]) || [];
+    const abnormalPks = (abnormalRpcRes.data as any[]) || [];
 
     const blacklistSet = new Set(blacklistData.map((b: any) => b.mobile_number));
     const abnormalPkSet = new Set(abnormalPks.map((a: any) => a.contact_primary_key));
