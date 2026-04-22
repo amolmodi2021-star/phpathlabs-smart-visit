@@ -466,6 +466,8 @@ const AutomatedMarketing = () => {
       return { ...row, _elapsed_ms: elapsed };
     },
   });
+
+  const openNewFilter = () => {
     setEditingFilter(null);
     setFilterForm({
       name: "",
