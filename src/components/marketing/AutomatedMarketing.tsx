@@ -445,7 +445,27 @@ const AutomatedMarketing = () => {
     },
   });
 
-  const openNewFilter = () => {
+  // Shadow RPC — runs only when ?debug=preflight is in the URL. Display-only.
+  const { data: rpcPending, isFetching: rpcFetching, refetch: refetchRpc } = useQuery({
+    queryKey: ["drip-pending-rpc", filters.map(f => f.id).join(","), excludeBlacklist],
+    enabled: debugPreflight && filters.length > 0,
+    staleTime: Infinity,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      const enabledIds = filters.filter(f => f.enabled).sort((a, b) => a.priority - b.priority).map(f => f.id);
+      if (enabledIds.length === 0) return { pending_abc: 0, pending_abnormal: 0, pending_abc_records: [], pending_abnormal_records: [] };
+      const t0 = performance.now();
+      const { data, error } = await supabase.rpc("get_drip_pending_summary", {
+        p_filter_ids: enabledIds,
+        p_exclude_blacklist: excludeBlacklist,
+      });
+      const elapsed = Math.round(performance.now() - t0);
+      if (error) throw error;
+      const row = Array.isArray(data) && data[0] ? data[0] : { pending_abc: 0, pending_abnormal: 0, pending_abc_records: [], pending_abnormal_records: [] };
+      return { ...row, _elapsed_ms: elapsed };
+    },
+  });
     setEditingFilter(null);
     setFilterForm({
       name: "",
