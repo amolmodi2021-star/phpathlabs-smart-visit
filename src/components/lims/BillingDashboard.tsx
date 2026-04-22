@@ -100,7 +100,6 @@ const BillingDashboard = () => {
       mobile_number: pickup.phone.replace(/\D/g, "").slice(-10),
       patient_name: pickup.name,
       message_type: "pickup_invoice_reminder",
-      message_content: msg,
     } as any);
     qc.invalidateQueries({ queryKey: ["pickup_invoices"] });
     toast.success("Reminder opened in WhatsApp");

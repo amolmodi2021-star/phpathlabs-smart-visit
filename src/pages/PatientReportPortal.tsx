@@ -142,10 +142,16 @@ const PatientReportPortal = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  // Auto-refresh status every 60s
+  // Auto-refresh status every 120s, and skip ticks while the tab is hidden so
+  // backgrounded sessions don't keep hitting the database. Lower bound matches
+  // the rest of the app's "manual-refresh wins" cost stance — patients can still
+  // tap Refresh in the UI for a fresh pull.
   useEffect(() => {
     if (state.kind !== "ready") return;
-    const id = setInterval(() => setTick((t) => t + 1), 60_000);
+    const id = setInterval(() => {
+      if (document.hidden) return;
+      setTick((t) => t + 1);
+    }, 120_000);
     return () => clearInterval(id);
   }, [state.kind]);
 

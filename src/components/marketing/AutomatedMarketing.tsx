@@ -18,7 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Pencil, Trash2, Eye, Send, Settings, MessageCircle, Download, AlertTriangle, FlaskConical, CreditCard, Activity } from "lucide-react";
+import { Plus, Pencil, Trash2, Eye, Send, Settings, MessageCircle, Download, AlertTriangle, FlaskConical, CreditCard, Activity, RefreshCw } from "lucide-react";
 import { exportToExcel } from "@/lib/excel";
 import { sortAbnormalTestsByDateDesc } from "@/lib/abnormalTests";
 import { toast } from "sonner";
@@ -71,7 +71,6 @@ const SEQUENCE_OPTIONS = [
 
 const AutomatedMarketing = () => {
   const qc = useQueryClient();
-  useRealtimeSync("message_send_log", ["drip-pending-counts", "wa-usage-24h"]);
 
   // Global settings
   const [maxPerDay, setMaxPerDay] = useState(200);
@@ -106,6 +105,17 @@ const AutomatedMarketing = () => {
   const [sendProgress, setSendProgress] = useState(_moduleProgress);
   const [sendPhase, setSendPhase] = useState(_modulePhase);
   const abortRef = useRef(_moduleAbort);
+
+  // Realtime sync — DISABLED while a campaign is sending. Each WhatsApp send
+  // writes one row to message_send_log; broadcasting that to every open tab
+  // during a 2K-card run was the single biggest realtime cost driver. Counters
+  // get a fresh pull when the run finishes (qc.invalidateQueries in the loop).
+  useRealtimeSync(
+    "message_send_log",
+    ["drip-pending-counts", "wa-usage-24h"],
+    400,
+    { enabled: !sending },
+  );
 
   // Sync module-level vars on mount
   useEffect(() => {
@@ -195,10 +205,11 @@ const AutomatedMarketing = () => {
     setCountLoading(false);
   }, []);
 
+  // Initial fetch only — no auto-refresh. The user clicks Refresh on the
+  // counter card when they want a fresh number. Realtime broadcast invalidation
+  // is also off (see useRealtimeSync below) to avoid fan-out during campaigns.
   useEffect(() => {
     fetchSentCount();
-    const interval = setInterval(fetchSentCount, 60000); // refresh every minute
-    return () => clearInterval(interval);
   }, [fetchSentCount]);
 
   const saveGlobalSetting = async (key: string, value: string) => {
@@ -248,25 +259,33 @@ const AutomatedMarketing = () => {
     },
   });
 
-  // Recent logs
-  const { data: recentLogs = [] } = useQuery({
+  // Recent logs — narrowed to the columns the UI actually uses, capped at 500
+  // rows (the diagnostic display only shows the most recent ~7 days grouped).
+  // Manual-refresh only via the Execution Log card's Refresh button.
+  const { data: recentLogs = [], isFetching: logsFetching, refetch: refetchLogs } = useQuery({
     queryKey: ["drip-campaign-logs"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("drip_campaign_log")
-        .select("*")
+        .select("id, status, message_type, mobile_number, contact_primary_key, filter_id, filter_name, cycle_number, skip_reason, created_at, patient_name")
         .order("created_at", { ascending: false })
-        .limit(10000);
+        .limit(500);
       if (error) throw error;
       return data || [];
     },
+    staleTime: Infinity,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   });
 
-  // Pending counters for ABC cards and Abnormal History
-  const { data: pendingCounts, isLoading: pendingLoading } = useQuery({
+  // Pending counters for ABC cards and Abnormal History — manual refresh only.
+  // Was auto-refetching every 2 min and pulling ~100K rows each time.
+  const { data: pendingCounts, isLoading: pendingLoading, isFetching: pendingFetching, refetch: refetchPending } = useQuery({
     queryKey: ["drip-pending-counts", filters.map(f => f.id).join(","), excludeBlacklist],
     enabled: filters.length > 0,
-    refetchInterval: 120000,
+    staleTime: Infinity,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
     queryFn: async () => {
       const enabledFilters = filters.filter(f => f.enabled).sort((a, b) => a.priority - b.priority);
       if (enabledFilters.length === 0) return { pendingAbc: 0, pendingAbnormal: 0 };
@@ -1658,50 +1677,65 @@ const AutomatedMarketing = () => {
               </Button>
             </div>
           </div>
-          <p className="text-xs text-muted-foreground mt-2">Counts all WhatsApp messages sent from Marketing, CRM, Loyalty Cards & Drip campaigns in last 24 hours. Auto-refreshes every minute.</p>
+          <p className="text-xs text-muted-foreground mt-2">Counts all WhatsApp messages sent from Marketing, CRM, Loyalty Cards & Drip campaigns in last 24 hours. Click Refresh to update.</p>
         </CardContent>
       </Card>
 
       {/* Pending Counters */}
-      <div className="grid grid-cols-2 gap-4">
-        <Card>
-          <CardContent className="py-4 flex items-center gap-3">
-            <CreditCard className="h-7 w-7 text-primary" />
-            <div className="flex-1">
-              <p className="text-xs text-muted-foreground">Pending ABC Cards</p>
-              {pendingLoading ? (
-                <Skeleton className="h-7 w-16 mt-1" />
-              ) : (
-                <p className="text-2xl font-bold">{pendingCounts?.pendingAbc ?? 0}</p>
-              )}
-            </div>
-            <Button variant="outline" size="sm" disabled={pendingLoading || !(pendingCounts?.pendingAbcRecords?.length)} onClick={() => {
-              exportToExcel(pendingCounts!.pendingAbcRecords, `Pending_ABC_Cards_${new Date().toISOString().slice(0,10)}`);
-              toast.success(`Exported ${pendingCounts!.pendingAbcRecords.length} records`);
-            }}>
-              <Download className="h-4 w-4 mr-1" /> Export
-            </Button>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-4 flex items-center gap-3">
-            <Activity className="h-7 w-7 text-primary" />
-            <div className="flex-1">
-              <p className="text-xs text-muted-foreground">Pending Abnormal History</p>
-              {pendingLoading ? (
-                <Skeleton className="h-7 w-16 mt-1" />
-              ) : (
-                <p className="text-2xl font-bold">{pendingCounts?.pendingAbnormal ?? 0}</p>
-              )}
-            </div>
-            <Button variant="outline" size="sm" disabled={pendingLoading || !(pendingCounts?.pendingAbnormalRecords?.length)} onClick={() => {
-              exportToExcel(pendingCounts!.pendingAbnormalRecords, `Pending_Abnormal_History_${new Date().toISOString().slice(0,10)}`);
-              toast.success(`Exported ${pendingCounts!.pendingAbnormalRecords.length} records`);
-            }}>
-              <Download className="h-4 w-4 mr-1" /> Export
-            </Button>
-          </CardContent>
-        </Card>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">Pending counters reflect snapshot at last refresh — click Refresh to recompute.</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => refetchPending()}
+            disabled={pendingFetching || filters.length === 0}
+            title="Recompute pending ABC + Abnormal counts"
+          >
+            <RefreshCw className={`h-4 w-4 mr-1 ${pendingFetching ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <Card>
+            <CardContent className="py-4 flex items-center gap-3">
+              <CreditCard className="h-7 w-7 text-primary" />
+              <div className="flex-1">
+                <p className="text-xs text-muted-foreground">Pending ABC Cards</p>
+                {pendingLoading ? (
+                  <Skeleton className="h-7 w-16 mt-1" />
+                ) : (
+                  <p className="text-2xl font-bold">{pendingCounts?.pendingAbc ?? 0}</p>
+                )}
+              </div>
+              <Button variant="outline" size="sm" disabled={pendingLoading || !(pendingCounts?.pendingAbcRecords?.length)} onClick={() => {
+                exportToExcel(pendingCounts!.pendingAbcRecords, `Pending_ABC_Cards_${new Date().toISOString().slice(0,10)}`);
+                toast.success(`Exported ${pendingCounts!.pendingAbcRecords.length} records`);
+              }}>
+                <Download className="h-4 w-4 mr-1" /> Export
+              </Button>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="py-4 flex items-center gap-3">
+              <Activity className="h-7 w-7 text-primary" />
+              <div className="flex-1">
+                <p className="text-xs text-muted-foreground">Pending Abnormal History</p>
+                {pendingLoading ? (
+                  <Skeleton className="h-7 w-16 mt-1" />
+                ) : (
+                  <p className="text-2xl font-bold">{pendingCounts?.pendingAbnormal ?? 0}</p>
+                )}
+              </div>
+              <Button variant="outline" size="sm" disabled={pendingLoading || !(pendingCounts?.pendingAbnormalRecords?.length)} onClick={() => {
+                exportToExcel(pendingCounts!.pendingAbnormalRecords, `Pending_Abnormal_History_${new Date().toISOString().slice(0,10)}`);
+                toast.success(`Exported ${pendingCounts!.pendingAbnormalRecords.length} records`);
+              }}>
+                <Download className="h-4 w-4 mr-1" /> Export
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
 
@@ -2013,6 +2047,17 @@ const AutomatedMarketing = () => {
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Execution Log</CardTitle>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => refetchLogs()}
+                disabled={logsFetching}
+                title="Refresh execution log"
+              >
+                <RefreshCw className={`h-4 w-4 mr-1 ${logsFetching ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
             <Button variant="outline" size="sm" disabled={recentLogs.length === 0} onClick={() => {
               const rows = recentLogs.map((l: any) => ({
                 "Date": new Date(l.created_at).toLocaleDateString("en-GB"),
@@ -2031,6 +2076,7 @@ const AutomatedMarketing = () => {
             }}>
               <Download className="h-4 w-4 mr-1" /> Export Log
             </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>

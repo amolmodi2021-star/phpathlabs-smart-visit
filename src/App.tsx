@@ -34,7 +34,20 @@ import ReportAnalytics from "./pages/ReportAnalytics";
 import PatientReportPortal from "./pages/PatientReportPortal";
 import NotFound from "./pages/NotFound";
 
-const queryClient = new QueryClient();
+// React Query global defaults — tuned for low Lovable Cloud egress.
+// Most lab data (tests, profiles, templates) tolerates a 1-min stale window;
+// users get an explicit Refresh button on counters that need fresher data.
+// `refetchOnWindowFocus` and `refetchOnReconnect` were causing storm-refetches
+// on tab switches and brief network blips, with zero user-visible benefit.
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60_000,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+    },
+  },
+});
 
 function ProtectedRoute({ children, route }: { children: React.ReactNode; route?: string }) {
   if (!isAuthenticated()) return <Navigate to="/login" replace />;
