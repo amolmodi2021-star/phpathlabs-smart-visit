@@ -440,8 +440,26 @@ const ModifiedApproval = () => {
                                     <TableRow key={key} className={rowBg}>
                                       <TableCell className="py-1.5 text-xs font-mono text-muted-foreground">{p.param_code}</TableCell>
                                       <TableCell className="py-1.5 text-sm font-medium">
-                                        {p.parameter_name}
-                                        {isCalc && <Calculator className="inline h-3 w-3 ml-1 text-primary" />}
+                                        <div className="flex items-center gap-1 flex-wrap">
+                                          <span>{p.parameter_name}</span>
+                                          {isCalc && <Calculator className="inline h-3 w-3 ml-1 text-primary" />}
+                                          <StickyNote
+                                            className={`inline h-3 w-3 cursor-pointer shrink-0 ${(editedNotes[key] !== undefined ? editedNotes[key] : p.note) ? 'text-amber-600' : 'text-muted-foreground hover:text-primary'}`}
+                                            onClick={(e) => { e.stopPropagation(); if (activeNoteKey === key) { setActiveNoteKey(null); } else { setActiveNoteKey(key); const currentNote = editedNotes[key] !== undefined ? editedNotes[key] : (p.note || ""); if (!currentNote) setEditedNotes(prev => ({ ...prev, [key]: "Kindly correlate clinically" })); } }}
+                                          />
+                                        </div>
+                                        {activeNoteKey === key && (
+                                          <div className="flex items-center gap-1 mt-1">
+                                            <Input value={editedNotes[key] ?? p.note ?? ""} onChange={e => setEditedNotes(prev => ({ ...prev, [key]: e.target.value }))} className="h-6 text-xs w-full" placeholder="Kindly correlate clinically" autoFocus onClick={e => e.stopPropagation()} />
+                                            <Trash2 className="h-3.5 w-3.5 text-destructive cursor-pointer shrink-0" onClick={(e) => { e.stopPropagation(); setEditedNotes(prev => ({ ...prev, [key]: "" })); setActiveNoteKey(null); }} />
+                                          </div>
+                                        )}
+                                        {(editedNotes[key] ?? p.note) && activeNoteKey !== key && (
+                                          <div className="flex items-center gap-1 mt-0.5">
+                                            <div className="text-xs font-bold text-amber-700 cursor-pointer" onClick={(e) => { e.stopPropagation(); setActiveNoteKey(key); }}>📝 {editedNotes[key] ?? p.note}</div>
+                                            <Trash2 className="h-3 w-3 text-destructive/60 hover:text-destructive cursor-pointer shrink-0" onClick={(e) => { e.stopPropagation(); setEditedNotes(prev => ({ ...prev, [key]: "" })); }} />
+                                          </div>
+                                        )}
                                       </TableCell>
                                       <TableCell className="py-1.5">
                                         {isCalc ? (
