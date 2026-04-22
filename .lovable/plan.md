@@ -1,75 +1,81 @@
 
 
-# Add an editable test-level note (default "Kindly correlate clinically") shown above Interpretation
+# Add note editing (parameter + test level) in Modified Approval
 
 ## What you'll get
 
-In **Results, Result Verification, and Doctor Approval**, every test card (the row that today reads e.g. *"FBS  0/1   Transfer to Outsourced  Save & Verify"*) gets a small **📝 sticky-note icon** next to the test name — exactly like the per-parameter note today, but for the whole test.
+In **Modified Approval**, every test card and every parameter row gets the same 📝 sticky-note icon already used in Results, Verification, and Doctor Approval:
 
-- Click → an inline editor appears, pre-filled with **"Kindly correlate clinically"**.
-- Editable to any text. A small trash icon clears it (so it doesn't appear on the report).
-- Once entered/edited, it's saved with the test's results.
+- **Test-level note** (📝 next to test name) — defaults to "Kindly correlate clinically" on first click; editable; trash-icon to clear. Renders above Interpretation in the report.
+- **Parameter-level note** (📝 next to parameter name) — same pattern; renders as italic line under the parameter name in the report.
 
-In the **report**, when present, the note renders as a small bold/italic line **directly above the Interpretation block** for that test. If no Interpretation exists, the note still renders at the same spot (right under the parameter table). Empty/cleared note → renders nothing.
+Edits save together with the existing Result/Unit/Ref-range/Flag edits via the existing **Save Changes** button. The re-saved snapshot in `approved_reports` carries both notes, so report rendering picks them up immediately (live `patient_results` AND the JSONB snapshot are both updated).
 
-## Storage
+## Single-file change — `src/components/lims/ModifiedApproval.tsx`
 
-Add column **`patient_results.test_note text NULL`**. Whenever results for a given (registration, test) are saved, the same `test_note` value is written to every row of that test (cheap, denormalised, mirrors how `entered_by` etc. is already replicated).
+### 1. New state
+```ts
+const [editedNotes, setEditedNotes] = useState<Record<string, string>>({});           // key: regId||parameterId
+const [activeNoteKey, setActiveNoteKey] = useState<string | null>(null);
+const [editedTestNotes, setEditedTestNotes] = useState<Record<string, string>>({});   // key: regId||testId
+const [activeTestNoteKey, setActiveTestNoteKey] = useState<string | null>(null);
+```
+Add `StickyNote, Trash2` to the `lucide-react` import.
 
-On read, the test-level note for a test = first non-null `test_note` among that test's `patient_results` rows. (`patient_results` is the existing source for both Results, Verification, Approval, and the report's parameter list.)
+### 2. Pull `note` and `test_note` from `patient_results`
+The existing `approvedResults` query already does `select("*")` so both fields arrive. Build a `loadedTestNotes` map (first non-null `test_note` per `regId||testId`) inside `entries` memo, just like `ResultVerification.tsx` lines 414–421.
 
-## Changes per file
+### 3. UI additions
+- **Test header (line 327, next to `{tg.testName}`)**: insert `<StickyNote>` icon + inline edit row + saved-note display row, mirroring `ResultVerification.tsx` lines 976–1009.
+- **Parameter cell (line 369, next to `{p.parameterName}`)**: insert `<StickyNote>` icon + inline edit row + saved-note display row, mirroring `ResultVerification.tsx` lines 805–821. Key = `${report.registration_id}||${p.parameter_id}`.
 
-### Database — one additive migration
-- `ALTER TABLE public.patient_results ADD COLUMN test_note text;` (nullable, no default — absence = no note shown).
+### 4. Persist on save (`saveChanges`, lines 185–247)
+For each parameter, extend the `patient_results` UPDATE and the JSONB snapshot row:
+```ts
+const noteKey = `${regId}||${p.parameter_id}`;
+const testNoteKey = `${regId}||${tg.testId}`;
+const newNote = editedNotes[noteKey] !== undefined ? (editedNotes[noteKey] || null) : (p.note ?? null);
+const newTestNote = editedTestNotes[testNoteKey] !== undefined
+  ? (editedTestNotes[testNoteKey] || null)
+  : (loadedTestNotes[testNoteKey] || null);
 
-### `src/components/lims/ResultsEntry.tsx`
-1. Hydrate per-test note in the loader (line ~648 area): for each test group, set `testNote = first patient_results row's test_note for that (reg, test)`. Carry it on the `tg`/test-level structure (or in a `Record<testKey, string>` map).
-2. Add `testNotesEdited: Record<testKey, string>` state and `activeTestNoteKey` (mirrors existing `editedNotes`/`activeNoteKey` per-parameter pattern).
-3. In the test-row header (line ~1380, where `{tg.testName}` and `{filledCount}/{tg.params.length}` render), insert a **StickyNote** icon (same component/pattern as parameter note at line 1063), with the same default-fill-on-click behavior ("Kindly correlate clinically") and inline edit + Trash2 to clear. Show the saved note as a small `📝 …` line below the row when present and not editing (mirrors lines 1081–1088).
-4. In `saveMutation` (line ~814 upserts), include `test_note: testNotesEdited[testKey] ?? loadedTestNote[testKey] ?? null` on every upsert row of that test.
+await supabase.from("patient_results").update({
+  result_value: newValue || null,
+  unit: newUnit || null,
+  reference_range: newRefRange || null,
+  flag: newFlag || null,
+  note: newNote,
+  test_note: newTestNote,
+}).eq("id", p.id);
 
-### `src/components/lims/ResultVerification.tsx`
-- Repeat the same three-piece treatment: hydrate `testNote` per (reg,test), render the StickyNote next to the test name in the test-row card (same place as line 786 pattern, but at the test header), include `test_note` in the verify upsert (lines 599, 648, 695).
+allTestResults.push({
+  // …existing fields…
+  note: newNote,
+  test_note: newTestNote,
+});
+```
+For snip-only test rows (no params), still push `test_note: newTestNote` so the test-level note survives in the snapshot.
 
-### `src/components/lims/DoctorApproval.tsx`
-- Same as Verification (lines 623 pattern).
-- In the approval archive merge (`mergedResults` at lines ~408 and ~488), tag each archived row with the current `test_note` value so approved reports stay self-contained (matches the per-parameter `note` snapshotting already done).
-
-### `src/pages/LimsReportView.tsx`
-- In `tpData` / per-test load, also read `test_note` (first non-null among that test's rows; or from the approved snapshot when reading from `approved_reports`).
-- Extend `TestBlock` with `testNote?: string`.
-- In `buildProfileMetaMap`, attach `test_note: block.testNote` onto each `ProfileMeta`.
-
-### `src/components/report/ReportResultsSection.tsx`
-- Extend `ProfileMeta` with `test_note?: string`.
-- In the profile rendering block (line 368, just before `{hasInterpretation && …}`), add:
-  ```tsx
-  {profMeta?.test_note?.trim() && (
-    <div className="px-3 py-1 italic font-semibold text-gray-700 border-t border-gray-100"
-         style={{ fontSize: metaFontSize }}>
-      {profMeta.test_note}
-    </div>
-  )}
-  ```
-- Render order is now: parameters table → **test_note** → Interpretation → Outsourced caption.
+### 5. Hook into `hasEdits` and the post-save reset
+Add `editedNotes` and `editedTestNotes` to both `hasEdits` (line 249) and the per-prefix clear loop (lines 239–242) so the Save button enables/disables correctly and edits clear after saving.
 
 ## What stays untouched
 
-- Per-parameter notes (`patient_results.note`) — unchanged.
-- Test-level **Interpretation** field in Test Management — unchanged; test note is a separate, lighter clinical hint that lives above it.
-- `approved_reports` schema — only the JSONB row gets an extra `test_note` key per test entry (additive, safe).
-- Sample collection, billing, dispatch, single-parameter overrides.
+- `LimsReportView.tsx` — already reads `note` (rendered as `remark` → small italic line) and `test_note` (rendered above Interpretation) from both live `patient_results` and the `approved_reports.test_results` JSONB snapshot. No change needed.
+- `ReportResultsSection.tsx` — already renders both notes.
+- `DoctorApproval.tsx`, `ResultsEntry.tsx`, `ResultVerification.tsx` — unchanged.
+- DB schema — `patient_results.note` and `patient_results.test_note` already exist.
 
 ## Verification
 
-1. Open `/lims?tab=results` → expand any patient → click the new 📝 next to a test name (e.g. **FBS**) → field appears pre-filled with "Kindly correlate clinically" → Save & Verify.
-2. Repeat the click in **Result Verification** and **Doctor Approval** to edit/clear before approval.
-3. View the approved report → the note appears as a small italic line **above** the test's Interpretation block (and above where Interpretation would be even if absent).
-4. Clear the note (trash icon) → reload report → line disappears.
-5. Tests where the note was never touched continue to render exactly as today (no default text leaks into reports — only an explicit save persists "Kindly correlate clinically").
+1. `/lims?tab=modified` → expand any approved report.
+2. Click 📝 next to a parameter name → edits to "Kindly correlate clinically" → tweak text → Save Changes.
+3. Click 📝 next to the test name → edit/clear → Save Changes.
+4. Open the report (View Report from Dispatch or Modified Approval) → parameter note shows as italic line under parameter name; test note shows above Interpretation.
+5. Clear a note (trash icon) → Save → reload report → note disappears.
+6. Existing reports with no notes render unchanged.
 
 ## Risk
 
-Low. Additive column, no existing-row backfill needed (NULL = unchanged behavior). UI mirrors the well-tested per-parameter note pattern. Render addition is presentational and gated on non-empty value.
+Low. Single-file UI addition, mirrors well-tested pattern from `ResultVerification.tsx`. Schema unchanged. The save path already re-writes both `patient_results` rows and the `approved_reports` JSONB, so adding two more columns to those writes is safe.
 
