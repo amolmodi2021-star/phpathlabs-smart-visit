@@ -1,49 +1,66 @@
 
 
-# Why "Run RPC" appears to do nothing
+# Why ABC shows 12,311 vs 25 — they're measuring different things
 
-I tested the RPC directly with your active filters (ABC + ABNORMAL PNG, blacklist on, 7d interval, 1000/day) and it returns valid data with 100 records each — so the database side is healthy. The screenshot shows the panel is still on the **initial idle message** ("Click 'Run RPC'…"), and no network request for `get_drip_pending_summary` shows up in the browser snapshot. That means **the click is firing `refetch()` but the request is being suppressed or instantly resolved with empty data — without any error, spinner, or result**.
+## The real problem
 
-Most likely root causes (in order of likelihood):
+The shadow panel is comparing apples to oranges. The **"JS" number** (`pendingCounts`) and the **"RPC" number** are intentionally computed by two different functions in the codebase:
 
-1. **`refetch()` runs while `enabled: false`** — at the moment of the click, `filters` may still be loading from the parent query (its own `useQuery` resolves async), so `filters.length === 0`, which makes the React Query `enabled` flag false. In React Query v5, calling `refetch()` on a disabled query **silently returns the cached `undefined`** without firing the `queryFn`. The button does nothing visible because no fetch happens and no error is thrown.
-2. **Stale closure on the query key** — `queryKey` includes `filters.map(f => f.id).join(",")`. If the click happens before filters hydrate, the key is `""`, the cached entry is `undefined`, and `refetch` resolves immediately to that undefined.
-3. **No client-side feedback when the queryFn early-returns 0** — even when it does run with 0 enabled filters, it returns `{ pending_abc: 0, pending_abnormal: 0, ... }` instantly, which IS truthy, so the panel should render. So this case is unlikely given the screenshot.
+| What it measures | "JS" (`pendingCounts`, lines 288–446) | RPC (`get_drip_pending_summary`) | Real send pipeline (`collectEligibleRecords`, lines 595–990) |
+|---|---|---|---|
+| Min-interval guard | ❌ ignores | ✅ applies | ✅ applies |
+| `location_filter` | ❌ ignores | ✅ applies | ✅ applies |
+| `last_sent_type_filter` | ❌ ignores | ✅ applies | ✅ applies |
+| `record_limit` per filter | ❌ ignores | ✅ applies | ✅ applies |
+| `maxPerDay` global cap | ❌ ignores | ✅ applies | ✅ applies |
 
-# The fix
+So `pendingCounts.pendingAbc = 12,311` is the **gross "anything that could ever be sent across all future cycles" number** (intentionally — that's what the dashboard tile is supposed to show). RPC=25 is the **actual capped send-today list**, which matches `record_limit=100` after dedup + cross-filter claim trims it.
 
-Three small, safe changes inside `src/components/marketing/AutomatedMarketing.tsx` (no DB changes, JS preflight untouched):
+The two were never meant to be equal. The shadow comparison was wired against the wrong baseline.
 
-1. **Make the button work even when the query is disabled.** Replace the `refetch()` handler with an explicit, manually-invoked async function that:
-   - Reads the current filters straight from React state (not from the closure of a disabled query).
-   - Calls `supabase.rpc("get_drip_pending_summary", …)` directly.
-   - Manages its own `loading` / `result` / `error` `useState` — independent of React Query's `enabled` gating.
-   - This guarantees one click = one network call, every time.
+## The fix — compare RPC to the real pipeline
 
-2. **Add visible diagnostics in the panel** so we never get a silent dead state again:
-   - Show "Filters loaded: N (enabled: M)" right under the title.
-   - Show elapsed time on success ("RPC returned in 412 ms").
-   - Show the last click timestamp (so you can confirm a click registered).
-   - Keep the existing 30s timeout + red error message on failure.
+Change the shadow panel to call `collectEligibleRecords()` (the actual send pipeline, source of truth for `runDrip`) and compare its output against the RPC. That's the comparison that actually matters before cutover.
 
-3. **Add console logs** at click → before fetch → after fetch (success/error) so future debugging takes one screenshot of DevTools instead of another round-trip.
+### Changes in `src/components/marketing/AutomatedMarketing.tsx`
 
-# Files changing
+1. **Add a "JS pipeline" state** alongside `rpcPending`:
+   - `jsPipeline` / `jsFetching` / `jsElapsedMs`.
+2. **Make `runShadowRpc` run BOTH in parallel** and store both:
+   - `Promise.all([collectEligibleRecords(), supabase.rpc("get_drip_pending_summary", …)])`.
+   - Aggregate the JS pipeline output into `{ pendingAbc, pendingAbnormal, abcRecords, abnormalRecords }` by walking `results[]` and grouping by each filter's `message_type`.
+3. **Update the shadow panel UI** to read `jsPipeline.pendingAbc` instead of `pendingCounts.pendingAbc` for the "JS" line, and the same for Abnormal and the diff arrays. Show both elapsed times.
+4. **Leave the dashboard tiles untouched** — `pendingCounts` still drives the top "Pending ABC Cards / Abnormal History" tiles since users have come to read those as forward-looking eligibility totals.
+
+### Expected result after fix
+
+- Click **Run RPC** → both numbers come from capped send pipelines.
+- ABC: JS ~25, RPC ~25, ✓ MATCH.
+- Abnormal: JS ~25, RPC ~25, ✓ MATCH.
+- Diff arrays empty, or any small gap will be a real RPC vs JS rule discrepancy worth fixing.
+
+## Files changing
 
 | File | Change |
 |---|---|
-| `src/components/marketing/AutomatedMarketing.tsx` | Replace the React Query `rpcPending` block with a button-driven `runShadowRpc()` function + local `useState` for result/error/loading/elapsed. Update the panel UI to render the new state and diagnostics. |
+| `src/components/marketing/AutomatedMarketing.tsx` | Update `runShadowRpc` to also run `collectEligibleRecords` in parallel, store its aggregated counts in new state, and switch the shadow panel UI to read from this new state instead of `pendingCounts` |
 
-# What stays untouched
+## What stays untouched
 
-- `get_drip_pending_summary` RPC — already verified working server-side.
-- JS `collectEligibleRecords` (source of truth for sends).
-- `runDrip`, all filters UI, indexes, every other component.
+- `get_drip_pending_summary` RPC — already verified server-side, no DB changes.
+- `collectEligibleRecords` JS — source of truth, unchanged.
+- `pendingCounts` query and the dashboard tiles above the shadow panel — unchanged (they intentionally show gross eligibility).
+- `runDrip`, send pipeline, all other UI.
 
-# Verification
+## Verification
 
 1. Reload `/marketing?debug=preflight`.
 2. Click **Run RPC**.
-3. Within ~1 second, the panel populates with JS vs RPC counts plus an elapsed-ms readout. If anything fails, you'll see a red error line. If 0 filters are enabled, you'll see "0 filters enabled — nothing to compare".
-4. Once you confirm matches across a few clicks, give the green light and I'll flip `USE_RPC_PREFLIGHT = true` for cutover.
+3. Within ~1–2 seconds the panel shows both JS pipeline count and RPC count side by side, both capped by `maxPerDay`. Expect `✓ MATCH` with empty diff arrays.
+4. Toggle a location filter / change min interval / adjust max per day → click **Run RPC** again → still matches.
+5. Once you confirm matches across 3+ refreshes, give the green light and I'll flip `USE_RPC_PREFLIGHT = true` for cutover.
+
+## Risk
+
+Zero to production. Shadow panel is the only consumer; `runDrip` keeps using JS; dashboard tiles unchanged.
 
