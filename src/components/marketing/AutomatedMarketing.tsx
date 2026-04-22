@@ -278,6 +278,11 @@ const AutomatedMarketing = () => {
     refetchOnWindowFocus: false,
   });
 
+  // Hidden shadow-comparison toggle: append ?debug=preflight to the URL to enable.
+  // When on, the RPC `get_drip_pending_summary` runs alongside the JS preflight
+  // and a diff panel is rendered. The JS result remains the source of truth.
+  const debugPreflight = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("debug") === "preflight";
+
   // Pending counters for ABC cards and Abnormal History — manual refresh only.
   // Was auto-refetching every 2 min and pulling ~100K rows each time.
   const { data: pendingCounts, isLoading: pendingLoading, isFetching: pendingFetching, refetch: refetchPending } = useQuery({
