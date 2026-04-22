@@ -3711,12 +3711,15 @@ export type Database = {
       get_drip_contact_slice: {
         Args: never
         Returns: {
+          default_discount_pct: number
+          id: string
           last_sent_date: string
           last_sent_type: string
           location: string
           mobile_number: string
           patient_name: string
           primary_key: string
+          record_tag: string
           umr_number: string
           visit_date: string
         }[]
