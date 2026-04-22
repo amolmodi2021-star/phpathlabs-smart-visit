@@ -88,6 +88,10 @@ const isDescriptiveResult = (r: TestResult): boolean => {
 };
 
 const isAbnormalFlag = (flag?: string): boolean => {
+  return flag === "H" || flag === "L" || flag === "High" || flag === "Low" || flag === "X" || flag === "A";
+};
+
+const showFlagBadge = (flag?: string): boolean => {
   return flag === "H" || flag === "L" || flag === "High" || flag === "Low";
 };
 

@@ -427,13 +427,17 @@ const ResultVerification = () => {
   }, [editedTestNotes, loadedTestNotes]);
 
   // Calculate flag
-  const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string): string => {
+  const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string, descriptiveOptions?: string[]): string => {
     if (!value || value.trim() === "") return "";
     if (rangeType === "qualitative") {
       if (!expectedValue) return "";
-      return value.trim().toLowerCase() === expectedValue.trim().toLowerCase() ? "N" : "A";
+      return value.trim().toLowerCase() === expectedValue.trim().toLowerCase() ? "N" : "X";
     }
-    if (rangeType === "descriptive") return "";
+    if (rangeType === "descriptive") {
+      const opts = (descriptiveOptions || []).map(o => (o || "").trim().toLowerCase()).filter(Boolean);
+      if (opts.length === 0) return "";
+      return opts.includes(value.trim().toLowerCase()) ? "N" : "X";
+    }
     const num = parseFloat(value);
     if (isNaN(num)) return "";
     if (low != null && num < low) return "L";
