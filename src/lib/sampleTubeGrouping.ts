@@ -106,10 +106,12 @@ export const buildSampleTubeGroups = async (
   const testInfoMap: Record<string, any> = {};
   (testRowsRes.data || []).forEach((t: any) => { testInfoMap[t.id] = t; });
 
-  const suffixMap: Record<string, string> = {};
+  const suffixMap: Record<string, string[]> = {};
   (suffixRowsRes.data || []).forEach((tp: any) => {
-    const suffix = tp.report_test_parameters?.custom_sample_suffix;
-    if (tp.test_id && suffix) suffixMap[tp.test_id] = suffix;
+    const suffix = tp.report_test_parameters?.custom_sample_suffix?.trim();
+    if (!tp.test_id || !suffix) return;
+    if (!suffixMap[tp.test_id]) suffixMap[tp.test_id] = [];
+    if (!suffixMap[tp.test_id].includes(suffix)) suffixMap[tp.test_id].push(suffix);
   });
 
   // Per-test multi-tube map: test_id -> [{tube, color, type}, ...]
@@ -124,32 +126,34 @@ export const buildSampleTubeGroups = async (
     });
   });
 
-  // Group by tube + suffix; fan out per leaf test into all its tubes
+  // Group by tube + suffix; fan out per leaf test into all its tubes × all its suffixes
   const groupMap: Record<string, TubeGroup> = {};
   for (const id of leafIds) {
     const info = testInfoMap[id] || {};
-    const suffix = suffixMap[id] || "";
+    const suffixes = suffixMap[id]?.length ? suffixMap[id] : [""];
     // Prefer multi-tube rows; fall back to legacy single column
     const tubes = multiTubeMap[id]?.length
       ? multiTubeMap[id]
       : [{ tube: info.sample_tube || "DEFAULT", color: info.tube_color || "", type: info.sample_type || "" }];
 
     for (const t of tubes) {
-      const key = `${t.tube}||${suffix}`;
-      if (!groupMap[key]) {
-        groupMap[key] = {
-          tubeType: t.tube,
-          tubeColor: t.color,
-          sampleType: t.type,
-          suffix,
-          testIds: [],
-          testNames: [],
-        };
-      }
-      // Avoid duplicating test name in same group when fan-out happens
-      if (!groupMap[key].testIds.includes(id)) {
-        groupMap[key].testIds.push(id);
-        groupMap[key].testNames.push(info.test_name || "");
+      for (const sfx of suffixes) {
+        const key = `${t.tube}||${sfx}`;
+        if (!groupMap[key]) {
+          groupMap[key] = {
+            tubeType: t.tube,
+            tubeColor: t.color,
+            sampleType: t.type,
+            suffix: sfx,
+            testIds: [],
+            testNames: [],
+          };
+        }
+        // Avoid duplicating test name in same group when fan-out happens
+        if (!groupMap[key].testIds.includes(id)) {
+          groupMap[key].testIds.push(id);
+          groupMap[key].testNames.push(info.test_name || "");
+        }
       }
     }
   }
