@@ -3702,6 +3702,15 @@ export type Database = {
           visit_type: string
         }[]
       }
+      get_drip_pending_summary: {
+        Args: { p_exclude_blacklist?: boolean; p_filter_ids: string[] }
+        Returns: {
+          pending_abc: number
+          pending_abc_records: Json
+          pending_abnormal: number
+          pending_abnormal_records: Json
+        }[]
+      }
       get_new_numbers_paginated: {
         Args: { p_limit?: number; p_offset?: number; p_search?: string }
         Returns: {
