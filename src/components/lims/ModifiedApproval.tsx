@@ -234,7 +234,8 @@ const ModifiedApproval = () => {
           const newValue = editedValues[key] !== undefined ? editedValues[key] : p.result_value;
           const newUnit = editedUnits[key] !== undefined ? editedUnits[key] : p.unit;
           const newRefRange = editedRefRanges[key] !== undefined ? editedRefRanges[key] : p.reference_range;
-          const newFlag = editedFlags[key] !== undefined ? editedFlags[key] : (calculateFlag(newValue, p.normal_range_low, p.normal_range_high) || p.flag);
+          const rangeMeta = resolveRangeMeta(p.parameter_id);
+          const newFlag = editedFlags[key] !== undefined ? editedFlags[key] : (calculateFlag(newValue, p.normal_range_low, p.normal_range_high, rangeMeta.rangeType, undefined, undefined, rangeMeta.normalRangeText) || p.flag);
           const noteKey = `${regId}||${p.parameter_id}`;
           const newNote = editedNotes[noteKey] !== undefined ? (editedNotes[noteKey] || null) : (p.note ?? null);
 
@@ -442,9 +443,10 @@ const ModifiedApproval = () => {
                                   const currentValue = editedValues[key] !== undefined ? editedValues[key] : (p.result_value || "");
                                   const currentUnit = editedUnits[key] !== undefined ? editedUnits[key] : (p.unit || "");
                                   const currentRef = editedRefRanges[key] !== undefined ? editedRefRanges[key] : (p.reference_range || "");
-                                  const autoFlag = calculateFlag(currentValue, p.normal_range_low, p.normal_range_high);
+                                  const rangeMeta = resolveRangeMeta(p.parameter_id);
+                                  const autoFlag = calculateFlag(currentValue, p.normal_range_low, p.normal_range_high, rangeMeta.rangeType, undefined, undefined, rangeMeta.normalRangeText);
                                   const currentFlag = editedFlags[key] !== undefined ? editedFlags[key] : (p.flag || autoFlag);
-                                  const rowBg = (currentFlag === "H" || currentFlag === "L" || currentFlag === "A") ? "bg-destructive/5" : "";
+                                  const rowBg = (currentFlag === "H" || currentFlag === "L" || currentFlag === "A" || currentFlag === "X") ? "bg-destructive/5" : "";
 
                                   // Check if calculated
                                   const testParams = testParamsMap[p.test_id] || [];
