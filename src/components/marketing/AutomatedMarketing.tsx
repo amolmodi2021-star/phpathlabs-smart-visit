@@ -2076,6 +2076,7 @@ const AutomatedMarketing = () => {
             }}>
               <Download className="h-4 w-4 mr-1" /> Export Log
             </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
