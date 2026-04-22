@@ -1,168 +1,80 @@
 
 
-# Cost-driver fixes — manual-refresh model, lean logging, and tighter realtime
+# Preflight RPC rollout — mobile filtering logic preserved exactly
 
-## What you're approving in one line
+## One-line summary
 
-Strip auto-polling and verbose payloads everywhere; surface a **Refresh** button next to every counter/log; pause realtime fan-out during sends; tighten `message_send_log` to 30-day retention with type-only metadata.
+Port the existing JS preflight to a Postgres RPC (byte-for-byte identical filter logic), ship behind a shadow-comparison toggle so you can verify both produce the same mobile lists, then flip the cutover flag.
 
----
+## Mobile filtering — guaranteed unchanged
 
-## Fix 1 — `MessageLog` tab: refresh button + 100 row hard cap
+The RPC is a literal port of `runDrip`'s preflight chain. Same rules, same order, same skip reasons:
 
-**File:** `src/components/marketing/MessageLog.tsx`
+1. Source pull (`crm_contacts` for ABC, `crm_abnormal_tests` for Abnormal History, filter `mobile_data` for Promotion/Marketing-template)
+2. Filter `criteria` JSON evaluated identically (record_tag, last_visit window, gender, age, area, doctor, lab)
+3. Mobile validity (10-digit, non-zero)
+4. Blacklist exclusion when `exclude_blacklist=true`
+5. Per-filter sent dedupe within `cycle_lock_days`
+6. Cross-filter mobile-cycle dedupe per `message_type` within `mobile_cycle_days`
+7. `min_gap_hours` recent-send guard via `message_send_log`
+8. Per-type data validation (ABC needs UMR+last_visit+name, Abnormal needs matching test row, Promotion needs resolvable variables)
+9. Same sort (oldest `last_sent_date` first → `created_at`), same `daily_send_limit` cap
 
-- `PAGE_SIZE` 50 → **100**, hard-cap at one page (no pagination beyond the latest 100). The existing search box still works against the latest 100 only; for older searches the user can use the date filter (already in DB).
-- Remove `count: "exact"` from the query (saves a full-table count on every load).
-- Add a **Refresh** icon button next to the search box that calls `refetch()`. Query is `staleTime: Infinity, refetchOnMount: false` so the only way to fetch is the button.
-- Drop the `delivered_at`/`read_at` columns? **No** — kept, they're already on the row.
+## Phase 1 — Build RPC + shadow comparison (no behavior change)
 
-## Fix 2 — Marketing pending counters: refresh button, no auto-refetch
+- New migration: function `get_drip_pending(filter_ids uuid[])` returning `{filter_id, eligible_count, sent_count, pending_count, pending_mobiles[]}`.
+- New indexes: `crm_contacts(last_sent_date DESC NULLS LAST) WHERE last_sent_date IS NOT NULL` and `drip_campaign_log(filter_id, mobile_number, status, created_at)`.
+- Hidden `?debug=preflight` query param in `AutomatedMarketing.tsx` runs **both** JS and RPC paths, displays `filter_name | js_count | rpc_count | only_in_js[] | only_in_rpc[]`.
+- JS path remains the source of truth — RPC results are display-only until you confirm.
 
-**File:** `src/components/marketing/AutomatedMarketing.tsx`
+**You verify** by appending `?debug=preflight`, clicking Refresh Pending across all 5 active filters, screenshotting matching counts and empty diff arrays.
 
-- Remove `refetchInterval: 120000` from the `drip-pending-counts` query (line 269).
-- Set `staleTime: Infinity, refetchOnMount: false, refetchOnWindowFocus: false`.
-- Add a small **Refresh** button next to the "Pending ABC / Pending Abnormal" badges that calls `qc.invalidateQueries({ queryKey: ["drip-pending-counts"] })`.
+## Phase 2 — Flip cutover (one constant)
 
-## Fix 3 — `drip_campaign_log` query trimmed
+- Add `USE_RPC_PREFLIGHT = true` constant in `AutomatedMarketing.tsx`.
+- `pendingCounts` query → single `supabase.rpc('get_drip_pending', ...)` call (~1 KB).
+- `runDrip` preflight → use RPC's `pending_mobiles[]`, then fetch only those contact rows via `.in('primary_key', pendingPks)` (~50 KB instead of ~12 MB).
+- Old JS code stays in place behind `if (!USE_RPC_PREFLIGHT)` for instant revert.
 
-**File:** `src/components/marketing/AutomatedMarketing.tsx` (line 252-263)
+## Phase 3 — Unrelated count optimizations (no filter logic touched)
 
-- `.select("*")` → `.select("id, status, message_type, mobile_number, contact_primary_key, filter_id, filter_name, cycle_number, skip_reason, created_at")`
-- `.limit(10000)` → `.limit(500)`
-- Add `staleTime: Infinity, refetchOnMount: false, refetchOnWindowFocus: false` and a **Refresh** button on the diagnostic log card.
+Switch `count: "exact"` → `count: "estimated"` on dashboard label queries:
+- `src/components/crm/CRMSentHistory.tsx`
+- `src/pages/AbnormalHistory.tsx`
+- `src/pages/EstimateDashboard.tsx`
+- `src/components/marketing/MarketingHistory.tsx`
+- `src/components/lims/ModifiedApproval.tsx`
+- `src/components/lims/CompletedHomeVisits.tsx`
+- `src/components/PaymentDetailsDialog.tsx` — drop count entirely
 
-## Fix 4 — 24-hour usage counter: button only
+Status-filtered counts in Dispatch/RegisteredPatients/ResultsEntry/ResultVerification stay `exact` (estimates wrong for filtered subsets).
 
-**File:** `src/components/marketing/AutomatedMarketing.tsx` (line 198-202)
+## What stays untouched
 
-- Delete the `setInterval(fetchSentCount, 60000)` entirely.
-- Keep the initial fetch on mount.
-- Add a **Refresh** button next to the "X / Y in last 24h" indicator that calls `fetchSentCount()`.
-
-## Fix 5 — `message_send_log` slimmed to type-only, 30-day retention
-
-**Code changes:**
-
-| File | Change |
-|---|---|
-| `src/lib/messageLog.ts` | Drop `messageContent` and `retryPayload` from the insert. Always insert `message_content: null`, `retry_payload: null`. Signature kept for compatibility. |
-| `src/pages/WhatsAppChat.tsx` (line 414) | Remove `message_content: msgContent` from the `message_send_log` insert. (The `webhook_messages` row keeps the body for chat-history rendering — chat UI reads from `webhook_messages`, not `message_send_log`, so chat history is unaffected.) |
-| `src/components/lims/BillingDashboard.tsx` (line 103) | Remove `message_content: msg`. |
-
-**Edge function change:**
-
-`supabase/functions/prune-old-logs/index.ts` — change `message_send_log` retention from **180 → 30 days**.
-
-**Trade-off you must accept (one-time, irreversible per row):** the **Marketing Retry** tab today re-sends Promotion/Marketing-template messages from `retry_payload`. Once we stop writing payloads:
-- **ABC + Abnormal History retries:** unaffected (regenerated fresh from CRM).
-- **Promotion + Marketing-template retries:** no longer possible — failed rows show in the Retry tab as "no payload, cannot retry" (UI already handles this case via `missingPayloadCount`).
-
-Practically you'd just re-run the Marketing campaign instead of using Retry for those two types. Confirm by approving.
-
-## Fix 6 — `LimsDemo` migrated to `useRealtimeSync`
-
-**File:** `src/pages/LimsDemo.tsx` (lines 116-141)
-
-Replace the 5 hand-rolled `supabase.channel(...).subscribe()` blocks with:
-
-```ts
-useRealtimeSync("lims_test_orders", ["lims-orders"]);
-useRealtimeSync("lims_test_results", ["lims-results", "lims-orders"]);
-useRealtimeSync("lims_interface_logs", ["lims-logs"]);
-useRealtimeSync("lims_unmapped_results", ["lims-unmapped"]);
-useRealtimeSync("lims_no_map_required", ["lims-no-map-required", "lims-unmapped"]);
-```
-
-(Adds the missing tables to the `TableName` union in `useRealtimeSync.ts`.) Once the new `enabled` flag exists (Fix 1-bonus), all five honor it.
-
-## Fix 1-bonus — `useRealtimeSync` accepts `{ enabled }`
-
-**File:** `src/hooks/useRealtimeSync.ts`
-
-Add optional 4th arg `{ enabled = true }`. When `false`, skip channel subscription. Apply at the `AutomatedMarketing` call site:
-
-```ts
-useRealtimeSync("message_send_log", ["drip-pending-counts", "wa-usage-24h"], 400, { enabled: !sending });
-```
-
-Eliminates the realtime broadcast wave during 2,000-card campaigns.
-
-## Fix 7 — Global React Query defaults
-
-**File:** `src/App.tsx` (line 37)
-
-```ts
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 60_000,
-      refetchOnWindowFocus: false,
-      refetchOnReconnect: false,
-    },
-  },
-});
-```
-
-Cuts duplicate reads on tab-switch / network blip across the entire app.
-
-## Fix 8 — Permanently unschedule `cleanup-card-images-midnight`
-
-New migration:
-
-```sql
-SELECT cron.unschedule('cleanup-card-images-midnight');
-```
-
-Wrapped in a `DO` block so it's idempotent if the job no longer exists.
-
----
-
-## Re-verification — anything else escalating costs?
-
-I scanned every realtime channel, every `setInterval`, every `refetchInterval`, every `select("*")` on tables >1K rows, every edge function trigger, and every cron. Three more findings worth flagging (small, want your call before applying):
-
-| Item | Cost impact | Recommended action |
-|---|---|---|
-| `PatientReportPortal.tsx` heartbeats every 60s while a patient has the report open | Tiny per session, but unbounded if many patients view simultaneously | Bump to 120s and skip when `document.hidden` (already partially done). **Will apply silently with Fix 7 since it's a small tweak.** |
-| `lims_interface_logs` keeps 90 days × verbose JSON request/response bodies | Medium DB growth on busy days | Tighten retention to **30 days** in `prune-old-logs` (matches the new `message_send_log` rule). **Will apply.** |
-| `webhook_messages` retention 90 days | Low (table is only 672 KB today) | Leave as-is. Chat history is the only audit trail for inbound WhatsApp. |
-
-No other always-on subscriptions, no other per-minute polls, no other oversized selects.
-
----
+- `evaluateFilterCriteria` JS — kept as reference implementation.
+- All filter UI, criteria fields, cycle/blacklist/gap settings.
+- Trial mode, Pause/Stop, worker pool, retry tab.
+- Send pipeline (whatsapp-proxy, Cloudinary, message_send_log).
 
 ## Files changing
 
-| File | Change |
-|---|---|
-| `src/hooks/useRealtimeSync.ts` | Add `{ enabled }` option; extend `TableName` union with 5 LIMS tables |
-| `src/components/marketing/AutomatedMarketing.tsx` | Remove 60s + 120s intervals; add 3 refresh buttons; trim drip-log query; pass `enabled: !sending` |
-| `src/components/marketing/MessageLog.tsx` | 100-row cap, no-count, refresh button, no auto-refetch |
-| `src/pages/LimsDemo.tsx` | Replace 5 hand-rolled channels with `useRealtimeSync` calls |
-| `src/lib/messageLog.ts` | Stop writing `message_content` + `retry_payload` |
-| `src/pages/WhatsAppChat.tsx` | Drop `message_content` from `message_send_log` insert (chat UI reads `webhook_messages`) |
-| `src/components/lims/BillingDashboard.tsx` | Drop `message_content` from log insert |
-| `src/App.tsx` | Add React Query global defaults |
-| `src/pages/PatientReportPortal.tsx` | Heartbeat 60s → 120s, skip when hidden |
-| `supabase/functions/prune-old-logs/index.ts` | `message_send_log` 180→30 days; `lims_interface_logs` 90→30 days |
-| New migration | `cron.unschedule('cleanup-card-images-midnight')` |
+| File | Phase | Change |
+|---|---|---|
+| New migration | 1 | `get_drip_pending(uuid[])` RPC + 2 indexes |
+| `src/components/marketing/AutomatedMarketing.tsx` | 1+2 | Shadow panel, then RPC cutover behind `USE_RPC_PREFLIGHT` |
+| 6× dashboard files | 3 | `count: "estimated"` |
+| `src/components/PaymentDetailsDialog.tsx` | 3 | Remove count query |
+
+## Verification
+
+1. **Shadow mode**: `?debug=preflight` → all 5 filters show identical JS vs RPC counts and empty diffs. You screenshot and confirm.
+2. **Cutover**: First post-flip campaign — DevTools shows ~1 KB RPC + ~50 KB targeted contact pull (was ~25 MB). Send count and skip reasons match exactly.
+3. **Rollback**: Flip `USE_RPC_PREFLIGHT = false` if any drift appears in production.
 
 ## Expected outcome
 
-- **Idle Marketing tab:** zero background queries (was ~30 MB / 2 min).
-- **Active campaign:** zero realtime broadcasts (was 1 per send).
-- **Daily `message_send_log` growth:** ~25 MB → ~2 MB (just metadata).
-- **Tab-switching:** no refetch storms.
-- **Daily Cloud usage on heavy-send days:** $4–5 (pre-Cloudinary) → $1 (after Cloudinary) → **$0.10–$0.30** (after these fixes).
-
-## Verification plan
-
-1. Open Marketing tab, leave for 10 min — DevTools → Network shows zero queries until you click Refresh.
-2. Run a 200-card campaign — DevTools → Network → WS shows zero realtime frames during the run, one settle frame at end.
-3. Open `MessageLog` — see exactly 100 rows, no count badge load delay, Refresh icon visible.
-4. Send a chat message in `WhatsAppChat` — message appears in chat history (proves `webhook_messages` is the source of truth).
-5. Trigger a Promotion failure — Retry tab shows it as "missing payload" (expected with new behavior).
-6. Wait 24h, check Cloud usage page — daily delta should be in cents.
+- Mobile filtering: **identical** — verified before cutover.
+- Send/Refresh click: ~25 MB → ~50 KB.
+- Network share of Cloud usage: 81% → ~40–50%.
+- Heavy-send daily cost: further ~50–60% drop.
 
