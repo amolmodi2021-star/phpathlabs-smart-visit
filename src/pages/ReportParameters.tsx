@@ -206,18 +206,22 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
       if (paramId) {
         await supabase.from("parameter_normal_ranges").delete().eq("parameter_id", paramId);
         if (normalRanges.length > 0) {
-          const rangeInserts = normalRanges.map(r => ({
-            parameter_id: paramId!,
-            gender: r.gender,
-            age_min: r.age_min,
-            age_max: r.age_max,
-            normal_range_low: r.range_type === "numeric" ? r.normal_range_low : null,
-            normal_range_high: r.range_type === "numeric" ? r.normal_range_high : null,
-            normal_range_text: r.normal_range_text || null,
-            range_type: r.range_type || "numeric",
-            expected_value: r.range_type === "qualitative" ? (r.expected_value || null) : null,
-            descriptive_options: r.range_type === "descriptive" ? (r.descriptive_options?.filter(o => o.trim()) || []) : [],
-          }));
+          const rangeInserts = normalRanges.map(r => {
+            const isUndef = r.range_type === "undefined";
+            const isDesc = r.range_type === "descriptive";
+            return {
+              parameter_id: paramId!,
+              gender: r.gender,
+              age_min: r.age_min,
+              age_max: r.age_max,
+              normal_range_low: r.range_type === "numeric" ? r.normal_range_low : null,
+              normal_range_high: r.range_type === "numeric" ? r.normal_range_high : null,
+              normal_range_text: r.normal_range_text || null,
+              range_type: r.range_type || "numeric",
+              expected_value: r.range_type === "qualitative" ? (r.expected_value || null) : null,
+              descriptive_options: (isDesc || isUndef) ? (r.descriptive_options?.filter(o => o.trim()) || []) : [],
+            };
+          });
           await supabase.from("parameter_normal_ranges").insert(rangeInserts);
         }
       }
@@ -818,6 +822,7 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
                               <SelectItem value="numeric">Numeric</SelectItem>
                               <SelectItem value="qualitative">Qualitative</SelectItem>
                               <SelectItem value="descriptive">Descriptive</SelectItem>
+                              <SelectItem value="undefined">Undefined</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
