@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { uploadJpegToCloudinaryWithRetry } from "@/lib/cardStorageCloudinary";
 
 /**
  * Downscale a source canvas to a maximum width (default 800px, preserving aspect ratio)
