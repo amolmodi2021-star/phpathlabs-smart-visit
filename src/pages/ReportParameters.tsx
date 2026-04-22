@@ -912,10 +912,17 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
                               })()}
                             </div>
                           </div>
-                        ) : (
+                        ) : r.range_type === "descriptive" || r.range_type === "undefined" ? (
                           <div className="space-y-2">
+                            {r.range_type === "undefined" && (
+                              <div className="text-xs text-muted-foreground">
+                                No flag/highlight for this type. If a Unit is set on the parameter, the result value will be concatenated with the Unit on the report.
+                              </div>
+                            )}
                             <div className="flex items-center justify-between">
-                              <Label className="text-xs font-medium">Dropdown Options (for result selection)</Label>
+                              <Label className="text-xs font-medium">
+                                Dropdown Options {r.range_type === "undefined" ? "(optional, for result selection)" : "(for result selection)"}
+                              </Label>
                               <Button type="button" variant="outline" size="sm" className="h-6 text-xs" onClick={() => {
                                 const opts = [...(r.descriptive_options || []), ""];
                                 updateRange(r._idx, "descriptive_options", opts);
@@ -944,14 +951,22 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
                               </div>
                             ))}
                             {(!r.descriptive_options || r.descriptive_options.length === 0) && (
-                              <p className="text-xs text-muted-foreground">No options added yet. Click "Add Option" to add descriptive text choices.</p>
+                              <p className="text-xs text-muted-foreground">No options added yet. Click "Add Option" to add text choices.</p>
                             )}
                             <div>
-                              <Label className="text-xs">Display Text</Label>
-                              <Input value={r.normal_range_text} onChange={(e) => updateRange(r._idx, "normal_range_text", e.target.value)} placeholder="e.g. Normal findings" />
+                              <Label className="text-xs">
+                                {r.range_type === "undefined"
+                                  ? "Display Text for Reference Range (optional, leave blank to omit)"
+                                  : "Display Text"}
+                              </Label>
+                              <Input
+                                value={r.normal_range_text}
+                                onChange={(e) => updateRange(r._idx, "normal_range_text", e.target.value)}
+                                placeholder={r.range_type === "undefined" ? "e.g. 10 - 50 mL (leave blank for none)" : "e.g. Normal findings"}
+                              />
                             </div>
                           </div>
-                        )}
+                        ) : null}
                       </div>
                     ))}
                   </div>
