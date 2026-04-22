@@ -304,20 +304,32 @@ const AutomatedMarketing = () => {
         return all;
       };
 
+      // Paginate RPC results: PostgREST caps RPC responses at 1000 rows by default,
+      // so we must Range-paginate the same way fetchAllPg does for plain selects.
+      const fetchAllRpc = async (rpcName: string) => {
+        let all: any[] = [];
+        let from = 0;
+        while (true) {
+          const { data } = await (supabase.rpc(rpcName as any) as any).range(from, from + BATCH - 1);
+          if (!data || (data as any[]).length === 0) break;
+          all = all.concat(data as any[]);
+          if ((data as any[]).length < BATCH) break;
+          from += BATCH;
+        }
+        return all;
+      };
+
       // Slim RPCs cut payload by ~70%: drop heavy `crm_contacts` columns (remarks, created_by, etc.)
       // and pre-deduplicate abnormal PKs server-side (~3K unique vs 54K rows).
-      const [contactSliceRes, abnormalRpcRes, cyclesData, allLogs, blacklistData] = await Promise.all([
-        supabase.rpc("get_drip_contact_slice"),
-        supabase.rpc("get_abnormal_pks"),
+      const [allContacts, abnormalPks, cyclesData, allLogs, blacklistData] = await Promise.all([
+        fetchAllRpc("get_drip_contact_slice"),
+        fetchAllRpc("get_abnormal_pks"),
         fetchAllPg(supabase.from("drip_mobile_cycles").select("mobile_number,current_cycle")),
         fetchAllPg(supabase.from("drip_campaign_log").select("filter_id,mobile_number,contact_primary_key,cycle_number").eq("status", "sent")),
         excludeBlacklist
           ? supabase.from("crm_blacklist").select("mobile_number").then(r => r.data || [])
           : Promise.resolve([]),
       ]);
-
-      const allContacts = (contactSliceRes.data as any[]) || [];
-      const abnormalPks = (abnormalRpcRes.data as any[]) || [];
 
       const blacklistSet = new Set(blacklistData.map((b: any) => b.mobile_number));
       const abnormalPkSet = new Set(abnormalPks.map((a: any) => a.contact_primary_key));
