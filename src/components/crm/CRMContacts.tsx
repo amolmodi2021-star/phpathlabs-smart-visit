@@ -148,54 +148,47 @@ const CRMContacts = () => {
   };
 
   const handleExport = async () => {
-    toast.info("Fetching all contacts for export... This may take a moment.");
+    toast.info("Preparing CRM contacts export...");
     try {
-      const allContacts: any[] = [];
-      const BATCH = 900;
-      let from = 0;
-      let hasMore = true;
-      while (hasMore) {
-        let q = supabase.from("crm_contacts").select("*").order("created_at", { ascending: true }).range(from, from + BATCH - 1);
-        if (locationFilter !== "ALL") q = q.eq("location", locationFilter);
-        if (tagFilter !== "ALL") q = q.eq("record_tag", tagFilter);
-        if (search) q = q.or(`patient_name.ilike.%${search}%,mobile_number.ilike.%${search}%,umr_number.ilike.%${search}%`);
-        const { data, error } = await q;
-        if (error) throw error;
-        if (!data || data.length === 0) { hasMore = false; break; }
-        allContacts.push(...data);
-        toast.info(`Fetched ${allContacts.length} records so far...`, { id: "export-progress" });
-        if (data.length < BATCH) hasMore = false;
-        else from += BATCH;
+      // Stream CSV from the edge function instead of paginating JSON client-side.
+      // Cuts payload by ~40% (no per-row column-name repetition + no JSON quoting overhead)
+      // and avoids accumulating 35K rows in browser memory before download.
+      const params = new URLSearchParams();
+      if (search) params.set("search", search);
+      if (locationFilter !== "ALL") params.set("location", locationFilter);
+      if (tagFilter !== "ALL") params.set("tag", tagFilter);
+
+      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+      const url = `https://${projectId}.functions.supabase.co/export-crm-contacts?${params.toString()}`;
+
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: Record<string, string> = {
+        apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+      };
+      if (session?.access_token) {
+        headers.Authorization = `Bearer ${session.access_token}`;
       }
-      if (!allContacts.length) return toast.error("No data to export");
-      const rows = allContacts.map((c: any) => ({
-        "Primary Key": c.primary_key,
-        Location: c.location,
-        UMR: c.umr_number,
-        "Bill #": c.bill_number,
-        "Visit Date": c.visit_date,
-        "Patient Name": c.patient_name,
-        Mobile: c.mobile_number,
-        "Visit Type": c.visit_type,
-        Doctor: c.doctor_name,
-        "Gross Amt": c.gross_amount,
-        "Discount Amt": c.discount_amount,
-        "Net Amt": c.net_amount,
-        "Paid Amt": c.paid_amount,
-        "Due Amt": c.due_amount,
-        "Payment Type": c.payment_type,
-        Remarks: c.remarks,
-        "Created By": c.created_by,
-        Tag: c.record_tag,
-        "Discount %": c.default_discount_pct,
-        "Last Sent": c.last_sent_type,
-        "Last Sent Date": c.last_sent_date,
-      }));
-      exportToExcel(rows, `CRM_Contacts_${new Date().toISOString().slice(0, 10)}`);
-      toast.success(`Exported ${allContacts.length} contacts!`);
+
+      const res = await fetch(url, { headers });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        throw new Error(`Export failed (${res.status}): ${errText}`);
+      }
+
+      const blob = await res.blob();
+      const downloadUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.download = `CRM_Contacts_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(downloadUrl);
+
+      toast.success("CRM contacts exported as CSV (opens in Excel)");
     } catch (err) {
       console.error(err);
-      toast.error("Export failed");
+      toast.error(err instanceof Error ? err.message : "Export failed");
     }
   };
 
