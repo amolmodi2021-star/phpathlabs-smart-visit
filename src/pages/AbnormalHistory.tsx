@@ -34,9 +34,12 @@ const AbnormalHistory = () => {
     queryFn: async () => {
       const from = page * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
+      // Use estimated count when there's no search filter (avoids full-table scan).
+      // For filtered searches, fall back to exact count since estimates would be wrong.
+      const useEstimated = !debouncedSearch.trim();
       let query = supabase
         .from("abnormal_history")
-        .select("*", { count: "exact" })
+        .select("*", { count: useEstimated ? "estimated" : "exact" })
         .order("created_at", { ascending: false })
         .range(from, to);
       if (debouncedSearch.trim()) {

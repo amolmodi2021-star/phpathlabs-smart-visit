@@ -111,13 +111,14 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
     }
   }, [reviewOpen, allPatients]);
 
-  // Generate receipt number when final review opens
+  // Generate receipt number when final review opens.
+  // Uses head:true with estimated count so we don't pull row data — same accuracy
+  // for receipt sequencing (today's daily count) but no full-table scan cost.
   useEffect(() => {
     if (finalReviewOpen && !receiptNumber) {
       const generateReceiptNumber = async () => {
         const now = new Date();
         const datePrefix = format(now, "ddMMyy");
-        // Count completed home visits today to determine sequence
         const todayStart = format(now, "yyyy-MM-dd");
         const { count } = await supabase
           .from("home_visits")
