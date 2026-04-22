@@ -687,7 +687,7 @@ const SampleCollection = () => {
                         style={{ backgroundColor: colorHex }} />
                     )}
                     <div className="flex-1 min-w-0">
-                      <span className="font-mono font-bold text-sm">{tube.sample_uid}</span>
+                      <span className="font-mono font-bold text-sm">{getBarcodeLabel(reprintDialog.reg, tube)}</span>
                       <Badge variant="outline" className="text-xs ml-2">
                         {(tube.tube_type || "DEFAULT") === "DEFAULT" ? "No Tube" : tube.tube_type}
                       </Badge>
