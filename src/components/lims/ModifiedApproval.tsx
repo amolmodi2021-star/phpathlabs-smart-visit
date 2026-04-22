@@ -138,6 +138,21 @@ const ModifiedApproval = () => {
     }).filter(e => e.testGroups.length > 0);
   }, [approvedReports, approvedResults, approvedSnips, testsMap]);
 
+  // Loaded test-level notes: first non-null test_note per (regId, testId)
+  const loadedTestNotes = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const r of approvedResults as any[]) {
+      const k = `${r.registration_id}||${r.test_id}`;
+      if (map[k] == null && r.test_note) map[k] = r.test_note;
+    }
+    return map;
+  }, [approvedResults]);
+  const getTestNote = (regId: string, testId: string): string => {
+    const k = `${regId}||${testId}`;
+    if (editedTestNotes[k] !== undefined) return editedTestNotes[k];
+    return loadedTestNotes[k] || "";
+  };
+
   const calculateFlag = (value: string, low: number | null, high: number | null): string => {
     if (!value || !value.trim()) return "";
     const num = parseFloat(value); if (isNaN(num)) return "";
@@ -194,12 +209,19 @@ const ModifiedApproval = () => {
       const allSnipUrls: string[] = [];
 
       for (const tg of testGroups) {
+        const testNoteKey = `${regId}||${tg.testId}`;
+        const newTestNote = editedTestNotes[testNoteKey] !== undefined
+          ? (editedTestNotes[testNoteKey] || null)
+          : (loadedTestNotes[testNoteKey] || null);
+
         for (const p of tg.params) {
           const key = `${regId}||${p.parameter_id}`;
           const newValue = editedValues[key] !== undefined ? editedValues[key] : p.result_value;
           const newUnit = editedUnits[key] !== undefined ? editedUnits[key] : p.unit;
           const newRefRange = editedRefRanges[key] !== undefined ? editedRefRanges[key] : p.reference_range;
           const newFlag = editedFlags[key] !== undefined ? editedFlags[key] : (calculateFlag(newValue, p.normal_range_low, p.normal_range_high) || p.flag);
+          const noteKey = `${regId}||${p.parameter_id}`;
+          const newNote = editedNotes[noteKey] !== undefined ? (editedNotes[noteKey] || null) : (p.note ?? null);
 
           // Update patient_results
           await supabase.from("patient_results").update({
@@ -207,6 +229,8 @@ const ModifiedApproval = () => {
             unit: newUnit || null,
             reference_range: newRefRange || null,
             flag: newFlag || null,
+            note: newNote,
+            test_note: newTestNote,
           } as any).eq("id", p.id);
 
           allTestResults.push({
@@ -216,6 +240,8 @@ const ModifiedApproval = () => {
             normal_range_low: p.normal_range_low, normal_range_high: p.normal_range_high,
             flag: newFlag, is_calculated: p.is_calculated, is_outsourced: tg.isOutsourced,
             outsource_lab_name: tg.labName,
+            note: newNote,
+            test_note: newTestNote,
           });
         }
 
@@ -225,6 +251,7 @@ const ModifiedApproval = () => {
             allTestResults.push({
               test_id: tg.testId, test_name: tg.testName,
               is_outsourced: true, outsource_lab_name: tg.labName,
+              test_note: newTestNote,
             });
           }
         }
