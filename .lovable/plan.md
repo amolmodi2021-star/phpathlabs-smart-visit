@@ -1,66 +1,83 @@
 
 
-# Why ABC shows 12,311 vs 25 — they're measuring different things
+# How to cut Lovable Cloud network usage (currently 81%)
 
-## The real problem
+## Where the bytes are going
 
-The shadow panel is comparing apples to oranges. The **"JS" number** (`pendingCounts`) and the **"RPC" number** are intentionally computed by two different functions in the codebase:
+Storage is tiny (1.4 MB across all buckets) and edge functions are minor. **Network = database rows shipped to browsers.** The four biggest culprits in your codebase:
 
-| What it measures | "JS" (`pendingCounts`, lines 288–446) | RPC (`get_drip_pending_summary`) | Real send pipeline (`collectEligibleRecords`, lines 595–990) |
-|---|---|---|---|
-| Min-interval guard | ❌ ignores | ✅ applies | ✅ applies |
-| `location_filter` | ❌ ignores | ✅ applies | ✅ applies |
-| `last_sent_type_filter` | ❌ ignores | ✅ applies | ✅ applies |
-| `record_limit` per filter | ❌ ignores | ✅ applies | ✅ applies |
-| `maxPerDay` global cap | ❌ ignores | ✅ applies | ✅ applies |
+| Source | Approx. bytes per trigger | Trigger frequency |
+|---|---|---|
+| **Marketing → "Refresh pending counts"** pulls 35K contacts + 54K abnormal tests + 11K drip logs + 4K cycles | **~6 MB** | Every click + every campaign run preflight |
+| **Marketing → Run Drip preflight** (`collectEligibleRecords`) pulls the same dataset again | **~6 MB** | Every send cycle (plus per-batch refresh) |
+| **CRM → Export Excel** pulls all 35K contacts with every column | **~12 MB** | Each export click |
+| **Realtime fan-out on `message_send_log`** broadcasts every row insert to every open tab | small per row, but **~2 KB × 2,000 rows = 4 MB per campaign** | Every campaign |
 
-So `pendingCounts.pendingAbc = 12,311` is the **gross "anything that could ever be sent across all future cycles" number** (intentionally — that's what the dashboard tile is supposed to show). RPC=25 is the **actual capped send-today list**, which matches `record_limit=100` after dedup + cross-filter claim trims it.
+Plus 538 `select("*")` calls across the app inflate every read by 30–60% with columns nobody renders.
 
-The two were never meant to be equal. The shadow comparison was wired against the wrong baseline.
+## Plan — five focused cuts, ranked by ROI
 
-## The fix — compare RPC to the real pipeline
+### 1. Slim the pending-counts query (saves ~70% of marketing page network)
 
-Change the shadow panel to call `collectEligibleRecords()` (the actual send pipeline, source of truth for `runDrip`) and compare its output against the RPC. That's the comparison that actually matters before cutover.
+Today `pendingCounts` ships every column of `crm_contacts` (large `remarks`, `created_by`, etc.) even though only 6 fields are used. Then it ships every row of `crm_abnormal_tests` even though only the distinct `contact_primary_key` is needed.
 
-### Changes in `src/components/marketing/AutomatedMarketing.tsx`
+- Replace the `crm_abnormal_tests` `select("contact_primary_key")` with a server-side **RPC `get_abnormal_pks()`** that returns just the deduplicated PK array (~3K unique vs 54K rows).
+- Replace `crm_contacts.select("primary_key,mobile_number,umr_number,patient_name,last_sent_type,last_sent_date")` with the same column list scoped to **only contacts with a non-null mobile_number** server-side via a tiny RPC `get_drip_contact_slice()`. Saves the rows where mobile is blank.
+- Apply the same two slim reads inside `collectEligibleRecords` (the actual send pipeline), so each campaign run also benefits.
 
-1. **Add a "JS pipeline" state** alongside `rpcPending`:
-   - `jsPipeline` / `jsFetching` / `jsElapsedMs`.
-2. **Make `runShadowRpc` run BOTH in parallel** and store both:
-   - `Promise.all([collectEligibleRecords(), supabase.rpc("get_drip_pending_summary", …)])`.
-   - Aggregate the JS pipeline output into `{ pendingAbc, pendingAbnormal, abcRecords, abnormalRecords }` by walking `results[]` and grouping by each filter's `message_type`.
-3. **Update the shadow panel UI** to read `jsPipeline.pendingAbc` instead of `pendingCounts.pendingAbc` for the "JS" line, and the same for Abnormal and the diff arrays. Show both elapsed times.
-4. **Leave the dashboard tiles untouched** — `pendingCounts` still drives the top "Pending ABC Cards / Abnormal History" tiles since users have come to read those as forward-looking eligibility totals.
+**Estimated saving:** ~4 MB per refresh × ~50 refreshes/day = **~200 MB/day**.
 
-### Expected result after fix
+### 2. Cache pending counts for 5 minutes (saves repeat clicks)
 
-- Click **Run RPC** → both numbers come from capped send pipelines.
-- ABC: JS ~25, RPC ~25, ✓ MATCH.
-- Abnormal: JS ~25, RPC ~25, ✓ MATCH.
-- Diff arrays empty, or any small gap will be a real RPC vs JS rule discrepancy worth fixing.
+Currently `staleTime: Infinity` + manual refetch — but every refetch re-pulls everything. Add a 5-minute `dataUpdatedAt` guard on the manual Refresh handler that short-circuits if the last successful fetch was <5 min ago and shows a "fresh" toast instead of refetching. Marketing engineers tend to click Refresh several times in a row.
+
+### 3. Stream CRM export to CSV instead of paginating JSON
+
+The Excel export pulls 35K rows of every column over the network as JSON (~12 MB), then converts client-side. Replace with an **edge function** `export-crm-contacts` that:
+- Streams a CSV directly from Postgres (`COPY ... TO STDOUT`-style via a server-side query).
+- Returns `text/csv` as a download — browser writes straight to disk.
+
+CSV vs JSON for the same data is ~40% smaller, plus zero column-name repetition per row. **Estimated saving: ~8 MB per export.** Excel opens CSV natively so the UX is unchanged.
+
+### 4. Disable realtime on `message_send_log` during campaigns
+
+`useRealtimeSync("message_send_log", …)` is already debounced, but the WebSocket still receives every row insert payload (~2 KB each). For a 2,000-card campaign that's ~4 MB of incoming WebSocket traffic per open tab. The component already supports an `enabled: !sending` toggle — verify it's wired up and extend the same pattern to:
+- `useRealtimeSync` on `message_send_log` in AutomatedMarketing → `enabled: !sending`.
+- Same for `drip_campaign_log` if subscribed elsewhere.
+
+### 5. Audit the worst `select("*")` offenders
+
+Top 10 hot paths (CRM contacts, abnormal tests, drip logs, message_send_log, patient_registrations, tests, lims_test_results) get explicit column lists. We will NOT touch the 538 calls blindly — only the ~10 that hit tables >1K rows. Each saves 30–60% of bytes per fetch.
 
 ## Files changing
 
 | File | Change |
 |---|---|
-| `src/components/marketing/AutomatedMarketing.tsx` | Update `runShadowRpc` to also run `collectEligibleRecords` in parallel, store its aggregated counts in new state, and switch the shadow panel UI to read from this new state instead of `pendingCounts` |
+| `supabase/migrations/<new>.sql` | Create RPCs `get_abnormal_pks()` and `get_drip_contact_slice()` returning slim shapes |
+| `src/components/marketing/AutomatedMarketing.tsx` | Use new RPCs in `pendingCounts` and `collectEligibleRecords`; add 5-min stale-skip on manual refresh; ensure `useRealtimeSync(message_send_log, …, { enabled: !sending })` |
+| `supabase/functions/export-crm-contacts/index.ts` (new) | Stream CSV export of `crm_contacts` with applied filters |
+| `src/components/crm/CRMContacts.tsx` | Replace pagination loop in `handleExport` with a single edge-function fetch + blob download |
+| ~10 other files | Replace `select("*")` with explicit column lists on the largest tables only |
 
 ## What stays untouched
 
-- `get_drip_pending_summary` RPC — already verified server-side, no DB changes.
-- `collectEligibleRecords` JS — source of truth, unchanged.
-- `pendingCounts` query and the dashboard tiles above the shadow panel — unchanged (they intentionally show gross eligibility).
-- `runDrip`, send pipeline, all other UI.
+- Drip send logic, filters, priorities, templates.
+- All UI & page layouts.
+- Storage buckets (already tiny).
+- The 500+ `select("*")` calls on small tables (<500 rows) — not worth the churn.
 
-## Verification
+## Expected impact
 
-1. Reload `/marketing?debug=preflight`.
-2. Click **Run RPC**.
-3. Within ~1–2 seconds the panel shows both JS pipeline count and RPC count side by side, both capped by `maxPerDay`. Expect `✓ MATCH` with empty diff arrays.
-4. Toggle a location filter / change min interval / adjust max per day → click **Run RPC** again → still matches.
-5. Once you confirm matches across 3+ refreshes, give the green light and I'll flip `USE_RPC_PREFLIGHT = true` for cutover.
+If you currently trend at the 81% Network share with ~50 marketing refreshes + a handful of CRM exports + 1–2 campaigns per day, this should drop network usage by **~60–70%**, putting Network roughly on par with Database server (~25–30%) instead of dominating.
 
 ## Risk
 
-Zero to production. Shadow panel is the only consumer; `runDrip` keeps using JS; dashboard tiles unchanged.
+Low. Each change is independently revertible: RPCs are additive; export edge function is new; the realtime toggle pattern is already used elsewhere in the codebase. No schema changes, no auth changes, no destructive migrations.
+
+## Verification
+
+1. After deploy, open `/marketing`, click Refresh on Pending Counts, confirm numbers match what you see today.
+2. Run a small drip cycle (3 sends) and confirm queue/log behavior unchanged.
+3. Export CRM contacts — file should download faster and open identically in Excel.
+4. Wait 24h and re-check the Cloud Usage page — Network share should drop noticeably.
 
