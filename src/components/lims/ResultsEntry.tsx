@@ -657,6 +657,21 @@ const ResultsEntry = () => {
     }).filter(entry => entry.parameters.length > 0 || entry.incompleteTests.length > 0 || entry.snipOnlyTests.length > 0);
   }, [acceptedRegs, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails, acceptedTestIdsByReg]);
 
+  // ─── Loaded test-level notes: first non-null test_note per (reg, test) ───
+  const loadedTestNotes = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const r of existingResults as any[]) {
+      const k = `${r.registration_id}||${r.test_id}`;
+      if (map[k] == null && r.test_note) map[k] = r.test_note;
+    }
+    return map;
+  }, [existingResults]);
+  const getTestNote = useCallback((regId: string, testId: string): string => {
+    const k = `${regId}||${testId}`;
+    if (editedTestNotes[k] !== undefined) return editedTestNotes[k];
+    return loadedTestNotes[k] || "";
+  }, [editedTestNotes, loadedTestNotes]);
+
   // ─── Calculate flag ───
   const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string): string => {
     if (!value || value.trim() === "") return "";
