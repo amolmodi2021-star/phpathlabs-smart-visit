@@ -1698,9 +1698,20 @@ const AutomatedMarketing = () => {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => refetchPending()}
+            onClick={() => {
+              // Skip refetch if we already have a fresh result (<5 min old).
+              // Marketing engineers tend to click Refresh repeatedly; each click
+              // re-pulls ~6 MB. The 5-min guard cuts that without changing UX.
+              const ageMs = pendingUpdatedAt ? Date.now() - pendingUpdatedAt : Infinity;
+              if (pendingCounts && ageMs < 5 * 60 * 1000) {
+                const ageSec = Math.floor(ageMs / 1000);
+                toast.info(`Counts already fresh (${ageSec}s old). Wait 5 minutes for an automatic recompute.`);
+                return;
+              }
+              refetchPending();
+            }}
             disabled={pendingFetching || filters.length === 0}
-            title="Recompute pending ABC + Abnormal counts"
+            title="Recompute pending ABC + Abnormal counts (cached for 5 minutes)"
           >
             <RefreshCw className={`h-4 w-4 mr-1 ${pendingFetching ? "animate-spin" : ""}`} />
             Refresh
