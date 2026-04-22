@@ -73,6 +73,8 @@ const DoctorApproval = () => {
   const [daPage, setDaPage] = useState(0);
   const [editedNotes, setEditedNotes] = useState<Record<string, string>>({});
   const [activeNoteKey, setActiveNoteKey] = useState<string | null>(null);
+  const [editedTestNotes, setEditedTestNotes] = useState<Record<string, string>>({});
+  const [activeTestNoteKey, setActiveTestNoteKey] = useState<string | null>(null);
   const [approverDialogOpen, setApproverDialogOpen] = useState(false);
   const pendingApprovalRef = useRef<null | ((choice: ApproverChoice) => void)>(null);
   const currentUserSigCacheRef = useRef<{ userId: string | null; checked: boolean; choice: ApproverChoice | null }>({ userId: null, checked: false, choice: null });
@@ -315,6 +317,20 @@ const DoctorApproval = () => {
     }).filter(e => e.parameters.length > 0 || e.snipOnlyTests.length > 0);
   }, [registrations, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails, leafIdsByReg]);
 
+  const loadedTestNotes = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const r of existingResults as any[]) {
+      const k = `${r.registration_id}||${r.test_id}`;
+      if (map[k] == null && r.test_note) map[k] = r.test_note;
+    }
+    return map;
+  }, [existingResults]);
+  const getTestNote = useCallback((regId: string, testId: string): string => {
+    const k = `${regId}||${testId}`;
+    if (editedTestNotes[k] !== undefined) return editedTestNotes[k];
+    return loadedTestNotes[k] || "";
+  }, [editedTestNotes, loadedTestNotes]);
+
   const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string): string => {
     if (!value || !value.trim()) return "";
     if (rangeType === "qualitative") { if (!expectedValue) return ""; return value.trim().toLowerCase() === expectedValue.trim().toLowerCase() ? "N" : "A"; }
@@ -382,7 +398,8 @@ const DoctorApproval = () => {
         const unit = p.isOutsourced && editedUnits[k] !== undefined ? editedUnits[k] : p.unit;
         const refRange = p.isOutsourced && editedRefRanges[k] !== undefined ? editedRefRanges[k] : p.referenceRange;
          const noteVal = editedNotes[k] !== undefined ? editedNotes[k] : p.note;
-         upserts.push({ registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId, param_code: p.paramCode, parameter_name: p.parameterName, result_value: value || null, unit, reference_range: refRange, normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh, flag: flag || null, status: "approved", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, approved_at: new Date().toISOString(), entered_at: p.enteredAt || null, entered_by: p.enteredBy || null, verified_at: p.verifiedAt || null, verified_by: p.verifiedBy || null, approved_by: approver.pathologistName, note: noteVal || null });
+         const testNoteVal = editedTestNotes[`${reg.id}||${testId}`] !== undefined ? editedTestNotes[`${reg.id}||${testId}`] : (loadedTestNotes[`${reg.id}||${testId}`] || "");
+         upserts.push({ registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId, param_code: p.paramCode, parameter_name: p.parameterName, result_value: value || null, unit, reference_range: refRange, normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh, flag: flag || null, status: "approved", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, approved_at: new Date().toISOString(), entered_at: p.enteredAt || null, entered_by: p.enteredBy || null, verified_at: p.verifiedAt || null, verified_by: p.verifiedBy || null, approved_by: approver.pathologistName, note: noteVal || null, test_note: testNoteVal || null });
       }
       if (upserts.length > 0) {
         await supabase.from("patient_results").delete().eq("registration_id", reg.id).eq("test_id", testId).eq("status", "verified");
@@ -406,6 +423,7 @@ const DoctorApproval = () => {
         approved_by_designation: approver.designation,
         approved_by_signature_url: approver.signatureUrl,
         note: u.note || null,
+        test_note: u.test_note || null,
       }));
       // Fetch existing approved_reports to merge
       const { data: existingReport } = await supabase.from("approved_reports").select("test_results, outsourced_snip_urls").eq("registration_id", reg.id).maybeSingle();
@@ -461,7 +479,8 @@ const DoctorApproval = () => {
           const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
           const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
           const noteVal = editedNotes[k] !== undefined ? editedNotes[k] : p.note;
-          upserts.push({ registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId, param_code: p.paramCode, parameter_name: p.parameterName, result_value: value || null, unit: p.unit, reference_range: p.referenceRange, normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh, flag: flag || null, status: "approved", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, approved_at: new Date().toISOString(), entered_at: p.enteredAt || null, entered_by: p.enteredBy || null, verified_at: p.verifiedAt || null, verified_by: p.verifiedBy || null, approved_by: approver.pathologistName, note: noteVal || null });
+          const testNoteVal = editedTestNotes[`${reg.id}||${testId}`] !== undefined ? editedTestNotes[`${reg.id}||${testId}`] : (loadedTestNotes[`${reg.id}||${testId}`] || "");
+          upserts.push({ registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId, param_code: p.paramCode, parameter_name: p.parameterName, result_value: value || null, unit: p.unit, reference_range: p.referenceRange, normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh, flag: flag || null, status: "approved", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, approved_at: new Date().toISOString(), entered_at: p.enteredAt || null, entered_by: p.enteredBy || null, verified_at: p.verifiedAt || null, verified_by: p.verifiedBy || null, approved_by: approver.pathologistName, note: noteVal || null, test_note: testNoteVal || null });
         }
         if (upserts.length > 0) {
           await supabase.from("patient_results").delete().eq("registration_id", reg.id).eq("test_id", testId).eq("status", "verified");
@@ -485,6 +504,7 @@ const DoctorApproval = () => {
           approved_by_designation: approver.designation,
           approved_by_signature_url: approver.signatureUrl,
           note: u.note || null,
+          test_note: u.test_note || null,
         }));
       }
       // Archive combined snapshot — merge with existing approved_reports data
@@ -544,6 +564,7 @@ const DoctorApproval = () => {
           entered_at: p.enteredAt || new Date().toISOString(), entered_by: p.enteredBy || null,
           verified_at: null, verified_by: null,
           note: editedNotes[k] !== undefined ? (editedNotes[k] || null) : (p.note || null),
+          test_note: editedTestNotes[`${regId}||${testId}`] !== undefined ? (editedTestNotes[`${regId}||${testId}`] || null) : (loadedTestNotes[`${regId}||${testId}`] || null),
         });
       }
 
@@ -576,6 +597,7 @@ const DoctorApproval = () => {
       setEditedUnits((prev) => stripKeys(prev));
       setEditedRefRanges((prev) => stripKeys(prev));
       setEditedNotes((prev) => stripKeys(prev));
+      setEditedTestNotes((prev) => { const next = { ...prev }; delete next[`${regId}||${testId}`]; return next; });
 
       toast.success(`${testName} sent back for verification`);
       invalidateAll();
@@ -746,7 +768,20 @@ const DoctorApproval = () => {
               return (
                 <div key={tg.testId} className="ml-1">
                   <div className="flex items-center justify-between px-1 py-0.5 bg-muted/40 rounded-t">
-                    <span className="text-base font-bold text-foreground">{tg.testName}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-base font-bold text-foreground">{tg.testName}</span>
+                      <StickyNote
+                        className={`inline h-3.5 w-3.5 cursor-pointer shrink-0 ${getTestNote(reg.id, tg.testId) ? 'text-amber-600' : 'text-muted-foreground hover:text-primary'}`}
+                        onClick={() => {
+                          if (activeTestNoteKey === testKey) { setActiveTestNoteKey(null); }
+                          else {
+                            setActiveTestNoteKey(testKey);
+                            const cur = getTestNote(reg.id, tg.testId);
+                            if (!cur) setEditedTestNotes(prev => ({ ...prev, [testKey]: "Kindly correlate clinically" }));
+                          }
+                        }}
+                      />
+                    </div>
                     <div className="flex items-center gap-1">
                       <Button size="sm" variant="ghost" className="h-6 text-[11px] gap-1 text-orange-600" disabled={isSendingBack} onClick={() => sendBackForVerification(reg.id, tg.testId, tg.testName)}>
                         {isSendingBack ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />} Send Back
@@ -759,6 +794,18 @@ const DoctorApproval = () => {
                       </Button>
                     </div>
                   </div>
+                  {activeTestNoteKey === testKey && (
+                    <div className="flex items-center gap-1 mt-1 px-1">
+                      <Input value={getTestNote(reg.id, tg.testId)} onChange={e => setEditedTestNotes(prev => ({ ...prev, [testKey]: e.target.value }))} className="h-6 text-xs w-full" placeholder="Kindly correlate clinically" autoFocus />
+                      <Trash2 className="h-3.5 w-3.5 text-destructive cursor-pointer shrink-0" onClick={() => { setEditedTestNotes(prev => ({ ...prev, [testKey]: "" })); setActiveTestNoteKey(null); }} />
+                    </div>
+                  )}
+                  {getTestNote(reg.id, tg.testId) && activeTestNoteKey !== testKey && (
+                    <div className="flex items-center gap-1 mt-0.5 px-1">
+                      <div className="text-xs font-bold text-amber-700 cursor-pointer" onClick={() => setActiveTestNoteKey(testKey)}>📝 {getTestNote(reg.id, tg.testId)}</div>
+                      <Trash2 className="h-3 w-3 text-destructive/60 hover:text-destructive cursor-pointer shrink-0" onClick={() => setEditedTestNotes(prev => ({ ...prev, [testKey]: "" }))} />
+                    </div>
+                  )}
                   <Table>
                     <TableHeader><TableRow>
                       <TableHead className="py-1 text-xs w-[80px]">Code</TableHead><TableHead className="py-1 text-xs">Parameter</TableHead>

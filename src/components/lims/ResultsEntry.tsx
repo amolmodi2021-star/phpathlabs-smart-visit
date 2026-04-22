@@ -131,11 +131,15 @@ const ResultsEntry = () => {
   const [editedNotes, setEditedNotes] = useState<Record<string, string>>({});
   const editedNotesRef = useRef<Record<string, string>>({});
   const [activeNoteKey, setActiveNoteKey] = useState<string | null>(null);
+  const [editedTestNotes, setEditedTestNotes] = useState<Record<string, string>>({});
+  const editedTestNotesRef = useRef<Record<string, string>>({});
+  const [activeTestNoteKey, setActiveTestNoteKey] = useState<string | null>(null);
   const [editedFlags, setEditedFlags] = useState<Record<string, string>>({});
   const [blankParamCount, setBlankParamCount] = useState(0);
   const [highlightBlanksForRegs, setHighlightBlanksForRegs] = useState<Set<string>>(new Set());
   const autoSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   useEffect(() => { editedNotesRef.current = editedNotes; }, [editedNotes]);
+  useEffect(() => { editedTestNotesRef.current = editedTestNotes; }, [editedTestNotes]);
   const [rePage, setRePage] = useState(0);
   const [refreshingRegId, setRefreshingRegId] = useState<string | null>(null);
 
@@ -653,6 +657,21 @@ const ResultsEntry = () => {
     }).filter(entry => entry.parameters.length > 0 || entry.incompleteTests.length > 0 || entry.snipOnlyTests.length > 0);
   }, [acceptedRegs, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails, acceptedTestIdsByReg]);
 
+  // ─── Loaded test-level notes: first non-null test_note per (reg, test) ───
+  const loadedTestNotes = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const r of existingResults as any[]) {
+      const k = `${r.registration_id}||${r.test_id}`;
+      if (map[k] == null && r.test_note) map[k] = r.test_note;
+    }
+    return map;
+  }, [existingResults]);
+  const getTestNote = useCallback((regId: string, testId: string): string => {
+    const k = `${regId}||${testId}`;
+    if (editedTestNotes[k] !== undefined) return editedTestNotes[k];
+    return loadedTestNotes[k] || "";
+  }, [editedTestNotes, loadedTestNotes]);
+
   // ─── Calculate flag ───
   const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string): string => {
     if (!value || value.trim() === "") return "";
@@ -772,6 +791,7 @@ const ResultsEntry = () => {
         is_from_interface: p.isFromInterface,
          entered_by: getCurrentUserName(),
          note: editedNotesRef.current[key] !== undefined ? (editedNotesRef.current[key] || null) : (p.note || null),
+         test_note: editedTestNotesRef.current[`${regId}||${testId}`] !== undefined ? (editedTestNotesRef.current[`${regId}||${testId}`] || null) : (loadedTestNotes[`${regId}||${testId}`] || null),
         });
     }
     if (upserts.length === 0) return;
@@ -829,6 +849,7 @@ const ResultsEntry = () => {
           is_from_interface: p.isFromInterface,
           entered_by: getCurrentUserName(),
           note: editedNotesRef.current[key] !== undefined ? (editedNotesRef.current[key] || null) : (p.note || null),
+          test_note: editedTestNotesRef.current[`${reg.id}||${testId}`] !== undefined ? (editedTestNotesRef.current[`${reg.id}||${testId}`] || null) : (loadedTestNotes[`${reg.id}||${testId}`] || null),
         });
       }
 
@@ -1399,6 +1420,18 @@ const ResultsEntry = () => {
                           <Badge variant="outline" className="text-[10px] text-purple-600 border-purple-300">Outsourced</Badge>
                         );
                       })()}
+                      <StickyNote
+                        className={`inline h-3.5 w-3.5 cursor-pointer shrink-0 ${getTestNote(reg.id, tg.testId) ? 'text-amber-600' : 'text-muted-foreground hover:text-primary'}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (activeTestNoteKey === testKey) { setActiveTestNoteKey(null); }
+                          else {
+                            setActiveTestNoteKey(testKey);
+                            const cur = getTestNote(reg.id, tg.testId);
+                            if (!cur) setEditedTestNotes(prev => ({ ...prev, [testKey]: "Kindly correlate clinically" }));
+                          }
+                        }}
+                      />
                     </div>
                     <div className="flex items-center gap-1 flex-wrap" onClick={e => e.stopPropagation()}>
                       {!isFullTestOutsourced && (
@@ -1433,6 +1466,26 @@ const ResultsEntry = () => {
                       </Button>
                     </div>
                   </div>
+                  {activeTestNoteKey === testKey && (
+                    <div className="flex items-center gap-1 mt-1 px-2" onClick={e => e.stopPropagation()}>
+                      <Input
+                        value={getTestNote(reg.id, tg.testId)}
+                        onChange={e => setEditedTestNotes(prev => ({ ...prev, [testKey]: e.target.value }))}
+                        className="h-6 text-xs w-full"
+                        placeholder="Kindly correlate clinically"
+                        autoFocus
+                      />
+                      <Trash2 className="h-3.5 w-3.5 text-destructive cursor-pointer shrink-0" onClick={() => { setEditedTestNotes(prev => ({ ...prev, [testKey]: "" })); setActiveTestNoteKey(null); }} />
+                    </div>
+                  )}
+                  {getTestNote(reg.id, tg.testId) && activeTestNoteKey !== testKey && (
+                    <div className="flex items-center gap-1 mt-0.5 px-2" onClick={e => e.stopPropagation()}>
+                      <div className="text-xs font-bold text-amber-700 cursor-pointer" onClick={() => setActiveTestNoteKey(testKey)}>
+                        📝 {getTestNote(reg.id, tg.testId)}
+                      </div>
+                      <Trash2 className="h-3 w-3 text-destructive/60 hover:text-destructive cursor-pointer shrink-0" onClick={() => setEditedTestNotes(prev => ({ ...prev, [testKey]: "" }))} />
+                    </div>
+                  )}
                   {isTestExpanded && (
                     <div className="overflow-x-auto -mx-1">
                     <Table>

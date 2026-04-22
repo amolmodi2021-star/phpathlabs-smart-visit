@@ -1,0 +1,1 @@
+ALTER TABLE public.patient_results ADD COLUMN IF NOT EXISTS test_note text;

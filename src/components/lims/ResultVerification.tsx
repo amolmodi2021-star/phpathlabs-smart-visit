@@ -94,6 +94,8 @@ const ResultVerification = () => {
   const autoSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const [editedNotes, setEditedNotes] = useState<Record<string, string>>({});
   const [activeNoteKey, setActiveNoteKey] = useState<string | null>(null);
+  const [editedTestNotes, setEditedTestNotes] = useState<Record<string, string>>({});
+  const [activeTestNoteKey, setActiveTestNoteKey] = useState<string | null>(null);
   const [blankConfirmTestParams, setBlankConfirmTestParams] = useState<{ entry: PatientEntry; testId: string; testName: string } | null>(null);
   const [blankParamCount, setBlankParamCount] = useState(0);
   const [blankParamIds, setBlankParamIds] = useState<Set<string>>(new Set());
@@ -409,6 +411,21 @@ const ResultVerification = () => {
     }).filter(e => e.parameters.length > 0 || e.snipOnlyTests.length > 0);
   }, [registrations, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails, leafIdsByReg]);
 
+  // ─── Loaded test-level notes: first non-null test_note per (reg, test) ───
+  const loadedTestNotes = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const r of existingResults as any[]) {
+      const k = `${r.registration_id}||${r.test_id}`;
+      if (map[k] == null && r.test_note) map[k] = r.test_note;
+    }
+    return map;
+  }, [existingResults]);
+  const getTestNote = useCallback((regId: string, testId: string): string => {
+    const k = `${regId}||${testId}`;
+    if (editedTestNotes[k] !== undefined) return editedTestNotes[k];
+    return loadedTestNotes[k] || "";
+  }, [editedTestNotes, loadedTestNotes]);
+
   // Calculate flag
   const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string): string => {
     if (!value || value.trim() === "") return "";
@@ -596,7 +613,7 @@ const ResultVerification = () => {
           param_code: p.paramCode, parameter_name: p.parameterName,
           result_value: value || null, unit, reference_range: refRange,
           normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh,
-           flag: flag || null, status: "verified", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, verified_at: new Date().toISOString(), entered_at: p.enteredAt || new Date().toISOString(), entered_by: p.enteredBy || null, verified_by: getCurrentUserName(), note: editedNotes[k] !== undefined ? (editedNotes[k] || null) : (p.note || null),
+           flag: flag || null, status: "verified", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, verified_at: new Date().toISOString(), entered_at: p.enteredAt || new Date().toISOString(), entered_by: p.enteredBy || null, verified_by: getCurrentUserName(), note: editedNotes[k] !== undefined ? (editedNotes[k] || null) : (p.note || null), test_note: editedTestNotes[`${reg.id}||${testId}`] !== undefined ? (editedTestNotes[`${reg.id}||${testId}`] || null) : (loadedTestNotes[`${reg.id}||${testId}`] || null),
         });
       }
       if (upserts.length > 0) {
@@ -645,7 +662,7 @@ const ResultVerification = () => {
             param_code: p.paramCode, parameter_name: p.parameterName,
             result_value: value || null, unit, reference_range: refRange,
             normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh,
-            flag: flag || null, status: "verified", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, verified_at: new Date().toISOString(), entered_at: p.enteredAt || new Date().toISOString(), entered_by: p.enteredBy || null, verified_by: getCurrentUserName(), note: editedNotes[k] !== undefined ? (editedNotes[k] || null) : (p.note || null),
+            flag: flag || null, status: "verified", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, verified_at: new Date().toISOString(), entered_at: p.enteredAt || new Date().toISOString(), entered_by: p.enteredBy || null, verified_by: getCurrentUserName(), note: editedNotes[k] !== undefined ? (editedNotes[k] || null) : (p.note || null), test_note: editedTestNotes[`${reg.id}||${testId}`] !== undefined ? (editedTestNotes[`${reg.id}||${testId}`] || null) : (loadedTestNotes[`${reg.id}||${testId}`] || null),
           });
         }
         if (upserts.length > 0) {
@@ -693,6 +710,7 @@ const ResultVerification = () => {
           entered_at: p.enteredAt || null, entered_by: p.enteredBy || null,
           verified_at: null, verified_by: null,
           note: editedNotes[k] !== undefined ? (editedNotes[k] || null) : (p.note || null),
+          test_note: editedTestNotes[`${regId}||${testId}`] !== undefined ? (editedTestNotes[`${regId}||${testId}`] || null) : (loadedTestNotes[`${regId}||${testId}`] || null),
         });
       }
 
@@ -725,6 +743,7 @@ const ResultVerification = () => {
       setEditedUnits((prev) => stripKeys(prev));
       setEditedRefRanges((prev) => stripKeys(prev));
       setEditedNotes((prev) => stripKeys(prev));
+      setEditedTestNotes((prev) => { const next = { ...prev }; delete next[`${regId}||${testId}`]; return next; });
 
       toast.success(`${testName} sent back to Results Entry`);
       qc.invalidateQueries({ queryKey: ["verification_results_v2"] });
@@ -952,7 +971,20 @@ const ResultVerification = () => {
               return (
                 <div key={tg.testId} className="ml-1">
                   <div className="flex items-center justify-between px-1 py-0.5 bg-muted/40 rounded-t">
-                    <span className="text-base font-bold text-foreground">{tg.testName}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-base font-bold text-foreground">{tg.testName}</span>
+                      <StickyNote
+                        className={`inline h-3.5 w-3.5 cursor-pointer shrink-0 ${getTestNote(reg.id, tg.testId) ? 'text-amber-600' : 'text-muted-foreground hover:text-primary'}`}
+                        onClick={() => {
+                          if (activeTestNoteKey === testKey) { setActiveTestNoteKey(null); }
+                          else {
+                            setActiveTestNoteKey(testKey);
+                            const cur = getTestNote(reg.id, tg.testId);
+                            if (!cur) setEditedTestNotes(prev => ({ ...prev, [testKey]: "Kindly correlate clinically" }));
+                          }
+                        }}
+                      />
+                    </div>
                     <div className="flex items-center gap-1">
                       <Button size="sm" variant="ghost" className="h-6 text-[11px] gap-1 text-orange-600" onClick={() => sendBackTest(reg.id, tg.testId, tg.testName)}>
                         <Undo2 className="h-3 w-3" /> Send Back
@@ -963,6 +995,18 @@ const ResultVerification = () => {
                       </Button>
                     </div>
                   </div>
+                  {activeTestNoteKey === testKey && (
+                    <div className="flex items-center gap-1 mt-1 px-1">
+                      <Input value={getTestNote(reg.id, tg.testId)} onChange={e => setEditedTestNotes(prev => ({ ...prev, [testKey]: e.target.value }))} className="h-6 text-xs w-full" placeholder="Kindly correlate clinically" autoFocus />
+                      <Trash2 className="h-3.5 w-3.5 text-destructive cursor-pointer shrink-0" onClick={() => { setEditedTestNotes(prev => ({ ...prev, [testKey]: "" })); setActiveTestNoteKey(null); }} />
+                    </div>
+                  )}
+                  {getTestNote(reg.id, tg.testId) && activeTestNoteKey !== testKey && (
+                    <div className="flex items-center gap-1 mt-0.5 px-1">
+                      <div className="text-xs font-bold text-amber-700 cursor-pointer" onClick={() => setActiveTestNoteKey(testKey)}>📝 {getTestNote(reg.id, tg.testId)}</div>
+                      <Trash2 className="h-3 w-3 text-destructive/60 hover:text-destructive cursor-pointer shrink-0" onClick={() => setEditedTestNotes(prev => ({ ...prev, [testKey]: "" }))} />
+                    </div>
+                  )}
                   <Table>
                     <TableHeader>
                       <TableRow>
