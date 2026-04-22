@@ -1,0 +1,1 @@
+DROP FUNCTION IF EXISTS public.get_drip_pending_counts(uuid[], boolean);

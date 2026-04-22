@@ -26,7 +26,7 @@ const CRMSentHistory = () => {
       const to = from + PAGE_SIZE - 1;
       let q = supabase
         .from("crm_contacts")
-        .select("primary_key, patient_name, mobile_number, last_sent_type, last_sent_date", { count: "exact" })
+        .select("primary_key, patient_name, mobile_number, last_sent_type, last_sent_date", { count: "estimated" })
         .not("last_sent_date", "is", null)
         .order("last_sent_date", { ascending: false })
         .range(from, to);

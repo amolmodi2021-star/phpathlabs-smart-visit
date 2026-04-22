@@ -37,7 +37,9 @@ const ModifiedApproval = () => {
     queryFn: async () => {
       const from = page * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
-      let query = supabase.from("approved_reports").select("*", { count: "exact" }).order("approval_date", { ascending: false }).range(from, to);
+      // Use estimated count when unfiltered (avoids full-table scan); exact when searching.
+      const useEstimated = !debouncedSearch;
+      let query = supabase.from("approved_reports").select("*", { count: useEstimated ? "estimated" : "exact" }).order("approval_date", { ascending: false }).range(from, to);
       if (debouncedSearch) query = query.or(`patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%,umr_number.ilike.%${debouncedSearch}%`);
       const { data, count } = await query;
       return { rows: (data || []) as any[], total: count || 0 };

@@ -20,7 +20,7 @@ const MarketingHistory = () => {
       const to = from + PAGE_SIZE - 1;
       const { data, count, error } = await supabase
         .from("marketing_campaigns")
-        .select("*, marketing_templates(template_name)", { count: "exact" })
+        .select("*, marketing_templates(template_name)", { count: "estimated" })
         .order("created_at", { ascending: false })
         .range(from, to);
       if (error) throw error;

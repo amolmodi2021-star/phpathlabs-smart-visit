@@ -55,6 +55,7 @@ const EstimateDashboard = () => {
     queryFn: async () => {
       const from = page * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
+      // Status-filtered query — keep exact count so the badge matches the filtered subset.
       let q = supabase
         .from("estimates")
         .select("*, estimate_tests(*)", { count: "exact" })
