@@ -464,7 +464,7 @@ const SampleCollection = () => {
             )}
             {!isPending && collectedTubes.length > 0 && (
               <Button size="sm" variant="outline" className="gap-1"
-                onClick={() => { doPrintBarcodes(reg, collectedTubes); toast.success(`Reprinted all ${collectedTubes.length} barcode(s)`); }}>
+                onClick={() => requestPrintConfirm(reg, collectedTubes, () => { doPrintBarcodes(reg, collectedTubes); toast.success(`Reprinted all ${collectedTubes.length} barcode(s)`); })}>
                 <Printer className="h-3.5 w-3.5" /> Print All ({collectedTubes.length})
               </Button>
             )}
