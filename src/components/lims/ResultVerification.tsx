@@ -613,7 +613,7 @@ const ResultVerification = () => {
           param_code: p.paramCode, parameter_name: p.parameterName,
           result_value: value || null, unit, reference_range: refRange,
           normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh,
-           flag: flag || null, status: "verified", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, verified_at: new Date().toISOString(), entered_at: p.enteredAt || new Date().toISOString(), entered_by: p.enteredBy || null, verified_by: getCurrentUserName(), note: editedNotes[k] !== undefined ? (editedNotes[k] || null) : (p.note || null),
+           flag: flag || null, status: "verified", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, verified_at: new Date().toISOString(), entered_at: p.enteredAt || new Date().toISOString(), entered_by: p.enteredBy || null, verified_by: getCurrentUserName(), note: editedNotes[k] !== undefined ? (editedNotes[k] || null) : (p.note || null), test_note: editedTestNotes[`${reg.id}||${testId}`] !== undefined ? (editedTestNotes[`${reg.id}||${testId}`] || null) : (loadedTestNotes[`${reg.id}||${testId}`] || null),
         });
       }
       if (upserts.length > 0) {
@@ -662,7 +662,7 @@ const ResultVerification = () => {
             param_code: p.paramCode, parameter_name: p.parameterName,
             result_value: value || null, unit, reference_range: refRange,
             normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh,
-            flag: flag || null, status: "verified", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, verified_at: new Date().toISOString(), entered_at: p.enteredAt || new Date().toISOString(), entered_by: p.enteredBy || null, verified_by: getCurrentUserName(), note: editedNotes[k] !== undefined ? (editedNotes[k] || null) : (p.note || null),
+            flag: flag || null, status: "verified", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, verified_at: new Date().toISOString(), entered_at: p.enteredAt || new Date().toISOString(), entered_by: p.enteredBy || null, verified_by: getCurrentUserName(), note: editedNotes[k] !== undefined ? (editedNotes[k] || null) : (p.note || null), test_note: editedTestNotes[`${reg.id}||${testId}`] !== undefined ? (editedTestNotes[`${reg.id}||${testId}`] || null) : (loadedTestNotes[`${reg.id}||${testId}`] || null),
           });
         }
         if (upserts.length > 0) {
@@ -710,6 +710,7 @@ const ResultVerification = () => {
           entered_at: p.enteredAt || null, entered_by: p.enteredBy || null,
           verified_at: null, verified_by: null,
           note: editedNotes[k] !== undefined ? (editedNotes[k] || null) : (p.note || null),
+          test_note: editedTestNotes[`${regId}||${testId}`] !== undefined ? (editedTestNotes[`${regId}||${testId}`] || null) : (loadedTestNotes[`${regId}||${testId}`] || null),
         });
       }
 
