@@ -1,0 +1,1 @@
+ALTER TABLE public.report_test_parameters ADD COLUMN IF NOT EXISTS parameter_description text;

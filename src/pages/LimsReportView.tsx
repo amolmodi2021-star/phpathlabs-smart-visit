@@ -324,12 +324,15 @@ const LimsReportView = () => {
     if (uniqueTestIds.length > 0) {
       const { data: tpData } = await supabase
         .from("test_parameters")
-        .select("test_id, parameter_id, display_order, is_subheader, subheader_text")
+        .select("test_id, parameter_id, display_order, is_subheader, subheader_text, report_test_parameters(parameter_description)")
         .in("test_id", uniqueTestIds)
         .order("display_order", { ascending: true });
       (tpData || []).forEach((tp: any) => {
         if (!computedTpMap[tp.test_id]) computedTpMap[tp.test_id] = [];
-        computedTpMap[tp.test_id].push(tp);
+        computedTpMap[tp.test_id].push({
+          ...tp,
+          parameter_description: tp.report_test_parameters?.parameter_description ?? null,
+        });
       });
     }
 
@@ -1014,6 +1017,14 @@ function transformBlocksToGrouped(
     const paramById: Record<string, TestResultEntry> = {};
     block.params.forEach(p => { paramById[p.parameter_id] = p; });
 
+    // Build parameter_id -> description lookup from the live param map
+    const descById: Record<string, string | null> = {};
+    tpOrder.forEach((tp: any) => {
+      if (tp.parameter_id && tp.parameter_description) {
+        descById[tp.parameter_id] = tp.parameter_description;
+      }
+    });
+
     const results: TestResult[] = [];
 
     if (tpOrder.length > 0) {
@@ -1028,24 +1039,24 @@ function transformBlocksToGrouped(
         } else {
           const param = paramById[tp.parameter_id];
           if (param) {
-            results.push(mapParamToTestResult(param));
+            results.push(mapParamToTestResult(param, descById[param.parameter_id] || null));
             delete paramById[tp.parameter_id];
           }
         }
       });
       // Remaining params not in test_parameters
       Object.values(paramById).forEach(param => {
-        results.push(mapParamToTestResult(param));
+        results.push(mapParamToTestResult(param, descById[param.parameter_id] || null));
       });
     } else {
       block.params.forEach(param => {
-        results.push(mapParamToTestResult(param));
+        results.push(mapParamToTestResult(param, descById[param.parameter_id] || null));
       });
     }
 
-    // Single parameter test: override parameter name with test display name
+    // Single parameter test: override parameter name with test display name and drop description
     if (block.isSingleParameter && results.length === 1 && !results[0].is_subheader) {
-      results[0] = { ...results[0], parameter_name: block.testName };
+      results[0] = { ...results[0], parameter_name: block.testName, parameter_description: undefined };
     }
 
     profiles[profName] = results;
@@ -1054,9 +1065,10 @@ function transformBlocksToGrouped(
   return { [deptName]: profiles };
 }
 
-function mapParamToTestResult(param: TestResultEntry): TestResult {
+function mapParamToTestResult(param: TestResultEntry, parameterDescription: string | null = null): TestResult {
   return {
     parameter_name: param.parameter_name,
+    parameter_description: parameterDescription || undefined,
     result_value: param.result_value,
     unit: param.unit || undefined,
     normal_range_text: param.reference_range || undefined,

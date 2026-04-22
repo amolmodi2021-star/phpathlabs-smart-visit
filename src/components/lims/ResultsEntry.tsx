@@ -223,7 +223,7 @@ const ResultsEntry = () => {
     queryFn: async () => {
       const { data } = await supabase
         .from("test_parameters")
-        .select("test_id, parameter_id, display_order, is_subheader, subheader_text, report_test_parameters(id, param_code, parameter_name, unit, normal_range_low, normal_range_high, normal_range_text, is_calculated, calculation_formula, send_for_interface)")
+        .select("test_id, parameter_id, display_order, is_subheader, subheader_text, report_test_parameters(id, param_code, parameter_name, parameter_description, unit, normal_range_low, normal_range_high, normal_range_text, is_calculated, calculation_formula, send_for_interface)")
         .order("display_order");
       const map: Record<string, any[]> = {};
       (data || []).forEach((tp: any) => {

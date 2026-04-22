@@ -3037,6 +3037,7 @@ export type Database = {
           normal_range_text: string | null
           outsourced_caption: string | null
           param_code: string | null
+          parameter_description: string | null
           parameter_name: string
           profile_id: string | null
           same_for_all_ages: boolean
@@ -3073,6 +3074,7 @@ export type Database = {
           normal_range_text?: string | null
           outsourced_caption?: string | null
           param_code?: string | null
+          parameter_description?: string | null
           parameter_name: string
           profile_id?: string | null
           same_for_all_ages?: boolean
@@ -3109,6 +3111,7 @@ export type Database = {
           normal_range_text?: string | null
           outsourced_caption?: string | null
           param_code?: string | null
+          parameter_description?: string | null
           parameter_name?: string
           profile_id?: string | null
           same_for_all_ages?: boolean

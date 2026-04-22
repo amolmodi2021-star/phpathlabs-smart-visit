@@ -138,6 +138,7 @@ export interface TestParameterLink {
   is_subheader: boolean;
   subheader_text: string | null;
   parameter_name?: string;
+  parameter_description?: string | null;
   param_code?: string;
   unit?: string;
   normal_range_low?: number | null;
@@ -149,7 +150,7 @@ export const getTestParameters = async (testId: string): Promise<TestParameterLi
   return withRetry(async () => {
     const { data, error } = await supabase
       .from("test_parameters")
-      .select("id, test_id, parameter_id, display_order, is_subheader, subheader_text, report_test_parameters(parameter_name, param_code, unit, normal_range_low, normal_range_high, normal_range_text)")
+      .select("id, test_id, parameter_id, display_order, is_subheader, subheader_text, report_test_parameters(parameter_name, parameter_description, param_code, unit, normal_range_low, normal_range_high, normal_range_text)")
       .eq("test_id", testId)
       .order("display_order");
     if (error) throw new Error(error.message);
@@ -161,6 +162,7 @@ export const getTestParameters = async (testId: string): Promise<TestParameterLi
       is_subheader: d.is_subheader ?? false,
       subheader_text: d.subheader_text ?? null,
       parameter_name: d.report_test_parameters?.parameter_name,
+      parameter_description: d.report_test_parameters?.parameter_description ?? null,
       param_code: d.report_test_parameters?.param_code,
       unit: d.report_test_parameters?.unit,
       normal_range_low: d.report_test_parameters?.normal_range_low,
