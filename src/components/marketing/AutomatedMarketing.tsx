@@ -304,15 +304,20 @@ const AutomatedMarketing = () => {
         return all;
       };
 
-      const [allContacts, abnormalPks, cyclesData, allLogs, blacklistData] = await Promise.all([
-        fetchAllPg(supabase.from("crm_contacts").select("primary_key,mobile_number,umr_number,patient_name,last_sent_type,last_sent_date")),
-        fetchAllPg(supabase.from("crm_abnormal_tests").select("contact_primary_key")),
+      // Slim RPCs cut payload by ~70%: drop heavy `crm_contacts` columns (remarks, created_by, etc.)
+      // and pre-deduplicate abnormal PKs server-side (~3K unique vs 54K rows).
+      const [contactSliceRes, abnormalRpcRes, cyclesData, allLogs, blacklistData] = await Promise.all([
+        supabase.rpc("get_drip_contact_slice"),
+        supabase.rpc("get_abnormal_pks"),
         fetchAllPg(supabase.from("drip_mobile_cycles").select("mobile_number,current_cycle")),
         fetchAllPg(supabase.from("drip_campaign_log").select("filter_id,mobile_number,contact_primary_key,cycle_number").eq("status", "sent")),
         excludeBlacklist
           ? supabase.from("crm_blacklist").select("mobile_number").then(r => r.data || [])
           : Promise.resolve([]),
       ]);
+
+      const allContacts = (contactSliceRes.data as any[]) || [];
+      const abnormalPks = (abnormalRpcRes.data as any[]) || [];
 
       const blacklistSet = new Set(blacklistData.map((b: any) => b.mobile_number));
       const abnormalPkSet = new Set(abnormalPks.map((a: any) => a.contact_primary_key));
