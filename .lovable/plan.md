@@ -1,65 +1,78 @@
 
 
-# Fix: Compare qualitative/descriptive results against the displayed Reference Range, not the dropdown source
+# Make machine-interface results obey the same qualitative/descriptive highlight rule
 
-## The bug
+## The gap
 
-Both Erythema (qualitative) and REMARK (descriptive) tint red even though their result equals the configured normal value shown in the **Ref. Range** column.
+The new `"X"` highlight (red row tint, blank Flag column on mismatch) only fires for results typed in **Results Entry**, **Verification**, **Doctor Approval**, and **Modified Approval**. Results that arrive over the **bidirectional machine interface** (`supabase/functions/lims-interface/index.ts`) bypass that logic — the bridge that writes `patient_results` only computes H/L/N from `normal_range_low`/`normal_range_high` and otherwise stores whatever `flag` the machine sent (e.g. `"Normal"`, `""`). For a qualitative parameter like *Erythema* or a descriptive one like *REMARK*, an abnormal interface result would land with no flag — so the report wouldn't tint it red.
 
-Root cause: the `calculateFlag` logic compares against the wrong field.
+It also won't matter today for parameters that ship via interface (most are numeric like CBC), but Urine Microscopy / qualitative immunoassays / descriptive findings can absolutely be machine-fed, so we should close the gap now.
 
-| Range type | What user configures as "normal" | What I'm currently comparing against |
-|---|---|---|
-| Qualitative | `normal_range_text` (Display Text, e.g. `"Absent"`) | `expected_value` (pair label, e.g. `"Absent / Present"`) — **always mismatches** |
-| Descriptive | `normal_range_text` (Display Text under "Normal Findings", e.g. `"Negative"`) | `descriptive_options` (the full dropdown list including abnormal choices like `["Negative", "Positive"]`) — passes for any selectable option, including abnormal ones |
+## The fix — single edge function
 
-So qualitative rows currently ALWAYS tint red (label never equals result), and descriptive rows NEVER tint red (every dropdown option counts as normal). Both broken.
+### `supabase/functions/lims-interface/index.ts`
 
-## The fix
+Both the **POST `submit_results`** path (lines 568–631) and the **POST `reprocess`** path (lines 128–189) currently compute `flag` like this:
 
-For both qualitative and descriptive, compare the entered result against **`normal_range_text`** (the same Display Text the user sees in the Ref. Range column on screen — that's the field the user designated as "Normal Findings").
+```ts
+let flag = mr.flag || "";
+if (!isNaN(numericVal) && param.normal_range_low != null && param.normal_range_high != null) {
+  if (numericVal < ...) flag = "L";
+  else if (numericVal > ...) flag = "H";
+  else flag = "N";
+}
+```
 
-- Match (case-insensitive, trimmed) → flag `"N"` → no tint.
-- Mismatch → flag `"X"` → red tint, no badge.
-- `normal_range_text` empty → flag `""` → no tint (nothing configured to compare against).
+Replace with a unified compute that mirrors the UI rule:
 
-## Files touched
+1. **Numeric path (unchanged)**: if value parses as a number AND `normal_range_low`/`high` exist → H/L/N as today.
+2. **Otherwise** (qualitative or descriptive value): if `param.normal_range_text` is non-empty → compare case-insensitive trimmed → match = `"N"`, mismatch = `"X"`. If `normal_range_text` is empty → keep `""` (nothing to compare against).
+3. Drop the legacy fall-through where `mr.flag` from the machine (e.g. `"Normal"`, `"Abnormal"`) sneaks into the column. Always recompute server-side so the stored flag value is consistent with what the UI would write.
 
-### 1. `src/components/lims/ResultVerification.tsx`
-- Extend `calculateFlag` signature to also receive `normalRangeText: string` (the Display Text). Replace the qualitative branch and the descriptive branch with a single shared check:
-  ```ts
-  if (rangeType === "qualitative" || rangeType === "descriptive") {
-    const ref = (normalRangeText || "").trim().toLowerCase();
-    if (!ref) return "";
-    return value.trim().toLowerCase() === ref ? "N" : "X";
+```ts
+function computeFlagFromInterface(rawValue: string, param: any): string {
+  const value = (rawValue ?? "").toString().trim();
+  if (!value) return "";
+
+  // Numeric path
+  const num = parseFloat(value);
+  if (!isNaN(num) && param.normal_range_low != null && param.normal_range_high != null) {
+    if (num < Number(param.normal_range_low)) return "L";
+    if (num > Number(param.normal_range_high)) return "H";
+    return "N";
   }
-  ```
-- All 6 callers of `calculateFlag` (lines 611, 660, 703, 798, 1169, plus row-bg compute) pass `p.normalRangeText` (already loaded — it's `resolved.text` and surfaces as `p.normalRangeText`).
 
-### 2. `src/components/lims/ResultsEntry.tsx`
-- Same change to `calculateFlag` (line 676 area). Pass `normalRangeText` from `ParameterResult`.
+  // Qualitative / descriptive path — compare against displayed Ref. Range text
+  const ref = (param.normal_range_text ?? "").toString().trim().toLowerCase();
+  if (!ref) return "";
+  return value.toLowerCase() === ref ? "N" : "X";
+}
+```
 
-### 3. `src/components/lims/DoctorApproval.tsx`
-- Same change to `calculateFlag` (line 334 area). Pass `normalRangeText`.
+Then in **both** code paths replace the inline flag block with `const flag = computeFlagFromInterface(convertedValue, param);`.
 
-### 4. `src/components/lims/ModifiedApproval.tsx`
-- Same change to `calculateFlag` (line 156 area). The query already does `select("*")` so `normal_range_text` is available on each row — wire it through.
+### Why no other changes are needed
 
-### 5. `src/components/report/ReportResultsSection.tsx`
-- No change needed. The renderer already trusts the stored `flag` value (`X` → tint, no badge).
+- `report_test_parameters.normal_range_text` is **already** selected by both bridge code paths (lines 100 and 538) — the data is on hand, we just don't use it for non-numeric flagging today.
+- The UI components (Results Entry / Verification / Approval / Modified Approval) already read whatever `flag` is in `patient_results` and apply the red tint when it equals `"X"` — so an interface-sourced `"X"` will surface in every screen and in the final approved report exactly like a manually-entered one.
+- The report renderer (`ReportResultsSection.tsx`) already treats `"X"` as highlight-only (no badge in Flag column).
+- No DB schema change. No migration. No client change.
 
-## Cleanup
+### Edge case worth noting
 
-- The `expectedValue` and `descriptiveOptions` arguments stay in the signature only because they're still passed by callers; they become unused inside the function (safe to leave for now or remove).
+`report_test_parameters` doesn't carry `range_type` (that lives on `parameter_normal_ranges`, which is selected per age/gender/cycle by the UI's `useMasterLookup` resolver). The edge function doesn't have that resolution layer, so we use the simpler rule: **if value is numeric AND numeric bounds exist → H/L/N, else compare to `normal_range_text`**. This matches user intent for every common case (numeric param sends a number, qualitative/descriptive param sends text), and avoids replicating the age/gender resolver inside the edge function.
 
-## Verification (against the user's screenshot)
+## Verification
 
-1. **Erythema** (qualitative, Ref. Range = `"Absent"`, Result = `"Absent"`) → `"Absent" === "Absent"` → `"N"` → no tint. ✓
-2. **REMARK** (descriptive, Ref. Range = `"Negative"`, Result = `"Negative"`) → `"Negative" === "Negative"` → `"N"` → no tint. ✓
-3. Change Erythema result to `"Present"` → `"Present" !== "Absent"` → `"X"` → red row, blank Flag column. ✓
-4. Numeric (Examine After / Wheal) — untouched, "Normal" badge still shows. ✓
+1. Configure a qualitative parameter (e.g. *Urine Protein* with Ref. Range = `Negative`).
+2. POST to `/lims-interface` with `{action:"results", sample_id:"…", results:[{code:"UPROT", value:"Positive"}]}`.
+3. Check `patient_results` row → `flag = "X"`.
+4. Open Results Entry / Verification → row tinted red, Flag column empty. ✓
+5. Approve → report renders with red row, blank Flag column. ✓
+6. Numeric interface results (e.g. WBC) — H/L/N behave exactly as before. ✓
+7. Run **Reprocess** on an old order containing qualitative results → re-bridges with the new flag too. ✓
 
 ## Risk
 
-Trivial. Single comparison source-of-truth swap. No DB change. No schema change. Existing approved-report snapshots already render correctly because the report renderer already keys off the `flag` value, which now becomes consistent across new saves.
+Trivial. One edge function, one helper function reused in two places, identical comparison rule to the now-shipped UI logic. The machine's own `flag` field is intentionally ignored (it was already being overwritten in the numeric branch — we just extend the same authoritative behavior to non-numeric).
 
