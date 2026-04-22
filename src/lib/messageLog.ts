@@ -4,15 +4,20 @@ import { supabase } from "@/integrations/supabase/client";
  * Log every outgoing WhatsApp message to the universal message_send_log table.
  * Fire-and-forget — errors are silently ignored so they don't break the send flow.
  *
+ * COST OPTIMIZATION (2026-04): we no longer persist `message_content` or
+ * `retry_payload` here. Storing the full WhatsApp caption was adding ~25 MB/day
+ * of database growth and bloated realtime broadcast payloads. The `message_type`
+ * column (e.g. "ABC Card", "Abnormal History", "Promotion") is enough audit
+ * detail; the WhatsApp Chat UI reads message bodies from `webhook_messages`,
+ * not from this log.
+ *
+ * Trade-off: Marketing/Promotion retries from `retry_payload` are no longer
+ * possible — failed rows surface as "missing payload" in the Retry tab. ABC and
+ * Abnormal retries are unaffected (they regenerate the card from CRM).
+ *
  * Backward-compatible signature: existing callers passing (mobile, name, type)
- * or (mobile, name, type, umr, primaryKey, messageContent, messageId) still work.
- *
- * Drip/marketing callers pass a 7th arg `messageIdOrStatus` that may be either a
- * messageId OR a status string ("sent" / "failed"). We auto-detect: if it's
- * exactly "sent" or "failed", it's treated as deliveryStatus; otherwise as messageId.
- *
- * 8th arg `retryPayload` is the snapshot needed by the Retry tab to re-send the
- * same message later. Pass it ONLY on failure.
+ * or (mobile, name, type, umr, primaryKey, messageContent, messageId) still
+ * work — `messageContent` and `retryPayload` are simply ignored on insert.
  */
 export async function logMessageSend(
   mobile: string,
@@ -20,9 +25,9 @@ export async function logMessageSend(
   messageType: string,
   umrNumber?: string | null,
   primaryKey?: string | null,
-  messageContent?: string | null,
+  _messageContent?: string | null,
   messageIdOrStatus?: string | null,
-  retryPayload?: Record<string, unknown> | null,
+  _retryPayload?: Record<string, unknown> | null,
 ) {
   const mobile10 = (mobile || "").replace(/\D/g, "").slice(-10);
   if (!mobile10) return;
@@ -42,13 +47,13 @@ export async function logMessageSend(
     message_type: messageType,
     umr_number: umrNumber || null,
     primary_key: primaryKey || null,
-    message_content: messageContent || null,
+    message_content: null,
     message_id: messageId,
     delivery_status: deliveryStatus,
+    retry_payload: null,
   };
   if (deliveryStatus === "failed") {
     insertRow.failed_at = new Date().toISOString();
-    if (retryPayload) insertRow.retry_payload = retryPayload;
     insertRow.retry_count = 0;
   }
 
@@ -61,7 +66,7 @@ export async function logMessageSend(
 
 /**
  * Extract messageId from a whatsapp-proxy response.
- * 
+ *
  * supabase.functions.invoke returns { data, error }.
  * Pass proxyRes.data here — it contains { status, body } where body is a JSON string.
  * The AOC API typically returns { messageId: "..." } in the body.

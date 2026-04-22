@@ -411,7 +411,6 @@ export default function WhatsAppChat() {
           mobile_number: selectedMobile,
           patient_name: selectedContact?.name || selectedContact?.profileName || null,
           message_type: type === "text" ? "Chat Reply" : `Chat ${type.charAt(0).toUpperCase() + type.slice(1)}`,
-          message_content: msgContent,
           message_id: tempId,
           delivery_status: "pending",
         }).select("id").single(),

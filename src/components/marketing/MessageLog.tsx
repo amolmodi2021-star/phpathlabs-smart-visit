@@ -1,32 +1,36 @@
 import { useEffect, useState } from "react";
-import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Search } from "lucide-react";
+import { Search, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 
-const PAGE_SIZE = 50;
+// Hard cap at 100 rows — the UI is for spot-checks, not analytics. Removing the
+// `count: "exact"` query and pagination saves a full-table scan + extra round-
+// trip on every open. For older message audits use date filters in the DB.
+const PAGE_SIZE = 100;
 
 const MessageLog = () => {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [page, setPage] = useState(0);
 
-  useEffect(() => { const t = setTimeout(() => setDebouncedSearch(search), 400); return () => clearTimeout(t); }, [search]);
-  useEffect(() => { setPage(0); }, [debouncedSearch]);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 400);
+    return () => clearTimeout(t);
+  }, [search]);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["message_send_log", debouncedSearch, page],
+  const { data: rows = [], isLoading, isFetching, refetch } = useQuery({
+    queryKey: ["message_send_log", debouncedSearch],
     queryFn: async () => {
       let query = supabase
         .from("message_send_log")
-        .select("*", { count: "exact" })
+        .select("id, patient_name, mobile_number, umr_number, primary_key, message_type, sent_at, delivered_at, read_at, failed_at")
         .order("sent_at", { ascending: false })
-        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+        .limit(PAGE_SIZE);
 
       if (debouncedSearch.trim()) {
         const s = debouncedSearch.trim();
@@ -35,17 +39,15 @@ const MessageLog = () => {
         );
       }
 
-      const { data: rows, count, error } = await query;
+      const { data, error } = await query;
       if (error) throw error;
-
-      // delivered_at / read_at are stamped directly on message_send_log by the webhook
-      return { rows: rows || [], total: count || 0 };
+      return data || [];
     },
+    // Manual refresh only — no auto-refetch on mount, focus, or reconnect.
+    staleTime: Infinity,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   });
-
-  const rows = data?.rows || [];
-  const total = data?.total || 0;
-  const totalPages = Math.ceil(total / PAGE_SIZE);
 
   return (
     <div className="space-y-4">
@@ -59,7 +61,19 @@ const MessageLog = () => {
             className="pl-9"
           />
         </div>
-        <span className="text-sm text-muted-foreground">{total} records</span>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => refetch()}
+          disabled={isFetching}
+          title="Refresh log"
+        >
+          <RefreshCw className={`h-4 w-4 mr-1 ${isFetching ? "animate-spin" : ""}`} />
+          Refresh
+        </Button>
+        <span className="text-sm text-muted-foreground">
+          Showing latest {rows.length} {rows.length === 1 ? "message" : "messages"}
+        </span>
       </div>
 
       <div className="border rounded-md">
@@ -82,13 +96,13 @@ const MessageLog = () => {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={12} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
                   Loading...
                 </TableCell>
               </TableRow>
             ) : rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={12} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
                   No messages logged yet
                 </TableCell>
               </TableRow>
@@ -100,12 +114,8 @@ const MessageLog = () => {
                 const daysAgo = Math.floor(diffMs / (1000 * 60 * 60 * 24));
                 return (
                   <TableRow key={row.id}>
-                    <TableCell className="text-muted-foreground">
-                      {page * PAGE_SIZE + idx + 1}
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      {row.patient_name || "—"}
-                    </TableCell>
+                    <TableCell className="text-muted-foreground">{idx + 1}</TableCell>
+                    <TableCell className="font-medium">{row.patient_name || "—"}</TableCell>
                     <TableCell>{row.mobile_number}</TableCell>
                     <TableCell>{row.umr_number || "—"}</TableCell>
                     <TableCell className="text-xs max-w-[200px] truncate">{row.primary_key || "—"}</TableCell>
@@ -128,30 +138,6 @@ const MessageLog = () => {
           </TableBody>
         </Table>
       </div>
-
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page === 0}
-            onClick={() => setPage((p) => p - 1)}
-          >
-            Previous
-          </Button>
-          <span className="text-sm text-muted-foreground">
-            Page {page + 1} of {totalPages}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page >= totalPages - 1}
-            onClick={() => setPage((p) => p + 1)}
-          >
-            Next
-          </Button>
-        </div>
-      )}
     </div>
   );
 };
