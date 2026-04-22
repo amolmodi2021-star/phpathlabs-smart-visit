@@ -19,6 +19,7 @@ import {
   type CardData,
   type CardFailureReason,
 } from "@/lib/cardRenderer";
+import { uploadJpegToCloudinaryWithRetry } from "@/lib/cardStorageCloudinary";
 import { sortAbnormalTestsByDateDesc } from "@/lib/abnormalTests";
 import { extractMessageId } from "@/lib/messageLog";
 
