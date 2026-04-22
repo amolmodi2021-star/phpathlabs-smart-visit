@@ -271,6 +271,8 @@ const ModifiedApproval = () => {
       setEditedUnits(prev => { const n = { ...prev }; Object.keys(n).filter(k => k.startsWith(prefix)).forEach(k => delete n[k]); return n; });
       setEditedRefRanges(prev => { const n = { ...prev }; Object.keys(n).filter(k => k.startsWith(prefix)).forEach(k => delete n[k]); return n; });
       setEditedFlags(prev => { const n = { ...prev }; Object.keys(n).filter(k => k.startsWith(prefix)).forEach(k => delete n[k]); return n; });
+      setEditedNotes(prev => { const n = { ...prev }; Object.keys(n).filter(k => k.startsWith(prefix)).forEach(k => delete n[k]); return n; });
+      setEditedTestNotes(prev => { const n = { ...prev }; Object.keys(n).filter(k => k.startsWith(prefix)).forEach(k => delete n[k]); return n; });
       qc.invalidateQueries({ queryKey: ["modified_approval_"] });
       qc.invalidateQueries({ queryKey: ["dispatch_"] });
     } catch (err: any) { toast.error(err.message || "Save failed"); }
@@ -282,7 +284,9 @@ const ModifiedApproval = () => {
     return Object.keys(editedValues).some(k => k.startsWith(prefix)) ||
       Object.keys(editedUnits).some(k => k.startsWith(prefix)) ||
       Object.keys(editedRefRanges).some(k => k.startsWith(prefix)) ||
-      Object.keys(editedFlags).some(k => k.startsWith(prefix));
+      Object.keys(editedFlags).some(k => k.startsWith(prefix)) ||
+      Object.keys(editedNotes).some(k => k.startsWith(prefix)) ||
+      Object.keys(editedTestNotes).some(k => k.startsWith(prefix));
   };
 
   return (
