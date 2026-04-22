@@ -1763,6 +1763,68 @@ const AutomatedMarketing = () => {
             </CardContent>
           </Card>
         </div>
+
+        {debugPreflight && (
+          <Card className="border-dashed">
+            <CardHeader className="py-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  🔬 Shadow Preflight (RPC vs JS)
+                  <Badge variant="outline" className="text-[10px]">debug=preflight</Badge>
+                </CardTitle>
+                <Button size="sm" variant="outline" onClick={() => refetchRpc()} disabled={rpcFetching}>
+                  <RefreshCw className={`h-4 w-4 mr-1 ${rpcFetching ? "animate-spin" : ""}`} /> Run RPC
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="py-2 text-xs space-y-2">
+              {!rpcPending ? (
+                <p className="text-muted-foreground">Click "Run RPC" — RPC result will appear here. JS preflight remains the source of truth.</p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="border rounded p-2">
+                      <p className="font-medium mb-1">Pending ABC Cards</p>
+                      <p>JS: <strong>{pendingCounts?.pendingAbc ?? 0}</strong></p>
+                      <p>RPC: <strong>{Number((rpcPending as any).pending_abc) || 0}</strong></p>
+                      <p className={Number((rpcPending as any).pending_abc) === (pendingCounts?.pendingAbc ?? 0) ? "text-primary" : "text-destructive"}>
+                        {Number((rpcPending as any).pending_abc) === (pendingCounts?.pendingAbc ?? 0) ? "✓ MATCH" : `✗ DIFF: ${Number((rpcPending as any).pending_abc) - (pendingCounts?.pendingAbc ?? 0)}`}
+                      </p>
+                    </div>
+                    <div className="border rounded p-2">
+                      <p className="font-medium mb-1">Pending Abnormal History</p>
+                      <p>JS: <strong>{pendingCounts?.pendingAbnormal ?? 0}</strong></p>
+                      <p>RPC: <strong>{Number((rpcPending as any).pending_abnormal) || 0}</strong></p>
+                      <p className={Number((rpcPending as any).pending_abnormal) === (pendingCounts?.pendingAbnormal ?? 0) ? "text-primary" : "text-destructive"}>
+                        {Number((rpcPending as any).pending_abnormal) === (pendingCounts?.pendingAbnormal ?? 0) ? "✓ MATCH" : `✗ DIFF: ${Number((rpcPending as any).pending_abnormal) - (pendingCounts?.pendingAbnormal ?? 0)}`}
+                      </p>
+                    </div>
+                  </div>
+                  {(() => {
+                    const jsAbcPks = new Set((pendingCounts?.pendingAbcRecords || []).map((r: any) => r["Primary Key"]));
+                    const rpcAbcPks = new Set(((rpcPending as any).pending_abc_records || []).map((r: any) => r["Primary Key"]));
+                    const onlyJs = [...jsAbcPks].filter(k => !rpcAbcPks.has(k));
+                    const onlyRpc = [...rpcAbcPks].filter(k => !jsAbcPks.has(k));
+                    const jsAbnPks = new Set((pendingCounts?.pendingAbnormalRecords || []).map((r: any) => r["Primary Key"]));
+                    const rpcAbnPks = new Set(((rpcPending as any).pending_abnormal_records || []).map((r: any) => r["Primary Key"]));
+                    const onlyJsAbn = [...jsAbnPks].filter(k => !rpcAbnPks.has(k));
+                    const onlyRpcAbn = [...rpcAbnPks].filter(k => !jsAbnPks.has(k));
+                    return (
+                      <div className="text-[11px] text-muted-foreground space-y-1 pt-1 border-t">
+                        <p>ABC diff — only-in-JS: <strong>{onlyJs.length}</strong> | only-in-RPC: <strong>{onlyRpc.length}</strong></p>
+                        <p>Abnormal diff — only-in-JS: <strong>{onlyJsAbn.length}</strong> | only-in-RPC: <strong>{onlyRpcAbn.length}</strong></p>
+                        {(onlyJs.length + onlyRpc.length + onlyJsAbn.length + onlyRpcAbn.length) > 0 && (
+                          <p>First 5 only-in-JS ABC primary keys: {onlyJs.slice(0, 5).join(", ") || "—"}</p>
+                        )}
+                        <p>RPC roundtrip: {(rpcPending as any)._elapsed_ms ?? "—"} ms</p>
+                      </div>
+                    );
+                  })()}
+                </>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
 
 
