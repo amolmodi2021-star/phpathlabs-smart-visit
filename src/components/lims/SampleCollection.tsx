@@ -719,7 +719,7 @@ const SampleCollection = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Cancel Collection?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will revert tube <strong className="font-mono">{cancelCollectDialog.tube?.sample_uid}</strong> for patient <strong>{cancelCollectDialog.reg?.patient_name}</strong> back to <strong>Pending</strong>. Use this only if the sample was marked collected by mistake. If the tube has already been accepted in the lab, this action will fail.
+              This will revert tube <strong className="font-mono">{cancelCollectDialog.tube ? getBarcodeLabel(cancelCollectDialog.reg, cancelCollectDialog.tube) : ""}</strong> for patient <strong>{cancelCollectDialog.reg?.patient_name}</strong> back to <strong>Pending</strong>. Use this only if the sample was marked collected by mistake. If the tube has already been accepted in the lab, this action will fail.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
