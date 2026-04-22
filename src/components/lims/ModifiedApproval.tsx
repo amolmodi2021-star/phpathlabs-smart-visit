@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Search, ChevronDown, ChevronUp, Loader2, Save, Eye, FileCheck, Calculator } from "lucide-react";
+import { Search, ChevronDown, ChevronUp, Loader2, Save, Eye, FileCheck, Calculator, StickyNote, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import PaginatedTableFooter from "@/components/ui/PaginatedTableFooter";
 
@@ -25,6 +25,10 @@ const ModifiedApproval = () => {
   const [editedUnits, setEditedUnits] = useState<Record<string, string>>({});
   const [editedRefRanges, setEditedRefRanges] = useState<Record<string, string>>({});
   const [editedFlags, setEditedFlags] = useState<Record<string, string>>({});
+  const [editedNotes, setEditedNotes] = useState<Record<string, string>>({});
+  const [activeNoteKey, setActiveNoteKey] = useState<string | null>(null);
+  const [editedTestNotes, setEditedTestNotes] = useState<Record<string, string>>({});
+  const [activeTestNoteKey, setActiveTestNoteKey] = useState<string | null>(null);
   const [actionKey, setActionKey] = useState<string | null>(null);
   const [viewSnipImages, setViewSnipImages] = useState<string[] | null>(null);
 
@@ -134,6 +138,21 @@ const ModifiedApproval = () => {
     }).filter(e => e.testGroups.length > 0);
   }, [approvedReports, approvedResults, approvedSnips, testsMap]);
 
+  // Loaded test-level notes: first non-null test_note per (regId, testId)
+  const loadedTestNotes = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const r of approvedResults as any[]) {
+      const k = `${r.registration_id}||${r.test_id}`;
+      if (map[k] == null && r.test_note) map[k] = r.test_note;
+    }
+    return map;
+  }, [approvedResults]);
+  const getTestNote = (regId: string, testId: string): string => {
+    const k = `${regId}||${testId}`;
+    if (editedTestNotes[k] !== undefined) return editedTestNotes[k];
+    return loadedTestNotes[k] || "";
+  };
+
   const calculateFlag = (value: string, low: number | null, high: number | null): string => {
     if (!value || !value.trim()) return "";
     const num = parseFloat(value); if (isNaN(num)) return "";
@@ -190,12 +209,19 @@ const ModifiedApproval = () => {
       const allSnipUrls: string[] = [];
 
       for (const tg of testGroups) {
+        const testNoteKey = `${regId}||${tg.testId}`;
+        const newTestNote = editedTestNotes[testNoteKey] !== undefined
+          ? (editedTestNotes[testNoteKey] || null)
+          : (loadedTestNotes[testNoteKey] || null);
+
         for (const p of tg.params) {
           const key = `${regId}||${p.parameter_id}`;
           const newValue = editedValues[key] !== undefined ? editedValues[key] : p.result_value;
           const newUnit = editedUnits[key] !== undefined ? editedUnits[key] : p.unit;
           const newRefRange = editedRefRanges[key] !== undefined ? editedRefRanges[key] : p.reference_range;
           const newFlag = editedFlags[key] !== undefined ? editedFlags[key] : (calculateFlag(newValue, p.normal_range_low, p.normal_range_high) || p.flag);
+          const noteKey = `${regId}||${p.parameter_id}`;
+          const newNote = editedNotes[noteKey] !== undefined ? (editedNotes[noteKey] || null) : (p.note ?? null);
 
           // Update patient_results
           await supabase.from("patient_results").update({
@@ -203,6 +229,8 @@ const ModifiedApproval = () => {
             unit: newUnit || null,
             reference_range: newRefRange || null,
             flag: newFlag || null,
+            note: newNote,
+            test_note: newTestNote,
           } as any).eq("id", p.id);
 
           allTestResults.push({
@@ -212,6 +240,8 @@ const ModifiedApproval = () => {
             normal_range_low: p.normal_range_low, normal_range_high: p.normal_range_high,
             flag: newFlag, is_calculated: p.is_calculated, is_outsourced: tg.isOutsourced,
             outsource_lab_name: tg.labName,
+            note: newNote,
+            test_note: newTestNote,
           });
         }
 
@@ -221,6 +251,7 @@ const ModifiedApproval = () => {
             allTestResults.push({
               test_id: tg.testId, test_name: tg.testName,
               is_outsourced: true, outsource_lab_name: tg.labName,
+              test_note: newTestNote,
             });
           }
         }
@@ -240,6 +271,8 @@ const ModifiedApproval = () => {
       setEditedUnits(prev => { const n = { ...prev }; Object.keys(n).filter(k => k.startsWith(prefix)).forEach(k => delete n[k]); return n; });
       setEditedRefRanges(prev => { const n = { ...prev }; Object.keys(n).filter(k => k.startsWith(prefix)).forEach(k => delete n[k]); return n; });
       setEditedFlags(prev => { const n = { ...prev }; Object.keys(n).filter(k => k.startsWith(prefix)).forEach(k => delete n[k]); return n; });
+      setEditedNotes(prev => { const n = { ...prev }; Object.keys(n).filter(k => k.startsWith(prefix)).forEach(k => delete n[k]); return n; });
+      setEditedTestNotes(prev => { const n = { ...prev }; Object.keys(n).filter(k => k.startsWith(prefix)).forEach(k => delete n[k]); return n; });
       qc.invalidateQueries({ queryKey: ["modified_approval_"] });
       qc.invalidateQueries({ queryKey: ["dispatch_"] });
     } catch (err: any) { toast.error(err.message || "Save failed"); }
@@ -251,7 +284,9 @@ const ModifiedApproval = () => {
     return Object.keys(editedValues).some(k => k.startsWith(prefix)) ||
       Object.keys(editedUnits).some(k => k.startsWith(prefix)) ||
       Object.keys(editedRefRanges).some(k => k.startsWith(prefix)) ||
-      Object.keys(editedFlags).some(k => k.startsWith(prefix));
+      Object.keys(editedFlags).some(k => k.startsWith(prefix)) ||
+      Object.keys(editedNotes).some(k => k.startsWith(prefix)) ||
+      Object.keys(editedTestNotes).some(k => k.startsWith(prefix));
   };
 
   return (
@@ -322,18 +357,57 @@ const ModifiedApproval = () => {
                     <div className="space-y-3">
                       {testGroups.map(tg => (
                         <div key={tg.testId} className="border rounded-lg overflow-hidden bg-background">
-                          <div className="flex items-center justify-between px-3 py-2 bg-muted/40">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium">{tg.testName}</span>
-                              {tg.isOutsourced && tg.labName && (
-                                <Badge variant="outline" className="text-[10px] text-green-600 border-green-300">{tg.labName}</Badge>
+                          <div className="px-3 py-2 bg-muted/40">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium">{tg.testName}</span>
+                                {tg.isOutsourced && tg.labName && (
+                                  <Badge variant="outline" className="text-[10px] text-green-600 border-green-300">{tg.labName}</Badge>
+                                )}
+                                {(() => {
+                                  const tnKey = `${report.registration_id}||${tg.testId}`;
+                                  const tnVal = getTestNote(report.registration_id, tg.testId);
+                                  return (
+                                    <StickyNote
+                                      className={`inline h-3.5 w-3.5 cursor-pointer shrink-0 ${tnVal ? 'text-amber-600' : 'text-muted-foreground hover:text-primary'}`}
+                                      onClick={() => {
+                                        if (activeTestNoteKey === tnKey) { setActiveTestNoteKey(null); }
+                                        else {
+                                          setActiveTestNoteKey(tnKey);
+                                          if (!tnVal) setEditedTestNotes(prev => ({ ...prev, [tnKey]: "Kindly correlate clinically" }));
+                                        }
+                                      }}
+                                    />
+                                  );
+                                })()}
+                              </div>
+                              {tg.snipUrls.length > 0 && (
+                                <Button size="sm" variant="outline" className="h-6 text-xs gap-1" onClick={() => setViewSnipImages(tg.snipUrls)}>
+                                  <Eye className="h-3 w-3" /> View Snip ({tg.snipUrls.length})
+                                </Button>
                               )}
                             </div>
-                            {tg.snipUrls.length > 0 && (
-                              <Button size="sm" variant="outline" className="h-6 text-xs gap-1" onClick={() => setViewSnipImages(tg.snipUrls)}>
-                                <Eye className="h-3 w-3" /> View Snip ({tg.snipUrls.length})
-                              </Button>
-                            )}
+                            {(() => {
+                              const tnKey = `${report.registration_id}||${tg.testId}`;
+                              const tnVal = getTestNote(report.registration_id, tg.testId);
+                              if (activeTestNoteKey === tnKey) {
+                                return (
+                                  <div className="flex items-center gap-1 mt-1">
+                                    <Input value={tnVal} onChange={e => setEditedTestNotes(prev => ({ ...prev, [tnKey]: e.target.value }))} className="h-6 text-xs w-full" placeholder="Kindly correlate clinically" autoFocus />
+                                    <Trash2 className="h-3.5 w-3.5 text-destructive cursor-pointer shrink-0" onClick={() => { setEditedTestNotes(prev => ({ ...prev, [tnKey]: "" })); setActiveTestNoteKey(null); }} />
+                                  </div>
+                                );
+                              }
+                              if (tnVal) {
+                                return (
+                                  <div className="flex items-center gap-1 mt-0.5">
+                                    <div className="text-xs font-bold text-amber-700 cursor-pointer" onClick={() => setActiveTestNoteKey(tnKey)}>📝 {tnVal}</div>
+                                    <Trash2 className="h-3 w-3 text-destructive/60 hover:text-destructive cursor-pointer shrink-0" onClick={() => setEditedTestNotes(prev => ({ ...prev, [tnKey]: "" }))} />
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
                           </div>
                           {tg.params.length > 0 && (
                             <Table>
@@ -366,8 +440,26 @@ const ModifiedApproval = () => {
                                     <TableRow key={key} className={rowBg}>
                                       <TableCell className="py-1.5 text-xs font-mono text-muted-foreground">{p.param_code}</TableCell>
                                       <TableCell className="py-1.5 text-sm font-medium">
-                                        {p.parameter_name}
-                                        {isCalc && <Calculator className="inline h-3 w-3 ml-1 text-primary" />}
+                                        <div className="flex items-center gap-1 flex-wrap">
+                                          <span>{p.parameter_name}</span>
+                                          {isCalc && <Calculator className="inline h-3 w-3 ml-1 text-primary" />}
+                                          <StickyNote
+                                            className={`inline h-3 w-3 cursor-pointer shrink-0 ${(editedNotes[key] !== undefined ? editedNotes[key] : p.note) ? 'text-amber-600' : 'text-muted-foreground hover:text-primary'}`}
+                                            onClick={(e) => { e.stopPropagation(); if (activeNoteKey === key) { setActiveNoteKey(null); } else { setActiveNoteKey(key); const currentNote = editedNotes[key] !== undefined ? editedNotes[key] : (p.note || ""); if (!currentNote) setEditedNotes(prev => ({ ...prev, [key]: "Kindly correlate clinically" })); } }}
+                                          />
+                                        </div>
+                                        {activeNoteKey === key && (
+                                          <div className="flex items-center gap-1 mt-1">
+                                            <Input value={editedNotes[key] ?? p.note ?? ""} onChange={e => setEditedNotes(prev => ({ ...prev, [key]: e.target.value }))} className="h-6 text-xs w-full" placeholder="Kindly correlate clinically" autoFocus onClick={e => e.stopPropagation()} />
+                                            <Trash2 className="h-3.5 w-3.5 text-destructive cursor-pointer shrink-0" onClick={(e) => { e.stopPropagation(); setEditedNotes(prev => ({ ...prev, [key]: "" })); setActiveNoteKey(null); }} />
+                                          </div>
+                                        )}
+                                        {(editedNotes[key] ?? p.note) && activeNoteKey !== key && (
+                                          <div className="flex items-center gap-1 mt-0.5">
+                                            <div className="text-xs font-bold text-amber-700 cursor-pointer" onClick={(e) => { e.stopPropagation(); setActiveNoteKey(key); }}>📝 {editedNotes[key] ?? p.note}</div>
+                                            <Trash2 className="h-3 w-3 text-destructive/60 hover:text-destructive cursor-pointer shrink-0" onClick={(e) => { e.stopPropagation(); setEditedNotes(prev => ({ ...prev, [key]: "" })); }} />
+                                          </div>
+                                        )}
                                       </TableCell>
                                       <TableCell className="py-1.5">
                                         {isCalc ? (
