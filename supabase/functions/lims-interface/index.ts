@@ -181,7 +181,7 @@ Deno.serve(async (req) => {
               const { error: updErr } = await supabase
                 .from("patient_results")
                 .update({
-                  result_value: convertedValue,
+                  result_value: applyInterfaceUnitSuffix(convertedValue, sr.unit, param),
                   flag,
                   unit: sr.unit || param.unit || "",
                   reference_range: referenceRange,
@@ -202,7 +202,7 @@ Deno.serve(async (req) => {
                 parameter_id: param.id,
                 param_code: param.param_code,
                 parameter_name: param.parameter_name,
-                result_value: convertedValue,
+                result_value: applyInterfaceUnitSuffix(convertedValue, sr.unit, param),
                 unit: sr.unit || param.unit || "",
                 reference_range: referenceRange,
                 normal_range_low: param.normal_range_low,
@@ -617,7 +617,7 @@ Deno.serve(async (req) => {
               const { error: updErr } = await supabase
                 .from("patient_results")
                 .update({
-                  result_value: convertedValue,
+                  result_value: applyInterfaceUnitSuffix(convertedValue, mr.unit, param),
                   flag,
                   unit: mr.unit || param.unit || "",
                   reference_range: referenceRange,
@@ -638,7 +638,7 @@ Deno.serve(async (req) => {
                 parameter_id: param.id,
                 param_code: param.param_code,
                 parameter_name: param.parameter_name,
-                result_value: convertedValue,
+                result_value: applyInterfaceUnitSuffix(convertedValue, mr.unit, param),
                 unit: mr.unit || param.unit || "",
                 reference_range: referenceRange,
                 normal_range_low: param.normal_range_low,
