@@ -56,6 +56,7 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
 
   const [form, setForm] = useState({
     parameter_name: "",
+    parameter_description: "",
     unit: "",
     store_for_analytics: false,
     use_global_normal_range: false,
@@ -173,6 +174,7 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
     try {
       const payload: any = {
         parameter_name: form.parameter_name,
+        parameter_description: form.parameter_description?.trim() || null,
         unit: form.unit || null,
         store_for_analytics: form.store_for_analytics,
         use_global_normal_range: form.use_global_normal_range,
@@ -234,6 +236,7 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
     setEditId(p.id);
     setForm({
       parameter_name: p.parameter_name,
+      parameter_description: p.parameter_description || "",
       unit: p.unit || "",
       store_for_analytics: p.store_for_analytics || false,
       use_global_normal_range: p.use_global_normal_range || false,
@@ -306,6 +309,7 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
     const rows = params.map((p) => ({
       "Param Code": p.param_code || "",
       "Parameter Name": p.parameter_name || "",
+      "Description": p.parameter_description || "",
       "Unit": p.unit || "",
       "Store for Analytics": p.store_for_analytics ? "Yes" : "No",
       "Global Normal Range": p.use_global_normal_range ? "Yes" : "No",
@@ -323,6 +327,7 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
       if (!rows.length) { toast({ title: "Empty file", variant: "destructive" }); return; }
       const inserts = rows.map((r: any) => ({
         parameter_name: r["Parameter Name"] || "",
+        parameter_description: r["Description"] || null,
         unit: r["Unit"] || null,
         store_for_analytics: (r["Store for Analytics"] || "").toString().toLowerCase() === "yes",
         use_global_normal_range: (r["Global Normal Range"] || "").toString().toLowerCase() === "yes",
@@ -343,7 +348,7 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
   const openNew = () => {
     setEditId(null);
     setForm({
-      parameter_name: "", unit: "", store_for_analytics: false,
+      parameter_name: "", parameter_description: "", unit: "", store_for_analytics: false,
       use_global_normal_range: false, same_for_gender: true, same_for_all_ages: true,
       normal_range_text: "", machine_name: "", machine_id: "",
       send_for_interface: true, is_calculated: false, calculation_formula: [],
