@@ -849,6 +849,7 @@ const ResultsEntry = () => {
           is_from_interface: p.isFromInterface,
           entered_by: getCurrentUserName(),
           note: editedNotesRef.current[key] !== undefined ? (editedNotesRef.current[key] || null) : (p.note || null),
+          test_note: editedTestNotesRef.current[`${reg.id}||${testId}`] !== undefined ? (editedTestNotesRef.current[`${reg.id}||${testId}`] || null) : (loadedTestNotes[`${reg.id}||${testId}`] || null),
         });
       }
 
