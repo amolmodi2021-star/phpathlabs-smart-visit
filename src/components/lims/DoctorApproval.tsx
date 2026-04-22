@@ -304,7 +304,7 @@ const DoctorApproval = () => {
             sendForInterface: p.send_for_interface || false, status: existing?.status || "pending", testId: t.test_id,
             testName: t.test_name || testInfo.test_name || "", departmentId: testInfo.department_id || "",
             machineName: testInfo.instrument_name || "", displayOrder: tp.display_order || 0,
-            rangeType: resolved.rangeType, descriptiveOptions: resolved.descriptiveOptions, expectedValue: resolved.expectedValue,
+            rangeType: resolved.rangeType, descriptiveOptions: resolved.descriptiveOptions, expectedValue: resolved.expectedValue, normalRangeText: resolved.text || "",
             isOutsourced: !!isParamOutsourced, outsourceLabName: isParamOutsourced ? (snipDetail?.labName || null) : null,
             outsourceStatus: isParamOutsourced ? (snipDetail?.status || "pending") : "",
             isSnipMode: isParamOutsourced && snipDetail?.resultMode === "snip",

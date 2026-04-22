@@ -645,6 +645,7 @@ const ResultsEntry = () => {
             rangeType: resolved.rangeType,
             descriptiveOptions: resolved.descriptiveOptions,
             expectedValue: resolved.expectedValue,
+            normalRangeText: resolved.text || "",
             isOutsourced: !!isParamOutsourced,
             outsourceLabName: isParamOutsourced ? (snipDetail?.labName || null) : null,
             outsourceStatus: isParamOutsourced ? (snipDetail?.status || "pending") : "",
