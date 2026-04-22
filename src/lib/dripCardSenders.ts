@@ -361,6 +361,10 @@ export async function generateAbnormalCardForDripEx(
     // Downscaled JPEG (max 800px width, q=0.72) — ~55% smaller than full PNG, slashes WhatsApp egress.
     // Bounded retry around toBlob + upload absorbs transient storage errors and
     // birthday-paradox filename collisions under high concurrency.
+    // Downscaled JPEG (max 800px width, q=0.72) — ~55% smaller than full PNG, slashes WhatsApp egress.
+    // Uploaded to Cloudinary instead of Lovable Cloud Storage so card fetches by
+    // WhatsApp don't bill against our egress budget. Bounded retry absorbs
+    // transient failures.
     const blobFn = async () => {
       try {
         return await exportCanvasAsCompressedJpeg(canvas);
@@ -368,9 +372,8 @@ export async function generateAbnormalCardForDripEx(
         throw new Error("toblob_null");
       }
     };
-    const { path } = await uploadAbnormalWithRetry(blobFn, freshAbnormalFileName());
-    const { data: urlData } = supabase.storage.from("loyalty-cards").getPublicUrl(path);
-    return { url: urlData.publicUrl };
+    const url = await uploadJpegToCloudinaryWithRetry(blobFn);
+    return { url };
   } catch (err) {
     const reason = (err as { reason?: AbnormalCardFailureReason })?.reason || "upload_failed";
     console.error(`Drip abnormal card generation failed (${reason}):`, err);
