@@ -493,6 +493,17 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
               <div><Label>Unit</Label><MasterLookupSelect category="unit" value={form.unit} onChange={(v) => setForm({ ...form, unit: v })} placeholder="Select unit" /></div>
             </div>
 
+            <div>
+              <Label>Description (shown below parameter name on report)</Label>
+              <Textarea
+                value={form.parameter_description}
+                onChange={(e) => setForm({ ...form, parameter_description: e.target.value })}
+                placeholder="e.g. Used to assess cardiovascular risk."
+                rows={2}
+              />
+              <p className="text-xs text-muted-foreground mt-1">Keep it short — one short line.</p>
+            </div>
+
             <div className="flex items-center gap-2">
               <Checkbox checked={form.store_for_analytics} onCheckedChange={(c) => setForm({ ...form, store_for_analytics: !!c })} />
               <Label>Store for Analytics (include in historical trends)</Label>
