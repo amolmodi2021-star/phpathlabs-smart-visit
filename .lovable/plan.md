@@ -1,80 +1,52 @@
 
 
-# Preflight RPC rollout — mobile filtering logic preserved exactly
+# Fix the spinning "Run RPC" button
 
-## One-line summary
+## Why it hangs
 
-Port the existing JS preflight to a Postgres RPC (byte-for-byte identical filter logic), ship behind a shadow-comparison toggle so you can verify both produce the same mobile lists, then flip the cutover flag.
+The current `get_drip_pending_summary` RPC uses a `CROSS JOIN` between all enabled filters (2) and all CRM contacts (35,280), producing 70,560 eligibility rows, then does a `UNION` + `GROUP BY` on top. On Lovable Cloud's Postgres tier this exceeds memory and the **database connection is killed mid-query** — the browser's fetch never returns, so the button keeps spinning. (Verified by running `EXPLAIN ANALYZE` against the function — it crashed the DB session with "DbHandler exited".)
 
-## Mobile filtering — guaranteed unchanged
+This is the same timeout problem from the first attempt, just hidden inside the shadow panel rather than the main flow. Good news: it never affected real sends because the JS path is still the source of truth.
 
-The RPC is a literal port of `runDrip`'s preflight chain. Same rules, same order, same skip reasons:
+## The fix — rewrite the RPC to filter early
 
-1. Source pull (`crm_contacts` for ABC, `crm_abnormal_tests` for Abnormal History, filter `mobile_data` for Promotion/Marketing-template)
-2. Filter `criteria` JSON evaluated identically (record_tag, last_visit window, gender, age, area, doctor, lab)
-3. Mobile validity (10-digit, non-zero)
-4. Blacklist exclusion when `exclude_blacklist=true`
-5. Per-filter sent dedupe within `cycle_lock_days`
-6. Cross-filter mobile-cycle dedupe per `message_type` within `mobile_cycle_days`
-7. `min_gap_hours` recent-send guard via `message_send_log`
-8. Per-type data validation (ABC needs UMR+last_visit+name, Abnormal needs matching test row, Promotion needs resolvable variables)
-9. Same sort (oldest `last_sent_date` first → `created_at`), same `daily_send_limit` cap
+Replace the CTE chain with a per-message-type approach that filters *before* any join expansion:
 
-## Phase 1 — Build RPC + shadow comparison (no behavior change)
+1. **ABC eligibility**: select only `crm_contacts` rows where `umr_number IS NOT NULL AND btrim(umr_number) <> ''`. No cross join — direct WHERE.
+2. **Abnormal eligibility**: `INNER JOIN crm_abnormal_tests` on `contact_primary_key` (uses existing index, returns ~few thousand rows max).
+3. For each set, anti-join against the pre-filtered "sent" set:
+   - `drip_campaign_log` rows for that filter where `status='sent'` and `cycle_number = mob_cycle.cycle` — uses the existing `idx_drip_log_sent_filter_mobile` index.
+   - For ABC, also OR-exclude contacts where `last_sent_type = 'ABC'` (matches current JS `sentPks` union).
+4. **Priority lock**: instead of GROUP BY + ROW_NUMBER over the whole cartesian, compute per-mobile owner using `DISTINCT ON (mob10) … ORDER BY priority` over the much smaller pending set.
+5. Aggregate the two small result sets into the JSONB shape the panel already expects.
 
-- New migration: function `get_drip_pending(filter_ids uuid[])` returning `{filter_id, eligible_count, sent_count, pending_count, pending_mobiles[]}`.
-- New indexes: `crm_contacts(last_sent_date DESC NULLS LAST) WHERE last_sent_date IS NOT NULL` and `drip_campaign_log(filter_id, mobile_number, status, created_at)`.
-- Hidden `?debug=preflight` query param in `AutomatedMarketing.tsx` runs **both** JS and RPC paths, displays `filter_name | js_count | rpc_count | only_in_js[] | only_in_rpc[]`.
-- JS path remains the source of truth — RPC results are display-only until you confirm.
+Expected runtime: under 500 ms for both filters combined (vs. timeout currently). Bytes returned: still ~50 KB max since we only emit pending records.
 
-**You verify** by appending `?debug=preflight`, clicking Refresh Pending across all 5 active filters, screenshotting matching counts and empty diff arrays.
+## Also add: client-side timeout + clear error
 
-## Phase 2 — Flip cutover (one constant)
+Even after the rewrite, wrap the RPC call in `AutomatedMarketing.tsx`'s `rpcPending` query with:
+- A 30-second `AbortController` timeout.
+- On error, render a red error line in the shadow panel ("RPC failed: <message>") instead of leaving the spinner running.
 
-- Add `USE_RPC_PREFLIGHT = true` constant in `AutomatedMarketing.tsx`.
-- `pendingCounts` query → single `supabase.rpc('get_drip_pending', ...)` call (~1 KB).
-- `runDrip` preflight → use RPC's `pending_mobiles[]`, then fetch only those contact rows via `.in('primary_key', pendingPks)` (~50 KB instead of ~12 MB).
-- Old JS code stays in place behind `if (!USE_RPC_PREFLIGHT)` for instant revert.
-
-## Phase 3 — Unrelated count optimizations (no filter logic touched)
-
-Switch `count: "exact"` → `count: "estimated"` on dashboard label queries:
-- `src/components/crm/CRMSentHistory.tsx`
-- `src/pages/AbnormalHistory.tsx`
-- `src/pages/EstimateDashboard.tsx`
-- `src/components/marketing/MarketingHistory.tsx`
-- `src/components/lims/ModifiedApproval.tsx`
-- `src/components/lims/CompletedHomeVisits.tsx`
-- `src/components/PaymentDetailsDialog.tsx` — drop count entirely
-
-Status-filtered counts in Dispatch/RegisteredPatients/ResultsEntry/ResultVerification stay `exact` (estimates wrong for filtered subsets).
-
-## What stays untouched
-
-- `evaluateFilterCriteria` JS — kept as reference implementation.
-- All filter UI, criteria fields, cycle/blacklist/gap settings.
-- Trial mode, Pause/Stop, worker pool, retry tab.
-- Send pipeline (whatsapp-proxy, Cloudinary, message_send_log).
+This guarantees the button can never spin indefinitely again, regardless of DB state.
 
 ## Files changing
 
-| File | Phase | Change |
-|---|---|---|
-| New migration | 1 | `get_drip_pending(uuid[])` RPC + 2 indexes |
-| `src/components/marketing/AutomatedMarketing.tsx` | 1+2 | Shadow panel, then RPC cutover behind `USE_RPC_PREFLIGHT` |
-| 6× dashboard files | 3 | `count: "estimated"` |
-| `src/components/PaymentDetailsDialog.tsx` | 3 | Remove count query |
+| File | Change |
+|---|---|
+| New migration | `DROP` and recreate `get_drip_pending_summary` with the early-filter rewrite |
+| `src/components/marketing/AutomatedMarketing.tsx` | Add 30s AbortController + visible error in the shadow panel `rpcPending` query |
 
-## Verification
+## What stays untouched
 
-1. **Shadow mode**: `?debug=preflight` → all 5 filters show identical JS vs RPC counts and empty diffs. You screenshot and confirm.
-2. **Cutover**: First post-flip campaign — DevTools shows ~1 KB RPC + ~50 KB targeted contact pull (was ~25 MB). Send count and skip reasons match exactly.
-3. **Rollback**: Flip `USE_RPC_PREFLIGHT = false` if any drift appears in production.
+- JS preflight is still source of truth — zero risk to real sends.
+- Mobile filtering logic — the rewrite is still a literal port of the same JS rules, just expressed in a planner-friendly shape.
+- Indexes, schema, `runDrip`, all UI outside the debug panel.
 
-## Expected outcome
+## Verification you'll perform
 
-- Mobile filtering: **identical** — verified before cutover.
-- Send/Refresh click: ~25 MB → ~50 KB.
-- Network share of Cloud usage: 81% → ~40–50%.
-- Heavy-send daily cost: further ~50–60% drop.
+1. Reload `/marketing?debug=preflight`.
+2. Click **Run RPC** → result appears within ~1 second showing `JS: X / RPC: X / ✓ MATCH` for both ABC and Abnormal rows, with empty diff arrays.
+3. If it ever fails, you'll see a clear red error message instead of an endless spinner.
+4. Once you confirm matches across a few clicks, give the green light and I'll do the Phase 2 cutover behind `USE_RPC_PREFLIGHT`.
 
