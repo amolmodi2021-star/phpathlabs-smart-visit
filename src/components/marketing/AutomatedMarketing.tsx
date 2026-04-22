@@ -18,7 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Pencil, Trash2, Eye, Send, Settings, MessageCircle, Download, AlertTriangle, FlaskConical, CreditCard, Activity } from "lucide-react";
+import { Plus, Pencil, Trash2, Eye, Send, Settings, MessageCircle, Download, AlertTriangle, FlaskConical, CreditCard, Activity, RefreshCw } from "lucide-react";
 import { exportToExcel } from "@/lib/excel";
 import { sortAbnormalTestsByDateDesc } from "@/lib/abnormalTests";
 import { toast } from "sonner";
@@ -1682,45 +1682,60 @@ const AutomatedMarketing = () => {
       </Card>
 
       {/* Pending Counters */}
-      <div className="grid grid-cols-2 gap-4">
-        <Card>
-          <CardContent className="py-4 flex items-center gap-3">
-            <CreditCard className="h-7 w-7 text-primary" />
-            <div className="flex-1">
-              <p className="text-xs text-muted-foreground">Pending ABC Cards</p>
-              {pendingLoading ? (
-                <Skeleton className="h-7 w-16 mt-1" />
-              ) : (
-                <p className="text-2xl font-bold">{pendingCounts?.pendingAbc ?? 0}</p>
-              )}
-            </div>
-            <Button variant="outline" size="sm" disabled={pendingLoading || !(pendingCounts?.pendingAbcRecords?.length)} onClick={() => {
-              exportToExcel(pendingCounts!.pendingAbcRecords, `Pending_ABC_Cards_${new Date().toISOString().slice(0,10)}`);
-              toast.success(`Exported ${pendingCounts!.pendingAbcRecords.length} records`);
-            }}>
-              <Download className="h-4 w-4 mr-1" /> Export
-            </Button>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-4 flex items-center gap-3">
-            <Activity className="h-7 w-7 text-primary" />
-            <div className="flex-1">
-              <p className="text-xs text-muted-foreground">Pending Abnormal History</p>
-              {pendingLoading ? (
-                <Skeleton className="h-7 w-16 mt-1" />
-              ) : (
-                <p className="text-2xl font-bold">{pendingCounts?.pendingAbnormal ?? 0}</p>
-              )}
-            </div>
-            <Button variant="outline" size="sm" disabled={pendingLoading || !(pendingCounts?.pendingAbnormalRecords?.length)} onClick={() => {
-              exportToExcel(pendingCounts!.pendingAbnormalRecords, `Pending_Abnormal_History_${new Date().toISOString().slice(0,10)}`);
-              toast.success(`Exported ${pendingCounts!.pendingAbnormalRecords.length} records`);
-            }}>
-              <Download className="h-4 w-4 mr-1" /> Export
-            </Button>
-          </CardContent>
-        </Card>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">Pending counters reflect snapshot at last refresh — click Refresh to recompute.</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => refetchPending()}
+            disabled={pendingFetching || filters.length === 0}
+            title="Recompute pending ABC + Abnormal counts"
+          >
+            <RefreshCw className={`h-4 w-4 mr-1 ${pendingFetching ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <Card>
+            <CardContent className="py-4 flex items-center gap-3">
+              <CreditCard className="h-7 w-7 text-primary" />
+              <div className="flex-1">
+                <p className="text-xs text-muted-foreground">Pending ABC Cards</p>
+                {pendingLoading ? (
+                  <Skeleton className="h-7 w-16 mt-1" />
+                ) : (
+                  <p className="text-2xl font-bold">{pendingCounts?.pendingAbc ?? 0}</p>
+                )}
+              </div>
+              <Button variant="outline" size="sm" disabled={pendingLoading || !(pendingCounts?.pendingAbcRecords?.length)} onClick={() => {
+                exportToExcel(pendingCounts!.pendingAbcRecords, `Pending_ABC_Cards_${new Date().toISOString().slice(0,10)}`);
+                toast.success(`Exported ${pendingCounts!.pendingAbcRecords.length} records`);
+              }}>
+                <Download className="h-4 w-4 mr-1" /> Export
+              </Button>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="py-4 flex items-center gap-3">
+              <Activity className="h-7 w-7 text-primary" />
+              <div className="flex-1">
+                <p className="text-xs text-muted-foreground">Pending Abnormal History</p>
+                {pendingLoading ? (
+                  <Skeleton className="h-7 w-16 mt-1" />
+                ) : (
+                  <p className="text-2xl font-bold">{pendingCounts?.pendingAbnormal ?? 0}</p>
+                )}
+              </div>
+              <Button variant="outline" size="sm" disabled={pendingLoading || !(pendingCounts?.pendingAbnormalRecords?.length)} onClick={() => {
+                exportToExcel(pendingCounts!.pendingAbnormalRecords, `Pending_Abnormal_History_${new Date().toISOString().slice(0,10)}`);
+                toast.success(`Exported ${pendingCounts!.pendingAbnormalRecords.length} records`);
+              }}>
+                <Download className="h-4 w-4 mr-1" /> Export
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
 
