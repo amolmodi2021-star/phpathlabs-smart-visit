@@ -445,45 +445,77 @@ const AutomatedMarketing = () => {
     },
   });
 
-  // Shadow RPC — runs only when ?debug=preflight is in the URL. Display-only.
-  const { data: rpcPending, isFetching: rpcFetching, refetch: refetchRpc, error: rpcError } = useQuery({
-    queryKey: ["drip-pending-rpc", filters.map(f => f.id).join(","), excludeBlacklist, minInterval, maxPerDay],
-    enabled: debugPreflight && filters.length > 0,
-    staleTime: Infinity,
-    retry: false,
-    refetchOnMount: false,
-    refetchOnWindowFocus: false,
-    queryFn: async () => {
-      const enabledIds = filters.filter(f => f.enabled).sort((a, b) => a.priority - b.priority).map(f => f.id);
-      if (enabledIds.length === 0) return { pending_abc: 0, pending_abnormal: 0, pending_abc_records: [], pending_abnormal_records: [] };
-      const t0 = performance.now();
-      const controller = new AbortController();
-      const timeoutMs = 30000;
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
-      try {
-        const { data, error } = await supabase
-          .rpc("get_drip_pending_summary", {
-            p_filter_ids: enabledIds,
-            p_exclude_blacklist: excludeBlacklist,
-            p_min_interval_days: minInterval,
-            p_max_per_day: maxPerDay,
-          })
-          .abortSignal(controller.signal);
-        const elapsed = Math.round(performance.now() - t0);
-        if (error) throw new Error(error.message || "RPC failed");
-        const row = Array.isArray(data) && data[0] ? data[0] : { pending_abc: 0, pending_abnormal: 0, pending_abc_records: [], pending_abnormal_records: [] };
-        return { ...row, _elapsed_ms: elapsed };
-      } catch (e: any) {
-        const elapsed = Math.round(performance.now() - t0);
-        const msg = controller.signal.aborted
-          ? `Timed out after ${Math.round(elapsed / 1000)}s (limit ${timeoutMs / 1000}s)`
-          : (e?.message || String(e));
-        throw new Error(msg);
-      } finally {
-        clearTimeout(timer);
-      }
-    },
-  });
+  // Shadow RPC — manual button-driven (no React Query gating).
+  // The previous useQuery version silently no-op'd when `enabled: false`,
+  // which caused the "Run RPC" button to do nothing if filters hadn't loaded yet.
+  const [rpcPending, setRpcPending] = useState<any>(null);
+  const [rpcFetching, setRpcFetching] = useState(false);
+  const [rpcError, setRpcError] = useState<string | null>(null);
+  const [rpcElapsedMs, setRpcElapsedMs] = useState<number | null>(null);
+  const [rpcLastClickAt, setRpcLastClickAt] = useState<string | null>(null);
+
+  const runShadowRpc = async () => {
+    const clickedAt = new Date().toLocaleTimeString();
+    setRpcLastClickAt(clickedAt);
+    console.log("[ShadowRPC] click registered at", clickedAt, "filters:", filters.length);
+
+    const enabledIds = filters
+      .filter((f) => f.enabled)
+      .sort((a, b) => a.priority - b.priority)
+      .map((f) => f.id);
+
+    if (enabledIds.length === 0) {
+      setRpcError("0 filters enabled — nothing to compare");
+      setRpcPending(null);
+      setRpcElapsedMs(null);
+      return;
+    }
+
+    setRpcFetching(true);
+    setRpcError(null);
+    setRpcPending(null);
+    setRpcElapsedMs(null);
+
+    const t0 = performance.now();
+    const controller = new AbortController();
+    const timeoutMs = 30000;
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      console.log("[ShadowRPC] calling get_drip_pending_summary", {
+        enabledIds,
+        excludeBlacklist,
+        minInterval,
+        maxPerDay,
+      });
+      const { data, error } = await supabase
+        .rpc("get_drip_pending_summary", {
+          p_filter_ids: enabledIds,
+          p_exclude_blacklist: excludeBlacklist,
+          p_min_interval_days: minInterval,
+          p_max_per_day: maxPerDay,
+        })
+        .abortSignal(controller.signal);
+      const elapsed = Math.round(performance.now() - t0);
+      if (error) throw new Error(error.message || "RPC failed");
+      const row = Array.isArray(data) && data[0]
+        ? data[0]
+        : { pending_abc: 0, pending_abnormal: 0, pending_abc_records: [], pending_abnormal_records: [] };
+      console.log("[ShadowRPC] success in", elapsed, "ms", row);
+      setRpcPending(row);
+      setRpcElapsedMs(elapsed);
+    } catch (e: any) {
+      const elapsed = Math.round(performance.now() - t0);
+      const msg = controller.signal.aborted
+        ? `Timed out after ${Math.round(elapsed / 1000)}s (limit ${timeoutMs / 1000}s)`
+        : (e?.message || String(e));
+      console.error("[ShadowRPC] failed after", elapsed, "ms:", msg);
+      setRpcError(msg);
+      setRpcElapsedMs(elapsed);
+    } finally {
+      clearTimeout(timer);
+      setRpcFetching(false);
+    }
+  };
 
   const openNewFilter = () => {
     setEditingFilter(null);
