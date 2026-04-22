@@ -564,6 +564,7 @@ const DoctorApproval = () => {
           entered_at: p.enteredAt || new Date().toISOString(), entered_by: p.enteredBy || null,
           verified_at: null, verified_by: null,
           note: editedNotes[k] !== undefined ? (editedNotes[k] || null) : (p.note || null),
+          test_note: editedTestNotes[`${regId}||${testId}`] !== undefined ? (editedTestNotes[`${regId}||${testId}`] || null) : (loadedTestNotes[`${regId}||${testId}`] || null),
         });
       }
 
@@ -596,6 +597,7 @@ const DoctorApproval = () => {
       setEditedUnits((prev) => stripKeys(prev));
       setEditedRefRanges((prev) => stripKeys(prev));
       setEditedNotes((prev) => stripKeys(prev));
+      setEditedTestNotes((prev) => { const next = { ...prev }; delete next[`${regId}||${testId}`]; return next; });
 
       toast.success(`${testName} sent back for verification`);
       invalidateAll();
@@ -766,7 +768,20 @@ const DoctorApproval = () => {
               return (
                 <div key={tg.testId} className="ml-1">
                   <div className="flex items-center justify-between px-1 py-0.5 bg-muted/40 rounded-t">
-                    <span className="text-base font-bold text-foreground">{tg.testName}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-base font-bold text-foreground">{tg.testName}</span>
+                      <StickyNote
+                        className={`inline h-3.5 w-3.5 cursor-pointer shrink-0 ${getTestNote(reg.id, tg.testId) ? 'text-amber-600' : 'text-muted-foreground hover:text-primary'}`}
+                        onClick={() => {
+                          if (activeTestNoteKey === testKey) { setActiveTestNoteKey(null); }
+                          else {
+                            setActiveTestNoteKey(testKey);
+                            const cur = getTestNote(reg.id, tg.testId);
+                            if (!cur) setEditedTestNotes(prev => ({ ...prev, [testKey]: "Kindly correlate clinically" }));
+                          }
+                        }}
+                      />
+                    </div>
                     <div className="flex items-center gap-1">
                       <Button size="sm" variant="ghost" className="h-6 text-[11px] gap-1 text-orange-600" disabled={isSendingBack} onClick={() => sendBackForVerification(reg.id, tg.testId, tg.testName)}>
                         {isSendingBack ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />} Send Back
@@ -779,6 +794,18 @@ const DoctorApproval = () => {
                       </Button>
                     </div>
                   </div>
+                  {activeTestNoteKey === testKey && (
+                    <div className="flex items-center gap-1 mt-1 px-1">
+                      <Input value={getTestNote(reg.id, tg.testId)} onChange={e => setEditedTestNotes(prev => ({ ...prev, [testKey]: e.target.value }))} className="h-6 text-xs w-full" placeholder="Kindly correlate clinically" autoFocus />
+                      <Trash2 className="h-3.5 w-3.5 text-destructive cursor-pointer shrink-0" onClick={() => { setEditedTestNotes(prev => ({ ...prev, [testKey]: "" })); setActiveTestNoteKey(null); }} />
+                    </div>
+                  )}
+                  {getTestNote(reg.id, tg.testId) && activeTestNoteKey !== testKey && (
+                    <div className="flex items-center gap-1 mt-0.5 px-1">
+                      <div className="text-xs font-bold text-amber-700 cursor-pointer" onClick={() => setActiveTestNoteKey(testKey)}>📝 {getTestNote(reg.id, tg.testId)}</div>
+                      <Trash2 className="h-3 w-3 text-destructive/60 hover:text-destructive cursor-pointer shrink-0" onClick={() => setEditedTestNotes(prev => ({ ...prev, [testKey]: "" }))} />
+                    </div>
+                  )}
                   <Table>
                     <TableHeader><TableRow>
                       <TableHead className="py-1 text-xs w-[80px]">Code</TableHead><TableHead className="py-1 text-xs">Parameter</TableHead>
