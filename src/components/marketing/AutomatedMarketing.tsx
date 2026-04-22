@@ -106,6 +106,17 @@ const AutomatedMarketing = () => {
   const [sendPhase, setSendPhase] = useState(_modulePhase);
   const abortRef = useRef(_moduleAbort);
 
+  // Realtime sync — DISABLED while a campaign is sending. Each WhatsApp send
+  // writes one row to message_send_log; broadcasting that to every open tab
+  // during a 2K-card run was the single biggest realtime cost driver. Counters
+  // get a fresh pull when the run finishes (qc.invalidateQueries in the loop).
+  useRealtimeSync(
+    "message_send_log",
+    ["drip-pending-counts", "wa-usage-24h"],
+    400,
+    { enabled: !sending },
+  );
+
   // Sync module-level vars on mount
   useEffect(() => {
     if (_moduleSending) {
@@ -1666,7 +1677,7 @@ const AutomatedMarketing = () => {
               </Button>
             </div>
           </div>
-          <p className="text-xs text-muted-foreground mt-2">Counts all WhatsApp messages sent from Marketing, CRM, Loyalty Cards & Drip campaigns in last 24 hours. Auto-refreshes every minute.</p>
+          <p className="text-xs text-muted-foreground mt-2">Counts all WhatsApp messages sent from Marketing, CRM, Loyalty Cards & Drip campaigns in last 24 hours. Click Refresh to update.</p>
         </CardContent>
       </Card>
 
