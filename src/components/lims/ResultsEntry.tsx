@@ -139,6 +139,7 @@ const ResultsEntry = () => {
   const [highlightBlanksForRegs, setHighlightBlanksForRegs] = useState<Set<string>>(new Set());
   const autoSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   useEffect(() => { editedNotesRef.current = editedNotes; }, [editedNotes]);
+  useEffect(() => { editedTestNotesRef.current = editedTestNotes; }, [editedTestNotes]);
   const [rePage, setRePage] = useState(0);
   const [refreshingRegId, setRefreshingRegId] = useState<string | null>(null);
 
