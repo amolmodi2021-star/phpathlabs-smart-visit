@@ -153,13 +153,7 @@ Deno.serve(async (req) => {
             if (!testId) continue;
 
             const convertedValue = applyUnitConversion(sr.result_value, param);
-            const numericVal = parseFloat(convertedValue);
-            let flag = sr.flag || "";
-            if (!isNaN(numericVal) && param.normal_range_low != null && param.normal_range_high != null) {
-              if (numericVal < Number(param.normal_range_low)) flag = "L";
-              else if (numericVal > Number(param.normal_range_high)) flag = "H";
-              else flag = "N";
-            }
+            const flag = computeFlagFromInterface(convertedValue, param);
 
             const referenceRange = param.normal_range_text
               || (param.normal_range_low != null && param.normal_range_high != null
