@@ -71,7 +71,6 @@ const SEQUENCE_OPTIONS = [
 
 const AutomatedMarketing = () => {
   const qc = useQueryClient();
-  useRealtimeSync("message_send_log", ["drip-pending-counts", "wa-usage-24h"]);
 
   // Global settings
   const [maxPerDay, setMaxPerDay] = useState(200);
@@ -195,10 +194,11 @@ const AutomatedMarketing = () => {
     setCountLoading(false);
   }, []);
 
+  // Initial fetch only — no auto-refresh. The user clicks Refresh on the
+  // counter card when they want a fresh number. Realtime broadcast invalidation
+  // is also off (see useRealtimeSync below) to avoid fan-out during campaigns.
   useEffect(() => {
     fetchSentCount();
-    const interval = setInterval(fetchSentCount, 60000); // refresh every minute
-    return () => clearInterval(interval);
   }, [fetchSentCount]);
 
   const saveGlobalSetting = async (key: string, value: string) => {
@@ -248,25 +248,33 @@ const AutomatedMarketing = () => {
     },
   });
 
-  // Recent logs
-  const { data: recentLogs = [] } = useQuery({
+  // Recent logs — narrowed to the columns the UI actually uses, capped at 500
+  // rows (the diagnostic display only shows the most recent ~7 days grouped).
+  // Manual-refresh only via the Execution Log card's Refresh button.
+  const { data: recentLogs = [], isFetching: logsFetching, refetch: refetchLogs } = useQuery({
     queryKey: ["drip-campaign-logs"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("drip_campaign_log")
-        .select("*")
+        .select("id, status, message_type, mobile_number, contact_primary_key, filter_id, filter_name, cycle_number, skip_reason, created_at, patient_name")
         .order("created_at", { ascending: false })
-        .limit(10000);
+        .limit(500);
       if (error) throw error;
       return data || [];
     },
+    staleTime: Infinity,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   });
 
-  // Pending counters for ABC cards and Abnormal History
-  const { data: pendingCounts, isLoading: pendingLoading } = useQuery({
+  // Pending counters for ABC cards and Abnormal History — manual refresh only.
+  // Was auto-refetching every 2 min and pulling ~100K rows each time.
+  const { data: pendingCounts, isLoading: pendingLoading, isFetching: pendingFetching, refetch: refetchPending } = useQuery({
     queryKey: ["drip-pending-counts", filters.map(f => f.id).join(","), excludeBlacklist],
     enabled: filters.length > 0,
-    refetchInterval: 120000,
+    staleTime: Infinity,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
     queryFn: async () => {
       const enabledFilters = filters.filter(f => f.enabled).sort((a, b) => a.priority - b.priority);
       if (enabledFilters.length === 0) return { pendingAbc: 0, pendingAbnormal: 0 };
