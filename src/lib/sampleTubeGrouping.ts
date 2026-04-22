@@ -92,9 +92,10 @@ export const buildSampleTubeGroups = async (
     supabase.from("tests").select("id, test_name, sample_tube, tube_color, sample_type").in("id", leafIds),
     supabase
       .from("test_parameters")
-      .select("test_id, report_test_parameters!inner(custom_sample_suffix_enabled, custom_sample_suffix)")
+      .select("test_id, display_order, report_test_parameters!inner(custom_sample_suffix_enabled, custom_sample_suffix)")
       .in("test_id", leafIds)
-      .eq("report_test_parameters.custom_sample_suffix_enabled", true),
+      .eq("report_test_parameters.custom_sample_suffix_enabled", true)
+      .order("display_order"),
     supabase
       .from("test_sample_tubes")
       .select("test_id, tube_value, sample_type, tube_color, display_order")
