@@ -396,7 +396,7 @@ const DoctorApproval = () => {
       for (const p of testParams) {
         const k = `${reg.id}||${p.parameterId}`;
         const value = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
-        const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions);
+        const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText);
         const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
         const unit = p.isOutsourced && editedUnits[k] !== undefined ? editedUnits[k] : p.unit;
         const refRange = p.isOutsourced && editedRefRanges[k] !== undefined ? editedRefRanges[k] : p.referenceRange;
@@ -479,7 +479,7 @@ const DoctorApproval = () => {
         for (const p of testParams) {
           const k = `${reg.id}||${p.parameterId}`;
           const value = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
-          const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions);
+          const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText);
           const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
           const noteVal = editedNotes[k] !== undefined ? editedNotes[k] : p.note;
           const testNoteVal = editedTestNotes[`${reg.id}||${testId}`] !== undefined ? editedTestNotes[`${reg.id}||${testId}`] : (loadedTestNotes[`${reg.id}||${testId}`] || "");
@@ -553,7 +553,7 @@ const DoctorApproval = () => {
       for (const p of testParams) {
         const k = `${regId}||${p.parameterId}`;
         const value = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
-        const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions);
+        const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText);
         const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
         const unit = p.isOutsourced && editedUnits[k] !== undefined ? editedUnits[k] : p.unit;
         const refRange = p.isOutsourced && editedRefRanges[k] !== undefined ? editedRefRanges[k] : p.referenceRange;
@@ -636,7 +636,7 @@ const DoctorApproval = () => {
     const regId = entry.registration.id;
     const key = `${regId}||${p.parameterId}`;
     const currentValue = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
-    const autoFlag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions);
+    const autoFlag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText);
     const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : autoFlag;
     const rowBg = (flag === "H" || flag === "L" || flag === "A" || flag === "X") ? "bg-destructive/5" : "";
     return (
