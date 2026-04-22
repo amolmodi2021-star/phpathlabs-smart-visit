@@ -3629,6 +3629,12 @@ export type Database = {
         Args: { p_search?: string }
         Returns: number
       }
+      get_abnormal_pks: {
+        Args: never
+        Returns: {
+          contact_primary_key: string
+        }[]
+      }
       get_all_patient_registrations: {
         Args: { p_search?: string }
         Returns: {
@@ -3700,6 +3706,22 @@ export type Database = {
           updated_at: string
           visit_date: string
           visit_type: string
+        }[]
+      }
+      get_drip_contact_slice: {
+        Args: never
+        Returns: {
+          default_discount_pct: number
+          id: string
+          last_sent_date: string
+          last_sent_type: string
+          location: string
+          mobile_number: string
+          patient_name: string
+          primary_key: string
+          record_tag: string
+          umr_number: string
+          visit_date: string
         }[]
       }
       get_new_numbers_paginated: {

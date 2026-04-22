@@ -29,3 +29,6 @@ verify_jwt = false
 
 [functions.purge-bucket]
 verify_jwt = false
+
+[functions.export-crm-contacts]
+verify_jwt = false

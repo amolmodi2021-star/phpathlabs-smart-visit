@@ -280,7 +280,7 @@ const AutomatedMarketing = () => {
 
   // Pending counters for ABC cards and Abnormal History — manual refresh only.
   // Was auto-refetching every 2 min and pulling ~100K rows each time.
-  const { data: pendingCounts, isLoading: pendingLoading, isFetching: pendingFetching, refetch: refetchPending } = useQuery({
+  const { data: pendingCounts, isLoading: pendingLoading, isFetching: pendingFetching, refetch: refetchPending, dataUpdatedAt: pendingUpdatedAt } = useQuery({
     queryKey: ["drip-pending-counts", filters.map(f => f.id).join(","), excludeBlacklist],
     enabled: filters.length > 0,
     staleTime: Infinity,
@@ -304,15 +304,20 @@ const AutomatedMarketing = () => {
         return all;
       };
 
-      const [allContacts, abnormalPks, cyclesData, allLogs, blacklistData] = await Promise.all([
-        fetchAllPg(supabase.from("crm_contacts").select("primary_key,mobile_number,umr_number,patient_name,last_sent_type,last_sent_date")),
-        fetchAllPg(supabase.from("crm_abnormal_tests").select("contact_primary_key")),
+      // Slim RPCs cut payload by ~70%: drop heavy `crm_contacts` columns (remarks, created_by, etc.)
+      // and pre-deduplicate abnormal PKs server-side (~3K unique vs 54K rows).
+      const [contactSliceRes, abnormalRpcRes, cyclesData, allLogs, blacklistData] = await Promise.all([
+        supabase.rpc("get_drip_contact_slice"),
+        supabase.rpc("get_abnormal_pks"),
         fetchAllPg(supabase.from("drip_mobile_cycles").select("mobile_number,current_cycle")),
         fetchAllPg(supabase.from("drip_campaign_log").select("filter_id,mobile_number,contact_primary_key,cycle_number").eq("status", "sent")),
         excludeBlacklist
           ? supabase.from("crm_blacklist").select("mobile_number").then(r => r.data || [])
           : Promise.resolve([]),
       ]);
+
+      const allContacts = (contactSliceRes.data as any[]) || [];
+      const abnormalPks = (abnormalRpcRes.data as any[]) || [];
 
       const blacklistSet = new Set(blacklistData.map((b: any) => b.mobile_number));
       const abnormalPkSet = new Set(abnormalPks.map((a: any) => a.contact_primary_key));
@@ -539,17 +544,22 @@ const AutomatedMarketing = () => {
     const intervalDate = new Date();
     intervalDate.setDate(intervalDate.getDate() - minInterval);
 
-    // Run ALL queries in parallel for speed
-    const [allContacts, blacklistData, abnormalPks, cyclesData, allLogs, recentLogEntries] = await Promise.all([
-      fetchAll(supabase.from("crm_contacts").select("id,primary_key,mobile_number,patient_name,umr_number,location,last_sent_date,last_sent_type,record_tag,default_discount_pct,visit_date")),
+    // Run ALL queries in parallel for speed.
+    // Slim RPCs replace the two heavy reads against crm_contacts + crm_abnormal_tests
+    // (drops `remarks`, `created_by`, etc. and pre-deduplicates abnormal PKs server-side).
+    const [contactSliceRes, blacklistData, abnormalRpcRes, cyclesData, allLogs, recentLogEntries] = await Promise.all([
+      supabase.rpc("get_drip_contact_slice"),
       excludeBlacklist
         ? supabase.from("crm_blacklist").select("mobile_number").then(r => r.data || [])
         : Promise.resolve([]),
-      fetchAll(supabase.from("crm_abnormal_tests").select("contact_primary_key")),
+      supabase.rpc("get_abnormal_pks"),
       fetchAll(supabase.from("drip_mobile_cycles").select("mobile_number,current_cycle")),
       fetchAll(supabase.from("drip_campaign_log").select("filter_id,mobile_number,contact_primary_key,cycle_number").eq("status", "sent")),
       fetchAll(supabase.from("message_send_log").select("mobile_number,sent_at").gte("sent_at", intervalDate.toISOString())),
     ]);
+
+    const allContacts = (contactSliceRes.data as any[]) || [];
+    const abnormalPks = (abnormalRpcRes.data as any[]) || [];
 
     const blacklistSet = new Set(blacklistData.map((b: any) => b.mobile_number));
     const abnormalPkSet = new Set(abnormalPks.map((a: any) => a.contact_primary_key));
@@ -1688,9 +1698,20 @@ const AutomatedMarketing = () => {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => refetchPending()}
+            onClick={() => {
+              // Skip refetch if we already have a fresh result (<5 min old).
+              // Marketing engineers tend to click Refresh repeatedly; each click
+              // re-pulls ~6 MB. The 5-min guard cuts that without changing UX.
+              const ageMs = pendingUpdatedAt ? Date.now() - pendingUpdatedAt : Infinity;
+              if (pendingCounts && ageMs < 5 * 60 * 1000) {
+                const ageSec = Math.floor(ageMs / 1000);
+                toast.info(`Counts already fresh (${ageSec}s old). Wait 5 minutes for an automatic recompute.`);
+                return;
+              }
+              refetchPending();
+            }}
             disabled={pendingFetching || filters.length === 0}
-            title="Recompute pending ABC + Abnormal counts"
+            title="Recompute pending ABC + Abnormal counts (cached for 5 minutes)"
           >
             <RefreshCw className={`h-4 w-4 mr-1 ${pendingFetching ? "animate-spin" : ""}`} />
             Refresh
