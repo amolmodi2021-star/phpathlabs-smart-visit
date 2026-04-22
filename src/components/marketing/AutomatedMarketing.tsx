@@ -453,6 +453,8 @@ const AutomatedMarketing = () => {
   const [rpcError, setRpcError] = useState<string | null>(null);
   const [rpcElapsedMs, setRpcElapsedMs] = useState<number | null>(null);
   const [rpcLastClickAt, setRpcLastClickAt] = useState<string | null>(null);
+  const [jsPipeline, setJsPipeline] = useState<{ pendingAbc: number; pendingAbnormal: number; abcRecords: any[]; abnormalRecords: any[] } | null>(null);
+  const [jsElapsedMs, setJsElapsedMs] = useState<number | null>(null);
 
   const runShadowRpc = async () => {
     const clickedAt = new Date().toLocaleTimeString();
@@ -467,44 +469,79 @@ const AutomatedMarketing = () => {
     if (enabledIds.length === 0) {
       setRpcError("0 filters enabled — nothing to compare");
       setRpcPending(null);
+      setJsPipeline(null);
       setRpcElapsedMs(null);
+      setJsElapsedMs(null);
       return;
     }
 
     setRpcFetching(true);
     setRpcError(null);
     setRpcPending(null);
+    setJsPipeline(null);
     setRpcElapsedMs(null);
+    setJsElapsedMs(null);
 
-    const t0 = performance.now();
+    const tRpc0 = performance.now();
+    const tJs0 = performance.now();
     const controller = new AbortController();
     const timeoutMs = 30000;
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      console.log("[ShadowRPC] calling get_drip_pending_summary", {
+      console.log("[ShadowRPC] calling get_drip_pending_summary + collectEligibleRecords in parallel", {
         enabledIds,
         excludeBlacklist,
         minInterval,
         maxPerDay,
       });
-      const { data, error } = await supabase
+
+      const rpcPromise = supabase
         .rpc("get_drip_pending_summary", {
           p_filter_ids: enabledIds,
           p_exclude_blacklist: excludeBlacklist,
           p_min_interval_days: minInterval,
           p_max_per_day: maxPerDay,
         })
-        .abortSignal(controller.signal);
-      const elapsed = Math.round(performance.now() - t0);
-      if (error) throw new Error(error.message || "RPC failed");
+        .abortSignal(controller.signal)
+        .then((res) => ({ ...res, _elapsed: Math.round(performance.now() - tRpc0) }));
+
+      const jsPromise = collectEligibleRecords()
+        .then((results) => ({ results, _elapsed: Math.round(performance.now() - tJs0) }));
+
+      const [rpcRes, jsRes] = await Promise.all([rpcPromise, jsPromise]);
+
+      if ((rpcRes as any).error) throw new Error((rpcRes as any).error.message || "RPC failed");
+      const data = (rpcRes as any).data;
       const row = Array.isArray(data) && data[0]
         ? data[0]
         : { pending_abc: 0, pending_abnormal: 0, pending_abc_records: [], pending_abnormal_records: [] };
-      console.log("[ShadowRPC] success in", elapsed, "ms", row);
+      console.log("[ShadowRPC] RPC success in", (rpcRes as any)._elapsed, "ms", row);
+
+      // Aggregate JS pipeline results by message_type
+      const enabledFiltersById = new Map(filters.map((f) => [f.id, f]));
+      let pendingAbc = 0;
+      let pendingAbnormal = 0;
+      const abcRecords: any[] = [];
+      const abnormalRecords: any[] = [];
+      for (const r of jsRes.results) {
+        const f = enabledFiltersById.get(r.filterId);
+        if (!f) continue;
+        if (f.message_type === "abc_card") {
+          pendingAbc += r.eligible;
+          abcRecords.push(...r.records);
+        } else if (f.message_type === "abnormal_card") {
+          pendingAbnormal += r.eligible;
+          abnormalRecords.push(...r.records);
+        }
+      }
+      console.log("[ShadowRPC] JS pipeline success in", jsRes._elapsed, "ms", { pendingAbc, pendingAbnormal });
+
       setRpcPending(row);
-      setRpcElapsedMs(elapsed);
+      setRpcElapsedMs((rpcRes as any)._elapsed);
+      setJsPipeline({ pendingAbc, pendingAbnormal, abcRecords, abnormalRecords });
+      setJsElapsedMs(jsRes._elapsed);
     } catch (e: any) {
-      const elapsed = Math.round(performance.now() - t0);
+      const elapsed = Math.round(performance.now() - tRpc0);
       const msg = controller.signal.aborted
         ? `Timed out after ${Math.round(elapsed / 1000)}s (limit ${timeoutMs / 1000}s)`
         : (e?.message || String(e));
@@ -1831,49 +1868,61 @@ const AutomatedMarketing = () => {
               <p className="text-[11px] text-muted-foreground">
                 Filters loaded: <strong>{filters.length}</strong> (enabled: <strong>{filters.filter(f => f.enabled).length}</strong>)
                 {rpcLastClickAt && <> · Last click: <strong>{rpcLastClickAt}</strong></>}
+                {jsElapsedMs !== null && <> · JS: <strong>{jsElapsedMs} ms</strong></>}
                 {rpcElapsedMs !== null && <> · RPC: <strong>{rpcElapsedMs} ms</strong></>}
               </p>
               {rpcError ? (
                 <p className="text-destructive font-medium">RPC failed: {rpcError}</p>
               ) : rpcFetching && !rpcPending ? (
-                <p className="text-muted-foreground">Running RPC… (will time out after 30s if the database hangs)</p>
-              ) : !rpcPending ? (
-                <p className="text-muted-foreground">Click "Run RPC" — RPC result will appear here. JS preflight remains the source of truth.</p>
+                <p className="text-muted-foreground">Running JS pipeline + RPC in parallel… (will time out after 30s if the database hangs)</p>
+              ) : !rpcPending || !jsPipeline ? (
+                <p className="text-muted-foreground">Click "Run RPC" — JS pipeline (capped) vs RPC comparison will appear here.</p>
               ) : (
                 <>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="border rounded p-2">
-                      <p className="font-medium mb-1">Pending ABC Cards</p>
-                      <p>JS: <strong>{pendingCounts?.pendingAbc ?? 0}</strong></p>
+                      <p className="font-medium mb-1">Pending ABC Cards (capped)</p>
+                      <p>JS pipeline: <strong>{jsPipeline.pendingAbc}</strong></p>
                       <p>RPC: <strong>{Number((rpcPending as any).pending_abc) || 0}</strong></p>
-                      <p className={Number((rpcPending as any).pending_abc) === (pendingCounts?.pendingAbc ?? 0) ? "text-primary" : "text-destructive"}>
-                        {Number((rpcPending as any).pending_abc) === (pendingCounts?.pendingAbc ?? 0) ? "✓ MATCH" : `✗ DIFF: ${Number((rpcPending as any).pending_abc) - (pendingCounts?.pendingAbc ?? 0)}`}
+                      <p className={Number((rpcPending as any).pending_abc) === jsPipeline.pendingAbc ? "text-primary" : "text-destructive"}>
+                        {Number((rpcPending as any).pending_abc) === jsPipeline.pendingAbc ? "✓ MATCH" : `✗ DIFF: ${Number((rpcPending as any).pending_abc) - jsPipeline.pendingAbc}`}
                       </p>
                     </div>
                     <div className="border rounded p-2">
-                      <p className="font-medium mb-1">Pending Abnormal History</p>
-                      <p>JS: <strong>{pendingCounts?.pendingAbnormal ?? 0}</strong></p>
+                      <p className="font-medium mb-1">Pending Abnormal History (capped)</p>
+                      <p>JS pipeline: <strong>{jsPipeline.pendingAbnormal}</strong></p>
                       <p>RPC: <strong>{Number((rpcPending as any).pending_abnormal) || 0}</strong></p>
-                      <p className={Number((rpcPending as any).pending_abnormal) === (pendingCounts?.pendingAbnormal ?? 0) ? "text-primary" : "text-destructive"}>
-                        {Number((rpcPending as any).pending_abnormal) === (pendingCounts?.pendingAbnormal ?? 0) ? "✓ MATCH" : `✗ DIFF: ${Number((rpcPending as any).pending_abnormal) - (pendingCounts?.pendingAbnormal ?? 0)}`}
+                      <p className={Number((rpcPending as any).pending_abnormal) === jsPipeline.pendingAbnormal ? "text-primary" : "text-destructive"}>
+                        {Number((rpcPending as any).pending_abnormal) === jsPipeline.pendingAbnormal ? "✓ MATCH" : `✗ DIFF: ${Number((rpcPending as any).pending_abnormal) - jsPipeline.pendingAbnormal}`}
                       </p>
                     </div>
                   </div>
                   {(() => {
-                    const jsAbcPks = new Set((pendingCounts?.pendingAbcRecords || []).map((r: any) => r["Primary Key"]));
-                    const rpcAbcPks = new Set(((rpcPending as any).pending_abc_records || []).map((r: any) => r["Primary Key"]));
+                    // JS pipeline records use lowercase `primary_key`, RPC records use `Primary Key`
+                    const getRpcPk = (r: any) => r["Primary Key"] ?? r.primary_key;
+                    const jsAbcPks = new Set(jsPipeline.abcRecords.map((r: any) => r.primary_key));
+                    const rpcAbcPks = new Set(((rpcPending as any).pending_abc_records || []).map(getRpcPk));
                     const onlyJs = [...jsAbcPks].filter(k => !rpcAbcPks.has(k));
                     const onlyRpc = [...rpcAbcPks].filter(k => !jsAbcPks.has(k));
-                    const jsAbnPks = new Set((pendingCounts?.pendingAbnormalRecords || []).map((r: any) => r["Primary Key"]));
-                    const rpcAbnPks = new Set(((rpcPending as any).pending_abnormal_records || []).map((r: any) => r["Primary Key"]));
+                    const jsAbnPks = new Set(jsPipeline.abnormalRecords.map((r: any) => r.primary_key));
+                    const rpcAbnPks = new Set(((rpcPending as any).pending_abnormal_records || []).map(getRpcPk));
                     const onlyJsAbn = [...jsAbnPks].filter(k => !rpcAbnPks.has(k));
                     const onlyRpcAbn = [...rpcAbnPks].filter(k => !jsAbnPks.has(k));
                     return (
                       <div className="text-[11px] text-muted-foreground space-y-1 pt-1 border-t">
                         <p>ABC diff — only-in-JS: <strong>{onlyJs.length}</strong> | only-in-RPC: <strong>{onlyRpc.length}</strong></p>
                         <p>Abnormal diff — only-in-JS: <strong>{onlyJsAbn.length}</strong> | only-in-RPC: <strong>{onlyRpcAbn.length}</strong></p>
-                        {(onlyJs.length + onlyRpc.length + onlyJsAbn.length + onlyRpcAbn.length) > 0 && (
-                          <p>First 5 only-in-JS ABC primary keys: {onlyJs.slice(0, 5).join(", ") || "—"}</p>
+                        {onlyJs.length > 0 && (
+                          <p>First 5 only-in-JS ABC primary keys: {onlyJs.slice(0, 5).join(", ")}</p>
+                        )}
+                        {onlyRpc.length > 0 && (
+                          <p>First 5 only-in-RPC ABC primary keys: {onlyRpc.slice(0, 5).join(", ")}</p>
+                        )}
+                        {onlyJsAbn.length > 0 && (
+                          <p>First 5 only-in-JS Abnormal primary keys: {onlyJsAbn.slice(0, 5).join(", ")}</p>
+                        )}
+                        {onlyRpcAbn.length > 0 && (
+                          <p>First 5 only-in-RPC Abnormal primary keys: {onlyRpcAbn.slice(0, 5).join(", ")}</p>
                         )}
                       </div>
                     );
