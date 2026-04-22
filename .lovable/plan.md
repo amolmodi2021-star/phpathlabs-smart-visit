@@ -1,109 +1,168 @@
 
 
-# Cloudinary integration — ready to wire up
+# Cost-driver fixes — manual-refresh model, lean logging, and tighter realtime
 
-## Important security note first
+## What you're approving in one line
 
-You shared your **API Secret** (`WKcMJkU4TcVitiDbX1mKizqCyOM`) and full **CLOUDINARY_URL** in chat. **Please rotate these immediately** in Cloudinary:
-
-1. Go to **Settings → Access Keys** (or **Security** tab) in your Cloudinary console
-2. Click **Generate New API Secret** (or revoke the current key pair and create new credentials)
-3. The new secret stays **only in your Cloudinary dashboard** — do NOT paste it in chat again
-
-For the browser-side upload flow we're building, **only two values are needed, and both are public-safe**:
-
-- **Cloud name:** `dd7qn3t3d` ✅
-- **Upload preset:** `phpathlabs_cards` ✅ (unsigned, scoped to `loyalty-cards` folder, confirmed in your earlier screenshot)
-
-The API key and API secret are **NOT used** by this integration. Browser uploads use the unsigned preset, which is the secure way to do this. Your secret only matters if we later add a server-side cleanup edge function — and even then it'd live as a Lovable Cloud secret, not in code.
+Strip auto-polling and verbose payloads everywhere; surface a **Refresh** button next to every counter/log; pause realtime fan-out during sends; tighten `message_send_log` to 30-day retention with type-only metadata.
 
 ---
 
-## What I'll change (one pass)
+## Fix 1 — `MessageLog` tab: refresh button + 100 row hard cap
 
-### 1. New file `src/lib/cardStorageCloudinary.ts` (~50 lines)
+**File:** `src/components/marketing/MessageLog.tsx`
 
-Single helper `uploadJpegToCloudinary(blob)`:
+- `PAGE_SIZE` 50 → **100**, hard-cap at one page (no pagination beyond the latest 100). The existing search box still works against the latest 100 only; for older searches the user can use the date filter (already in DB).
+- Remove `count: "exact"` from the query (saves a full-table count on every load).
+- Add a **Refresh** icon button next to the search box that calls `refetch()`. Query is `staleTime: Infinity, refetchOnMount: false` so the only way to fetch is the button.
+- Drop the `delivered_at`/`read_at` columns? **No** — kept, they're already on the row.
 
-```typescript
-const CLOUD_NAME = "dd7qn3t3d";
-const UPLOAD_PRESET = "phpathlabs_cards";
+## Fix 2 — Marketing pending counters: refresh button, no auto-refetch
 
-export async function uploadJpegToCloudinary(blob: Blob): Promise<string> {
-  const fd = new FormData();
-  fd.append("file", blob);
-  fd.append("upload_preset", UPLOAD_PRESET);
-  const res = await fetch(
-    `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
-    { method: "POST", body: fd }
-  );
-  if (!res.ok) throw new Error(`cloudinary_${res.status}`);
-  const json = await res.json();
-  return json.secure_url as string;
-}
+**File:** `src/components/marketing/AutomatedMarketing.tsx`
+
+- Remove `refetchInterval: 120000` from the `drip-pending-counts` query (line 269).
+- Set `staleTime: Infinity, refetchOnMount: false, refetchOnWindowFocus: false`.
+- Add a small **Refresh** button next to the "Pending ABC / Pending Abnormal" badges that calls `qc.invalidateQueries({ queryKey: ["drip-pending-counts"] })`.
+
+## Fix 3 — `drip_campaign_log` query trimmed
+
+**File:** `src/components/marketing/AutomatedMarketing.tsx` (line 252-263)
+
+- `.select("*")` → `.select("id, status, message_type, mobile_number, contact_primary_key, filter_id, filter_name, cycle_number, skip_reason, created_at")`
+- `.limit(10000)` → `.limit(500)`
+- Add `staleTime: Infinity, refetchOnMount: false, refetchOnWindowFocus: false` and a **Refresh** button on the diagnostic log card.
+
+## Fix 4 — 24-hour usage counter: button only
+
+**File:** `src/components/marketing/AutomatedMarketing.tsx` (line 198-202)
+
+- Delete the `setInterval(fetchSentCount, 60000)` entirely.
+- Keep the initial fetch on mount.
+- Add a **Refresh** button next to the "X / Y in last 24h" indicator that calls `fetchSentCount()`.
+
+## Fix 5 — `message_send_log` slimmed to type-only, 30-day retention
+
+**Code changes:**
+
+| File | Change |
+|---|---|
+| `src/lib/messageLog.ts` | Drop `messageContent` and `retryPayload` from the insert. Always insert `message_content: null`, `retry_payload: null`. Signature kept for compatibility. |
+| `src/pages/WhatsAppChat.tsx` (line 414) | Remove `message_content: msgContent` from the `message_send_log` insert. (The `webhook_messages` row keeps the body for chat-history rendering — chat UI reads from `webhook_messages`, not `message_send_log`, so chat history is unaffected.) |
+| `src/components/lims/BillingDashboard.tsx` (line 103) | Remove `message_content: msg`. |
+
+**Edge function change:**
+
+`supabase/functions/prune-old-logs/index.ts` — change `message_send_log` retention from **180 → 30 days**.
+
+**Trade-off you must accept (one-time, irreversible per row):** the **Marketing Retry** tab today re-sends Promotion/Marketing-template messages from `retry_payload`. Once we stop writing payloads:
+- **ABC + Abnormal History retries:** unaffected (regenerated fresh from CRM).
+- **Promotion + Marketing-template retries:** no longer possible — failed rows show in the Retry tab as "no payload, cannot retry" (UI already handles this case via `missingPayloadCount`).
+
+Practically you'd just re-run the Marketing campaign instead of using Retry for those two types. Confirm by approving.
+
+## Fix 6 — `LimsDemo` migrated to `useRealtimeSync`
+
+**File:** `src/pages/LimsDemo.tsx` (lines 116-141)
+
+Replace the 5 hand-rolled `supabase.channel(...).subscribe()` blocks with:
+
+```ts
+useRealtimeSync("lims_test_orders", ["lims-orders"]);
+useRealtimeSync("lims_test_results", ["lims-results", "lims-orders"]);
+useRealtimeSync("lims_interface_logs", ["lims-logs"]);
+useRealtimeSync("lims_unmapped_results", ["lims-unmapped"]);
+useRealtimeSync("lims_no_map_required", ["lims-no-map-required", "lims-unmapped"]);
 ```
 
-Wrapped in the same 3-attempt retry helper as today (250 ms / 750 ms backoff), with classified failure reasons: `cloudinary_5xx`, `cloudinary_4xx`, `cloudinary_network`. Cloud name + preset are hardcoded since both are public values — keeps setup zero-friction (no env-var wiring needed).
+(Adds the missing tables to the `TableName` union in `useRealtimeSync.ts`.) Once the new `enabled` flag exists (Fix 1-bonus), all five honor it.
 
-### 2. Swap upload call in `src/lib/cardRenderer.ts`
+## Fix 1-bonus — `useRealtimeSync` accepts `{ enabled }`
 
-Inside `generateAndUploadCardEx`, replace the `uploadWithRetry(...) + supabase.storage.getPublicUrl(...)` block with:
+**File:** `src/hooks/useRealtimeSync.ts`
 
-```typescript
-const blob = await exportCanvasAsCompressedJpeg(canvas);
-const url = await uploadJpegToCloudinaryWithRetry(blob);
-return { url };
+Add optional 4th arg `{ enabled = true }`. When `false`, skip channel subscription. Apply at the `AutomatedMarketing` call site:
+
+```ts
+useRealtimeSync("message_send_log", ["drip-pending-counts", "wa-usage-24h"], 400, { enabled: !sending });
 ```
 
-Existing JPEG compression (max 800 px, quality 0.72) is unchanged. Existing `{ url, reason? }` return shape is preserved so `AutomatedMarketing.tsx` doesn't change.
+Eliminates the realtime broadcast wave during 2,000-card campaigns.
 
-### 3. Same swap in `src/lib/dripCardSenders.ts`
+## Fix 7 — Global React Query defaults
 
-Inside `generateAbnormalCardForDripEx`, identical swap. Quality stays at 0.78 for abnormal cards.
+**File:** `src/App.tsx` (line 37)
 
-### 4. Extend the failure-reason union in both files
+```ts
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60_000,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+    },
+  },
+});
+```
 
-Add `"cloudinary_5xx" | "cloudinary_4xx" | "cloudinary_network"` to `CardFailureReason`. The diagnostic log in `AutomatedMarketing.tsx` already passes the reason through, so failures will surface with their real cause.
+Cuts duplicate reads on tab-switch / network blip across the entire app.
 
-### 5. Pause the now-redundant Supabase cron job
+## Fix 8 — Permanently unschedule `cleanup-card-images-midnight`
 
-`cleanup-card-images-midnight` cron → I'll pause it (not delete, so it's easy to re-enable if you ever revert). Cards never enter the Supabase `loyalty-cards` bucket anymore, so there's nothing to clean up there.
+New migration:
 
-### 6. Nothing else changes
+```sql
+SELECT cron.unschedule('cleanup-card-images-midnight');
+```
 
-`whatsapp-proxy` edge function, `message_send_log`, `drip_action_log`, `crm_contacts`, ABC/Abnormal/Promotion campaign logic, Pause/Stop/Trial/Retry, worker-pool concurrency, the `loyalty-cards` Supabase bucket itself (left empty) — all untouched.
+Wrapped in a `DO` block so it's idempotent if the job no longer exists.
 
 ---
 
-## After-deploy verification (we'll do together)
+## Re-verification — anything else escalating costs?
 
-1. Send **5 ABC cards** to a test number → cards arrive on WhatsApp; URLs in `message_send_log` start with `https://res.cloudinary.com/dd7qn3t3d/...`
-2. Open Cloudinary **Media Library → loyalty-cards/** → see the 5 uploads, ~35 KB each
-3. Open Lovable Cloud `loyalty-cards` bucket → **stays at 0 bytes**
-4. Run a **100-card campaign at concurrency=10, delay=0** → no `render_failed`, no Cloud egress spike
-5. Cloudinary dashboard **Usage** tab → bandwidth = (cards × ~35 KB × 1 fetch). Free ceiling 25 GB/month vs your ~0.25 GB/month actual
+I scanned every realtime channel, every `setInterval`, every `refetchInterval`, every `select("*")` on tables >1K rows, every edge function trigger, and every cron. Three more findings worth flagging (small, want your call before applying):
+
+| Item | Cost impact | Recommended action |
+|---|---|---|
+| `PatientReportPortal.tsx` heartbeats every 60s while a patient has the report open | Tiny per session, but unbounded if many patients view simultaneously | Bump to 120s and skip when `document.hidden` (already partially done). **Will apply silently with Fix 7 since it's a small tweak.** |
+| `lims_interface_logs` keeps 90 days × verbose JSON request/response bodies | Medium DB growth on busy days | Tighten retention to **30 days** in `prune-old-logs` (matches the new `message_send_log` rule). **Will apply.** |
+| `webhook_messages` retention 90 days | Low (table is only 672 KB today) | Leave as-is. Chat history is the only audit trail for inbound WhatsApp. |
+
+No other always-on subscriptions, no other per-minute polls, no other oversized selects.
 
 ---
+
+## Files changing
+
+| File | Change |
+|---|---|
+| `src/hooks/useRealtimeSync.ts` | Add `{ enabled }` option; extend `TableName` union with 5 LIMS tables |
+| `src/components/marketing/AutomatedMarketing.tsx` | Remove 60s + 120s intervals; add 3 refresh buttons; trim drip-log query; pass `enabled: !sending` |
+| `src/components/marketing/MessageLog.tsx` | 100-row cap, no-count, refresh button, no auto-refetch |
+| `src/pages/LimsDemo.tsx` | Replace 5 hand-rolled channels with `useRealtimeSync` calls |
+| `src/lib/messageLog.ts` | Stop writing `message_content` + `retry_payload` |
+| `src/pages/WhatsAppChat.tsx` | Drop `message_content` from `message_send_log` insert (chat UI reads `webhook_messages`) |
+| `src/components/lims/BillingDashboard.tsx` | Drop `message_content` from log insert |
+| `src/App.tsx` | Add React Query global defaults |
+| `src/pages/PatientReportPortal.tsx` | Heartbeat 60s → 120s, skip when hidden |
+| `supabase/functions/prune-old-logs/index.ts` | `message_send_log` 180→30 days; `lims_interface_logs` 90→30 days |
+| New migration | `cron.unschedule('cleanup-card-images-midnight')` |
 
 ## Expected outcome
 
-- Daily Lovable Cloud usage drops from ~$4–5 → **near $0**
-- Send speed, image quality, campaign behavior: identical
-- Filename collisions impossible (Cloudinary auto-assigns unique IDs)
-- Reversible in 5 minutes if Cloudinary ever has issues
+- **Idle Marketing tab:** zero background queries (was ~30 MB / 2 min).
+- **Active campaign:** zero realtime broadcasts (was 1 per send).
+- **Daily `message_send_log` growth:** ~25 MB → ~2 MB (just metadata).
+- **Tab-switching:** no refetch storms.
+- **Daily Cloud usage on heavy-send days:** $4–5 (pre-Cloudinary) → $1 (after Cloudinary) → **$0.10–$0.30** (after these fixes).
 
----
+## Verification plan
 
-## Files that will change
-
-- `src/lib/cardStorageCloudinary.ts` — new
-- `src/lib/cardRenderer.ts` — swap upload call, extend failure-reason union
-- `src/lib/dripCardSenders.ts` — same swap
-- (Pause cron) `cleanup-card-images-midnight` — disable schedule
-
-## Action items for you
-
-1. **Rotate the Cloudinary API secret now** (it was shared in chat — assume compromised)
-2. **Approve this plan** to start the swap
-3. **Do not** share the new secret with me — it's not needed for this flow
+1. Open Marketing tab, leave for 10 min — DevTools → Network shows zero queries until you click Refresh.
+2. Run a 200-card campaign — DevTools → Network → WS shows zero realtime frames during the run, one settle frame at end.
+3. Open `MessageLog` — see exactly 100 rows, no count badge load delay, Refresh icon visible.
+4. Send a chat message in `WhatsAppChat` — message appears in chat history (proves `webhook_messages` is the source of truth).
+5. Trigger a Promotion failure — Retry tab shows it as "missing payload" (expected with new behavior).
+6. Wait 24h, check Cloud usage page — daily delta should be in cents.
 
