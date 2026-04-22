@@ -1,88 +1,65 @@
 
 
-# Qualitative / Descriptive parameters: highlight on mismatch, no flag letter
+# Fix: Compare qualitative/descriptive results against the displayed Reference Range, not the dropdown source
 
-## What you'll get
+## The bug
 
-For parameters where **Range Type = Qualitative** or **Descriptive**:
+Both Erythema (qualitative) and REMARK (descriptive) tint red even though their result equals the configured normal value shown in the **Ref. Range** column.
 
-- If the entered result **matches** the configured normal (Qualitative `Display Text` / Descriptive `Normal Findings` from the parameter's normal-range entry), the row stays plain — no highlight, no flag.
-- If the result **does not match**, the row in the **report** is highlighted (light red row background + bold red parameter name and result, same look used today for abnormal numeric H/L), but the **Flag column stays blank** (no "H", "L", "A", or any badge).
-- Numeric parameters keep H/L exactly as today.
+Root cause: the `calculateFlag` logic compares against the wrong field.
 
-In LIMS entry/verification/approval screens, the existing red "Abnormal" badge is replaced for these two range types with a subtle row tint only (so technicians still see something is off, but no misleading H/L/Abnormal label is stored).
+| Range type | What user configures as "normal" | What I'm currently comparing against |
+|---|---|---|
+| Qualitative | `normal_range_text` (Display Text, e.g. `"Absent"`) | `expected_value` (pair label, e.g. `"Absent / Present"`) — **always mismatches** |
+| Descriptive | `normal_range_text` (Display Text under "Normal Findings", e.g. `"Negative"`) | `descriptive_options` (the full dropdown list including abnormal choices like `["Negative", "Positive"]`) — passes for any selectable option, including abnormal ones |
 
-## How matching is decided
+So qualitative rows currently ALWAYS tint red (label never equals result), and descriptive rows NEVER tint red (every dropdown option counts as normal). Both broken.
 
-- **Qualitative**: result must equal `normal_range.expected_value` (the "Expected Normal Value" picked from the pair, e.g. *Absent*, *Non Reactive*, *Negative*) — case-insensitive, trimmed. Mismatch → highlight only.
-  - Today's behavior writes `flag = "A"`. We change it to `flag = "X"` (sentinel meaning *highlight without label*).
-- **Descriptive**: result must equal one of `normal_range.descriptive_options` listed under "Normal Findings" (case-insensitive, trimmed). Empty → no highlight (today: also no flag).
-  - Today's behavior writes `flag = ""` always. We change it to write `flag = "X"` when the result is non-empty AND not in the configured normal list, otherwise `""`.
+## The fix
 
-`"X"` is invisible to the report's Flag column (only "H"/"L" render badges) but is recognised by a new branch of `isAbnormalFlag` to apply the row highlight.
+For both qualitative and descriptive, compare the entered result against **`normal_range_text`** (the same Display Text the user sees in the Ref. Range column on screen — that's the field the user designated as "Normal Findings").
+
+- Match (case-insensitive, trimmed) → flag `"N"` → no tint.
+- Mismatch → flag `"X"` → red tint, no badge.
+- `normal_range_text` empty → flag `""` → no tint (nothing configured to compare against).
 
 ## Files touched
 
-### 1. `src/lib/reportFlags.ts`
-- Extend `AbnormalFlag` type to include `"X"`.
-- No change to numeric path. (Util is only used for normalisation in a few callers — leaving qualitative handling there alone is fine because the LIMS save paths below are the source of truth.)
-
-### 2. `src/components/lims/ResultsEntry.tsx` — `calculateFlag` (line 676)
-```ts
-if (rangeType === "qualitative") {
-  if (!expectedValue) return "";
-  return value.trim().toLowerCase() === expectedValue.trim().toLowerCase() ? "N" : "X";
-}
-if (rangeType === "descriptive") {
-  const opts = (descriptiveOptions || []).map(o => o.trim().toLowerCase()).filter(Boolean);
-  if (opts.length === 0) return "";                          // nothing configured → no highlight
-  return opts.includes(value.trim().toLowerCase()) ? "N" : "X";
-}
-```
-Pass `descriptiveOptions` through (already on `ParameterResult`). Update the row styling branches that today react to `flag === "A"` to also react to `"X"` (red border on input, light row bg). Replace any `<Badge>Abnormal</Badge>` rendering for these two types with no badge — only the row tint.
-
-### 3. `src/components/lims/ResultVerification.tsx`
-Same `calculateFlag` change (line 430). Same UI tweaks: drop the "Abnormal" badge for qualitative/descriptive, keep `bg-destructive/5` row tint when `flag === "X"`. Remove the `"A"` `<SelectItem>` for the manual-flag override on outsourced rows for these two range types (keep H/L/N selectable — only relevant for outsourced numeric anyway).
-
-### 4. `src/components/lims/DoctorApproval.tsx`
-Same `calculateFlag` change (line 334). Same badge/highlight cleanup. Snapshot saved into `approved_reports.test_results` will carry `flag: "X"` (or `""`) instead of `"A"`.
-
-### 5. `src/components/lims/ModifiedApproval.tsx` — `calculateFlag` (line 156)
-Currently numeric-only. Extend signature to accept `rangeType`, `expectedValue`, `descriptiveOptions` (already available on `p` because the query is `select("*")`; expose them on the `tg.params` rows). Apply the same three-branch logic. Drop any "A"/"Abnormal" UI; preserve highlight only via `"X"`.
-
-### 6. `src/components/report/ReportResultsSection.tsx`
-- `isAbnormalFlag` (line 90): include `"X"` so row tint + bold red name/result fire.
-- Flag-column render branches (lines 131 and the equivalent `showFlagText` branch lower down): only render the badge/text when the flag is **H/L/High/Low** — when flag is `"X"`, render nothing in the Flag cell. Add a tiny helper:
+### 1. `src/components/lims/ResultVerification.tsx`
+- Extend `calculateFlag` signature to also receive `normalRangeText: string` (the Display Text). Replace the qualitative branch and the descriptive branch with a single shared check:
   ```ts
-  const isHighlightOnly = (f?: string) => f === "X";
-  const showFlagBadge = (f?: string) => f === "H" || f === "L" || f === "High" || f === "Low";
+  if (rangeType === "qualitative" || rangeType === "descriptive") {
+    const ref = (normalRangeText || "").trim().toLowerCase();
+    if (!ref) return "";
+    return value.trim().toLowerCase() === ref ? "N" : "X";
+  }
   ```
-  Use `showFlagBadge` to gate the badge; `isAbnormalFlag` (now true for X too) gates the row styling.
+- All 6 callers of `calculateFlag` (lines 611, 660, 703, 798, 1169, plus row-bg compute) pass `p.normalRangeText` (already loaded — it's `resolved.text` and surfaces as `p.normalRangeText`).
 
-### 7. One-time data normalisation (no migration needed)
-Existing rows in `patient_results` and `approved_reports.test_results` may already contain `flag = "A"` from the previous logic. Two options:
-- **A.** Leave them as-is. Report renderer should also treat legacy `"A"` as highlight-only (don't display the letter, do tint the row). I'll add `"A"` alongside `"X"` in `isAbnormalFlag` and **exclude `"A"` from `showFlagBadge`** so historical reports retroactively render correctly.
-- **B.** Backfill `UPDATE patient_results SET flag = 'X' WHERE flag = 'A'` + JSONB rewrite.
+### 2. `src/components/lims/ResultsEntry.tsx`
+- Same change to `calculateFlag` (line 676 area). Pass `normalRangeText` from `ParameterResult`.
 
-Plan goes with **A** (additive, zero risk to historical immutability).
+### 3. `src/components/lims/DoctorApproval.tsx`
+- Same change to `calculateFlag` (line 334 area). Pass `normalRangeText`.
 
-## What stays untouched
+### 4. `src/components/lims/ModifiedApproval.tsx`
+- Same change to `calculateFlag` (line 156 area). The query already does `select("*")` so `normal_range_text` is available on each row — wire it through.
 
-- Numeric flagging (H/L/N) — unchanged in entry, verification, approval, report.
-- `normal_range_text` parsing and `parameter_normal_ranges` schema — unchanged.
-- CRM Abnormal Tests and `useAbnormalHistory` — they currently key off `flag IN ('H','L','A')`; after this change, qualitative/descriptive mismatches use `'X'`. I'll add `'X'` to those filters (one-line change in `src/lib/abnormalTests.ts` and `src/hooks/useAbnormalHistory.ts` if they exist with that pattern — confirmed in passing).
-- Outsourced manual-flag override stays for numeric tests.
+### 5. `src/components/report/ReportResultsSection.tsx`
+- No change needed. The renderer already trusts the stored `flag` value (`X` → tint, no badge).
 
-## Verification
+## Cleanup
 
-1. **Qualitative** (e.g. *HIV — Expected Normal: Non Reactive*). Enter `Reactive` → row tinted red in Results, Verification, Approval; Flag cell empty; report shows red row, no H/L badge.
-2. Enter `Non Reactive` → no tint, no flag.
-3. **Descriptive** (e.g. *Mantoux REMARK — Normal Findings: Negative*). Enter `Negative` → plain row. Enter `Positive` → row tinted, Flag column blank in report.
-4. **Numeric** (e.g. FBS) — H/L badge and tint behave exactly as before.
-5. Open an old approved report that has `flag = "A"` → row tints red but no "A" letter shown in the Flag column (legacy compatibility).
-6. CRM Abnormal Tests still surfaces qualitative/descriptive mismatches (X added to the abnormal predicate).
+- The `expectedValue` and `descriptiveOptions` arguments stay in the signature only because they're still passed by callers; they become unused inside the function (safe to leave for now or remove).
+
+## Verification (against the user's screenshot)
+
+1. **Erythema** (qualitative, Ref. Range = `"Absent"`, Result = `"Absent"`) → `"Absent" === "Absent"` → `"N"` → no tint. ✓
+2. **REMARK** (descriptive, Ref. Range = `"Negative"`, Result = `"Negative"`) → `"Negative" === "Negative"` → `"N"` → no tint. ✓
+3. Change Erythema result to `"Present"` → `"Present" !== "Absent"` → `"X"` → red row, blank Flag column. ✓
+4. Numeric (Examine After / Wheal) — untouched, "Normal" badge still shows. ✓
 
 ## Risk
 
-Low. Single new sentinel value `"X"`, presentational + lightweight save-path change. Numeric flow untouched. Historical `"A"` rows render correctly without backfill.
+Trivial. Single comparison source-of-truth swap. No DB change. No schema change. Existing approved-report snapshots already render correctly because the report renderer already keys off the `flag` value, which now becomes consistent across new saves.
 
