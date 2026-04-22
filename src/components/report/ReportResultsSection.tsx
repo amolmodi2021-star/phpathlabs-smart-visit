@@ -31,6 +31,7 @@ export interface ProfileMeta {
   outsourced_caption?: string;
   interpretation?: string;
   enable_test_grouping?: boolean;
+  test_note?: string;
 }
 
 export interface ReportResultsSectionProps {
@@ -365,6 +366,14 @@ const ReportResultsSection = ({
                     </tbody>
                   </table>
 
+                  {profMeta?.test_note?.trim() && (
+                    <div
+                      className="px-3 py-1 italic font-semibold text-gray-700 border-t border-gray-100"
+                      style={{ fontSize: metaFontSize }}
+                    >
+                      {profMeta.test_note}
+                    </div>
+                  )}
                   {hasInterpretation && (
                     <div className="px-3 py-1.5 border-t border-gray-100">
                       <div className="font-semibold text-gray-600 mb-0.5" style={{ fontSize: metaFontSize }}>Interpretation:</div>

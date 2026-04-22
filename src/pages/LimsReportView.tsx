@@ -52,6 +52,7 @@ interface TestResultEntry {
   approved_by_designation?: string | null;
   approved_by_signature_url?: string | null;
   note?: string | null;
+  test_note?: string | null;
 }
 
 interface TestBlock {
@@ -65,6 +66,7 @@ interface TestBlock {
   method?: string | null;
   sampleType?: string | null;
   interpretation?: string | null;
+  testNote?: string | null;
   estimatedHeightMm: number;
   fitToPage?: boolean;
   dedicatedPage?: boolean;
@@ -417,6 +419,9 @@ const LimsReportView = () => {
       // Collect unique approvers for this test block
       const blockApprovers = [...new Set(sortedParams.map(p => p.approved_by).filter(Boolean))] as string[];
 
+      // First non-null test_note across this test's params (denormalised across rows)
+      const blockTestNote = sortedParams.find(p => p.test_note && String(p.test_note).trim())?.test_note || null;
+
       testBlocks.push({
         testId,
         testName: testInfo?.display_name || params[0]?.test_name || testInfo?.test_name || "Unknown Test",
@@ -428,6 +433,7 @@ const LimsReportView = () => {
         method: testInfo?.method,
         sampleType: testInfo?.sample_type,
         interpretation: testInfo?.interpretation,
+        testNote: blockTestNote,
         estimatedHeightMm: heightMm,
         fitToPage: testInfo?.fit_to_page ?? false,
         dedicatedPage: testInfo?.dedicated_page ?? false,
@@ -1091,6 +1097,7 @@ function buildProfileMetaMap(
       analyzer: block.instrument || undefined,
       method: block.method || undefined,
       interpretation: block.interpretation || undefined,
+      test_note: block.testNote || undefined,
     };
   });
   return map;
