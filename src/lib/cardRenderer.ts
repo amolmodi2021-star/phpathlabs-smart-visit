@@ -122,7 +122,10 @@ export type CardFailureReason =
   | "upload_collision"
   | "upload_5xx"
   | "upload_failed"
-  | "template_load_error";
+  | "template_load_error"
+  | "cloudinary_5xx"
+  | "cloudinary_4xx"
+  | "cloudinary_network";
 
 export interface GenerateCardResult {
   url: string | null;
