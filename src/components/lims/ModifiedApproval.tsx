@@ -153,16 +153,22 @@ const ModifiedApproval = () => {
     return loadedTestNotes[k] || "";
   };
 
-  const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string, descriptiveOptions?: string[]): string => {
-    if (!value || !value.trim()) return "";
-    if (rangeType === "qualitative") {
-      if (!expectedValue) return "";
-      return value.trim().toLowerCase() === expectedValue.trim().toLowerCase() ? "N" : "X";
+  // Resolve range_type + display "normal" text for a parameter
+  const resolveRangeMeta = (parameterId: string): { rangeType: string; normalRangeText: string } => {
+    const ranges = (normalRangesMap as any)[parameterId] || [];
+    if (ranges.length > 0) {
+      const r = ranges[0];
+      return { rangeType: r.range_type || "numeric", normalRangeText: r.normal_range_text || "" };
     }
-    if (rangeType === "descriptive") {
-      const opts = (descriptiveOptions || []).map(o => (o || "").trim().toLowerCase()).filter(Boolean);
-      if (opts.length === 0) return "";
-      return opts.includes(value.trim().toLowerCase()) ? "N" : "X";
+    return { rangeType: "numeric", normalRangeText: "" };
+  };
+
+  const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string, descriptiveOptions?: string[], normalRangeText?: string): string => {
+    if (!value || !value.trim()) return "";
+    if (rangeType === "qualitative" || rangeType === "descriptive") {
+      const ref = (normalRangeText || "").trim().toLowerCase();
+      if (!ref) return "";
+      return value.trim().toLowerCase() === ref ? "N" : "X";
     }
     const num = parseFloat(value); if (isNaN(num)) return "";
     if (low != null && num < low) return "L"; if (high != null && num > high) return "H"; return "N";
@@ -228,7 +234,8 @@ const ModifiedApproval = () => {
           const newValue = editedValues[key] !== undefined ? editedValues[key] : p.result_value;
           const newUnit = editedUnits[key] !== undefined ? editedUnits[key] : p.unit;
           const newRefRange = editedRefRanges[key] !== undefined ? editedRefRanges[key] : p.reference_range;
-          const newFlag = editedFlags[key] !== undefined ? editedFlags[key] : (calculateFlag(newValue, p.normal_range_low, p.normal_range_high) || p.flag);
+          const rangeMeta = resolveRangeMeta(p.parameter_id);
+          const newFlag = editedFlags[key] !== undefined ? editedFlags[key] : (calculateFlag(newValue, p.normal_range_low, p.normal_range_high, rangeMeta.rangeType, undefined, undefined, rangeMeta.normalRangeText) || p.flag);
           const noteKey = `${regId}||${p.parameter_id}`;
           const newNote = editedNotes[noteKey] !== undefined ? (editedNotes[noteKey] || null) : (p.note ?? null);
 
@@ -436,9 +443,10 @@ const ModifiedApproval = () => {
                                   const currentValue = editedValues[key] !== undefined ? editedValues[key] : (p.result_value || "");
                                   const currentUnit = editedUnits[key] !== undefined ? editedUnits[key] : (p.unit || "");
                                   const currentRef = editedRefRanges[key] !== undefined ? editedRefRanges[key] : (p.reference_range || "");
-                                  const autoFlag = calculateFlag(currentValue, p.normal_range_low, p.normal_range_high);
+                                  const rangeMeta = resolveRangeMeta(p.parameter_id);
+                                  const autoFlag = calculateFlag(currentValue, p.normal_range_low, p.normal_range_high, rangeMeta.rangeType, undefined, undefined, rangeMeta.normalRangeText);
                                   const currentFlag = editedFlags[key] !== undefined ? editedFlags[key] : (p.flag || autoFlag);
-                                  const rowBg = (currentFlag === "H" || currentFlag === "L" || currentFlag === "A") ? "bg-destructive/5" : "";
+                                  const rowBg = (currentFlag === "H" || currentFlag === "L" || currentFlag === "A" || currentFlag === "X") ? "bg-destructive/5" : "";
 
                                   // Check if calculated
                                   const testParams = testParamsMap[p.test_id] || [];
