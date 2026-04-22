@@ -98,6 +98,8 @@ const DailyReport = () => {
   // Filtered data
   const filtered = useMemo(() => {
     const rows = transactions.filter((t: any) => {
+      // Hide cross-day cancellation marker rows; the paired old_bill_refund row carries the cash impact
+      if (t.transaction_type === "old_bill_cancellation") return false;
       if (userFilter !== "ALL" && t.performed_by !== userFilter) return false;
       if (typeFilter !== "ALL" && t.transaction_type !== typeFilter) return false;
       if (modeFilter !== "ALL") {
