@@ -488,7 +488,7 @@ const SampleCollection = () => {
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono font-bold text-sm">{tube.sample_uid}</span>
+                      <span className="font-mono font-bold text-sm">{getBarcodeLabel(reg, tube)}</span>
                       <Badge variant="outline" className="text-xs">
                         {(tube.tube_type || "DEFAULT") === "DEFAULT" ? "No Tube" : tube.tube_type}
                       </Badge>
