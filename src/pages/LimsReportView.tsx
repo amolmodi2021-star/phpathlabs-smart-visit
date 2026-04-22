@@ -65,6 +65,7 @@ interface TestBlock {
   method?: string | null;
   sampleType?: string | null;
   interpretation?: string | null;
+  testNote?: string | null;
   estimatedHeightMm: number;
   fitToPage?: boolean;
   dedicatedPage?: boolean;
