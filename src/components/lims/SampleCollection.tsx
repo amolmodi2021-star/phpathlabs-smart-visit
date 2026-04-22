@@ -519,7 +519,7 @@ const SampleCollection = () => {
                   {!isPending && isCollected && (
                     <div className="flex items-center gap-1 shrink-0">
                       <Button size="sm" variant="ghost" title="Reprint this barcode"
-                        onClick={(e) => { e.stopPropagation(); doPrintBarcodes(reg, [tube]); toast.success(`Reprinted barcode for ${tube.sample_uid}`); }}>
+                        onClick={(e) => { e.stopPropagation(); requestPrintConfirm(reg, [tube], () => { doPrintBarcodes(reg, [tube]); toast.success(`Reprinted barcode for ${getBarcodeLabel(reg, tube)}`); }); }}>
                         <Printer className="h-3.5 w-3.5" />
                       </Button>
                       <Button size="sm" variant="ghost" title="Cancel collection (revert to pending)"
