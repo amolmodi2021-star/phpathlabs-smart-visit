@@ -586,15 +586,9 @@ Deno.serve(async (req) => {
             const testId = candidateTestIds.find((tid) => regTestIds.has(tid)) || candidateTestIds[0];
             if (!testId) continue;
 
-            // Compute flag from numeric range when possible
+            // Compute flag (numeric → H/L/N; qualitative/descriptive → N or X)
             const convertedValue = applyUnitConversion(mr.result_value, param);
-            const numericVal = parseFloat(convertedValue);
-            let flag = mr.flag || "";
-            if (!isNaN(numericVal) && param.normal_range_low != null && param.normal_range_high != null) {
-              if (numericVal < Number(param.normal_range_low)) flag = "L";
-              else if (numericVal > Number(param.normal_range_high)) flag = "H";
-              else flag = "N";
-            }
+            const flag = computeFlagFromInterface(convertedValue, param);
 
             const referenceRange = param.normal_range_text
               || (param.normal_range_low != null && param.normal_range_high != null
