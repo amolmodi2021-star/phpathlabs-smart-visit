@@ -1,92 +1,76 @@
 
 
-# Multi-suffix barcode printing for tests with multiple time-point parameters
+# Show barcode IDs (with suffix) in Sample Collection + add print confirmation
 
-## The bug
+## Two changes, both in `src/components/lims/SampleCollection.tsx`
 
-For invoice **2604220001** (HARSHADA MODI), two OGTT tests are registered:
+### 1. Display barcode value instead of internal sample UID
 
-| Test | Parameter suffixes (each represents a separate sample draw) | Expected tubes | Currently created |
-|---|---|---|---|
-| OGTT (MODIFIED)(FIVE SAMPLE) | `-F`, `-2`, `-3`, `-4`, `-5` | 5 | **1** (suffix `-F` only) |
-| OGTT (MODIFIED)(THREESAMPLES) | `-F`, `-2`, `-3` | 3 | **1** (suffix `-2` only) |
+Today every tube row shows the internal `sample_uid` (e.g. `S26042200020`). The user-facing scan value is actually `invoice_number + suffix` (e.g. `2604220001`, `2604220001-F`, `2604220001-2`) — that's exactly what `barcodePrint.ts` prints on the sticker.
 
-Total expected barcodes: **8**. System currently generates: **2**.
-
-The root cause is in `src/lib/sampleTubeGrouping.ts` lines 108–112:
+Replace the three `{tube.sample_uid}` usages with a small helper:
 
 ```ts
-const suffixMap: Record<string, string> = {};
-(suffixRowsRes.data || []).forEach((tp: any) => {
-  const suffix = tp.report_test_parameters?.custom_sample_suffix;
-  if (tp.test_id && suffix) suffixMap[tp.test_id] = suffix; // overwrites!
-});
+const getBarcodeLabel = (reg: any, tube: SampleTubeRow) => {
+  const suffix = tube.suffix?.trim();
+  return suffix ? `${reg.invoice_number}${suffix}` : String(reg.invoice_number);
+};
 ```
 
-Each test stores only ONE suffix, then line 130 reads `suffixMap[id]` to build a single tube. When a test has multiple suffix-enabled parameters (different time-point draws like fasting / 1hr / 2hr), the engine collapses them into one tube and one barcode — clinically wrong.
+Replace at:
+- **Line 470** — pending/collected tube card.
+- **Line 501** — toast "Reprinted barcode for …".
+- **Line 669** — Reprint dialog row.
+- **Line 701** — Cancel Collection confirmation message.
 
-## Fix — collect all suffixes per test, fan out into one tube per suffix
+Internal `sample_uid` stays in the database and in all backend logic (acceptance, results entry, reconcile) — nothing else changes. Only the visible label switches to what's actually printed on the sticker.
 
-Change the suffix map from `test_id → string` to `test_id → string[]`, then in the grouping loop fan each test out into one tube per suffix (or one tube with no suffix if none defined). The tube-grouping key already includes suffix, so all the downstream logic (recalc, dedup, reconcile, barcode print) already works correctly the moment multiple suffix tubes are produced.
+### 2. Confirmation dialog before any print action
 
-### Changes — `src/lib/sampleTubeGrouping.ts` only
+Today four print actions fire instantly (no confirmation):
+- Single tube Print (line 494) — `handleSinglePrintAndCollect`
+- Print & Collect bulk (line 439) — `handlePrintAndCollect`
+- Print All collected (line 446)
+- Single tube reprint from collected list (line 501)
+- Row-level Print All button (line 591)
 
-1. Replace the suffix map shape:
-   ```ts
-   const suffixMap: Record<string, string[]> = {};
-   (suffixRowsRes.data || []).forEach((tp: any) => {
-     const suffix = tp.report_test_parameters?.custom_sample_suffix?.trim();
-     if (!tp.test_id || !suffix) return;
-     if (!suffixMap[tp.test_id]) suffixMap[tp.test_id] = [];
-     if (!suffixMap[tp.test_id].includes(suffix)) suffixMap[tp.test_id].push(suffix);
-   });
-   ```
+Add one shared `printConfirmDialog` state holding `{ open, reg, tubes, action: () => void }`. Each of the five buttons above will, instead of printing immediately, open the dialog. The dialog body shows:
 
-2. In the per-test grouping loop (lines 128–154), iterate over **every (tube × suffix) combination** for that test:
-   ```ts
-   const suffixes = suffixMap[id]?.length ? suffixMap[id] : [""];
-   for (const t of tubes) {
-     for (const sfx of suffixes) {
-       const key = `${t.tube}||${sfx}`;
-       // ... existing group creation logic, using `sfx` instead of `suffix`
-     }
-   }
-   ```
+```
+Patient Name:  HARSHADA MODI
+Age / Gender:  45 / Female
+Tubes to print: 8
+  • 2604220001-F   (Fluoride)
+  • 2604220001-2   (Fluoride)
+  …
+```
 
-3. Preserve display-order: select suffixes in `report_test_parameters` query in the same order they appear via `test_parameters.display_order` so barcodes print as `-F`, `-2`, `-3`, `-4`, `-5` (not random). Add an `.order("display_order")` on the `test_parameters` join.
+Buttons: **Cancel** | **Print**. Clicking Print runs the stored action (which calls the existing `doPrintBarcodes` + collection logic) and closes the dialog.
 
-That's the entire fix — ~15 lines in one file.
+Use the existing `calcAge(reg.dob)` helper (already in file) and `reg.gender`.
 
-## Why the rest works automatically
-
-- **Sample tube creation** (`PatientRegistration.tsx`, `recalcTubesForRegistration` in `SampleCollection.tsx`) calls `buildSampleTubeGroups` and inserts whatever it returns. Returning 5+3 groups instead of 1+1 means 8 rows in `sample_tubes`.
-- **Signature/dedup** in `recalcTubesForRegistration` (line 207) keys on `tube_type||suffix||testIds`, so multi-suffix tubes are correctly distinct and won't be deleted/recreated on every reconcile.
-- **Barcode printing** (`barcodePrint.ts` lines 70–71) already concatenates `${invoice_number}${suffix}` per tube, so each of the 8 tubes prints `2604220001-F`, `2604220001-2`, etc.
-- **Sample acceptance / order push** (`SampleAcceptance.tsx` line 241) already builds `sampleId` per tube using the suffix, so each timepoint becomes a distinct LIMS order ID for the analyzer.
-- **Test-level dedup across tests sharing suffix-disabled tubes** is unaffected (CBC and a profile's CBC still share one EDTA tube).
-
-## What stays untouched
-
-- All UI in Sample Collection / Sample Acceptance.
-- Tube-color, sample-type, multi-tube-per-test logic, tube-cancellation logic.
-- Existing registrations: when the user opens this registration, `recalcTubesForRegistration` will detect the new desired signatures don't match and rebuild only the **pending** tubes. Already-collected tubes are preserved — but in this user's case both tubes are still pending, so they'll be replaced with the correct 5+3 set.
-- Database schema. No migration.
-
-## Verification
-
-1. Open `/lims?tab=sample_collection`, find invoice 2604220001.
-2. The pending tubes count should auto-recalculate to **8** (5 for FIVE SAMPLE + 3 for THREESAMPLES) after the fix deploys and the row is touched.
-3. Select all → Print & Collect → barcode PDF shows 8 stickers: `2604220001-F`, `…-2`, `…-3`, `…-4`, `…-5`, `…-F`, `…-2`, `…-3`.
-4. Test a non-OGTT registration (e.g., a single CBC) — should still produce exactly 1 tube with no suffix.
-5. Test a profile that contains a suffix-enabled test — suffix tubes still emerge correctly.
-
-## Risk
-
-Low. The change is local to one helper. The data flow (`buildSampleTubeGroups → insert sample_tubes → printBarcodes`) is already designed around the (tubeType, suffix) tuple. We're just teaching the helper to emit the full set instead of one collapsed entry.
+The **Reprint dialog** (the one with reason text) already serves as a confirmation, so it does not need an additional confirmation step — its existing Reprint button stays as-is.
 
 ## Files changing
 
 | File | Change |
 |---|---|
-| `src/lib/sampleTubeGrouping.ts` | Convert `suffixMap` from string to string[]; fan out one group per (tube × suffix); add display_order on the suffix query |
+| `src/components/lims/SampleCollection.tsx` | Add `getBarcodeLabel` helper; replace 4 visible `sample_uid` displays with it; add shared print-confirmation `Dialog`; route the 5 instant-print buttons through it |
+
+## What stays untouched
+
+- `barcodePrint.ts`, `sampleTubeGrouping.ts`, database, acceptance/results modules.
+- Internal `sample_uid` is still the canonical key for all backend operations.
+- Reprint-with-reason dialog flow is unchanged.
+
+## Verification
+
+1. Open `/lims?tab=sample_collection`, expand invoice 2604220001 — tube rows show `2604220001-F`, `2604220001-2`, `2604220001-3`, `2604220001-4`, `2604220001-5`, `2604220001-F`, `2604220001-2`, `2604220001-3` (instead of `S260422xxxx`).
+2. Click any **Print**, **Print & Collect**, or **Print All** button → confirmation dialog appears showing patient name, age, gender and the tube list. Cancel aborts; Print proceeds with existing behavior.
+3. Open the Collected tab → labels and Reprint dialog also show barcode IDs.
+4. Reprint-with-reason dialog still works without a second confirmation popup.
+
+## Risk
+
+Very low. Pure UI relabeling + a thin confirmation wrapper around existing handlers. No data or backend logic touched.
 
