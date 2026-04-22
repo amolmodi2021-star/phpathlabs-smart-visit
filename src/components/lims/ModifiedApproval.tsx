@@ -357,18 +357,57 @@ const ModifiedApproval = () => {
                     <div className="space-y-3">
                       {testGroups.map(tg => (
                         <div key={tg.testId} className="border rounded-lg overflow-hidden bg-background">
-                          <div className="flex items-center justify-between px-3 py-2 bg-muted/40">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium">{tg.testName}</span>
-                              {tg.isOutsourced && tg.labName && (
-                                <Badge variant="outline" className="text-[10px] text-green-600 border-green-300">{tg.labName}</Badge>
+                          <div className="px-3 py-2 bg-muted/40">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium">{tg.testName}</span>
+                                {tg.isOutsourced && tg.labName && (
+                                  <Badge variant="outline" className="text-[10px] text-green-600 border-green-300">{tg.labName}</Badge>
+                                )}
+                                {(() => {
+                                  const tnKey = `${report.registration_id}||${tg.testId}`;
+                                  const tnVal = getTestNote(report.registration_id, tg.testId);
+                                  return (
+                                    <StickyNote
+                                      className={`inline h-3.5 w-3.5 cursor-pointer shrink-0 ${tnVal ? 'text-amber-600' : 'text-muted-foreground hover:text-primary'}`}
+                                      onClick={() => {
+                                        if (activeTestNoteKey === tnKey) { setActiveTestNoteKey(null); }
+                                        else {
+                                          setActiveTestNoteKey(tnKey);
+                                          if (!tnVal) setEditedTestNotes(prev => ({ ...prev, [tnKey]: "Kindly correlate clinically" }));
+                                        }
+                                      }}
+                                    />
+                                  );
+                                })()}
+                              </div>
+                              {tg.snipUrls.length > 0 && (
+                                <Button size="sm" variant="outline" className="h-6 text-xs gap-1" onClick={() => setViewSnipImages(tg.snipUrls)}>
+                                  <Eye className="h-3 w-3" /> View Snip ({tg.snipUrls.length})
+                                </Button>
                               )}
                             </div>
-                            {tg.snipUrls.length > 0 && (
-                              <Button size="sm" variant="outline" className="h-6 text-xs gap-1" onClick={() => setViewSnipImages(tg.snipUrls)}>
-                                <Eye className="h-3 w-3" /> View Snip ({tg.snipUrls.length})
-                              </Button>
-                            )}
+                            {(() => {
+                              const tnKey = `${report.registration_id}||${tg.testId}`;
+                              const tnVal = getTestNote(report.registration_id, tg.testId);
+                              if (activeTestNoteKey === tnKey) {
+                                return (
+                                  <div className="flex items-center gap-1 mt-1">
+                                    <Input value={tnVal} onChange={e => setEditedTestNotes(prev => ({ ...prev, [tnKey]: e.target.value }))} className="h-6 text-xs w-full" placeholder="Kindly correlate clinically" autoFocus />
+                                    <Trash2 className="h-3.5 w-3.5 text-destructive cursor-pointer shrink-0" onClick={() => { setEditedTestNotes(prev => ({ ...prev, [tnKey]: "" })); setActiveTestNoteKey(null); }} />
+                                  </div>
+                                );
+                              }
+                              if (tnVal) {
+                                return (
+                                  <div className="flex items-center gap-1 mt-0.5">
+                                    <div className="text-xs font-bold text-amber-700 cursor-pointer" onClick={() => setActiveTestNoteKey(tnKey)}>📝 {tnVal}</div>
+                                    <Trash2 className="h-3 w-3 text-destructive/60 hover:text-destructive cursor-pointer shrink-0" onClick={() => setEditedTestNotes(prev => ({ ...prev, [tnKey]: "" }))} />
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
                           </div>
                           {tg.params.length > 0 && (
                             <Table>
