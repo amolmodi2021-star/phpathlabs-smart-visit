@@ -5,6 +5,7 @@ export interface TestResult {
   profile_name?: string;
   test_name?: string;
   parameter_name: string;
+  parameter_description?: string;
   result_value: string;
   unit?: string;
   normal_range_low?: string;
@@ -116,7 +117,14 @@ const ParamRow = ({ r, rowKey, compact, isMorph, showFlagText, rowFontSize, colC
 
   return (
     <tr key={rowKey} className={`border-b border-gray-100 ${isAbnormal ? 'bg-red-50 print:bg-transparent' : ''}`} style={{ fontSize: rowFontSize }}>
-      <td className={`px-3 ${nameWeight} ${py}`}>{r.parameter_name}</td>
+      <td className={`px-3 ${nameWeight} ${py}`}>
+        {r.parameter_name}
+        {r.parameter_description && (
+          <div className="italic text-gray-500 leading-tight font-normal" style={{ fontSize: '0.75em', marginTop: '1px' }}>
+            {r.parameter_description}
+          </div>
+        )}
+      </td>
       {!showFlagText && (
         <td className={`text-right ${py}`} style={{ width: '24px' }}>
           {isAbnormal && <span className="flag-badge inline-flex items-center justify-center min-w-[18px] h-[18px] rounded bg-red-600 text-white text-xs leading-none font-bold">{r.flag}</span>}
