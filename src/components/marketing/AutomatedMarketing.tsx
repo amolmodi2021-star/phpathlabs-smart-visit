@@ -447,7 +447,7 @@ const AutomatedMarketing = () => {
 
   // Shadow RPC — runs only when ?debug=preflight is in the URL. Display-only.
   const { data: rpcPending, isFetching: rpcFetching, refetch: refetchRpc, error: rpcError } = useQuery({
-    queryKey: ["drip-pending-rpc", filters.map(f => f.id).join(","), excludeBlacklist],
+    queryKey: ["drip-pending-rpc", filters.map(f => f.id).join(","), excludeBlacklist, minInterval, maxPerDay],
     enabled: debugPreflight && filters.length > 0,
     staleTime: Infinity,
     retry: false,
@@ -465,6 +465,8 @@ const AutomatedMarketing = () => {
           .rpc("get_drip_pending_summary", {
             p_filter_ids: enabledIds,
             p_exclude_blacklist: excludeBlacklist,
+            p_min_interval_days: minInterval,
+            p_max_per_day: maxPerDay,
           })
           .abortSignal(controller.signal);
         const elapsed = Math.round(performance.now() - t0);
