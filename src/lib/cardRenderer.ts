@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { uploadJpegToCloudinaryWithRetry } from "@/lib/cardStorageCloudinary";
 
 /**
  * Downscale a source canvas to a maximum width (default 800px, preserving aspect ratio)
@@ -122,7 +123,10 @@ export type CardFailureReason =
   | "upload_collision"
   | "upload_5xx"
   | "upload_failed"
-  | "template_load_error";
+  | "template_load_error"
+  | "cloudinary_5xx"
+  | "cloudinary_4xx"
+  | "cloudinary_network";
 
 export interface GenerateCardResult {
   url: string | null;
@@ -222,6 +226,8 @@ export async function generateAndUploadCardEx(
 
     // Downscale to max 800px width + JPEG @ 0.72; throws "toblob_null" if the browser
     // returns null (memory pressure under concurrency) so the retry loop catches it.
+    // Upload to Cloudinary (free tier, 25 GB/mo) instead of Lovable Cloud Storage —
+    // eliminates ~$4–5/day egress cost since WhatsApp fetches the URL directly.
     const blobFn = async () => {
       try {
         return await exportCanvasAsCompressedJpeg(canvas);
@@ -230,9 +236,8 @@ export async function generateAndUploadCardEx(
       }
     };
 
-    const { path } = await uploadWithRetry(blobFn, freshFileName());
-    const { data: urlData } = supabase.storage.from("loyalty-cards").getPublicUrl(path);
-    return { url: urlData.publicUrl };
+    const url = await uploadJpegToCloudinaryWithRetry(blobFn);
+    return { url };
   } catch (err) {
     const reason = (err as { reason?: CardFailureReason })?.reason || "upload_failed";
     console.error(`Card generation failed (${reason}):`, err);
