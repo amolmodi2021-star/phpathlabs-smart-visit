@@ -363,13 +363,16 @@ const SampleCollection = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const handlePrintAndCollect = (reg: any, tubes: SampleTubeRow[]) => {
+  const requestPrintConfirm = (reg: any, tubes: SampleTubeRow[], action: () => void) => {
+    if (tubes.length === 0) { toast.error("No tubes to print"); return; }
+    setPrintConfirmDialog({ open: true, reg, tubes, action });
+  };
+
+  const doPrintAndCollect = (reg: any, tubes: SampleTubeRow[]) => {
     const regSel = selectedTubes[reg.id] || new Set();
     const selected = tubes.filter(t => regSel.has(t.id));
     if (selected.length === 0) { toast.error("Please select at least one barcode"); return; }
-    // Fire print in parallel — don't await; collection should not be blocked by the print dialog
     void doPrintBarcodes(reg, selected);
-    // Only collect tubes still pending — never demote accepted/processed tubes
     const toCollect = selected.filter(t => t.status === "pending");
     if (toCollect.length === 0) {
       toast.info("Tubes already collected/accepted — barcode reprinted only");
@@ -379,14 +382,24 @@ const SampleCollection = () => {
     collectMutation.mutate({ regId: reg.id, tubeIds: toCollect.map(t => t.id) });
   };
 
-  const handleSinglePrintAndCollect = (reg: any, tube: SampleTubeRow) => {
-    // Fire print in parallel — don't await; collection should not be blocked by the print dialog
+  const handlePrintAndCollect = (reg: any, tubes: SampleTubeRow[]) => {
+    const regSel = selectedTubes[reg.id] || new Set();
+    const selected = tubes.filter(t => regSel.has(t.id));
+    if (selected.length === 0) { toast.error("Please select at least one barcode"); return; }
+    requestPrintConfirm(reg, selected, () => doPrintAndCollect(reg, tubes));
+  };
+
+  const doSinglePrintAndCollect = (reg: any, tube: SampleTubeRow) => {
     void doPrintBarcodes(reg, [tube]);
     if (tube.status !== "pending") {
       toast.info("Tube already collected/accepted — barcode reprinted only");
       return;
     }
     collectMutation.mutate({ regId: reg.id, tubeIds: [tube.id] });
+  };
+
+  const handleSinglePrintAndCollect = (reg: any, tube: SampleTubeRow) => {
+    requestPrintConfirm(reg, [tube], () => doSinglePrintAndCollect(reg, tube));
   };
 
   // Reprint
