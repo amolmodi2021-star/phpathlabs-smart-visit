@@ -73,6 +73,8 @@ const DoctorApproval = () => {
   const [daPage, setDaPage] = useState(0);
   const [editedNotes, setEditedNotes] = useState<Record<string, string>>({});
   const [activeNoteKey, setActiveNoteKey] = useState<string | null>(null);
+  const [editedTestNotes, setEditedTestNotes] = useState<Record<string, string>>({});
+  const [activeTestNoteKey, setActiveTestNoteKey] = useState<string | null>(null);
   const [approverDialogOpen, setApproverDialogOpen] = useState(false);
   const pendingApprovalRef = useRef<null | ((choice: ApproverChoice) => void)>(null);
   const currentUserSigCacheRef = useRef<{ userId: string | null; checked: boolean; choice: ApproverChoice | null }>({ userId: null, checked: false, choice: null });
@@ -314,6 +316,20 @@ const DoctorApproval = () => {
       return { registration: reg, parameters, snipOnlyTests };
     }).filter(e => e.parameters.length > 0 || e.snipOnlyTests.length > 0);
   }, [registrations, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails, leafIdsByReg]);
+
+  const loadedTestNotes = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const r of existingResults as any[]) {
+      const k = `${r.registration_id}||${r.test_id}`;
+      if (map[k] == null && r.test_note) map[k] = r.test_note;
+    }
+    return map;
+  }, [existingResults]);
+  const getTestNote = useCallback((regId: string, testId: string): string => {
+    const k = `${regId}||${testId}`;
+    if (editedTestNotes[k] !== undefined) return editedTestNotes[k];
+    return loadedTestNotes[k] || "";
+  }, [editedTestNotes, loadedTestNotes]);
 
   const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string): string => {
     if (!value || !value.trim()) return "";
