@@ -333,6 +333,7 @@ const DoctorApproval = () => {
 
   const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string, descriptiveOptions?: string[], normalRangeText?: string): string => {
     if (!value || !value.trim()) return "";
+    if (rangeType === "undefined") return "";
     if (rangeType === "qualitative" || rangeType === "descriptive") {
       const ref = (normalRangeText || "").trim().toLowerCase();
       if (!ref) return "";
@@ -340,6 +341,15 @@ const DoctorApproval = () => {
     }
     const num = parseFloat(value); if (isNaN(num)) return "";
     if (low != null && num < low) return "L"; if (high != null && num > high) return "H"; return "N";
+  };
+
+  const applyUnitSuffix = (value: string, unit: string | null | undefined, rangeType?: string): string => {
+    if (!value || rangeType !== "undefined" || !unit) return value;
+    const trimmed = value.trim();
+    const u = unit.trim();
+    if (!u) return trimmed;
+    if (trimmed.toLowerCase().endsWith(u.toLowerCase())) return trimmed;
+    return `${trimmed} ${u}`;
   };
 
   const evaluateFormula = (formula: any[], paramValues: Record<string, string>): string => {
@@ -402,7 +412,7 @@ const DoctorApproval = () => {
         const refRange = p.isOutsourced && editedRefRanges[k] !== undefined ? editedRefRanges[k] : p.referenceRange;
          const noteVal = editedNotes[k] !== undefined ? editedNotes[k] : p.note;
          const testNoteVal = editedTestNotes[`${reg.id}||${testId}`] !== undefined ? editedTestNotes[`${reg.id}||${testId}`] : (loadedTestNotes[`${reg.id}||${testId}`] || "");
-         upserts.push({ registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId, param_code: p.paramCode, parameter_name: p.parameterName, result_value: value || null, unit, reference_range: refRange, normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh, flag: flag || null, status: "approved", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, approved_at: new Date().toISOString(), entered_at: p.enteredAt || null, entered_by: p.enteredBy || null, verified_at: p.verifiedAt || null, verified_by: p.verifiedBy || null, approved_by: approver.pathologistName, note: noteVal || null, test_note: testNoteVal || null });
+         upserts.push({ registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId, param_code: p.paramCode, parameter_name: p.parameterName, result_value: applyUnitSuffix(value, unit, p.rangeType) || null, unit, reference_range: refRange, normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh, flag: flag || null, status: "approved", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, approved_at: new Date().toISOString(), entered_at: p.enteredAt || null, entered_by: p.enteredBy || null, verified_at: p.verifiedAt || null, verified_by: p.verifiedBy || null, approved_by: approver.pathologistName, note: noteVal || null, test_note: testNoteVal || null });
       }
       if (upserts.length > 0) {
         await supabase.from("patient_results").delete().eq("registration_id", reg.id).eq("test_id", testId).eq("status", "verified");
@@ -483,7 +493,7 @@ const DoctorApproval = () => {
           const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
           const noteVal = editedNotes[k] !== undefined ? editedNotes[k] : p.note;
           const testNoteVal = editedTestNotes[`${reg.id}||${testId}`] !== undefined ? editedTestNotes[`${reg.id}||${testId}`] : (loadedTestNotes[`${reg.id}||${testId}`] || "");
-          upserts.push({ registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId, param_code: p.paramCode, parameter_name: p.parameterName, result_value: value || null, unit: p.unit, reference_range: p.referenceRange, normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh, flag: flag || null, status: "approved", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, approved_at: new Date().toISOString(), entered_at: p.enteredAt || null, entered_by: p.enteredBy || null, verified_at: p.verifiedAt || null, verified_by: p.verifiedBy || null, approved_by: approver.pathologistName, note: noteVal || null, test_note: testNoteVal || null });
+          upserts.push({ registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId, param_code: p.paramCode, parameter_name: p.parameterName, result_value: applyUnitSuffix(value, p.unit, p.rangeType) || null, unit: p.unit, reference_range: p.referenceRange, normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh, flag: flag || null, status: "approved", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, approved_at: new Date().toISOString(), entered_at: p.enteredAt || null, entered_by: p.enteredBy || null, verified_at: p.verifiedAt || null, verified_by: p.verifiedBy || null, approved_by: approver.pathologistName, note: noteVal || null, test_note: testNoteVal || null });
         }
         if (upserts.length > 0) {
           await supabase.from("patient_results").delete().eq("registration_id", reg.id).eq("test_id", testId).eq("status", "verified");
@@ -560,7 +570,7 @@ const DoctorApproval = () => {
         upserts.push({
           registration_id: regId, test_id: p.testId, parameter_id: p.parameterId,
           param_code: p.paramCode, parameter_name: p.parameterName,
-          result_value: value || null, unit, reference_range: refRange,
+          result_value: applyUnitSuffix(value, unit, p.rangeType) || null, unit, reference_range: refRange,
           normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh,
           flag: flag || null, status: "entered",
           is_calculated: p.isCalculated, is_from_interface: p.isFromInterface,
@@ -679,6 +689,17 @@ const DoctorApproval = () => {
               onChange={(v) => handleValueChange(regId, p.parameterId, v, entry)}
               className="!w-[180px]"
             />
+          ) :
+           p.rangeType === "undefined" && p.descriptiveOptions.length > 0 ? (
+            <DescriptiveCombobox
+              value={currentValue}
+              options={p.descriptiveOptions}
+              onChange={(v) => handleValueChange(regId, p.parameterId, v, entry)}
+              className="!w-[180px]"
+            />
+          ) :
+           p.rangeType === "undefined" ? (
+            <Input value={currentValue} onChange={e => handleValueChange(regId, p.parameterId, e.target.value, entry)} className="h-7 text-sm w-[180px]" placeholder="Enter result" />
           ) : (<Input value={currentValue} onChange={e => handleValueChange(regId, p.parameterId, e.target.value, entry)} className={`h-7 text-sm w-[180px] ${flag === "H" || flag === "L" || flag === "A" || flag === "X" ? "border-destructive text-destructive font-bold" : ""}`} placeholder="Enter result" />)}
         </TableCell>
         <TableCell className="py-1.5 text-xs text-muted-foreground">
@@ -690,7 +711,7 @@ const DoctorApproval = () => {
         <TableCell className="py-1.5 text-center">
           {p.isOutsourced && !p.isSnipMode ? (
             <Select value={flag || "none"} onValueChange={(v) => setEditedFlags(prev => ({ ...prev, [key]: v === "none" ? "" : v }))}><SelectTrigger className="h-6 text-xs w-[80px]"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">—</SelectItem><SelectItem value="N">Normal</SelectItem><SelectItem value="H">HIGH</SelectItem><SelectItem value="L">LOW</SelectItem></SelectContent></Select>
-          ) : (<>{flag === "H" && <Badge variant="destructive" className="text-xs">HIGH</Badge>}{flag === "L" && <Badge variant="destructive" className="text-xs">LOW</Badge>}{flag === "N" && <Badge variant="secondary" className="text-xs text-green-700">Normal</Badge>}{!flag && currentValue && <Badge variant="outline" className="text-xs">—</Badge>}</>)}
+          ) : (<>{flag === "H" && <Badge variant="destructive" className="text-xs">HIGH</Badge>}{flag === "L" && <Badge variant="destructive" className="text-xs">LOW</Badge>}{flag === "N" && <Badge variant="secondary" className="text-xs text-green-700">Normal</Badge>}{!flag && currentValue && p.rangeType !== "undefined" && <Badge variant="outline" className="text-xs">—</Badge>}</>)}
         </TableCell>
         <TableCell className="py-1.5 text-center">
           {p.isOutsourced ? (p.outsourceLabName ? <Badge variant="outline" className="text-xs text-green-600 border-green-300 whitespace-nowrap">{p.outsourceLabName}</Badge> : <Badge variant="outline" className="text-xs text-purple-600 border-purple-300">Outsourced</Badge>) : <Badge className="text-xs bg-blue-600">Verified</Badge>}

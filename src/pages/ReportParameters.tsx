@@ -206,18 +206,22 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
       if (paramId) {
         await supabase.from("parameter_normal_ranges").delete().eq("parameter_id", paramId);
         if (normalRanges.length > 0) {
-          const rangeInserts = normalRanges.map(r => ({
-            parameter_id: paramId!,
-            gender: r.gender,
-            age_min: r.age_min,
-            age_max: r.age_max,
-            normal_range_low: r.range_type === "numeric" ? r.normal_range_low : null,
-            normal_range_high: r.range_type === "numeric" ? r.normal_range_high : null,
-            normal_range_text: r.normal_range_text || null,
-            range_type: r.range_type || "numeric",
-            expected_value: r.range_type === "qualitative" ? (r.expected_value || null) : null,
-            descriptive_options: r.range_type === "descriptive" ? (r.descriptive_options?.filter(o => o.trim()) || []) : [],
-          }));
+          const rangeInserts = normalRanges.map(r => {
+            const isUndef = r.range_type === "undefined";
+            const isDesc = r.range_type === "descriptive";
+            return {
+              parameter_id: paramId!,
+              gender: r.gender,
+              age_min: r.age_min,
+              age_max: r.age_max,
+              normal_range_low: r.range_type === "numeric" ? r.normal_range_low : null,
+              normal_range_high: r.range_type === "numeric" ? r.normal_range_high : null,
+              normal_range_text: r.normal_range_text || null,
+              range_type: r.range_type || "numeric",
+              expected_value: r.range_type === "qualitative" ? (r.expected_value || null) : null,
+              descriptive_options: (isDesc || isUndef) ? (r.descriptive_options?.filter(o => o.trim()) || []) : [],
+            };
+          });
           await supabase.from("parameter_normal_ranges").insert(rangeInserts);
         }
       }
@@ -818,6 +822,7 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
                               <SelectItem value="numeric">Numeric</SelectItem>
                               <SelectItem value="qualitative">Qualitative</SelectItem>
                               <SelectItem value="descriptive">Descriptive</SelectItem>
+                              <SelectItem value="undefined">Undefined</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -907,10 +912,17 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
                               })()}
                             </div>
                           </div>
-                        ) : (
+                        ) : r.range_type === "descriptive" || r.range_type === "undefined" ? (
                           <div className="space-y-2">
+                            {r.range_type === "undefined" && (
+                              <div className="text-xs text-muted-foreground">
+                                No flag/highlight for this type. If a Unit is set on the parameter, the result value will be concatenated with the Unit on the report.
+                              </div>
+                            )}
                             <div className="flex items-center justify-between">
-                              <Label className="text-xs font-medium">Dropdown Options (for result selection)</Label>
+                              <Label className="text-xs font-medium">
+                                Dropdown Options {r.range_type === "undefined" ? "(optional, for result selection)" : "(for result selection)"}
+                              </Label>
                               <Button type="button" variant="outline" size="sm" className="h-6 text-xs" onClick={() => {
                                 const opts = [...(r.descriptive_options || []), ""];
                                 updateRange(r._idx, "descriptive_options", opts);
@@ -939,14 +951,22 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
                               </div>
                             ))}
                             {(!r.descriptive_options || r.descriptive_options.length === 0) && (
-                              <p className="text-xs text-muted-foreground">No options added yet. Click "Add Option" to add descriptive text choices.</p>
+                              <p className="text-xs text-muted-foreground">No options added yet. Click "Add Option" to add text choices.</p>
                             )}
                             <div>
-                              <Label className="text-xs">Display Text</Label>
-                              <Input value={r.normal_range_text} onChange={(e) => updateRange(r._idx, "normal_range_text", e.target.value)} placeholder="e.g. Normal findings" />
+                              <Label className="text-xs">
+                                {r.range_type === "undefined"
+                                  ? "Display Text for Reference Range (optional, leave blank to omit)"
+                                  : "Display Text"}
+                              </Label>
+                              <Input
+                                value={r.normal_range_text}
+                                onChange={(e) => updateRange(r._idx, "normal_range_text", e.target.value)}
+                                placeholder={r.range_type === "undefined" ? "e.g. 10 - 50 mL (leave blank for none)" : "e.g. Normal findings"}
+                              />
                             </div>
                           </div>
-                        )}
+                        ) : null}
                       </div>
                     ))}
                   </div>

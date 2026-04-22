@@ -677,6 +677,7 @@ const ResultsEntry = () => {
   // ─── Calculate flag ───
   const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string, descriptiveOptions?: string[], normalRangeText?: string): string => {
     if (!value || value.trim() === "") return "";
+    if (rangeType === "undefined") return "";
     if (rangeType === "qualitative" || rangeType === "descriptive") {
       const ref = (normalRangeText || "").trim().toLowerCase();
       if (!ref) return "";
@@ -687,6 +688,16 @@ const ResultsEntry = () => {
     if (low != null && num < low) return "L";
     if (high != null && num > high) return "H";
     return "N";
+  };
+
+  // ─── Apply unit suffix for "undefined" range type ───
+  const applyUnitSuffix = (value: string, unit: string | null | undefined, rangeType?: string): string => {
+    if (!value || rangeType !== "undefined" || !unit) return value;
+    const trimmed = value.trim();
+    const u = unit.trim();
+    if (!u) return trimmed;
+    if (trimmed.toLowerCase().endsWith(u.toLowerCase())) return trimmed;
+    return `${trimmed} ${u}`;
   };
 
   // ─── Evaluate calculated parameters ───
@@ -782,7 +793,7 @@ const ResultsEntry = () => {
         parameter_id: p.parameterId,
         param_code: p.paramCode,
         parameter_name: p.parameterName,
-        result_value: value || null,
+        result_value: applyUnitSuffix(value, unit, p.rangeType) || null,
         unit: unit,
         reference_range: refRange,
         normal_range_low: p.normalRangeLow,
@@ -839,7 +850,7 @@ const ResultsEntry = () => {
           parameter_id: p.parameterId,
           param_code: p.paramCode,
           parameter_name: p.parameterName,
-          result_value: value || null,
+          result_value: applyUnitSuffix(value, unit, p.rangeType) || null,
           unit: unit,
           reference_range: refRange,
           normal_range_low: p.normalRangeLow,
@@ -1178,6 +1189,23 @@ const ResultsEntry = () => {
               onKeyDown={handleResultTabKey}
               className="w-[180px]"
             />
+          ) : p.rangeType === "undefined" && p.descriptiveOptions.length > 0 ? (
+            <DescriptiveCombobox
+              value={currentValue}
+              options={p.descriptiveOptions}
+              onChange={(v) => handleValueChange(regId, p.parameterId, v, entry)}
+              onKeyDown={handleResultTabKey}
+              className="w-[180px]"
+            />
+          ) : p.rangeType === "undefined" ? (
+            <Input
+              value={currentValue}
+              onChange={e => handleValueChange(regId, p.parameterId, e.target.value, entry)}
+              className="h-7 text-sm w-[180px]"
+              placeholder="Enter result"
+              data-result-input=""
+              onKeyDown={handleResultTabKey}
+            />
           ) : (
             <Input
               value={currentValue}
@@ -1242,7 +1270,7 @@ const ResultsEntry = () => {
               {flag === "H" && <Badge variant="destructive" className="text-xs">HIGH</Badge>}
               {flag === "L" && <Badge variant="destructive" className="text-xs">LOW</Badge>}
               {flag === "N" && <Badge variant="secondary" className="text-xs text-green-700">Normal</Badge>}
-              {!flag && currentValue && <Badge variant="outline" className="text-xs">—</Badge>}
+              {!flag && currentValue && p.rangeType !== "undefined" && <Badge variant="outline" className="text-xs">—</Badge>}
             </>
           )}
         </TableCell>
