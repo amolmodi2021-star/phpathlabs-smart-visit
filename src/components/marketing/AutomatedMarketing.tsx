@@ -552,6 +552,20 @@ const AutomatedMarketing = () => {
       return all;
     };
 
+    // Paginate RPC results: PostgREST caps RPC responses at 1000 rows by default.
+    const fetchAllRpc = async (rpcName: string) => {
+      let all: any[] = [];
+      let from = 0;
+      while (true) {
+        const { data } = await (supabase.rpc(rpcName as any) as any).range(from, from + BATCH - 1);
+        if (!data || (data as any[]).length === 0) break;
+        all = all.concat(data as any[]);
+        if ((data as any[]).length < BATCH) break;
+        from += BATCH;
+      }
+      return all;
+    };
+
     // Compute interval date BEFORE parallel queries so we can use it in the message_send_log filter
     const intervalDate = new Date();
     intervalDate.setDate(intervalDate.getDate() - minInterval);
@@ -559,19 +573,16 @@ const AutomatedMarketing = () => {
     // Run ALL queries in parallel for speed.
     // Slim RPCs replace the two heavy reads against crm_contacts + crm_abnormal_tests
     // (drops `remarks`, `created_by`, etc. and pre-deduplicates abnormal PKs server-side).
-    const [contactSliceRes, blacklistData, abnormalRpcRes, cyclesData, allLogs, recentLogEntries] = await Promise.all([
-      supabase.rpc("get_drip_contact_slice"),
+    const [allContacts, blacklistData, abnormalPks, cyclesData, allLogs, recentLogEntries] = await Promise.all([
+      fetchAllRpc("get_drip_contact_slice"),
       excludeBlacklist
         ? supabase.from("crm_blacklist").select("mobile_number").then(r => r.data || [])
         : Promise.resolve([]),
-      supabase.rpc("get_abnormal_pks"),
+      fetchAllRpc("get_abnormal_pks"),
       fetchAll(supabase.from("drip_mobile_cycles").select("mobile_number,current_cycle")),
       fetchAll(supabase.from("drip_campaign_log").select("filter_id,mobile_number,contact_primary_key,cycle_number").eq("status", "sent")),
       fetchAll(supabase.from("message_send_log").select("mobile_number,sent_at").gte("sent_at", intervalDate.toISOString())),
     ]);
-
-    const allContacts = (contactSliceRes.data as any[]) || [];
-    const abnormalPks = (abnormalRpcRes.data as any[]) || [];
 
     const blacklistSet = new Set(blacklistData.map((b: any) => b.mobile_number));
     const abnormalPkSet = new Set(abnormalPks.map((a: any) => a.contact_primary_key));
