@@ -2299,6 +2299,7 @@ export type Database = {
           result_value: string | null
           status: string
           test_id: string
+          test_note: string | null
           unit: string | null
           updated_at: string
           verified_at: string | null
@@ -2327,6 +2328,7 @@ export type Database = {
           result_value?: string | null
           status?: string
           test_id: string
+          test_note?: string | null
           unit?: string | null
           updated_at?: string
           verified_at?: string | null
@@ -2355,6 +2357,7 @@ export type Database = {
           result_value?: string | null
           status?: string
           test_id?: string
+          test_note?: string | null
           unit?: string | null
           updated_at?: string
           verified_at?: string | null
