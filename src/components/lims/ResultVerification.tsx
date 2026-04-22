@@ -608,7 +608,7 @@ const ResultVerification = () => {
       for (const p of testParams) {
         const k = `${reg.id}||${p.parameterId}`;
         const value = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
-        const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+        const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions);
         const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
         const unit = p.isOutsourced && editedUnits[k] !== undefined ? editedUnits[k] : p.unit;
         const refRange = p.isOutsourced && editedRefRanges[k] !== undefined ? editedRefRanges[k] : p.referenceRange;
@@ -657,7 +657,7 @@ const ResultVerification = () => {
         for (const p of testParams) {
           const k = `${reg.id}||${p.parameterId}`;
           const value = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
-          const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+          const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions);
           const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
           const unit = p.isOutsourced && editedUnits[k] !== undefined ? editedUnits[k] : p.unit;
           const refRange = p.isOutsourced && editedRefRanges[k] !== undefined ? editedRefRanges[k] : p.referenceRange;
@@ -700,7 +700,7 @@ const ResultVerification = () => {
       for (const p of testParams) {
         const k = `${regId}||${p.parameterId}`;
         const value = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
-        const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+        const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions);
         const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
         const unit = p.isOutsourced && editedUnits[k] !== undefined ? editedUnits[k] : p.unit;
         const refRange = p.isOutsourced && editedRefRanges[k] !== undefined ? editedRefRanges[k] : p.referenceRange;
@@ -795,9 +795,9 @@ const ResultVerification = () => {
     const regId = entry.registration.id;
     const key = `${regId}||${p.parameterId}`;
     const currentValue = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
-    const autoFlag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+    const autoFlag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions);
     const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : autoFlag;
-    const rowBg = (flag === "H" || flag === "L" || flag === "A") ? "bg-destructive/5" : "";
+    const rowBg = (flag === "H" || flag === "L" || flag === "A" || flag === "X") ? "bg-destructive/5" : "";
 
     return (
       <TableRow key={key} className={rowBg}>
@@ -848,7 +848,7 @@ const ResultVerification = () => {
             <Input
               value={currentValue}
               onChange={e => handleValueChange(regId, p.parameterId, e.target.value, entry)}
-              className={`h-7 text-sm w-[180px] ${flag === "H" || flag === "L" || flag === "A" ? "border-destructive text-destructive font-bold" : ""}`}
+              className={`h-7 text-sm w-[180px] ${flag === "H" || flag === "L" || flag === "A" || flag === "X" ? "border-destructive text-destructive font-bold" : ""}`}
               placeholder="Enter result"
             />
           )}
@@ -872,14 +872,12 @@ const ResultVerification = () => {
                 <SelectItem value="N">Normal</SelectItem>
                 <SelectItem value="H">HIGH</SelectItem>
                 <SelectItem value="L">LOW</SelectItem>
-                <SelectItem value="A">Abnormal</SelectItem>
               </SelectContent>
             </Select>
           ) : (
             <>
               {flag === "H" && <Badge variant="destructive" className="text-xs">HIGH</Badge>}
               {flag === "L" && <Badge variant="destructive" className="text-xs">LOW</Badge>}
-              {flag === "A" && <Badge variant="destructive" className="text-xs">Abnormal</Badge>}
               {flag === "N" && <Badge variant="secondary" className="text-xs text-green-700">Normal</Badge>}
               {!flag && currentValue && <Badge variant="outline" className="text-xs">—</Badge>}
             </>
@@ -1168,7 +1166,7 @@ const ResultVerification = () => {
                     {blankParams.map(p => {
                       const key = `${reg.id}||${p.parameterId}`;
                       const currentValue = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
-                      const flag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue);
+                      const flag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions);
                       return (
                         <TableRow key={key} className="bg-yellow-50">
                           <TableCell className="py-2 text-xs font-mono text-muted-foreground">{p.paramCode}</TableCell>
@@ -1203,7 +1201,6 @@ const ResultVerification = () => {
                           <TableCell className="py-2 text-center">
                             {flag === "H" && <Badge variant="destructive" className="text-xs">HIGH</Badge>}
                             {flag === "L" && <Badge variant="destructive" className="text-xs">LOW</Badge>}
-                            {flag === "A" && <Badge variant="destructive" className="text-xs">Abnormal</Badge>}
                             {!flag && <Badge variant="outline" className="text-xs">—</Badge>}
                           </TableCell>
                         </TableRow>
