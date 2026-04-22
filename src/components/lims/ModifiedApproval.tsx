@@ -25,6 +25,10 @@ const ModifiedApproval = () => {
   const [editedUnits, setEditedUnits] = useState<Record<string, string>>({});
   const [editedRefRanges, setEditedRefRanges] = useState<Record<string, string>>({});
   const [editedFlags, setEditedFlags] = useState<Record<string, string>>({});
+  const [editedNotes, setEditedNotes] = useState<Record<string, string>>({});
+  const [activeNoteKey, setActiveNoteKey] = useState<string | null>(null);
+  const [editedTestNotes, setEditedTestNotes] = useState<Record<string, string>>({});
+  const [activeTestNoteKey, setActiveTestNoteKey] = useState<string | null>(null);
   const [actionKey, setActionKey] = useState<string | null>(null);
   const [viewSnipImages, setViewSnipImages] = useState<string[] | null>(null);
 
