@@ -37,7 +37,7 @@ interface ParameterResult {
   normalRangeLow: number | null; normalRangeHigh: number | null; resultValue: string; flag: string;
   isCalculated: boolean; calculationFormula: any[]; isFromInterface: boolean; sendForInterface: boolean;
   status: string; testId: string; testName: string; departmentId: string; machineName: string;
-  displayOrder: number; rangeType: string; descriptiveOptions: string[]; expectedValue: string;
+  displayOrder: number; rangeType: string; descriptiveOptions: string[]; expectedValue: string; normalRangeText: string;
   isOutsourced: boolean; outsourceLabName: string | null; outsourceStatus: string; isSnipMode: boolean;
   enteredAt: string | null; enteredBy: string | null; verifiedAt: string | null; verifiedBy: string | null;
   note: string;

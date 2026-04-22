@@ -53,6 +53,7 @@ interface ParameterResult {
   rangeType: string;
   descriptiveOptions: string[];
   expectedValue: string;
+  normalRangeText: string;
   isOutsourced: boolean;
   outsourceLabName: string | null;
   outsourceStatus: string;
