@@ -153,18 +153,23 @@ const ModifiedApproval = () => {
     return loadedTestNotes[k] || "";
   };
 
-  // Resolve range_type + display "normal" text for a parameter
-  const resolveRangeMeta = (parameterId: string): { rangeType: string; normalRangeText: string } => {
+  // Resolve range_type + display "normal" text + descriptive options + unit
+  const resolveRangeMeta = (parameterId: string): { rangeType: string; normalRangeText: string; descriptiveOptions: string[] } => {
     const ranges = (normalRangesMap as any)[parameterId] || [];
     if (ranges.length > 0) {
       const r = ranges[0];
-      return { rangeType: r.range_type || "numeric", normalRangeText: r.normal_range_text || "" };
+      return {
+        rangeType: r.range_type || "numeric",
+        normalRangeText: r.normal_range_text || "",
+        descriptiveOptions: Array.isArray(r.descriptive_options) ? r.descriptive_options : [],
+      };
     }
-    return { rangeType: "numeric", normalRangeText: "" };
+    return { rangeType: "numeric", normalRangeText: "", descriptiveOptions: [] };
   };
 
   const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string, descriptiveOptions?: string[], normalRangeText?: string): string => {
     if (!value || !value.trim()) return "";
+    if (rangeType === "undefined") return "";
     if (rangeType === "qualitative" || rangeType === "descriptive") {
       const ref = (normalRangeText || "").trim().toLowerCase();
       if (!ref) return "";
@@ -172,6 +177,15 @@ const ModifiedApproval = () => {
     }
     const num = parseFloat(value); if (isNaN(num)) return "";
     if (low != null && num < low) return "L"; if (high != null && num > high) return "H"; return "N";
+  };
+
+  const applyUnitSuffix = (value: string, unit: string | null | undefined, rangeType?: string): string => {
+    if (!value || rangeType !== "undefined" || !unit) return value;
+    const trimmed = value.trim();
+    const u = unit.trim();
+    if (!u) return trimmed;
+    if (trimmed.toLowerCase().endsWith(u.toLowerCase())) return trimmed;
+    return `${trimmed} ${u}`;
   };
 
   const evaluateFormula = (formula: any[], paramValues: Record<string, string>): string => {
@@ -241,7 +255,7 @@ const ModifiedApproval = () => {
 
           // Update patient_results
           await supabase.from("patient_results").update({
-            result_value: newValue || null,
+            result_value: applyUnitSuffix(newValue, newUnit, rangeMeta.rangeType) || null,
             unit: newUnit || null,
             reference_range: newRefRange || null,
             flag: newFlag || null,
@@ -446,7 +460,7 @@ const ModifiedApproval = () => {
                                   const rangeMeta = resolveRangeMeta(p.parameter_id);
                                   const autoFlag = calculateFlag(currentValue, p.normal_range_low, p.normal_range_high, rangeMeta.rangeType, undefined, undefined, rangeMeta.normalRangeText);
                                   const currentFlag = editedFlags[key] !== undefined ? editedFlags[key] : (p.flag || autoFlag);
-                                  const rowBg = (currentFlag === "H" || currentFlag === "L" || currentFlag === "A" || currentFlag === "X") ? "bg-destructive/5" : "";
+                                  const rowBg = (rangeMeta.rangeType !== "undefined") && (currentFlag === "H" || currentFlag === "L" || currentFlag === "A" || currentFlag === "X") ? "bg-destructive/5" : "";
 
                                   // Check if calculated
                                   const testParams = testParamsMap[p.test_id] || [];
