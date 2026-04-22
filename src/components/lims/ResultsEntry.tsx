@@ -1420,6 +1420,18 @@ const ResultsEntry = () => {
                           <Badge variant="outline" className="text-[10px] text-purple-600 border-purple-300">Outsourced</Badge>
                         );
                       })()}
+                      <StickyNote
+                        className={`inline h-3.5 w-3.5 cursor-pointer shrink-0 ${getTestNote(reg.id, tg.testId) ? 'text-amber-600' : 'text-muted-foreground hover:text-primary'}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (activeTestNoteKey === testKey) { setActiveTestNoteKey(null); }
+                          else {
+                            setActiveTestNoteKey(testKey);
+                            const cur = getTestNote(reg.id, tg.testId);
+                            if (!cur) setEditedTestNotes(prev => ({ ...prev, [testKey]: "Kindly correlate clinically" }));
+                          }
+                        }}
+                      />
                     </div>
                     <div className="flex items-center gap-1 flex-wrap" onClick={e => e.stopPropagation()}>
                       {!isFullTestOutsourced && (
@@ -1454,6 +1466,26 @@ const ResultsEntry = () => {
                       </Button>
                     </div>
                   </div>
+                  {activeTestNoteKey === testKey && (
+                    <div className="flex items-center gap-1 mt-1 px-2" onClick={e => e.stopPropagation()}>
+                      <Input
+                        value={getTestNote(reg.id, tg.testId)}
+                        onChange={e => setEditedTestNotes(prev => ({ ...prev, [testKey]: e.target.value }))}
+                        className="h-6 text-xs w-full"
+                        placeholder="Kindly correlate clinically"
+                        autoFocus
+                      />
+                      <Trash2 className="h-3.5 w-3.5 text-destructive cursor-pointer shrink-0" onClick={() => { setEditedTestNotes(prev => ({ ...prev, [testKey]: "" })); setActiveTestNoteKey(null); }} />
+                    </div>
+                  )}
+                  {getTestNote(reg.id, tg.testId) && activeTestNoteKey !== testKey && (
+                    <div className="flex items-center gap-1 mt-0.5 px-2" onClick={e => e.stopPropagation()}>
+                      <div className="text-xs font-bold text-amber-700 cursor-pointer" onClick={() => setActiveTestNoteKey(testKey)}>
+                        📝 {getTestNote(reg.id, tg.testId)}
+                      </div>
+                      <Trash2 className="h-3 w-3 text-destructive/60 hover:text-destructive cursor-pointer shrink-0" onClick={() => setEditedTestNotes(prev => ({ ...prev, [testKey]: "" }))} />
+                    </div>
+                  )}
                   {isTestExpanded && (
                     <div className="overflow-x-auto -mx-1">
                     <Table>
