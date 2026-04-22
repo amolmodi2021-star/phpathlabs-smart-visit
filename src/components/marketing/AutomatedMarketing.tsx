@@ -1822,14 +1822,19 @@ const AutomatedMarketing = () => {
                   🔬 Shadow Preflight (RPC vs JS)
                   <Badge variant="outline" className="text-[10px]">debug=preflight</Badge>
                 </CardTitle>
-                <Button size="sm" variant="outline" onClick={() => refetchRpc()} disabled={rpcFetching}>
+                <Button size="sm" variant="outline" onClick={runShadowRpc} disabled={rpcFetching}>
                   <RefreshCw className={`h-4 w-4 mr-1 ${rpcFetching ? "animate-spin" : ""}`} /> Run RPC
                 </Button>
               </div>
             </CardHeader>
             <CardContent className="py-2 text-xs space-y-2">
+              <p className="text-[11px] text-muted-foreground">
+                Filters loaded: <strong>{filters.length}</strong> (enabled: <strong>{filters.filter(f => f.enabled).length}</strong>)
+                {rpcLastClickAt && <> · Last click: <strong>{rpcLastClickAt}</strong></>}
+                {rpcElapsedMs !== null && <> · RPC: <strong>{rpcElapsedMs} ms</strong></>}
+              </p>
               {rpcError ? (
-                <p className="text-destructive font-medium">RPC failed: {(rpcError as Error).message}</p>
+                <p className="text-destructive font-medium">RPC failed: {rpcError}</p>
               ) : rpcFetching && !rpcPending ? (
                 <p className="text-muted-foreground">Running RPC… (will time out after 30s if the database hangs)</p>
               ) : !rpcPending ? (
@@ -1870,7 +1875,6 @@ const AutomatedMarketing = () => {
                         {(onlyJs.length + onlyRpc.length + onlyJsAbn.length + onlyRpcAbn.length) > 0 && (
                           <p>First 5 only-in-JS ABC primary keys: {onlyJs.slice(0, 5).join(", ") || "—"}</p>
                         )}
-                        <p>RPC roundtrip: {(rpcPending as any)._elapsed_ms ?? "—"} ms</p>
                       </div>
                     );
                   })()}
