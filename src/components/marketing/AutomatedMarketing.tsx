@@ -453,6 +453,8 @@ const AutomatedMarketing = () => {
   const [rpcError, setRpcError] = useState<string | null>(null);
   const [rpcElapsedMs, setRpcElapsedMs] = useState<number | null>(null);
   const [rpcLastClickAt, setRpcLastClickAt] = useState<string | null>(null);
+  const [jsPipeline, setJsPipeline] = useState<{ pendingAbc: number; pendingAbnormal: number; abcRecords: any[]; abnormalRecords: any[] } | null>(null);
+  const [jsElapsedMs, setJsElapsedMs] = useState<number | null>(null);
 
   const runShadowRpc = async () => {
     const clickedAt = new Date().toLocaleTimeString();
@@ -467,44 +469,79 @@ const AutomatedMarketing = () => {
     if (enabledIds.length === 0) {
       setRpcError("0 filters enabled — nothing to compare");
       setRpcPending(null);
+      setJsPipeline(null);
       setRpcElapsedMs(null);
+      setJsElapsedMs(null);
       return;
     }
 
     setRpcFetching(true);
     setRpcError(null);
     setRpcPending(null);
+    setJsPipeline(null);
     setRpcElapsedMs(null);
+    setJsElapsedMs(null);
 
-    const t0 = performance.now();
+    const tRpc0 = performance.now();
+    const tJs0 = performance.now();
     const controller = new AbortController();
     const timeoutMs = 30000;
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      console.log("[ShadowRPC] calling get_drip_pending_summary", {
+      console.log("[ShadowRPC] calling get_drip_pending_summary + collectEligibleRecords in parallel", {
         enabledIds,
         excludeBlacklist,
         minInterval,
         maxPerDay,
       });
-      const { data, error } = await supabase
+
+      const rpcPromise = supabase
         .rpc("get_drip_pending_summary", {
           p_filter_ids: enabledIds,
           p_exclude_blacklist: excludeBlacklist,
           p_min_interval_days: minInterval,
           p_max_per_day: maxPerDay,
         })
-        .abortSignal(controller.signal);
-      const elapsed = Math.round(performance.now() - t0);
-      if (error) throw new Error(error.message || "RPC failed");
+        .abortSignal(controller.signal)
+        .then((res) => ({ ...res, _elapsed: Math.round(performance.now() - tRpc0) }));
+
+      const jsPromise = collectEligibleRecords()
+        .then((results) => ({ results, _elapsed: Math.round(performance.now() - tJs0) }));
+
+      const [rpcRes, jsRes] = await Promise.all([rpcPromise, jsPromise]);
+
+      if ((rpcRes as any).error) throw new Error((rpcRes as any).error.message || "RPC failed");
+      const data = (rpcRes as any).data;
       const row = Array.isArray(data) && data[0]
         ? data[0]
         : { pending_abc: 0, pending_abnormal: 0, pending_abc_records: [], pending_abnormal_records: [] };
-      console.log("[ShadowRPC] success in", elapsed, "ms", row);
+      console.log("[ShadowRPC] RPC success in", (rpcRes as any)._elapsed, "ms", row);
+
+      // Aggregate JS pipeline results by message_type
+      const enabledFiltersById = new Map(filters.map((f) => [f.id, f]));
+      let pendingAbc = 0;
+      let pendingAbnormal = 0;
+      const abcRecords: any[] = [];
+      const abnormalRecords: any[] = [];
+      for (const r of jsRes.results) {
+        const f = enabledFiltersById.get(r.filterId);
+        if (!f) continue;
+        if (f.message_type === "abc_card") {
+          pendingAbc += r.eligible;
+          abcRecords.push(...r.records);
+        } else if (f.message_type === "abnormal_card") {
+          pendingAbnormal += r.eligible;
+          abnormalRecords.push(...r.records);
+        }
+      }
+      console.log("[ShadowRPC] JS pipeline success in", jsRes._elapsed, "ms", { pendingAbc, pendingAbnormal });
+
       setRpcPending(row);
-      setRpcElapsedMs(elapsed);
+      setRpcElapsedMs((rpcRes as any)._elapsed);
+      setJsPipeline({ pendingAbc, pendingAbnormal, abcRecords, abnormalRecords });
+      setJsElapsedMs(jsRes._elapsed);
     } catch (e: any) {
-      const elapsed = Math.round(performance.now() - t0);
+      const elapsed = Math.round(performance.now() - tRpc0);
       const msg = controller.signal.aborted
         ? `Timed out after ${Math.round(elapsed / 1000)}s (limit ${timeoutMs / 1000}s)`
         : (e?.message || String(e));
