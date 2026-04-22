@@ -18,6 +18,26 @@ function applyUnitConversion(rawValue: string | null | undefined, param: any): s
   return Number(converted.toFixed(4)).toString();
 }
 
+// Compute a flag value consistent with the UI rule:
+// - Numeric value with numeric bounds → H/L/N
+// - Otherwise (qualitative/descriptive), compare against normal_range_text
+//   → match = "N", mismatch = "X" (highlight only, no badge), empty ref = ""
+function computeFlagFromInterface(rawValue: string, param: any): string {
+  const value = (rawValue ?? "").toString().trim();
+  if (!value) return "";
+
+  const num = parseFloat(value);
+  if (!isNaN(num) && param?.normal_range_low != null && param?.normal_range_high != null) {
+    if (num < Number(param.normal_range_low)) return "L";
+    if (num > Number(param.normal_range_high)) return "H";
+    return "N";
+  }
+
+  const ref = (param?.normal_range_text ?? "").toString().trim().toLowerCase();
+  if (!ref) return "";
+  return value.toLowerCase() === ref ? "N" : "X";
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
