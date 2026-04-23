@@ -55,7 +55,7 @@ const LoyaltyCardHistory = () => {
       variablesMapping: map["_bodyMapping"] ? JSON.parse(map["_bodyMapping"]) : {},
       includeMediaHeader: map["_mediaHeader"] !== "false",
       queueEnabled: map["wa_global_queueEnabled"] !== "false",
-      delayMs: Number(map["wa_global_delayMs"] || 3000),
+      delayMs: Number(map["wa_global_delayMs"] ?? 1000),
     };
   };
 
