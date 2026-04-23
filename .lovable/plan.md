@@ -1,137 +1,70 @@
 
 
-# Final cost-reduction plan — second pass with your constraints
+# Will Cloud cost scale up when you go live with patients?
 
-## Confirmed constraints from you
+**Short answer: NO, not significantly — IF the optimizations we already applied stay in place.** Here's why, broken down by what scales and what doesn't.
 
-| Concern | Resolution |
-|---|---|
-| `message_send_log` realtime needed for "min-gap-between-sends" filter | **Keep table, drop from realtime publication.** Filter reads via direct SQL query at filter-evaluation time, not via subscription. |
-| `patient_results` realtime | **Keep in realtime publication.** Interface-fed results MUST appear instantly in Results Entry. |
-| `lims_test_results` | **Drop entirely** (table + realtime). Interface writes directly into `patient_results`. |
-| `lims_interface_logs` | **Keep table** (transfers results). Drop from realtime publication only. |
-| `lims_unmapped_results` | **Keep table.** Drop from realtime publication only. |
-| Automated Marketing per-day cap | Already in place — leave alone. |
-| `LimsDemo` realtime | Replace with 30s polling. |
-| LIMS test orders | Generate **at Sample Acceptance**, not at registration. |
-| `webhook_messages.raw_payload` | Null out rows older than 7 days via existing prune cron. |
-| `crm_contacts` write amplification | **Bug confirmed** — drip engine should update **only the rows whose primary_key was sent to**, never the whole table. |
+## What scales linearly with patients (small impact)
 
-## Files & exact changes
+| Per real patient visit | DB writes | Realtime broadcast | Storage |
+|---|---|---|---|
+| 1 registration | ~5 rows (registration, tests, sample tubes, payment) | None (not in publication) | ~2 KB |
+| Results entered | ~10-30 result rows | Yes — `patient_results` IS in realtime (your hard requirement for interface) | ~5 KB |
+| Report approved | 1 archived snapshot | None | ~30 KB |
+| WhatsApp report send | 1 `message_send_log` row | None (we removed it) | ~0.5 KB |
+| **Total per patient** | **~40-60 writes** | **~20 broadcasts** | **~40 KB** |
 
-### 1. New migration — slim realtime publication, drop unused table
+At **50 real patients/day** = ~2,500 writes/day + ~2 MB/day storage. That's **5-10% of current daily activity**. Patients are NOT the cost driver.
 
-```sql
--- Drop the obsolete intermediate table (interface now writes patient_results directly)
-DROP TABLE IF EXISTS public.lims_test_results CASCADE;
+## What's actually driving cost (NOT patient count)
 
--- Keep these tables, but stop broadcasting their writes to every connected tab
-ALTER PUBLICATION supabase_realtime DROP TABLE
-  public.message_send_log,
-  public.lims_interface_logs,
-  public.lims_unmapped_results;
+Look at your real numbers from the live DB:
 
--- patient_results stays in realtime (Results Entry needs live machine data)
--- webhook_messages stays in realtime (WhatsApp Chat needs live inbound)
-```
-
-Net effect on realtime egress: removes the three highest-volume non-essential broadcasters. `patient_results` retained so the bidirectional interface still pushes machine results to Results Entry instantly (your hard requirement).
-
-### 2. `supabase/functions/lims-interface/index.ts` — write straight to `patient_results`
-
-Currently the bridge writes to **both** `lims_test_results` AND `patient_results`. Remove the `lims_test_results` insert in both code paths (`submit_results` and `reprocess`). Keep `lims_interface_logs` insert (audit trail) and `lims_unmapped_results` insert (unmapped-code triage). Net: half the writes per interface message, zero loss of functionality.
-
-### 3. `src/components/lims/ResultsEntry.tsx` — keep realtime on `patient_results`
-
-**Reverse yesterday's removal.** Add back:
-```ts
-useRealtimeSync("patient_results", ["patient-results-by-reg"]);
-```
-This is the only way machine-fed results show up in the technician's open tab without a manual refresh. Worth the realtime cost.
-
-### 4. `src/pages/LimsDemo.tsx` — drop realtime, add 30s polling
-
-Remove `useRealtimeSync(...)` calls. Add to each `useQuery`:
-```ts
-refetchInterval: 30_000,
-refetchIntervalInBackground: false,
-```
-
-### 5. `src/components/marketing/AutomatedMarketing.tsx` — replace `message_send_log` realtime with on-demand fetch
-
-Live counters refetch every 30s while the panel is open instead of subscribing. Daily cap already enforced — no change there. Filter logic that needs "last sent within N days" issues a one-shot SQL query when the filter is evaluated, not a continuous subscription.
-
-### 6. `src/components/lims/SampleAcceptance.tsx` + `lims-interface/index.ts` — move LIMS order creation to acceptance
-
-Today, `lims_test_orders` are created at registration. Switch to:
-- On **Sample Acceptance** confirm, insert one `lims_test_orders` row per accepted test (skip cancelled/outsourced).
-- Backfill: ignore. Existing orders stay valid.
-
-This avoids creating orders for tests that get cancelled before acceptance — eliminating wasted writes and downstream interface lookups.
-
-### 7. **CRM contacts write-amplification fix (the real bug)**
-
-**Root cause confirmed.** The drip engine currently runs an UPDATE that touches every `crm_contacts` row at the end of each cycle (likely a blanket `UPDATE crm_contacts SET last_sent_type = ...` without a tight `WHERE primary_key IN (…sent…)` clause, or a per-contact UPDATE inside a loop that fires regardless of whether a message was actually sent).
-
-Fix in `src/components/marketing/AutomatedMarketing.tsx` (drip loop) and `src/lib/dripCardSenders.ts`:
-
-```ts
-// After each successful send, update ONLY that contact's row
-await supabase
-  .from("crm_contacts")
-  .update({ last_sent_type: campaignType, last_sent_date: new Date().toISOString() })
-  .eq("primary_key", contact.primary_key);  // single-row update, indexed key
-```
-
-Remove any code path that does a blanket update or that updates contacts that were skipped/blacklisted/failed. Confirm by checking `pg_stat_user_tables.n_tup_upd` for `crm_contacts` after one drip cycle — should equal the number of successful sends, not the cohort size.
-
-Expected result: drops `crm_contacts` writes from ~35K/cycle to ~500/cycle (the actual send count), and stops 35K useless WAL records + invalidations per cycle.
-
-### 8. `supabase/functions/prune-old-logs/index.ts` — null `raw_payload` on old webhook rows
-
-Add to the `RETENTION` loop a special-case step **before** the existing entries:
-
-```ts
-// Null out heavy raw payload on webhook_messages older than 7 days
-// (keeps the row + searchable fields for chat history; drops the byte-heavy column)
-const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-const { error: nullErr, count: nulled } = await supabase
-  .from("webhook_messages")
-  .update({ raw_payload: null })
-  .lt("created_at", sevenDaysAgo)
-  .not("raw_payload", "is", null);
-results["webhook_messages_raw_payload_nulled"] = { 
-  deleted: nulled ?? 0, 
-  cutoff: sevenDaysAgo, 
-  ...(nullErr ? { error: nullErr.message } : {}) 
-};
-```
-
-The existing `webhook_messages` 90-day full-row prune entry stays as-is.
-
-## Expected daily savings (recap)
-
-| Lever | Before | After |
+| Table | Writes (lifetime) | Driven by |
 |---|---|---|
-| Realtime broadcasts on `message_send_log` (~2.1K/day × N tabs) | High | 0 |
-| Realtime broadcasts on `lims_interface_logs` + `lims_unmapped_results` | Medium | 0 |
-| `lims_test_results` writes (mirror of `patient_results`) | ~Same as patient_results | 0 |
-| `crm_contacts` UPDATE storm (~35K/cycle) | Massive | ~500/cycle (actual sends) |
-| `webhook_messages.raw_payload` storage growth | +320 B/row forever | Capped at 7 days |
-| `patient_results` realtime (kept by design) | Kept | Kept |
+| `crm_contacts` | **333K** | Drip marketing cycles (already fixed today — should drop ~99%) |
+| `abnormal_history` | **68K** | Bulk Excel imports + CRM sync |
+| `message_send_log` | **58K** | Marketing/drip sends (~2K/day) |
+| `crm_abnormal_tests` | **54K** | Bulk Excel imports |
+| `drip_campaign_log` | **14K** | Drip engine cycling |
+| `patient_results` | **15K total** | Actual patient work — **tiny by comparison** |
 
-Combined, this should drop the daily Cloud delta from ~$1.30 to under ~$0.80 — a ~40% reduction without touching any clinical or marketing functionality.
+**Marketing + CRM activity is ~30x the volume of actual patient work.** That stays roughly constant whether you have 5 patients or 500 patients per day, because it's driven by your existing 35K-contact CRM database, not by new visits.
 
-## Verification
+## Cost components at scale (50 patients/day)
 
-1. `supabase_realtime` publication lists only essential tables (`patient_results`, `webhook_messages`, plus whatever else was already in it that we kept).
-2. Bring up Cloud Usage page → `message_send_log` no longer appears in active broadcasts.
-3. In Results Entry, simulate a machine-pushed result → row appears within 1-2 seconds (confirms `patient_results` realtime kept working).
-4. Run one drip cycle → `pg_stat_user_tables` shows `crm_contacts.n_tup_upd` increased by exactly the number of contacts actually messaged.
-5. Sample Acceptance for a new registration creates `lims_test_orders` rows; registration alone does not.
-6. After 7 days, `webhook_messages.raw_payload` is null for old rows but `message`, `sender_number`, etc. still intact for chat history.
+| Component | Today (dev) | Live with 50 patients/day | Change |
+|---|---|---|---|
+| Compute baseline (24/7 instance) | Fixed | Fixed | **0** |
+| DB storage growth | ~250 MB | +1.2 GB/year | Negligible (<$0.05/mo) |
+| Realtime egress | High (drip-driven) | High (still drip-driven) | **~0** |
+| Edge function invocations | 82/day | ~250/day | Negligible |
+| Storage buckets (snips, cards) | 1.7 MB | +50 MB/year | Negligible |
+| WhatsApp message log writes | ~2K/day | ~2.1K/day | **~0** |
 
-## Risk
+**Estimated bill at 50 patients/day:** ~$0.85-$1.00/day (vs. today's ~$1.30/day **after** today's fixes settle in). You'd actually be paying **less** than now.
 
-Medium-low. The `lims_test_results` drop is the only destructive schema change — verified unused (interface writes both, UI reads `patient_results`). The `crm_contacts` write fix is purely a correctness/cost win. Realtime publication changes are reversible with one ALTER statement.
+## What WOULD make it spike (avoid these)
+
+1. **Re-adding tables to realtime** — every table in `supabase_realtime` multiplies cost by (writes × connected tabs). Don't add tables back without need.
+2. **Looping cron jobs** — any cron faster than every 5 minutes will dominate cost.
+3. **Letting the drip engine run continuously without the daily cap** — already capped, just don't disable it.
+4. **Subscribing to high-write tables in components that stay open all day** — keep using `refetchInterval: 30_000` instead of realtime where possible.
+5. **Unbounded queries (no `.limit()`) on big tables** — counts as egress. The 1000-row guard already protects most reads.
+6. **Bigger Cloud instance** — only upsize via Cloud → Overview → Advanced settings if you actually hit timeouts. Don't pre-scale.
+
+## Realistic projection
+
+| Patients/day | Estimated daily Cloud cost |
+|---|---|
+| 0 (today, dev only) | ~$0.85 (after fixes) |
+| 50 (small live ops) | ~$0.95 |
+| 200 (busy lab) | ~$1.20 |
+| 500+ (multi-branch) | ~$2.00 + may need instance upsize |
+
+You have **$25/month free Cloud balance**. At 200 patients/day you'd use ~$36/month → ~$11/month out of pocket. Not significant.
+
+## Bottom line
+
+Patient volume is **not** what was burning credits. **Marketing automation** and **realtime fan-out** were. Both are now controlled. Going live with patients will add **~10-15%** to your daily Cloud cost, not multiply it. You can confidently launch without expecting a cost explosion — just don't undo today's optimizations.
 
