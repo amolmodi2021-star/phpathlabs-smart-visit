@@ -101,8 +101,7 @@ const LimsDemo = () => {
         title: "Refresh complete",
         description: `Reprocessed ${processed} order(s) — ${pushed} result(s) pushed, ${completed} marked completed`,
       });
-      queryClient.invalidateQueries({ queryKey: ["lims_orders"] });
-      queryClient.invalidateQueries({ queryKey: ["lims_test_results"] });
+      queryClient.invalidateQueries({ queryKey: ["lims-orders"] });
       queryClient.invalidateQueries({ queryKey: ["patient_results_existing"] });
     } catch (e: any) {
       toast({ title: "Refresh failed", description: e?.message || String(e), variant: "destructive" });
@@ -114,14 +113,10 @@ const LimsDemo = () => {
   const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID || "rpbkilhzulaugzrlatts";
   const apiUrl = `https://${projectId}.supabase.co/functions/v1/lims-interface`;
 
-  // Realtime subscriptions — routed through useRealtimeSync so the central
-  // debounce + `enabled` flag work consistently across the app. Five separate
-  // tables but the hook coalesces invalidations into one batch per quiet window.
-  useRealtimeSync("lims_test_orders", ["lims-orders"]);
-  useRealtimeSync("lims_test_results", ["lims-results", "lims-orders"]);
-  useRealtimeSync("lims_interface_logs", ["lims-logs"]);
-  useRealtimeSync("lims_unmapped_results", ["lims-unmapped"]);
-  useRealtimeSync("lims_no_map_required", ["lims-no-map-required", "lims-unmapped"]);
+  // Realtime disabled to cut Cloud egress; replaced with 30s polling on each
+  // useQuery below. Background polling intentionally OFF so an idle tab
+  // doesn't drive cost.
+  const POLL_MS = 30_000;
 
   const { data: orders = [] } = useQuery({
     queryKey: ["lims-orders"],
@@ -129,14 +124,8 @@ const LimsDemo = () => {
       const { data } = await supabase.from("lims_test_orders").select("*").order("created_at", { ascending: false });
       return data || [];
     },
-  });
-
-  const { data: results = [] } = useQuery({
-    queryKey: ["lims-results"],
-    queryFn: async () => {
-      const { data } = await supabase.from("lims_test_results").select("*").order("received_at", { ascending: false });
-      return data || [];
-    },
+    refetchInterval: POLL_MS,
+    refetchIntervalInBackground: false,
   });
 
   const { data: logs = [] } = useQuery({
@@ -145,6 +134,8 @@ const LimsDemo = () => {
       const { data } = await supabase.from("lims_interface_logs").select("*").order("created_at", { ascending: false }).limit(100);
       return data || [];
     },
+    refetchInterval: POLL_MS,
+    refetchIntervalInBackground: false,
   });
 
   const { data: unmappedResults = [] } = useQuery({
@@ -153,6 +144,8 @@ const LimsDemo = () => {
       const { data } = await supabase.from("lims_unmapped_results").select("*").eq("is_resolved", false).order("received_at", { ascending: false });
       return data || [];
     },
+    refetchInterval: POLL_MS,
+    refetchIntervalInBackground: false,
   });
 
   const { data: codeMappings = [] } = useQuery({
@@ -203,13 +196,11 @@ const LimsDemo = () => {
     if (toDelete.length === 0) return;
     Promise.all(
       toDelete.map(async (o: any) => {
-        await supabase.from("lims_test_results").delete().eq("order_id", o.id);
         await supabase.from("lims_test_orders").delete().eq("id", o.id);
       })
     ).then(() => {
       toast({ title: `Auto-removed ${toDelete.length} order${toDelete.length > 1 ? "s" : ""} older than 15 days` });
       queryClient.invalidateQueries({ queryKey: ["lims-orders"] });
-      queryClient.invalidateQueries({ queryKey: ["lims-results"] });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orders.map((o: any) => o.id).join(",")]);
@@ -231,14 +222,12 @@ const LimsDemo = () => {
     if (ids.length === 0) return;
     await Promise.all(
       ids.map(async (id) => {
-        await supabase.from("lims_test_results").delete().eq("order_id", id);
         await supabase.from("lims_test_orders").delete().eq("id", id);
       })
     );
     toast({ title: `Deleted ${ids.length} order${ids.length > 1 ? "s" : ""}` });
     setSelectedOrderIds(new Set());
     queryClient.invalidateQueries({ queryKey: ["lims-orders"] });
-    queryClient.invalidateQueries({ queryKey: ["lims-results"] });
   };
 
   const toggleSelectOrder = (id: string) => {
@@ -288,13 +277,11 @@ const LimsDemo = () => {
 
   const deleteOrder = useMutation({
     mutationFn: async (id: string) => {
-      await supabase.from("lims_test_results").delete().eq("order_id", id);
       const { error } = await supabase.from("lims_test_orders").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["lims-orders"] });
-      queryClient.invalidateQueries({ queryKey: ["lims-results"] });
     },
   });
 
