@@ -294,7 +294,7 @@ const LimsDemo = () => {
   });
 
   const resolveUnmapped = useMutation({
-    mutationFn: async ({ unmappedId, machineCode, machineId, paramCode, sampleId: sid, orderId, resultValue, unit, referenceRange, flag }: any) => {
+    mutationFn: async ({ unmappedId, machineCode, machineId, paramCode }: any) => {
       const param = allParams.find((p) => p.param_code === paramCode);
       if (!param) throw new Error("Parameter not found");
 
@@ -315,54 +315,24 @@ const LimsDemo = () => {
         if (mapErr) throw mapErr;
       }
 
-      // Move clicked result to lims_test_results
-      const { error: resErr } = await supabase.from("lims_test_results").insert({
-        order_id: orderId,
-        sample_id: sid,
-        test_code: paramCode,
-        test_name: param.parameter_name || "",
-        result_value: resultValue,
-        unit: unit,
-        reference_range: referenceRange,
-        flag: flag,
-      });
-      if (resErr) throw resErr;
-
-      // Mark clicked row as resolved
-      const { error: resolveErr } = await supabase.from("lims_unmapped_results").update({ is_resolved: true }).eq("id", unmappedId);
+      // Mark clicked row + all sibling unmapped rows for this machine_code as resolved
+      const { error: resolveErr } = await supabase
+        .from("lims_unmapped_results")
+        .update({ is_resolved: true })
+        .eq("machine_code", machineCode)
+        .eq("is_resolved", false);
       if (resolveErr) throw resolveErr;
 
-      // Auto-resolve all other unmapped results with the same machine_code
-      const { data: siblings } = await supabase.from("lims_unmapped_results")
-        .select("*")
-        .eq("machine_code", machineCode)
-        .eq("is_resolved", false)
-        .neq("id", unmappedId);
-      
-      if (siblings && siblings.length > 0) {
-        // Insert each sibling's result into lims_test_results
-        const siblingResults = siblings.map((s: any) => ({
-          order_id: s.order_id,
-          sample_id: s.sample_id,
-          test_code: paramCode,
-          test_name: param.parameter_name || "",
-          result_value: s.result_value,
-          unit: s.unit,
-          reference_range: s.reference_range,
-          flag: s.flag,
-        }));
-        await supabase.from("lims_test_results").insert(siblingResults);
-
-        // Mark all siblings as resolved
-        const siblingIds = siblings.map((s: any) => s.id);
-        await supabase.from("lims_unmapped_results").update({ is_resolved: true }).in("id", siblingIds);
-      }
+      // Re-bridge: invoke reprocess so the newly-mapped historical readings flow
+      // straight into patient_results (no separate lims_test_results table).
+      await supabase.functions.invoke("lims-interface", { body: { action: "reprocess" } });
     },
     onSuccess: () => {
-      toast({ title: "Mapped & resolved", description: "Result moved to results table and mapping saved" });
+      toast({ title: "Mapped & resolved", description: "Mapping saved; historical readings re-bridged into Results Entry" });
       queryClient.invalidateQueries({ queryKey: ["lims-unmapped"] });
       queryClient.invalidateQueries({ queryKey: ["lims-code-mappings"] });
-      queryClient.invalidateQueries({ queryKey: ["lims-results"] });
+      queryClient.invalidateQueries({ queryKey: ["lims-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["patient_results_existing"] });
       setMappingParamCode({});
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
