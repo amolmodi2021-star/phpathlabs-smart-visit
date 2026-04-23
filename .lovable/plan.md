@@ -1,58 +1,98 @@
 
 
-# Add media upload to Marketing → Send Messages
+# Fix CRM export dropping rows due to non-unique pagination key
 
-## What changes
+## Root cause
 
-In the **Send Messages** tab (`MarketingSender.tsx`), add an optional media attachment that is sent as the template **header** for every recipient in the uploaded Excel. Same media → all numbers.
+`crm_contacts` has 35,288 rows sharing a `created_at` value with at least one sibling (one cluster has 112 rows on the same timestamp). The export edge function paginates with:
 
-## How it works
+```ts
+.order("created_at", { ascending: true }).range(from, from + 999)
+```
 
-1. **New "Header Media" section** appears above "Upload Excel File":
-   - File input accepting `image/*`, `video/mp4`, `application/pdf`
-   - Media-type dropdown auto-detected from file (Image / Video / Document) — user can override
-   - "Remove" button to clear selection
-   - Small thumbnail/filename preview after upload
-   - Note: "Optional — leave empty if your template has no media header."
+Postgres does not guarantee stable order for ties, so rows with identical `created_at` get reshuffled between page fetches. Some rows are returned on two consecutive pages, others on none. The total `staged` count looks fine because duplicates compensate for misses, but specific primary keys (e.g. `UMR0021281|9354210076`) silently vanish.
 
-2. **On file select**: upload immediately to the existing public `chat-attachments` bucket using `supabase.storage.from("chat-attachments").upload(...)`. Store the resulting public URL + chosen media type in component state. Show a tiny "Uploading…" spinner while in flight.
+The fix is to add a **unique tiebreaker** (`id`) to the order clause and switch to **keyset pagination**, which is both correct and faster than `range()` on large tables.
 
-3. **At send time** (`sendMessages` loop): if a media URL is set, attach it to every payload as:
-   ```
-   payload.components.header = {
-     type: <image|video|document>,
-     [<image|video|document>]: { link: <publicUrl> }
-   }
-   ```
-   This is identical to the header shape already used by the loyalty-card and abnormal-history senders, so no edge-function or AOC-proxy change is needed.
+## Files to change
 
-4. **Same media for all numbers**: the URL is uploaded once, then reused inside the per-row loop — zero extra storage cost per recipient.
+### 1. `supabase/functions/export-crm-contacts/index.ts` — primary fix
 
-5. **Validation**:
-   - Max file size 16 MB (WhatsApp Cloud limit; toast error if exceeded)
-   - Allowed MIME types only
-   - If template has no header variable, sending still works — the API will reject; we surface the failure as it does today
-   - Mobile column + template selection rules unchanged
+Replace the `range()` loop with keyset pagination on `(created_at, id)`:
 
-6. **State reset**: clearing the Excel file or changing template does **not** clear the media (user often re-uploads Excel for the same campaign). A dedicated "Remove media" button does.
+```ts
+let lastCreatedAt: string | null = null;
+let lastId: string | null = null;
 
-## Files touched
+while (true) {
+  let q = supabase
+    .from("crm_contacts")
+    .select(SELECT_COLS + ",id")          // need id for keyset
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true })     // unique tiebreaker
+    .limit(BATCH);
 
-- `src/components/marketing/MarketingSender.tsx` — single-file change
-  - Add `mediaUrl`, `mediaType`, `mediaFileName`, `uploadingMedia` state
-  - Add `handleMediaUpload` (uploads to `chat-attachments`, derives type)
-  - Add UI block (Label + Input + type Select + Remove button + preview line)
-  - In `sendMessages`, before building each `payload`, attach `components.header` if `mediaUrl` present
+  // filters (location / tag / search) unchanged
 
-No DB migration. No edge-function change. No new bucket (reuses `chat-attachments`, already public with open RLS — same one used by WhatsApp Chat).
+  if (lastCreatedAt && lastId) {
+    // rows strictly after the last (created_at, id) pair
+    q = q.or(
+      `created_at.gt.${lastCreatedAt},and(created_at.eq.${lastCreatedAt},id.gt.${lastId})`
+    );
+  }
 
-## Out of scope
+  const { data, error } = await q;
+  if (error) throw error;
+  if (!data || data.length === 0) break;
 
-- Per-row media (different image per number) — current request is "same media to all"
-- Media library / reuse of past uploads — fresh upload each campaign
-- Auto-cleanup of uploaded marketing media — files persist in `chat-attachments` like chat uploads do today (can be added later as a cron prune if needed)
+  for (const row of data) {
+    controller.enqueue(encoder.encode(
+      COLUMNS.map((c) => csvEscape((row as any)[c.key])).join(",") + "\n"
+    ));
+  }
+
+  total += data.length;
+  if (data.length < BATCH) break;
+  const last = data[data.length - 1] as any;
+  lastCreatedAt = last.created_at;
+  lastId = last.id;
+}
+```
+
+Notes:
+- `created_at` is already in `SELECT_COLS` indirectly? No — it's not. Add `created_at` and `id` to the select list (they're needed for the cursor) but exclude them from the CSV output (the existing `COLUMNS` array drives output, so they're naturally ignored).
+- BATCH stays at 1000.
+- No DB index change needed; `(created_at, id)` is well-indexable and the pattern works on the existing primary-key index for tiebreaking.
+
+### 2. `src/components/crm/CRMImport.tsx` — same bug, same fix
+
+The "fetch ALL existing contacts" loop (lines ~118–135) uses identical `.order("created_at").range()` pagination. With 35K+ rows containing duplicate timestamps, the existing-records map is incomplete, so:
+- Some real updates are misclassified as new inserts
+- `is_update` flag in staging is wrong for affected rows
+- Bill-number "newer than existing" check silently passes when it shouldn't
+
+Apply the same keyset-pagination fix to that loop. Select adds `id` alongside `primary_key, bill_number, created_at`.
+
+### 3. (Optional, no-op) Verification query for the user
+
+After deploy, the user can re-run the export and confirm:
+```sql
+SELECT COUNT(DISTINCT primary_key) FROM crm_contacts;  -- should match CSV row count
+```
+
+## Why the row count looked right (35,293) before
+
+Each duplicate-timestamp cluster causes an equal number of double-counted rows and skipped rows on average, so `total` in the streamer hits ~35K and the "complete" toast fires. The bug is **silent data loss**, not a count mismatch.
 
 ## Risk
 
-Very low. Self-contained UI addition; send path only gains an optional header object that matches the proven shape used elsewhere.
+Low. Keyset pagination is a strict superset of correctness vs. `range()` on tied keys. No schema change, no migration, two file edits, fully reversible.
+
+## Verification after deploy
+
+1. Export CSV from CRM → Contacts.
+2. Open CSV, search for `UMR0021281|9354210076` → must be present.
+3. `wc -l export.csv` should equal `35293 + 1` (header).
+4. `cut -d',' -f1 export.csv | sort -u | wc -l` should equal `35294` (all primary keys unique + header).
+5. Run a fresh CRM Import on a small file → verify `is_update` count matches expectations for known-existing records.
 
