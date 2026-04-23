@@ -39,16 +39,33 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+    // Chunk cap per invocation: keeps each run safely under the edge-function
+    // wall-clock timeout (~150s). With a 3s WhatsApp delay, 40 cards ≈ 120s.
+    // The client re-invokes this function in a loop until pending = 0.
+    const safeDelay = Math.max(0, Number(delayMs) || 0);
+    const perCardBudgetMs = safeDelay + 1500; // ~1.5s for fetch + DB writes
+    const MAX_WALL_MS = 120_000; // leave ~30s headroom under the platform cap
+    const chunkLimit = Math.max(5, Math.min(200, Math.floor(MAX_WALL_MS / perCardBudgetMs)));
+
     const { data: cards, error: cardsError } = await supabase
       .from("loyalty_cards")
       .select("*")
       .eq("job_id", jobId)
       .eq("whatsapp_status", "pending")
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: true })
+      .limit(chunkLimit);
+
+    // Total still-pending count for the job (for client progress + loop control)
+    const { count: pendingTotal } = await supabase
+      .from("loyalty_cards")
+      .select("id", { count: "exact", head: true })
+      .eq("job_id", jobId)
+      .eq("whatsapp_status", "pending");
 
     if (cardsError) throw cardsError;
     if (!cards || cards.length === 0) {
-      return new Response(JSON.stringify({ message: "No pending cards to send", sentCount: 0, total: 0 }), {
+      await supabase.from("loyalty_card_jobs").update({ status: "completed" }).eq("id", jobId);
+      return new Response(JSON.stringify({ message: "No pending cards to send", sentCount: 0, total: 0, remainingPending: 0, hasMore: false }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -165,11 +182,37 @@ Deno.serve(async (req) => {
     }
 
 
-    await supabase.from("loyalty_card_jobs").update({ sent_count: sentCount, status: "completed" }).eq("id", jobId);
+    // Recompute remaining pending after this chunk to drive the client's loop
+    const { count: remainingPending } = await supabase
+      .from("loyalty_cards")
+      .select("id", { count: "exact", head: true })
+      .eq("job_id", jobId)
+      .eq("whatsapp_status", "pending");
 
-    return new Response(JSON.stringify({ sentCount, total: cards.length, results }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    // Aggregate sent_count for the job from the source-of-truth table
+    const { count: jobSentCount } = await supabase
+      .from("loyalty_cards")
+      .select("id", { count: "exact", head: true })
+      .eq("job_id", jobId)
+      .eq("whatsapp_status", "sent");
+
+    const hasMore = (remainingPending || 0) > 0;
+    await supabase
+      .from("loyalty_card_jobs")
+      .update({ sent_count: jobSentCount || 0, status: hasMore ? "processing" : "completed" })
+      .eq("id", jobId);
+
+    return new Response(
+      JSON.stringify({
+        sentCount,
+        total: cards.length,
+        startingPending: pendingTotal || 0,
+        remainingPending: remainingPending || 0,
+        hasMore,
+        results,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("send-loyalty-whatsapp error:", message);

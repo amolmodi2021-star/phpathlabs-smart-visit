@@ -59,6 +59,36 @@ const LoyaltyCardHistory = () => {
     };
   };
 
+  const invokeChunkLoop = async (jobId: string, payload: any, label: string) => {
+    // The edge function processes one chunk per call (capped to stay under
+    // the platform timeout). Loop here until no pending cards remain.
+    let totalSent = 0;
+    let calls = 0;
+    const MAX_CALLS = 200; // safety cap (200 chunks * ~40 msgs ≈ 8k cards per click)
+    let startingPending = 0;
+
+    while (calls < MAX_CALLS) {
+      const res = await supabase.functions.invoke("send-loyalty-whatsapp", { body: payload });
+      if (res.error) throw res.error;
+      const data = res.data || {};
+      totalSent += data.sentCount || 0;
+      if (calls === 0) startingPending = data.startingPending || 0;
+      calls++;
+
+      // Refresh UI counts after each chunk so progress is visible
+      queryClient.invalidateQueries({ queryKey: ["loyalty_card_jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["loyalty_cards_counts"] });
+
+      if (!data.hasMore) break;
+    }
+
+    toast({
+      title: `${label}: Sent ${totalSent}${startingPending ? ` / ${startingPending}` : ""} messages`,
+      description: calls > 1 ? `Processed in ${calls} batches.` : undefined,
+    });
+    queryClient.invalidateQueries({ queryKey: ["loyalty_cards"] });
+  };
+
   const sendViaWhatsApp = async (jobId: string) => {
     const map = await loadWaSettings();
     const payload = buildPayload(map, jobId);
@@ -66,12 +96,7 @@ const LoyaltyCardHistory = () => {
 
     setSendingJobId(jobId);
     try {
-      const res = await supabase.functions.invoke("send-loyalty-whatsapp", { body: payload });
-      if (res.error) throw res.error;
-      toast({ title: `Sent ${res.data.sentCount}/${res.data.total} messages` });
-      queryClient.invalidateQueries({ queryKey: ["loyalty_card_jobs"] });
-      queryClient.invalidateQueries({ queryKey: ["loyalty_cards"] });
-      queryClient.invalidateQueries({ queryKey: ["loyalty_cards_counts"] });
+      await invokeChunkLoop(jobId, payload, "Send");
     } catch (err: any) {
       toast({ title: "WhatsApp send failed", description: err.message, variant: "destructive" });
     } finally {
@@ -88,13 +113,7 @@ const LoyaltyCardHistory = () => {
     try {
       // Reset failed cards to pending so the edge function picks them up
       await supabase.from("loyalty_cards").update({ whatsapp_status: "pending" }).eq("job_id", jobId).eq("whatsapp_status", "failed");
-
-      const res = await supabase.functions.invoke("send-loyalty-whatsapp", { body: payload });
-      if (res.error) throw res.error;
-      toast({ title: `Retry: Sent ${res.data.sentCount}/${res.data.total} messages` });
-      queryClient.invalidateQueries({ queryKey: ["loyalty_card_jobs"] });
-      queryClient.invalidateQueries({ queryKey: ["loyalty_cards"] });
-      queryClient.invalidateQueries({ queryKey: ["loyalty_cards_counts"] });
+      await invokeChunkLoop(jobId, payload, "Retry");
     } catch (err: any) {
       toast({ title: "Retry failed", description: err.message, variant: "destructive" });
     } finally {
