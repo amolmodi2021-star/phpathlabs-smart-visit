@@ -332,16 +332,13 @@ const LoyaltyCardSender = () => {
           renderResults.push({ patientData, blob });
         }
 
-        // Upload all blobs in parallel
+        // Upload all blobs to Cloudinary in parallel (free egress, no filename collisions).
+        // Mirrors the drip-sender path so storage costs stay at $0 instead of Lovable Cloud's
+        // paid egress (~$4–5/day for 1k cards).
         await Promise.all(renderResults.map(async ({ patientData, blob }, batchIdx) => {
           const idx = i + batchIdx;
           try {
-            const fileName = `generated/${job.id}/${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 6)}.jpg`;
-            const { error: uploadError } = await supabase.storage
-              .from("loyalty-cards")
-              .upload(fileName, blob, { contentType: "image/jpeg" });
-            if (uploadError) throw uploadError;
-            const { data: urlData } = supabase.storage.from("loyalty-cards").getPublicUrl(fileName);
+            const url = await uploadJpegToCloudinaryWithRetry(async () => blob);
             await supabase.from("loyalty_cards").insert({
               job_id: job.id,
               patient_name: patientData["Name"],
@@ -349,7 +346,7 @@ const LoyaltyCardSender = () => {
               umr: patientData["UMR"],
               discount: patientData["Discount %"],
               expiry_date: patientData["Expiry Date"],
-              image_url: urlData.publicUrl,
+              image_url: url,
               whatsapp_status: "pending",
             });
           } catch (err) {
