@@ -1229,6 +1229,8 @@ const AutomatedMarketing = () => {
       skipReason: string,
       detail: string,
     ) => {
+      // Only persist real errors; skip noise stays in-memory (see Send Summary toast / Preview Results).
+      if (!KEEP_DRIP_LOG_REASONS.has(skipReason)) return;
       try {
         const mob = (record?.mobile_number || "").replace(/\D/g, "").slice(-10);
         await supabase.from("drip_campaign_log").insert({
