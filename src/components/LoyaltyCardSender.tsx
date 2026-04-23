@@ -41,17 +41,30 @@ const LoyaltyCardSender = () => {
   const [useStaticExpiry, setUseStaticExpiry] = useState(true);
   const [staticExpiryDate, setStaticExpiryDate] = useState("");
 
-  // Load saved static expiry settings from app_settings
+  // Load saved static expiry settings + global WhatsApp delay from app_settings
   useEffect(() => {
     const loadSettings = async () => {
       const { data } = await supabase
         .from("app_settings")
         .select("setting_key, setting_value")
-        .in("setting_key", ["loyalty_static_expiry_enabled", "loyalty_static_expiry_date"]);
+        .in("setting_key", [
+          "loyalty_static_expiry_enabled",
+          "loyalty_static_expiry_date",
+          "wa_global_delayMs",
+          "wa_global_queueEnabled",
+        ]);
       if (data) {
         for (const row of data) {
           if (row.setting_key === "loyalty_static_expiry_enabled") setUseStaticExpiry(row.setting_value === "true");
           if (row.setting_key === "loyalty_static_expiry_date") setStaticExpiryDate(row.setting_value);
+          // Mirror the WhatsApp Settings delay so the job row records the same
+          // pacing the sender will actually use. Avoids a stale "3s" default
+          // when the user has configured 1s in WhatsApp Settings.
+          if (row.setting_key === "wa_global_delayMs") {
+            const n = Number(row.setting_value);
+            if (!Number.isNaN(n) && n >= 0) setDelayMs(n);
+          }
+          if (row.setting_key === "wa_global_queueEnabled") setQueueEnabled(row.setting_value !== "false");
         }
       }
     };
