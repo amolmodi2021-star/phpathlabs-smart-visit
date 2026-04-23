@@ -657,7 +657,7 @@ const LimsDemo = () => {
                               </TableHeader>
                               <TableBody>
                                 {tests.map((t, i) => {
-                                  const res = oResults.find((r) => r.test_code === t.code);
+                                  const res: any = oResults.find((r: any) => r.test_code === t.code);
                                   return (
                                     <TableRow key={i}>
                                       <TableCell className="font-mono">{t.code}</TableCell>
@@ -665,7 +665,7 @@ const LimsDemo = () => {
                                       <TableCell>{res?.unit || t.unit}</TableCell>
                                       <TableCell className="font-mono text-xs">{t.machine_id || "—"}</TableCell>
                                       <TableCell><Badge variant={statusColor(t.status)} className="text-xs">{t.status}</Badge></TableCell>
-                                      <TableCell className="font-mono">{res?.result_value || "—"}</TableCell>
+                                      <TableCell className="font-mono">{res?.result_value || (t.status === "completed" ? "✓ in Results Entry" : "—")}</TableCell>
                                       <TableCell>{res?.flag && <Badge variant={res.flag === "Abnormal" ? "destructive" : "outline"} className="text-xs">{res.flag}</Badge>}</TableCell>
                                     </TableRow>
                                   );
