@@ -319,6 +319,45 @@ const MarketingSender = () => {
             </div>
           )}
 
+          {/* Header Media (optional) */}
+          <div className="space-y-2 border rounded-lg p-3 bg-muted/30">
+            <Label>Header Media (Optional)</Label>
+            <p className="text-xs text-muted-foreground -mt-1">Leave empty if your template has no media header. Same media is sent to all recipients. Max 16 MB.</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Input
+                type="file"
+                accept="image/*,video/mp4,application/pdf"
+                onChange={handleMediaUpload}
+                disabled={uploadingMedia}
+                className="max-w-xs"
+              />
+              {uploadingMedia && <Loader2 className="h-4 w-4 animate-spin" />}
+              {mediaUrl && !uploadingMedia && (
+                <>
+                  <Select value={mediaType} onValueChange={(v) => setMediaType(v as "image" | "video" | "document")}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="image">Image</SelectItem>
+                      <SelectItem value="video">Video</SelectItem>
+                      <SelectItem value="document">Document</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button type="button" variant="outline" size="sm" onClick={removeMedia}>Remove</Button>
+                </>
+              )}
+            </div>
+            {mediaUrl && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                {mediaType === "image" ? (
+                  <img src={mediaUrl} alt="preview" className="h-12 w-12 object-cover rounded border" />
+                ) : null}
+                <span className="truncate">{mediaFileName}</span>
+              </div>
+            )}
+          </div>
+
           {/* Excel Upload */}
           <div>
             <Label>Upload Excel File</Label>
