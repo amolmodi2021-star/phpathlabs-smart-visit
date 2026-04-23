@@ -1,68 +1,58 @@
 
 
-# Drop skip-row writes from `drip_campaign_log` (no schema change)
+# Add media upload to Marketing → Send Messages
 
 ## What changes
 
-Stop persisting "skip" diagnostic rows to `drip_campaign_log`. Keep only:
-- Successful sends (`status = 'sent'`)
-- True errors (`loop_error`, `campaign_aborted`, `wa_api_error`, `wa_exception`)
+In the **Send Messages** tab (`MarketingSender.tsx`), add an optional media attachment that is sent as the template **header** for every recipient in the uploaded Excel. Same media → all numbers.
 
-Skipped contacts (completion_lock, already_complete, duplicate, min_interval_recheck, missing_umr, no_abnormal_history, blacklisted, invalid_mobile, etc.) stay in-memory only — they're already shown in the live Send Summary toast and the Preview Results card before sending. The Execution Log UI keeps working; it just gets cleaner (only real outcomes, no noise).
+## How it works
 
-## Why it's safe
+1. **New "Header Media" section** appears above "Upload Excel File":
+   - File input accepting `image/*`, `video/mp4`, `application/pdf`
+   - Media-type dropdown auto-detected from file (Image / Video / Document) — user can override
+   - "Remove" button to clear selection
+   - Small thumbnail/filename preview after upload
+   - Note: "Optional — leave empty if your template has no media header."
 
-- Zero schema change, zero migration, zero data loss for anything users actually read.
-- The drip engine **does not read** skip rows back to make decisions — it reads `sent` rows for dedup. Dropping skips changes nothing about engine behavior.
-- The Execution Log UI shows whatever is in the table; a cleaner table is a feature, not a regression.
-- Rollback = revert one file.
+2. **On file select**: upload immediately to the existing public `chat-attachments` bucket using `supabase.storage.from("chat-attachments").upload(...)`. Store the resulting public URL + chosen media type in component state. Show a tiny "Uploading…" spinner while in flight.
 
-## Files to change
+3. **At send time** (`sendMessages` loop): if a media URL is set, attach it to every payload as:
+   ```
+   payload.components.header = {
+     type: <image|video|document>,
+     [<image|video|document>]: { link: <publicUrl> }
+   }
+   ```
+   This is identical to the header shape already used by the loyalty-card and abnormal-history senders, so no edge-function or AOC-proxy change is needed.
 
-### `src/components/marketing/AutomatedMarketing.tsx`
+4. **Same media for all numbers**: the URL is uploaded once, then reused inside the per-row loop — zero extra storage cost per recipient.
 
-In the `logDiagnostic` helper (the function that inserts skip rows into `drip_campaign_log`), gate the insert by status:
+5. **Validation**:
+   - Max file size 16 MB (WhatsApp Cloud limit; toast error if exceeded)
+   - Allowed MIME types only
+   - If template has no header variable, sending still works — the API will reject; we surface the failure as it does today
+   - Mobile column + template selection rules unchanged
 
-```ts
-const KEEP_STATUSES = new Set([
-  "sent",
-  "loop_error",
-  "campaign_aborted",
-  "wa_api_error",
-  "wa_exception",
-]);
+6. **State reset**: clearing the Excel file or changing template does **not** clear the media (user often re-uploads Excel for the same campaign). A dedicated "Remove media" button does.
 
-async function logDiagnostic(...) {
-  if (!KEEP_STATUSES.has(status)) return; // drop skip rows
-  // existing insert
-}
-```
+## Files touched
 
-`logDripAction(filter, contact, "sent")` is unaffected (status `'sent'` passes the gate).
+- `src/components/marketing/MarketingSender.tsx` — single-file change
+  - Add `mediaUrl`, `mediaType`, `mediaFileName`, `uploadingMedia` state
+  - Add `handleMediaUpload` (uploads to `chat-attachments`, derives type)
+  - Add UI block (Label + Input + type Select + Remove button + preview line)
+  - In `sendMessages`, before building each `payload`, attach `components.header` if `mediaUrl` present
 
-No other files need changing — `prune-old-logs`, `cloudUsage.ts`, and `WhatsAppSettingsPage.tsx`'s sent-count widget all keep working as-is (the widget filters by `status='sent'`, which we're still writing).
+No DB migration. No edge-function change. No new bucket (reuses `chat-attachments`, already public with open RLS — same one used by WhatsApp Chat).
 
-## Optional follow-up (one-line bonus)
+## Out of scope
 
-In `supabase/functions/prune-old-logs/index.ts`, lower `drip_campaign_log` retention from 90 → 30 days. Combined with the skip-row drop, this cuts the table to a tiny fraction of its current size within one prune cycle.
-
-## Expected impact
-
-| Metric | Today | After |
-|---|---|---|
-| Inserts into `drip_campaign_log` per drip cycle | ~30K (mostly skips) | ~500 (sent + real errors) |
-| Table growth rate | high | ~98% lower |
-| Engine behavior | — | unchanged |
-| Execution Log UI | noisy | clean |
-
-## Verification
-
-1. Run one drip cycle.
-2. `SELECT status, COUNT(*) FROM drip_campaign_log WHERE created_at > now() - interval '1 hour' GROUP BY status;` → only `sent` and error statuses appear.
-3. Sent-count widget on WhatsApp Settings page still shows correct totals.
-4. Execution Log card on Automated Marketing tab still renders, just shorter.
+- Per-row media (different image per number) — current request is "same media to all"
+- Media library / reuse of past uploads — fresh upload each campaign
+- Auto-cleanup of uploaded marketing media — files persist in `chat-attachments` like chat uploads do today (can be added later as a cron prune if needed)
 
 ## Risk
 
-Very low. One-file change, no DB migration, fully reversible.
+Very low. Self-contained UI addition; send path only gains an optional header object that matches the proven shape used elsewhere.
 
