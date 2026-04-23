@@ -12,6 +12,7 @@ import { Upload, Play, Loader2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { parseExcelFile } from "@/lib/excel";
 import { exportCanvasAsCompressedJpeg } from "@/lib/cardRenderer";
+import { uploadJpegToCloudinaryWithRetry } from "@/lib/cardStorageCloudinary";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const CODE128_PATTERNS = [
