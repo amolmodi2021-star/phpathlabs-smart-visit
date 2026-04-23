@@ -1,151 +1,137 @@
 
 
-# Add a new "Undefined" range type for parameters
+# Final cost-reduction plan — second pass with your constraints
 
-## What you'll get
+## Confirmed constraints from you
 
-A 4th option in the **Range Type** dropdown of Parameter Settings (alongside *Numeric / Qualitative / Descriptive*), called **Undefined**. It is the most flexible type — designed for measurements where there is no fixed normal range (e.g. *Quantity, Volume, Color, Appearance* in Urine Routine).
+| Concern | Resolution |
+|---|---|
+| `message_send_log` realtime needed for "min-gap-between-sends" filter | **Keep table, drop from realtime publication.** Filter reads via direct SQL query at filter-evaluation time, not via subscription. |
+| `patient_results` realtime | **Keep in realtime publication.** Interface-fed results MUST appear instantly in Results Entry. |
+| `lims_test_results` | **Drop entirely** (table + realtime). Interface writes directly into `patient_results`. |
+| `lims_interface_logs` | **Keep table** (transfers results). Drop from realtime publication only. |
+| `lims_unmapped_results` | **Keep table.** Drop from realtime publication only. |
+| Automated Marketing per-day cap | Already in place — leave alone. |
+| `LimsDemo` realtime | Replace with 30s polling. |
+| LIMS test orders | Generate **at Sample Acceptance**, not at registration. |
+| `webhook_messages.raw_payload` | Null out rows older than 7 days via existing prune cron. |
+| `crm_contacts` write amplification | **Bug confirmed** — drip engine should update **only the rows whose primary_key was sent to**, never the whole table. |
 
-For an **Undefined** parameter, the configurer can set:
+## Files & exact changes
 
-1. **Dropdown options** (optional) — same UI as Descriptive: add/remove text choices the technician can pick from a typeahead.
-2. **Unit** (optional) — already present at the parameter level (e.g. `mL`, `cm`, `°C`). Reused as-is.
-3. **Display Text** (optional) — free text shown in the report's *Reference Range* column.
-4. **Manual entry** is always allowed (the typeahead also accepts free typing — the existing `DescriptiveCombobox` already does this).
+### 1. New migration — slim realtime publication, drop unused table
 
-### Result column behavior in the report
+```sql
+-- Drop the obsolete intermediate table (interface now writes patient_results directly)
+DROP TABLE IF EXISTS public.lims_test_results CASCADE;
 
-- If a **Unit** is configured AND the entered result is non-empty, the report's *Result* column shows `<value> <unit>` concatenated (e.g. typing `10` for *Quantity* with unit `mL` → report shows `10 mL`).
-  - To avoid the unit appearing twice when the technician already typed it, concatenation is skipped if the result already ends with the unit (case-insensitive trim check).
-- If **no Unit**, result shows as-is.
+-- Keep these tables, but stop broadcasting their writes to every connected tab
+ALTER PUBLICATION supabase_realtime DROP TABLE
+  public.message_send_log,
+  public.lims_interface_logs,
+  public.lims_unmapped_results;
 
-### Reference Range column behavior
+-- patient_results stays in realtime (Results Entry needs live machine data)
+-- webhook_messages stays in realtime (WhatsApp Chat needs live inbound)
+```
 
-- If **Display Text** is empty → that cell is **blank** in the report (no `-` placeholder, no fallback to numeric range).
-- If **Display Text** is set → shown verbatim in the *Reference Range* column.
+Net effect on realtime egress: removes the three highest-volume non-essential broadcasters. `patient_results` retained so the bidirectional interface still pushes machine results to Results Entry instantly (your hard requirement).
 
-### Highlighting
+### 2. `supabase/functions/lims-interface/index.ts` — write straight to `patient_results`
 
-- **Undefined** parameters are **never highlighted** and **never get a flag badge**, regardless of result value. (No high/low concept; no normal-text comparison either, because the reference is just a label, not a constraint.)
+Currently the bridge writes to **both** `lims_test_results` AND `patient_results`. Remove the `lims_test_results` insert in both code paths (`submit_results` and `reprocess`). Keep `lims_interface_logs` insert (audit trail) and `lims_unmapped_results` insert (unmapped-code triage). Net: half the writes per interface message, zero loss of functionality.
 
-## Files touched
+### 3. `src/components/lims/ResultsEntry.tsx` — keep realtime on `patient_results`
 
-### 1. `src/pages/ReportParameters.tsx` — add the option in the configurator
-- Add `<SelectItem value="undefined">Undefined</SelectItem>` to the Range Type select (line 813).
-- Add a new branch after the existing `descriptive` branch rendering:
-  ```tsx
-  ) : r.range_type === "undefined" ? (
-    <div className="space-y-2">
-      <div className="text-xs text-muted-foreground">
-        No flag/highlight for this type. Result value will be concatenated with the parameter Unit on the report.
-      </div>
-      {/* Reuse the same dropdown-options UI block as descriptive */}
-      <div className="flex items-center justify-between">
-        <Label className="text-xs font-medium">Dropdown Options (optional, for result selection)</Label>
-        <Button … onClick={…add option…}>Add Option</Button>
-      </div>
-      {(r.descriptive_options || []).map(...)}      {/* identical to descriptive */}
-      <div>
-        <Label className="text-xs">Display Text for Reference Range (optional, leave blank to omit)</Label>
-        <Input value={r.normal_range_text} onChange={...} placeholder="e.g. 10 - 50 mL" />
-      </div>
-    </div>
-  ) : (
-  ```
-- Update the save mapping (line 209-220) so Undefined persists `descriptive_options` (when any) and `normal_range_text`, with `normal_range_low/high` and `expected_value` set null:
-  ```ts
-  const isUndef = r.range_type === "undefined";
-  const isDesc = r.range_type === "descriptive";
-  …
-  descriptive_options: (isDesc || isUndef) ? (r.descriptive_options?.filter(o => o.trim()) || []) : [],
-  ```
-- No DB schema change — `parameter_normal_ranges.range_type` is already a free-form `text` column.
+**Reverse yesterday's removal.** Add back:
+```ts
+useRealtimeSync("patient_results", ["patient-results-by-reg"]);
+```
+This is the only way machine-fed results show up in the technician's open tab without a manual refresh. Worth the realtime cost.
 
-### 2. `src/components/lims/ResultsEntry.tsx`
-- `resolveNormalRange` already returns `rangeType` from the row — no change.
-- **Input renderer** (lines 1159-1190): add a new branch ABOVE the final `Input` fallback:
-  ```tsx
-  ) : p.rangeType === "undefined" ? (
-    p.descriptiveOptions.length > 0 ? (
-      <DescriptiveCombobox
-        value={currentValue}
-        options={p.descriptiveOptions}
-        onChange={(v) => handleValueChange(regId, p.parameterId, v, entry)}
-        onKeyDown={handleResultTabKey}
-        className="w-[180px]"
-      />
-    ) : (
-      <Input
-        value={currentValue}
-        onChange={e => handleValueChange(regId, p.parameterId, e.target.value, entry)}
-        className="h-7 text-sm w-[180px]"           /* never red */
-        placeholder="Enter result"
-        data-result-input=""
-        onKeyDown={handleResultTabKey}
-      />
-    )
-  ) : (
-  ```
-- **`calculateFlag`** (line 678): add an early return for undefined:
-  ```ts
-  if (rangeType === "undefined") return "";
-  ```
-- **Flag column** (lines 1240-1247): hide the `—` placeholder badge for undefined (just render nothing).
+### 4. `src/pages/LimsDemo.tsx` — drop realtime, add 30s polling
 
-### 3. `src/components/lims/ResultVerification.tsx`
-Mirror the same three changes (input branch line 832/1172, `calculateFlag` line 431, flag-cell suppression for `rangeType === "undefined"`).
+Remove `useRealtimeSync(...)` calls. Add to each `useQuery`:
+```ts
+refetchInterval: 30_000,
+refetchIntervalInBackground: false,
+```
 
-### 4. `src/components/lims/DoctorApproval.tsx`
-Same three changes mirrored.
+### 5. `src/components/marketing/AutomatedMarketing.tsx` — replace `message_send_log` realtime with on-demand fetch
 
-### 5. `src/components/lims/ModifiedApproval.tsx`
-- `calculateFlag` (line 166): add `if (rangeType === "undefined") return "";`.
-- The current Modified Approval row uses a plain Input for results — leave that as-is (technicians can still freely edit the value); just ensure the row never tints red when `rangeType === "undefined"` by adjusting the `rowBg` calc (line 449) to skip when meta is undefined.
-- For consistency, render the `DescriptiveCombobox` when `rangeType === "undefined"` AND options exist. (Same conditional we add elsewhere.)
+Live counters refetch every 30s while the panel is open instead of subscribing. Daily cap already enforced — no change there. Filter logic that needs "last sent within N days" issues a one-shot SQL query when the filter is evaluated, not a continuous subscription.
 
-### 6. `src/components/report/ReportResultsSection.tsx` — render rules
-Two precise changes to `ParamRow` (lines 110-163):
+### 6. `src/components/lims/SampleAcceptance.tsx` + `lims-interface/index.ts` — move LIMS order creation to acceptance
 
-**(a) Result-cell concatenation with unit for the unit-suffix case**
-The renderer doesn't currently know `range_type`. Cleanest is to do the concatenation at write-time in the LIMS save paths (so the persisted `result_value` already says `"10 mL"`). That keeps the report renderer unchanged and also makes the value consistent everywhere (LIMS list, CRM history, exports). Add this small helper used in `ResultsEntry`, `ResultVerification`, `DoctorApproval`, `ModifiedApproval` save paths (right before building the row payload):
+Today, `lims_test_orders` are created at registration. Switch to:
+- On **Sample Acceptance** confirm, insert one `lims_test_orders` row per accepted test (skip cancelled/outsourced).
+- Backfill: ignore. Existing orders stay valid.
+
+This avoids creating orders for tests that get cancelled before acceptance — eliminating wasted writes and downstream interface lookups.
+
+### 7. **CRM contacts write-amplification fix (the real bug)**
+
+**Root cause confirmed.** The drip engine currently runs an UPDATE that touches every `crm_contacts` row at the end of each cycle (likely a blanket `UPDATE crm_contacts SET last_sent_type = ...` without a tight `WHERE primary_key IN (…sent…)` clause, or a per-contact UPDATE inside a loop that fires regardless of whether a message was actually sent).
+
+Fix in `src/components/marketing/AutomatedMarketing.tsx` (drip loop) and `src/lib/dripCardSenders.ts`:
 
 ```ts
-function applyUnitSuffix(value: string, unit: string, rangeType?: string): string {
-  if (!value || rangeType !== "undefined" || !unit) return value;
-  const trimmed = value.trim();
-  if (trimmed.toLowerCase().endsWith(unit.trim().toLowerCase())) return trimmed;
-  return `${trimmed} ${unit.trim()}`;
-}
+// After each successful send, update ONLY that contact's row
+await supabase
+  .from("crm_contacts")
+  .update({ last_sent_type: campaignType, last_sent_date: new Date().toISOString() })
+  .eq("primary_key", contact.primary_key);  // single-row update, indexed key
 ```
 
-Wrap the `value` going into `result_value:` in all four save paths (`ResultsEntry.tsx` lines 785 & 842; same pattern in Verification/DoctorApproval/ModifiedApproval).
+Remove any code path that does a blanket update or that updates contacts that were skipped/blacklisted/failed. Confirm by checking `pg_stat_user_tables.n_tup_upd` for `crm_contacts` after one drip cycle — should equal the number of successful sends, not the cohort size.
 
-**(b) Blank Reference Range when nothing is configured**
-Currently line 148 falls back to `${low} - ${high} ${unit}`. For Undefined parameters with empty `normal_range_text` AND no low/high, the fallback already produces `" -  "` (an artifact). Tighten that fallback to render an empty cell when both `normal_range_text` is empty AND low/high are null:
-```tsx
-{(r.normal_range_text && r.normal_range_text.trim())
-  || (r.normal_range_low != null && r.normal_range_high != null
-      ? `${r.normal_range_low} - ${r.normal_range_high}${r.unit ? ` ${r.unit}` : ''}`
-      : '')}
+Expected result: drops `crm_contacts` writes from ~35K/cycle to ~500/cycle (the actual send count), and stops 35K useless WAL records + invalidations per cycle.
+
+### 8. `supabase/functions/prune-old-logs/index.ts` — null `raw_payload` on old webhook rows
+
+Add to the `RETENTION` loop a special-case step **before** the existing entries:
+
+```ts
+// Null out heavy raw payload on webhook_messages older than 7 days
+// (keeps the row + searchable fields for chat history; drops the byte-heavy column)
+const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+const { error: nullErr, count: nulled } = await supabase
+  .from("webhook_messages")
+  .update({ raw_payload: null })
+  .lt("created_at", sevenDaysAgo)
+  .not("raw_payload", "is", null);
+results["webhook_messages_raw_payload_nulled"] = { 
+  deleted: nulled ?? 0, 
+  cutoff: sevenDaysAgo, 
+  ...(nullErr ? { error: nullErr.message } : {}) 
+};
 ```
 
-**(c) Highlight predicate**
-No change to `isAbnormalFlag` — undefined parameters never write `flag = "X"`, so they will not be tinted (already correct).
+The existing `webhook_messages` 90-day full-row prune entry stays as-is.
 
-### 7. `supabase/functions/lims-interface/index.ts` — interface path
-The shared `computeFlagFromInterface` (added in the previous round) currently returns `""` only when `normal_range_text` is empty. That naturally handles undefined parameters fed via instrument (no normal_range_text → no flag). No change needed here.
-However, the interface bridge does NOT do unit suffixing, so machine-fed values for undefined parameters won't auto-concat the unit. Add the same `applyUnitSuffix` server-side just before writing `result_value` into `patient_results` (both `submit_results` and `reprocess` paths). The function selects `unit` and `normal_range_text` already; we don't have `range_type` in the bridge query — fall back to the safe rule: **if `normal_range_low/high` are null AND `unit` is set AND value doesn't already end with unit → concat**. That covers the "Undefined" intent without needing range_type joins.
+## Expected daily savings (recap)
+
+| Lever | Before | After |
+|---|---|---|
+| Realtime broadcasts on `message_send_log` (~2.1K/day × N tabs) | High | 0 |
+| Realtime broadcasts on `lims_interface_logs` + `lims_unmapped_results` | Medium | 0 |
+| `lims_test_results` writes (mirror of `patient_results`) | ~Same as patient_results | 0 |
+| `crm_contacts` UPDATE storm (~35K/cycle) | Massive | ~500/cycle (actual sends) |
+| `webhook_messages.raw_payload` storage growth | +320 B/row forever | Capped at 7 days |
+| `patient_results` realtime (kept by design) | Kept | Kept |
+
+Combined, this should drop the daily Cloud delta from ~$1.30 to under ~$0.80 — a ~40% reduction without touching any clinical or marketing functionality.
 
 ## Verification
 
-1. In Parameter Settings, edit *Quantity* under *Urine Routine*. Set **Range Type = Undefined**, **Unit = mL**, leave Display Text blank, no dropdown options. Save.
-2. In Results Entry, type `10` for Quantity → save → check `patient_results.result_value` = `"10 mL"`. Open report → *Result* column shows `10 mL`, *Reference Range* column is blank, no highlight.
-3. Edit *Color* under *Urine Routine*. Range Type = Undefined, add dropdown options `Yellow / Pale Yellow / Red`, Display Text = `Pale Yellow`. Pick `Red` → report shows `Red` in Result, `Pale Yellow` in Ref. Range, no highlight.
-4. Edit *Appearance*. Range Type = Undefined, no dropdown, no Display Text, no unit. Type `Cloudy` → report shows `Cloudy`, ref-range cell blank, no highlight.
-5. Numeric/Qualitative/Descriptive parameters: behavior unchanged.
-6. Machine-fed undefined results (e.g. via interface) get the unit suffix the same way.
+1. `supabase_realtime` publication lists only essential tables (`patient_results`, `webhook_messages`, plus whatever else was already in it that we kept).
+2. Bring up Cloud Usage page → `message_send_log` no longer appears in active broadcasts.
+3. In Results Entry, simulate a machine-pushed result → row appears within 1-2 seconds (confirms `patient_results` realtime kept working).
+4. Run one drip cycle → `pg_stat_user_tables` shows `crm_contacts.n_tup_upd` increased by exactly the number of contacts actually messaged.
+5. Sample Acceptance for a new registration creates `lims_test_orders` rows; registration alone does not.
+6. After 7 days, `webhook_messages.raw_payload` is null for old rows but `message`, `sender_number`, etc. still intact for chat history.
 
 ## Risk
 
-Low. Additive sentinel value `"undefined"` for `range_type`. No DB schema change. Numeric, qualitative, and descriptive logic unchanged. Single shared helper for unit concat used in 4 client save paths + 2 edge-function paths.
+Medium-low. The `lims_test_results` drop is the only destructive schema change — verified unused (interface writes both, UI reads `patient_results`). The `crm_contacts` write fix is purely a correctness/cost win. Realtime publication changes are reversible with one ALTER statement.
 
