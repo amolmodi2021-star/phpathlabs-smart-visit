@@ -1557,7 +1557,6 @@ export type Database = {
         Row: {
           created_at: string
           delay_ms: number
-          excel_data: Json | null
           id: string
           queue_enabled: boolean
           sent_count: number
@@ -1570,7 +1569,6 @@ export type Database = {
         Insert: {
           created_at?: string
           delay_ms?: number
-          excel_data?: Json | null
           id?: string
           queue_enabled?: boolean
           sent_count?: number
@@ -1583,7 +1581,6 @@ export type Database = {
         Update: {
           created_at?: string
           delay_ms?: number
-          excel_data?: Json | null
           id?: string
           queue_enabled?: boolean
           sent_count?: number

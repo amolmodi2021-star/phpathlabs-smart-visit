@@ -1,0 +1,1 @@
+ALTER TABLE public.loyalty_card_jobs DROP COLUMN IF EXISTS excel_data;
