@@ -1,99 +1,55 @@
 
 
-# Stop storing Excel data + auto-delete Cloudinary images on campaign delete
+# Cloudinary rate limit clarification
 
-## What you asked for
+## The 500/hour limit only applies to ADMIN API calls, not uploads
 
-1. **Confirm impact of large Excel uploads on cloud usage**
-2. **Stop persisting uploaded Excel rows in the database**
-3. **Auto-delete Cloudinary card images when a campaign is deleted**
+Cloudinary has **two separate APIs** with very different limits:
 
----
+| API | Rate limit (free tier) | What we use it for |
+|---|---|---|
+| **Upload API** | **Unlimited calls** (only metered by storage + bandwidth quotas) | Uploading the 5,000 card JPEGs every day — already in use today |
+| **Admin API** | 500 calls/hour | Listing/deleting resources |
 
-## 1. Cloud usage impact of large Excel uploads (current state)
+So sending 5,000 cards/day = 5,000 **upload** calls/day = **zero impact** on the 500/hour limit. Uploads are not throttled.
 
-- Each upload is parsed in the browser, then the **full row array is stored as JSONB** in `loyalty_card_jobs.excel_data`.
-- For your 1,653-row campaign that column is **~51 KB** (small, but it scales linearly — a 50k-row file would be ~1.5 MB per job).
-- **Card images are NOT in Lovable Cloud Storage** — they go to Cloudinary (free tier). So Excel size only affects the Postgres row, not storage egress.
-- **Conclusion:** today's load is negligible, but `excel_data` is dead weight after generation finishes — there's no code that ever reads it back. Removing it is a clean win.
+## Where the 500/hour limit actually applies in our plan
 
----
+Only the new `delete-loyalty-cloudinary` edge function uses the Admin API.
 
-## 2. Stop storing Excel data in the database
+The Admin `delete_resources` endpoint accepts **up to 100 public IDs per call**.
 
-**Schema change** (migration):
-- Drop column `loyalty_card_jobs.excel_data`.
-- The per-row data we actually need (name, mobile, UMR, discount, expiry, image URL, status) is already saved in the `loyalty_cards` table during generation. Nothing else reads `excel_data`.
+- Deleting a 5,000-card campaign = `ceil(5000 / 100)` = **50 Admin API calls**.
+- Deleting a 50,000-card campaign = **500 Admin API calls** — exactly the hourly cap.
 
-**Code change** (`src/components/LoyaltyCardSender.tsx`):
-- Remove `excel_data: excelData as any` from the `loyalty_card_jobs` insert.
-- The Excel file itself stays in the user's browser only — never uploaded anywhere.
+Realistic usage: you delete campaigns occasionally (not continuously), so 500/hour is far more headroom than you'll ever use. Even deleting ten 5,000-card campaigns back-to-back = 500 calls = still fits inside one hour.
 
-Result: campaigns store only the job row (a few hundred bytes) + per-card rows (already needed for status tracking).
+## Safety guard we'll add
 
----
+To make sure we never bump into the cap even in extreme cases, the edge function will:
 
-## 3. Auto-delete Cloudinary images when a campaign is deleted
+1. Batch IDs in groups of 100 (Cloudinary's per-call max).
+2. After every 400 batches in a single invocation, pause briefly (so we stay well under 500/hour even if you trigger a massive multi-campaign delete).
+3. Return `{ deleted, failed, skipped }` so the UI can report any partial completion.
 
-### How it has to work
+If a deletion ever does get rate-limited, the orphaned images simply age out via your existing **7-day Cloudinary auto-delete rule** — nothing leaks.
 
-Cloudinary deletion requires a **signed Admin API call** (cloud name + API key + API secret). The browser cannot do this safely, so the delete flow becomes:
+## Net answer to your question
 
-1. User clicks **Delete Selected** / **Delete All** in Loyalty Cards → History.
-2. Password gate (unchanged).
-3. Frontend collects `image_url`s from `loyalty_cards` for the chosen jobs and calls a new edge function `delete-loyalty-cloudinary` with the list of public IDs.
-4. Edge function deletes them from Cloudinary in batches via `/resources/image/upload` DELETE (up to 100 per call).
-5. Frontend then deletes the DB rows (`loyalty_cards` then `loyalty_card_jobs`) — same as today.
+- **Sending 5,000 cards/day**: not affected by the 500/hour limit. Uploads are unlimited.
+- **Deleting campaigns**: 500 Admin calls/hour = enough to delete 50,000 cards per hour. Far above realistic delete frequency.
+- **Worst case fallback**: 7-day auto-delete cleans up anything we miss.
 
-If Cloudinary deletion partially fails (network blip), the DB delete still proceeds and the orphaned images get swept later by the existing `cleanup-card-images` cron pattern (we'll extend it to scan Cloudinary too — see "Optional safety net" below).
-
-### New edge function: `delete-loyalty-cloudinary`
-
-- Accepts `{ publicIds: string[] }`.
-- Uses Cloudinary Admin API with HMAC-SHA1 signature (Deno `crypto.subtle`).
-- Batches in groups of 100 (Cloudinary limit).
-- Returns `{ deleted, failed }`.
-
-### Required secrets (you'll need to add these once)
-
-| Secret name | Where to get it |
-|---|---|
-| `CLOUDINARY_API_KEY` | Cloudinary Dashboard → Settings → API Keys |
-| `CLOUDINARY_API_SECRET` | Same screen (click "Reveal") |
-
-Cloud name (`dd7qn3t3d`) is already hard-coded in `cardStorageCloudinary.ts`, so no third secret is needed.
-
-I'll prompt you for these via the secrets dialog when implementation starts.
-
-### Helper: extracting the Cloudinary public ID
-
-`secure_url` looks like
-`https://res.cloudinary.com/dd7qn3t3d/image/upload/v1234567890/abc123xyz.jpg`
-The public ID is the path after `/upload/v\d+/` minus the extension (`abc123xyz`). A small parser in the edge function handles this.
-
-### Optional safety net (recommended, low effort)
-
-Extend `cleanup-card-images` (or add `cleanup-cloudinary-orphans`) to run nightly: list Cloudinary resources in the `loyalty-cards` folder older than 7 days that have no matching `loyalty_cards.image_url` in the DB, and delete them. Catches any image whose delete call failed transiently. Can be added now or later.
-
----
-
-## Files touched
+## Plan stays the same as approved
 
 | File | Change |
 |---|---|
-| `supabase/migrations/<new>.sql` | `ALTER TABLE loyalty_card_jobs DROP COLUMN excel_data;` |
+| `supabase/migrations/<new>.sql` | Drop `excel_data` column |
 | `src/components/LoyaltyCardSender.tsx` | Remove `excel_data` from insert |
-| `supabase/functions/delete-loyalty-cloudinary/index.ts` | **New** — signed Cloudinary delete |
-| `src/components/LoyaltyCardHistory.tsx` | In `handleDeleteConfirmed`, fetch image URLs → invoke edge function → then delete DB rows |
-| `supabase/functions/cleanup-card-images/index.ts` (optional) | Add Cloudinary orphan sweep |
+| `supabase/functions/delete-loyalty-cloudinary/index.ts` | New — signed Cloudinary delete with 100/batch + 400-batch pause guard |
+| `src/components/LoyaltyCardHistory.tsx` | Call edge function before DB delete |
 
-## What you'll see after deploy
+Secrets needed: `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`.
 
-- Uploading a 50k-row Excel: zero DB growth from the file itself.
-- Deleting a campaign: cards vanish from Cloudinary within a few seconds, DB rows go too.
-- Existing campaigns: deleting them now will also clean up their Cloudinary images (no migration needed for old data).
-
-## Risk
-
-Low. Schema drop is for an unused column. Edge function is small and isolated. Delete flow keeps password protection and remains atomic from the user's perspective.
+Approve to proceed.
 
