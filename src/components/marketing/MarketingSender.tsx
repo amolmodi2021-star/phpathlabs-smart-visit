@@ -27,6 +27,57 @@ const MarketingSender = () => {
   const [mobileColumn, setMobileColumn] = useState("");
   const [sending, setSending] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
+  const [mediaUrl, setMediaUrl] = useState<string>("");
+  const [mediaType, setMediaType] = useState<"image" | "video" | "document">("image");
+  const [mediaFileName, setMediaFileName] = useState<string>("");
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+
+  const detectMediaType = (file: File): "image" | "video" | "document" => {
+    if (file.type.startsWith("image/")) return "image";
+    if (file.type.startsWith("video/")) return "video";
+    return "document";
+  };
+
+  const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const allowed = file.type.startsWith("image/") || file.type === "video/mp4" || file.type === "application/pdf";
+    if (!allowed) {
+      toast.error("Only images, MP4 video, or PDF allowed");
+      return;
+    }
+    if (file.size > 16 * 1024 * 1024) {
+      toast.error("File exceeds 16 MB WhatsApp limit");
+      return;
+    }
+
+    setUploadingMedia(true);
+    try {
+      const ext = file.name.split(".").pop() || "bin";
+      const path = `marketing/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("chat-attachments").upload(path, file, {
+        contentType: file.type,
+        upsert: false,
+      });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from("chat-attachments").getPublicUrl(path);
+      setMediaUrl(pub.publicUrl);
+      setMediaType(detectMediaType(file));
+      setMediaFileName(file.name);
+      toast.success("Media uploaded");
+    } catch (err: any) {
+      toast.error(`Upload failed: ${err?.message || "unknown error"}`);
+    } finally {
+      setUploadingMedia(false);
+    }
+  };
+
+  const removeMedia = () => {
+    setMediaUrl("");
+    setMediaFileName("");
+    setMediaType("image");
+  };
 
   const { data: templates = [] } = useQuery({
     queryKey: ["marketing_templates"],
