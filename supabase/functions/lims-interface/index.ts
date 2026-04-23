@@ -103,13 +103,30 @@ Deno.serve(async (req) => {
         let totalCompleted = 0;
         let processedOrders = 0;
 
+        // Reprocess source: lims_interface_logs (the audit trail of every machine
+        // submit_results call). We pull the original request_body and re-run the
+        // bridge logic — same authoritative path as a live interface push.
         for (const sampleId of sampleIds) {
-          // Pull all stored mapped results for this sample
-          const { data: storedResults } = await supabase
-            .from("lims_test_results")
-            .select("test_code, test_name, result_value, unit, reference_range, flag, order_id")
-            .eq("sample_id", sampleId);
-          if (!storedResults || storedResults.length === 0) continue;
+          const { data: logRows } = await supabase
+            .from("lims_interface_logs")
+            .select("request_body")
+            .eq("sample_id", sampleId)
+            .eq("event_type", "submit_results")
+            .order("created_at", { ascending: false });
+
+          // Collapse to the latest result per machine_code (most recent value wins)
+          const latestByCode: Record<string, any> = {};
+          for (const lr of logRows || []) {
+            const reqBody: any = lr.request_body || {};
+            const items: any[] = Array.isArray(reqBody.results) ? reqBody.results : [];
+            for (const it of items) {
+              const code = it.code || it.test_code || "";
+              if (!code || latestByCode[code] !== undefined) continue;
+              latestByCode[code] = it;
+            }
+          }
+          const reprocessResults = Object.entries(latestByCode).map(([code, it]) => ({ ...it, code }));
+          if (reprocessResults.length === 0) continue;
 
           // Resolve registration
           const invoiceNumber = sampleId.replace(/-[A-Za-z0-9]+$/, "");
@@ -126,9 +143,55 @@ Deno.serve(async (req) => {
           const registrationId = registration.id;
           const regTestIds = new Set(((registration.tests as any[]) || []).map((t: any) => t.test_id || t.id).filter(Boolean));
 
-          const paramCodes = Array.from(new Set(storedResults.map((r: any) => r.test_code).filter(Boolean)));
-          if (paramCodes.length === 0) continue;
+          // Re-map machine_codes → internal param/test codes
+          const incomingCodes = reprocessResults.map((r: any) => r.code).filter(Boolean);
+          let codeMap: Record<string, Array<{ mapped_param_code: string; mapped_test_code: string; parameter_name: string }>> = {};
+          if (incomingCodes.length > 0) {
+            const { data: mappings } = await supabase
+              .from("lims_code_mapping").select("machine_code, mapped_param_code, mapped_test_code, parameter_name")
+              .in("machine_code", incomingCodes);
+            for (const m of mappings || []) {
+              if (!codeMap[m.machine_code]) codeMap[m.machine_code] = [];
+              codeMap[m.machine_code].push({
+                mapped_param_code: m.mapped_param_code,
+                mapped_test_code: m.mapped_test_code,
+                parameter_name: m.parameter_name,
+              });
+            }
+          }
 
+          // Find this sample's order(s) for completion update + disambiguation
+          const { data: orders } = await supabase
+            .from("lims_test_orders")
+            .select("id, tests")
+            .eq("sample_id", sampleId);
+          const orderTestCodes = new Set<string>();
+          for (const ord of orders || []) {
+            for (const t of (ord.tests as any[]) || []) {
+              if (t?.code) orderTestCodes.add(t.code);
+            }
+          }
+
+          // Build mapped result list
+          const mappedItems: Array<{ test_code: string; result_value: string; unit: string }> = [];
+          for (const r of reprocessResults) {
+            const code = r.code || "";
+            const candidates = codeMap[code] || [];
+            const mapping = candidates.find((c) =>
+              (c.mapped_param_code && orderTestCodes.has(c.mapped_param_code)) ||
+              (c.mapped_test_code && orderTestCodes.has(c.mapped_test_code))
+            ) || candidates[0];
+            if (!mapping || !(mapping.mapped_param_code || mapping.mapped_test_code)) continue;
+            mappedItems.push({
+              test_code: mapping.mapped_param_code || mapping.mapped_test_code || code,
+              result_value: String(r.value ?? r.result_value ?? ""),
+              unit: r.unit || "",
+            });
+          }
+          if (mappedItems.length === 0) continue;
+
+          // Resolve params + test junction
+          const paramCodes = Array.from(new Set(mappedItems.map((r) => r.test_code).filter(Boolean)));
           const { data: paramRows } = await supabase
             .from("report_test_parameters")
             .select("id, param_code, parameter_name, unit, normal_range_low, normal_range_high, normal_range_text, unit_conversion_enabled, unit_conversion_operator, unit_conversion_value")
@@ -159,7 +222,7 @@ Deno.serve(async (req) => {
           for (const er of existingRows || []) existingByParam[er.parameter_id] = er;
 
           const insertPayload: any[] = [];
-          for (const sr of storedResults as any[]) {
+          for (const sr of mappedItems) {
             const param = paramByCode[sr.test_code];
             if (!param) continue;
             const candidateTestIds = testIdsByParam[param.id] || [];
@@ -222,30 +285,18 @@ Deno.serve(async (req) => {
           }
 
           // Re-evaluate order completion
-          const orderIds = Array.from(new Set(storedResults.map((r: any) => r.order_id).filter(Boolean)));
-          for (const oid of orderIds) {
-            const { data: ord } = await supabase
-              .from("lims_test_orders")
-              .select("tests")
-              .eq("id", oid)
-              .maybeSingle();
-            if (!ord) continue;
+          const completedCodes = new Set(mappedItems.map((m) => m.test_code));
+          for (const ord of orders || []) {
             const tests = (ord.tests as any[]) || [];
-            // Get all mapped codes received for this order
-            const { data: orderResults } = await supabase
-              .from("lims_test_results")
-              .select("test_code")
-              .eq("order_id", oid);
-            const receivedCodes = new Set((orderResults || []).map((r: any) => r.test_code));
             const updatedTests = tests.map((t: any) => ({
               ...t,
-              status: receivedCodes.has(t.code) ? "completed" : (t.status || "pending"),
+              status: completedCodes.has(t.code) ? "completed" : (t.status || "pending"),
             }));
             const allDone = updatedTests.length > 0 && updatedTests.every((t: any) => t.status === "completed");
             await supabase.from("lims_test_orders").update({
               tests: updatedTests,
               status: allDone ? "completed" : "in_progress",
-            }).eq("id", oid);
+            }).eq("id", ord.id);
             if (allDone) totalCompleted++;
           }
         }
@@ -511,11 +562,11 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Insert mapped results
-      if (mappedRows.length > 0) {
-        const { error: insertErr } = await supabase.from("lims_test_results").insert(mappedRows);
-        if (insertErr) throw insertErr;
-      }
+      // NOTE: lims_test_results table was dropped (cost optimization 2026-04).
+      // Mapped results are bridged DIRECTLY into patient_results below; we no
+      // longer mirror them into a separate intermediate table. The reprocess
+      // path reads from lims_interface_logs.request_body for re-bridging.
+
 
       // Filter out unmapped rows whose machine_code is on the No Map Required ignore list
       let ignoredCount = 0;

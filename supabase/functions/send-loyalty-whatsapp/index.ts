@@ -130,12 +130,23 @@ Deno.serve(async (req) => {
             });
           }
 
-          // Update CRM contacts with last sent info
+          // Update CRM contacts with last sent info — single most-recent row per
+          // mobile, never a blanket update across every visit row for that mobile
+          // (which was causing 35K+ writes per drip cycle).
           if (normalizedLocalMobile) {
-            await supabase.from("crm_contacts").update({
-              last_sent_type: "ABC",
-              last_sent_date: new Date().toISOString(),
-            }).eq("mobile_number", normalizedLocalMobile);
+            const { data: crmRow } = await supabase
+              .from("crm_contacts")
+              .select("id")
+              .eq("mobile_number", normalizedLocalMobile)
+              .order("updated_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (crmRow?.id) {
+              await supabase.from("crm_contacts").update({
+                last_sent_type: "ABC",
+                last_sent_date: new Date().toISOString(),
+              }).eq("id", crmRow.id);
+            }
           }
         } else {
           await supabase.from("loyalty_cards").update({ whatsapp_status: "failed" }).eq("id", card.id);

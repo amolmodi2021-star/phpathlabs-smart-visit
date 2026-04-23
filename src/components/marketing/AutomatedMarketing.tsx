@@ -106,16 +106,14 @@ const AutomatedMarketing = () => {
   const [sendPhase, setSendPhase] = useState(_modulePhase);
   const abortRef = useRef(_moduleAbort);
 
-  // Realtime sync — DISABLED while a campaign is sending. Each WhatsApp send
-  // writes one row to message_send_log; broadcasting that to every open tab
-  // during a 2K-card run was the single biggest realtime cost driver. Counters
-  // get a fresh pull when the run finishes (qc.invalidateQueries in the loop).
-  useRealtimeSync(
-    "message_send_log",
-    ["drip-pending-counts", "wa-usage-24h"],
-    400,
-    { enabled: !sending },
-  );
+  // Realtime sync — REMOVED entirely. Each WhatsApp send writes one row to
+  // message_send_log; broadcasting that to every connected tab was a major
+  // realtime egress cost (cost optimization 2026-04). Replaced with on-demand
+  // refresh via the counter card's Refresh button + 30s polling while panel
+  // is mounted (see refetchInterval below). The min-gap-between-sends filter
+  // continues to read message_send_log via direct SQL (line ~584) at filter
+  // evaluation time — no subscription needed.
+
 
   // Sync module-level vars on mount
   useEffect(() => {

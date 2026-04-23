@@ -168,15 +168,24 @@ const MarketingSender = () => {
               retry_count: 0,
             } as any);
           }
-        } else {
           sentCount++;
           await logMessageSend(mobile10, patientName, "Marketing");
-          // Update CRM with last sent info
+          // Update CRM with last sent info — single most-recent row per mobile,
+          // never a blanket update (which would touch every visit row for that mobile).
           if (mobile10) {
-            await supabase.from("crm_contacts").update({
-              last_sent_type: "Marketing",
-              last_sent_date: new Date().toISOString(),
-            }).eq("mobile_number", mobile10);
+            const { data: crmRow } = await supabase
+              .from("crm_contacts")
+              .select("id")
+              .eq("mobile_number", mobile10)
+              .order("updated_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (crmRow?.id) {
+              await supabase.from("crm_contacts").update({
+                last_sent_type: "Marketing",
+                last_sent_date: new Date().toISOString(),
+              }).eq("id", crmRow.id);
+            }
           }
         }
       } catch {
