@@ -182,11 +182,37 @@ Deno.serve(async (req) => {
     }
 
 
-    await supabase.from("loyalty_card_jobs").update({ sent_count: sentCount, status: "completed" }).eq("id", jobId);
+    // Recompute remaining pending after this chunk to drive the client's loop
+    const { count: remainingPending } = await supabase
+      .from("loyalty_cards")
+      .select("id", { count: "exact", head: true })
+      .eq("job_id", jobId)
+      .eq("whatsapp_status", "pending");
 
-    return new Response(JSON.stringify({ sentCount, total: cards.length, results }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    // Aggregate sent_count for the job from the source-of-truth table
+    const { count: jobSentCount } = await supabase
+      .from("loyalty_cards")
+      .select("id", { count: "exact", head: true })
+      .eq("job_id", jobId)
+      .eq("whatsapp_status", "sent");
+
+    const hasMore = (remainingPending || 0) > 0;
+    await supabase
+      .from("loyalty_card_jobs")
+      .update({ sent_count: jobSentCount || 0, status: hasMore ? "processing" : "completed" })
+      .eq("id", jobId);
+
+    return new Response(
+      JSON.stringify({
+        sentCount,
+        total: cards.length,
+        startingPending: pendingTotal || 0,
+        remainingPending: remainingPending || 0,
+        hasMore,
+        results,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("send-loyalty-whatsapp error:", message);
