@@ -85,6 +85,7 @@ const LimsDemo = () => {
   const [newParamCode, setNewParamCode] = useState("");
   const [orderSearch, setOrderSearch] = useState("");
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
+  const [selectedUnmappedIds, setSelectedUnmappedIds] = useState<Set<string>>(new Set());
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const handleRefreshActiveOrders = async () => {
@@ -444,6 +445,43 @@ const LimsDemo = () => {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  const deleteUnmapped = useMutation({
+    mutationFn: async (ids: string[]) => {
+      if (ids.length === 0) return 0;
+      const { error } = await supabase.from("lims_unmapped_results").delete().in("id", ids);
+      if (error) throw error;
+      return ids.length;
+    },
+    onSuccess: (count) => {
+      toast({ title: `Deleted ${count} unmapped result${count === 1 ? "" : "s"}` });
+      setSelectedUnmappedIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ["lims-unmapped"] });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const toggleSelectUnmapped = (id: string) => {
+    setSelectedUnmappedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const allUnmappedSelected =
+    visibleUnmappedResults.length > 0 && visibleUnmappedResults.every((u: any) => selectedUnmappedIds.has(u.id));
+  const toggleSelectAllUnmapped = () => {
+    setSelectedUnmappedIds((prev) => {
+      const next = new Set(prev);
+      if (allUnmappedSelected) {
+        visibleUnmappedResults.forEach((u: any) => next.delete(u.id));
+      } else {
+        visibleUnmappedResults.forEach((u: any) => next.add(u.id));
+      }
+      return next;
+    });
+  };
+
   const toggleTest = (test: TestItem) => {
     setSelectedTests((prev) =>
       prev.find((t) => t.code === test.code)
@@ -731,10 +769,35 @@ const LimsDemo = () => {
           {/* Unmapped Results */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-destructive" />
-                Unmapped Results ({visibleUnmappedResults.length})
-              </CardTitle>
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-destructive" />
+                  Unmapped Results ({visibleUnmappedResults.length})
+                </CardTitle>
+                {selectedUnmappedIds.size > 0 && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button size="sm" variant="destructive" disabled={deleteUnmapped.isPending}>
+                        <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete Selected ({selectedUnmappedIds.size})
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete unmapped results?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will permanently delete {selectedUnmappedIds.size} unmapped result{selectedUnmappedIds.size === 1 ? "" : "s"}. This action cannot be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => deleteUnmapped.mutate(Array.from(selectedUnmappedIds))}>
+                          Delete
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               {visibleUnmappedResults.length === 0 ? (
@@ -743,6 +806,13 @@ const LimsDemo = () => {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-10">
+                        <Checkbox
+                          checked={allUnmappedSelected}
+                          onCheckedChange={toggleSelectAllUnmapped}
+                          aria-label="Select all unmapped results"
+                        />
+                      </TableHead>
                       <TableHead>Sample ID</TableHead>
                       <TableHead>Machine Code</TableHead>
                       <TableHead>Machine ID</TableHead>
@@ -753,11 +823,19 @@ const LimsDemo = () => {
                       <TableHead>Map To Parameter</TableHead>
                       <TableHead></TableHead>
                       <TableHead></TableHead>
+                      <TableHead></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {visibleUnmappedResults.map((ur: any) => (
-                      <TableRow key={ur.id}>
+                      <TableRow key={ur.id} data-state={selectedUnmappedIds.has(ur.id) ? "selected" : undefined}>
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedUnmappedIds.has(ur.id)}
+                            onCheckedChange={() => toggleSelectUnmapped(ur.id)}
+                            aria-label={`Select unmapped result ${ur.machine_code}`}
+                          />
+                        </TableCell>
                         <TableCell className="font-mono text-xs">{ur.sample_id}</TableCell>
                         <TableCell className="font-mono font-medium">{ur.machine_code}</TableCell>
                         <TableCell className="font-mono text-xs">{ur.machine_id || "—"}</TableCell>
@@ -834,6 +912,18 @@ const LimsDemo = () => {
                             onClick={() => markNoMapRequired.mutate({ machineCode: ur.machine_code, machineId: ur.machine_id })}
                           >
                             <X className="h-3 w-3 mr-1" /> No Map Required
+                          </Button>
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-destructive hover:text-destructive"
+                            disabled={deleteUnmapped.isPending}
+                            onClick={() => deleteUnmapped.mutate([ur.id])}
+                            aria-label="Delete unmapped result"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </TableCell>
                       </TableRow>
