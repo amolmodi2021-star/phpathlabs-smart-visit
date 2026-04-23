@@ -302,10 +302,12 @@ const LoyaltyCardSender = () => {
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("Canvas not supported");
 
-      // Create job
+      // Create job. We deliberately do NOT persist the uploaded Excel rows —
+      // they live only in the browser for the duration of card generation,
+      // then per-card data is written to `loyalty_cards`. Skipping `excel_data`
+      // keeps the DB lean even when uploading 50k-row sheets.
       const { data: job, error: jobError } = await supabase.from("loyalty_card_jobs").insert({
         template_id: selectedTemplateId,
-        excel_data: excelData as any,
         status: "processing",
         total_cards: excelData.length,
         queue_enabled: queueEnabled,

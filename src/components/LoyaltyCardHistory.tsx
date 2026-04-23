@@ -213,10 +213,39 @@ const LoyaltyCardHistory = () => {
     }
   };
 
+  // Extract Cloudinary public IDs from secure_url like
+  // `https://res.cloudinary.com/<cloud>/image/upload/v123/loyalty-cards/abc.jpg`
+  // → `loyalty-cards/abc`. Returns null for non-Cloudinary or malformed URLs.
+  const extractCloudinaryPublicId = (url: string | null | undefined): string | null => {
+    if (!url || typeof url !== "string") return null;
+    const m = url.match(/\/upload\/(?:v\d+\/)?(.+)\.[a-zA-Z0-9]+$/);
+    return m ? m[1] : null;
+  };
+
   const handleDeleteConfirmed = async () => {
     const idsToDelete = deleteMode === "all" ? jobs.map((j: any) => j.id) : Array.from(selectedJobs);
     if (idsToDelete.length === 0) return;
     try {
+      // Step 1: collect Cloudinary public IDs for the cards we're about to drop.
+      const { data: cardsToDelete } = await supabase
+        .from("loyalty_cards")
+        .select("image_url")
+        .in("job_id", idsToDelete);
+      const publicIds = (cardsToDelete || [])
+        .map((c: any) => extractCloudinaryPublicId(c.image_url))
+        .filter((x: string | null): x is string => !!x);
+
+      // Step 2: fire Cloudinary cleanup. Failures are logged, not fatal —
+      // 7-day Cloudinary auto-delete sweeps anything we miss.
+      if (publicIds.length > 0) {
+        try {
+          await supabase.functions.invoke("delete-loyalty-cloudinary", { body: { publicIds } });
+        } catch (cloudErr) {
+          console.warn("Cloudinary cleanup failed; relying on 7-day auto-delete", cloudErr);
+        }
+      }
+
+      // Step 3: drop DB rows.
       for (const jobId of idsToDelete) {
         await supabase.from("loyalty_cards").delete().eq("job_id", jobId);
       }
