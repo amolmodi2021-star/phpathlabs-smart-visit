@@ -85,6 +85,7 @@ const LimsDemo = () => {
   const [newParamCode, setNewParamCode] = useState("");
   const [orderSearch, setOrderSearch] = useState("");
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
+  const [selectedUnmappedIds, setSelectedUnmappedIds] = useState<Set<string>>(new Set());
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const handleRefreshActiveOrders = async () => {
