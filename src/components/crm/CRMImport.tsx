@@ -130,24 +130,34 @@ const CRMImport = () => {
     const { data: blData } = await supabase.from("crm_blacklist").select("mobile_number");
     const blacklist = new Set((blData || []).map((b: any) => b.mobile_number));
 
-    // Fetch ALL existing contacts (batched to bypass 1000 row limit)
+    // Fetch ALL existing contacts via keyset pagination on (created_at, id)
+    // to avoid silent row loss when many rows share the same created_at.
     const existingMap = new Map<string, { bill_number: string | null }>();
     {
       const FETCH_BATCH = 900;
-      let from = 0;
-      let keepFetching = true;
-      while (keepFetching) {
-        const { data: chunk } = await supabase
+      let lastCreatedAt: string | null = null;
+      let lastId: string | null = null;
+      while (true) {
+        let q = supabase
           .from("crm_contacts")
-          .select("primary_key, bill_number")
+          .select("id, primary_key, bill_number, created_at")
           .order("created_at", { ascending: true })
-          .range(from, from + FETCH_BATCH - 1);
+          .order("id", { ascending: true })
+          .limit(FETCH_BATCH);
+        if (lastCreatedAt && lastId) {
+          q = q.or(
+            `created_at.gt.${lastCreatedAt},and(created_at.eq.${lastCreatedAt},id.gt.${lastId})`,
+          );
+        }
+        const { data: chunk } = await q;
         if (!chunk || chunk.length === 0) break;
-        for (const c of chunk) {
+        for (const c of chunk as any[]) {
           existingMap.set(c.primary_key, { bill_number: c.bill_number });
         }
-        if (chunk.length < FETCH_BATCH) keepFetching = false;
-        else from += FETCH_BATCH;
+        const last = chunk[chunk.length - 1] as any;
+        lastCreatedAt = last.created_at;
+        lastId = last.id;
+        if (chunk.length < FETCH_BATCH) break;
       }
     }
 
