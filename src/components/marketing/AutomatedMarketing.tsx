@@ -23,6 +23,17 @@ import { exportToExcel } from "@/lib/excel";
 import { sortAbnormalTestsByDateDesc } from "@/lib/abnormalTests";
 import { toast } from "sonner";
 
+// Drip log persistence gate: only successful sends and true errors are written to
+// drip_campaign_log. Skip diagnostics (no_abnormal_history, wa_not_configured,
+// completion_lock, etc.) stay in-memory and surface via the live toast / preview.
+// Status "sent" is allowed implicitly (callers check status first).
+const KEEP_DRIP_LOG_REASONS = new Set<string>([
+  "loop_error",
+  "campaign_aborted",
+  "wa_api_error",
+  "wa_exception",
+]);
+
 interface DripFilter {
   id: string;
   name: string;
@@ -1229,6 +1240,8 @@ const AutomatedMarketing = () => {
       skipReason: string,
       detail: string,
     ) => {
+      // Only persist real errors; skip noise stays in-memory (see Send Summary toast / Preview Results).
+      if (!KEEP_DRIP_LOG_REASONS.has(skipReason)) return;
       try {
         const mob = (record?.mobile_number || "").replace(/\D/g, "").slice(-10);
         await supabase.from("drip_campaign_log").insert({
@@ -1603,6 +1616,9 @@ const AutomatedMarketing = () => {
 
 
   const logDripAction = async (filter: DripFilter, contact: any, status: string, skipReason?: string) => {
+    // Only persist successful sends + true errors. Skip noise (no_abnormal_history,
+    // wa_not_configured, no_template, etc.) is shown live in toast/preview and is not needed in DB.
+    if (status !== "sent" && !KEEP_DRIP_LOG_REASONS.has(skipReason || "")) return;
     const mob = (contact.mobile_number || "").replace(/\D/g, "").slice(-10);
     const cycleNum = contact._cycle || 1;
     await supabase.from("drip_campaign_log").insert({
