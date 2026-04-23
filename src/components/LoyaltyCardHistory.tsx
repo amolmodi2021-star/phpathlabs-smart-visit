@@ -133,33 +133,53 @@ const LoyaltyCardHistory = () => {
     },
   });
 
-  // Fetch counts for all jobs
+  // Fetch exact status counts for all jobs. Reading raw rows was being capped by
+  // the backend's default 1000-row limit, which made large completed jobs show
+  // partial totals like 998/1653 even after refresh.
   const jobIds = useMemo(() => jobs.map((j: any) => j.id), [jobs]);
-  const { data: allCardsCounts = [] } = useQuery({
+  const { data: countsMap = {} } = useQuery<Record<string, { sent: number; failed: number; pending: number }>>({
     queryKey: ["loyalty_cards_counts", jobIds],
     queryFn: async () => {
-      if (jobIds.length === 0) return [];
-      const { data, error } = await supabase
-        .from("loyalty_cards")
-        .select("job_id, whatsapp_status")
-        .in("job_id", jobIds);
-      if (error) throw error;
-      return data;
+      if (jobIds.length === 0) return {};
+
+      const entries = await Promise.all(
+        jobIds.map(async (jobId) => {
+          const [sentRes, failedRes, pendingRes] = await Promise.all([
+            supabase
+              .from("loyalty_cards")
+              .select("id", { count: "exact", head: true })
+              .eq("job_id", jobId)
+              .eq("whatsapp_status", "sent"),
+            supabase
+              .from("loyalty_cards")
+              .select("id", { count: "exact", head: true })
+              .eq("job_id", jobId)
+              .eq("whatsapp_status", "failed"),
+            supabase
+              .from("loyalty_cards")
+              .select("id", { count: "exact", head: true })
+              .eq("job_id", jobId)
+              .eq("whatsapp_status", "pending"),
+          ]);
+
+          const error = sentRes.error || failedRes.error || pendingRes.error;
+          if (error) throw error;
+
+          return [
+            jobId,
+            {
+              sent: sentRes.count ?? 0,
+              failed: failedRes.count ?? 0,
+              pending: pendingRes.count ?? 0,
+            },
+          ] as const;
+        }),
+      );
+
+      return Object.fromEntries(entries);
     },
     enabled: jobIds.length > 0,
   });
-
-  const countsMap = useMemo(() => {
-    const m: Record<string, { sent: number; failed: number; pending: number }> = {};
-    for (const c of allCardsCounts) {
-      if (!c.job_id) continue;
-      if (!m[c.job_id]) m[c.job_id] = { sent: 0, failed: 0, pending: 0 };
-      if (c.whatsapp_status === "sent") m[c.job_id].sent++;
-      else if (c.whatsapp_status === "failed") m[c.job_id].failed++;
-      else m[c.job_id].pending++;
-    }
-    return m;
-  }, [allCardsCounts]);
 
   const { data: cards = [] } = useQuery({
     queryKey: ["loyalty_cards", expandedJob],
