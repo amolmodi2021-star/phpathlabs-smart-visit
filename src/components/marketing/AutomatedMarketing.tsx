@@ -1605,6 +1605,9 @@ const AutomatedMarketing = () => {
 
 
   const logDripAction = async (filter: DripFilter, contact: any, status: string, skipReason?: string) => {
+    // Only persist successful sends + true errors. Skip noise (no_abnormal_history,
+    // wa_not_configured, no_template, etc.) is shown live in toast/preview and is not needed in DB.
+    if (status !== "sent" && !KEEP_DRIP_LOG_REASONS.has(skipReason || "")) return;
     const mob = (contact.mobile_number || "").replace(/\D/g, "").slice(-10);
     const cycleNum = contact._cycle || 1;
     await supabase.from("drip_campaign_log").insert({
