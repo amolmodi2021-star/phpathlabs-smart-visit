@@ -24,5 +24,8 @@ export default defineConfig(({ mode }) => ({
   },
   optimizeDeps: {
     include: ["@tanstack/react-query", "react", "react-dom"],
+    esbuildOptions: {
+      target: "esnext",
+    },
   },
 }));
