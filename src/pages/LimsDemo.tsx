@@ -445,6 +445,43 @@ const LimsDemo = () => {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  const deleteUnmapped = useMutation({
+    mutationFn: async (ids: string[]) => {
+      if (ids.length === 0) return 0;
+      const { error } = await supabase.from("lims_unmapped_results").delete().in("id", ids);
+      if (error) throw error;
+      return ids.length;
+    },
+    onSuccess: (count) => {
+      toast({ title: `Deleted ${count} unmapped result${count === 1 ? "" : "s"}` });
+      setSelectedUnmappedIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ["lims-unmapped"] });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const toggleSelectUnmapped = (id: string) => {
+    setSelectedUnmappedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const allUnmappedSelected =
+    visibleUnmappedResults.length > 0 && visibleUnmappedResults.every((u: any) => selectedUnmappedIds.has(u.id));
+  const toggleSelectAllUnmapped = () => {
+    setSelectedUnmappedIds((prev) => {
+      const next = new Set(prev);
+      if (allUnmappedSelected) {
+        visibleUnmappedResults.forEach((u: any) => next.delete(u.id));
+      } else {
+        visibleUnmappedResults.forEach((u: any) => next.add(u.id));
+      }
+      return next;
+    });
+  };
+
   const toggleTest = (test: TestItem) => {
     setSelectedTests((prev) =>
       prev.find((t) => t.code === test.code)
