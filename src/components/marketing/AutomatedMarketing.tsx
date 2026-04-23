@@ -23,6 +23,17 @@ import { exportToExcel } from "@/lib/excel";
 import { sortAbnormalTestsByDateDesc } from "@/lib/abnormalTests";
 import { toast } from "sonner";
 
+// Drip log persistence gate: only successful sends and true errors are written to
+// drip_campaign_log. Skip diagnostics (no_abnormal_history, wa_not_configured,
+// completion_lock, etc.) stay in-memory and surface via the live toast / preview.
+// Status "sent" is allowed implicitly (callers check status first).
+const KEEP_DRIP_LOG_REASONS = new Set<string>([
+  "loop_error",
+  "campaign_aborted",
+  "wa_api_error",
+  "wa_exception",
+]);
+
 interface DripFilter {
   id: string;
   name: string;
