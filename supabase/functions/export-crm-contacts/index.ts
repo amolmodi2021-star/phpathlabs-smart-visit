@@ -71,21 +71,31 @@ Deno.serve(async (req) => {
             encoder.encode(COLUMNS.map((c) => csvEscape(c.header)).join(",") + "\n"),
           );
 
-          let from = 0;
           let total = 0;
+          // Keyset pagination on (created_at, id) to avoid silent row loss
+          // when many rows share the same created_at timestamp.
+          let lastCreatedAt: string | null = null;
+          let lastId: string | null = null;
 
           while (true) {
             let q = supabase
               .from("crm_contacts")
-              .select(SELECT_COLS)
+              .select(SELECT_COLS + ",id,created_at")
               .order("created_at", { ascending: true })
-              .range(from, from + BATCH - 1);
+              .order("id", { ascending: true })
+              .limit(BATCH);
 
             if (location !== "ALL") q = q.eq("location", location);
             if (tag !== "ALL") q = q.eq("record_tag", tag);
             if (search) {
               q = q.or(
                 `patient_name.ilike.%${search}%,mobile_number.ilike.%${search}%,umr_number.ilike.%${search}%`,
+              );
+            }
+
+            if (lastCreatedAt && lastId) {
+              q = q.or(
+                `created_at.gt.${lastCreatedAt},and(created_at.eq.${lastCreatedAt},id.gt.${lastId})`,
               );
             }
 
@@ -99,8 +109,10 @@ Deno.serve(async (req) => {
             }
 
             total += data.length;
+            const last = data[data.length - 1] as any;
+            lastCreatedAt = last.created_at;
+            lastId = last.id;
             if (data.length < BATCH) break;
-            from += BATCH;
           }
 
           console.log(`[export-crm-contacts] streamed ${total} rows`);
