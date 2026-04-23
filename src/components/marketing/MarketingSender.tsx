@@ -191,6 +191,13 @@ const MarketingSender = () => {
         };
       }
 
+      if (mediaUrl) {
+        payload.components.header = {
+          type: mediaType,
+          [mediaType]: { link: mediaUrl },
+        };
+      }
+
       const patientName = String(row["Name"] || row["name"] || "");
       const retryPayloadSnapshot = { apiUrl, apiKey, headerName, headerPrefix, payload };
 
