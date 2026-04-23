@@ -470,7 +470,10 @@ const LimsDemo = () => {
     toast({ title: "Copied to clipboard" });
   };
 
-  const orderResults = (orderId: string) => results.filter((r) => r.order_id === orderId);
+  // Result values are now stored only in patient_results (Results Entry) — no
+  // separate lims_test_results table. The order's per-test status flag tells us
+  // whether the machine has reported a result for each code.
+  const orderResults = (_orderId: string) => [] as any[];
 
   return (
     <div className="space-y-6">
