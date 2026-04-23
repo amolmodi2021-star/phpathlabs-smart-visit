@@ -35,6 +35,42 @@ Deno.serve(async (req) => {
 
     const results: Record<string, { deleted: number; cutoff: string; error?: string }> = {};
 
+    // Special pre-step: null out webhook_messages.raw_payload for rows older
+    // than 7 days. Keeps the row + searchable fields (message, sender_number,
+    // direction, etc.) for chat history but drops the byte-heavy raw JSON
+    // payload to cap storage growth. The 90-day full-row prune entry below
+    // still applies for ancient rows.
+    try {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { count: nullCount, error: nullCountErr } = await supabase
+        .from("webhook_messages")
+        .select("*", { count: "exact", head: true })
+        .lt("created_at", sevenDaysAgo)
+        .not("raw_payload", "is", null);
+      if (nullCountErr) {
+        results["webhook_messages_raw_payload_nulled"] = { deleted: 0, cutoff: sevenDaysAgo, error: nullCountErr.message };
+      } else if ((nullCount ?? 0) > 0) {
+        const { error: nullErr } = await supabase
+          .from("webhook_messages")
+          .update({ raw_payload: null })
+          .lt("created_at", sevenDaysAgo)
+          .not("raw_payload", "is", null);
+        results["webhook_messages_raw_payload_nulled"] = {
+          deleted: nullErr ? 0 : (nullCount ?? 0),
+          cutoff: sevenDaysAgo,
+          ...(nullErr ? { error: nullErr.message } : {}),
+        };
+      } else {
+        results["webhook_messages_raw_payload_nulled"] = { deleted: 0, cutoff: sevenDaysAgo };
+      }
+    } catch (e) {
+      results["webhook_messages_raw_payload_nulled"] = {
+        deleted: 0,
+        cutoff: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+        error: (e as Error).message,
+      };
+    }
+
     for (const { table, column, days } of RETENTION) {
       const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
       // Two-step: count matching rows, then delete. We use head:true on the
@@ -61,6 +97,7 @@ Deno.serve(async (req) => {
         ...(delErr ? { error: delErr.message } : {}),
       };
     }
+
 
     console.log("Prune complete:", results);
 
