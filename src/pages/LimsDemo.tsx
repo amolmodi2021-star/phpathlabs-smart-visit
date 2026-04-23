@@ -101,8 +101,7 @@ const LimsDemo = () => {
         title: "Refresh complete",
         description: `Reprocessed ${processed} order(s) — ${pushed} result(s) pushed, ${completed} marked completed`,
       });
-      queryClient.invalidateQueries({ queryKey: ["lims_orders"] });
-      queryClient.invalidateQueries({ queryKey: ["lims_test_results"] });
+      queryClient.invalidateQueries({ queryKey: ["lims-orders"] });
       queryClient.invalidateQueries({ queryKey: ["patient_results_existing"] });
     } catch (e: any) {
       toast({ title: "Refresh failed", description: e?.message || String(e), variant: "destructive" });
@@ -114,14 +113,10 @@ const LimsDemo = () => {
   const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID || "rpbkilhzulaugzrlatts";
   const apiUrl = `https://${projectId}.supabase.co/functions/v1/lims-interface`;
 
-  // Realtime subscriptions — routed through useRealtimeSync so the central
-  // debounce + `enabled` flag work consistently across the app. Five separate
-  // tables but the hook coalesces invalidations into one batch per quiet window.
-  useRealtimeSync("lims_test_orders", ["lims-orders"]);
-  useRealtimeSync("lims_test_results", ["lims-results", "lims-orders"]);
-  useRealtimeSync("lims_interface_logs", ["lims-logs"]);
-  useRealtimeSync("lims_unmapped_results", ["lims-unmapped"]);
-  useRealtimeSync("lims_no_map_required", ["lims-no-map-required", "lims-unmapped"]);
+  // Realtime disabled to cut Cloud egress; replaced with 30s polling on each
+  // useQuery below. Background polling intentionally OFF so an idle tab
+  // doesn't drive cost.
+  const POLL_MS = 30_000;
 
   const { data: orders = [] } = useQuery({
     queryKey: ["lims-orders"],
@@ -129,14 +124,8 @@ const LimsDemo = () => {
       const { data } = await supabase.from("lims_test_orders").select("*").order("created_at", { ascending: false });
       return data || [];
     },
-  });
-
-  const { data: results = [] } = useQuery({
-    queryKey: ["lims-results"],
-    queryFn: async () => {
-      const { data } = await supabase.from("lims_test_results").select("*").order("received_at", { ascending: false });
-      return data || [];
-    },
+    refetchInterval: POLL_MS,
+    refetchIntervalInBackground: false,
   });
 
   const { data: logs = [] } = useQuery({
@@ -145,6 +134,8 @@ const LimsDemo = () => {
       const { data } = await supabase.from("lims_interface_logs").select("*").order("created_at", { ascending: false }).limit(100);
       return data || [];
     },
+    refetchInterval: POLL_MS,
+    refetchIntervalInBackground: false,
   });
 
   const { data: unmappedResults = [] } = useQuery({
@@ -153,6 +144,8 @@ const LimsDemo = () => {
       const { data } = await supabase.from("lims_unmapped_results").select("*").eq("is_resolved", false).order("received_at", { ascending: false });
       return data || [];
     },
+    refetchInterval: POLL_MS,
+    refetchIntervalInBackground: false,
   });
 
   const { data: codeMappings = [] } = useQuery({
@@ -203,13 +196,11 @@ const LimsDemo = () => {
     if (toDelete.length === 0) return;
     Promise.all(
       toDelete.map(async (o: any) => {
-        await supabase.from("lims_test_results").delete().eq("order_id", o.id);
         await supabase.from("lims_test_orders").delete().eq("id", o.id);
       })
     ).then(() => {
       toast({ title: `Auto-removed ${toDelete.length} order${toDelete.length > 1 ? "s" : ""} older than 15 days` });
       queryClient.invalidateQueries({ queryKey: ["lims-orders"] });
-      queryClient.invalidateQueries({ queryKey: ["lims-results"] });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orders.map((o: any) => o.id).join(",")]);
@@ -231,14 +222,12 @@ const LimsDemo = () => {
     if (ids.length === 0) return;
     await Promise.all(
       ids.map(async (id) => {
-        await supabase.from("lims_test_results").delete().eq("order_id", id);
         await supabase.from("lims_test_orders").delete().eq("id", id);
       })
     );
     toast({ title: `Deleted ${ids.length} order${ids.length > 1 ? "s" : ""}` });
     setSelectedOrderIds(new Set());
     queryClient.invalidateQueries({ queryKey: ["lims-orders"] });
-    queryClient.invalidateQueries({ queryKey: ["lims-results"] });
   };
 
   const toggleSelectOrder = (id: string) => {
@@ -288,13 +277,11 @@ const LimsDemo = () => {
 
   const deleteOrder = useMutation({
     mutationFn: async (id: string) => {
-      await supabase.from("lims_test_results").delete().eq("order_id", id);
       const { error } = await supabase.from("lims_test_orders").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["lims-orders"] });
-      queryClient.invalidateQueries({ queryKey: ["lims-results"] });
     },
   });
 
@@ -307,7 +294,7 @@ const LimsDemo = () => {
   });
 
   const resolveUnmapped = useMutation({
-    mutationFn: async ({ unmappedId, machineCode, machineId, paramCode, sampleId: sid, orderId, resultValue, unit, referenceRange, flag }: any) => {
+    mutationFn: async ({ unmappedId, machineCode, machineId, paramCode }: any) => {
       const param = allParams.find((p) => p.param_code === paramCode);
       if (!param) throw new Error("Parameter not found");
 
@@ -328,54 +315,24 @@ const LimsDemo = () => {
         if (mapErr) throw mapErr;
       }
 
-      // Move clicked result to lims_test_results
-      const { error: resErr } = await supabase.from("lims_test_results").insert({
-        order_id: orderId,
-        sample_id: sid,
-        test_code: paramCode,
-        test_name: param.parameter_name || "",
-        result_value: resultValue,
-        unit: unit,
-        reference_range: referenceRange,
-        flag: flag,
-      });
-      if (resErr) throw resErr;
-
-      // Mark clicked row as resolved
-      const { error: resolveErr } = await supabase.from("lims_unmapped_results").update({ is_resolved: true }).eq("id", unmappedId);
+      // Mark clicked row + all sibling unmapped rows for this machine_code as resolved
+      const { error: resolveErr } = await supabase
+        .from("lims_unmapped_results")
+        .update({ is_resolved: true })
+        .eq("machine_code", machineCode)
+        .eq("is_resolved", false);
       if (resolveErr) throw resolveErr;
 
-      // Auto-resolve all other unmapped results with the same machine_code
-      const { data: siblings } = await supabase.from("lims_unmapped_results")
-        .select("*")
-        .eq("machine_code", machineCode)
-        .eq("is_resolved", false)
-        .neq("id", unmappedId);
-      
-      if (siblings && siblings.length > 0) {
-        // Insert each sibling's result into lims_test_results
-        const siblingResults = siblings.map((s: any) => ({
-          order_id: s.order_id,
-          sample_id: s.sample_id,
-          test_code: paramCode,
-          test_name: param.parameter_name || "",
-          result_value: s.result_value,
-          unit: s.unit,
-          reference_range: s.reference_range,
-          flag: s.flag,
-        }));
-        await supabase.from("lims_test_results").insert(siblingResults);
-
-        // Mark all siblings as resolved
-        const siblingIds = siblings.map((s: any) => s.id);
-        await supabase.from("lims_unmapped_results").update({ is_resolved: true }).in("id", siblingIds);
-      }
+      // Re-bridge: invoke reprocess so the newly-mapped historical readings flow
+      // straight into patient_results (no separate lims_test_results table).
+      await supabase.functions.invoke("lims-interface", { body: { action: "reprocess" } });
     },
     onSuccess: () => {
-      toast({ title: "Mapped & resolved", description: "Result moved to results table and mapping saved" });
+      toast({ title: "Mapped & resolved", description: "Mapping saved; historical readings re-bridged into Results Entry" });
       queryClient.invalidateQueries({ queryKey: ["lims-unmapped"] });
       queryClient.invalidateQueries({ queryKey: ["lims-code-mappings"] });
-      queryClient.invalidateQueries({ queryKey: ["lims-results"] });
+      queryClient.invalidateQueries({ queryKey: ["lims-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["patient_results_existing"] });
       setMappingParamCode({});
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -513,7 +470,10 @@ const LimsDemo = () => {
     toast({ title: "Copied to clipboard" });
   };
 
-  const orderResults = (orderId: string) => results.filter((r) => r.order_id === orderId);
+  // Result values are now stored only in patient_results (Results Entry) — no
+  // separate lims_test_results table. The order's per-test status flag tells us
+  // whether the machine has reported a result for each code.
+  const orderResults = (_orderId: string) => [] as any[];
 
   return (
     <div className="space-y-6">
@@ -697,7 +657,7 @@ const LimsDemo = () => {
                               </TableHeader>
                               <TableBody>
                                 {tests.map((t, i) => {
-                                  const res = oResults.find((r) => r.test_code === t.code);
+                                  const res: any = oResults.find((r: any) => r.test_code === t.code);
                                   return (
                                     <TableRow key={i}>
                                       <TableCell className="font-mono">{t.code}</TableCell>
@@ -705,7 +665,7 @@ const LimsDemo = () => {
                                       <TableCell>{res?.unit || t.unit}</TableCell>
                                       <TableCell className="font-mono text-xs">{t.machine_id || "—"}</TableCell>
                                       <TableCell><Badge variant={statusColor(t.status)} className="text-xs">{t.status}</Badge></TableCell>
-                                      <TableCell className="font-mono">{res?.result_value || "—"}</TableCell>
+                                      <TableCell className="font-mono">{res?.result_value || (t.status === "completed" ? "✓ in Results Entry" : "—")}</TableCell>
                                       <TableCell>{res?.flag && <Badge variant={res.flag === "Abnormal" ? "destructive" : "outline"} className="text-xs">{res.flag}</Badge>}</TableCell>
                                     </TableRow>
                                   );

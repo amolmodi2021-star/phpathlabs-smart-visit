@@ -17,7 +17,6 @@ type TableName =
   | "sample_tubes"
   | "message_send_log"
   | "lims_test_orders"
-  | "lims_test_results"
   | "lims_interface_logs"
   | "lims_unmapped_results"
   | "lims_no_map_required";
