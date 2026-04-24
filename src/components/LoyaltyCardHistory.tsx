@@ -1,11 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
-import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ChevronDown, ChevronUp, ExternalLink, Trash2, Send, Loader2, RefreshCw } from "lucide-react";
@@ -21,6 +20,7 @@ const LoyaltyCardHistory = () => {
   const [deleteMode, setDeleteMode] = useState<"selected" | "all">("selected");
   const [sendingJobId, setSendingJobId] = useState<string | null>(null);
   const [retryingJobId, setRetryingJobId] = useState<string | null>(null);
+  const lastAutoResumeAtRef = useRef<Record<string, number>>({});
 
 
   const loadWaSettings = async () => {
@@ -59,50 +59,122 @@ const LoyaltyCardHistory = () => {
     };
   };
 
-  const invokeChunkLoop = async (jobId: string, payload: any, label: string) => {
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const getPendingCount = useCallback(async (jobId: string) => {
+    const { count, error } = await supabase
+      .from("loyalty_cards")
+      .select("id", { count: "exact", head: true })
+      .eq("job_id", jobId)
+      .eq("whatsapp_status", "pending");
+
+    if (error) throw error;
+    return count ?? 0;
+  }, []);
+
+  const invokeChunkLoop = useCallback(async (jobId: string, payload: any, label: string, silent = false) => {
     // The edge function processes one chunk per call (capped to stay under
-    // the platform timeout). Loop here until no pending cards remain.
+    // the platform timeout). Keep asking for chunks until the database itself
+    // confirms there are zero pending rows left.
     let totalSent = 0;
     let calls = 0;
-    const MAX_CALLS = 200; // safety cap (200 chunks * ~40 msgs ≈ 8k cards per click)
+    const MAX_CALLS = 200;
     let startingPending = 0;
+    let remainingPending = await getPendingCount(jobId);
+    let stalledBatches = 0;
 
-    while (calls < MAX_CALLS) {
-      const res = await supabase.functions.invoke("send-loyalty-whatsapp", { body: payload });
-      if (res.error) throw res.error;
-      const data = res.data || {};
-      totalSent += data.sentCount || 0;
-      if (calls === 0) startingPending = data.startingPending || 0;
+    while (remainingPending > 0 && calls < MAX_CALLS) {
+      let chunkData: any = null;
+      let lastError: Error | null = null;
+
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const res = await supabase.functions.invoke("send-loyalty-whatsapp", { body: payload });
+        if (!res.error) {
+          chunkData = res.data || {};
+          lastError = null;
+          break;
+        }
+
+        lastError = res.error instanceof Error ? res.error : new Error(String(res.error));
+        await sleep(1500 * (attempt + 1));
+      }
+
+      if (lastError) {
+        remainingPending = await getPendingCount(jobId);
+        if (remainingPending > 0 && calls > 0) continue;
+        throw lastError;
+      }
+
+      totalSent += chunkData?.sentCount || 0;
+      if (calls === 0) startingPending = chunkData?.startingPending || remainingPending;
       calls++;
 
-      // Refresh UI counts after each chunk so progress is visible
       queryClient.invalidateQueries({ queryKey: ["loyalty_card_jobs"] });
       queryClient.invalidateQueries({ queryKey: ["loyalty_cards_counts"] });
 
-      if (!data.hasMore) break;
+      const nextRemaining = typeof chunkData?.remainingPending === "number"
+        ? chunkData.remainingPending
+        : await getPendingCount(jobId);
+
+      stalledBatches = nextRemaining < remainingPending || (chunkData?.sentCount || 0) > 0
+        ? 0
+        : stalledBatches + 1;
+
+      remainingPending = nextRemaining;
+
+      if (stalledBatches >= 3) {
+        throw new Error(`Sending stalled with ${remainingPending} cards still pending.`);
+      }
     }
 
-    toast({
-      title: `${label}: Sent ${totalSent}${startingPending ? ` / ${startingPending}` : ""} messages`,
-      description: calls > 1 ? `Processed in ${calls} batches.` : undefined,
-    });
+    const finalPending = await getPendingCount(jobId);
+    queryClient.invalidateQueries({ queryKey: ["loyalty_card_jobs"] });
+    queryClient.invalidateQueries({ queryKey: ["loyalty_cards_counts"] });
     queryClient.invalidateQueries({ queryKey: ["loyalty_cards"] });
-  };
 
-  const sendViaWhatsApp = async (jobId: string) => {
+    if (!silent) {
+      toast({
+        title: finalPending === 0
+          ? `${label}: Sent ${totalSent}${startingPending ? ` / ${startingPending}` : ""} messages`
+          : `${label} paused with ${finalPending} pending`,
+        description: finalPending === 0
+          ? (calls > 1 ? `Processed in ${calls} batches.` : undefined)
+          : "The sender will keep auto-resuming while this page is open.",
+      });
+    }
+
+    if (finalPending > 0 && calls >= MAX_CALLS) {
+      throw new Error(`Stopped after ${calls} batches with ${finalPending} cards still pending.`);
+    }
+
+    return { finalPending };
+  }, [getPendingCount, queryClient, toast]);
+
+  const sendViaWhatsApp = useCallback(async (jobId: string, options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false;
     const map = await loadWaSettings();
     const payload = buildPayload(map, jobId);
-    if (!payload) return toast({ title: "Configure WhatsApp API settings first (WhatsApp API Settings tab)", variant: "destructive" });
+    if (!payload) {
+      if (!silent) {
+        toast({ title: "Configure WhatsApp API settings first (WhatsApp API Settings tab)", variant: "destructive" });
+      }
+      return;
+    }
 
     setSendingJobId(jobId);
     try {
-      await invokeChunkLoop(jobId, payload, "Send");
+      await supabase.from("loyalty_card_jobs").update({ status: "processing" }).eq("id", jobId);
+      await invokeChunkLoop(jobId, payload, silent ? "Auto-resume" : "Send", silent);
     } catch (err: any) {
-      toast({ title: "WhatsApp send failed", description: err.message, variant: "destructive" });
+      if (!silent) {
+        toast({ title: "WhatsApp send failed", description: err.message, variant: "destructive" });
+      } else {
+        console.warn("Auto-resume send failed", err);
+      }
     } finally {
       setSendingJobId(null);
     }
-  };
+  }, [invokeChunkLoop, toast]);
 
   const retryFailed = async (jobId: string) => {
     const map = await loadWaSettings();
@@ -195,6 +267,23 @@ const LoyaltyCardHistory = () => {
     },
     enabled: !!expandedJob,
   });
+
+  useEffect(() => {
+    if (sendingJobId || retryingJobId || jobs.length === 0) return;
+
+    const autoResumeJob = jobs.find((job: any) => {
+      const counts = countsMap[job.id] || { sent: 0, failed: 0, pending: 0 };
+      if (counts.pending <= 0 || job.status !== "processing") return false;
+
+      const lastAttemptAt = lastAutoResumeAtRef.current[job.id] || 0;
+      return Date.now() - lastAttemptAt > 15_000;
+    });
+
+    if (!autoResumeJob) return;
+
+    lastAutoResumeAtRef.current[autoResumeJob.id] = Date.now();
+    void sendViaWhatsApp(autoResumeJob.id, { silent: true });
+  }, [jobs, countsMap, sendingJobId, retryingJobId, sendViaWhatsApp]);
 
   const toggleJob = (id: string) => {
     setSelectedJobs((prev) => {
@@ -336,7 +425,7 @@ const LoyaltyCardHistory = () => {
                       <span className="text-xs text-muted-foreground">{job.total_cards} cards</span>
                     </CardTitle>
                     <div className="flex items-center gap-3 text-xs">
-                      <span className="text-green-600 font-medium">✓ Sent: {counts.sent}</span>
+                      <span className="text-primary font-medium">✓ Sent: {counts.sent}</span>
                       <span className="text-destructive font-medium">✗ Failed: {counts.failed}</span>
                       <span className="text-muted-foreground font-medium">⏳ Pending: {counts.pending}</span>
                     </div>
