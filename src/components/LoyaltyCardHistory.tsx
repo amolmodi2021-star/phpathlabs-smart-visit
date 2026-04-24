@@ -268,6 +268,23 @@ const LoyaltyCardHistory = () => {
     enabled: !!expandedJob,
   });
 
+  useEffect(() => {
+    if (sendingJobId || retryingJobId || jobs.length === 0) return;
+
+    const autoResumeJob = jobs.find((job: any) => {
+      const counts = countsMap[job.id] || { sent: 0, failed: 0, pending: 0 };
+      if (counts.pending <= 0 || job.status !== "processing") return false;
+
+      const lastAttemptAt = lastAutoResumeAtRef.current[job.id] || 0;
+      return Date.now() - lastAttemptAt > 15_000;
+    });
+
+    if (!autoResumeJob) return;
+
+    lastAutoResumeAtRef.current[autoResumeJob.id] = Date.now();
+    void sendViaWhatsApp(autoResumeJob.id, { silent: true });
+  }, [jobs, countsMap, sendingJobId, retryingJobId, sendViaWhatsApp]);
+
   const toggleJob = (id: string) => {
     setSelectedJobs((prev) => {
       const next = new Set(prev);
@@ -408,7 +425,7 @@ const LoyaltyCardHistory = () => {
                       <span className="text-xs text-muted-foreground">{job.total_cards} cards</span>
                     </CardTitle>
                     <div className="flex items-center gap-3 text-xs">
-                      <span className="text-green-600 font-medium">✓ Sent: {counts.sent}</span>
+                      <span className="text-primary font-medium">✓ Sent: {counts.sent}</span>
                       <span className="text-destructive font-medium">✗ Failed: {counts.failed}</span>
                       <span className="text-muted-foreground font-medium">⏳ Pending: {counts.pending}</span>
                     </div>
