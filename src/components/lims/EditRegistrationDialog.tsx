@@ -67,6 +67,10 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   const [showDiscountUnlockPwd, setShowDiscountUnlockPwd] = useState(false);
   const [discountUnlocked, setDiscountUnlocked] = useState(false);
 
+  // Payment-mode lock for invoices older than today
+  const [showPaymentUnlockPwd, setShowPaymentUnlockPwd] = useState(false);
+  const [paymentUnlocked, setPaymentUnlocked] = useState(false);
+
   // Populate on open
   useEffect(() => {
     if (reg && open) {
