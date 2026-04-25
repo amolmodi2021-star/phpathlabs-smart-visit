@@ -71,6 +71,75 @@ const DailyReport = () => {
     },
   });
 
+  // Lookup registrations referenced by visible transactions to derive visit/source/billing columns
+  const registrationIds = useMemo(() => {
+    const set = new Set<string>();
+    transactions.forEach((t: any) => { if (t.registration_id) set.add(t.registration_id); });
+    return Array.from(set);
+  }, [transactions]);
+
+  const { data: regLookup = [] } = useQuery({
+    queryKey: ["daily-report-registrations", registrationIds],
+    enabled: registrationIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("patient_registrations")
+        .select("id, visit_type, channel_id, pickup_point_id")
+        .in("id", registrationIds);
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+  });
+
+  const { data: channelsLookup = [] } = useQuery({
+    queryKey: ["daily-report-channels"],
+    queryFn: async () => {
+      const { data } = await supabase.from("channels").select("id, name, billing_type");
+      return (data || []) as any[];
+    },
+  });
+
+  const { data: pickupsLookup = [] } = useQuery({
+    queryKey: ["daily-report-pickups"],
+    queryFn: async () => {
+      const { data } = await supabase.from("pickup_points").select("id, name, billing_type");
+      return (data || []) as any[];
+    },
+  });
+
+  const regMap = useMemo(() => Object.fromEntries(regLookup.map((r: any) => [r.id, r])), [regLookup]);
+  const channelMap = useMemo(() => Object.fromEntries(channelsLookup.map((c: any) => [c.id, c])), [channelsLookup]);
+  const pickupMap = useMemo(() => Object.fromEntries(pickupsLookup.map((p: any) => [p.id, p])), [pickupsLookup]);
+
+  const visitTypeLabel = (v?: string) => {
+    if (v === "lab_visit") return "Lab Visit";
+    if (v === "home_visit") return "Home Visit";
+    if (v === "pickup_point") return "Pickup Point";
+    if (v === "channel") return "Channel";
+    return "—";
+  };
+
+  const getRegInfo = (regId?: string) => {
+    if (!regId) return { visit: "—", source: "—", billing: "—" as "credit" | "debit" | "—" };
+    const r: any = regMap[regId];
+    if (!r) return { visit: "—", source: "—", billing: "—" as "credit" | "debit" | "—" };
+    let visit = visitTypeLabel(r.visit_type);
+    let source = "—";
+    let billing: "credit" | "debit" = "debit";
+    if (r.visit_type === "pickup_point" && r.pickup_point_id) {
+      const pp = pickupMap[r.pickup_point_id];
+      source = pp?.name || "—";
+      billing = pp?.billing_type === "credit" ? "credit" : "debit";
+    } else if (r.channel_id) {
+      const ch = channelMap[r.channel_id];
+      source = ch?.name || "—";
+      visit = "Channel";
+      billing = ch?.billing_type === "credit" ? "credit" : "debit";
+    }
+    return { visit, source, billing };
+  };
+
+
   // Derive invoice date from invoice number YYMMDD prefix (e.g. "2604160004" -> 16-04-2026)
   const formatInvoiceDate = (invoiceNumber: string | null | undefined): string => {
     if (!invoiceNumber || invoiceNumber.length < 6) return "-";
@@ -142,27 +211,33 @@ const DailyReport = () => {
   }, [filtered]);
 
   const exportToExcel = () => {
-    const rows = filtered.map((r: any) => ({
-      "Invoice #": r.invoice_number,
-      "Invoice Date": formatInvoiceDate(r.invoice_number),
-      "Date/Time": format(parseISO(r.transaction_date), "dd-MM-yyyy hh:mm a"),
-      "Username": r.performed_by || "",
-      "Type": TRANSACTION_LABELS[r.transaction_type] || r.transaction_type,
-      "Direction": r.direction === "in" ? "Money In" : "Money Out",
-      "Patient Name": r.patient_name || "",
-      "Gross Amount": Number(r.gross_amount || 0),
-      "Discount": Number(r.discount_amount || 0),
-      "Final Amount": Number(r.final_amount || 0),
-      "Total Paid": Number(r.paid_amount || 0),
-      "Total Due": Number(r.due_amount || 0),
-      "Cash": Number(r.cash_amount || 0),
-      "GPay": Number(r.gpay_amount || 0),
-      "Paytm": Number(r.paytm_amount || 0),
-      "NEFT": Number(r.neft_amount || 0),
-      "Credit Card": Number(r.credit_card_amount || 0),
-      "Refund": Number(r.refund_amount || 0),
-      "Remarks": r.remarks || "",
-    }));
+    const rows = filtered.map((r: any) => {
+      const info = getRegInfo(r.registration_id);
+      return {
+        "Invoice #": r.invoice_number,
+        "Invoice Date": formatInvoiceDate(r.invoice_number),
+        "Date/Time": format(parseISO(r.transaction_date), "dd-MM-yyyy hh:mm a"),
+        "Username": r.performed_by || "",
+        "Type": TRANSACTION_LABELS[r.transaction_type] || r.transaction_type,
+        "Direction": r.direction === "in" ? "Money In" : "Money Out",
+        "Patient Name": r.patient_name || "",
+        "Visit Type": info.visit,
+        "Pickup/Channel Name": info.source,
+        "Billing": info.billing === "—" ? "" : info.billing.toUpperCase(),
+        "Gross Amount": Number(r.gross_amount || 0),
+        "Discount": Number(r.discount_amount || 0),
+        "Final Amount": Number(r.final_amount || 0),
+        "Total Paid": Number(r.paid_amount || 0),
+        "Total Due": Number(r.due_amount || 0),
+        "Cash": Number(r.cash_amount || 0),
+        "GPay": Number(r.gpay_amount || 0),
+        "Paytm": Number(r.paytm_amount || 0),
+        "NEFT": Number(r.neft_amount || 0),
+        "Credit Card": Number(r.credit_card_amount || 0),
+        "Refund": Number(r.refund_amount || 0),
+        "Remarks": r.remarks || "",
+      };
+    });
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Daily Report");
@@ -317,6 +392,9 @@ const DailyReport = () => {
                 <TableHead className="whitespace-nowrap">Username</TableHead>
                 <TableHead className="whitespace-nowrap">Type</TableHead>
                 <TableHead className="whitespace-nowrap">Patient Name</TableHead>
+                <TableHead className="whitespace-nowrap">Visit Type</TableHead>
+                <TableHead className="whitespace-nowrap">Pickup/Channel</TableHead>
+                <TableHead className="whitespace-nowrap">Billing</TableHead>
                 <TableHead className="text-right whitespace-nowrap">Gross</TableHead>
                 <TableHead className="text-right whitespace-nowrap">Discount</TableHead>
                 <TableHead className="text-right whitespace-nowrap">Final</TableHead>
@@ -344,6 +422,20 @@ const DailyReport = () => {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-sm whitespace-nowrap">{r.patient_name || "-"}</TableCell>
+                  {(() => {
+                    const info = getRegInfo(r.registration_id);
+                    return (
+                      <>
+                        <TableCell className="text-xs whitespace-nowrap">{info.visit}</TableCell>
+                        <TableCell className="text-xs whitespace-nowrap max-w-[140px] truncate" title={info.source}>{info.source}</TableCell>
+                        <TableCell className="text-xs whitespace-nowrap">
+                          {info.billing === "—" ? "—" : (
+                            <Badge variant={info.billing === "credit" ? "secondary" : "default"} className="capitalize">{info.billing}</Badge>
+                          )}
+                        </TableCell>
+                      </>
+                    );
+                  })()}
                   <TableCell className="text-right text-sm">₹{Number(r.gross_amount || 0)}</TableCell>
                   <TableCell className="text-right text-sm">₹{Number(r.discount_amount || 0)}</TableCell>
                   <TableCell className="text-right text-sm font-medium">₹{Number(r.final_amount || 0)}</TableCell>
@@ -366,7 +458,7 @@ const DailyReport = () => {
             </TableBody>
             <TableFooter>
               <TableRow className="font-semibold">
-                <TableCell colSpan={6} className="text-right">Totals</TableCell>
+                <TableCell colSpan={9} className="text-right">Totals</TableCell>
                 <TableCell className="text-right">₹{totals.gross.toFixed(2)}</TableCell>
                 <TableCell className="text-right">₹{totals.discount.toFixed(2)}</TableCell>
                 <TableCell className="text-right">₹{totals.final.toFixed(2)}</TableCell>
