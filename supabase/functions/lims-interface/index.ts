@@ -667,9 +667,9 @@ Deno.serve(async (req) => {
               const { error: updErr } = await supabase
                 .from("patient_results")
                 .update({
-                  result_value: applyInterfaceUnitSuffix(convertedValue, mr.unit, param),
+                  result_value: applyInterfaceUnitSuffix(convertedValue, param),
                   flag,
-                  unit: mr.unit || param.unit || "",
+                  unit: param.unit || "",
                   reference_range: referenceRange,
                   normal_range_low: param.normal_range_low,
                   normal_range_high: param.normal_range_high,
