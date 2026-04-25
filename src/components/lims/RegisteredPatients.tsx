@@ -166,6 +166,7 @@ const RegisteredPatients = () => {
           "Address": r.address || "",
           "Visit Type": r.visit_type || "",
           "Tests": testList.map((t: any) => t.test_name).join(", "),
+          "Created By": r.registered_by || "",
           "Gross Amount": r.gross_amount,
           "Discount": r.discount_amount,
           "Home Visit Charges": r.home_visit_charges,
