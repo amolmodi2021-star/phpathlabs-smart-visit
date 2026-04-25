@@ -141,6 +141,9 @@ const CompletedHomeVisits = () => {
         umrNumber = umr;
       }
 
+      const stampedBy = getCurrentUserName();
+      if (!stampedBy) throw new Error("Please sign in again before saving the registration");
+
       const { data: insertedReg, error } = await supabase.from("patient_registrations").insert({
         invoice_number: invNum,
         patient_name: e.patient_name || "",
