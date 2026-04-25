@@ -227,6 +227,7 @@ const SampleAcceptance = () => {
           const testInfo = testsMap[testId] || {};
           const paramData = testParamData[testId];
           if (paramData && paramData.params.length > 0) {
+            // Test has parameters AND at least one is flagged for interface — push only those.
             for (const p of paramData.params) {
               orderTests.push({
                 code: p.code, name: p.name, unit: p.unit,
@@ -234,13 +235,19 @@ const SampleAcceptance = () => {
                 status: "pending",
               });
             }
+          } else if (paramData && paramData.hasAnyParam) {
+            // Test has parameters but NONE are interface-flagged — skip entirely.
+            // (All-manual / all-calculated tests must not be pushed to the analyzer.)
+            continue;
           } else {
+            // Test has zero parameters defined (snip-only / single-result outsourced) — order at test level.
             orderTests.push({
               code: testInfo.test_code || "", name: testInfo.test_name || "",
               unit: "", machine_id: testInfo.machine_id || "", status: "pending",
             });
           }
         }
+
         if (orderTests.length > 0) {
           const sampleId = tube.suffix ? `${reg.invoice_number}${tube.suffix}` : reg.invoice_number;
           await supabase.from("lims_test_orders").insert({
