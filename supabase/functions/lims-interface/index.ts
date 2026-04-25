@@ -283,7 +283,7 @@ Deno.serve(async (req) => {
             const testId = candidateTestIds.find((tid) => regTestIds.has(tid)) || candidateTestIds[0];
             if (!testId) continue;
 
-            const convertedValue = applyUnitConversion(sr.result_value, param);
+            const convertedValue = applyUnitConversion(sr.result_value, param, sr.unit);
             const flag = computeFlagFromInterface(convertedValue, param);
 
             const referenceRange = param.normal_range_text
