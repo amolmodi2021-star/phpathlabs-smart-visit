@@ -397,7 +397,7 @@ const PatientRegistration = () => {
         remarks: remarks.trim() || null,
         is_stat: isStat,
         report_language: visitType === "pickup_point" ? "ENGLISH" : reportLanguage.toUpperCase(),
-        registered_by: getCurrentUser()?.display_name || null,
+        registered_by: stampedBy,
       };
 
       const { data: reg, error } = await supabase.from("patient_registrations").insert(regData as any).select().single();
