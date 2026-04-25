@@ -513,6 +513,9 @@ Deno.serve(async (req) => {
             if (!insErr) totalPushed += insertPayload.length;
           }
 
+          // Auto-evaluate calculated parameters now that fresh values landed
+          await autoCalcDependentParams(supabase, registrationId);
+
           // Re-evaluate order completion
           const completedCodes = new Set(mappedItems.map((m) => m.test_code));
           for (const ord of orders || []) {
@@ -938,6 +941,10 @@ Deno.serve(async (req) => {
             if (!insErr) patientResultsWritten += insertPayload.length;
             else console.error("patient_results insert error:", insErr);
           }
+
+          // Auto-evaluate calculated parameters now that fresh values landed
+          const calcWritten = await autoCalcDependentParams(supabase, registrationId);
+          patientResultsWritten += calcWritten;
         }
       } catch (bridgeErr) {
         console.error("patient_results bridge error:", bridgeErr);
