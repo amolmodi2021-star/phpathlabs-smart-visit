@@ -404,6 +404,7 @@ const DoctorApproval = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patientEntries]);
 
+  const filteredEntries = useMemo(() => {
     if (mode === "patient") return patientEntries;
     if (selectedMachine === "all") return patientEntries;
     const fm = selectedMachine === "others" ? "" : selectedMachine;
