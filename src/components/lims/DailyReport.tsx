@@ -7,10 +7,11 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
-import { Loader2, Download, Lock, CalendarIcon, Search, X } from "lucide-react";
+import { Loader2, Download, Lock, CalendarIcon, Search, X, Printer } from "lucide-react";
 import { format, startOfDay, endOfDay, parseISO } from "date-fns";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import * as XLSX from "@e965/xlsx";
+import jsPDF from "jspdf";
 
 const TRANSACTION_LABELS: Record<string, string> = {
   registration_payment: "Registration",
@@ -244,6 +245,267 @@ const DailyReport = () => {
     XLSX.writeFile(wb, `Daily_Report_${effectiveDateFrom}_to_${effectiveDateTo}.xlsx`);
   };
 
+  const printPdf = () => {
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    const margin = 5;
+
+    // Column definitions: total widths must fit pageW - 2*margin (~287mm)
+    const cols: { key: string; label: string; w: number; align?: "left" | "right" | "center" }[] = [
+      { key: "inv", label: "Inv #", w: 18 },
+      { key: "invDate", label: "Inv Date", w: 14 },
+      { key: "time", label: "Time", w: 13 },
+      { key: "user", label: "User", w: 14 },
+      { key: "type", label: "Type", w: 18 },
+      { key: "patient", label: "Patient", w: 28 },
+      { key: "visit", label: "Visit", w: 12 },
+      { key: "source", label: "Pickup/Channel", w: 22 },
+      { key: "billing", label: "Bill", w: 9 },
+      { key: "gross", label: "Gross", w: 12, align: "right" },
+      { key: "disc", label: "Disc", w: 11, align: "right" },
+      { key: "final", label: "Final", w: 12, align: "right" },
+      { key: "paid", label: "Paid", w: 12, align: "right" },
+      { key: "due", label: "Due", w: 11, align: "right" },
+      { key: "cash", label: "Cash", w: 11, align: "right" },
+      { key: "gpay", label: "GPay", w: 11, align: "right" },
+      { key: "paytm", label: "Paytm", w: 11, align: "right" },
+      { key: "neft", label: "NEFT", w: 11, align: "right" },
+      { key: "cc", label: "CC", w: 11, align: "right" },
+      { key: "refund", label: "Refund", w: 12, align: "right" },
+      { key: "remarks", label: "Remarks", w: 17 },
+    ];
+
+    const tableW = cols.reduce((s, c) => s + c.w, 0);
+    const startX = margin + (pageW - 2 * margin - tableW) / 2;
+    const rowH = 4.2;
+    const headerH = 5;
+    let y = margin;
+
+    const fmtAmt = (n: number) => {
+      if (!n) return "-";
+      const v = Math.round(n);
+      return v < 0 ? `(${Math.abs(v)})` : String(v);
+    };
+    const visitShort = (v: string) => {
+      if (v === "Lab Visit") return "Lab";
+      if (v === "Home Visit") return "Home";
+      if (v === "Pickup Point") return "Pickup";
+      if (v === "Channel") return "Channel";
+      return v;
+    };
+    const truncate = (s: string, maxW: number) => {
+      doc.setFontSize(6.5);
+      let str = s || "";
+      if (doc.getTextWidth(str) <= maxW) return str;
+      while (str.length > 1 && doc.getTextWidth(str + "…") > maxW) str = str.slice(0, -1);
+      return str + "…";
+    };
+
+    const drawHeader = () => {
+      // Title block
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      doc.setTextColor(0, 0, 0);
+      doc.text("PH PathLabs — Daily Payment Register", margin, y + 4);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      const periodStr = isSearching
+        ? `Search: ${invoiceSearch}`
+        : `${effectiveDateFrom} to ${effectiveDateTo}`;
+      doc.text(`Period: ${periodStr}`, margin, y + 8.5);
+      const filterBits: string[] = [];
+      if (adminUnlocked) {
+        if (userFilter !== "ALL") filterBits.push(`User: ${userFilter}`);
+        if (typeFilter !== "ALL") filterBits.push(`Type: ${TRANSACTION_LABELS[typeFilter] || typeFilter}`);
+        if (modeFilter !== "ALL") filterBits.push(`Mode: ${modeFilter}`);
+      }
+      if (filterBits.length) doc.text(filterBits.join("  •  "), margin, y + 12);
+      doc.setFontSize(7);
+      doc.text(
+        `Generated: ${format(new Date(), "dd-MM-yyyy hh:mm a")}`,
+        pageW - margin,
+        y + 4,
+        { align: "right" }
+      );
+      doc.text(`Txns: ${filtered.length}`, pageW - margin, y + 8.5, { align: "right" });
+      y += 14;
+
+      // Summary band
+      doc.setFillColor(245, 245, 245);
+      doc.rect(margin, y, pageW - 2 * margin, 8, "F");
+      doc.setFontSize(7.5);
+      doc.setFont("helvetica", "bold");
+      const sumParts = [
+        `In: ${totals.total_in.toFixed(0)}`,
+        `Out: ${Math.abs(totals.total_out).toFixed(0)}`,
+        `Net: ${(totals.total_in + totals.total_out).toFixed(0)}`,
+        `Cash: ${totals.cash.toFixed(0)}`,
+        `GPay: ${totals.gpay.toFixed(0)}`,
+        `Paytm: ${totals.paytm.toFixed(0)}`,
+        `NEFT: ${totals.neft.toFixed(0)}`,
+        `CC: ${totals.credit_card.toFixed(0)}`,
+        `Due: ${totals.due.toFixed(0)}`,
+        `Refund: ${totals.refund.toFixed(0)}`,
+      ];
+      doc.setTextColor(40, 40, 40);
+      doc.text(sumParts.join("    "), margin + 2, y + 5.2);
+      y += 10;
+
+      // Column header row
+      doc.setFillColor(225, 230, 240);
+      doc.rect(startX, y, tableW, headerH, "F");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7);
+      doc.setTextColor(0, 0, 0);
+      let cx = startX;
+      cols.forEach((c) => {
+        const tx =
+          c.align === "right" ? cx + c.w - 1 : c.align === "center" ? cx + c.w / 2 : cx + 1;
+        doc.text(c.label, tx, y + 3.5, { align: c.align || "left" });
+        cx += c.w;
+      });
+      // Vertical lines
+      doc.setDrawColor(180, 180, 180);
+      doc.setLineWidth(0.1);
+      let vx = startX;
+      doc.line(startX, y, startX, y + headerH);
+      cols.forEach((c) => {
+        vx += c.w;
+        doc.line(vx, y, vx, y + headerH);
+      });
+      doc.line(startX, y + headerH, startX + tableW, y + headerH);
+      y += headerH;
+    };
+
+    drawHeader();
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(6.5);
+
+    let rowIdx = 0;
+    filtered.forEach((r: any) => {
+      if (y + rowH > pageH - 8) {
+        doc.addPage();
+        y = margin;
+        drawHeader();
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(6.5);
+      }
+      // Row background
+      if (r.direction === "out") {
+        doc.setFillColor(255, 235, 235);
+        doc.rect(startX, y, tableW, rowH, "F");
+      } else if (rowIdx % 2 === 1) {
+        doc.setFillColor(250, 250, 250);
+        doc.rect(startX, y, tableW, rowH, "F");
+      }
+
+      const info = getRegInfo(r.registration_id);
+      const values: Record<string, string> = {
+        inv: String(r.invoice_number || ""),
+        invDate: formatInvoiceDate(r.invoice_number),
+        time: format(parseISO(r.transaction_date), "hh:mm a"),
+        user: r.performed_by || "",
+        type: TRANSACTION_LABELS[r.transaction_type] || r.transaction_type,
+        patient: r.patient_name || "-",
+        visit: visitShort(info.visit),
+        source: info.source || "-",
+        billing: info.billing === "—" ? "-" : info.billing.toUpperCase().slice(0, 3),
+        gross: fmtAmt(Number(r.gross_amount || 0)),
+        disc: fmtAmt(Number(r.discount_amount || 0)),
+        final: fmtAmt(Number(r.final_amount || 0)),
+        paid: fmtAmt(Number(r.paid_amount || 0)),
+        due: fmtAmt(Number(r.due_amount || 0)),
+        cash: fmtAmt(Number(r.cash_amount || 0)),
+        gpay: fmtAmt(Number(r.gpay_amount || 0)),
+        paytm: fmtAmt(Number(r.paytm_amount || 0)),
+        neft: fmtAmt(Number(r.neft_amount || 0)),
+        cc: fmtAmt(Number(r.credit_card_amount || 0)),
+        refund: fmtAmt(Number(r.refund_amount || 0)),
+        remarks: r.remarks || "-",
+      };
+
+      let cx = startX;
+      cols.forEach((c) => {
+        const raw = values[c.key] ?? "";
+        const txt = truncate(raw, c.w - 1.5);
+        const isNeg = raw.startsWith("(");
+        const isDue = c.key === "due" && raw !== "-";
+        if (isNeg || isDue) doc.setTextColor(180, 0, 0);
+        else doc.setTextColor(20, 20, 20);
+        const tx =
+          c.align === "right" ? cx + c.w - 1 : c.align === "center" ? cx + c.w / 2 : cx + 1;
+        doc.text(txt, tx, y + 3, { align: c.align || "left" });
+        cx += c.w;
+      });
+      doc.setTextColor(0, 0, 0);
+
+      // Row bottom line
+      doc.setDrawColor(220, 220, 220);
+      doc.setLineWidth(0.1);
+      doc.line(startX, y + rowH, startX + tableW, y + rowH);
+
+      y += rowH;
+      rowIdx++;
+    });
+
+    // Vertical column lines for the body section on each page (simple full-width verticals at footer)
+    // Totals row
+    if (y + rowH + 2 > pageH - 8) {
+      doc.addPage();
+      y = margin;
+      drawHeader();
+    }
+    doc.setFillColor(220, 230, 245);
+    doc.rect(startX, y, tableW, rowH + 0.5, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7);
+    const totVals: Record<string, string> = {
+      gross: totals.gross.toFixed(0),
+      disc: totals.discount.toFixed(0),
+      final: totals.final.toFixed(0),
+      paid: totals.paid.toFixed(0),
+      due: totals.due.toFixed(0),
+      cash: totals.cash.toFixed(0),
+      gpay: totals.gpay.toFixed(0),
+      paytm: totals.paytm.toFixed(0),
+      neft: totals.neft.toFixed(0),
+      cc: totals.credit_card.toFixed(0),
+      refund: totals.refund.toFixed(0),
+    };
+    let cx = startX;
+    let labelDrawn = false;
+    cols.forEach((c) => {
+      if (totVals[c.key] !== undefined) {
+        doc.setTextColor(0, 0, 0);
+        doc.text(totVals[c.key], cx + c.w - 1, y + 3.2, { align: "right" });
+      } else if (!labelDrawn && c.key === "billing") {
+        doc.setTextColor(0, 0, 0);
+        doc.text("TOTALS", cx + c.w - 1, y + 3.2, { align: "right" });
+        labelDrawn = true;
+      }
+      cx += c.w;
+    });
+    y += rowH + 0.5;
+
+    // Page numbers
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
+      doc.setTextColor(120, 120, 120);
+      doc.text(`Page ${i} of ${pageCount}`, pageW - margin, pageH - 3, { align: "right" });
+      doc.text("PH PathLabs • Daily Payment Register", margin, pageH - 3);
+    }
+
+    const fname = isSearching
+      ? `Daily_Report_search_${invoiceSearch}.pdf`
+      : `Daily_Report_${effectiveDateFrom}_to_${effectiveDateTo}.pdf`;
+    doc.save(fname);
+  };
+
   return (
     <div className="space-y-4">
       {/* Header & Filters */}
@@ -329,6 +591,9 @@ const DailyReport = () => {
         </div>
         <Button variant="outline" size="sm" onClick={exportToExcel} disabled={filtered.length === 0}>
           <Download className="h-3.5 w-3.5 mr-1" /> Export Excel
+        </Button>
+        <Button variant="outline" size="sm" onClick={printPdf} disabled={filtered.length === 0}>
+          <Printer className="h-3.5 w-3.5 mr-1" /> Print PDF
         </Button>
       </div>
 
