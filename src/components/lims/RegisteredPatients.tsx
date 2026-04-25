@@ -12,7 +12,6 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import { exportToExcel } from "@/lib/excel";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
-import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import EditRegistrationDialog from "./EditRegistrationDialog";
 import InvoicePreview from "./InvoicePreview";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
