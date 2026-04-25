@@ -166,6 +166,7 @@ const RegisteredPatients = () => {
           "Address": r.address || "",
           "Visit Type": r.visit_type || "",
           "Tests": testList.map((t: any) => t.test_name).join(", "),
+          "Created By": r.registered_by || "",
           "Gross Amount": r.gross_amount,
           "Discount": r.discount_amount,
           "Home Visit Charges": r.home_visit_charges,
@@ -189,7 +190,7 @@ const RegisteredPatients = () => {
     }
   };
 
-  const colCount = 10;
+  const colCount = 16;
 
   return (
     <div className="space-y-4">
@@ -235,7 +236,7 @@ const RegisteredPatients = () => {
         )}
       </div>
 
-      <div className="rounded-md border">
+      <div className="rounded-md border overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -247,7 +248,13 @@ const RegisteredPatients = () => {
               <TableHead>Visit</TableHead>
               <TableHead>Channel</TableHead>
               <TableHead>Remarks</TableHead>
-              <TableHead className="text-right">Amount</TableHead>
+              <TableHead>Created By</TableHead>
+              <TableHead className="text-right">Gross</TableHead>
+              <TableHead className="text-right">Discount</TableHead>
+              <TableHead className="text-right">Net</TableHead>
+              <TableHead className="text-right">HV Charge</TableHead>
+              <TableHead className="text-right">Paid</TableHead>
+              <TableHead className="text-right">Due</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Actions</TableHead>
             </TableRow>
@@ -289,11 +296,16 @@ const RegisteredPatients = () => {
                     <TableCell className="text-xs">{visitTypeLabel(r.visit_type)}</TableCell>
                     <TableCell className="text-xs">{r.channel_id ? (channelMap[r.channel_id] || "—") : "—"}</TableCell>
                     <TableCell className="text-xs max-w-[120px] truncate">{r.remarks || "—"}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="text-sm font-medium">₹{r.final_amount}</div>
-                      {r.due_amount > 0 && <div className="text-xs text-destructive">Due: ₹{r.due_amount}</div>}
-                      {r.refund_amount > 0 && <div className="text-xs text-orange-600">Refund: ₹{r.refund_amount}</div>}
+                    <TableCell className="text-xs">{r.registered_by || "—"}</TableCell>
+                    <TableCell className="text-right text-xs tabular-nums">₹{Number(r.gross_amount || 0).toFixed(2)}</TableCell>
+                    <TableCell className="text-right text-xs tabular-nums">₹{Number(r.discount_amount || 0).toFixed(2)}</TableCell>
+                    <TableCell className="text-right text-xs tabular-nums">₹{Number(r.net_amount || 0).toFixed(2)}</TableCell>
+                    <TableCell className="text-right text-xs tabular-nums">₹{Number(r.home_visit_charges || 0).toFixed(2)}</TableCell>
+                    <TableCell className="text-right text-xs tabular-nums">
+                      <div>₹{Number(r.paid_amount || 0).toFixed(2)}</div>
+                      {r.refund_amount > 0 && <div className="text-[10px] text-orange-600">Refund: ₹{Number(r.refund_amount).toFixed(2)}</div>}
                     </TableCell>
+                    <TableCell className={`text-right text-xs tabular-nums ${r.due_amount > 0 ? "text-destructive font-medium" : ""}`}>₹{Number(r.due_amount || 0).toFixed(2)}</TableCell>
                     <TableCell><Badge variant={statusColor(r.status)}>{r.bill_cancelled ? "cancelled" : statusLabel(r.status)}</Badge></TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
