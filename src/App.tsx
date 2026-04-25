@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { isAuthenticated, isTabAllowed, getFirstAllowedRoute, checkAuthEpochAndLogoutIfStale } from "@/lib/auth";
+import { supabase } from "@/integrations/supabase/client";
 import AppLayout from "@/components/AppLayout";
 import Login from "./pages/Login";
 import CreateEstimate from "./pages/CreateEstimate";
@@ -77,13 +78,36 @@ function GlobalAuthEpochGuard() {
       }
     };
     run();
+
+    // `focus` is unreliable on mobile (tab resume from app switcher often
+    // fires only `visibilitychange`). Listen for both.
     const onFocus = () => run();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") run();
+    };
     window.addEventListener("focus", onFocus);
-    const interval = window.setInterval(run, 30_000);
+    document.addEventListener("visibilitychange", onVisible);
+
+    // Background poll — short enough that a forgotten mobile tab catches up
+    // within seconds of being foregrounded again.
+    const interval = window.setInterval(run, 15_000);
+
+    // Realtime: instant logout when an admin bumps the epoch, no polling delay.
+    const channel = supabase
+      .channel("auth-epoch-watch")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "app_settings", filter: "setting_key=eq.auth_epoch" },
+        () => run(),
+      )
+      .subscribe();
+
     return () => {
       cancelled = true;
       window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
       window.clearInterval(interval);
+      supabase.removeChannel(channel);
     };
   }, [navigate, location.pathname]);
   return null;
