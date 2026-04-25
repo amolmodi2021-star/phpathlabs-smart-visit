@@ -105,6 +105,7 @@ const CompletedHomeVisits = () => {
         discounted_price: t.discounted_price,
         discount_applicable: t.discount_applicable,
         fasting_required: t.fasting_required,
+        item_type: t.item_type || "test",
       }));
 
       const grossAmount = testList.reduce((s: number, t: any) => s + Number(t.price), 0);
