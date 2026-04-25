@@ -236,7 +236,7 @@ const RegisteredPatients = () => {
         )}
       </div>
 
-      <div className="rounded-md border">
+      <div className="rounded-md border overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -248,7 +248,13 @@ const RegisteredPatients = () => {
               <TableHead>Visit</TableHead>
               <TableHead>Channel</TableHead>
               <TableHead>Remarks</TableHead>
-              <TableHead className="text-right">Amount</TableHead>
+              <TableHead>Created By</TableHead>
+              <TableHead className="text-right">Gross</TableHead>
+              <TableHead className="text-right">Discount</TableHead>
+              <TableHead className="text-right">Net</TableHead>
+              <TableHead className="text-right">HV Charge</TableHead>
+              <TableHead className="text-right">Paid</TableHead>
+              <TableHead className="text-right">Due</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Actions</TableHead>
             </TableRow>
