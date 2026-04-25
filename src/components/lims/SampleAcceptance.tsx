@@ -127,18 +127,21 @@ const SampleAcceptance = () => {
     },
   });
 
-  // Fetch parameters with interfacing info
+  // Fetch parameters with interfacing info.
+  // Track BOTH whether the test has any parameters AND the interface-flagged subset,
+  // so we can skip tests whose parameters are all manual/calculated (no machine push).
   const { data: testParamData = {} } = useQuery({
     queryKey: ["test_param_interface_map"],
     queryFn: async () => {
       const { data } = await supabase
         .from("test_parameters")
         .select("test_id, parameter_id, report_test_parameters(param_code, parameter_name, send_for_interface, machine_id, unit)");
-      const map: Record<string, { params: any[] }> = {};
+      const map: Record<string, { params: any[]; hasAnyParam: boolean }> = {};
       (data || []).forEach((tp: any) => {
         const p = tp.report_test_parameters;
         if (!p || !tp.test_id) return;
-        if (!map[tp.test_id]) map[tp.test_id] = { params: [] };
+        if (!map[tp.test_id]) map[tp.test_id] = { params: [], hasAnyParam: false };
+        map[tp.test_id].hasAnyParam = true;
         if (p.send_for_interface) {
           map[tp.test_id].params.push({
             code: p.param_code, name: p.parameter_name,
@@ -149,6 +152,7 @@ const SampleAcceptance = () => {
       return map;
     },
   });
+
 
   // Group by registration
   const pendingGroups = useMemo((): GroupedRegistration[] => {
