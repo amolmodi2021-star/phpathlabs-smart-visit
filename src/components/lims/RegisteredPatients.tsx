@@ -334,7 +334,7 @@ const RegisteredPatients = () => {
                     </TableCell>
                     <TableCell className="text-sm">{r.mobile_number}</TableCell>
                     <TableCell className="text-xs">{visitTypeLabel(r.visit_type)}</TableCell>
-                    <TableCell className="text-xs">{r.channel_id ? (channelMap[r.channel_id] || "—") : "—"}</TableCell>
+                    <TableCell className="text-xs">{getSourceLabel(r)}</TableCell>
                     <TableCell className="text-xs">
                       {(() => {
                         const bm = getBillingMode(r);
