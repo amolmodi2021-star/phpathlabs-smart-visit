@@ -126,7 +126,15 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   const isRefundBlocked = isPastAccepted && !refundUnlocked;
   const isDiscountLocked = isPastAccepted && !discountUnlocked;
 
-  const newlyCancelled = [...cancelledTestIds].filter(id => !alreadyCancelled.has(id));
+  // Payment mode lock: invoices created before today require password to modify
+  const isInvoiceOlderThanToday = useMemo(() => {
+    if (!reg?.created_at) return false;
+    const d = new Date(reg.created_at);
+    const today = new Date();
+    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0);
+    return d < startOfToday;
+  }, [reg?.created_at]);
+  const isPaymentLocked = isInvoiceOlderThanToday && !paymentUnlocked;
   const refundCalc = useMemo(() => {
     let refundAmount = 0;
     newlyCancelled.forEach(testId => {
