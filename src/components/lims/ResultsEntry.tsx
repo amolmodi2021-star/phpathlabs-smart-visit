@@ -826,6 +826,75 @@ const ResultsEntry = () => {
     }
   };
 
+  // ─── Auto-evaluate calculated parameters whenever entries refresh ───
+  // Triggers when interface results arrive (via realtime) or when the patient
+  // list rebuilds. For every calculated parameter whose displayed value would
+  // change given the current dependent values, write the new value into
+  // editedValues and schedule the existing debounced auto-save so the result
+  // is persisted as 'pending' and visible to all other open sessions.
+  const autoCalcSeenRef = useRef<Record<string, string>>({});
+  useEffect(() => {
+    if (!patientEntries || patientEntries.length === 0) return;
+    const updates: Record<string, string> = {};
+    const testsToSave = new Set<string>();
+    const entryByReg: Record<string, PatientEntry> = {};
+
+    for (const entry of patientEntries) {
+      const regId = entry.registration.id;
+      entryByReg[regId] = entry;
+
+      // Lock tests where any param status is past 'pending' (verified/approved/etc.)
+      const lockedTestIds = new Set<string>();
+      for (const p of entry.parameters) {
+        if (p.status && p.status !== "pending") lockedTestIds.add(p.testId);
+      }
+
+      const valueMap: Record<string, string> = {};
+      for (const p of entry.parameters) {
+        const k = `${regId}||${p.parameterId}`;
+        const v = editedValues[k] !== undefined ? editedValues[k] : (p.resultValue || "");
+        if (v && v.trim() !== "") valueMap[p.parameterId] = v;
+      }
+
+      for (let pass = 0; pass < 3; pass++) {
+        let changed = 0;
+        for (const p of entry.parameters) {
+          if (!p.isCalculated || !p.calculationFormula || p.calculationFormula.length === 0) continue;
+          if (lockedTestIds.has(p.testId)) continue;
+          const computed = evaluateFormula(p.calculationFormula, valueMap);
+          if (!computed) continue;
+          const k = `${regId}||${p.parameterId}`;
+          const currentDisplayed = updates[k] !== undefined
+            ? updates[k]
+            : (editedValues[k] !== undefined ? editedValues[k] : (p.resultValue || ""));
+          if (currentDisplayed === computed) continue;
+          if (autoCalcSeenRef.current[k] === computed && currentDisplayed === computed) continue;
+          updates[k] = computed;
+          autoCalcSeenRef.current[k] = computed;
+          valueMap[p.parameterId] = computed;
+          testsToSave.add(`${regId}||${p.testId}`);
+          changed++;
+        }
+        if (changed === 0) break;
+      }
+    }
+
+    if (Object.keys(updates).length === 0) return;
+    setEditedValues((prev) => ({ ...prev, ...updates }));
+
+    for (const tk of testsToSave) {
+      const [regId, testId] = tk.split("||");
+      const entry = entryByReg[regId];
+      if (!entry) continue;
+      if (autoSaveTimers.current[tk]) clearTimeout(autoSaveTimers.current[tk]);
+      autoSaveTimers.current[tk] = setTimeout(() => {
+        autoSaveTest(regId, testId, entry, { ...editedValues, ...updates });
+        delete autoSaveTimers.current[tk];
+      }, 1500);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patientEntries]);
+
   // ─── Save & send to verification (per-test) ───
   const [savingTestKey, setSavingTestKey] = useState<string | null>(null);
   const [blankConfirmTestParams, setBlankConfirmTestParams] = useState<{ entry: PatientEntry; testId: string; testName: string } | null>(null);

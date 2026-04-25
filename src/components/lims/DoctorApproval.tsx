@@ -366,6 +366,44 @@ const DoctorApproval = () => {
     setEditedValues(newEdited);
   };
 
+  // ─── Auto-evaluate calculated parameters whenever entries refresh ───
+  const autoCalcSeenRef = useRef<Record<string, string>>({});
+  useEffect(() => {
+    if (!patientEntries || patientEntries.length === 0) return;
+    const updates: Record<string, string> = {};
+    for (const entry of patientEntries) {
+      const regId = entry.registration.id;
+      const valueMap: Record<string, string> = {};
+      for (const p of entry.parameters) {
+        const k = `${regId}||${p.parameterId}`;
+        const v = editedValues[k] !== undefined ? editedValues[k] : (p.resultValue || "");
+        if (v && v.trim() !== "") valueMap[p.parameterId] = v;
+      }
+      for (let pass = 0; pass < 3; pass++) {
+        let changed = 0;
+        for (const p of entry.parameters) {
+          if (!p.isCalculated || !p.calculationFormula || p.calculationFormula.length === 0) continue;
+          const computed = evaluateFormula(p.calculationFormula, valueMap);
+          if (!computed) continue;
+          const k = `${regId}||${p.parameterId}`;
+          const currentDisplayed = updates[k] !== undefined
+            ? updates[k]
+            : (editedValues[k] !== undefined ? editedValues[k] : (p.resultValue || ""));
+          if (currentDisplayed === computed) continue;
+          if (autoCalcSeenRef.current[k] === computed && currentDisplayed === computed) continue;
+          updates[k] = computed;
+          autoCalcSeenRef.current[k] = computed;
+          valueMap[p.parameterId] = computed;
+          changed++;
+        }
+        if (changed === 0) break;
+      }
+    }
+    if (Object.keys(updates).length === 0) return;
+    setEditedValues((prev) => ({ ...prev, ...updates }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patientEntries]);
+
   const filteredEntries = useMemo(() => {
     if (mode === "patient") return patientEntries;
     if (selectedMachine === "all") return patientEntries;
