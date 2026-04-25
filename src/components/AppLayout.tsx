@@ -170,13 +170,13 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
 
       <div className="flex">
         {!isMobile && (
-          <aside className="flex w-56 shrink-0 flex-col border-r bg-card h-[calc(100vh-3.5rem)] sticky top-14 overflow-hidden">
-            <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-              <NavSection items={navItems} />
+          <aside className="group flex w-14 hover:w-56 shrink-0 flex-col border-r bg-card h-[calc(100vh-3.5rem)] sticky top-14 overflow-hidden transition-[width] duration-200 ease-out z-40">
+            <nav className="flex-1 p-3 space-y-1 overflow-y-auto overflow-x-hidden">
+              <NavSection items={navItems} rail />
               {isActionAllowed("storage_cleanup") && (
                 <>
                   <Separator className="my-2" />
-                  <StorageCleanupButton />
+                  <StorageCleanupButton rail />
                 </>
               )}
             </nav>
