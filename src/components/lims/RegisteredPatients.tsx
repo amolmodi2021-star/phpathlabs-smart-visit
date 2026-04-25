@@ -296,11 +296,16 @@ const RegisteredPatients = () => {
                     <TableCell className="text-xs">{visitTypeLabel(r.visit_type)}</TableCell>
                     <TableCell className="text-xs">{r.channel_id ? (channelMap[r.channel_id] || "—") : "—"}</TableCell>
                     <TableCell className="text-xs max-w-[120px] truncate">{r.remarks || "—"}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="text-sm font-medium">₹{r.final_amount}</div>
-                      {r.due_amount > 0 && <div className="text-xs text-destructive">Due: ₹{r.due_amount}</div>}
-                      {r.refund_amount > 0 && <div className="text-xs text-orange-600">Refund: ₹{r.refund_amount}</div>}
+                    <TableCell className="text-xs">{r.registered_by || "—"}</TableCell>
+                    <TableCell className="text-right text-xs tabular-nums">₹{Number(r.gross_amount || 0).toFixed(2)}</TableCell>
+                    <TableCell className="text-right text-xs tabular-nums">₹{Number(r.discount_amount || 0).toFixed(2)}</TableCell>
+                    <TableCell className="text-right text-xs tabular-nums">₹{Number(r.net_amount || 0).toFixed(2)}</TableCell>
+                    <TableCell className="text-right text-xs tabular-nums">₹{Number(r.home_visit_charges || 0).toFixed(2)}</TableCell>
+                    <TableCell className="text-right text-xs tabular-nums">
+                      <div>₹{Number(r.paid_amount || 0).toFixed(2)}</div>
+                      {r.refund_amount > 0 && <div className="text-[10px] text-orange-600">Refund: ₹{Number(r.refund_amount).toFixed(2)}</div>}
                     </TableCell>
+                    <TableCell className={`text-right text-xs tabular-nums ${r.due_amount > 0 ? "text-destructive font-medium" : ""}`}>₹{Number(r.due_amount || 0).toFixed(2)}</TableCell>
                     <TableCell><Badge variant={statusColor(r.status)}>{r.bill_cancelled ? "cancelled" : statusLabel(r.status)}</Badge></TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
