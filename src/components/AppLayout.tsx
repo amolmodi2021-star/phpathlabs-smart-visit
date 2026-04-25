@@ -80,7 +80,7 @@ const StorageCleanupButton = ({ onClick }: { onClick?: () => void }) => {
   );
 };
 
-const NavSection = ({ items, onClick }: { items: typeof allNavItems; onClick?: () => void }) => (
+const NavSection = ({ items, onClick, rail = false }: { items: typeof allNavItems; onClick?: () => void; rail?: boolean }) => (
   <>
     {items.map((item) => (
       <NavLink
@@ -88,15 +88,16 @@ const NavSection = ({ items, onClick }: { items: typeof allNavItems; onClick?: (
         to={item.to}
         end={item.to === "/" || item.to === "/reports"}
         onClick={onClick}
+        title={rail ? item.label : undefined}
         className={({ isActive }) =>
           cn(
-            "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+            "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors whitespace-nowrap",
             isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
           )
         }
       >
-        <item.icon className="h-4 w-4" />
-        {item.label}
+        <item.icon className="h-4 w-4 shrink-0" />
+        <span className={cn("transition-opacity duration-150", rail && "opacity-0 group-hover:opacity-100")}>{item.label}</span>
       </NavLink>
     ))}
   </>

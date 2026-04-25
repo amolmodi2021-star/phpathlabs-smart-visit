@@ -1,53 +1,47 @@
-# Add Financial + Created By Columns to Registered Patients Table
+## Plan
 
-## What changes
+### 1. Hover-Expand Collapsible Sidebar (`src/components/AppLayout.tsx`)
 
-In **LIMS → Registered Patients**, replace the single "Amount" column with six dedicated, right-aligned numeric columns and add a **Created By** column showing the user who registered the patient.
+Convert the desktop sidebar from a fixed 224px width (`w-56`) to an auto-expanding "rail" that shows only icons by default and expands on hover.
 
-New columns:
-1. **Gross Amount (Tests)** — `gross_amount` (sum of test prices before discount, excludes home visit charges)
-2. **Discount Amount** — `discount_amount`
-3. **Net Amount** — `net_amount` (gross − discount)
-4. **Home Visit Charge** — `home_visit_charges` (₹0 for non-home-visit registrations)
-5. **Paid Amount** — `paid_amount`
-6. **Due Amount** — `due_amount` (highlighted red when > 0)
-7. **Created By** — `registered_by` (user's display name; falls back to "—" for older rows where it wasn't captured)
+**Behavior:**
+- Default state: narrow rail (~56px / `w-14`) showing only nav icons + tooltips on hover.
+- On mouse enter: smoothly expands to full width (`w-56`) revealing labels.
+- On mouse leave: collapses back to rail width.
+- Uses CSS `group-hover` + `transition-all duration-200` for smooth animation (no JS state needed, avoids re-renders).
+- Main content area (`<main>`) keeps `flex-1` so it automatically reclaims the freed space when the sidebar is collapsed — maximum screen utilisation when not hovering.
+- Mobile (drawer) behavior is unchanged.
 
-The existing **Refund** indicator (when `refund_amount > 0`) will be shown as a small caption under the Paid Amount cell so refund visibility is preserved.
+**Visual details:**
+- Rail icons stay centered when collapsed; labels fade in on hover via `opacity-0 group-hover:opacity-100`.
+- "PH PathLabs" header label and user name remain in the top header (already outside sidebar) — unaffected.
+- Storage Cleanup button gets the same treatment (icon visible, label hidden when collapsed).
+- Active route still highlighted by the existing `NavLink` styling.
 
-## Layout
+### 2. Default Today's Date in Registered Patients (`src/components/lims/RegisteredPatients.tsx`)
 
-The table will get wider. To keep it readable on the current 1843px viewport:
-- All six numeric columns use `text-right`, tabular numerals, and a compact `text-xs` font.
-- Wrap the table in a horizontally scrollable container (`overflow-x-auto`) so it remains usable on smaller screens.
-- Created By placed between Remarks and the financial columns.
-- The chevron, Invoice #, Date, Patient, Mobile, Visit, Channel, Remarks, Status, and Actions columns remain unchanged.
+**Default date filter:**
+- Initialize both `fromDate` and `toDate` with `new Date()` (today) on mount.
+- This makes the initial query load only today's registrations → much faster first paint.
+- The "Clear dates" button continues to work for users who want a wider window.
 
-New header order (left → right):
+**Search bypass for date filter:**
+- When the user types in the search box (`debouncedSearch` is non-empty), the date filter is **ignored** in both the count query and the data query.
+- Implementation: in the two `useQuery` queryFns, only apply `gte("created_at", fromIso)` / `lte("created_at", toIso)` when `!debouncedSearch`.
+- Effect: typing a name/mobile/invoice/UMR searches across **all** historical registrations regardless of the date pickers, so older patients are still findable.
+- The query keys already include `debouncedSearch`, `fromIso`, `toIso`, so React Query will correctly refetch when search is cleared and the date filter re-applies.
 
-```text
-[▸] Invoice # | Date | Patient | Mobile | Visit | Channel | Remarks | Created By |
-Gross | Discount | Net | HV Charge | Paid | Due | Status | Actions
-```
+**UI hint (optional but small):**
+- When a search term is active, show a subtle muted text next to the date pickers like "(date filter ignored while searching)" so the user understands why dates appear set but results span all dates.
 
-## Technical details
+### Technical Notes
 
-File: `src/components/lims/RegisteredPatients.tsx`
+- No database changes.
+- No new dependencies.
+- Sidebar uses pure Tailwind `group` / `group-hover:` utilities — no shadcn `Sidebar` provider migration needed (keeping the change minimal and consistent with the existing custom layout).
+- `overflow-hidden` on the `<aside>` ensures labels don't visually leak during the width transition.
+- Mobile detection (`useIsMobile`) continues to gate desktop vs drawer behavior — hover-expand applies only to desktop.
 
-- Replace the single `<TableHead className="text-right">Amount</TableHead>` with six right-aligned heads (Gross, Discount, Net, HV Charge, Paid, Due).
-- Add a `<TableHead>Created By</TableHead>` after Remarks.
-- Replace the corresponding `<TableCell>` (currently rendering `final_amount` + due/refund captions) with six cells reading from the existing row fields already returned by the `patient_registrations` query — no schema or query changes needed.
-- Add a `<TableCell className="text-xs">{r.registered_by || "—"}</TableCell>` for Created By.
-- Update `colCount` from `10` to `16` so the empty-state, loading, and expanded-detail rows continue to span the full width correctly.
-- Format all amounts as `₹{Number(value || 0).toFixed(2)}` for consistency.
-- Highlight `Due Amount` cell text in `text-destructive` when `due_amount > 0`.
-- Show small `Refund: ₹X` caption under Paid cell when `refund_amount > 0` (preserves existing info).
-- Add **"Created By"** column to the Excel export (`handleExport`) reading `r.registered_by`.
-- Keep the row's red STAT highlight, cancelled-bill opacity, and click-to-expand behaviour intact.
-
-No database migration required — `registered_by` and all six financial fields already exist on `patient_registrations`. Newer registrations stamp `registered_by` automatically (PatientRegistration, CompletedHomeVisits, EditAndRegisterHomeVisitDialog); historical rows without a value will show "—".
-
-## Out of scope
-
-- Backfilling `registered_by` for legacy registrations.
-- No changes to Edit dialog, Invoice preview, or other LIMS tabs.
+### Files Changed
+- `src/components/AppLayout.tsx` — hover-expand rail behavior for desktop sidebar.
+- `src/components/lims/RegisteredPatients.tsx` — default `fromDate`/`toDate` to today; bypass date filter when search is active.
