@@ -5,15 +5,46 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Strip any trailing unit token the interface concatenated into the value field.
+// Some analyzers (e.g. Sysmex) send value as "5.03 10*6/uL" instead of separating
+// the numeric and unit. We always strip so the stored result_value stays clean,
+// regardless of whether unit_conversion is enabled.
+function sanitizeInterfaceValue(rawValue: string | null | undefined, interfaceUnit: string | null | undefined): string {
+  const raw = rawValue == null ? "" : String(rawValue).trim();
+  if (!raw) return raw;
+  // 1) If the interface also sent a unit, strip an exact trailing match.
+  const u = (interfaceUnit || "").toString().trim();
+  let cleaned = raw;
+  if (u) {
+    const lower = cleaned.toLowerCase();
+    const uLower = u.toLowerCase();
+    if (lower.endsWith(uLower)) {
+      cleaned = cleaned.slice(0, cleaned.length - u.length).trim();
+    }
+  }
+  // 2) If the head is numeric, drop any trailing non-numeric token (e.g. "10*3/uL").
+  //    Matches an optional sign, digits, optional decimal, optional exponent.
+  const numMatch = cleaned.match(/^([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\b/);
+  if (numMatch) {
+    const tail = cleaned.slice(numMatch[0].length).trim();
+    // Only strip the tail if it looks unit-like (contains letters, *, /, ^, %)
+    if (tail && /[A-Za-z*/^%µμ]/.test(tail)) {
+      cleaned = numMatch[1];
+    }
+  }
+  return cleaned;
+}
+
 // Apply per-parameter unit conversion (configured in Test Management).
 // Leaves non-numeric values (e.g. "POSITIVE") and disabled-conversion params untouched.
-function applyUnitConversion(rawValue: string | null | undefined, param: any): string {
-  const raw = rawValue == null ? "" : String(rawValue);
-  if (!param?.unit_conversion_enabled) return raw;
+// Always sanitizes the incoming value first so concatenated unit suffixes never leak through.
+function applyUnitConversion(rawValue: string | null | undefined, param: any, interfaceUnit?: string | null): string {
+  const cleaned = sanitizeInterfaceValue(rawValue, interfaceUnit);
+  if (!param?.unit_conversion_enabled) return cleaned;
   const factor = Number(param.unit_conversion_value);
-  if (!factor || isNaN(factor)) return raw;
-  const num = parseFloat(raw);
-  if (isNaN(num)) return raw;
+  if (!factor || isNaN(factor)) return cleaned;
+  const num = parseFloat(cleaned);
+  if (isNaN(num)) return cleaned;
   const converted = param.unit_conversion_operator === "/" ? num / factor : num * factor;
   return Number(converted.toFixed(4)).toString();
 }
@@ -252,7 +283,7 @@ Deno.serve(async (req) => {
             const testId = candidateTestIds.find((tid) => regTestIds.has(tid)) || candidateTestIds[0];
             if (!testId) continue;
 
-            const convertedValue = applyUnitConversion(sr.result_value, param);
+            const convertedValue = applyUnitConversion(sr.result_value, param, sr.unit);
             const flag = computeFlagFromInterface(convertedValue, param);
 
             const referenceRange = param.normal_range_text
@@ -676,7 +707,7 @@ Deno.serve(async (req) => {
             if (!testId) continue;
 
             // Compute flag (numeric → H/L/N; qualitative/descriptive → N or X)
-            const convertedValue = applyUnitConversion(mr.result_value, param);
+            const convertedValue = applyUnitConversion(mr.result_value, param, mr.unit);
             const flag = computeFlagFromInterface(convertedValue, param);
 
             const referenceRange = param.normal_range_text
