@@ -402,15 +402,6 @@ const RegisteredPatients = () => {
         registration={editReg}
       />
 
-      <DeletePasswordDialog
-        open={showEditPwd}
-        onOpenChange={(o) => { setShowEditPwd(o); if (!o) setPendingEditReg(null); }}
-        description={pendingEditReg ? `Invoice ${pendingEditReg.invoice_number} is from a previous date. Enter password to modify payment / details.` : undefined}
-        onSuccess={() => {
-          if (pendingEditReg) setEditReg(pendingEditReg);
-          setPendingEditReg(null);
-        }}
-      />
 
       <InvoicePreview
         data={viewBillReg}
