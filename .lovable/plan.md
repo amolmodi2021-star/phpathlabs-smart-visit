@@ -1,73 +1,30 @@
 ## Goal
 
-Refine the Phlebo Dashboard payout logic so it correctly tracks home‑visit charges across cancellations and refunds, and add a drill‑down dropdown that shows exactly which patients are contributing to each phlebotomist's "On Hold" bucket.
+When a Completed Home Visit is registered from LIMS (either via the quick "Save & Register" button or the "Edit & Register" dialog), the payment collected at that moment must be credited to the **logged-in LIMS user** (e.g. Aman) in the Daily Report — not to the phlebotomist who originally completed the visit (e.g. Rahul).
 
-## Refined payout rules
+## Current State
 
-The dashboard reads `patient_registrations` joined to its `home_visit_id`. For each Registered home visit linked to a registration:
-
-| Situation in `patient_registrations` | Bucket |
-|---|---|
-| `bill_cancelled = true` (whole bill cancelled) | **Deducted** — subtract `estimates.home_visit_charges` (the original amount the phlebo "earned") |
-| `home_visit_charges = 0` AND original HVC > 0 (HVC was refunded later) | **Deducted** — subtract the original HVC |
-| `bill_cancelled = false`, current `home_visit_charges > 0`, `due_amount = 0` | **Earned** — add current `home_visit_charges` |
-| `bill_cancelled = false`, current `home_visit_charges > 0`, `due_amount > 0` | **On Hold** — add current `home_visit_charges` |
-| `bill_cancelled = false`, current `home_visit_charges > 0`, all tests cancelled but HVC kept | **Earned** — same rule as above; HVC > 0 means phlebo gets paid |
-
-Key insight: the LIMS already zeros `patient_registrations.home_visit_charges` when the user clicks "refund home visit". So the live value of that column is the source of truth for "does the phlebo still earn this". Comparing it to the estimate's original HVC tells us whether a refund happened.
-
-For cancelled bills (`bill_cancelled = true`), we always deduct because the entire transaction is reversed regardless of refund flag state.
-
-`Net Payable = Earned − Deducted` (Hold remains informational until either the due is collected → Earned, or the bill/HVC is refunded → Deducted).
+- `logPaymentTransaction()` in `src/lib/paymentTransactions.ts` already stamps `performed_by` from `getCurrentUser()` — so the payment audit row IS technically attributed to the logged-in user.
+- However, the `patient_registrations` insert in both Completed Home Visit flows is **missing the `registered_by` field**. Other registration flows (e.g. `PatientRegistration.tsx` line 397) do set this. This causes downstream confusion — invoices, dispatch, due-payments and reports that reference `registered_by` end up blank for these records, and any future per-user reporting on registrations breaks.
+- Daily Report itself groups by `performed_by` on `payment_transactions`, so the cash/UPI totals already flow to the correct user once `getCurrentUser()` returns the logged-in session.
 
 ## Changes
 
-### 1. `src/pages/PhleboDashboard.tsx` — extend data fetch + bucket logic
+### 1. `src/components/lims/CompletedHomeVisits.tsx` (Save & Register path)
+In the `registerMutation` insert into `patient_registrations` (around line 143), add:
+```ts
+registered_by: getCurrentUser()?.display_name || getCurrentUser()?.username || null,
+```
+Import `getCurrentUser` from `@/lib/auth`.
 
-- Keep the existing query for Registered home_visits (already done in prior change) and for the parent `estimates` (to read the original `home_visit_charges`).
-- Add a query for `patient_registrations` filtered by `home_visit_id IN (…visitIds)` selecting `id, home_visit_id, home_visit_charges, due_amount, bill_cancelled, refund_amount, patient_name, mobile_number, invoice_number, tests, created_at`.
-- Build per‑phlebotomist, per‑month buckets using the table above. The "original HVC" comes from the linked estimate; the "current HVC" comes from the registration row.
-- Bucket the visit into the month corresponding to `home_visits.visit_date` (already used today).
+### 2. `src/components/lims/EditAndRegisterHomeVisitDialog.tsx` (Edit & Register path)
+In the `registerMutation` insert into `patient_registrations` (around line 296), add the same `registered_by` field. Import `getCurrentUser` from `@/lib/auth` (currently not imported).
 
-### 2. New dashboard section: **Home Visit Payout Summary** (per phlebotomist)
+### 3. Verification (no code change needed)
+`logPaymentTransaction` is already invoked in both flows with the correct payments array and uses `getCurrentUser()` internally for `performed_by`. So Daily Report attribution will work automatically as soon as the user is logged in. We will keep the existing log call.
 
-Replace/augment the existing summary card with a per‑phlebo card that shows, for the current and previous month:
+## Result
 
-- Earned: ₹X
-- On Hold: ₹Y
-- Deducted: −₹Z
-- **Net Payable: ₹(Earned − Deducted)** (bold)
-
-### 3. Drill-down dropdown for "On Hold"
-
-When the user clicks the **On Hold** value (or a small caret next to it) for a given phlebotomist + month, expand an inline panel showing every patient contributing to that hold, with full visit details:
-
-- Patient name (+ title), UMR, mobile
-- Invoice number
-- Visit date (dd-MM-yyyy) + visit time
-- Address
-- Tests list (test names, comma-separated, with count badge)
-- Home Visit Charges (held amount)
-- Final amount, Paid, **Due** (highlighted)
-- Status badge
-
-Implementation details:
-- Use a `<Collapsible>` (or local state map of `expandedKey → boolean`, where key is `${phleboId}-${currentOrPrevious}`) so multiple sections can stay open independently.
-- Render each row as a compact card (mobile-friendly) inside the collapsed panel.
-- Visit details (`visit_date`, `visit_time`, `address`) come from the already-fetched `home_visits` rows; tests come from the registration's `tests` JSONB; due/HVC come from `patient_registrations`.
-- Optionally also offer a small "Deducted" drill-down using the same UI pattern (cheap to add and useful for audit) — included by default unless the user objects.
-- The "Earned" value stays as a plain number (no drill-down needed; the existing "Home Visit Charges (Registered)" section already lists totals).
-
-### 4. Performance / data-flow
-
-- All extra fetches are scoped by the visit IDs already loaded for the current/previous-month window, so payload stays small.
-- All bucketing happens client-side in a single `useMemo`, returning two structures:
-  - `summary[phleboId][month] = { earned, hold, deducted }`
-  - `holdDetails[phleboId][month] = Array<{visit, registration, estimate}>` (and the same for `deductedDetails`)
-- React Query keys reuse the existing visit-window keys so a refresh propagates automatically.
-
-## Out of scope / non-changes
-
-- No DB schema or migration changes — all logic is derived live from `home_visits`, `estimates`, and `patient_registrations`.
-- No change to how cancellations/refunds are recorded in LIMS; we only consume the resulting state.
-- Incentive section is unchanged (separate from HVC payout).
+- The patient registration row stores `registered_by = Aman` (the LIMS user who clicked Save & Register).
+- The `payment_transactions` audit row stores `performed_by = Aman`, so Daily Report's per-user grouping (Cash / GPay / Paytm / Card / NEFT) credits the payment to Aman.
+- Rahul (the phlebotomist) remains linked only via `home_visits.phlebotomist_id` for phlebo-incentive / home-visit-charge calculations — unaffected.
