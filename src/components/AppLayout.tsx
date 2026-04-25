@@ -39,7 +39,7 @@ const allNavItems = [
   { to: "/cloud-usage", label: "Cloud Usage", icon: Cloud },
 ];
 
-const StorageCleanupButton = ({ onClick }: { onClick?: () => void }) => {
+const StorageCleanupButton = ({ onClick, rail = false }: { onClick?: () => void; rail?: boolean }) => {
   const [cleaning, setCleaning] = useState(false);
 
   const runCleanup = async () => {
@@ -68,14 +68,15 @@ const StorageCleanupButton = ({ onClick }: { onClick?: () => void }) => {
     <button
       onClick={runCleanup}
       disabled={cleaning}
+      title={rail ? "Storage Cleanup" : undefined}
       className={cn(
-        "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors w-full",
+        "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors w-full whitespace-nowrap",
         "text-muted-foreground hover:bg-destructive/10 hover:text-destructive",
         cleaning && "opacity-50 cursor-not-allowed"
       )}
     >
-      {cleaning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-      Storage Cleanup
+      {cleaning ? <Loader2 className="h-4 w-4 animate-spin shrink-0" /> : <Trash2 className="h-4 w-4 shrink-0" />}
+      <span className={cn("transition-opacity duration-150", rail && "opacity-0 group-hover:opacity-100")}>Storage Cleanup</span>
     </button>
   );
 };
