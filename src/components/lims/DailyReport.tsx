@@ -7,10 +7,11 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
-import { Loader2, Download, Lock, CalendarIcon, Search, X } from "lucide-react";
+import { Loader2, Download, Lock, CalendarIcon, Search, X, Printer } from "lucide-react";
 import { format, startOfDay, endOfDay, parseISO } from "date-fns";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import * as XLSX from "@e965/xlsx";
+import jsPDF from "jspdf";
 
 const TRANSACTION_LABELS: Record<string, string> = {
   registration_payment: "Registration",
