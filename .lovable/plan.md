@@ -1,76 +1,54 @@
+## Problem
 
-# Send Abnormal Cards — bulk Excel sender (zero-persistence)
+Two related bugs are causing units to be appended to result values for **all** range types (numeric, qualitative, descriptive, text), instead of only "undefined":
 
-## Scope confirmation
+1. **Edge function `lims-interface`** uses a fallback heuristic (`applyInterfaceUnitSuffix` checks "no numeric bounds") instead of checking `range_type`. This wrongly suffixes:
+   - Qualitative parameters (e.g. POSITIVE/NEGATIVE) — no numeric bounds
+   - Descriptive parameters — no numeric bounds
+   - Text-range parameters that happen to lack low/high
+2. **Same edge function** stores the unit field as `sr.unit || param.unit` — preferring the interface-supplied unit over the configured Test Management unit.
 
-- New tab in `/loyalty-cards` to upload an Excel of abnormal test results, group by `${UMR}|${MOBILE}` primary key, generate one PNG per primary key, send via WhatsApp.
-- **Nothing is persisted**: no DB rows, no `loyalty_card_jobs`, no `loyalty_cards`, no `message_send_log`, no `crm_contacts.last_sent_*` updates, no Excel data stored.
-- Cloudinary upload is still required (WhatsApp template `header.image.link` needs a public URL). Existing 7-day Cloudinary auto-delete cleans those images automatically — same as the current loyalty card path.
+Manual entry components (`ResultsEntry`, `ResultVerification`, `DoctorApproval`, `ModifiedApproval`) already correctly gate `applyUnitSuffix` on `rangeType === "undefined"`, so those are fine and stay untouched.
 
-## Excel format
+## Required behavior (restated)
 
-| Column | Required |
-|---|---|
-| UMR | Yes |
-| Mobile | Yes (10-digit; normalized) |
-| Test Name | Yes |
-| Test Date | Yes (dd-mm-yyyy) |
-| Result | Yes |
-| Ref Range | Yes |
+- **Unit suffix on result_value**: ONLY when parameter's `range_type === "undefined"` AND the parameter has a configured unit.
+- If undefined-range parameter has no unit → store the raw value, no suffix.
+- **Unit field stored**: ALWAYS the unit configured in Test Management (`param.unit`). Ignore any unit sent by the interface/instrument.
 
-Sample file: `public/samples/Sample_Abnormal_Bulk_Send.xlsx`.
+## Changes
 
-## Grouping logic
+### `supabase/functions/lims-interface/index.ts`
 
-1. Parse Excel client-side (`parseExcelFile`).
-2. Normalize each row's mobile to 10 digits; skip rows where mobile or UMR is missing/invalid.
-3. Build groups keyed by `${UMR}|${normalizedMobile}` — same UMR with different mobiles produces separate groups (separate cards).
-4. Within each group, sort tests **descending by `test_date`** (latest on top) using existing `sortAbnormalTestsByDateDesc` from `src/lib/abnormalTests.ts`.
-5. One card per primary key → one WhatsApp send to that mobile only.
+1. Add `range_type` to the two `report_test_parameters` SELECT columns (lines 197 and 617).
+2. Rewrite `applyInterfaceUnitSuffix` (lines 44–53) to:
+   ```ts
+   function applyInterfaceUnitSuffix(value: string, param: any): string {
+     if (!value) return value;
+     if (param?.range_type !== "undefined") return value;
+     const u = (param?.unit || "").toString().trim();
+     if (!u) return value;
+     const trimmed = value.trim();
+     if (trimmed.toLowerCase().endsWith(u.toLowerCase())) return trimmed;
+     return `${trimmed} ${u}`;
+   }
+   ```
+   - Removes the `sr.unit` parameter entirely — only the configured unit is ever used.
+   - Replaces the "no numeric bounds" heuristic with an explicit `range_type === "undefined"` check.
+3. Update the 4 call-sites (lines 247, 249, 268, 269, 671, 673, 692, 693):
+   - `result_value: applyInterfaceUnitSuffix(convertedValue, param)`
+   - `unit: param.unit || ""`  (drop the `sr.unit ||` preference so interface-supplied unit is ignored everywhere it lands in `patient_results`)
 
-## Card rendering
+### Files NOT changed
 
-Reuse the existing abnormal-card canvas renderer logic from `src/components/crm/CRMAbnormalTests.tsx` (`generateAbnormalCard`) by extracting it into a shared helper:
+- `src/components/lims/ResultsEntry.tsx`, `ResultVerification.tsx`, `DoctorApproval.tsx`, `ModifiedApproval.tsx` — their `applyUnitSuffix` already correctly gates on `rangeType === "undefined"`.
+- `src/components/report/ReportResultsSection.tsx` — only formats the reference range column, not the result.
 
-- New file: `src/lib/abnormalCardRenderer.ts`
-- Exports `renderAbnormalCardCanvas({ patientName, mobile, umr, tests, template, expiryDate })` returning a `Blob` (compressed JPEG).
-- `CRMAbnormalTests.tsx` is refactored to call this helper (no behavior change there).
-- Uses the selected `abnormal_card_templates` row for layout (same template picker as today).
+## Result
 
-## Sending flow
+After this fix:
+- Numeric, qualitative, descriptive, and text-range parameters will have a clean `result_value` (no unit appended), exactly as before the regression.
+- Only "undefined" range-type parameters with a configured unit get `"<value> <unit>"`.
+- Interface-supplied units are ignored — Test Management is the single source of truth for the unit field.
 
-For each group:
-1. Render card → JPEG blob (in-browser, never saved locally).
-2. Upload blob to Cloudinary via `uploadJpegToCloudinaryWithRetry` → public URL.
-3. Build WhatsApp template payload (`header.image.link = url`, body variables populated from group data using template's variable mapping — mirrors `LoyaltyCardSender`'s send path).
-4. Call `whatsapp-proxy` edge function.
-5. Discard blob and URL from memory. **No DB write of any kind.**
-6. Pace sends with the global `wa_global_delayMs` from `app_settings` (read-only).
-
-UI shows progress: `current / total` + per-row status (✓ sent / ✗ failed) in an in-memory list that is cleared on tab change or refresh.
-
-## Files touched
-
-| File | Change |
-|---|---|
-| `src/lib/abnormalCardRenderer.ts` | **New** — shared canvas renderer extracted from CRMAbnormalTests |
-| `src/components/crm/CRMAbnormalTests.tsx` | Refactor to call shared renderer (no functional change) |
-| `src/components/AbnormalBulkSender.tsx` | **New** — Excel upload, grouping, preview, send loop |
-| `src/pages/LoyaltyCards.tsx` | Add 4th tab `Abnormal Cards` |
-| `public/samples/Sample_Abnormal_Bulk_Send.xlsx` | **New** — column header template |
-
-## What does NOT change
-
-- No DB migration.
-- No new edge function.
-- No changes to `message_send_log`, `crm_contacts`, `crm_abnormal_tests`, or any other table.
-- No new secrets.
-- Password gate on the page stays as-is.
-
-## What you'll see after deploy
-
-- New `Abnormal Cards` tab on the Loyalty Cards page.
-- Upload Excel → preview groupings (e.g., "324 unique patients from 1,200 rows").
-- Click Send → progress bar runs, one WhatsApp per primary key.
-- After completion: zero database footprint. Cloudinary images age out via existing 7-day rule.
-- Refresh the tab → in-memory log clears (nothing was saved).
+Approve to proceed.

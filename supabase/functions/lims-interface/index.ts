@@ -38,17 +38,16 @@ function computeFlagFromInterface(rawValue: string, param: any): string {
   return value.toLowerCase() === ref ? "N" : "X";
 }
 
-// Apply unit suffix for "Undefined" range type intent.
-// We don't have range_type in the bridge query — fall back to safe rule:
-// if no numeric bounds AND a unit exists AND value isn't already suffixed → concat.
-function applyInterfaceUnitSuffix(value: string, unit: string | null | undefined, param: any): string {
+// Apply unit suffix to result_value ONLY when parameter's range_type === "undefined"
+// AND a unit is configured in Test Management. The unit value sent by the interface
+// is intentionally ignored — Test Management is the single source of truth for units.
+function applyInterfaceUnitSuffix(value: string, param: any): string {
   if (!value) return value;
-  if (param?.normal_range_low != null || param?.normal_range_high != null) return value;
-  const u = (unit || param?.unit || "").toString().trim();
+  if (param?.range_type !== "undefined") return value;
+  const u = (param?.unit || "").toString().trim();
   if (!u) return value;
   const trimmed = value.trim();
   if (trimmed.toLowerCase().endsWith(u.toLowerCase())) return trimmed;
-  // Don't suffix purely numeric-with-bounds (already returned above) or qualitative matches against ref text
   return `${trimmed} ${u}`;
 }
 
