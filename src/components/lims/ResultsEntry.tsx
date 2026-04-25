@@ -834,12 +834,12 @@ const ResultsEntry = () => {
   // is persisted as 'pending' and visible to all other open sessions.
   const autoCalcSeenRef = useRef<Record<string, string>>({});
   useEffect(() => {
-    if (!entries || entries.length === 0) return;
+    if (!patientEntries || patientEntries.length === 0) return;
     const updates: Record<string, string> = {};
     const testsToSave = new Set<string>();
     const entryByReg: Record<string, PatientEntry> = {};
 
-    for (const entry of entries) {
+    for (const entry of patientEntries) {
       const regId = entry.registration.id;
       entryByReg[regId] = entry;
 
@@ -893,7 +893,7 @@ const ResultsEntry = () => {
       }, 1500);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entries]);
+  }, [patientEntries]);
 
   // ─── Save & send to verification (per-test) ───
   const [savingTestKey, setSavingTestKey] = useState<string | null>(null);
