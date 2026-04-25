@@ -228,6 +228,9 @@ const RegisteredPatients = () => {
             <X className="h-4 w-4 mr-1" />Clear dates
           </Button>
         )}
+        {debouncedSearch && (fromDate || toDate) && (
+          <span className="text-xs text-muted-foreground italic">Date filter ignored while searching</span>
+        )}
         <Button variant="outline" size="sm" onClick={() => setShowExportPwd(true)}>
           <Download className="h-4 w-4 mr-1" />Export All
         </Button>
