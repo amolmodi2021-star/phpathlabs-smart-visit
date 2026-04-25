@@ -1024,6 +1024,29 @@ const DailyReport = () => {
         <Button variant="outline" size="sm" onClick={printPdf} disabled={filtered.length === 0}>
           <Printer className="h-3.5 w-3.5 mr-1" /> Print PDF
         </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" disabled={filtered.length === 0 || uniqueUsers.length === 0}>
+              <Printer className="h-3.5 w-3.5 mr-1" /> Print User-wise
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="max-h-80 overflow-y-auto">
+            <DropdownMenuLabel>Choose user</DropdownMenuLabel>
+            <DropdownMenuItem onClick={() => printUserwisePdf("ALL")}>
+              All Users (one PDF, sectioned)
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            {uniqueUsers.length === 0 ? (
+              <DropdownMenuItem disabled>No users found</DropdownMenuItem>
+            ) : (
+              uniqueUsers.map((u) => (
+                <DropdownMenuItem key={u} onClick={() => printUserwisePdf(u)}>
+                  {u}
+                </DropdownMenuItem>
+              ))
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {isSearching && (
