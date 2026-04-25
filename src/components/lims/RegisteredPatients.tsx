@@ -74,16 +74,17 @@ const RegisteredPatients = () => {
   const channelBillingMap = Object.fromEntries(channels.map(c => [c.id, c.billing_type]));
   const pickupBillingMap = Object.fromEntries(pickupPoints.map(p => [p.id, p.billing_type]));
 
-  const getBillingMode = (r: any): "credit" | "debit" | null => {
+  const getBillingMode = (r: any): "credit" | "debit" => {
     if (r.visit_type === "pickup_point" && r.pickup_point_id) {
       const bt = pickupBillingMap[r.pickup_point_id];
-      return bt === "credit" || bt === "debit" ? bt : null;
+      return bt === "credit" ? "credit" : "debit";
     }
     if (r.channel_id) {
       const bt = channelBillingMap[r.channel_id];
-      return bt === "credit" || bt === "debit" ? bt : null;
+      return bt === "credit" ? "credit" : "debit";
     }
-    return null;
+    // Lab visit and home visit are always debit
+    return "debit";
   };
 
   const { data: count = 0 } = useQuery({
