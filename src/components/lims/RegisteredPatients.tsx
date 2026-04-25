@@ -26,8 +26,6 @@ const RegisteredPatients = () => {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(0);
   const [editReg, setEditReg] = useState<any>(null);
-  const [pendingEditReg, setPendingEditReg] = useState<any>(null);
-  const [showEditPwd, setShowEditPwd] = useState(false);
   const [viewBillReg, setViewBillReg] = useState<any>(null);
   const [showExportPwd, setShowExportPwd] = useState(false);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
@@ -35,23 +33,6 @@ const RegisteredPatients = () => {
   const [clearing, setClearing] = useState(false);
   const [fromDate, setFromDate] = useState<Date | undefined>(() => new Date());
   const [toDate, setToDate] = useState<Date | undefined>(() => new Date());
-
-  const isOlderThanToday = (createdAt: string | null | undefined) => {
-    if (!createdAt) return false;
-    const d = new Date(createdAt);
-    const today = new Date();
-    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0);
-    return d < startOfToday;
-  };
-
-  const handleEditClick = (r: any) => {
-    if (isOlderThanToday(r.created_at)) {
-      setPendingEditReg(r);
-      setShowEditPwd(true);
-    } else {
-      setEditReg(r);
-    }
-  };
 
   const registrationSearchFilter = debouncedSearch
     ? `patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%,umr_number.ilike.%${debouncedSearch}%`
