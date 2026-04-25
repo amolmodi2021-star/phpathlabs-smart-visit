@@ -322,7 +322,7 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
         home_visit_id: visit.id,
         global_discount_type: globalDiscountValue > 0 ? globalDiscountType : null,
         global_discount_value: globalDiscountValue,
-        registered_by: getCurrentUser()?.display_name || getCurrentUser()?.username || null,
+        registered_by: stampedBy,
       } as any).select().single();
       if (error) throw error;
 
