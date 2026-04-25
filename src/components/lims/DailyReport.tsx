@@ -507,6 +507,434 @@ const DailyReport = () => {
     doc.save(fname);
   };
 
+  const printUserwisePdf = (targetUser: "ALL" | string) => {
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    const margin = 5;
+
+    const cols: { key: string; label: string; w: number; align?: "left" | "right" | "center" }[] = [
+      { key: "inv", label: "Inv #", w: 18 },
+      { key: "invDate", label: "Inv Date", w: 14 },
+      { key: "time", label: "Time", w: 13 },
+      { key: "type", label: "Type", w: 20 },
+      { key: "patient", label: "Patient", w: 32 },
+      { key: "visit", label: "Visit", w: 14 },
+      { key: "source", label: "Pickup/Channel", w: 24 },
+      { key: "billing", label: "Bill", w: 10 },
+      { key: "gross", label: "Gross", w: 12, align: "right" },
+      { key: "disc", label: "Disc", w: 11, align: "right" },
+      { key: "final", label: "Final", w: 12, align: "right" },
+      { key: "paid", label: "Paid", w: 12, align: "right" },
+      { key: "due", label: "Due", w: 11, align: "right" },
+      { key: "cash", label: "Cash", w: 12, align: "right" },
+      { key: "gpay", label: "GPay", w: 12, align: "right" },
+      { key: "paytm", label: "Paytm", w: 12, align: "right" },
+      { key: "neft", label: "NEFT", w: 12, align: "right" },
+      { key: "cc", label: "CC", w: 12, align: "right" },
+      { key: "refund", label: "Refund", w: 12, align: "right" },
+      { key: "remarks", label: "Remarks", w: 18 },
+    ];
+    const tableW = cols.reduce((s, c) => s + c.w, 0);
+    const startX = margin + (pageW - 2 * margin - tableW) / 2;
+    const rowH = 4.2;
+    const headerH = 5;
+    let y = margin;
+
+    const fmtAmt = (n: number) => {
+      if (!n) return "-";
+      const v = Math.round(n);
+      return v < 0 ? `(${Math.abs(v)})` : String(v);
+    };
+    const visitShort = (v: string) =>
+      v === "Lab Visit" ? "Lab" : v === "Home Visit" ? "Home" : v === "Pickup Point" ? "Pickup" : v;
+    const truncate = (s: string, maxW: number) => {
+      doc.setFontSize(6.5);
+      let str = s || "";
+      if (doc.getTextWidth(str) <= maxW) return str;
+      while (str.length > 1 && doc.getTextWidth(str + "…") > maxW) str = str.slice(0, -1);
+      return str + "…";
+    };
+
+    const periodStr = isSearching
+      ? `Search: ${invoiceSearch}`
+      : `${effectiveDateFrom} to ${effectiveDateTo}`;
+
+    const drawDocTitleBlock = () => {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11);
+      doc.setTextColor(0, 0, 0);
+      doc.text("PH PathLabs — Daily Payment Register (User-wise)", margin, y + 4);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.text(`Period: ${periodStr}`, margin, y + 8.5);
+      doc.setFontSize(7);
+      doc.text(
+        `Generated: ${format(new Date(), "dd-MM-yyyy hh:mm a")}`,
+        pageW - margin,
+        y + 4,
+        { align: "right" }
+      );
+      y += 11;
+    };
+
+    const drawColumnHeader = () => {
+      doc.setFillColor(225, 230, 240);
+      doc.rect(startX, y, tableW, headerH, "F");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7);
+      doc.setTextColor(0, 0, 0);
+      let cx = startX;
+      cols.forEach((c) => {
+        const tx =
+          c.align === "right" ? cx + c.w - 1 : c.align === "center" ? cx + c.w / 2 : cx + 1;
+        doc.text(c.label, tx, y + 3.5, { align: c.align || "left" });
+        cx += c.w;
+      });
+      doc.setDrawColor(180, 180, 180);
+      doc.setLineWidth(0.1);
+      let vx = startX;
+      doc.line(startX, y, startX, y + headerH);
+      cols.forEach((c) => {
+        vx += c.w;
+        doc.line(vx, y, vx, y + headerH);
+      });
+      doc.line(startX, y + headerH, startX + tableW, y + headerH);
+      y += headerH;
+    };
+
+    const drawUserBanner = (userName: string, count: number, sub?: string) => {
+      doc.setFillColor(45, 70, 130);
+      doc.rect(margin, y, pageW - 2 * margin, 8, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.text(`User: ${userName}`, margin + 2, y + 5.5);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.text(`Transactions: ${count}`, margin + 80, y + 5.5);
+      if (sub) doc.text(sub, margin + 130, y + 5.5);
+      doc.text(`Period: ${periodStr}`, pageW - margin - 2, y + 5.5, { align: "right" });
+      doc.setTextColor(0, 0, 0);
+      y += 10;
+    };
+
+    const ensureSpace = (needed: number, repeatHeader: boolean) => {
+      if (y + needed > pageH - 8) {
+        doc.addPage();
+        y = margin;
+        drawDocTitleBlock();
+        if (repeatHeader) drawColumnHeader();
+      }
+    };
+
+    const drawDataRow = (r: any, rowIdx: number) => {
+      ensureSpace(rowH, true);
+      if (r.direction === "out") {
+        doc.setFillColor(255, 235, 235);
+        doc.rect(startX, y, tableW, rowH, "F");
+      } else if (rowIdx % 2 === 1) {
+        doc.setFillColor(250, 250, 250);
+        doc.rect(startX, y, tableW, rowH, "F");
+      }
+      const info = getRegInfo(r.registration_id);
+      const values: Record<string, string> = {
+        inv: String(r.invoice_number || ""),
+        invDate: formatInvoiceDate(r.invoice_number),
+        time: format(parseISO(r.transaction_date), "hh:mm a"),
+        type: TRANSACTION_LABELS[r.transaction_type] || r.transaction_type,
+        patient: r.patient_name || "-",
+        visit: visitShort(info.visit),
+        source: info.source || "-",
+        billing: info.billing === "—" ? "-" : info.billing.toUpperCase().slice(0, 3),
+        gross: fmtAmt(Number(r.gross_amount || 0)),
+        disc: fmtAmt(Number(r.discount_amount || 0)),
+        final: fmtAmt(Number(r.final_amount || 0)),
+        paid: fmtAmt(Number(r.paid_amount || 0)),
+        due: fmtAmt(Number(r.due_amount || 0)),
+        cash: fmtAmt(Number(r.cash_amount || 0)),
+        gpay: fmtAmt(Number(r.gpay_amount || 0)),
+        paytm: fmtAmt(Number(r.paytm_amount || 0)),
+        neft: fmtAmt(Number(r.neft_amount || 0)),
+        cc: fmtAmt(Number(r.credit_card_amount || 0)),
+        refund: fmtAmt(Number(r.refund_amount || 0)),
+        remarks: r.remarks || "-",
+      };
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(6.5);
+      let cx = startX;
+      cols.forEach((c) => {
+        const raw = values[c.key] ?? "";
+        const txt = truncate(raw, c.w - 1.5);
+        const isNeg = raw.startsWith("(");
+        const isDue = c.key === "due" && raw !== "-";
+        if (isNeg || isDue) doc.setTextColor(180, 0, 0);
+        else doc.setTextColor(20, 20, 20);
+        const tx =
+          c.align === "right" ? cx + c.w - 1 : c.align === "center" ? cx + c.w / 2 : cx + 1;
+        doc.text(txt, tx, y + 3, { align: c.align || "left" });
+        cx += c.w;
+      });
+      doc.setTextColor(0, 0, 0);
+      doc.setDrawColor(220, 220, 220);
+      doc.setLineWidth(0.1);
+      doc.line(startX, y + rowH, startX + tableW, y + rowH);
+      y += rowH;
+    };
+
+    const drawTotalsRow = (userTotals: any, label: string) => {
+      ensureSpace(rowH + 1, true);
+      doc.setFillColor(220, 230, 245);
+      doc.rect(startX, y, tableW, rowH + 0.5, "F");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7);
+      const totVals: Record<string, string> = {
+        gross: userTotals.gross.toFixed(0),
+        disc: userTotals.discount.toFixed(0),
+        final: userTotals.final.toFixed(0),
+        paid: userTotals.paid.toFixed(0),
+        due: userTotals.due.toFixed(0),
+        cash: userTotals.cash.toFixed(0),
+        gpay: userTotals.gpay.toFixed(0),
+        paytm: userTotals.paytm.toFixed(0),
+        neft: userTotals.neft.toFixed(0),
+        cc: userTotals.credit_card.toFixed(0),
+        refund: userTotals.refund.toFixed(0),
+      };
+      let cx = startX;
+      let labelDrawn = false;
+      cols.forEach((c) => {
+        if (totVals[c.key] !== undefined) {
+          doc.setTextColor(0, 0, 0);
+          doc.text(totVals[c.key], cx + c.w - 1, y + 3.2, { align: "right" });
+        } else if (!labelDrawn && c.key === "billing") {
+          doc.setTextColor(0, 0, 0);
+          doc.text(label, cx + c.w - 1, y + 3.2, { align: "right" });
+          labelDrawn = true;
+        }
+        cx += c.w;
+      });
+      y += rowH + 1.5;
+    };
+
+    const computeTotals = (rows: any[]) => {
+      const t = { cash: 0, gpay: 0, paytm: 0, credit_card: 0, neft: 0, total_in: 0, total_out: 0, gross: 0, discount: 0, final: 0, paid: 0, due: 0, refund: 0 };
+      rows.forEach((r: any) => {
+        t.cash += Number(r.cash_amount || 0);
+        t.gpay += Number(r.gpay_amount || 0);
+        t.paytm += Number(r.paytm_amount || 0);
+        t.credit_card += Number(r.credit_card_amount || 0);
+        t.neft += Number(r.neft_amount || 0);
+        t.gross += Number(r.gross_amount || 0);
+        t.discount += Number(r.discount_amount || 0);
+        t.final += Number(r.final_amount || 0);
+        t.paid += Number(r.paid_amount || 0);
+        t.due += Number(r.due_amount || 0);
+        t.refund += Number(r.refund_amount || 0);
+        if (r.direction === "in") t.total_in += Number(r.total_amount || 0);
+        else t.total_out += Number(r.total_amount || 0);
+      });
+      return t;
+    };
+
+    const groups: Record<string, any[]> = {};
+    filtered.forEach((r: any) => {
+      const u = (r.performed_by && String(r.performed_by).trim()) || "(Unassigned)";
+      (groups[u] = groups[u] || []).push(r);
+    });
+
+    let userKeys = Object.keys(groups).sort((a, b) => a.localeCompare(b));
+    if (targetUser !== "ALL") userKeys = userKeys.filter((u) => u === targetUser);
+    if (userKeys.length === 0) {
+      doc.setFontSize(11);
+      doc.text("No transactions found for the selected user.", margin, margin + 10);
+      doc.save("Daily_Report_Userwise_empty.pdf");
+      return;
+    }
+
+    userKeys.forEach((user, idx) => {
+      if (idx > 0) {
+        doc.addPage();
+        y = margin;
+      }
+      drawDocTitleBlock();
+      const rows = groups[user];
+      const uTotals = computeTotals(rows);
+      const net = uTotals.total_in + uTotals.total_out;
+      drawUserBanner(
+        user,
+        rows.length,
+        `Net: ${net.toFixed(0)}  •  In: ${uTotals.total_in.toFixed(0)}  •  Out: ${Math.abs(uTotals.total_out).toFixed(0)}`
+      );
+      drawColumnHeader();
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(6.5);
+      rows.forEach((r, i) => drawDataRow(r, i));
+      drawTotalsRow(uTotals, "USER TOTAL");
+    });
+
+    if (targetUser === "ALL" && userKeys.length > 0) {
+      doc.addPage();
+      y = margin;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.setTextColor(0, 0, 0);
+      doc.text("User-wise Collection Summary", margin, y + 5);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.text(`Period: ${periodStr}`, margin, y + 10);
+      doc.text(
+        `Generated: ${format(new Date(), "dd-MM-yyyy hh:mm a")}`,
+        pageW - margin,
+        y + 5,
+        { align: "right" }
+      );
+      y += 14;
+
+      const sumCols: { key: string; label: string; w: number; align?: "left" | "right" }[] = [
+        { key: "user", label: "User", w: 50 },
+        { key: "txns", label: "Txns", w: 16, align: "right" },
+        { key: "cash", label: "Cash", w: 22, align: "right" },
+        { key: "gpay", label: "GPay", w: 22, align: "right" },
+        { key: "paytm", label: "Paytm", w: 22, align: "right" },
+        { key: "neft", label: "NEFT", w: 22, align: "right" },
+        { key: "cc", label: "CC", w: 22, align: "right" },
+        { key: "in", label: "Total In", w: 26, align: "right" },
+        { key: "out", label: "Refund/Out", w: 26, align: "right" },
+        { key: "due", label: "Due", w: 22, align: "right" },
+        { key: "net", label: "Net Collection", w: 30, align: "right" },
+      ];
+      const sumW = sumCols.reduce((s, c) => s + c.w, 0);
+      const sumX = margin + (pageW - 2 * margin - sumW) / 2;
+      const sumRowH = 6;
+
+      doc.setFillColor(45, 70, 130);
+      doc.rect(sumX, y, sumW, 7, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      let cx = sumX;
+      sumCols.forEach((c) => {
+        const tx = c.align === "right" ? cx + c.w - 1.5 : cx + 1.5;
+        doc.text(c.label, tx, y + 4.8, { align: c.align || "left" });
+        cx += c.w;
+      });
+      y += 7;
+
+      const summaryRows = userKeys
+        .map((u) => {
+          const t = computeTotals(groups[u]);
+          return {
+            user: u,
+            txns: groups[u].length,
+            cash: t.cash,
+            gpay: t.gpay,
+            paytm: t.paytm,
+            neft: t.neft,
+            cc: t.credit_card,
+            in: t.total_in,
+            out: Math.abs(t.total_out),
+            due: t.due,
+            net: t.total_in + t.total_out,
+          };
+        })
+        .sort((a, b) => b.net - a.net);
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      summaryRows.forEach((row, i) => {
+        if (y + sumRowH > pageH - 8) {
+          doc.addPage();
+          y = margin;
+        }
+        if (i % 2 === 1) {
+          doc.setFillColor(248, 248, 250);
+          doc.rect(sumX, y, sumW, sumRowH, "F");
+        }
+        let cx2 = sumX;
+        sumCols.forEach((c) => {
+          const v = (row as any)[c.key];
+          let txt: string;
+          if (c.key === "user") {
+            doc.setFontSize(8);
+            let s = String(v);
+            while (s.length > 1 && doc.getTextWidth(s + "…") > c.w - 3) s = s.slice(0, -1);
+            txt = s.length < String(v).length ? s + "…" : s;
+          } else if (c.key === "txns") {
+            txt = String(v);
+          } else {
+            txt = Math.round(v).toString();
+          }
+          doc.setTextColor(20, 20, 20);
+          if (c.key === "out" && row.out > 0) doc.setTextColor(180, 0, 0);
+          if (c.key === "due" && row.due > 0) doc.setTextColor(180, 0, 0);
+          if (c.key === "net") doc.setFont("helvetica", "bold");
+          else doc.setFont("helvetica", "normal");
+          const tx = c.align === "right" ? cx2 + c.w - 1.5 : cx2 + 1.5;
+          doc.text(txt, tx, y + 4, { align: c.align || "left" });
+          cx2 += c.w;
+        });
+        doc.setDrawColor(220, 220, 220);
+        doc.setLineWidth(0.1);
+        doc.line(sumX, y + sumRowH, sumX + sumW, y + sumRowH);
+        y += sumRowH;
+      });
+
+      const gTot = summaryRows.reduce(
+        (a, r) => ({
+          txns: a.txns + r.txns,
+          cash: a.cash + r.cash,
+          gpay: a.gpay + r.gpay,
+          paytm: a.paytm + r.paytm,
+          neft: a.neft + r.neft,
+          cc: a.cc + r.cc,
+          in: a.in + r.in,
+          out: a.out + r.out,
+          due: a.due + r.due,
+          net: a.net + r.net,
+        }),
+        { txns: 0, cash: 0, gpay: 0, paytm: 0, neft: 0, cc: 0, in: 0, out: 0, due: 0, net: 0 }
+      );
+      if (y + sumRowH > pageH - 8) { doc.addPage(); y = margin; }
+      doc.setFillColor(220, 230, 245);
+      doc.rect(sumX, y, sumW, sumRowH + 0.5, "F");
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(8.5);
+      let cx3 = sumX;
+      sumCols.forEach((c) => {
+        let txt = "";
+        if (c.key === "user") txt = "GRAND TOTAL";
+        else if (c.key === "txns") txt = String(gTot.txns);
+        else txt = Math.round((gTot as any)[c.key]).toString();
+        const tx = c.align === "right" ? cx3 + c.w - 1.5 : cx3 + 1.5;
+        doc.text(txt, tx, y + 4.2, { align: c.align || "left" });
+        cx3 += c.w;
+      });
+      y += sumRowH + 0.5;
+    }
+
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
+      doc.setTextColor(120, 120, 120);
+      doc.text(`Page ${i} of ${pageCount}`, pageW - margin, pageH - 3, { align: "right" });
+      doc.text("PH PathLabs • Daily Payment Register (User-wise)", margin, pageH - 3);
+    }
+
+    const safeUser = (targetUser === "ALL" ? "AllUsers" : targetUser).replace(/[^a-zA-Z0-9_-]/g, "_");
+    const periodPart = isSearching
+      ? `search_${invoiceSearch}`
+      : `${effectiveDateFrom}_to_${effectiveDateTo}`;
+    const fname =
+      targetUser === "ALL"
+        ? `Daily_Report_Userwise_${periodPart}.pdf`
+        : `Daily_Report_${safeUser}_${periodPart}.pdf`;
+    doc.save(fname);
+  };
+
   return (
     <div className="space-y-4">
       {/* Header & Filters */}
