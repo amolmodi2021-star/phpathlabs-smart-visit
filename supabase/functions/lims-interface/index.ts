@@ -723,7 +723,8 @@ Deno.serve(async (req) => {
           // Also match by original incoming code for direct matches
           const originalCodes = new Set(results.filter((r: any) => {
             const code = r.code || r.test_code || "";
-            return codeMap[code] && (codeMap[code].mapped_param_code || codeMap[code].mapped_test_code);
+            const first = codeMap[code]?.[0];
+            return first && (first.mapped_param_code || first.mapped_test_code);
           }).map((r: any) => r.code || r.test_code || ""));
 
           const updatedTests = tests.map((t: any) => ({
@@ -767,7 +768,7 @@ Deno.serve(async (req) => {
   } catch (err) {
     console.error("lims-interface error:", err);
     return new Response(
-      JSON.stringify({ error: true, message: err.message }),
+      JSON.stringify({ error: true, message: err instanceof Error ? err.message : String(err) }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

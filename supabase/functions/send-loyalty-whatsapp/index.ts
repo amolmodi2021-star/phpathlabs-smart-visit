@@ -73,7 +73,7 @@ Deno.serve(async (req) => {
     const authHeaderValue = authHeaderPrefix ? `${authHeaderPrefix} ${apiKey}` : apiKey;
 
     let sentCount = 0;
-    const results: { id: string; status: string; error?: string }[] = [];
+    const results: { id: string; status: string; mobile?: string; error?: string }[] = [];
     
 
     for (const card of cards) {
