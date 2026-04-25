@@ -422,6 +422,20 @@ const DailyReport = () => {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-sm whitespace-nowrap">{r.patient_name || "-"}</TableCell>
+                  {(() => {
+                    const info = getRegInfo(r.registration_id);
+                    return (
+                      <>
+                        <TableCell className="text-xs whitespace-nowrap">{info.visit}</TableCell>
+                        <TableCell className="text-xs whitespace-nowrap max-w-[140px] truncate" title={info.source}>{info.source}</TableCell>
+                        <TableCell className="text-xs whitespace-nowrap">
+                          {info.billing === "—" ? "—" : (
+                            <Badge variant={info.billing === "credit" ? "secondary" : "default"} className="capitalize">{info.billing}</Badge>
+                          )}
+                        </TableCell>
+                      </>
+                    );
+                  })()}
                   <TableCell className="text-right text-sm">₹{Number(r.gross_amount || 0)}</TableCell>
                   <TableCell className="text-right text-sm">₹{Number(r.discount_amount || 0)}</TableCell>
                   <TableCell className="text-right text-sm font-medium">₹{Number(r.final_amount || 0)}</TableCell>
