@@ -343,6 +343,9 @@ const PatientRegistration = () => {
       if (visitType !== "pickup_point" && !address.trim()) throw new Error("Address is required");
       if (paidAmount > calculations.finalAmount) throw new Error("Payment amount cannot exceed the final amount");
 
+      const stampedBy = getCurrentUserName();
+      if (!stampedBy) throw new Error("Please sign in again before saving the registration");
+
       // Generate invoice number
       const { data: invoiceNum, error: invErr } = await supabase.rpc("generate_invoice_number" as any);
       if (invErr) throw new Error("Failed to generate invoice number");
