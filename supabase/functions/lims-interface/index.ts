@@ -613,7 +613,7 @@ Deno.serve(async (req) => {
           const paramCodes = Array.from(new Set(mappedRows.map((r) => r.test_code).filter(Boolean)));
           const { data: paramRows } = await supabase
             .from("report_test_parameters")
-            .select("id, param_code, parameter_name, unit, normal_range_low, normal_range_high, normal_range_text, unit_conversion_enabled, unit_conversion_operator, unit_conversion_value")
+            .select("id, param_code, parameter_name, unit, range_type, normal_range_low, normal_range_high, normal_range_text, unit_conversion_enabled, unit_conversion_operator, unit_conversion_value")
             .in("param_code", paramCodes);
           const paramByCode: Record<string, any> = {};
           for (const p of paramRows || []) paramByCode[p.param_code] = p;
