@@ -105,6 +105,181 @@ async function attachUndefinedRangeFlag(supabase: any, paramRows: any[]) {
   }
 }
 
+// ─── Evaluate a calculation_formula token list against a paramId→value map ───
+// Mirrors the client-side evaluator in ResultsEntry.tsx so server-side auto-calc
+// produces the same numeric value the user would see if they clicked "Recalculate".
+function evaluateFormulaServer(formula: any[], paramValues: Record<string, string>): string {
+  if (!Array.isArray(formula) || formula.length === 0) return "";
+  try {
+    let expr = "";
+    for (let idx = 0; idx < formula.length; idx++) {
+      const token = formula[idx];
+      if (!token || typeof token !== "object") continue;
+      if (token.type === "bracket_open") {
+        if (idx > 0 && token.operator && ["+", "-", "*", "/"].includes(token.operator)) expr += ` ${token.operator} `;
+        expr += "(";
+      } else if (token.type === "bracket_close") {
+        expr += ")";
+      } else if (token.type === "parameter") {
+        if (idx > 0 && token.operator && ["+", "-", "*", "/"].includes(token.operator)) expr += ` ${token.operator} `;
+        const val = paramValues[token.parameter_id];
+        if (!val) return "";
+        const num = parseFloat(val);
+        if (isNaN(num)) return "";
+        expr += num;
+      } else if (token.type === "fixed_value" || token.type === "fixed") {
+        if (idx > 0 && token.operator && ["+", "-", "*", "/"].includes(token.operator)) expr += ` ${token.operator} `;
+        expr += token.fixed_value ?? token.value ?? "";
+      }
+    }
+    expr = expr.replace(/\s+/g, " ").trim();
+    if (!expr) return "";
+    // eslint-disable-next-line no-new-func
+    const result = new Function(`return (${expr})`)();
+    if (typeof result === "number" && isFinite(result)) {
+      return parseFloat(result.toFixed(2)).toString();
+    }
+    return "";
+  } catch {
+    return "";
+  }
+}
+
+// ─── Auto-calculate dependent parameters after interface push ───
+// For the given registration, finds every calculated parameter (is_calculated=true
+// with a calculation_formula) belonging to a test that already has at least one
+// stored result, evaluates the formula against current patient_results values,
+// and upserts the computed value (status='pending', is_calculated=true) so the
+// user no longer has to click the Calculator button. Iterates up to 3 passes so
+// calc-of-calc parameters resolve in one bridge call.
+async function autoCalcDependentParams(supabase: any, registrationId: string): Promise<number> {
+  if (!registrationId) return 0;
+  let totalWritten = 0;
+  try {
+    // Load all stored patient_results for this registration
+    const { data: storedRows } = await supabase
+      .from("patient_results")
+      .select("id, parameter_id, test_id, result_value, status")
+      .eq("registration_id", registrationId);
+    const stored = (storedRows || []) as any[];
+    if (stored.length === 0) return 0;
+
+    const testIds = Array.from(new Set(stored.map((r) => r.test_id).filter(Boolean)));
+    if (testIds.length === 0) return 0;
+
+    // Load test_parameters + parameter metadata for these tests
+    const { data: tpRows } = await supabase
+      .from("test_parameters")
+      .select("test_id, parameter_id, report_test_parameters(id, param_code, parameter_name, unit, normal_range_low, normal_range_high, normal_range_text, is_calculated, calculation_formula)")
+      .in("test_id", testIds);
+    const calcParams: any[] = [];
+    for (const tp of (tpRows || []) as any[]) {
+      const p = tp.report_test_parameters;
+      if (!p || !p.is_calculated) continue;
+      const formula = p.calculation_formula;
+      if (!Array.isArray(formula) || formula.length === 0) continue;
+      calcParams.push({ testId: tp.test_id, param: p });
+    }
+    if (calcParams.length === 0) return 0;
+
+    // Build paramId → value map (skip empty values)
+    const valueMap: Record<string, string> = {};
+    const existingByParam: Record<string, any> = {};
+    for (const r of stored) {
+      existingByParam[r.parameter_id] = r;
+      if (r.result_value != null && String(r.result_value).trim() !== "") {
+        valueMap[r.parameter_id] = String(r.result_value);
+      }
+    }
+
+    const nowIso = new Date().toISOString();
+    // Up to 3 passes for chained calculations
+    for (let pass = 0; pass < 3; pass++) {
+      let changed = 0;
+      for (const { testId, param } of calcParams) {
+        const computed = evaluateFormulaServer(param.calculation_formula, valueMap);
+        if (!computed) continue;
+        const existing = existingByParam[param.id];
+        // Don't overwrite once technician/verifier/approver has touched it
+        if (existing && existing.status && existing.status !== "pending") continue;
+        if (existing && String(existing.result_value || "") === computed) continue;
+
+        const refRange = param.normal_range_text
+          || (param.normal_range_low != null && param.normal_range_high != null
+              ? `${param.normal_range_low} - ${param.normal_range_high}`
+              : "");
+        const num = parseFloat(computed);
+        let flag = "";
+        if (!isNaN(num)) {
+          if (param.normal_range_low != null && num < Number(param.normal_range_low)) flag = "L";
+          else if (param.normal_range_high != null && num > Number(param.normal_range_high)) flag = "H";
+          else if (param.normal_range_low != null || param.normal_range_high != null) flag = "N";
+        }
+
+        if (existing) {
+          const { error } = await supabase
+            .from("patient_results")
+            .update({
+              result_value: computed,
+              flag,
+              unit: param.unit || "",
+              reference_range: refRange,
+              normal_range_low: param.normal_range_low,
+              normal_range_high: param.normal_range_high,
+              is_calculated: true,
+              status: "pending",
+              entered_at: nowIso,
+              entered_by: existing.entered_by || "AUTO-CALC",
+              updated_at: nowIso,
+            })
+            .eq("id", existing.id);
+          if (!error) {
+            existing.result_value = computed;
+            existing.status = "pending";
+            valueMap[param.id] = computed;
+            totalWritten++;
+            changed++;
+          }
+        } else {
+          const insertRow = {
+            registration_id: registrationId,
+            test_id: testId,
+            parameter_id: param.id,
+            param_code: param.param_code,
+            parameter_name: param.parameter_name,
+            result_value: computed,
+            unit: param.unit || "",
+            reference_range: refRange,
+            normal_range_low: param.normal_range_low,
+            normal_range_high: param.normal_range_high,
+            flag,
+            status: "pending",
+            is_calculated: true,
+            is_from_interface: false,
+            entered_at: nowIso,
+            entered_by: "AUTO-CALC",
+          };
+          const { data: inserted, error } = await supabase
+            .from("patient_results")
+            .insert(insertRow)
+            .select("id, parameter_id, result_value, status")
+            .single();
+          if (!error && inserted) {
+            existingByParam[param.id] = inserted;
+            valueMap[param.id] = computed;
+            totalWritten++;
+            changed++;
+          }
+        }
+      }
+      if (changed === 0) break;
+    }
+  } catch (err) {
+    console.error("autoCalcDependentParams error:", err);
+  }
+  return totalWritten;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
