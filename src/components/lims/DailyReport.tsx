@@ -71,6 +71,75 @@ const DailyReport = () => {
     },
   });
 
+  // Lookup registrations referenced by visible transactions to derive visit/source/billing columns
+  const registrationIds = useMemo(() => {
+    const set = new Set<string>();
+    transactions.forEach((t: any) => { if (t.registration_id) set.add(t.registration_id); });
+    return Array.from(set);
+  }, [transactions]);
+
+  const { data: regLookup = [] } = useQuery({
+    queryKey: ["daily-report-registrations", registrationIds],
+    enabled: registrationIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("patient_registrations")
+        .select("id, visit_type, channel_id, pickup_point_id")
+        .in("id", registrationIds);
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+  });
+
+  const { data: channelsLookup = [] } = useQuery({
+    queryKey: ["daily-report-channels"],
+    queryFn: async () => {
+      const { data } = await supabase.from("channels").select("id, name, billing_type");
+      return (data || []) as any[];
+    },
+  });
+
+  const { data: pickupsLookup = [] } = useQuery({
+    queryKey: ["daily-report-pickups"],
+    queryFn: async () => {
+      const { data } = await supabase.from("pickup_points").select("id, name, billing_type");
+      return (data || []) as any[];
+    },
+  });
+
+  const regMap = useMemo(() => Object.fromEntries(regLookup.map((r: any) => [r.id, r])), [regLookup]);
+  const channelMap = useMemo(() => Object.fromEntries(channelsLookup.map((c: any) => [c.id, c])), [channelsLookup]);
+  const pickupMap = useMemo(() => Object.fromEntries(pickupsLookup.map((p: any) => [p.id, p])), [pickupsLookup]);
+
+  const visitTypeLabel = (v?: string) => {
+    if (v === "lab_visit") return "Lab Visit";
+    if (v === "home_visit") return "Home Visit";
+    if (v === "pickup_point") return "Pickup Point";
+    if (v === "channel") return "Channel";
+    return "—";
+  };
+
+  const getRegInfo = (regId?: string) => {
+    if (!regId) return { visit: "—", source: "—", billing: "—" as "credit" | "debit" | "—" };
+    const r: any = regMap[regId];
+    if (!r) return { visit: "—", source: "—", billing: "—" as "credit" | "debit" | "—" };
+    let visit = visitTypeLabel(r.visit_type);
+    let source = "—";
+    let billing: "credit" | "debit" = "debit";
+    if (r.visit_type === "pickup_point" && r.pickup_point_id) {
+      const pp = pickupMap[r.pickup_point_id];
+      source = pp?.name || "—";
+      billing = pp?.billing_type === "credit" ? "credit" : "debit";
+    } else if (r.channel_id) {
+      const ch = channelMap[r.channel_id];
+      source = ch?.name || "—";
+      visit = "Channel";
+      billing = ch?.billing_type === "credit" ? "credit" : "debit";
+    }
+    return { visit, source, billing };
+  };
+
+
   // Derive invoice date from invoice number YYMMDD prefix (e.g. "2604160004" -> 16-04-2026)
   const formatInvoiceDate = (invoiceNumber: string | null | undefined): string => {
     if (!invoiceNumber || invoiceNumber.length < 6) return "-";
