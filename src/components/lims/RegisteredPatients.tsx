@@ -327,7 +327,6 @@ const RegisteredPatients = () => {
                     <TableCell className="text-xs">
                       {(() => {
                         const bm = getBillingMode(r);
-                        if (!bm) return <span className="text-muted-foreground">—</span>;
                         return <Badge variant={bm === "credit" ? "secondary" : "default"} className="capitalize">{bm}</Badge>;
                       })()}
                     </TableCell>
