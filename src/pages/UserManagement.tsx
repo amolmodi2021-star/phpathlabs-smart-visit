@@ -107,10 +107,27 @@ interface AppUserRow {
 }
 
 const UserManagement = () => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("users");
   const [users, setUsers] = useState<AppUserRow[]>([]);
   const [roles, setRoles] = useState<AppRole[]>([]);
   const [loading, setLoading] = useState(true);
+  const [logoutAllLoading, setLogoutAllLoading] = useState(false);
+
+  const handleLogoutAll = async () => {
+    setLogoutAllLoading(true);
+    try {
+      await bumpAuthEpoch();
+      toast.success("All users will be signed out shortly. You will be signed out now.");
+      // Sign the current admin out immediately too.
+      logout();
+      setTimeout(() => navigate("/login", { replace: true }), 600);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to sign out all users");
+    } finally {
+      setLogoutAllLoading(false);
+    }
+  };
 
   // User dialog state
   const [userDialogOpen, setUserDialogOpen] = useState(false);
