@@ -169,7 +169,7 @@ const CompletedHomeVisits = () => {
         home_visit_id: visit.id,
         global_discount_type: e.global_discount_type || null,
         global_discount_value: Number(e.global_discount_value || 0),
-        registered_by: getCurrentUser()?.display_name || getCurrentUser()?.username || null,
+        registered_by: stampedBy,
       } as any).select().single();
 
       if (error) throw error;
