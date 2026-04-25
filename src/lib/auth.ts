@@ -2,6 +2,8 @@ import { supabase } from "@/integrations/supabase/client";
 
 const AUTH_KEY = "ph_pathlabs_auth";
 const USER_KEY = "ph_pathlabs_user";
+const EPOCH_KEY = "ph_pathlabs_auth_epoch";
+const EPOCH_SETTING_KEY = "auth_epoch";
 
 export interface AppUser {
   id: string;
