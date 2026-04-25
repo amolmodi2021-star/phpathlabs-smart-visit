@@ -135,6 +135,8 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
     return d < startOfToday;
   }, [reg?.created_at]);
   const isPaymentLocked = isInvoiceOlderThanToday && !paymentUnlocked;
+
+  const newlyCancelled = [...cancelledTestIds].filter(id => !alreadyCancelled.has(id));
   const refundCalc = useMemo(() => {
     let refundAmount = 0;
     newlyCancelled.forEach(testId => {
