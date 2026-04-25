@@ -76,6 +76,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
     if (reg && open) {
       setRefundUnlocked(false);
       setDiscountUnlocked(false);
+      setPaymentUnlocked(false);
       setHomeVisitRefundRequested(false);
       setPatientName(reg.patient_name || "");
       setTitle(reg.title || "");
