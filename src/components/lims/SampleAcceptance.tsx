@@ -127,18 +127,21 @@ const SampleAcceptance = () => {
     },
   });
 
-  // Fetch parameters with interfacing info
+  // Fetch parameters with interfacing info.
+  // Track BOTH whether the test has any parameters AND the interface-flagged subset,
+  // so we can skip tests whose parameters are all manual/calculated (no machine push).
   const { data: testParamData = {} } = useQuery({
     queryKey: ["test_param_interface_map"],
     queryFn: async () => {
       const { data } = await supabase
         .from("test_parameters")
         .select("test_id, parameter_id, report_test_parameters(param_code, parameter_name, send_for_interface, machine_id, unit)");
-      const map: Record<string, { params: any[] }> = {};
+      const map: Record<string, { params: any[]; hasAnyParam: boolean }> = {};
       (data || []).forEach((tp: any) => {
         const p = tp.report_test_parameters;
         if (!p || !tp.test_id) return;
-        if (!map[tp.test_id]) map[tp.test_id] = { params: [] };
+        if (!map[tp.test_id]) map[tp.test_id] = { params: [], hasAnyParam: false };
+        map[tp.test_id].hasAnyParam = true;
         if (p.send_for_interface) {
           map[tp.test_id].params.push({
             code: p.param_code, name: p.parameter_name,
@@ -149,6 +152,7 @@ const SampleAcceptance = () => {
       return map;
     },
   });
+
 
   // Group by registration
   const pendingGroups = useMemo((): GroupedRegistration[] => {
@@ -223,6 +227,7 @@ const SampleAcceptance = () => {
           const testInfo = testsMap[testId] || {};
           const paramData = testParamData[testId];
           if (paramData && paramData.params.length > 0) {
+            // Test has parameters AND at least one is flagged for interface — push only those.
             for (const p of paramData.params) {
               orderTests.push({
                 code: p.code, name: p.name, unit: p.unit,
@@ -230,13 +235,19 @@ const SampleAcceptance = () => {
                 status: "pending",
               });
             }
+          } else if (paramData && paramData.hasAnyParam) {
+            // Test has parameters but NONE are interface-flagged — skip entirely.
+            // (All-manual / all-calculated tests must not be pushed to the analyzer.)
+            continue;
           } else {
+            // Test has zero parameters defined (snip-only / single-result outsourced) — order at test level.
             orderTests.push({
               code: testInfo.test_code || "", name: testInfo.test_name || "",
               unit: "", machine_id: testInfo.machine_id || "", status: "pending",
             });
           }
         }
+
         if (orderTests.length > 0) {
           const sampleId = tube.suffix ? `${reg.invoice_number}${tube.suffix}` : reg.invoice_number;
           await supabase.from("lims_test_orders").insert({

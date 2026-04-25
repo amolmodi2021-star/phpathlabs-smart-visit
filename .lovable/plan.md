@@ -1,50 +1,49 @@
 ## Goal
 
-Calculated parameters (e.g., MCH, MCHC, indirect bilirubin, A/G ratio) should auto-populate the moment their dependent values arrive — whether the value comes from the machine interface or is typed manually by any operator — without anyone clicking the Calculator (Recalculate) button.
+In the LIMS bidirectional interface, only push parameters to the analyzer that are explicitly marked **"Send for Interface"** in Test Management. Today, when a test contains a mix of interface and non-interface parameters, the order is created correctly (only the flagged subset). But when a test's parameters are ALL non-interface (e.g. all manual or all calculated), the code falls back and orders the **entire test** as a single line — which is wrong: the analyzer then queues a job that no operator wants.
 
 ## Current Behaviour
 
-- **Manual typing in Results Entry**: `handleValueChange` already recalculates dependent calculated parameters in real time. ✅
-- **Interface push (lims-interface edge function)**: The machine result is upserted directly into `patient_results`. The edge function does NOT compute any calculated parameter, and the client only re-evaluates calculations when the user manually edits a field. So the calculated row stays blank until the user opens the test and clicks the Calculator icon. ❌
-- **Realtime arrival on another open screen**: Even though `useRealtimeSync("patient_results", ...)` refreshes the cache, the rebuilt `entries` only seed `resultValue` from DB — calculated rows that were never saved remain empty. ❌
-- Same problem exists in **Result Verification** and **Doctor Approval** modules (both have a Calculator button but no auto-eval on load).
+`SampleAcceptance.tsx` builds the LIMS order at sample-acceptance time (lines 213–247):
+
+```
+for each accepted tube:
+  for each active test on the tube:
+    if testParamData[testId] has interface-flagged params → push those params
+    else → push the test itself as a single order line   ← BUG
+```
+
+The `else` branch is meant for tests with no parameters at all (single-result outsourced tests). It accidentally fires for tests whose parameters exist but none has `send_for_interface = true`.
 
 ## Plan
 
-### 1. Server-side auto-calc in `lims-interface` edge function
-After the interface push writes/updates one or more `patient_results` rows for a `(registration_id, test_id)`, immediately:
+### 1. Track full parameter set, not just interface-flagged ones
 
-1. Load the test's parameter list with `is_calculated` and `calculation_formula`.
-2. Load all current `patient_results` for that `(registration_id, test_id)` to build a `parameter_id → value` map.
-3. For every parameter where `is_calculated = true` and a formula exists:
-   - Evaluate the formula using the same token logic used on the client (`bracket_open / bracket_close / parameter / fixed_value`, operators `+ - * /`, `toFixed(2)`).
-   - If all dependent values resolve to numbers, upsert the calculated row into `patient_results` with `is_calculated: true`, `is_from_interface: false`, `status: "pending"`, `flag` derived from normal range, etc.
-   - If any dependent is missing, skip silently (will be tried again on the next interface push).
-4. Run this loop iteratively (up to 3 passes) so calculated parameters that themselves depend on other calculated parameters resolve in one shot.
+In `SampleAcceptance.tsx` `testParamData` query, build the per-test map with two pieces of information:
 
-### 2. Client-side auto-evaluation on data load (Results Entry, Result Verification, Doctor Approval)
-Add a `useEffect` that runs whenever the `entries` memo rebuilds (i.e., after realtime/refresh):
+- `hasAnyParam` — whether the test has any parameter rows at all
+- `params` — the subset where `send_for_interface = true` (unchanged shape)
 
-- For each registration entry, for each calculated parameter whose stored `resultValue` is empty (or stale relative to the current dependent values), evaluate the formula with the current dependent values.
-- If a result is produced and differs from the displayed value, write it into `editedValues` and trigger the existing auto-save flow so the new computed value is persisted as `pending` and visible across all sessions.
-- A small dirty-check guard prevents re-firing in an infinite loop when the same value is already present.
+### 2. Tighten the order-creation rules
 
-### 3. Status recalculation
-After the edge function inserts auto-calculated rows, call the existing `recalculateRegistrationStatus(registration_id)` helper (the same one already used elsewhere) so the registration status reflects the newly populated values.
+When iterating over each active test for a tube:
 
-### 4. UX
-- The Calculator (Recalculate) button stays as a manual override — useful if a user changes a dependent value and wants to force re-evaluation, or wants to trust the manual override instead of the machine value.
-- No new buttons or screens. The change is invisible: values just appear.
+- **If interface-flagged params exist** → push them (current correct behaviour).
+- **Else if the test has parameters but none are interface-flagged** → skip entirely. No order line, nothing queued for the analyzer.
+- **Else (test has zero parameters defined)** → push the test as a single line. Preserves the current behaviour for snip-only / outsourced single-result tests.
+
+If a tube ends up with zero `orderTests` after this filtering, the `lims_test_orders` insert is skipped (already handled by the existing `if (orderTests.length > 0)` guard), so no empty order is ever written.
+
+### 3. Reprocess path (defensive)
+
+Quick scan of `lims-interface/index.ts` reprocess action to confirm it does not regenerate orders from registrations (it only bridges already-received results into `patient_results`). No change needed there. Order rows in the DB that were created before this fix will continue to live until the analyzer marks them complete or they are manually deleted — no migration required.
 
 ## Files to Edit
 
-- `supabase/functions/lims-interface/index.ts` — add `evaluateFormula` helper + post-push auto-calc loop and status recalculation.
-- `src/components/lims/ResultsEntry.tsx` — add auto-eval effect on entries rebuild.
-- `src/components/lims/ResultVerification.tsx` — add auto-eval effect on entries rebuild.
-- `src/components/lims/DoctorApproval.tsx` — add auto-eval effect on entries rebuild.
+- `src/components/lims/SampleAcceptance.tsx` — update `testParamData` shape and the order-creation loop.
 
 ## Out of Scope
 
-- No DB schema changes.
-- No changes to formula authoring UI in Test Management.
-- No changes to how flags or reference ranges are computed.
+- No changes to Test Management UI (the `Send for Interface` checkbox already exists per parameter).
+- No DB migration. No edge-function change.
+- Existing pending orders in `lims_test_orders` are left as-is. If you want them cleaned up, that can be done separately.
