@@ -1,45 +1,50 @@
-## Problem
+## Goal
 
-`registered_by` is intermittently `NULL` (47 rows) or shows `"Administrator"` (35 rows) across recent invoices. Investigation:
+Calculated parameters (e.g., MCH, MCHC, indirect bilirubin, A/G ratio) should auto-populate the moment their dependent values arrive — whether the value comes from the machine interface or is typed manually by any operator — without anyone clicking the Calculator (Recalculate) button.
 
-1. **Three insert paths** capture the user, but each does it slightly differently:
-   - `PatientRegistration.tsx` — `getCurrentUser()?.display_name || null` (no `username` fallback → if `display_name` is missing/empty in localStorage the value is `null`)
-   - `EditAndRegisterHomeVisitDialog.tsx` — uses fallback chain
-   - `CompletedHomeVisits.tsx` — uses fallback chain
-2. **`"Administrator"` problem** — that's the literal `display_name` of the shared `PHPATHLABS` super-user account in `app_users`. Anyone signed in with that shared account gets stamped as "Administrator". Real staff accounts (AMAN, KOMAL, SHUBHAM, RAHUL, MANISH) work correctly.
-3. **`NULL` problem** — happens when `getCurrentUser()` returns `null` (stale/cleared localStorage, opened in a new tab without auth, or a code path where the user object is not yet rehydrated). `PatientRegistration.tsx` is most exposed because it has no `username` fallback.
-4. **Dispatch "Registered By" empty** — Dispatch reads from `reg.registered_by` directly, so any historical `NULL` row shows blank.
+## Current Behaviour
 
-## Fix
+- **Manual typing in Results Entry**: `handleValueChange` already recalculates dependent calculated parameters in real time. ✅
+- **Interface push (lims-interface edge function)**: The machine result is upserted directly into `patient_results`. The edge function does NOT compute any calculated parameter, and the client only re-evaluates calculations when the user manually edits a field. So the calculated row stays blank until the user opens the test and clicks the Calculator icon. ❌
+- **Realtime arrival on another open screen**: Even though `useRealtimeSync("patient_results", ...)` refreshes the cache, the rebuilt `entries` only seed `resultValue` from DB — calculated rows that were never saved remain empty. ❌
+- Same problem exists in **Result Verification** and **Doctor Approval** modules (both have a Calculator button but no auto-eval on load).
 
-### 1. Centralized helper for the stamp
-Use the existing `getCurrentUserName()` helper (in `src/lib/auth.ts`) everywhere instead of inline `getCurrentUser()?.display_name` chains. It already returns `display_name || username || null` and is the single source of truth.
+## Plan
 
-### 2. Update all 3 registration insert sites
-- `src/components/lims/PatientRegistration.tsx` (line 397) — replace inline expression with `getCurrentUserName()`.
-- `src/components/lims/EditAndRegisterHomeVisitDialog.tsx` (line 322) — switch to `getCurrentUserName()`.
-- `src/components/lims/CompletedHomeVisits.tsx` (line 169) — switch to `getCurrentUserName()`.
+### 1. Server-side auto-calc in `lims-interface` edge function
+After the interface push writes/updates one or more `patient_results` rows for a `(registration_id, test_id)`, immediately:
 
-### 3. Hard guard — never insert without a name
-Before each insert, if `getCurrentUserName()` returns falsy:
-- show a toast `"Please sign in again before saving the registration"`,
-- abort the save (do NOT insert with `null`).
+1. Load the test's parameter list with `is_calculated` and `calculation_formula`.
+2. Load all current `patient_results` for that `(registration_id, test_id)` to build a `parameter_id → value` map.
+3. For every parameter where `is_calculated = true` and a formula exists:
+   - Evaluate the formula using the same token logic used on the client (`bracket_open / bracket_close / parameter / fixed_value`, operators `+ - * /`, `toFixed(2)`).
+   - If all dependent values resolve to numbers, upsert the calculated row into `patient_results` with `is_calculated: true`, `is_from_interface: false`, `status: "pending"`, `flag` derived from normal range, etc.
+   - If any dependent is missing, skip silently (will be tried again on the next interface push).
+4. Run this loop iteratively (up to 3 passes) so calculated parameters that themselves depend on other calculated parameters resolve in one shot.
 
-This eliminates new `NULL` rows going forward.
+### 2. Client-side auto-evaluation on data load (Results Entry, Result Verification, Doctor Approval)
+Add a `useEffect` that runs whenever the `entries` memo rebuilds (i.e., after realtime/refresh):
 
-### 4. Dispatch — show fallback for missing data
-In `src/components/lims/Dispatch.tsx` at the audit-trail render (line 569), display `test.registeredBy || "—"` so historical NULL rows render a dash instead of blank space, matching how the other audit roles display.
+- For each registration entry, for each calculated parameter whose stored `resultValue` is empty (or stale relative to the current dependent values), evaluate the formula with the current dependent values.
+- If a result is produced and differs from the displayed value, write it into `editedValues` and trigger the existing auto-save flow so the new computed value is persisted as `pending` and visible across all sessions.
+- A small dirty-check guard prevents re-firing in an infinite loop when the same value is already present.
 
-### 5. About `"Administrator"` (informational, no code change)
-The "Administrator" label is being captured correctly — it is the `display_name` of the `PHPATHLABS` shared account. If you want a real person's name on those invoices instead, each staff member must sign in with their own dedicated user (AMAN / KOMAL / SHUBHAM / RAHUL / MANISH already exist) rather than the shared admin account. No code change can determine the human behind a shared login.
+### 3. Status recalculation
+After the edge function inserts auto-calculated rows, call the existing `recalculateRegistrationStatus(registration_id)` helper (the same one already used elsewhere) so the registration status reflects the newly populated values.
 
-## Out of scope
-- No backfill of historical `NULL` / `Administrator` rows (data is already lost for those).
-- No DB schema/RLS changes.
+### 4. UX
+- The Calculator (Recalculate) button stays as a manual override — useful if a user changes a dependent value and wants to force re-evaluation, or wants to trust the manual override instead of the machine value.
+- No new buttons or screens. The change is invisible: values just appear.
 
-## Files to edit
-- `src/lib/auth.ts` — already has `getCurrentUserName()`, no change needed.
-- `src/components/lims/PatientRegistration.tsx`
-- `src/components/lims/EditAndRegisterHomeVisitDialog.tsx`
-- `src/components/lims/CompletedHomeVisits.tsx`
-- `src/components/lims/Dispatch.tsx`
+## Files to Edit
+
+- `supabase/functions/lims-interface/index.ts` — add `evaluateFormula` helper + post-push auto-calc loop and status recalculation.
+- `src/components/lims/ResultsEntry.tsx` — add auto-eval effect on entries rebuild.
+- `src/components/lims/ResultVerification.tsx` — add auto-eval effect on entries rebuild.
+- `src/components/lims/DoctorApproval.tsx` — add auto-eval effect on entries rebuild.
+
+## Out of Scope
+
+- No DB schema changes.
+- No changes to formula authoring UI in Test Management.
+- No changes to how flags or reference ranges are computed.
