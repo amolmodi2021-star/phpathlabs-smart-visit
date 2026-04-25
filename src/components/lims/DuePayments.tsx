@@ -225,6 +225,9 @@ const DuePayments = () => {
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1">
+                      <Button size="sm" variant="outline" title="View / Share Invoice" onClick={() => setInvoiceData(p)}>
+                        <Eye className="h-4 w-4" />
+                      </Button>
                       <Button size="sm" onClick={() => openCollect(p)}>Collect</Button>
                       <Button size="sm" variant="outline" onClick={() => setBadDebtConfirm(p)}>
                         Bad Debt
