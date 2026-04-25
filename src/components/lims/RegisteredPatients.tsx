@@ -57,12 +57,34 @@ const RegisteredPatients = () => {
   const { data: channels = [] } = useQuery({
     queryKey: ["channels_lookup"],
     queryFn: async () => {
-      const { data } = await supabase.from("channels").select("id, name");
-      return (data || []) as { id: string; name: string }[];
+      const { data } = await supabase.from("channels").select("id, name, billing_type");
+      return (data || []) as { id: string; name: string; billing_type: string }[];
+    },
+  });
+
+  const { data: pickupPoints = [] } = useQuery({
+    queryKey: ["pickup_points_lookup"],
+    queryFn: async () => {
+      const { data } = await supabase.from("pickup_points").select("id, name, billing_type");
+      return (data || []) as { id: string; name: string; billing_type: string }[];
     },
   });
 
   const channelMap = Object.fromEntries(channels.map(c => [c.id, c.name]));
+  const channelBillingMap = Object.fromEntries(channels.map(c => [c.id, c.billing_type]));
+  const pickupBillingMap = Object.fromEntries(pickupPoints.map(p => [p.id, p.billing_type]));
+
+  const getBillingMode = (r: any): "credit" | "debit" | null => {
+    if (r.visit_type === "pickup_point" && r.pickup_point_id) {
+      const bt = pickupBillingMap[r.pickup_point_id];
+      return bt === "credit" || bt === "debit" ? bt : null;
+    }
+    if (r.channel_id) {
+      const bt = channelBillingMap[r.channel_id];
+      return bt === "credit" || bt === "debit" ? bt : null;
+    }
+    return null;
+  };
 
   const { data: count = 0 } = useQuery({
     queryKey: ["patient_registrations_count", debouncedSearch, fromIso, toIso],
