@@ -36,6 +36,7 @@ const DuePayments = () => {
         .gt("due_amount", 0)
         .eq("is_bad_debt", false)
         .eq("bill_cancelled", false)
+        .neq("visit_type", "pickup_point")
         .order("created_at", { ascending: false });
 
       if (search.trim()) {

@@ -57,12 +57,34 @@ const RegisteredPatients = () => {
   const { data: channels = [] } = useQuery({
     queryKey: ["channels_lookup"],
     queryFn: async () => {
-      const { data } = await supabase.from("channels").select("id, name");
-      return (data || []) as { id: string; name: string }[];
+      const { data } = await supabase.from("channels").select("id, name, billing_type");
+      return (data || []) as { id: string; name: string; billing_type: string }[];
+    },
+  });
+
+  const { data: pickupPoints = [] } = useQuery({
+    queryKey: ["pickup_points_lookup"],
+    queryFn: async () => {
+      const { data } = await supabase.from("pickup_points").select("id, name, billing_type");
+      return (data || []) as { id: string; name: string; billing_type: string }[];
     },
   });
 
   const channelMap = Object.fromEntries(channels.map(c => [c.id, c.name]));
+  const channelBillingMap = Object.fromEntries(channels.map(c => [c.id, c.billing_type]));
+  const pickupBillingMap = Object.fromEntries(pickupPoints.map(p => [p.id, p.billing_type]));
+
+  const getBillingMode = (r: any): "credit" | "debit" | null => {
+    if (r.visit_type === "pickup_point" && r.pickup_point_id) {
+      const bt = pickupBillingMap[r.pickup_point_id];
+      return bt === "credit" || bt === "debit" ? bt : null;
+    }
+    if (r.channel_id) {
+      const bt = channelBillingMap[r.channel_id];
+      return bt === "credit" || bt === "debit" ? bt : null;
+    }
+    return null;
+  };
 
   const { data: count = 0 } = useQuery({
     queryKey: ["patient_registrations_count", debouncedSearch, fromIso, toIso],
@@ -192,7 +214,7 @@ const RegisteredPatients = () => {
     }
   };
 
-  const colCount = 16;
+  const colCount = 17;
 
   return (
     <div className="space-y-4">
@@ -252,6 +274,7 @@ const RegisteredPatients = () => {
               <TableHead>Mobile</TableHead>
               <TableHead>Visit</TableHead>
               <TableHead>Channel</TableHead>
+              <TableHead>Billing</TableHead>
               <TableHead>Remarks</TableHead>
               <TableHead>Created By</TableHead>
               <TableHead className="text-right">Gross</TableHead>
@@ -300,6 +323,13 @@ const RegisteredPatients = () => {
                     <TableCell className="text-sm">{r.mobile_number}</TableCell>
                     <TableCell className="text-xs">{visitTypeLabel(r.visit_type)}</TableCell>
                     <TableCell className="text-xs">{r.channel_id ? (channelMap[r.channel_id] || "—") : "—"}</TableCell>
+                    <TableCell className="text-xs">
+                      {(() => {
+                        const bm = getBillingMode(r);
+                        if (!bm) return <span className="text-muted-foreground">—</span>;
+                        return <Badge variant={bm === "credit" ? "secondary" : "default"} className="capitalize">{bm}</Badge>;
+                      })()}
+                    </TableCell>
                     <TableCell className="text-xs max-w-[120px] truncate">{r.remarks || "—"}</TableCell>
                     <TableCell className="text-xs">{r.registered_by || "—"}</TableCell>
                     <TableCell className="text-right text-xs tabular-nums">₹{Number(r.gross_amount || 0).toFixed(2)}</TableCell>
