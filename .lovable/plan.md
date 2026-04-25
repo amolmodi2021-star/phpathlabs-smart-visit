@@ -1,48 +1,73 @@
-## Problem
+## Goal
 
-Packages (HLT), Profiles (PRL) and Combos selected in a home visit are NOT being marked as Completed (or, when they are, the resulting registration ends up with no real tests). The root cause is that the home-visit completion path **drops the `item_type` field**, so a package/profile/combo row ends up stored as a generic `test` row whose `test_id` does not exist in the `tests` table. Downstream this breaks:
+Refine the Phlebo Dashboard payout logic so it correctly tracks home‑visit charges across cancellations and refunds, and add a drill‑down dropdown that shows exactly which patients are contributing to each phlebotomist's "On Hold" bucket.
 
-- Sample-tube expansion (`buildSampleTubeGroups` only expands rows where `item_type` is `package`/`profile`/`combo`)
-- Registration leaf-test reconciliation (`expandRegistrationTests` drops the unknown id)
-- The completion → registration handoff (rows look broken, registration may fail or produce a registration with zero usable tests)
+## Refined payout rules
 
-## Where the field is lost
+The dashboard reads `patient_registrations` joined to its `home_visit_id`. For each Registered home visit linked to a registration:
 
-1. **`src/components/EditHomeVisitDialog.tsx`** — the dialog opened in completion mode (`completionEditVisit`).
-   - `EditTest` interface has no `item_type`.
-   - `existingTests` mapping (line 181) drops it when loading the saved estimate.
-   - `addTest` (line 200) drops it when adding a new package/profile/combo from the search.
-   - `saveMutation` insert into `estimate_tests` (line 287) never writes it, so the column reverts to its default `'test'`.
+| Situation in `patient_registrations` | Bucket |
+|---|---|
+| `bill_cancelled = true` (whole bill cancelled) | **Deducted** — subtract `estimates.home_visit_charges` (the original amount the phlebo "earned") |
+| `home_visit_charges = 0` AND original HVC > 0 (HVC was refunded later) | **Deducted** — subtract the original HVC |
+| `bill_cancelled = false`, current `home_visit_charges > 0`, `due_amount = 0` | **Earned** — add current `home_visit_charges` |
+| `bill_cancelled = false`, current `home_visit_charges > 0`, `due_amount > 0` | **On Hold** — add current `home_visit_charges` |
+| `bill_cancelled = false`, current `home_visit_charges > 0`, all tests cancelled but HVC kept | **Earned** — same rule as above; HVC > 0 means phlebo gets paid |
 
-2. **`src/components/lims/CompletedHomeVisits.tsx`** — `registerMutation` (line 101) builds the `tests` JSON for `patient_registrations` without `item_type`, so even if the estimate row is correct, the registration loses it again.
+Key insight: the LIMS already zeros `patient_registrations.home_visit_charges` when the user clicks "refund home visit". So the live value of that column is the source of truth for "does the phlebo still earn this". Comparing it to the estimate's original HVC tells us whether a refund happened.
 
-The other dialogs (`AddHomeVisitDialog`, `CreateEstimate`, `EditEstimateDialog`) already handle `item_type` correctly, which is why brand-new visits with packages work, and only edits/completions break.
+For cancelled bills (`bill_cancelled = true`), we always deduct because the entire transaction is reversed regardless of refund flag state.
 
-## Fix
+`Net Payable = Earned − Deducted` (Hold remains informational until either the due is collected → Earned, or the bill/HVC is refunded → Deducted).
 
-### 1. `src/components/EditHomeVisitDialog.tsx`
-- Add `item_type?: "test" | "profile" | "package" | "combo"` to the `EditTest` interface.
-- When mapping `est.estimate_tests` into `existingTests`, carry `item_type` through (default `"test"`).
-- In `addTest`, copy `t.item_type` from the selectable item into the new row.
-- In `saveMutation`'s `testRows`, include `item_type: t.item_type || "test"` on each insert.
-- In `calculations.testDetails`, ensure `item_type` survives the spread (it will, but keep the type).
+## Changes
 
-### 2. `src/components/lims/CompletedHomeVisits.tsx`
-- In `registerMutation`, when mapping `tests` → `testList`, include `item_type: t.item_type || "test"` so the registration row carries the correct container type into `patient_registrations.tests`.
+### 1. `src/pages/PhleboDashboard.tsx` — extend data fetch + bucket logic
 
-### 3. One-shot data repair (migration)
-Existing completed visits whose `estimate_tests` rows already lost `item_type` need backfill, otherwise re-registering them will still fail. Run a migration that:
-- Sets `estimate_tests.item_type = 'package'` where `test_id` matches a `health_checkups.id`.
-- Sets `estimate_tests.item_type = 'profile'` where `test_id` matches a `billing_profiles.id`.
-- (`combo` backfill already exists from a prior migration — leave that as is, but re-run defensively.)
-- Mirror the same backfill on `patient_registrations.tests` (JSONB) for any home-visit registration whose `tests[].item_type` is missing or `'test'` but whose `test_id` matches a package/profile/combo.
+- Keep the existing query for Registered home_visits (already done in prior change) and for the parent `estimates` (to read the original `home_visit_charges`).
+- Add a query for `patient_registrations` filtered by `home_visit_id IN (…visitIds)` selecting `id, home_visit_id, home_visit_charges, due_amount, bill_cancelled, refund_amount, patient_name, mobile_number, invoice_number, tests, created_at`.
+- Build per‑phlebotomist, per‑month buckets using the table above. The "original HVC" comes from the linked estimate; the "current HVC" comes from the registration row.
+- Bucket the visit into the month corresponding to `home_visits.visit_date` (already used today).
 
-### 4. Verification
-After the fix, completing a home visit that contains a package/profile/combo will:
-- Save the estimate row with the correct `item_type`.
-- Allow `Mark as Completed` to succeed.
-- Allow registration from the Completed Home Visits tab to expand the package/profile/combo into the correct leaf tests and sample tubes.
+### 2. New dashboard section: **Home Visit Payout Summary** (per phlebotomist)
 
-## Out of scope
-- No UI redesign of the dialog; only data-correctness fixes.
-- No change to `AddHomeVisitDialog`, `CreateEstimate`, or `EditEstimateDialog` (already correct).
+Replace/augment the existing summary card with a per‑phlebo card that shows, for the current and previous month:
+
+- Earned: ₹X
+- On Hold: ₹Y
+- Deducted: −₹Z
+- **Net Payable: ₹(Earned − Deducted)** (bold)
+
+### 3. Drill-down dropdown for "On Hold"
+
+When the user clicks the **On Hold** value (or a small caret next to it) for a given phlebotomist + month, expand an inline panel showing every patient contributing to that hold, with full visit details:
+
+- Patient name (+ title), UMR, mobile
+- Invoice number
+- Visit date (dd-MM-yyyy) + visit time
+- Address
+- Tests list (test names, comma-separated, with count badge)
+- Home Visit Charges (held amount)
+- Final amount, Paid, **Due** (highlighted)
+- Status badge
+
+Implementation details:
+- Use a `<Collapsible>` (or local state map of `expandedKey → boolean`, where key is `${phleboId}-${currentOrPrevious}`) so multiple sections can stay open independently.
+- Render each row as a compact card (mobile-friendly) inside the collapsed panel.
+- Visit details (`visit_date`, `visit_time`, `address`) come from the already-fetched `home_visits` rows; tests come from the registration's `tests` JSONB; due/HVC come from `patient_registrations`.
+- Optionally also offer a small "Deducted" drill-down using the same UI pattern (cheap to add and useful for audit) — included by default unless the user objects.
+- The "Earned" value stays as a plain number (no drill-down needed; the existing "Home Visit Charges (Registered)" section already lists totals).
+
+### 4. Performance / data-flow
+
+- All extra fetches are scoped by the visit IDs already loaded for the current/previous-month window, so payload stays small.
+- All bucketing happens client-side in a single `useMemo`, returning two structures:
+  - `summary[phleboId][month] = { earned, hold, deducted }`
+  - `holdDetails[phleboId][month] = Array<{visit, registration, estimate}>` (and the same for `deductedDetails`)
+- React Query keys reuse the existing visit-window keys so a refresh propagates automatically.
+
+## Out of scope / non-changes
+
+- No DB schema or migration changes — all logic is derived live from `home_visits`, `estimates`, and `patient_registrations`.
+- No change to how cancellations/refunds are recorded in LIMS; we only consume the resulting state.
+- Incentive section is unchanged (separate from HVC payout).

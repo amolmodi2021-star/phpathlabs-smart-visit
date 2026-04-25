@@ -557,7 +557,7 @@ const HomeVisits = () => {
         {/* Status Filter */}
         <div className="flex flex-wrap items-center gap-2 bg-muted/50 rounded-lg p-2">
           <span className="text-xs font-medium text-muted-foreground min-w-[40px]">Status:</span>
-          {["all", "Pending", "Completed", "Cancelled"].map((s) => (
+          {["all", "Pending", "Completed", "Registered", "Cancelled"].map((s) => (
             <Button
               key={s}
               size="sm"
@@ -681,7 +681,7 @@ const HomeVisits = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
-                      {v.status === "Completed" && (
+                      {(v.status === "Completed" || v.status === "Registered") && (
                         <Button variant="ghost" size="icon" className="h-7 w-7 text-primary" onClick={() => setReceiptViewVisit(v)}>
                           <FileImage className="h-3.5 w-3.5" />
                         </Button>
@@ -787,15 +787,15 @@ const HomeVisits = () => {
                       {v.delay_reason && <span className="text-muted-foreground">— {v.delay_reason}</span>}
                     </div>
                   )}
-                  {!isVisitDelayed(v) && v.delay_reason && v.status === "Completed" && (
+                  {!isVisitDelayed(v) && v.delay_reason && (v.status === "Completed" || v.status === "Registered") && (
                     <div className="flex items-center gap-1 text-xs text-muted-foreground">
                       <Clock className="h-3 w-3" />
                       <span>Delay Reason: {v.delay_reason}</span>
                     </div>
                   )}
 
-                  {/* Payment details for completed visits */}
-                  {v.status === "Completed" && v.payment_mode && (
+                  {/* Payment details for completed / registered visits */}
+                  {(v.status === "Completed" || v.status === "Registered") && v.payment_mode && (
                     <div className="bg-muted/50 rounded-lg p-2 space-y-1 text-xs">
                       <div className="flex items-center justify-between">
                         <span className="font-medium">Payment Details</span>
