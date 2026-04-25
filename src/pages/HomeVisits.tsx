@@ -681,7 +681,7 @@ const HomeVisits = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
-                      {v.status === "Completed" && (
+                      {(v.status === "Completed" || v.status === "Registered") && (
                         <Button variant="ghost" size="icon" className="h-7 w-7 text-primary" onClick={() => setReceiptViewVisit(v)}>
                           <FileImage className="h-3.5 w-3.5" />
                         </Button>
