@@ -787,15 +787,15 @@ const HomeVisits = () => {
                       {v.delay_reason && <span className="text-muted-foreground">— {v.delay_reason}</span>}
                     </div>
                   )}
-                  {!isVisitDelayed(v) && v.delay_reason && v.status === "Completed" && (
+                  {!isVisitDelayed(v) && v.delay_reason && (v.status === "Completed" || v.status === "Registered") && (
                     <div className="flex items-center gap-1 text-xs text-muted-foreground">
                       <Clock className="h-3 w-3" />
                       <span>Delay Reason: {v.delay_reason}</span>
                     </div>
                   )}
 
-                  {/* Payment details for completed visits */}
-                  {v.status === "Completed" && v.payment_mode && (
+                  {/* Payment details for completed / registered visits */}
+                  {(v.status === "Completed" || v.status === "Registered") && v.payment_mode && (
                     <div className="bg-muted/50 rounded-lg p-2 space-y-1 text-xs">
                       <div className="flex items-center justify-between">
                         <span className="font-medium">Payment Details</span>
