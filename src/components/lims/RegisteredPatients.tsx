@@ -12,6 +12,7 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import { exportToExcel } from "@/lib/excel";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
+import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import EditRegistrationDialog from "./EditRegistrationDialog";
 import InvoicePreview from "./InvoicePreview";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -26,6 +27,8 @@ const RegisteredPatients = () => {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(0);
   const [editReg, setEditReg] = useState<any>(null);
+  const [pendingEditReg, setPendingEditReg] = useState<any>(null);
+  const [showEditPwd, setShowEditPwd] = useState(false);
   const [viewBillReg, setViewBillReg] = useState<any>(null);
   const [showExportPwd, setShowExportPwd] = useState(false);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
@@ -33,6 +36,23 @@ const RegisteredPatients = () => {
   const [clearing, setClearing] = useState(false);
   const [fromDate, setFromDate] = useState<Date | undefined>(() => new Date());
   const [toDate, setToDate] = useState<Date | undefined>(() => new Date());
+
+  const isOlderThanToday = (createdAt: string | null | undefined) => {
+    if (!createdAt) return false;
+    const d = new Date(createdAt);
+    const today = new Date();
+    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0);
+    return d < startOfToday;
+  };
+
+  const handleEditClick = (r: any) => {
+    if (isOlderThanToday(r.created_at)) {
+      setPendingEditReg(r);
+      setShowEditPwd(true);
+    } else {
+      setEditReg(r);
+    }
+  };
 
   const registrationSearchFilter = debouncedSearch
     ? `patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%,umr_number.ilike.%${debouncedSearch}%`
@@ -347,7 +367,7 @@ const RegisteredPatients = () => {
                         <Button variant="ghost" size="icon" className="h-8 w-8" title="View Bill" onClick={() => setViewBillReg(r)}>
                           <Eye className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8" title="Edit" onClick={() => setEditReg(r)}>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" title="Edit" onClick={() => handleEditClick(r)}>
                           <Pencil className="h-4 w-4" />
                         </Button>
                       </div>
@@ -400,6 +420,16 @@ const RegisteredPatients = () => {
         open={!!editReg}
         onOpenChange={(o) => !o && setEditReg(null)}
         registration={editReg}
+      />
+
+      <DeletePasswordDialog
+        open={showEditPwd}
+        onOpenChange={(o) => { setShowEditPwd(o); if (!o) setPendingEditReg(null); }}
+        description={pendingEditReg ? `Invoice ${pendingEditReg.invoice_number} is from a previous date. Enter password to modify payment / details.` : undefined}
+        onSuccess={() => {
+          if (pendingEditReg) setEditReg(pendingEditReg);
+          setPendingEditReg(null);
+        }}
       />
 
       <InvoicePreview
