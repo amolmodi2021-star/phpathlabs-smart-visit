@@ -370,7 +370,7 @@ const RegisteredPatients = () => {
                         <Button variant="ghost" size="icon" className="h-8 w-8" title="View Bill" onClick={() => setViewBillReg(r)}>
                           <Eye className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8" title="Edit" onClick={() => setEditReg(r)}>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" title="Edit" onClick={() => handleEditClick(r)}>
                           <Pencil className="h-4 w-4" />
                         </Button>
                       </div>
