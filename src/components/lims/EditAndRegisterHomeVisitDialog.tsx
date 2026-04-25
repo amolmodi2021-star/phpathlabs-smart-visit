@@ -14,7 +14,7 @@ import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import { buildSampleTubeGroups } from "@/lib/sampleTubeGrouping";
 import { format, parse, isValid, differenceInYears } from "date-fns";
 import { logPaymentTransaction } from "@/lib/paymentTransactions";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 
 interface EditTest {
   test_id: string;
