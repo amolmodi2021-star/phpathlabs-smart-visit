@@ -557,7 +557,7 @@ const HomeVisits = () => {
         {/* Status Filter */}
         <div className="flex flex-wrap items-center gap-2 bg-muted/50 rounded-lg p-2">
           <span className="text-xs font-medium text-muted-foreground min-w-[40px]">Status:</span>
-          {["all", "Pending", "Completed", "Cancelled"].map((s) => (
+          {["all", "Pending", "Completed", "Registered", "Cancelled"].map((s) => (
             <Button
               key={s}
               size="sm"
