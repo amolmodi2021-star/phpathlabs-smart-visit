@@ -211,27 +211,33 @@ const DailyReport = () => {
   }, [filtered]);
 
   const exportToExcel = () => {
-    const rows = filtered.map((r: any) => ({
-      "Invoice #": r.invoice_number,
-      "Invoice Date": formatInvoiceDate(r.invoice_number),
-      "Date/Time": format(parseISO(r.transaction_date), "dd-MM-yyyy hh:mm a"),
-      "Username": r.performed_by || "",
-      "Type": TRANSACTION_LABELS[r.transaction_type] || r.transaction_type,
-      "Direction": r.direction === "in" ? "Money In" : "Money Out",
-      "Patient Name": r.patient_name || "",
-      "Gross Amount": Number(r.gross_amount || 0),
-      "Discount": Number(r.discount_amount || 0),
-      "Final Amount": Number(r.final_amount || 0),
-      "Total Paid": Number(r.paid_amount || 0),
-      "Total Due": Number(r.due_amount || 0),
-      "Cash": Number(r.cash_amount || 0),
-      "GPay": Number(r.gpay_amount || 0),
-      "Paytm": Number(r.paytm_amount || 0),
-      "NEFT": Number(r.neft_amount || 0),
-      "Credit Card": Number(r.credit_card_amount || 0),
-      "Refund": Number(r.refund_amount || 0),
-      "Remarks": r.remarks || "",
-    }));
+    const rows = filtered.map((r: any) => {
+      const info = getRegInfo(r.registration_id);
+      return {
+        "Invoice #": r.invoice_number,
+        "Invoice Date": formatInvoiceDate(r.invoice_number),
+        "Date/Time": format(parseISO(r.transaction_date), "dd-MM-yyyy hh:mm a"),
+        "Username": r.performed_by || "",
+        "Type": TRANSACTION_LABELS[r.transaction_type] || r.transaction_type,
+        "Direction": r.direction === "in" ? "Money In" : "Money Out",
+        "Patient Name": r.patient_name || "",
+        "Visit Type": info.visit,
+        "Pickup/Channel Name": info.source,
+        "Billing": info.billing === "—" ? "" : info.billing.toUpperCase(),
+        "Gross Amount": Number(r.gross_amount || 0),
+        "Discount": Number(r.discount_amount || 0),
+        "Final Amount": Number(r.final_amount || 0),
+        "Total Paid": Number(r.paid_amount || 0),
+        "Total Due": Number(r.due_amount || 0),
+        "Cash": Number(r.cash_amount || 0),
+        "GPay": Number(r.gpay_amount || 0),
+        "Paytm": Number(r.paytm_amount || 0),
+        "NEFT": Number(r.neft_amount || 0),
+        "Credit Card": Number(r.credit_card_amount || 0),
+        "Refund": Number(r.refund_amount || 0),
+        "Remarks": r.remarks || "",
+      };
+    });
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Daily Report");
