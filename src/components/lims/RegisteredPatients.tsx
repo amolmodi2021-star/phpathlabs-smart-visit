@@ -73,6 +73,17 @@ const RegisteredPatients = () => {
   const channelMap = Object.fromEntries(channels.map(c => [c.id, c.name]));
   const channelBillingMap = Object.fromEntries(channels.map(c => [c.id, c.billing_type]));
   const pickupBillingMap = Object.fromEntries(pickupPoints.map(p => [p.id, p.billing_type]));
+  const pickupPointMap = Object.fromEntries(pickupPoints.map(p => [p.id, p.name]));
+
+  const getSourceLabel = (r: any): string => {
+    if (r.visit_type === "pickup_point" && r.pickup_point_id) {
+      return pickupPointMap[r.pickup_point_id] || "—";
+    }
+    if (r.channel_id) {
+      return channelMap[r.channel_id] || "—";
+    }
+    return "—";
+  };
 
   const getBillingMode = (r: any): "credit" | "debit" => {
     if (r.visit_type === "pickup_point" && r.pickup_point_id) {
@@ -274,7 +285,7 @@ const RegisteredPatients = () => {
               <TableHead>Patient</TableHead>
               <TableHead>Mobile</TableHead>
               <TableHead>Visit</TableHead>
-              <TableHead>Channel</TableHead>
+              <TableHead>Pickup Point / Channel</TableHead>
               <TableHead>Billing</TableHead>
               <TableHead>Remarks</TableHead>
               <TableHead>Created By</TableHead>
@@ -323,7 +334,7 @@ const RegisteredPatients = () => {
                     </TableCell>
                     <TableCell className="text-sm">{r.mobile_number}</TableCell>
                     <TableCell className="text-xs">{visitTypeLabel(r.visit_type)}</TableCell>
-                    <TableCell className="text-xs">{r.channel_id ? (channelMap[r.channel_id] || "—") : "—"}</TableCell>
+                    <TableCell className="text-xs">{getSourceLabel(r)}</TableCell>
                     <TableCell className="text-xs">
                       {(() => {
                         const bm = getBillingMode(r);
