@@ -1055,7 +1055,15 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
           setDiscountUnlocked(true);
           toast.success("Discount editing unlocked for this session");
         }}
-        description="Sample has passed accepted stage. Enter admin password to unlock discount editing."
+      />
+      <DeletePasswordDialog
+        open={showPaymentUnlockPwd}
+        onOpenChange={setShowPaymentUnlockPwd}
+        onSuccess={() => {
+          setPaymentUnlocked(true);
+          toast.success("Payment mode editing unlocked for this session");
+        }}
+        description={`Invoice ${reg.invoice_number} is from a previous date. Enter admin password to unlock payment mode editing.`}
       />
       <DeletePasswordDialog
         open={showOverpaymentRefundPwd}
