@@ -1104,13 +1104,6 @@ export type Database = {
             referencedRelation: "estimates"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "estimate_tests_test_id_fkey"
-            columns: ["test_id"]
-            isOneToOne: false
-            referencedRelation: "tests"
-            referencedColumns: ["id"]
-          },
         ]
       }
       estimates: {
