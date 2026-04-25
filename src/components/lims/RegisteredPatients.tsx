@@ -274,6 +274,7 @@ const RegisteredPatients = () => {
               <TableHead>Mobile</TableHead>
               <TableHead>Visit</TableHead>
               <TableHead>Channel</TableHead>
+              <TableHead>Billing</TableHead>
               <TableHead>Remarks</TableHead>
               <TableHead>Created By</TableHead>
               <TableHead className="text-right">Gross</TableHead>
