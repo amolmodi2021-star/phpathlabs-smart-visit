@@ -458,7 +458,7 @@ const DailyReport = () => {
             </TableBody>
             <TableFooter>
               <TableRow className="font-semibold">
-                <TableCell colSpan={6} className="text-right">Totals</TableCell>
+                <TableCell colSpan={9} className="text-right">Totals</TableCell>
                 <TableCell className="text-right">₹{totals.gross.toFixed(2)}</TableCell>
                 <TableCell className="text-right">₹{totals.discount.toFixed(2)}</TableCell>
                 <TableCell className="text-right">₹{totals.final.toFixed(2)}</TableCell>
