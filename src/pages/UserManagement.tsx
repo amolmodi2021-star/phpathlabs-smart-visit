@@ -378,7 +378,28 @@ const UserManagement = () => {
         {/* ======================== USER LIST TAB ======================== */}
         <TabsContent value="users">
           <div className="space-y-4">
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" size="sm" disabled={logoutAllLoading}>
+                    {logoutAllLoading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <LogOut className="h-4 w-4 mr-1" />}
+                    Logout All Users
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Sign out every active session?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will immediately invalidate every signed-in session on every device — including your own and the super-admin account.
+                      Everyone will need to sign in again. Continue?
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleLogoutAll}>Yes, log everyone out</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
               <Button onClick={openAddUser} size="sm"><Plus className="h-4 w-4 mr-1" />Add User</Button>
             </div>
             <div className="rounded-md border">
