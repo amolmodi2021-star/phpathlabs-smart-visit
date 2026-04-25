@@ -190,7 +190,7 @@ const RegisteredPatients = () => {
     }
   };
 
-  const colCount = 10;
+  const colCount = 16;
 
   return (
     <div className="space-y-4">
