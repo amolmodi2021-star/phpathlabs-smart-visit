@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Loader2, AlertTriangle } from "lucide-react";
+import { Search, Loader2, AlertTriangle, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import InvoicePreview from "./InvoicePreview";
@@ -225,6 +225,9 @@ const DuePayments = () => {
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1">
+                      <Button size="sm" variant="outline" title="View / Share Invoice" onClick={() => setInvoiceData(p)}>
+                        <Eye className="h-4 w-4" />
+                      </Button>
                       <Button size="sm" onClick={() => openCollect(p)}>Collect</Button>
                       <Button size="sm" variant="outline" onClick={() => setBadDebtConfirm(p)}>
                         Bad Debt
