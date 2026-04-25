@@ -41,11 +41,8 @@ const RegisteredPatients = () => {
     if (!createdAt) return false;
     const d = new Date(createdAt);
     const today = new Date();
-    return d.getFullYear() !== today.getFullYear()
-      || d.getMonth() !== today.getMonth()
-      || d.getDate() !== today.getDate()
-      ? d < new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0)
-      : false;
+    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0);
+    return d < startOfToday;
   };
 
   const handleEditClick = (r: any) => {
