@@ -323,6 +323,13 @@ const RegisteredPatients = () => {
                     <TableCell className="text-sm">{r.mobile_number}</TableCell>
                     <TableCell className="text-xs">{visitTypeLabel(r.visit_type)}</TableCell>
                     <TableCell className="text-xs">{r.channel_id ? (channelMap[r.channel_id] || "—") : "—"}</TableCell>
+                    <TableCell className="text-xs">
+                      {(() => {
+                        const bm = getBillingMode(r);
+                        if (!bm) return <span className="text-muted-foreground">—</span>;
+                        return <Badge variant={bm === "credit" ? "secondary" : "default"} className="capitalize">{bm}</Badge>;
+                      })()}
+                    </TableCell>
                     <TableCell className="text-xs max-w-[120px] truncate">{r.remarks || "—"}</TableCell>
                     <TableCell className="text-xs">{r.registered_by || "—"}</TableCell>
                     <TableCell className="text-right text-xs tabular-nums">₹{Number(r.gross_amount || 0).toFixed(2)}</TableCell>
