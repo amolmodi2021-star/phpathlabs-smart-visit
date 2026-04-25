@@ -39,7 +39,7 @@ const allNavItems = [
   { to: "/cloud-usage", label: "Cloud Usage", icon: Cloud },
 ];
 
-const StorageCleanupButton = ({ onClick }: { onClick?: () => void }) => {
+const StorageCleanupButton = ({ onClick, rail = false }: { onClick?: () => void; rail?: boolean }) => {
   const [cleaning, setCleaning] = useState(false);
 
   const runCleanup = async () => {
@@ -68,19 +68,20 @@ const StorageCleanupButton = ({ onClick }: { onClick?: () => void }) => {
     <button
       onClick={runCleanup}
       disabled={cleaning}
+      title={rail ? "Storage Cleanup" : undefined}
       className={cn(
-        "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors w-full",
+        "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors w-full whitespace-nowrap",
         "text-muted-foreground hover:bg-destructive/10 hover:text-destructive",
         cleaning && "opacity-50 cursor-not-allowed"
       )}
     >
-      {cleaning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-      Storage Cleanup
+      {cleaning ? <Loader2 className="h-4 w-4 animate-spin shrink-0" /> : <Trash2 className="h-4 w-4 shrink-0" />}
+      <span className={cn("transition-opacity duration-150", rail && "opacity-0 group-hover:opacity-100")}>Storage Cleanup</span>
     </button>
   );
 };
 
-const NavSection = ({ items, onClick }: { items: typeof allNavItems; onClick?: () => void }) => (
+const NavSection = ({ items, onClick, rail = false }: { items: typeof allNavItems; onClick?: () => void; rail?: boolean }) => (
   <>
     {items.map((item) => (
       <NavLink
@@ -88,15 +89,16 @@ const NavSection = ({ items, onClick }: { items: typeof allNavItems; onClick?: (
         to={item.to}
         end={item.to === "/" || item.to === "/reports"}
         onClick={onClick}
+        title={rail ? item.label : undefined}
         className={({ isActive }) =>
           cn(
-            "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+            "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors whitespace-nowrap",
             isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
           )
         }
       >
-        <item.icon className="h-4 w-4" />
-        {item.label}
+        <item.icon className="h-4 w-4 shrink-0" />
+        <span className={cn("transition-opacity duration-150", rail && "opacity-0 group-hover:opacity-100")}>{item.label}</span>
       </NavLink>
     ))}
   </>
@@ -168,13 +170,13 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
 
       <div className="flex">
         {!isMobile && (
-          <aside className="flex w-56 shrink-0 flex-col border-r bg-card h-[calc(100vh-3.5rem)] sticky top-14 overflow-hidden">
-            <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-              <NavSection items={navItems} />
+          <aside className="group flex w-14 hover:w-56 shrink-0 flex-col border-r bg-card h-[calc(100vh-3.5rem)] sticky top-14 overflow-hidden transition-[width] duration-200 ease-out z-40">
+            <nav className="flex-1 p-3 space-y-1 overflow-y-auto overflow-x-hidden">
+              <NavSection items={navItems} rail />
               {isActionAllowed("storage_cleanup") && (
                 <>
                   <Separator className="my-2" />
-                  <StorageCleanupButton />
+                  <StorageCleanupButton rail />
                 </>
               )}
             </nav>

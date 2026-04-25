@@ -31,15 +31,17 @@ const RegisteredPatients = () => {
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [showClearPwd, setShowClearPwd] = useState(false);
   const [clearing, setClearing] = useState(false);
-  const [fromDate, setFromDate] = useState<Date | undefined>();
-  const [toDate, setToDate] = useState<Date | undefined>();
+  const [fromDate, setFromDate] = useState<Date | undefined>(() => new Date());
+  const [toDate, setToDate] = useState<Date | undefined>(() => new Date());
 
   const registrationSearchFilter = debouncedSearch
     ? `patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%,umr_number.ilike.%${debouncedSearch}%`
     : "";
 
-  const fromIso = fromDate ? new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate(), 0, 0, 0).toISOString() : null;
-  const toIso = toDate ? new Date(toDate.getFullYear(), toDate.getMonth(), toDate.getDate(), 23, 59, 59, 999).toISOString() : null;
+  // When user is searching, ignore date filter so older records are findable
+  const applyDateFilter = !debouncedSearch;
+  const fromIso = applyDateFilter && fromDate ? new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate(), 0, 0, 0).toISOString() : null;
+  const toIso = applyDateFilter && toDate ? new Date(toDate.getFullYear(), toDate.getMonth(), toDate.getDate(), 23, 59, 59, 999).toISOString() : null;
 
   const handleSearch = (val: string) => {
     setSearch(val);
@@ -225,6 +227,9 @@ const RegisteredPatients = () => {
           <Button variant="ghost" size="sm" onClick={clearDates}>
             <X className="h-4 w-4 mr-1" />Clear dates
           </Button>
+        )}
+        {debouncedSearch && (fromDate || toDate) && (
+          <span className="text-xs text-muted-foreground italic">Date filter ignored while searching</span>
         )}
         <Button variant="outline" size="sm" onClick={() => setShowExportPwd(true)}>
           <Download className="h-4 w-4 mr-1" />Export All
