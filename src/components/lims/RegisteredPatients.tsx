@@ -285,7 +285,7 @@ const RegisteredPatients = () => {
               <TableHead>Patient</TableHead>
               <TableHead>Mobile</TableHead>
               <TableHead>Visit</TableHead>
-              <TableHead>Channel</TableHead>
+              <TableHead>Pickup Point / Channel</TableHead>
               <TableHead>Billing</TableHead>
               <TableHead>Remarks</TableHead>
               <TableHead>Created By</TableHead>
