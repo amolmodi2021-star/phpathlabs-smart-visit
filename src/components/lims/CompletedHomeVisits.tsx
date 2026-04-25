@@ -11,7 +11,7 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import EditAndRegisterHomeVisitDialog from "@/components/lims/EditAndRegisterHomeVisitDialog";
 import { logPaymentTransaction } from "@/lib/paymentTransactions";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import PaginatedTableFooter from "@/components/ui/PaginatedTableFooter";
 
 const PAGE_SIZE = 50;
