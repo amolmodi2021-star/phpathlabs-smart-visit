@@ -38,17 +38,16 @@ function computeFlagFromInterface(rawValue: string, param: any): string {
   return value.toLowerCase() === ref ? "N" : "X";
 }
 
-// Apply unit suffix for "Undefined" range type intent.
-// We don't have range_type in the bridge query — fall back to safe rule:
-// if no numeric bounds AND a unit exists AND value isn't already suffixed → concat.
-function applyInterfaceUnitSuffix(value: string, unit: string | null | undefined, param: any): string {
+// Apply unit suffix to result_value ONLY when parameter's range_type === "undefined"
+// AND a unit is configured in Test Management. The unit value sent by the interface
+// is intentionally ignored — Test Management is the single source of truth for units.
+function applyInterfaceUnitSuffix(value: string, param: any): string {
   if (!value) return value;
-  if (param?.normal_range_low != null || param?.normal_range_high != null) return value;
-  const u = (unit || param?.unit || "").toString().trim();
+  if (param?.range_type !== "undefined") return value;
+  const u = (param?.unit || "").toString().trim();
   if (!u) return value;
   const trimmed = value.trim();
   if (trimmed.toLowerCase().endsWith(u.toLowerCase())) return trimmed;
-  // Don't suffix purely numeric-with-bounds (already returned above) or qualitative matches against ref text
   return `${trimmed} ${u}`;
 }
 
@@ -194,7 +193,7 @@ Deno.serve(async (req) => {
           const paramCodes = Array.from(new Set(mappedItems.map((r) => r.test_code).filter(Boolean)));
           const { data: paramRows } = await supabase
             .from("report_test_parameters")
-            .select("id, param_code, parameter_name, unit, normal_range_low, normal_range_high, normal_range_text, unit_conversion_enabled, unit_conversion_operator, unit_conversion_value")
+            .select("id, param_code, parameter_name, unit, range_type, normal_range_low, normal_range_high, normal_range_text, unit_conversion_enabled, unit_conversion_operator, unit_conversion_value")
             .in("param_code", paramCodes);
           const paramByCode: Record<string, any> = {};
           for (const p of paramRows || []) paramByCode[p.param_code] = p;
@@ -244,9 +243,9 @@ Deno.serve(async (req) => {
               const { error: updErr } = await supabase
                 .from("patient_results")
                 .update({
-                  result_value: applyInterfaceUnitSuffix(convertedValue, sr.unit, param),
+                  result_value: applyInterfaceUnitSuffix(convertedValue, param),
                   flag,
-                  unit: sr.unit || param.unit || "",
+                  unit: param.unit || "",
                   reference_range: referenceRange,
                   normal_range_low: param.normal_range_low,
                   normal_range_high: param.normal_range_high,
@@ -265,8 +264,8 @@ Deno.serve(async (req) => {
                 parameter_id: param.id,
                 param_code: param.param_code,
                 parameter_name: param.parameter_name,
-                result_value: applyInterfaceUnitSuffix(convertedValue, sr.unit, param),
-                unit: sr.unit || param.unit || "",
+                result_value: applyInterfaceUnitSuffix(convertedValue, param),
+                unit: param.unit || "",
                 reference_range: referenceRange,
                 normal_range_low: param.normal_range_low,
                 normal_range_high: param.normal_range_high,
@@ -614,7 +613,7 @@ Deno.serve(async (req) => {
           const paramCodes = Array.from(new Set(mappedRows.map((r) => r.test_code).filter(Boolean)));
           const { data: paramRows } = await supabase
             .from("report_test_parameters")
-            .select("id, param_code, parameter_name, unit, normal_range_low, normal_range_high, normal_range_text, unit_conversion_enabled, unit_conversion_operator, unit_conversion_value")
+            .select("id, param_code, parameter_name, unit, range_type, normal_range_low, normal_range_high, normal_range_text, unit_conversion_enabled, unit_conversion_operator, unit_conversion_value")
             .in("param_code", paramCodes);
           const paramByCode: Record<string, any> = {};
           for (const p of paramRows || []) paramByCode[p.param_code] = p;
@@ -668,9 +667,9 @@ Deno.serve(async (req) => {
               const { error: updErr } = await supabase
                 .from("patient_results")
                 .update({
-                  result_value: applyInterfaceUnitSuffix(convertedValue, mr.unit, param),
+                  result_value: applyInterfaceUnitSuffix(convertedValue, param),
                   flag,
-                  unit: mr.unit || param.unit || "",
+                  unit: param.unit || "",
                   reference_range: referenceRange,
                   normal_range_low: param.normal_range_low,
                   normal_range_high: param.normal_range_high,
@@ -689,8 +688,8 @@ Deno.serve(async (req) => {
                 parameter_id: param.id,
                 param_code: param.param_code,
                 parameter_name: param.parameter_name,
-                result_value: applyInterfaceUnitSuffix(convertedValue, mr.unit, param),
-                unit: mr.unit || param.unit || "",
+                result_value: applyInterfaceUnitSuffix(convertedValue, param),
+                unit: param.unit || "",
                 reference_range: referenceRange,
                 normal_range_low: param.normal_range_low,
                 normal_range_high: param.normal_range_high,
