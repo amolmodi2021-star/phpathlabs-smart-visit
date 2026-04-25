@@ -566,7 +566,7 @@ const Dispatch = () => {
                         const isTestDispatching = actionKey === `${testKey}||dispatch`;
 
                         const auditSteps = [
-                          { label: "Registered", timestamp: selectedEntry.registration.created_at, by: test.registeredBy },
+                          { label: "Registered", timestamp: selectedEntry.registration.created_at, by: test.registeredBy || "—" },
                           { label: "Sample Collected", timestamp: test.collectedAt, by: test.collectedBy },
                           { label: "Sample Accepted", timestamp: test.acceptedAt, by: test.acceptedBy },
                           { label: "Results Entered", timestamp: test.enteredAt, by: test.enteredBy },

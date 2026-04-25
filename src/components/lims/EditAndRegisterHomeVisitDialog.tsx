@@ -14,7 +14,7 @@ import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import { buildSampleTubeGroups } from "@/lib/sampleTubeGrouping";
 import { format, parse, isValid, differenceInYears } from "date-fns";
 import { logPaymentTransaction } from "@/lib/paymentTransactions";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 
 interface EditTest {
   test_id: string;
@@ -294,6 +294,9 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
         umrNumber = umr;
       }
 
+      const stampedBy = getCurrentUserName();
+      if (!stampedBy) throw new Error("Please sign in again before saving the registration");
+
       const { data: insertedReg, error } = await supabase.from("patient_registrations").insert({
         invoice_number: invNum,
         patient_name: patientName.replace(/\s+/g, ' ').trim().toUpperCase(),
@@ -319,7 +322,7 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
         home_visit_id: visit.id,
         global_discount_type: globalDiscountValue > 0 ? globalDiscountType : null,
         global_discount_value: globalDiscountValue,
-        registered_by: getCurrentUser()?.display_name || getCurrentUser()?.username || null,
+        registered_by: stampedBy,
       } as any).select().single();
       if (error) throw error;
 

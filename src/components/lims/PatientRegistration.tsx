@@ -12,7 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Search, X, Save, Printer, Send, ChevronDown, ChevronUp } from "lucide-react";
 import { getTests, TestItem } from "@/lib/tests";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { logPaymentTransaction } from "@/lib/paymentTransactions";
 import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import { buildSampleTubeGroups } from "@/lib/sampleTubeGrouping";
@@ -343,6 +343,9 @@ const PatientRegistration = () => {
       if (visitType !== "pickup_point" && !address.trim()) throw new Error("Address is required");
       if (paidAmount > calculations.finalAmount) throw new Error("Payment amount cannot exceed the final amount");
 
+      const stampedBy = getCurrentUserName();
+      if (!stampedBy) throw new Error("Please sign in again before saving the registration");
+
       // Generate invoice number
       const { data: invoiceNum, error: invErr } = await supabase.rpc("generate_invoice_number" as any);
       if (invErr) throw new Error("Failed to generate invoice number");
@@ -394,7 +397,7 @@ const PatientRegistration = () => {
         remarks: remarks.trim() || null,
         is_stat: isStat,
         report_language: visitType === "pickup_point" ? "ENGLISH" : reportLanguage.toUpperCase(),
-        registered_by: getCurrentUser()?.display_name || null,
+        registered_by: stampedBy,
       };
 
       const { data: reg, error } = await supabase.from("patient_registrations").insert(regData as any).select().single();

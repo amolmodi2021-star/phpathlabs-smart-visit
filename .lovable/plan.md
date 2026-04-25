@@ -1,52 +1,45 @@
-## Plan: Add User-Wise PDF Print to Daily Report
+## Problem
 
-Add a third toolbar action: **"Print User-wise PDF"** with a small dropdown letting the operator choose:
-- **All Users** — single PDF containing one section per user with that user's grand totals, plus a final consolidated summary.
-- A specific user (each entry from `uniqueUsers`) — single PDF containing only that user's transactions and grand totals.
+`registered_by` is intermittently `NULL` (47 rows) or shows `"Administrator"` (35 rows) across recent invoices. Investigation:
 
-Existing **Export Excel** and **Print PDF (Compact)** stay unchanged.
+1. **Three insert paths** capture the user, but each does it slightly differently:
+   - `PatientRegistration.tsx` — `getCurrentUser()?.display_name || null` (no `username` fallback → if `display_name` is missing/empty in localStorage the value is `null`)
+   - `EditAndRegisterHomeVisitDialog.tsx` — uses fallback chain
+   - `CompletedHomeVisits.tsx` — uses fallback chain
+2. **`"Administrator"` problem** — that's the literal `display_name` of the shared `PHPATHLABS` super-user account in `app_users`. Anyone signed in with that shared account gets stamped as "Administrator". Real staff accounts (AMAN, KOMAL, SHUBHAM, RAHUL, MANISH) work correctly.
+3. **`NULL` problem** — happens when `getCurrentUser()` returns `null` (stale/cleared localStorage, opened in a new tab without auth, or a code path where the user object is not yet rehydrated). `PatientRegistration.tsx` is most exposed because it has no `username` fallback.
+4. **Dispatch "Registered By" empty** — Dispatch reads from `reg.registered_by` directly, so any historical `NULL` row shows blank.
 
-### UI changes (`src/components/lims/DailyReport.tsx`)
+## Fix
 
-Replace the standalone `Print PDF` button with two adjacent controls:
-- `Print PDF` (existing — flat compact list).
-- **`Print User-wise`** — `DropdownMenu` (already used elsewhere via `@/components/ui/dropdown-menu`) trigger button:
-  ```
-  [ Print User-wise ▾ ]
-    ├─ All Users (one PDF, sectioned)
-    ├─ ─────────
-    ├─ ravi
-    ├─ priya
-    └─ ...   (from uniqueUsers)
-  ```
-  Disabled when `filtered.length === 0` or `uniqueUsers.length === 0`.
+### 1. Centralized helper for the stamp
+Use the existing `getCurrentUserName()` helper (in `src/lib/auth.ts`) everywhere instead of inline `getCurrentUser()?.display_name` chains. It already returns `display_name || username || null` and is the single source of truth.
 
-### `printUserwisePdf(targetUser: "ALL" | string)` function
+### 2. Update all 3 registration insert sites
+- `src/components/lims/PatientRegistration.tsx` (line 397) — replace inline expression with `getCurrentUserName()`.
+- `src/components/lims/EditAndRegisterHomeVisitDialog.tsx` (line 322) — switch to `getCurrentUserName()`.
+- `src/components/lims/CompletedHomeVisits.tsx` (line 169) — switch to `getCurrentUserName()`.
 
-Reuses the same compact A4 landscape layout, column widths, helpers (`fmtAmt`, `truncate`, `visitShort`), header drawing, and page-break logic from existing `printPdf`. Refactor shared bits into local helpers inside the new function (no exported module — keep the file self-contained).
+### 3. Hard guard — never insert without a name
+Before each insert, if `getCurrentUserName()` returns falsy:
+- show a toast `"Please sign in again before saving the registration"`,
+- abort the save (do NOT insert with `null`).
 
-**Behavior:**
+This eliminates new `NULL` rows going forward.
 
-1. **Group rows by `performed_by`** from `filtered` (treating empty/null as `"(Unassigned)"`).
-2. **Determine user list**:
-   - If `targetUser === "ALL"`: iterate every user with rows, in alphabetical order.
-   - Else: only that one user (skip if no rows → show toast / silently no-op).
-3. **For each user section**:
-   - Force `doc.addPage()` between users (first user starts on page 1).
-   - Title band: `"User: <name>"` + transaction count + date range, on a colored bar.
-   - Compact table identical to existing PDF (21 columns, 6.5pt rows).
-   - **Per-user grand totals row** at end of section (Gross/Disc/Final/Paid/Due/Cash/GPay/Paytm/NEFT/CC/Refund + Net = In−Out).
-4. **For `ALL`**:
-   - **Final consolidated summary page** appended at the end:
-     - Title: "User-wise Collection Summary"
-     - Compact table with columns: `User`, `Txns`, `Cash`, `GPay`, `Paytm`, `NEFT`, `CC`, `Total In`, `Refund/Out`, `Due`, `Net Collection`.
-     - One row per user, sorted by Net Collection desc.
-     - Final totals row (matches the report-wide totals already computed).
-5. **Footer & page numbering**: existing pattern (`Page X of Y`, brand line on left).
-6. **Filename**:
-   - All Users: `Daily_Report_Userwise_{from}_to_{to}.pdf`
-   - Single user: `Daily_Report_{username}_{from}_to_{to}.pdf`
-   - When `isSearching`: replace date portion with `search_{term}`.
+### 4. Dispatch — show fallback for missing data
+In `src/components/lims/Dispatch.tsx` at the audit-trail render (line 569), display `test.registeredBy || "—"` so historical NULL rows render a dash instead of blank space, matching how the other audit roles display.
 
-### Files Changed
-- `src/components/lims/DailyReport.tsx` — add `DropdownMenu` import, add `printUserwisePdf` function, add user-wise dropdown button next to existing PDF button. No DB changes, no new dependencies.
+### 5. About `"Administrator"` (informational, no code change)
+The "Administrator" label is being captured correctly — it is the `display_name` of the `PHPATHLABS` shared account. If you want a real person's name on those invoices instead, each staff member must sign in with their own dedicated user (AMAN / KOMAL / SHUBHAM / RAHUL / MANISH already exist) rather than the shared admin account. No code change can determine the human behind a shared login.
+
+## Out of scope
+- No backfill of historical `NULL` / `Administrator` rows (data is already lost for those).
+- No DB schema/RLS changes.
+
+## Files to edit
+- `src/lib/auth.ts` — already has `getCurrentUserName()`, no change needed.
+- `src/components/lims/PatientRegistration.tsx`
+- `src/components/lims/EditAndRegisterHomeVisitDialog.tsx`
+- `src/components/lims/CompletedHomeVisits.tsx`
+- `src/components/lims/Dispatch.tsx`

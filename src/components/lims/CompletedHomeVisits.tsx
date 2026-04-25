@@ -11,7 +11,7 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import EditAndRegisterHomeVisitDialog from "@/components/lims/EditAndRegisterHomeVisitDialog";
 import { logPaymentTransaction } from "@/lib/paymentTransactions";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import PaginatedTableFooter from "@/components/ui/PaginatedTableFooter";
 
 const PAGE_SIZE = 50;
@@ -141,6 +141,9 @@ const CompletedHomeVisits = () => {
         umrNumber = umr;
       }
 
+      const stampedBy = getCurrentUserName();
+      if (!stampedBy) throw new Error("Please sign in again before saving the registration");
+
       const { data: insertedReg, error } = await supabase.from("patient_registrations").insert({
         invoice_number: invNum,
         patient_name: e.patient_name || "",
@@ -166,7 +169,7 @@ const CompletedHomeVisits = () => {
         home_visit_id: visit.id,
         global_discount_type: e.global_discount_type || null,
         global_discount_value: Number(e.global_discount_value || 0),
-        registered_by: getCurrentUser()?.display_name || getCurrentUser()?.username || null,
+        registered_by: stampedBy,
       } as any).select().single();
 
       if (error) throw error;
