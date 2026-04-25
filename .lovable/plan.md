@@ -1,49 +1,52 @@
-## Plan: Add Compact PDF Print for Daily Report
+## Plan: Add User-Wise PDF Print to Daily Report
 
-The Daily Report has many columns (Invoice, Date, Time, Username, Type, Patient, Visit Type, Source, Billing, Gross, Discount, Final, Paid, Due, Cash, GPay, Paytm, NEFT, CC, Refund, Remarks). A compact PDF that fits everything on a printable page is needed alongside the existing Excel export. Excel stays as-is (already exports all data).
+Add a third toolbar action: **"Print User-wise PDF"** with a small dropdown letting the operator choose:
+- **All Users** — single PDF containing one section per user with that user's grand totals, plus a final consolidated summary.
+- A specific user (each entry from `uniqueUsers`) — single PDF containing only that user's transactions and grand totals.
 
-### Implementation (`src/components/lims/DailyReport.tsx`)
+Existing **Export Excel** and **Print PDF (Compact)** stay unchanged.
 
-**1. Add jsPDF import** (already a project dependency, used by `PickupInvoicePDF.tsx`).
+### UI changes (`src/components/lims/DailyReport.tsx`)
 
-**2. Add `printPdf()` function** that builds a compact A4 **landscape** PDF using manual jsPDF table drawing (no autotable dependency needed):
+Replace the standalone `Print PDF` button with two adjacent controls:
+- `Print PDF` (existing — flat compact list).
+- **`Print User-wise`** — `DropdownMenu` (already used elsewhere via `@/components/ui/dropdown-menu`) trigger button:
+  ```
+  [ Print User-wise ▾ ]
+    ├─ All Users (one PDF, sectioned)
+    ├─ ─────────
+    ├─ ravi
+    ├─ priya
+    └─ ...   (from uniqueUsers)
+  ```
+  Disabled when `filtered.length === 0` or `uniqueUsers.length === 0`.
 
-- **Page**: A4 landscape (297×210mm), margins 6mm.
-- **Header**: "PH PathLabs — Daily Payment Register" + date range + filters summary + generation timestamp.
-- **Summary band**: Total In, Total Out, Net Collection, Transaction Count + per-mode totals (Cash/GPay/Paytm/NEFT/CC) — single compact row.
-- **Table**: 
-  - Column widths tuned for landscape A4 (~285mm usable). Tight columns:
-    - Inv# (18), Inv Date (14), Time (22), User (16), Type (20), Patient (28), Visit (16), Pickup/Channel (22), Bill (10), Gross (14), Disc (12), Final (14), Paid (14), Due (12), Cash (12), GPay (12), Paytm (12), NEFT (12), CC (12), Refund (12), Remarks (16).
-  - Font: Helvetica 6.5pt body, 7pt headers, bold totals row.
-  - Numeric columns right-aligned, monospace-like alignment via `align: "right"`.
-  - Zero amounts shown as "-" to reduce visual noise.
-  - Refunds (negative) shown in dim/parens style (jsPDF: red text via `setTextColor(180,0,0)`).
-  - Header row: light grey fill, bold; alternating row shading for readability.
-  - Auto page-break: when y exceeds page height, draw new page with repeated header row.
-- **Footer**: "Page X of Y" + totals row repeated on last page.
-- **Filename**: `Daily_Report_{from}_to_{to}.pdf` (or `_search_{term}` when searching).
-- **Open behavior**: `doc.save(filename)` to download.
+### `printUserwisePdf(targetUser: "ALL" | string)` function
 
-**3. Add "Print PDF" button** in the toolbar next to "Export Excel":
-```tsx
-<Button variant="outline" size="sm" onClick={printPdf} disabled={filtered.length === 0}>
-  <Printer className="h-3.5 w-3.5 mr-1" /> Print PDF
-</Button>
-```
+Reuses the same compact A4 landscape layout, column widths, helpers (`fmtAmt`, `truncate`, `visitShort`), header drawing, and page-break logic from existing `printPdf`. Refactor shared bits into local helpers inside the new function (no exported module — keep the file self-contained).
 
-**4. Add `Printer` icon import** from lucide-react.
+**Behavior:**
 
-### Compactness techniques
-
-- Landscape orientation (almost double horizontal space vs portrait).
-- Helvetica 6.5pt body — small but legible when printed at 100%.
-- Strip "₹" prefix from numeric cells in the PDF (column header gets "(₹)" suffix instead) to save width.
-- Truncate Patient and Pickup/Channel names with ellipsis if they exceed cell width.
-- Truncate Remarks to ~20 chars.
-- Time-only in the Date/Time column (date already in Invoice Date column) → saves significant width.
-- Visit Type abbreviated: "Lab" / "Home" / "Pickup" / "Channel".
+1. **Group rows by `performed_by`** from `filtered` (treating empty/null as `"(Unassigned)"`).
+2. **Determine user list**:
+   - If `targetUser === "ALL"`: iterate every user with rows, in alphabetical order.
+   - Else: only that one user (skip if no rows → show toast / silently no-op).
+3. **For each user section**:
+   - Force `doc.addPage()` between users (first user starts on page 1).
+   - Title band: `"User: <name>"` + transaction count + date range, on a colored bar.
+   - Compact table identical to existing PDF (21 columns, 6.5pt rows).
+   - **Per-user grand totals row** at end of section (Gross/Disc/Final/Paid/Due/Cash/GPay/Paytm/NEFT/CC/Refund + Net = In−Out).
+4. **For `ALL`**:
+   - **Final consolidated summary page** appended at the end:
+     - Title: "User-wise Collection Summary"
+     - Compact table with columns: `User`, `Txns`, `Cash`, `GPay`, `Paytm`, `NEFT`, `CC`, `Total In`, `Refund/Out`, `Due`, `Net Collection`.
+     - One row per user, sorted by Net Collection desc.
+     - Final totals row (matches the report-wide totals already computed).
+5. **Footer & page numbering**: existing pattern (`Page X of Y`, brand line on left).
+6. **Filename**:
+   - All Users: `Daily_Report_Userwise_{from}_to_{to}.pdf`
+   - Single user: `Daily_Report_{username}_{from}_to_{to}.pdf`
+   - When `isSearching`: replace date portion with `search_{term}`.
 
 ### Files Changed
-- `src/components/lims/DailyReport.tsx` — add `printPdf` function, "Print PDF" button, Printer icon, jsPDF import.
-
-No new dependencies, no DB changes, no changes to existing Excel export.
+- `src/components/lims/DailyReport.tsx` — add `DropdownMenu` import, add `printUserwisePdf` function, add user-wise dropdown button next to existing PDF button. No DB changes, no new dependencies.
