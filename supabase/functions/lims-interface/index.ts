@@ -38,17 +38,40 @@ function computeFlagFromInterface(rawValue: string, param: any): string {
   return value.toLowerCase() === ref ? "N" : "X";
 }
 
-// Apply unit suffix to result_value ONLY when parameter's range_type === "undefined"
+// Apply unit suffix to result_value ONLY when the parameter is "undefined"-range
 // AND a unit is configured in Test Management. The unit value sent by the interface
 // is intentionally ignored — Test Management is the single source of truth for units.
+// `_isUndefinedRange` is attached to the param object after fetching parameter_normal_ranges.
 function applyInterfaceUnitSuffix(value: string, param: any): string {
   if (!value) return value;
-  if (param?.range_type !== "undefined") return value;
+  if (!param?._isUndefinedRange) return value;
   const u = (param?.unit || "").toString().trim();
   if (!u) return value;
   const trimmed = value.trim();
   if (trimmed.toLowerCase().endsWith(u.toLowerCase())) return trimmed;
   return `${trimmed} ${u}`;
+}
+
+// Resolve per-parameter "is undefined range" flag from parameter_normal_ranges.
+// A parameter is treated as undefined-range only if it has at least one range row
+// AND every range row uses range_type='undefined'.
+async function attachUndefinedRangeFlag(supabase: any, paramRows: any[]) {
+  const ids = (paramRows || []).map((p) => p.id);
+  if (ids.length === 0) return;
+  const { data: rangeRows } = await supabase
+    .from("parameter_normal_ranges")
+    .select("parameter_id, range_type")
+    .in("parameter_id", ids);
+  const byParam: Record<string, string[]> = {};
+  for (const r of rangeRows || []) {
+    const pid = r.parameter_id as string;
+    if (!byParam[pid]) byParam[pid] = [];
+    byParam[pid].push((r.range_type || "numeric") as string);
+  }
+  for (const p of paramRows) {
+    const types = byParam[p.id] || [];
+    p._isUndefinedRange = types.length > 0 && types.every((t) => t === "undefined");
+  }
 }
 
 Deno.serve(async (req) => {
@@ -193,8 +216,9 @@ Deno.serve(async (req) => {
           const paramCodes = Array.from(new Set(mappedItems.map((r) => r.test_code).filter(Boolean)));
           const { data: paramRows } = await supabase
             .from("report_test_parameters")
-            .select("id, param_code, parameter_name, unit, range_type, normal_range_low, normal_range_high, normal_range_text, unit_conversion_enabled, unit_conversion_operator, unit_conversion_value")
+            .select("id, param_code, parameter_name, unit, normal_range_low, normal_range_high, normal_range_text, unit_conversion_enabled, unit_conversion_operator, unit_conversion_value")
             .in("param_code", paramCodes);
+          await attachUndefinedRangeFlag(supabase, paramRows || []);
           const paramByCode: Record<string, any> = {};
           for (const p of paramRows || []) paramByCode[p.param_code] = p;
 
@@ -613,8 +637,9 @@ Deno.serve(async (req) => {
           const paramCodes = Array.from(new Set(mappedRows.map((r) => r.test_code).filter(Boolean)));
           const { data: paramRows } = await supabase
             .from("report_test_parameters")
-            .select("id, param_code, parameter_name, unit, range_type, normal_range_low, normal_range_high, normal_range_text, unit_conversion_enabled, unit_conversion_operator, unit_conversion_value")
+            .select("id, param_code, parameter_name, unit, normal_range_low, normal_range_high, normal_range_text, unit_conversion_enabled, unit_conversion_operator, unit_conversion_value")
             .in("param_code", paramCodes);
+          await attachUndefinedRangeFlag(supabase, paramRows || []);
           const paramByCode: Record<string, any> = {};
           for (const p of paramRows || []) paramByCode[p.param_code] = p;
 
