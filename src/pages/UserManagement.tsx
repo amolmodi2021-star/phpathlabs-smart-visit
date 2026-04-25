@@ -13,9 +13,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Plus, Edit2, Key, History, Copy, Trash2, Loader2 } from "lucide-react";
+import { Plus, Edit2, Key, History, Copy, Trash2, Loader2, LogOut } from "lucide-react";
 import { format } from "date-fns";
-import { getCurrentUser, refreshCurrentUserPermissions } from "@/lib/auth";
+import { getCurrentUser, refreshCurrentUserPermissions, bumpAuthEpoch, logout } from "@/lib/auth";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { useNavigate } from "react-router-dom";
 
 // All available tabs and their sections
 const ALL_TABS = [
@@ -105,10 +107,27 @@ interface AppUserRow {
 }
 
 const UserManagement = () => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("users");
   const [users, setUsers] = useState<AppUserRow[]>([]);
   const [roles, setRoles] = useState<AppRole[]>([]);
   const [loading, setLoading] = useState(true);
+  const [logoutAllLoading, setLogoutAllLoading] = useState(false);
+
+  const handleLogoutAll = async () => {
+    setLogoutAllLoading(true);
+    try {
+      await bumpAuthEpoch();
+      toast.success("All users will be signed out shortly. You will be signed out now.");
+      // Sign the current admin out immediately too.
+      logout();
+      setTimeout(() => navigate("/login", { replace: true }), 600);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to sign out all users");
+    } finally {
+      setLogoutAllLoading(false);
+    }
+  };
 
   // User dialog state
   const [userDialogOpen, setUserDialogOpen] = useState(false);
@@ -359,7 +378,28 @@ const UserManagement = () => {
         {/* ======================== USER LIST TAB ======================== */}
         <TabsContent value="users">
           <div className="space-y-4">
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" size="sm" disabled={logoutAllLoading}>
+                    {logoutAllLoading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <LogOut className="h-4 w-4 mr-1" />}
+                    Logout All Users
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Sign out every active session?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will immediately invalidate every signed-in session on every device — including your own and the super-admin account.
+                      Everyone will need to sign in again. Continue?
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleLogoutAll}>Yes, log everyone out</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
               <Button onClick={openAddUser} size="sm"><Plus className="h-4 w-4 mr-1" />Add User</Button>
             </div>
             <div className="rounded-md border">

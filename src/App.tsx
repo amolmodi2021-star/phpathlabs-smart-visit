@@ -1,9 +1,10 @@
+import { useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { isAuthenticated, isTabAllowed, getFirstAllowedRoute } from "@/lib/auth";
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
+import { isAuthenticated, isTabAllowed, getFirstAllowedRoute, checkAuthEpochAndLogoutIfStale } from "@/lib/auth";
 import AppLayout from "@/components/AppLayout";
 import Login from "./pages/Login";
 import CreateEstimate from "./pages/CreateEstimate";
@@ -64,12 +65,37 @@ function LimsReportRouteGuard() {
   return <AppLayout><LimsReportView /></AppLayout>;
 }
 
+function GlobalAuthEpochGuard() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      const stale = await checkAuthEpochAndLogoutIfStale();
+      if (stale && !cancelled && location.pathname !== "/login") {
+        navigate("/login", { replace: true });
+      }
+    };
+    run();
+    const onFocus = () => run();
+    window.addEventListener("focus", onFocus);
+    const interval = window.setInterval(run, 30_000);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", onFocus);
+      window.clearInterval(interval);
+    };
+  }, [navigate, location.pathname]);
+  return null;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
       <Sonner />
       <BrowserRouter>
+        <GlobalAuthEpochGuard />
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/r/:token" element={<PatientReportPortal />} />
