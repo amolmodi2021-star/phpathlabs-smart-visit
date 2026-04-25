@@ -592,6 +592,9 @@ const DailyReport = () => {
         <Button variant="outline" size="sm" onClick={exportToExcel} disabled={filtered.length === 0}>
           <Download className="h-3.5 w-3.5 mr-1" /> Export Excel
         </Button>
+        <Button variant="outline" size="sm" onClick={printPdf} disabled={filtered.length === 0}>
+          <Printer className="h-3.5 w-3.5 mr-1" /> Print PDF
+        </Button>
       </div>
 
       {isSearching && (
