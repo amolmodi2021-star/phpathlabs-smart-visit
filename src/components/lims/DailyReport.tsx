@@ -392,6 +392,9 @@ const DailyReport = () => {
                 <TableHead className="whitespace-nowrap">Username</TableHead>
                 <TableHead className="whitespace-nowrap">Type</TableHead>
                 <TableHead className="whitespace-nowrap">Patient Name</TableHead>
+                <TableHead className="whitespace-nowrap">Visit Type</TableHead>
+                <TableHead className="whitespace-nowrap">Pickup/Channel</TableHead>
+                <TableHead className="whitespace-nowrap">Billing</TableHead>
                 <TableHead className="text-right whitespace-nowrap">Gross</TableHead>
                 <TableHead className="text-right whitespace-nowrap">Discount</TableHead>
                 <TableHead className="text-right whitespace-nowrap">Final</TableHead>
