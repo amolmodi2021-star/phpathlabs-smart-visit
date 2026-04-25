@@ -707,7 +707,7 @@ Deno.serve(async (req) => {
             if (!testId) continue;
 
             // Compute flag (numeric → H/L/N; qualitative/descriptive → N or X)
-            const convertedValue = applyUnitConversion(mr.result_value, param);
+            const convertedValue = applyUnitConversion(mr.result_value, param, mr.unit);
             const flag = computeFlagFromInterface(convertedValue, param);
 
             const referenceRange = param.normal_range_text
