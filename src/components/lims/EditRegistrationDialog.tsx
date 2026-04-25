@@ -67,11 +67,16 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   const [showDiscountUnlockPwd, setShowDiscountUnlockPwd] = useState(false);
   const [discountUnlocked, setDiscountUnlocked] = useState(false);
 
+  // Payment-mode lock for invoices older than today
+  const [showPaymentUnlockPwd, setShowPaymentUnlockPwd] = useState(false);
+  const [paymentUnlocked, setPaymentUnlocked] = useState(false);
+
   // Populate on open
   useEffect(() => {
     if (reg && open) {
       setRefundUnlocked(false);
       setDiscountUnlocked(false);
+      setPaymentUnlocked(false);
       setHomeVisitRefundRequested(false);
       setPatientName(reg.patient_name || "");
       setTitle(reg.title || "");
@@ -120,6 +125,16 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   const isPastAccepted = ["sample_accepted", "processing", "partial_processing", "processed", "partial_verified", "verified", "partially_approved", "approved", "partially_dispatched", "dispatched"].includes(reg?.status || "");
   const isRefundBlocked = isPastAccepted && !refundUnlocked;
   const isDiscountLocked = isPastAccepted && !discountUnlocked;
+
+  // Payment mode lock: invoices created before today require password to modify
+  const isInvoiceOlderThanToday = useMemo(() => {
+    if (!reg?.created_at) return false;
+    const d = new Date(reg.created_at);
+    const today = new Date();
+    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0);
+    return d < startOfToday;
+  }, [reg?.created_at]);
+  const isPaymentLocked = isInvoiceOlderThanToday && !paymentUnlocked;
 
   const newlyCancelled = [...cancelledTestIds].filter(id => !alreadyCancelled.has(id));
   const refundCalc = useMemo(() => {
@@ -729,34 +744,49 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
               <div className="space-y-2">
                 <h3 className="font-semibold text-sm">Payment Mode</h3>
                 <div className="text-sm text-muted-foreground mb-1">Amount Paid: <span className="font-semibold text-foreground">₹{lockedPaidAmount}</span></div>
-                <div className="flex flex-wrap gap-2">
-                  {PAYMENT_MODES.map(mode => (
-                    <Button key={mode} type="button" size="sm"
-                      variant={selectedModes.has(mode) ? "default" : "outline"}
-                      onClick={() => togglePaymentMode(mode)}
-                    >{mode}</Button>
-                  ))}
-                </div>
-                {Array.from(selectedModes).map(mode => (
-                  <div key={mode} className="flex items-center gap-2">
-                    <Label className="w-28 text-sm">{mode}:</Label>
-                    <Input type="number" min={0} className="w-32"
-                      value={modeAmounts[mode] || ""}
-                      onChange={e => setModeAmounts(prev => ({ ...prev, [mode]: Number(e.target.value) || 0 }))}
-                      placeholder="₹ Amount"
-                      readOnly={selectedModes.size === 1} />
-                  </div>
-                ))}
-                {selectedModes.size > 1 && (
-                  <div className="text-sm space-y-1 pt-1">
-                    <div className="flex justify-between"><span>Allocated:</span><span className={`font-medium ${paymentModesMismatch ? "text-destructive" : ""}`}>₹{editPaidAmount} / ₹{lockedPaidAmount}</span></div>
-                    {paymentModesMismatch && (
-                      <div className="text-destructive text-xs font-medium">
-                        ⚠ Split amounts must equal ₹{lockedPaidAmount}
-                      </div>
-                    )}
+
+                {isPaymentLocked && (
+                  <div className="p-3 rounded border border-orange-300 bg-orange-50 space-y-2">
+                    <div className="text-sm text-orange-700 flex items-center gap-2">
+                      <Lock className="h-4 w-4" />
+                      Payment mode editing is locked for invoices from previous dates. Enter admin password to unlock.
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => setShowPaymentUnlockPwd(true)}>
+                      🔓 Unlock Payment Mode
+                    </Button>
                   </div>
                 )}
+
+                <fieldset disabled={isPaymentLocked} className={isPaymentLocked ? "opacity-60 pointer-events-none" : ""}>
+                  <div className="flex flex-wrap gap-2">
+                    {PAYMENT_MODES.map(mode => (
+                      <Button key={mode} type="button" size="sm"
+                        variant={selectedModes.has(mode) ? "default" : "outline"}
+                        onClick={() => togglePaymentMode(mode)}
+                      >{mode}</Button>
+                    ))}
+                  </div>
+                  {Array.from(selectedModes).map(mode => (
+                    <div key={mode} className="flex items-center gap-2 mt-2">
+                      <Label className="w-28 text-sm">{mode}:</Label>
+                      <Input type="number" min={0} className="w-32"
+                        value={modeAmounts[mode] || ""}
+                        onChange={e => setModeAmounts(prev => ({ ...prev, [mode]: Number(e.target.value) || 0 }))}
+                        placeholder="₹ Amount"
+                        readOnly={selectedModes.size === 1} />
+                    </div>
+                  ))}
+                  {selectedModes.size > 1 && (
+                    <div className="text-sm space-y-1 pt-1">
+                      <div className="flex justify-between"><span>Allocated:</span><span className={`font-medium ${paymentModesMismatch ? "text-destructive" : ""}`}>₹{editPaidAmount} / ₹{lockedPaidAmount}</span></div>
+                      {paymentModesMismatch && (
+                        <div className="text-destructive text-xs font-medium">
+                          ⚠ Split amounts must equal ₹{lockedPaidAmount}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </fieldset>
               </div>
             )}
 
@@ -1025,7 +1055,15 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
           setDiscountUnlocked(true);
           toast.success("Discount editing unlocked for this session");
         }}
-        description="Sample has passed accepted stage. Enter admin password to unlock discount editing."
+      />
+      <DeletePasswordDialog
+        open={showPaymentUnlockPwd}
+        onOpenChange={setShowPaymentUnlockPwd}
+        onSuccess={() => {
+          setPaymentUnlocked(true);
+          toast.success("Payment mode editing unlocked for this session");
+        }}
+        description={`Invoice ${reg.invoice_number} is from a previous date. Enter admin password to unlock payment mode editing.`}
       />
       <DeletePasswordDialog
         open={showOverpaymentRefundPwd}
