@@ -266,7 +266,33 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
 
       const { error } = await supabase.from("patient_registrations").update(updateData).eq("id", reg.id);
       if (error) throw error;
-      qc.invalidateQueries({ queryKey: ["patient_registrations"] });
+
+      // Fan-out demographics to ALL records sharing this UMR (sister visits,
+      // approved report snapshots, CRM, patient master, loyalty cards, estimates,
+      // and pending LIMS analyzer orders). Audit-trail tables are intentionally
+      // left untouched. Failures here are non-fatal — the primary save succeeded.
+      try {
+        const syncResult = await syncPatientDemographicsByUmr(reg.id, {
+          umr_number: reg.umr_number,
+          patient_name: updateData.patient_name,
+          title: updateData.title,
+          gender: updateData.gender,
+          dob: updateData.dob,
+          email: updateData.email,
+          mobile_number: updateData.mobile_number,
+          address: updateData.address,
+          doctor_name: updateData.doctor_name,
+        });
+        if (syncResult.warnings.length > 0) {
+          // eslint-disable-next-line no-console
+          console.warn("[EditRegistration] demographic sync warnings:", syncResult.warnings);
+        }
+      } catch (syncErr) {
+        // eslint-disable-next-line no-console
+        console.warn("[EditRegistration] demographic sync failed", syncErr);
+      }
+
+      invalidatePatientCaches(qc);
 
       // Sync the original registration_payment row's bill snapshot. Payment-mode
       // columns stay frozen UNLESS the user truly edited the original at-registration
