@@ -16,6 +16,7 @@ import { Save, Ban, RotateCcw, Lock } from "lucide-react";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { logPaymentTransaction, syncRegistrationPaymentRow, splitPaymentModes } from "@/lib/paymentTransactions";
+import { syncPatientDemographicsByUmr, invalidatePatientCaches } from "@/lib/syncPatientDemographics";
 
 const TITLES = ["Mr.", "Mrs.", "Ms.", "Master", "Miss", "Baby Of", "Dr."];
 
