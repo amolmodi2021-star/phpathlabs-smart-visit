@@ -38,8 +38,9 @@ const SUBHEADER_MM = 6;             // sub-header row inside a profile
 const TEST_NOTE_MM = 6;             // italic test_note row at bottom of profile
 const OUTSOURCED_MM = 6;            // outsourced caption row
 const INTER_PROFILE_GAP_MM = 4;     // 1mm + 2mm spacers between profiles
-const SAFETY_PAD_MM = 5;            // cushion for minor wrap differences
+const SAFETY_PAD_MM = 6;            // cushion for minor wrap differences (raised 5→6)
 const FIT_TOLERANCE_MM = 2;         // never let estimate spill onto signature
+const STANDALONE_DIVIDER_MM = 3;    // border-t-2 + 3mm gap between standalone params
 
 // Compute a single parameter row's height accounting for every visual element
 // the renderer adds to a row: wrapped result value, wrapped reference range,
