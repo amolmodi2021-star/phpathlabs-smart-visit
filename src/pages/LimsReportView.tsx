@@ -41,18 +41,39 @@ const INTER_PROFILE_GAP_MM = 4;     // 1mm + 2mm spacers between profiles
 const SAFETY_PAD_MM = 5;            // cushion for minor wrap differences
 const FIT_TOLERANCE_MM = 2;         // never let estimate spill onto signature
 
-// Compute a single parameter row's height accounting for wrapped reference range
-const rowHeightMm = (p: any): number => {
-  const refText: string = ((p?.reference_range as string) || "").trim();
-  // ~38 chars per line in the Reference Range column at 13px
+// Compute a single parameter row's height accounting for every visual element
+// the renderer adds to a row: wrapped result value, wrapped reference range,
+// italic parameter description (under name), and remark/note row.
+const rowHeightMm = (p: any, descriptionText?: string | null): number => {
+  const refText: string = String(p?.reference_range ?? "").trim();
+  const resultText: string = String(p?.result_value ?? "").trim();
+  const description: string = String(descriptionText ?? "").trim();
+  const note: string = String(p?.note ?? "").trim();
+
+  // Reference Range col ~30% width => ~38 chars/line at 13px
   const refLines = Math.max(
     1,
     Math.ceil((refText.length || 1) / 38),
     refText ? refText.split(/\r?\n/).length : 1,
   );
-  const remarkLines = p?.note ? 1 : 0;
-  const descLines = (p as any)?.parameter_description ? 1 : 0;
-  return Math.max(ROW_HEIGHT_MM, refLines * 5 + remarkLines * 5 + descLines * 4);
+  // Result col ~20% width (~22 chars). Descriptive results (no unit/range) span ~50% (~62 chars).
+  const isDescriptive = !p?.unit && !refText;
+  const resultPerLine = isDescriptive ? 62 : 22;
+  const resultLines = resultText
+    ? Math.max(Math.ceil(resultText.length / resultPerLine), resultText.split(/\r?\n/).length)
+    : 1;
+  // Italic description under parameter name (~75% font ≈ 3.5mm/line, ~52 chars/line in Parameter col)
+  const descLines = description
+    ? Math.max(1, Math.ceil(description.length / 52), description.split(/\r?\n/).length)
+    : 0;
+  // Remark/note row: full-width row below param row, wraps freely (~110 chars/line)
+  const noteLines = note ? Math.max(1, Math.ceil(note.length / 110)) : 0;
+
+  const baseMm = Math.max(refLines, resultLines) * 5;       // tallest of result/range columns
+  const descMm = descLines * 3.5;                            // italic 75% font
+  const noteMm = noteLines * 5;                              // full-width note row
+  const padMm  = noteLines > 0 ? 1.5 : 0;
+  return Math.max(ROW_HEIGHT_MM, baseMm + descMm + noteMm + padMm);
 };
 
 // Length-aware interpretation height
