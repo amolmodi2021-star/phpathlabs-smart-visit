@@ -210,7 +210,20 @@ const EstimateDashboard = () => {
         </div>
       </div>
 
-      <Input placeholder="Search by patient name or mobile number..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full" />
+      <Input
+        placeholder="Search by patient name or mobile number..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="w-full"
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="off"
+        spellCheck={false}
+        name="estimate-search"
+        data-lpignore="true"
+        data-form-type="other"
+        data-1p-ignore="true"
+      />
 
       {isLoading ? <p className="text-sm text-muted-foreground">Loading...</p> : filteredEstimates.length === 0 ? (
         <p className="text-sm text-muted-foreground text-center py-8">No estimates yet.</p>
