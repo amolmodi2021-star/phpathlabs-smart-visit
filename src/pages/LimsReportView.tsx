@@ -928,7 +928,7 @@ const LimsReportView = () => {
               />
 
               {/* Main Content Area */}
-              <div className="flex-1 overflow-hidden">
+              <div className="flex-1 overflow-visible">{/* overflow-visible: surfaces any pagination-estimate regression instead of silently clipping rows (e.g. RFT being truncated). The outer data-page wrapper still clips for capture. */}
                 {page.type === "structured" && page.testBlocks && (() => {
                   const hasFitToPage = page.testBlocks.some(b => b.fitToPage);
                   const resultsContent = (
