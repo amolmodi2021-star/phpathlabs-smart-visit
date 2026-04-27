@@ -27,10 +27,42 @@ const PAGE_NUM_HEIGHT_MM = 6;
 const DEPT_HEADER_MM = 10;
 const TEST_HEADER_MM = 8;
 const TABLE_HEADER_MM = 7;
-const ROW_HEIGHT_MM = 5.5;
+const ROW_HEIGHT_MM = 6;            // raised from 5.5 — single-line row floor
 const INTERPRETATION_MM = 10;
 const META_LINE_MM = 5;
 const GAP_MM = 3;
+// ── New conservative pagination constants (mm) ──
+const PROFILE_HEADER_MM = 9;        // blue "PROFILE NAME (Sample: ...)" bar
+const INSTRUMENT_LINE_MM = 7;       // Instrument/Method line, allows 2 wraps
+const SUBHEADER_MM = 6;             // sub-header row inside a profile
+const TEST_NOTE_MM = 6;             // italic test_note row at bottom of profile
+const OUTSOURCED_MM = 6;            // outsourced caption row
+const INTER_PROFILE_GAP_MM = 4;     // 1mm + 2mm spacers between profiles
+const SAFETY_PAD_MM = 5;            // cushion for minor wrap differences
+const FIT_TOLERANCE_MM = 2;         // never let estimate spill onto signature
+
+// Compute a single parameter row's height accounting for wrapped reference range
+const rowHeightMm = (p: any): number => {
+  const refText: string = ((p?.reference_range as string) || "").trim();
+  // ~38 chars per line in the Reference Range column at 13px
+  const refLines = Math.max(
+    1,
+    Math.ceil((refText.length || 1) / 38),
+    refText ? refText.split(/\r?\n/).length : 1,
+  );
+  const remarkLines = p?.note ? 1 : 0;
+  const descLines = (p as any)?.parameter_description ? 1 : 0;
+  return Math.max(ROW_HEIGHT_MM, refLines * 5 + remarkLines * 5 + descLines * 4);
+};
+
+// Length-aware interpretation height
+const interpretationMm = (html?: string | null): number => {
+  if (!html) return 0;
+  const text = String(html).replace(/<[^>]*>/g, "").trim();
+  if (!text) return 0;
+  const lines = Math.max(text.split(/\r?\n/).length, Math.ceil(text.length / 95));
+  return 6 /* "Interpretation:" label */ + lines * 4 + 2 /* padding */;
+};
 
 interface TestResultEntry {
   test_id: string;
