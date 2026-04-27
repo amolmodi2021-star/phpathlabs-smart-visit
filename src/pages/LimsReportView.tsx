@@ -115,6 +115,7 @@ interface TestBlock {
   departmentId: string | null;
   departmentName: string;
   departmentOrder: number;
+  testOrder: number;
   params: TestResultEntry[];
   instrument?: string | null;
   method?: string | null;
@@ -513,6 +514,7 @@ const LimsReportView = () => {
         departmentId: deptId,
         departmentName: deptName,
         departmentOrder: deptOrder,
+        testOrder: (testInfo?.report_display_order ?? 9999),
         params: sortedParams,
         instrument: testInfo?.instrument_name,
         method: testInfo?.method,
@@ -530,6 +532,7 @@ const LimsReportView = () => {
     // Sort by department order, then test name
     testBlocks.sort((a, b) => {
       if (a.departmentOrder !== b.departmentOrder) return a.departmentOrder - b.departmentOrder;
+      if (a.testOrder !== b.testOrder) return a.testOrder - b.testOrder;
       return a.testName.localeCompare(b.testName);
     });
 
