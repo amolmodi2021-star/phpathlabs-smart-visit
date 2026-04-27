@@ -82,7 +82,21 @@ const isMorphologySection = (testName: string | null | undefined): boolean => {
   return MORPHOLOGY_TESTS.some(m => lower.includes(m));
 };
 
+const isNumericResult = (value?: string): boolean => {
+  if (!value) return false;
+  const v = String(value).trim();
+  if (!v) return false;
+  // Treat plain numbers (incl. decimals, negatives, "<10", ">100", "1.2e3") as numeric so
+  // they render centered under the Result column instead of as wide descriptive text.
+  // Examples that must be numeric: "11.48" (BUN/Creat ratio), "0.84", "-0.5", "<10".
+  return /^[<>]?\s*-?\d+(\.\d+)?(e[+-]?\d+)?\s*$/i.test(v);
+};
+
 const isDescriptiveResult = (r: TestResult): boolean => {
+  // Only truly descriptive results (text values like "Yellow", "Clear", morphology notes)
+  // get the wide colSpan treatment. Numeric results without a reference range — e.g. ratios
+  // like BUN/Creatinine — must stay aligned with the Result column above.
+  if (isNumericResult(r.result_value)) return false;
   return !r.unit && !r.normal_range_text && !r.normal_range_low && !r.normal_range_high
     && (!r.flag || r.flag === "N" || r.flag === "Normal");
 };
