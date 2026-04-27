@@ -38,21 +38,43 @@ const SUBHEADER_MM = 6;             // sub-header row inside a profile
 const TEST_NOTE_MM = 6;             // italic test_note row at bottom of profile
 const OUTSOURCED_MM = 6;            // outsourced caption row
 const INTER_PROFILE_GAP_MM = 4;     // 1mm + 2mm spacers between profiles
-const SAFETY_PAD_MM = 5;            // cushion for minor wrap differences
+const SAFETY_PAD_MM = 6;            // cushion for minor wrap differences (raised 5→6)
 const FIT_TOLERANCE_MM = 2;         // never let estimate spill onto signature
+const STANDALONE_DIVIDER_MM = 3;    // border-t-2 + 3mm gap between standalone params
 
-// Compute a single parameter row's height accounting for wrapped reference range
-const rowHeightMm = (p: any): number => {
-  const refText: string = ((p?.reference_range as string) || "").trim();
-  // ~38 chars per line in the Reference Range column at 13px
+// Compute a single parameter row's height accounting for every visual element
+// the renderer adds to a row: wrapped result value, wrapped reference range,
+// italic parameter description (under name), and remark/note row.
+const rowHeightMm = (p: any, descriptionText?: string | null): number => {
+  const refText: string = String(p?.reference_range ?? "").trim();
+  const resultText: string = String(p?.result_value ?? "").trim();
+  const description: string = String(descriptionText ?? "").trim();
+  const note: string = String(p?.note ?? "").trim();
+
+  // Reference Range col ~30% width => ~38 chars/line at 13px
   const refLines = Math.max(
     1,
     Math.ceil((refText.length || 1) / 38),
     refText ? refText.split(/\r?\n/).length : 1,
   );
-  const remarkLines = p?.note ? 1 : 0;
-  const descLines = (p as any)?.parameter_description ? 1 : 0;
-  return Math.max(ROW_HEIGHT_MM, refLines * 5 + remarkLines * 5 + descLines * 4);
+  // Result col ~20% width (~22 chars). Descriptive results (no unit/range) span ~50% (~62 chars).
+  const isDescriptive = !p?.unit && !refText;
+  const resultPerLine = isDescriptive ? 62 : 22;
+  const resultLines = resultText
+    ? Math.max(Math.ceil(resultText.length / resultPerLine), resultText.split(/\r?\n/).length)
+    : 1;
+  // Italic description under parameter name (~75% font ≈ 3.5mm/line, ~52 chars/line in Parameter col)
+  const descLines = description
+    ? Math.max(1, Math.ceil(description.length / 52), description.split(/\r?\n/).length)
+    : 0;
+  // Remark/note row: full-width row below param row, wraps freely (~110 chars/line)
+  const noteLines = note ? Math.max(1, Math.ceil(note.length / 110)) : 0;
+
+  const baseMm = Math.max(refLines, resultLines) * 5;       // tallest of result/range columns
+  const descMm = descLines * 3.5;                            // italic 75% font
+  const noteMm = noteLines * 5;                              // full-width note row
+  const padMm  = noteLines > 0 ? 1.5 : 0;
+  return Math.max(ROW_HEIGHT_MM, baseMm + descMm + noteMm + padMm);
 };
 
 // Length-aware interpretation height
@@ -449,13 +471,33 @@ const LimsReportView = () => {
       // Account for every visual element a profile renders so RFT-style tests
       // never overflow into the signature band (which would clip rows silently).
       const subheaderCount = tpOrder.filter((tp: any) => tp.is_subheader).length;
-      const paramRowsHeight = sortedParams.reduce((sum, p) => sum + rowHeightMm(p), 0);
+
+      // Build description lookup so the renderer's italic line under each parameter name is budgeted
+      const descByParamId: Record<string, string | null> = {};
+      tpOrder.forEach((tp: any) => {
+        if (tp.parameter_id) descByParamId[tp.parameter_id] = tp.parameter_description ?? null;
+      });
+
+      const paramRowsHeight = sortedParams.reduce(
+        (sum, p) => sum + rowHeightMm(p, descByParamId[p.parameter_id]),
+        0,
+      );
+
+      // Profile sample-type chip can wrap when long
+      const sampleHeaderExtraMm = (testInfo?.sample_type && String(testInfo.sample_type).length > 18) ? 3 : 0;
+
+      // Standalone profiles draw a 2px divider + ~3mm gap between every parameter
+      const standaloneAdjMm = (testInfo?.is_single_parameter)
+        ? Math.max(0, sortedParams.length - 1) * STANDALONE_DIVIDER_MM
+        : 0;
+
       let heightMm =
-        PROFILE_HEADER_MM +                                         // blue profile bar
+        PROFILE_HEADER_MM + sampleHeaderExtraMm +                   // blue profile bar (+ wrap)
         ((testInfo?.instrument_name || testInfo?.method) ? INSTRUMENT_LINE_MM : 0) +
         TABLE_HEADER_MM +
         paramRowsHeight +
         subheaderCount * SUBHEADER_MM +
+        standaloneAdjMm +                                           // dividers between standalone params
         (blockTestNoteEarly ? TEST_NOTE_MM : 0) +
         (hasOutsourcedCaption ? OUTSOURCED_MM : 0) +
         interpretationMm(testInfo?.interpretation) +

@@ -1,143 +1,115 @@
-# Fix RFT Getting Cut Off in PDF Report
+# Make Page Height Estimation Account for Every Visual Element
 
-## Problem
+## Why
 
-In invoice **2604270005** (JAGMOHAN AGARWAL), the **RFT (RENAL FUNCTION TEST)** appears at the bottom of page 3 but only shows **3 of its parameters** (Urea, Creatinine, Calcium) — the remaining parameters (Phosphorous, Uric Acid, Sodium, Potassium, Chloride, etc.) are silently lost. They never appear on page 4 (which jumps to DIABETOLOGY → HBA1C).
+The previous estimator missed several elements that the renderer actually draws inside each parameter row, plus a couple of profile-level elements. This still allows tests like RFT to spill into the signature band and get clipped. Most notably:
 
-## Root Cause
+- **Italic description under the parameter name** (`parameter_description`) — never reaches the estimator because it lives on `report_test_parameters`, not on the result row, so `p.parameter_description` was always `undefined`.
+- **Wrapped result_value** — long descriptive results (e.g. morphology / "URINE EXAMINATION" notes / multi-line text) wrap into many lines but were budgeted as one row.
+- **Wrapped remark/note row** — `r.note` renders as a full-width row that can wrap.
+- **Standalone-profile per-parameter meta rows** — `(Sample: ...)`, `Instrument: ... | Method: ...`, per-parameter `Interpretation:`, per-parameter outsourced caption, and the `border-t-2` divider with 3 mm margin between standalone parameters.
+- **Profile sample-type chip** — adds height to the profile header on wrap.
 
-The pagination logic in `src/pages/LimsReportView.tsx` (lines 360–500) decides whether a test fits on the current page using an **estimate** of the test's rendered height (`estimatedHeightMm`). The estimate is much lower than the real rendered height for several reasons:
+## What Will Change
 
-1. **Profile/blue header bar is not budgeted** — the bar `LIPID PROFILE (Sample: SERUM)`, `RFT (RENAL FUNCTION TEST) (Sample: SERUM)`, etc. is ~7 mm but the formula only adds `TEST_HEADER_MM = 8 mm` which it also has to share with internal spacers (`1mm` + `2mm` between profiles).
-2. **Multi-line reference ranges undercounted** — rows like HDL Cholesterol (`No Risk: > 60mg/dL / Moderate Risk: 40 - 60 mg/dL / High Risk: < 40 mg/dL`) take 3 line-heights but are budgeted as a single `ROW_HEIGHT_MM = 5.5 mm` row.
-3. **Profile-level `test_note` and `outsourced_caption` ignored** — these render as additional rows below the table but are never added to `heightMm`.
-4. **Instrument / Method line undercounted** — long instrument strings wrap to 2–3 lines, but only one `META_LINE_MM = 5 mm` is added.
-5. **No safety margin** — the threshold check is `usedHeight + block.estimatedHeightMm > usableHeight`. Any underestimate of even 1 mm causes content to spill past the page.
-6. **Silent clipping** — the page DOM is rendered with `maxHeight: 297mm` + `overflow-hidden` (line 846, 851). When the estimate is wrong, overflowing rows are **clipped, not pushed to the next page** — which is exactly what's happening to RFT's missing parameters.
+Edit only `src/pages/LimsReportView.tsx`. No DB / schema / other file changes.
 
-## Fix
+### 1. Description-aware row height
 
-### 1. Make the per-test height estimate conservative and complete
-
-In `src/pages/LimsReportView.tsx` (the `useMemo` block around lines 360–450), rebuild `heightMm` so it accounts for every visual element a profile renders:
-
-```text
-heightMm = PROFILE_HEADER_MM             // blue "LIPID PROFILE (Sample: SERUM)" bar
-         + INSTRUMENT_LINE_MM            // wrapped Instrument/Method line (allow 2 lines)
-         + TABLE_HEADER_MM               // "Parameter | Result | Reference Range | Flag"
-         + sum(rowHeight(param))         // see #2 below
-         + subheaderCount * SUBHEADER_MM
-         + (test_note ? TEST_NOTE_MM : 0)
-         + (outsourced_caption ? OUTSOURCED_MM : 0)
-         + (interpretation ? INTERPRETATION_MM_dynamic : 0)
-         + INTER_PROFILE_GAP_MM          // 2mm + 1mm spacers between profiles
-         + SAFETY_PAD_MM                 // 4mm cushion to absorb minor wrap differences
-```
-
-Concrete constants (mm):
-
-```text
-PROFILE_HEADER_MM      = 9
-INSTRUMENT_LINE_MM     = 7   // covers up to 2 wrapped lines
-TABLE_HEADER_MM        = 7
-ROW_HEIGHT_MM          = 6   // raised from 5.5
-SUBHEADER_MM           = 6
-TEST_NOTE_MM           = 6
-OUTSOURCED_MM          = 6
-INTER_PROFILE_GAP_MM   = 4
-SAFETY_PAD_MM          = 5
-```
-
-### 2. Per-row height that accounts for wrapped reference ranges
-
-Compute each row's height from the reference-range text length, since long ranges (e.g. `No Risk: > 60mg/dL\nModerate Risk: 40 - 60 mg/dL\nHigh Risk: < 40 mg/dL`) wrap into multiple lines:
+Replace `rowHeightMm(p)` with `rowHeightMm(p, descriptionText)`:
 
 ```ts
-function rowHeightMm(p: TestResultEntry): number {
-  const refText = (p.reference_range || '').trim();
-  // ~38 chars per line in the Reference Range column at 13px
+const rowHeightMm = (p: any, descriptionText?: string | null): number => {
+  const refText    = String(p?.reference_range ?? "").trim();
+  const resultText = String(p?.result_value    ?? "").trim();
+  const description = String(descriptionText ?? "").trim();
+  const note       = String(p?.note ?? "").trim();
+
+  // Reference Range col ~30% width => ~38 chars/line at 13px
   const refLines = Math.max(
     1,
-    Math.ceil(refText.length / 38),
-    refText.split(/\r?\n/).length,
+    Math.ceil((refText.length || 1) / 38),
+    refText ? refText.split(/\r?\n/).length : 1,
   );
-  const remarkLines = p.note ? 1 : 0;
-  const descLines   = (p as any).parameter_description ? 1 : 0;
-  return Math.max(6, refLines * 5 + remarkLines * 5 + descLines * 4);
-}
+  // Result col ~20% width (~22 chars) — but descriptive results span ~50% (~62 chars)
+  const isDescriptive = !p?.unit && !refText;
+  const resultPerLine = isDescriptive ? 62 : 22;
+  const resultLines = resultText
+    ? Math.max(Math.ceil(resultText.length / resultPerLine),
+               resultText.split(/\r?\n/).length)
+    : 1;
+  // Italic description under parameter name (~75% font, ~3.5mm/line, ~52 chars/line)
+  const descLines = description
+    ? Math.max(1, Math.ceil(description.length / 52),
+                  description.split(/\r?\n/).length)
+    : 0;
+  // Remark/note row: full-width, ~110 chars/line
+  const noteLines = note ? Math.max(1, Math.ceil(note.length / 110)) : 0;
+
+  const baseMm = Math.max(refLines, resultLines) * 5;
+  const descMm = descLines * 3.5;
+  const noteMm = noteLines * 5;
+  const padMm  = noteLines > 0 ? 1.5 : 0;
+  return Math.max(ROW_HEIGHT_MM, baseMm + descMm + noteMm + padMm);
+};
 ```
 
-### 3. Dynamic interpretation height
+### 2. Feed descriptions into the estimator
 
-Replace the flat `INTERPRETATION_MM = 10` with a length-based estimate:
-
-```ts
-function interpretationMm(html: string | null): number {
-  if (!html) return 0;
-  const text = html.replace(/<[^>]*>/g, '').trim();
-  if (!text) return 0;
-  const lines = Math.max(text.split(/\r?\n/).length, Math.ceil(text.length / 95));
-  return 6 /* "Interpretation:" label */ + lines * 4 + 2 /* padding */;
-}
-```
-
-### 4. Tighten the page-fit decision and force-flush oversized tests
-
-In the per-block loop (around line 467):
+When building each test block (the loop near line ~444), look up the description for each parameter from `testParamsMap[testId]`:
 
 ```ts
-const FIT_TOLERANCE_MM = 2; // never let an estimate spill onto signature
-
-const fits = (used: number, h: number) => used + h <= (usableHeight - FIT_TOLERANCE_MM);
-
-blocks.forEach(block => {
-  if (block.dedicatedPage) { /* unchanged */ return; }
-
-  // If the block alone is taller than a full page, keep current behavior
-  // (still place it on a fresh page; downstream `fit_to_page` AutoScale will shrink it).
-  if (currentPageBlocks.length > 0 && !fits(usedHeight, block.estimatedHeightMm)) {
-    allPages.push({ type: "structured", departmentName: deptName, testBlocks: currentPageBlocks, approvers: collectApprovers(currentPageBlocks) });
-    currentPageBlocks = [];
-    usedHeight = DEPT_HEADER_MM;
-  }
-  currentPageBlocks.push(block);
-  usedHeight += block.estimatedHeightMm;
+const descByParamId: Record<string, string | null> = {};
+(testParamsMap[testId] || []).forEach((tp: any) => {
+  if (tp.parameter_id) descByParamId[tp.parameter_id] = tp.parameter_description ?? null;
 });
+
+const paramRowsHeight = sortedParams.reduce(
+  (sum, p) => sum + rowHeightMm(p, descByParamId[p.parameter_id]),
+  0,
+);
 ```
 
-This guarantees: **if a whole test's parameters cannot fit in the remaining space below the current content (and above the signature block), the entire test is moved to the next page** — exactly per the user's requirement.
+### 3. Standalone-profile per-parameter meta budget
 
-### 5. Stop silent clipping (defense in depth)
+For tests rendered as "_individual" / standalone (`isSingleParameter` or no profile grouping), each parameter can carry its own `(Sample:)`, `Instrument | Method`, `Interpretation:` and outsourced caption rows, plus a `border-t-2` divider with ~3 mm gap between params. Add a per-block adjustment:
 
-Currently the page wrapper uses `overflow-hidden` + `maxHeight: 297mm`, so any pagination miss = lost content. Change the structured-content area only (not the snip-image area, which legitimately needs clipping) so overflow is **visible during preview** so any future regression is obvious instead of silently dropping rows:
-
-In `src/pages/LimsReportView.tsx` around line 888:
-
-```tsx
-<div className="flex-1 overflow-visible">
-  {/* structured content */}
-</div>
+```ts
+const STANDALONE_DIVIDER_MM = 3;
+const STANDALONE_META_LINE_MM = 5;
+const standaloneAdjMm = block.isSingleParameter
+  ? Math.max(0, sortedParams.length - 1) * STANDALONE_DIVIDER_MM
+  : 0;
+heightMm += standaloneAdjMm;
+// For standalone tests, the profile-level Instrument/Method/Sample lines aren't shown
+// (they're shown per-parameter), so we already have INSTRUMENT_LINE_MM budgeted; that's fine.
 ```
 
-The outer `data-page` wrapper keeps `overflow-hidden` for the actual print/PDF capture (so signature stays anchored), but with the conservative budget from steps 1–4 we will never reach overflow in practice.
+### 4. Profile sample-type chip wrap
 
-## Files to Edit
+The `(Sample: ...)` chip lives inline on the profile header. Long sample-type strings can wrap. Add 3 mm to `PROFILE_HEADER_MM` when `testInfo?.sample_type` is set and is long:
+
+```ts
+const sampleHeaderExtraMm = (testInfo?.sample_type && testInfo.sample_type.length > 18) ? 3 : 0;
+```
+
+Add `sampleHeaderExtraMm` into the `heightMm` sum.
+
+### 5. Slightly bump safety pad
+
+Raise `SAFETY_PAD_MM` from **5 → 6** to absorb sub-millimetre rounding across many rows (a 12-row test accumulates up to ~3 mm of rounding).
+
+## Files Edited
 
 - `src/pages/LimsReportView.tsx`
-  - Constants block at top (lines 21–33): add new constants (`PROFILE_HEADER_MM`, `INSTRUMENT_LINE_MM`, `SUBHEADER_MM`, `TEST_NOTE_MM`, `OUTSOURCED_MM`, `INTER_PROFILE_GAP_MM`, `SAFETY_PAD_MM`, `FIT_TOLERANCE_MM`); raise `ROW_HEIGHT_MM` from 5.5 → 6.
-  - Add helper functions `rowHeightMm()` and `interpretationMm()` near the top of the `useMemo` (around line 360).
-  - Replace `heightMm` calculation (lines 412–418) with the new conservative formula.
-  - Replace fit check (line 479) to use the `fits()` helper with `FIT_TOLERANCE_MM`.
-  - Change `overflow-hidden` → `overflow-visible` on the inner structured-content `flex-1` (line 888).
+  - Replace `rowHeightMm` (lines ~44–56) with the description+result+note-aware version.
+  - Inside the `useMemo` that builds `testBlocks` (around lines ~440–463), build `descByParamId`, pass it into `rowHeightMm`, add standalone-divider and sample-chip adjustments, and bump `SAFETY_PAD_MM` constant.
 
-No DB migration, no schema change, no new files.
+No render-time changes needed — `parameter_description` already reaches the renderer through `transformBlocksToGrouped`.
 
 ## Verification
 
-After the change, regenerate the report for invoice **2604270005**:
-
-- Page 3 should end after **LIPID PROFILE** + interpretation (or earlier if needed).
-- **RFT (RENAL FUNCTION TEST)** should start fresh on page 4 with **all parameters** (Urea, Creatinine, Calcium, Phosphorous, Uric Acid, Sodium, Potassium, Chloride, etc.) fully visible.
-- **DIABETOLOGY → HBA1C** moves to page 5.
-- Signature block stays anchored at bottom of every page; nothing is cut.
-- Re-check 2–3 other large reports (any with CBC + Lipid + RFT or LFT) to confirm no regressions in pagination.
+Re-render reports that previously caused issues:
+- Invoice **2604270005** (JAGMOHAN AGARWAL): RFT must remain fully on its own page.
+- Any report whose tests carry `parameter_description` (italic line under the parameter name) — those tests must now reserve enough height and never overlap the signature.
+- Reports with long descriptive results (Urine, morphology, peripheral smear) — must paginate without clipping.
