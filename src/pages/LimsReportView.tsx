@@ -27,10 +27,42 @@ const PAGE_NUM_HEIGHT_MM = 6;
 const DEPT_HEADER_MM = 10;
 const TEST_HEADER_MM = 8;
 const TABLE_HEADER_MM = 7;
-const ROW_HEIGHT_MM = 5.5;
+const ROW_HEIGHT_MM = 6;            // raised from 5.5 — single-line row floor
 const INTERPRETATION_MM = 10;
 const META_LINE_MM = 5;
 const GAP_MM = 3;
+// ── New conservative pagination constants (mm) ──
+const PROFILE_HEADER_MM = 9;        // blue "PROFILE NAME (Sample: ...)" bar
+const INSTRUMENT_LINE_MM = 7;       // Instrument/Method line, allows 2 wraps
+const SUBHEADER_MM = 6;             // sub-header row inside a profile
+const TEST_NOTE_MM = 6;             // italic test_note row at bottom of profile
+const OUTSOURCED_MM = 6;            // outsourced caption row
+const INTER_PROFILE_GAP_MM = 4;     // 1mm + 2mm spacers between profiles
+const SAFETY_PAD_MM = 5;            // cushion for minor wrap differences
+const FIT_TOLERANCE_MM = 2;         // never let estimate spill onto signature
+
+// Compute a single parameter row's height accounting for wrapped reference range
+const rowHeightMm = (p: any): number => {
+  const refText: string = ((p?.reference_range as string) || "").trim();
+  // ~38 chars per line in the Reference Range column at 13px
+  const refLines = Math.max(
+    1,
+    Math.ceil((refText.length || 1) / 38),
+    refText ? refText.split(/\r?\n/).length : 1,
+  );
+  const remarkLines = p?.note ? 1 : 0;
+  const descLines = (p as any)?.parameter_description ? 1 : 0;
+  return Math.max(ROW_HEIGHT_MM, refLines * 5 + remarkLines * 5 + descLines * 4);
+};
+
+// Length-aware interpretation height
+const interpretationMm = (html?: string | null): number => {
+  if (!html) return 0;
+  const text = String(html).replace(/<[^>]*>/g, "").trim();
+  if (!text) return 0;
+  const lines = Math.max(text.split(/\r?\n/).length, Math.ceil(text.length / 95));
+  return 6 /* "Interpretation:" label */ + lines * 4 + 2 /* padding */;
+};
 
 interface TestResultEntry {
   test_id: string;
@@ -409,18 +441,29 @@ const LimsReportView = () => {
         return (orderMap[a.parameter_id] ?? 999) - (orderMap[b.parameter_id] ?? 999);
       });
 
-      // Calculate estimated height
-      const paramCount = sortedParams.length;
+      // First non-null test_note across this test's params (denormalised across rows)
+      const blockTestNoteEarly = sortedParams.find(p => p.test_note && String(p.test_note).trim())?.test_note || null;
+      const hasOutsourcedCaption = !!(testInfo?.is_outsourced && (testInfo as any)?.outsourced_caption);
+
+      // ── Conservative per-test height estimate ──
+      // Account for every visual element a profile renders so RFT-style tests
+      // never overflow into the signature band (which would clip rows silently).
       const subheaderCount = tpOrder.filter((tp: any) => tp.is_subheader).length;
-      let heightMm = TEST_HEADER_MM + TABLE_HEADER_MM + (paramCount * ROW_HEIGHT_MM) + (subheaderCount * ROW_HEIGHT_MM) + GAP_MM;
-      if (testInfo?.interpretation) heightMm += INTERPRETATION_MM;
-      if (testInfo?.instrument_name || testInfo?.method || testInfo?.sample_type) heightMm += META_LINE_MM;
+      const paramRowsHeight = sortedParams.reduce((sum, p) => sum + rowHeightMm(p), 0);
+      let heightMm =
+        PROFILE_HEADER_MM +                                         // blue profile bar
+        ((testInfo?.instrument_name || testInfo?.method) ? INSTRUMENT_LINE_MM : 0) +
+        TABLE_HEADER_MM +
+        paramRowsHeight +
+        subheaderCount * SUBHEADER_MM +
+        (blockTestNoteEarly ? TEST_NOTE_MM : 0) +
+        (hasOutsourcedCaption ? OUTSOURCED_MM : 0) +
+        interpretationMm(testInfo?.interpretation) +
+        INTER_PROFILE_GAP_MM +
+        SAFETY_PAD_MM;
 
       // Collect unique approvers for this test block
       const blockApprovers = [...new Set(sortedParams.map(p => p.approved_by).filter(Boolean))] as string[];
-
-      // First non-null test_note across this test's params (denormalised across rows)
-      const blockTestNote = sortedParams.find(p => p.test_note && String(p.test_note).trim())?.test_note || null;
 
       testBlocks.push({
         testId,
@@ -433,7 +476,7 @@ const LimsReportView = () => {
         method: testInfo?.method,
         sampleType: testInfo?.sample_type,
         interpretation: testInfo?.interpretation,
-        testNote: blockTestNote,
+        testNote: blockTestNoteEarly,
         estimatedHeightMm: heightMm,
         fitToPage: testInfo?.fit_to_page ?? false,
         dedicatedPage: testInfo?.dedicated_page ?? false,
@@ -476,7 +519,7 @@ const LimsReportView = () => {
           return;
         }
 
-        if (currentPageBlocks.length > 0 && (usedHeight + block.estimatedHeightMm) > usableHeight) {
+        if (currentPageBlocks.length > 0 && (usedHeight + block.estimatedHeightMm) > (usableHeight - FIT_TOLERANCE_MM)) {
           // Flush current page
           allPages.push({ type: "structured", departmentName: deptName, testBlocks: currentPageBlocks, approvers: collectApprovers(currentPageBlocks) });
           currentPageBlocks = [];
@@ -885,7 +928,7 @@ const LimsReportView = () => {
               />
 
               {/* Main Content Area */}
-              <div className="flex-1 overflow-hidden">
+              <div className="flex-1 overflow-visible">{/* overflow-visible: surfaces any pagination-estimate regression instead of silently clipping rows (e.g. RFT being truncated). The outer data-page wrapper still clips for capture. */}
                 {page.type === "structured" && page.testBlocks && (() => {
                   const hasFitToPage = page.testBlocks.some(b => b.fitToPage);
                   const resultsContent = (
