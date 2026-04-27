@@ -519,7 +519,7 @@ const LimsReportView = () => {
           return;
         }
 
-        if (currentPageBlocks.length > 0 && (usedHeight + block.estimatedHeightMm) > usableHeight) {
+        if (currentPageBlocks.length > 0 && (usedHeight + block.estimatedHeightMm) > (usableHeight - FIT_TOLERANCE_MM)) {
           // Flush current page
           allPages.push({ type: "structured", departmentName: deptName, testBlocks: currentPageBlocks, approvers: collectApprovers(currentPageBlocks) });
           currentPageBlocks = [];
