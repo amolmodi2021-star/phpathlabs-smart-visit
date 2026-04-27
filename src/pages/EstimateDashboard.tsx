@@ -147,16 +147,47 @@ const EstimateDashboard = () => {
 
   const toggleSelect = (id: string) => setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
-  const handleExport = () => {
-    exportToExcel(estimates.map((e: any) => ({
-      Date: format(new Date(e.created_at), "dd-MM-yyyy"),
-      "Patient Name": e.patient_name || "",
-      "WhatsApp": e.whatsapp_number,
-      "Total Amount": e.total_amount,
-      "Discount": e.discount_amount,
-      "Home Visit": e.home_visit_charges,
-      "Final Amount": e.final_amount,
-    })), "estimates_export");
+  const handleExport = async () => {
+    try {
+      const CHUNK = 1000;
+      let all: any[] = [];
+      let from = 0;
+      // Fetch ALL estimates matching current filters (bypass 1000 row default limit)
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        let q = supabase
+          .from("estimates")
+          .select("*")
+          .eq("status", "Estimate Created")
+          .order("created_at", { ascending: false })
+          .range(from, from + CHUNK - 1);
+        if (debouncedSearch) {
+          q = q.or(`patient_name.ilike.%${debouncedSearch}%,whatsapp_number.ilike.%${debouncedSearch}%`);
+        }
+        const { data, error } = await q;
+        if (error) throw error;
+        const rows = (data || []) as any[];
+        all = all.concat(rows);
+        if (rows.length < CHUNK) break;
+        from += CHUNK;
+      }
+      if (all.length === 0) {
+        toast.error("No estimates to export");
+        return;
+      }
+      exportToExcel(all.map((e: any) => ({
+        Date: format(new Date(e.created_at), "dd-MM-yyyy"),
+        "Patient Name": e.patient_name || "",
+        "WhatsApp": e.whatsapp_number,
+        "Total Amount": e.total_amount,
+        "Discount": e.discount_amount,
+        "Home Visit": e.home_visit_charges,
+        "Final Amount": e.final_amount,
+      })), "estimates_export");
+      toast.success(`Exported ${all.length} estimate(s)`);
+    } catch (err: any) {
+      toast.error(err?.message || "Export failed");
+    }
   };
 
   // Server-side search applied
