@@ -441,12 +441,26 @@ const LimsReportView = () => {
         return (orderMap[a.parameter_id] ?? 999) - (orderMap[b.parameter_id] ?? 999);
       });
 
-      // Calculate estimated height
-      const paramCount = sortedParams.length;
+      // First non-null test_note across this test's params (denormalised across rows)
+      const blockTestNoteEarly = sortedParams.find(p => p.test_note && String(p.test_note).trim())?.test_note || null;
+      const hasOutsourcedCaption = !!(testInfo?.is_outsourced && (testInfo as any)?.outsourced_caption);
+
+      // ── Conservative per-test height estimate ──
+      // Account for every visual element a profile renders so RFT-style tests
+      // never overflow into the signature band (which would clip rows silently).
       const subheaderCount = tpOrder.filter((tp: any) => tp.is_subheader).length;
-      let heightMm = TEST_HEADER_MM + TABLE_HEADER_MM + (paramCount * ROW_HEIGHT_MM) + (subheaderCount * ROW_HEIGHT_MM) + GAP_MM;
-      if (testInfo?.interpretation) heightMm += INTERPRETATION_MM;
-      if (testInfo?.instrument_name || testInfo?.method || testInfo?.sample_type) heightMm += META_LINE_MM;
+      const paramRowsHeight = sortedParams.reduce((sum, p) => sum + rowHeightMm(p), 0);
+      let heightMm =
+        PROFILE_HEADER_MM +                                         // blue profile bar
+        ((testInfo?.instrument_name || testInfo?.method) ? INSTRUMENT_LINE_MM : 0) +
+        TABLE_HEADER_MM +
+        paramRowsHeight +
+        subheaderCount * SUBHEADER_MM +
+        (blockTestNoteEarly ? TEST_NOTE_MM : 0) +
+        (hasOutsourcedCaption ? OUTSOURCED_MM : 0) +
+        interpretationMm(testInfo?.interpretation) +
+        INTER_PROFILE_GAP_MM +
+        SAFETY_PAD_MM;
 
       // Collect unique approvers for this test block
       const blockApprovers = [...new Set(sortedParams.map(p => p.approved_by).filter(Boolean))] as string[];
