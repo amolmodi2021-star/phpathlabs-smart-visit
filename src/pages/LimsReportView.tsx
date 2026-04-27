@@ -471,13 +471,33 @@ const LimsReportView = () => {
       // Account for every visual element a profile renders so RFT-style tests
       // never overflow into the signature band (which would clip rows silently).
       const subheaderCount = tpOrder.filter((tp: any) => tp.is_subheader).length;
-      const paramRowsHeight = sortedParams.reduce((sum, p) => sum + rowHeightMm(p), 0);
+
+      // Build description lookup so the renderer's italic line under each parameter name is budgeted
+      const descByParamId: Record<string, string | null> = {};
+      tpOrder.forEach((tp: any) => {
+        if (tp.parameter_id) descByParamId[tp.parameter_id] = tp.parameter_description ?? null;
+      });
+
+      const paramRowsHeight = sortedParams.reduce(
+        (sum, p) => sum + rowHeightMm(p, descByParamId[p.parameter_id]),
+        0,
+      );
+
+      // Profile sample-type chip can wrap when long
+      const sampleHeaderExtraMm = (testInfo?.sample_type && String(testInfo.sample_type).length > 18) ? 3 : 0;
+
+      // Standalone profiles draw a 2px divider + ~3mm gap between every parameter
+      const standaloneAdjMm = (testInfo?.is_single_parameter)
+        ? Math.max(0, sortedParams.length - 1) * STANDALONE_DIVIDER_MM
+        : 0;
+
       let heightMm =
-        PROFILE_HEADER_MM +                                         // blue profile bar
+        PROFILE_HEADER_MM + sampleHeaderExtraMm +                   // blue profile bar (+ wrap)
         ((testInfo?.instrument_name || testInfo?.method) ? INSTRUMENT_LINE_MM : 0) +
         TABLE_HEADER_MM +
         paramRowsHeight +
         subheaderCount * SUBHEADER_MM +
+        standaloneAdjMm +                                           // dividers between standalone params
         (blockTestNoteEarly ? TEST_NOTE_MM : 0) +
         (hasOutsourcedCaption ? OUTSOURCED_MM : 0) +
         interpretationMm(testInfo?.interpretation) +
