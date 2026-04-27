@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,26 +6,145 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Loader2, GripVertical } from "lucide-react";
+import { Plus, Pencil, Trash2, Loader2, GripVertical, ChevronRight, ChevronDown } from "lucide-react";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { getTestsByDepartment, reorderTestsInDepartment, type DepartmentTestRow } from "@/lib/tests";
 
-const SortableRow = ({ dept, onEdit, onDelete }: { dept: any; onEdit: () => void; onDelete: () => void }) => {
+// ── Sortable test row inside a department ──
+const SortableTestRow = ({ test, position }: { test: DepartmentTestRow; position: number }) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: test.id });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-3 px-3 py-2 border-b last:border-b-0 bg-background"
+    >
+      <button type="button" className="cursor-grab touch-none text-muted-foreground" {...attributes} {...listeners}>
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <span className="flex-1 text-sm">{test.display_name || test.test_name}</span>
+      <span className="text-xs text-muted-foreground w-10 text-right">#{position}</span>
+    </div>
+  );
+};
+
+// ── Expanded panel with the test list for a single department ──
+const DepartmentTestsPanel = ({ departmentId }: { departmentId: string }) => {
+  const [tests, setTests] = useState<DepartmentTestRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await getTestsByDepartment(departmentId);
+      setTests(data);
+    } catch (err: any) {
+      toast({ title: "Failed to load tests", description: err.message, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  }, [departmentId, toast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = tests.findIndex((t) => t.id === active.id);
+    const newIndex = tests.findIndex((t) => t.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+
+    const reordered = arrayMove(tests, oldIndex, newIndex).map((t, i) => ({ ...t, report_display_order: i + 1 }));
+    setTests(reordered);
+
+    try {
+      await reorderTestsInDepartment(reordered.map((t) => ({ id: t.id, report_display_order: t.report_display_order! })));
+      toast({ title: "Test order updated" });
+    } catch (err: any) {
+      toast({ title: "Failed to save order", description: err.message, variant: "destructive" });
+      load();
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-6 bg-muted/30">
+        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (tests.length === 0) {
+    return (
+      <div className="px-6 py-4 bg-muted/30 text-sm text-muted-foreground">
+        No tests assigned to this department.
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-muted/30 px-6 py-3 space-y-2">
+      <div className="text-xs text-muted-foreground">
+        Drag tests to set the order they appear in generated reports.
+      </div>
+      <div className="rounded border bg-background">
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={tests.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+            {tests.map((t, idx) => (
+              <SortableTestRow key={t.id} test={t} position={idx + 1} />
+            ))}
+          </SortableContext>
+        </DndContext>
+      </div>
+    </div>
+  );
+};
+
+// ── Sortable department row (with expand toggle) ──
+const SortableRow = ({
+  dept,
+  expanded,
+  onToggle,
+  onEdit,
+  onDelete,
+}: {
+  dept: any;
+  expanded: boolean;
+  onToggle: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: dept.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
 
   return (
-    <div ref={setNodeRef} style={style} className="flex items-center gap-3 px-4 py-3 border-b last:border-b-0 bg-background">
-      <button type="button" className="cursor-grab touch-none text-muted-foreground" {...attributes} {...listeners}>
-        <GripVertical className="h-4 w-4" />
-      </button>
-      <span className="flex-1 font-medium text-sm">{dept.department_name}</span>
-      <span className="text-xs text-muted-foreground w-12 text-center">{dept.display_order}</span>
-      <div className="flex gap-1">
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onEdit}><Pencil className="h-3 w-3" /></Button>
-        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={onDelete}><Trash2 className="h-3 w-3" /></Button>
+    <div ref={setNodeRef} style={style} className="border-b last:border-b-0 bg-background">
+      <div className="flex items-center gap-3 px-4 py-3">
+        <button type="button" className="cursor-grab touch-none text-muted-foreground" {...attributes} {...listeners}>
+          <GripVertical className="h-4 w-4" />
+        </button>
+        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onToggle} aria-label={expanded ? "Collapse" : "Expand"}>
+          {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        </Button>
+        <button type="button" onClick={onToggle} className="flex-1 text-left font-medium text-sm">
+          {dept.department_name}
+        </button>
+        <span className="text-xs text-muted-foreground w-12 text-center">{dept.display_order}</span>
+        <div className="flex gap-1">
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onEdit}><Pencil className="h-3 w-3" /></Button>
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={onDelete}><Trash2 className="h-3 w-3" /></Button>
+        </div>
       </div>
+      {expanded && <DepartmentTestsPanel departmentId={dept.id} />}
     </div>
   );
 };
@@ -36,10 +155,11 @@ const ReportDepartments = ({ embedded }: { embedded?: boolean }) => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [name, setName] = useState("");
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const { toast } = useToast();
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
@@ -52,6 +172,14 @@ const ReportDepartments = ({ embedded }: { embedded?: boolean }) => {
 
   useEffect(() => { load(); }, []);
 
+  const toggleExpand = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -61,7 +189,6 @@ const ReportDepartments = ({ embedded }: { embedded?: boolean }) => {
     const reordered = arrayMove(departments, oldIndex, newIndex).map((d, i) => ({ ...d, display_order: i + 1 }));
     setDepartments(reordered);
 
-    // Persist all order changes
     await Promise.all(
       reordered.map((d) => supabase.from("report_departments").update({ display_order: d.display_order }).eq("id", d.id))
     );
@@ -111,6 +238,7 @@ const ReportDepartments = ({ embedded }: { embedded?: boolean }) => {
             <>
               <div className="flex items-center gap-3 px-4 py-2 text-xs font-medium text-muted-foreground border-b">
                 <span className="w-4" />
+                <span className="w-7" />
                 <span className="flex-1">Department Name</span>
                 <span className="w-12 text-center">Order</span>
                 <span className="w-[72px]">Actions</span>
@@ -118,7 +246,14 @@ const ReportDepartments = ({ embedded }: { embedded?: boolean }) => {
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                 <SortableContext items={departments.map(d => d.id)} strategy={verticalListSortingStrategy}>
                   {departments.map((d) => (
-                    <SortableRow key={d.id} dept={d} onEdit={() => handleEdit(d)} onDelete={() => handleDelete(d.id)} />
+                    <SortableRow
+                      key={d.id}
+                      dept={d}
+                      expanded={expandedIds.has(d.id)}
+                      onToggle={() => toggleExpand(d.id)}
+                      onEdit={() => handleEdit(d)}
+                      onDelete={() => handleDelete(d.id)}
+                    />
                   ))}
                 </SortableContext>
               </DndContext>

@@ -1,56 +1,45 @@
-# Fix BUN / CREATININE RATIO Result Misalignment
+## Goal
 
-## Problem
+In **Test Management → Departments**, expand each department row to show all tests assigned to it, and let the user reorder those tests via drag-and-drop. The chosen order replaces the current alphabetical sort when reports are generated.
 
-In the RFT (RENAL FUNCTION TEST) section, the result `11.48` for **BUN / CREATININE RATIO** appears left-aligned and shifted slightly right of the "Result" column header, while every row above it (Urea, Creatinine, Calcium, Phosphorus, Uric Acid, Blood Urea Nitrogen) is properly centered under the "Result" column.
+## What the user will see
 
-## Root Cause
+Departments tab keeps the existing draggable list of departments. Each row becomes expandable (chevron). Expanded panel shows:
 
-In `src/components/report/ReportResultsSection.tsx`, the helper `isDescriptiveResult()` (lines 85–88) returns `true` for any row that has **no unit, no reference range, and no flag** — regardless of whether the value itself is numeric or text:
-
-```ts
-const isDescriptiveResult = (r) =>
-  !r.unit && !r.normal_range_text && !r.normal_range_low && !r.normal_range_high
-  && (!r.flag || r.flag === "N" || r.flag === "Normal");
+```text
+▾ BIOCHEMISTRY                                        Order: 2  [Edit] [Del]
+   ┌─────────────────────────────────────────────────────────────┐
+   │ ⋮⋮  LFT (Liver Function Test)                       #1      │
+   │ ⋮⋮  KFT / RFT (Renal Function Test)                 #2      │
+   │ ⋮⋮  LIPID PROFILE                                   #3      │
+   │ ⋮⋮  HBA1C                                           #4      │
+   └─────────────────────────────────────────────────────────────┘
+   (Drag the handle to change the order tests appear in reports)
 ```
 
-`BUN / CREATININE RATIO` is a calculated ratio with no unit and no reference range, so it falls into this branch. The renderer then draws the row using a wide `colSpan={3}` cell with `text-left px-2` (line 138–141) — meant for descriptive text like "Yellow", "Clear", "Negative", or morphology notes — instead of using the centered numeric path.
+Empty departments show "No tests assigned to this department".
 
-Result: `11.48` renders as left-aligned text spanning Result + Reference Range + Flag columns, looking misaligned.
+## How it works
 
-## Fix
+1. Add a new column `report_display_order` (integer, nullable) to the `tests` table. Existing tests get backfilled by alphabetical order within each department so behaviour is unchanged at first load.
+2. The department row in `ReportDepartments.tsx` becomes a collapsible. On expand, fetch the tests where `department_id = <dept.id>` ordered by `report_display_order NULLS LAST, test_name`.
+3. Inside the panel, render a `DndContext` + `SortableContext` of test rows (handle, name, position number). On drag-end, reassign `report_display_order = index + 1` for the affected department's tests and persist via a single batched update.
+4. In **`src/pages/LimsReportView.tsx`** change the test sort (currently `a.testName.localeCompare(b.testName)`) to use `report_display_order` first, falling back to test name. The tests `select(...)` query is extended to include `report_display_order`. Department-level order remains unchanged.
 
-Treat a result as "descriptive" **only** when the value is non-numeric. Pure numeric values (including decimals, negatives, and `<10` / `>100` style limits) should always render through the normal numeric path so they sit centered under the Result column.
+## Technical notes
 
-### Edit `src/components/report/ReportResultsSection.tsx`
+- **Migration**: `ALTER TABLE tests ADD COLUMN report_display_order integer;` then a backfill `UPDATE` using `ROW_NUMBER() OVER (PARTITION BY department_id ORDER BY test_name)`. Add an index on `(department_id, report_display_order)` for fast ordered fetches.
+- **Files touched**
+  - `src/pages/ReportDepartments.tsx` — add expand/collapse state per dept, nested sortable test list, save handler.
+  - `src/lib/tests.ts` — add `getTestsByDepartment(deptId)` and `reorderTestsInDepartment(items)` helpers (mirroring the existing `reorderTestParameters` pattern).
+  - `src/pages/LimsReportView.tsx` — add `report_display_order` to the tests select; build `testOrderMap`; replace alphabetical fallback with `(orderMap[a.testId] ?? 9999) - (orderMap[b.testId] ?? 9999)` then name.
+  - `src/lib/expandRegistrationTests.ts` — verify it does not assume alphabetical order (read-only check; no change expected).
+- **Drag library**: reuse `@dnd-kit/core` + `@dnd-kit/sortable` already used by `SortableRow` in `ReportDepartments.tsx` and by `TestParameterManager.tsx`.
+- **Persistence pattern**: same as `reorderTestParameters` — issue per-row `UPDATE` calls in `Promise.all`, then toast "Order updated".
+- **No impact on**: billing order, results entry grouping (already grouped by machine/instrument), or department ordering itself.
 
-Add a `isNumericResult()` helper and short-circuit `isDescriptiveResult()` when the value is numeric:
+## Out of scope
 
-```ts
-const isNumericResult = (value?: string): boolean => {
-  if (!value) return false;
-  const v = String(value).trim();
-  if (!v) return false;
-  // "11.48", "0.84", "-0.5", "<10", ">100", "1.2e3"
-  return /^[<>]?\s*-?\d+(\.\d+)?(e[+-]?\d+)?\s*$/i.test(v);
-};
-
-const isDescriptiveResult = (r: TestResult): boolean => {
-  if (isNumericResult(r.result_value)) return false;
-  return !r.unit && !r.normal_range_text && !r.normal_range_low && !r.normal_range_high
-    && (!r.flag || r.flag === "N" || r.flag === "Normal");
-};
-```
-
-Nothing else changes. Morphology rows (`isMorph`) still use the descriptive path because they're forced via `isDescriptiveResult(r) || isMorph` on line 112.
-
-## Files Edited
-
-- `src/components/report/ReportResultsSection.tsx` (lines 85–88 only)
-
-## Verification
-
-After the change, in the same RFT block:
-- BUN / CREATININE RATIO → `11.48` renders centered under the Result column, aligned with Urea (20.62), Creatinine (0.84), etc.
-- The Reference Range and Flag columns for that row stay empty (no false text).
-- Truly descriptive results (Urine "Color: Yellow", "Appearance: Clear", peripheral smear morphology notes) keep their wide, left-aligned descriptive layout — unchanged.
+- Changing how tests are assigned to a department (still done via the test edit form's Department dropdown).
+- Reordering parameters inside a test (already handled in `TestParameterManager`).
+- Cross-department drag (a test belongs to exactly one department).

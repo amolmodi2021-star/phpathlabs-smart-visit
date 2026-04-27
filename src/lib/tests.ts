@@ -86,6 +86,44 @@ export const bulkInsertTests = async (tests: SaveTestPayload[]) => {
   });
 };
 
+// ── Department-wise test ordering helpers ──
+
+export interface DepartmentTestRow {
+  id: string;
+  test_name: string;
+  display_name: string | null;
+  report_display_order: number | null;
+}
+
+export const getTestsByDepartment = async (departmentId: string): Promise<DepartmentTestRow[]> => {
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from("tests")
+      .select("id, test_name, display_name, report_display_order")
+      .eq("department_id", departmentId)
+      .eq("is_active", true)
+      .order("report_display_order", { ascending: true, nullsFirst: false })
+      .order("test_name", { ascending: true });
+    if (error) throw new Error(error.message);
+    return (data || []) as DepartmentTestRow[];
+  });
+};
+
+export const reorderTestsInDepartment = async (
+  items: { id: string; report_display_order: number }[],
+) => {
+  return withRetry(async () => {
+    await Promise.all(
+      items.map((item) =>
+        supabase
+          .from("tests")
+          .update({ report_display_order: item.report_display_order } as any)
+          .eq("id", item.id),
+      ),
+    );
+  });
+};
+
 // ── Multi-tube helpers ──
 
 export interface TestSampleTube {

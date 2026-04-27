@@ -115,6 +115,7 @@ interface TestBlock {
   departmentId: string | null;
   departmentName: string;
   departmentOrder: number;
+  testOrder: number;
   params: TestResultEntry[];
   instrument?: string | null;
   method?: string | null;
@@ -242,7 +243,7 @@ const LimsReportView = () => {
       supabase.from("patient_registrations").select("*").eq("id", registrationId).single(),
       supabase.from("report_layout_settings").select("*").limit(1).single(),
       supabase.from("report_departments").select("*").order("display_order", { ascending: true }),
-      supabase.from("tests").select("id, test_name, department_id, instrument_name, method, sample_type, interpretation, is_outsourced, display_name, bold_in_report, show_in_report, fit_to_page, dedicated_page, is_single_parameter"),
+      supabase.from("tests").select("id, test_name, department_id, instrument_name, method, sample_type, interpretation, is_outsourced, display_name, bold_in_report, show_in_report, fit_to_page, dedicated_page, is_single_parameter, report_display_order"),
       supabase.from("outsourced_test_snips").select("*").eq("registration_id", registrationId),
       supabase.from("pathologist_signatures").select("*"),
     ]);
@@ -513,6 +514,7 @@ const LimsReportView = () => {
         departmentId: deptId,
         departmentName: deptName,
         departmentOrder: deptOrder,
+        testOrder: (testInfo?.report_display_order ?? 9999),
         params: sortedParams,
         instrument: testInfo?.instrument_name,
         method: testInfo?.method,
@@ -530,6 +532,7 @@ const LimsReportView = () => {
     // Sort by department order, then test name
     testBlocks.sort((a, b) => {
       if (a.departmentOrder !== b.departmentOrder) return a.departmentOrder - b.departmentOrder;
+      if (a.testOrder !== b.testOrder) return a.testOrder - b.testOrder;
       return a.testName.localeCompare(b.testName);
     });
 

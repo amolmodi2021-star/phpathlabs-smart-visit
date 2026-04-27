@@ -3393,6 +3393,7 @@ export type Database = {
           method: string | null
           outsourced_caption: string | null
           price: number
+          report_display_order: number | null
           sample_tube: string | null
           sample_type: string | null
           show_in_report: boolean
@@ -3424,6 +3425,7 @@ export type Database = {
           method?: string | null
           outsourced_caption?: string | null
           price?: number
+          report_display_order?: number | null
           sample_tube?: string | null
           sample_type?: string | null
           show_in_report?: boolean
@@ -3455,6 +3457,7 @@ export type Database = {
           method?: string | null
           outsourced_caption?: string | null
           price?: number
+          report_display_order?: number | null
           sample_tube?: string | null
           sample_type?: string | null
           show_in_report?: boolean
