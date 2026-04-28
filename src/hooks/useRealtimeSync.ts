@@ -45,15 +45,16 @@ export function useRealtimeSync(
   tables: TableName | TableName[],
   queryKeys: string[],
   debounceMs = 1500,
-  options: { enabled?: boolean } = {},
+  options: { enabled?: boolean; filter?: string } = {},
 ) {
-  const { enabled = true } = options;
+  const { enabled = true, filter } = options;
   const queryClient = useQueryClient();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const keysRef = useRef(queryKeys);
   keysRef.current = queryKeys;
 
   const tablesKey = Array.isArray(tables) ? tables.join(",") : tables;
+  const channelKey = filter ? `${tablesKey}|${filter}` : tablesKey;
 
   useEffect(() => {
     if (!enabled) return;
