@@ -295,6 +295,36 @@ const LoyaltyCardSender = () => {
       const template = templates.find((t: any) => t.id === selectedTemplateId);
       if (!template?.background_image_url) throw new Error("Template has no background image");
 
+      // Load WhatsApp config + ABC Card marketing template (mirrors AbnormalBulkSender)
+      const { data: settings } = await supabase
+        .from("app_settings")
+        .select("setting_key, setting_value")
+        .like("setting_key", "wa_global_%");
+      const cfg: Record<string, string> = {};
+      (settings || []).forEach((s: any) => { cfg[s.setting_key] = s.setting_value; });
+
+      const { data: tmpl } = await supabase
+        .from("marketing_templates")
+        .select("whatsapp_template_name, body_mapping, api_base_url, from_number")
+        .eq("template_name", "ABC Card")
+        .maybeSingle();
+
+      const apiBaseUrl = cfg["wa_global_baseUrl"];
+      const apiKey = cfg["wa_global_apiKey"];
+      const templateName = (tmpl as any)?.whatsapp_template_name || "";
+      const authHeaderName = cfg["wa_global_authHeaderName"] || "apikey";
+      const authHeaderPrefix = cfg["wa_global_authHeaderPrefix"] || "";
+      const fromNumber = cfg["wa_global_fromNumber"] || "";
+      const campaignName = (tmpl as any)?.api_base_url || "";
+      const includeMediaHeader = (tmpl as any)?.from_number === "media_header_enabled";
+      const sendQueueEnabled = cfg["wa_global_queueEnabled"] !== "false";
+      const sendDelayRaw = Number(cfg["wa_global_delayMs"]);
+      const sendDelayMs = Number.isFinite(sendDelayRaw) && sendDelayRaw >= 0 ? sendDelayRaw : 1000;
+
+      if (!apiBaseUrl || !apiKey || !templateName) {
+        throw new Error("WhatsApp not configured. Set up 'ABC Card' marketing template and WhatsApp Settings.");
+      }
+
       const bgImg = await loadImage(template.background_image_url);
       const canvas = document.createElement("canvas");
       canvas.width = bgImg.naturalWidth;
@@ -302,54 +332,79 @@ const LoyaltyCardSender = () => {
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("Canvas not supported");
 
-      // Card history / job tracking removed — cards are rendered, uploaded to
-      // Cloudinary, and sent via WhatsApp. No DB rows are written.
       const placeholders = (template.placeholders as any[]) || [];
-      const BATCH_SIZE = 5; // Upload 5 in parallel
+      let sentCount = 0;
+      let failedCount = 0;
 
-      for (let i = 0; i < excelData.length; i += BATCH_SIZE) {
-        const batch = excelData.slice(i, i + BATCH_SIZE);
-
-        // Canvas can't be shared in parallel, so render sequentially then upload in parallel
-         const renderResults: { patientData: Record<string, string>; blob: Blob }[] = [];
-        for (let b = 0; b < batch.length; b++) {
-          const row = batch[b];
-          const patientData: Record<string, string> = {};
-          FIELDS.forEach((f) => {
-            const col = columnMapping[f];
-            let val = col ? String(row[col] ?? "") : "";
-             if (f === "Mobile" && val) val = normalizeIndianMobile(val, false);
-            if (f === "Discount %" && val && !val.includes("%")) val = val + "%";
-            if (f === "Expiry Date") {
-              if (useStaticExpiry && staticExpiryDate) {
-                val = staticExpiryDate;
-              } else if (col) {
-                val = formatExpiryDate(row[col]);
-              }
+      for (let i = 0; i < excelData.length; i++) {
+        const row = excelData[i];
+        const patientData: Record<string, string> = {};
+        FIELDS.forEach((f) => {
+          const col = columnMapping[f];
+          let val = col ? String(row[col] ?? "") : "";
+          if (f === "Mobile" && val) val = normalizeIndianMobile(val, false);
+          if (f === "Discount %" && val && !val.includes("%")) val = val + "%";
+          if (f === "Expiry Date") {
+            if (useStaticExpiry && staticExpiryDate) {
+              val = staticExpiryDate;
+            } else if (col) {
+              val = formatExpiryDate(row[col]);
             }
-            patientData[f] = val;
+          }
+          patientData[f] = val;
+        });
+
+        try {
+          const blob = await renderCard(canvas, ctx, bgImg, placeholders, patientData);
+          const imageUrl = await uploadJpegToCloudinaryWithRetry(async () => blob);
+
+          const mobile = patientData["Mobile"];
+          if (!mobile) throw new Error("Missing mobile");
+          const toNumber = `+91${mobile}`;
+          const components: Record<string, unknown> = {};
+          if (includeMediaHeader) {
+            components.header = { type: "image", image: { link: imageUrl } };
+          }
+          components.body = { params: [(patientData["Name"] || patientData["UMR"] || "").toUpperCase()] };
+
+          const payload = {
+            from: fromNumber,
+            to: toNumber,
+            templateName,
+            campaignName,
+            type: "template",
+            components,
+          };
+
+          const proxyRes = await supabase.functions.invoke("whatsapp-proxy", {
+            body: { apiBaseUrl, apiKey, authHeaderName, authHeaderPrefix, payload },
           });
-           const blob = await renderCard(canvas, ctx, bgImg, placeholders, patientData);
-          renderResults.push({ patientData, blob });
+
+          const resStatus = (proxyRes.data as any)?.status ?? 0;
+          if (proxyRes.error || resStatus >= 400) {
+            throw new Error(
+              (proxyRes.data as any)?.body?.slice?.(0, 200) ||
+                proxyRes.error?.message ||
+                `HTTP ${resStatus}`,
+            );
+          }
+          sentCount++;
+        } catch (err: any) {
+          failedCount++;
+          console.error("Failed card for row", i, err);
         }
 
-        // Upload all blobs to Cloudinary in parallel (free egress, no filename collisions).
-        // Mirrors the drip-sender path so storage costs stay at $0 instead of Lovable Cloud's
-        // paid egress (~$4–5/day for 1k cards).
-        // Card history / job tracking removed — no DB rows are written.
-        await Promise.all(renderResults.map(async ({ blob }, batchIdx) => {
-          const idx = i + batchIdx;
-          try {
-            await uploadJpegToCloudinaryWithRetry(async () => blob);
-          } catch (err) {
-            console.error("Failed card for row", idx, err);
-          }
-        }));
+        setProgress({ current: i + 1, total: excelData.length });
 
-        setProgress({ current: Math.min(i + BATCH_SIZE, excelData.length), total: excelData.length });
+        if (sendQueueEnabled && sendDelayMs > 0 && i < excelData.length - 1) {
+          await new Promise((r) => setTimeout(r, sendDelayMs));
+        }
       }
 
-      toast({ title: "All cards generated!" });
+      toast({
+        title: "Generate & Send complete",
+        description: `Sent: ${sentCount} · Failed: ${failedCount}`,
+      });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     } finally {
