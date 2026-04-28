@@ -391,24 +391,16 @@ export default function WhatsAppChat() {
       const msgContent = type === "text" ? (body || "") : `[${type}] ${caption || mediaUrl || ""}`;
       const tempId = crypto.randomUUID();
 
-      const [wmInsert, mslInsert] = await Promise.all([
-        supabase.from("webhook_messages").insert({
-          sender_number: `+91${selectedMobile}`,
-          message: msgContent,
-          direction: "outbound",
-          message_type: type,
-          media_url: type !== "text" ? mediaUrl : null,
-          message_id: tempId,
-          delivery_status: "pending",
-        }).select("id").single(),
-        supabase.from("message_send_log").insert({
-          mobile_number: selectedMobile,
-          patient_name: selectedContact?.name || selectedContact?.profileName || null,
-          message_type: type === "text" ? "Chat Reply" : `Chat ${type.charAt(0).toUpperCase() + type.slice(1)}`,
-          message_id: tempId,
-          delivery_status: "pending",
-        }).select("id").single(),
-      ]);
+      // Write only to webhook_messages — chat reads exclusively from this table now.
+      await supabase.from("webhook_messages").insert({
+        sender_number: `+91${selectedMobile}`,
+        message: msgContent,
+        direction: "outbound",
+        message_type: type,
+        media_url: type !== "text" ? mediaUrl : null,
+        message_id: tempId,
+        delivery_status: "pending",
+      });
 
       const { data: proxyRes, error } = await supabase.functions.invoke("whatsapp-proxy", {
         body: { apiBaseUrl: baseUrl, apiKey, authHeaderName, authHeaderPrefix, payload },
@@ -419,15 +411,13 @@ export default function WhatsAppChat() {
       const messageId = extractMessageId(proxyRes) || "";
 
       if (messageId) {
-        await Promise.all([
-          supabase.from("webhook_messages").update({ message_id: messageId, delivery_status: "sent" }).eq("message_id", tempId),
-          supabase.from("message_send_log").update({ message_id: messageId, delivery_status: "sent" } as any).eq("message_id", tempId),
-        ]);
+        await supabase.from("webhook_messages")
+          .update({ message_id: messageId, delivery_status: "sent" })
+          .eq("message_id", tempId);
       } else {
-        await Promise.all([
-          supabase.from("webhook_messages").update({ delivery_status: "sent" }).eq("message_id", tempId),
-          supabase.from("message_send_log").update({ delivery_status: "sent" } as any).eq("message_id", tempId),
-        ]);
+        await supabase.from("webhook_messages")
+          .update({ delivery_status: "sent" })
+          .eq("message_id", tempId);
       }
 
       queryClient.invalidateQueries({ queryKey: ["wa-messages", selectedMobile] });
