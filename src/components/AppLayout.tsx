@@ -46,16 +46,10 @@ const StorageCleanupButton = ({ onClick, rail = false }: { onClick?: () => void;
     setCleaning(true);
     onClick?.();
     try {
-      const [cardRes, snipRes] = await Promise.all([
-        supabase.functions.invoke("cleanup-card-images", { body: { source: "manual" } }),
-        supabase.functions.invoke("cleanup-outsourced-snips", { body: { source: "manual" } }),
-      ]);
-
-      const cardDeleted = cardRes.data?.deleted ?? 0;
+      const snipRes = await supabase.functions.invoke("cleanup-outsourced-snips", { body: { source: "manual" } });
       const snipDeleted = snipRes.data?.deleted ?? snipRes.data?.files_removed ?? 0;
-
       toast.success("Storage Cleanup Complete", {
-        description: `Card images removed: ${cardDeleted} | Outsourced snips removed: ${snipDeleted}`,
+        description: `Outsourced snips removed: ${snipDeleted}`,
       });
     } catch (err: any) {
       toast.error("Cleanup failed", { description: err.message });

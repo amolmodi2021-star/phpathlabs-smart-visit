@@ -6,9 +6,6 @@ verify_jwt = false
 [functions.generate-loyalty-card]
 verify_jwt = false
 
-[functions.send-loyalty-whatsapp]
-verify_jwt = false
-
 [functions.abnormal-tests-import]
 verify_jwt = false
 
@@ -18,13 +15,7 @@ verify_jwt = false
 [functions.user-auth]
 verify_jwt = false
 
-[functions.cleanup-card-images]
-verify_jwt = false
-
 [functions.cleanup-outsourced-snips]
-verify_jwt = false
-
-[functions.prune-old-logs]
 verify_jwt = false
 
 [functions.purge-bucket]

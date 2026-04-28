@@ -20,7 +20,6 @@ type TableName =
   | "patient_results"
   | "patient_registrations"
   | "sample_tubes"
-  | "message_send_log"
   | "lims_test_orders"
   | "lims_interface_logs"
   | "lims_unmapped_results"
