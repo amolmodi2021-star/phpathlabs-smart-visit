@@ -1187,11 +1187,12 @@ const ResultVerification = () => {
             const isVerifying = verifyingKey === reg.id;
             return (
               <Card key={reg.id} className={isExpanded ? "ring-1 ring-primary/30" : ""}>
-                <div className="flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/30 transition-colors" onClick={() => setExpandedPatient(isExpanded ? null : reg.id)}>
+                <div className="flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/30 transition-colors" onClick={() => { markArrivalSeen(reg.id); setExpandedPatient(isExpanded ? null : reg.id); }}>
                   {isExpanded ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-medium font-mono">{reg.invoice_number}</span>
+                      <NewBadge show={isNewArrival(reg.id)} />
                       {reg.status !== "sample_accepted" && reg.status !== "entered" && Array.isArray(reg.accepted_samples) && reg.accepted_samples.length > 0 && (
                         <Badge className="bg-amber-100 text-amber-700 text-[10px]">PARTIAL</Badge>
                       )}
