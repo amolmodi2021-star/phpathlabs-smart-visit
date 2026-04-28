@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Search, ShieldCheck, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, ScanBarcode, Printer } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { formatAgeGender } from "@/lib/ageGender";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { printBarcodes } from "@/lib/barcodePrint";
