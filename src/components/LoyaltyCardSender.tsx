@@ -365,7 +365,7 @@ const LoyaltyCardSender = () => {
           if (includeMediaHeader) {
             components.header = { type: "image", image: { link: imageUrl } };
           }
-          components.body = { params: [(patientData["Name"] || patientData["UMR"] || "").toUpperCase()] };
+          // ABC Card template has no body variables — omit body.params to avoid mis-match error.
 
           const payload = {
             from: fromNumber,
