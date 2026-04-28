@@ -560,8 +560,8 @@ const Dispatch = () => {
                       </div>
                       <div className={cn("flex items-center gap-2", isMobile && "w-full overflow-x-auto")}>
                         {selectedEntry.registration.due_amount > 0 && (
-                          <Badge variant="destructive" className="text-xs px-2 py-1 shrink-0">
-                            DUE ₹{selectedEntry.registration.due_amount}
+                          <Badge variant={isPaymentBlocked(selectedEntry.registration) ? "destructive" : "secondary"} className="text-xs px-2 py-1 shrink-0">
+                            DUE ₹{selectedEntry.registration.due_amount}{!isPaymentBlocked(selectedEntry.registration) ? " · CREDIT" : ""}
                           </Badge>
                         )}
                         {selectedEntry.tests.some(t => t.status === "approved" || t.status === "dispatched") && (
