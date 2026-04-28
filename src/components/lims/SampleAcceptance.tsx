@@ -482,7 +482,7 @@ const SampleAcceptance = () => {
                       </TableRow>
                       {isExpanded && (
                         <TableRow key={`${reg.id}-detail`}>
-                          <TableCell colSpan={isAccepted ? 7 : 8} className="bg-muted/30 p-4">
+                          <TableCell colSpan={isAccepted ? 8 : 9} className="bg-muted/30 p-4">
                             <div className="space-y-2">
                               <div className="text-sm font-medium">Sample Details</div>
                               {tubes.map((tube) => {
