@@ -50,6 +50,7 @@ interface AbnormalCardTemplate {
     borderColor?: string;
     resultColor?: string;
     colWidths?: number[];
+    colAligns?: Array<"left" | "center" | "right">;
   } | null;
   footer_lines?: Array<{
     text: string;
