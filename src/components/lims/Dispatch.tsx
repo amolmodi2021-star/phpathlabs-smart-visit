@@ -439,15 +439,7 @@ const Dispatch = () => {
         <span className="text-xs text-muted-foreground ml-auto whitespace-nowrap">{dispatchCount} records{dispatchTotalPages > 1 ? ` (pg ${dispatchPage + 1}/${dispatchTotalPages})` : ""}</span>
       </div>
 
-      {loadingRegs ? (
-        <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
-      ) : sortedDispatchEntries.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          <Truck className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          <p className="text-lg font-medium">No reports pending dispatch</p>
-          <p className="text-sm">All approved reports have been dispatched</p>
-        </div>
-      ) : (
+      {(
         <div className={cn("flex gap-3", isMobile && "flex-col")} style={{ height: "calc(100vh - 180px)" }}>
           {/* LEFT PANEL — Patient List */}
           {(!isMobile || !mobileShowDetail) && (
@@ -459,6 +451,15 @@ const Dispatch = () => {
                 </div>
               </div>
               <ScrollArea className="flex-1">
+                {loadingRegs ? (
+                  <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+                ) : sortedDispatchEntries.length === 0 ? (
+                  <div className="text-center py-12 text-muted-foreground px-3">
+                    <Truck className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                    <p className="text-sm font-medium">No reports pending dispatch</p>
+                    <p className="text-xs">All approved reports have been dispatched</p>
+                  </div>
+                ) : (
                 <div className="divide-y">
                   {sortedDispatchEntries.map((entry) => {
                     const reg = entry.registration;
@@ -501,6 +502,7 @@ const Dispatch = () => {
                     );
                   })}
                 </div>
+                )}
               </ScrollArea>
               {dispatchTotalPages > 1 && (
                 <div className="p-2 border-t flex items-center justify-between">
