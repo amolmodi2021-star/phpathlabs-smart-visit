@@ -3553,40 +3553,9 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      cleanup_blacklisted_contacts: { Args: never; Returns: number }
-      cleanup_non_phpl_duplicates: { Args: never; Returns: number }
-      cleanup_non_phpl_mobile_duplicates: { Args: never; Returns: number }
       generate_invoice_number: { Args: never; Returns: string }
       generate_sample_uid: { Args: never; Returns: string }
       generate_umr_number: { Args: never; Returns: string }
-      get_abnormal_history_counts: {
-        Args: never
-        Returns: {
-          sent_records: number
-          total_records: number
-          unsent_records: number
-        }[]
-      }
-      get_abnormal_patients: {
-        Args: { p_limit?: number; p_offset?: number; p_search?: string }
-        Returns: {
-          contact_primary_key: string
-          mobile_number: string
-          patient_name: string
-          test_count: number
-          umr_number: string
-        }[]
-      }
-      get_abnormal_patients_count: {
-        Args: { p_search?: string }
-        Returns: number
-      }
-      get_abnormal_pks: {
-        Args: never
-        Returns: {
-          contact_primary_key: string
-        }[]
-      }
       get_all_patient_registrations: {
         Args: { p_search?: string }
         Returns: {
@@ -3621,61 +3590,6 @@ export type Database = {
         }[]
       }
       get_cloud_usage_stats: { Args: never; Returns: Json }
-      get_crm_contacts_count: {
-        Args: { p_location?: string; p_search?: string; p_tag?: string }
-        Returns: number
-      }
-      get_crm_contacts_paginated: {
-        Args: {
-          p_location?: string
-          p_page?: number
-          p_page_size?: number
-          p_search?: string
-          p_tag?: string
-        }
-        Returns: {
-          bill_number: string
-          created_at: string
-          created_by: string
-          default_discount_pct: number
-          discount_amount: number
-          doctor_name: string
-          due_amount: number
-          gross_amount: number
-          id: string
-          last_sent_date: string
-          last_sent_type: string
-          location: string
-          mobile_number: string
-          net_amount: number
-          paid_amount: number
-          patient_name: string
-          payment_type: string
-          primary_key: string
-          record_tag: string
-          remarks: string
-          umr_number: string
-          updated_at: string
-          visit_date: string
-          visit_type: string
-        }[]
-      }
-      get_drip_contact_slice: {
-        Args: never
-        Returns: {
-          default_discount_pct: number
-          id: string
-          last_sent_date: string
-          last_sent_type: string
-          location: string
-          mobile_number: string
-          patient_name: string
-          primary_key: string
-          record_tag: string
-          umr_number: string
-          visit_date: string
-        }[]
-      }
       get_new_numbers_paginated: {
         Args: { p_limit?: number; p_offset?: number; p_search?: string }
         Returns: {
