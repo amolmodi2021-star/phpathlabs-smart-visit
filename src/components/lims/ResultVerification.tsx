@@ -683,6 +683,7 @@ const ResultVerification = () => {
       await supabase.from("outsourced_test_snips").update({ outsource_status: "verified" } as any).eq("registration_id", reg.id).eq("test_id", testId).in("outsource_status", ["results_entered", "entered", "sent", "results_saved"]);
       
       toast.success(`${testName} verified & sent to Doctor Approval`);
+      signalSync("doctor_approval", reg.id);
       recalculateRegistrationStatus(reg.id).catch(console.error);
       setEditedValues(prev => {
         const next = { ...prev };
