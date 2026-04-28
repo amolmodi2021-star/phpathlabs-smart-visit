@@ -289,19 +289,8 @@ export default function WhatsAppChat() {
     return () => { supabase.removeChannel(channel); };
   }, [queryClient, selectedMobile]);
 
-  // Also subscribe to message_send_log changes
-  useEffect(() => {
-    const channel = supabase
-      .channel("wa-chat-sendlog-rt")
-      .on("postgres_changes", { event: "*", schema: "public", table: "message_send_log" }, () => {
-        queryClient.invalidateQueries({ queryKey: ["wa-contacts"] });
-        if (selectedMobile) {
-          queryClient.invalidateQueries({ queryKey: ["wa-messages", selectedMobile] });
-        }
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [queryClient, selectedMobile]);
+  // (message_send_log realtime subscription removed — chat now reads only from webhook_messages)
+
 
   // Load global WA settings
   useEffect(() => {
