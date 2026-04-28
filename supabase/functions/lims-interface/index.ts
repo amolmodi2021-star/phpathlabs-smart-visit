@@ -57,6 +57,13 @@ function computeFlagFromInterface(rawValue: string, param: any): string {
   const value = (rawValue ?? "").toString().trim();
   if (!value) return "";
 
+  // Operator-prefixed readings (">2000", "> 2000", "≥2000", "<0.01", "≤ 2")
+  // mean the analyzer saturated/floored its measurable range. Flag H/L
+  // regardless of whitespace or whether the trailing number lies inside the
+  // configured normal range — the true value is outside the measurable bound.
+  if (/^(?:>=|≥|>)\s*-?\d*\.?\d+/.test(value)) return "H";
+  if (/^(?:<=|≤|<)\s*-?\d*\.?\d+/.test(value)) return "L";
+
   const num = parseFloat(value);
   if (!isNaN(num) && param?.normal_range_low != null && param?.normal_range_high != null) {
     if (num < Number(param.normal_range_low)) return "L";

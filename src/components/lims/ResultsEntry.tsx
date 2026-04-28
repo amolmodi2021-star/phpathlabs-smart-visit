@@ -684,7 +684,13 @@ const ResultsEntry = () => {
       if (!ref) return "";
       return value.trim().toLowerCase() === ref ? "N" : "X";
     }
-    const num = parseFloat(value);
+    // Operator-prefixed values (">5", "> 5", "≥5", "<0.01", "≤ 2") indicate the
+    // analyzer/operator capped the reading. Treat as definitively H/L regardless
+    // of whitespace or whether the trailing number sits inside the normal range.
+    const trimmed = value.trim();
+    if (/^(?:>=|≥|>)\s*-?\d*\.?\d+/.test(trimmed)) return "H";
+    if (/^(?:<=|≤|<)\s*-?\d*\.?\d+/.test(trimmed)) return "L";
+    const num = parseFloat(trimmed);
     if (isNaN(num)) return "";
     if (low != null && num < low) return "L";
     if (high != null && num > high) return "H";
