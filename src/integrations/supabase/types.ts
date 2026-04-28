@@ -3553,6 +3553,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      delete_all_whatsapp_chats: { Args: never; Returns: number }
       generate_invoice_number: { Args: never; Returns: string }
       generate_sample_uid: { Args: never; Returns: string }
       generate_umr_number: { Args: never; Returns: string }
