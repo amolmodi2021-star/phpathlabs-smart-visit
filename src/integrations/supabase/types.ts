@@ -979,74 +979,6 @@ export type Database = {
         }
         Relationships: []
       }
-      drip_campaign_log: {
-        Row: {
-          contact_primary_key: string | null
-          created_at: string
-          cycle_number: number
-          filter_id: string | null
-          filter_name: string | null
-          id: string
-          message_type: string | null
-          mobile_number: string | null
-          patient_name: string | null
-          skip_reason: string | null
-          status: string
-        }
-        Insert: {
-          contact_primary_key?: string | null
-          created_at?: string
-          cycle_number?: number
-          filter_id?: string | null
-          filter_name?: string | null
-          id?: string
-          message_type?: string | null
-          mobile_number?: string | null
-          patient_name?: string | null
-          skip_reason?: string | null
-          status?: string
-        }
-        Update: {
-          contact_primary_key?: string | null
-          created_at?: string
-          cycle_number?: number
-          filter_id?: string | null
-          filter_name?: string | null
-          id?: string
-          message_type?: string | null
-          mobile_number?: string | null
-          patient_name?: string | null
-          skip_reason?: string | null
-          status?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "drip_campaign_log_filter_id_fkey"
-            columns: ["filter_id"]
-            isOneToOne: false
-            referencedRelation: "drip_campaign_filters"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      drip_mobile_cycles: {
-        Row: {
-          current_cycle: number
-          mobile_number: string
-          updated_at: string
-        }
-        Insert: {
-          current_cycle?: number
-          mobile_number: string
-          updated_at?: string
-        }
-        Update: {
-          current_cycle?: number
-          mobile_number?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
       estimate_tests: {
         Row: {
           created_at: string
@@ -1546,53 +1478,6 @@ export type Database = {
           },
         ]
       }
-      loyalty_card_jobs: {
-        Row: {
-          created_at: string
-          delay_ms: number
-          id: string
-          queue_enabled: boolean
-          sent_count: number
-          status: string
-          template_id: string | null
-          total_cards: number
-          whatsapp_template_name: string | null
-          whatsapp_variables_mapping: Json | null
-        }
-        Insert: {
-          created_at?: string
-          delay_ms?: number
-          id?: string
-          queue_enabled?: boolean
-          sent_count?: number
-          status?: string
-          template_id?: string | null
-          total_cards?: number
-          whatsapp_template_name?: string | null
-          whatsapp_variables_mapping?: Json | null
-        }
-        Update: {
-          created_at?: string
-          delay_ms?: number
-          id?: string
-          queue_enabled?: boolean
-          sent_count?: number
-          status?: string
-          template_id?: string | null
-          total_cards?: number
-          whatsapp_template_name?: string | null
-          whatsapp_variables_mapping?: Json | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "loyalty_card_jobs_template_id_fkey"
-            columns: ["template_id"]
-            isOneToOne: false
-            referencedRelation: "loyalty_card_templates"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       loyalty_card_templates: {
         Row: {
           background_image_url: string | null
@@ -1619,56 +1504,6 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
-      }
-      loyalty_cards: {
-        Row: {
-          created_at: string
-          discount: string | null
-          expiry_date: string | null
-          id: string
-          image_url: string | null
-          job_id: string | null
-          mobile: string | null
-          patient_name: string | null
-          sent_at: string | null
-          umr: string | null
-          whatsapp_status: string
-        }
-        Insert: {
-          created_at?: string
-          discount?: string | null
-          expiry_date?: string | null
-          id?: string
-          image_url?: string | null
-          job_id?: string | null
-          mobile?: string | null
-          patient_name?: string | null
-          sent_at?: string | null
-          umr?: string | null
-          whatsapp_status?: string
-        }
-        Update: {
-          created_at?: string
-          discount?: string | null
-          expiry_date?: string | null
-          id?: string
-          image_url?: string | null
-          job_id?: string | null
-          mobile?: string | null
-          patient_name?: string | null
-          sent_at?: string | null
-          umr?: string | null
-          whatsapp_status?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "loyalty_cards_job_id_fkey"
-            columns: ["job_id"]
-            isOneToOne: false
-            referencedRelation: "loyalty_card_jobs"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       marketing_campaigns: {
         Row: {
@@ -1795,63 +1630,6 @@ export type Database = {
           mapped_value?: string | null
           mapped_value_2?: string | null
           value?: string
-        }
-        Relationships: []
-      }
-      message_send_log: {
-        Row: {
-          created_at: string
-          delivered_at: string | null
-          delivery_status: string | null
-          failed_at: string | null
-          id: string
-          message_content: string | null
-          message_id: string | null
-          message_type: string
-          mobile_number: string
-          patient_name: string | null
-          primary_key: string | null
-          read_at: string | null
-          retry_count: number
-          retry_payload: Json | null
-          sent_at: string
-          umr_number: string | null
-        }
-        Insert: {
-          created_at?: string
-          delivered_at?: string | null
-          delivery_status?: string | null
-          failed_at?: string | null
-          id?: string
-          message_content?: string | null
-          message_id?: string | null
-          message_type: string
-          mobile_number: string
-          patient_name?: string | null
-          primary_key?: string | null
-          read_at?: string | null
-          retry_count?: number
-          retry_payload?: Json | null
-          sent_at?: string
-          umr_number?: string | null
-        }
-        Update: {
-          created_at?: string
-          delivered_at?: string | null
-          delivery_status?: string | null
-          failed_at?: string | null
-          id?: string
-          message_content?: string | null
-          message_id?: string | null
-          message_type?: string
-          mobile_number?: string
-          patient_name?: string | null
-          primary_key?: string | null
-          read_at?: string | null
-          retry_count?: number
-          retry_payload?: Json | null
-          sent_at?: string
-          umr_number?: string | null
         }
         Relationships: []
       }
@@ -3591,17 +3369,6 @@ export type Database = {
         }[]
       }
       get_cloud_usage_stats: { Args: never; Returns: Json }
-      get_new_numbers_paginated: {
-        Args: { p_limit?: number; p_offset?: number; p_search?: string }
-        Returns: {
-          last_message_type: string
-          last_sent_at: string
-          message_count: number
-          mobile: string
-          patient_name: string
-          total_count: number
-        }[]
-      }
       get_patient_registrations_count: {
         Args: { p_search?: string }
         Returns: number

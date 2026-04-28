@@ -413,19 +413,8 @@ const UnifiedHistory = () => {
     },
   });
 
-  // Drip campaign log
-  const { data: dripLogs = [] } = useQuery({
-    queryKey: ["unified-history-drip"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("drip_campaign_log")
-        .select("*")
-        .eq("status", "sent")
-        .order("created_at", { ascending: false })
-        .limit(500);
-      return data || [];
-    },
-  });
+  // Drip campaign log table dropped — return empty list.
+  const dripLogs: any[] = [];
 
   const filtered = crmRecords.filter((r: any) => {
     if (!search) return true;

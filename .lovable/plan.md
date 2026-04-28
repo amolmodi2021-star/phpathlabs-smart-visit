@@ -1,96 +1,133 @@
-## Root Cause (last 24-48 h)
+# Drop all WhatsApp / message logging — keep Marketing UI + login history
 
-Checked `pg_stat_statements` and write counts. Cost is NOT from new patient activity (~30 patients, ~900 result rows today — tiny). It's from **two leaks still active**:
+You want **zero logging for WhatsApp / messaging**. Marketing section stays usable. Login history stays. Prescriptions get auto-deleted right after scanning (no storage at all).
 
-### Leak 1 — `crm_contacts` (729K query calls, 9.2M ms cumulative)
-Despite deleting CRM data, the table is still being **read constantly** by:
-- `get_wa_chat_messages` & `get_wa_contacts_paginated` RPCs (called every WhatsApp Chat open + realtime tick) — they JOIN `crm_contacts` for name resolution.
-- `dripCardSenders.ts`, `syncPatientDemographics.ts`, `cleanup_blacklisted_contacts`, `cleanup_non_phpl_*`.
-- `useRealtimeSync` still listed `crm_*` references in some hooks.
-- The CRM page route is still mounted.
+## What gets deleted
 
-Even with 0 rows, every call still does a planning round-trip + parses the SQL.
+### 1. Database tables — DROPPED entirely
+- `message_send_log` — the big one
+- `drip_campaign_log`
+- `drip_mobile_cycles`
+- `loyalty_cards` (per-card send-status log)
+- `loyalty_card_jobs` (bulk send job tracker)
 
-### Leak 2 — Realtime WAL decode on `patient_results` (and other high-churn tables)
-Top query in `pg_stat_statements`: Supabase Realtime's WAL-to-JSON decoder ran **8.9M times for 47M ms** of CPU. Every `INSERT/UPDATE` on a table in the `supabase_realtime` publication fires this decoder, then fans out to every connected browser tab. Today alone, `patient_results` saw **915 writes** — each one triggers WAL decode + N tab broadcasts. As volume grows to thousands/day, this scales linearly into a major CPU bill.
+### 2. Database tables — KEPT
+- `app_user_login_history` ✅ keep
+- `webhook_messages` ✅ keep (powers WhatsApp Chat — but TRUNCATE once now to clear history)
+- `marketing_templates` ✅ keep (template definitions, not logs)
+- `marketing_campaigns` ✅ keep (campaign config, used by MarketingSender to drive the bulk send)
+- `crm_blacklist`, `drip_campaign_filters` ✅ keep (config, no log churn)
+- `lims_interface_logs` ✅ keep (this is instrument I/O, not message log — separate concern)
 
-`patient_results` is in the realtime publication, but the LIMS UI already polls and uses targeted invalidation via `propagateRegistrationChange` — the realtime subscription is **redundant**.
+### 3. RPCs — DROPPED
+- `get_new_numbers_paginated` (only reads `message_send_log`)
 
----
+### 4. Webhook (`whatsapp-webhook` edge function)
+- Strip the `message_send_log` UPDATE block (lines 70–82). Webhook will only update `webhook_messages.delivery_status` for actual chat messages.
 
-## Fix Plan
+### 5. Frontend code
+- **DELETE** `src/lib/messageLog.ts`
+- **DELETE** `src/lib/dripCardSenders.ts` (already a stub, no live callers)
+- **DELETE** `src/components/marketing/MessageLog.tsx`
+- **DELETE** `src/components/marketing/MarketingHistory.tsx`
+- **DELETE** `src/components/marketing/MarketingRetry.tsx`
+- **DELETE** `src/components/marketing/AutomatedMarketing.tsx` (drip)
+- **DELETE** `src/components/marketing/NewNumbers.tsx` (reads dropped RPC)
+- **DELETE** `src/components/LoyaltyCardHistory.tsx` (reads `loyalty_cards`)
+- **KEEP** `src/components/marketing/MarketingSender.tsx` — but strip the `logMessageSend` import + calls
+- **KEEP** `src/components/marketing/MarketingTemplates.tsx`
+- **KEEP** `src/components/LoyaltyCardSender.tsx` — strip log writes, keep send flow
+- **KEEP** `src/pages/LoyaltyCards.tsx` — remove the History tab only
+- **UPDATE** `src/pages/Marketing.tsx` — keep just **Send Messages** and **Templates** tabs (remove "New Numbers")
 
-### A. Completely disable CRM (single migration + code stubs)
+Strip `logMessageSend` / `extractMessageId` imports + calls from these files (the calls are already no-ops, just clean it up):
+- `src/pages/WhatsAppChat.tsx`
+- `src/pages/EstimateDashboard.tsx`
+- `src/pages/CreateEstimate.tsx`
+- `src/components/EditHomeVisitDialog.tsx`
+- `src/components/EditEstimateDialog.tsx`
+- `src/components/AddHomeVisitDialog.tsx`
+- `src/components/ReceiptViewDialog.tsx`
+- `src/components/PaymentDetailsDialog.tsx`
+- `src/components/lims/InvoicePreview.tsx`
+- `src/components/marketing/MarketingSender.tsx`
+- `src/components/crm/CRMImportReview.tsx`
 
-**Database (migration):**
-1. Drop unused RPCs that read `crm_contacts`:
-   - `get_crm_contacts_paginated`, `get_crm_contacts_count`, `get_drip_contact_slice`, `get_abnormal_pks`, `get_abnormal_patients`, `get_abnormal_patients_count`, `cleanup_blacklisted_contacts`, `cleanup_non_phpl_duplicates`, `cleanup_non_phpl_mobile_duplicates`.
-2. Replace `get_wa_chat_messages` and `get_wa_contacts_paginated` with **simpler versions that no longer JOIN `crm_contacts`** (use `webhook_messages.sender_name` and `estimates.patient_name` only for name resolution). This single change kills the bulk of the 729K-call hot path.
-3. Remove `crm_contacts`, `crm_abnormal_tests`, `crm_blacklist`, `crm_import_staging`, `crm_sequence_rules` from the realtime publication if present.
+### 6. Prescription auto-delete (no retention)
+Currently `cleanup-prescriptions` runs a cron that deletes after 30 days. You want **immediate deletion after scanning**. Two changes:
 
-**Frontend:**
-1. Remove `/crm` route from `src/App.tsx`.
-2. Remove the CRM nav link from `src/components/AppLayout.tsx`.
-3. Stub `src/components/crm/CRMSequences.tsx`, `src/components/marketing/AutomatedMarketing.tsx`, `src/lib/dripCardSenders.ts`, `src/lib/syncPatientDemographics.ts` — replace bodies with no-op exports so any lingering imports don't fire queries.
-4. Remove `crm_*` references from `useRealtimeSync` table type union.
+- **Edit `src/components/PrescriptionScanDialog.tsx`** — after the AI parse completes (success or failure), `await supabase.storage.from('prescriptions').remove([uploadedPath])`. The image is only needed long enough for Gemini to read it.
+- **Delete the `cleanup-prescriptions` cron + edge function** (no longer needed). Bucket stays for transient uploads.
 
-**Note:** We're not dropping the CRM tables themselves (just 12 MB, no cost) — only stopping all reads. If you want them dropped later, easy follow-up.
+### 7. WhatsApp Chat data wipe (one-time)
+- `TRUNCATE webhook_messages` — wipes all chat history
+- Empty `chat-attachments` storage bucket — deletes all received/sent media
+- Empty `loyalty-cards` storage bucket — no longer tracked anywhere
 
-### B. Patient_results — the long-term fix
+### 8. CloudUsage cleanup
+- Remove dropped tables from `src/lib/cloudUsage.ts` retention/forever lists
+- Remove `cleanup-prescriptions` from cron job display
 
-This is the table that will dominate volume as you scale. Two surgical changes:
-
-1. **Remove `patient_results` from `supabase_realtime` publication.**
-   ```sql
-   ALTER PUBLICATION supabase_realtime DROP TABLE public.patient_results;
-   ```
-   - Why safe: every place that writes patient_results already calls `propagateRegistrationChange` from `src/lib/limsPropagation.ts`, which invalidates the right React Query keys in the actor's tab. Other open tabs will refetch on focus (we already have `staleTime: 60s`, no `refetchOnWindowFocus`).
-   - Today's effect: ~915 WAL events × N tabs eliminated. At 10× scale: 10,000+ events eliminated.
-   - Trade-off: a second technician's tab won't see live updates from another tab's edit until they refocus. Acceptable per current workflow (results entry is single-operator at a time).
-
-2. **Add a composite index for the hot read path** (Result Verification, Doctor Approval, Modified Approval all filter by registration + status):
-   ```sql
-   CREATE INDEX IF NOT EXISTS idx_patient_results_reg_status
-     ON public.patient_results (registration_id, status);
-   CREATE INDEX IF NOT EXISTS idx_patient_results_updated
-     ON public.patient_results (updated_at DESC);
-   ```
-   - Cuts the per-query CPU as the table grows from thousands → millions of rows.
-
-3. **Trim same-day duplicate writes.** In `src/components/lims/ResultsEntry.tsx`, results are saved on every blur/Tab. Add a 1-second debounce per parameter so rapid typing doesn't fire 5 UPDATEs per cell. (One-line change wrapping the existing save.)
-
-4. **Also drop these from the realtime publication** (same reasoning — already covered by `propagateRegistrationChange` or polling): `sample_tubes`, `lims_test_orders`, `outsourced_test_snips`, `webhook_messages`, `estimate_tests`, `phlebotomists`, `phlebotomist_leaves`.
-   **Keep on realtime** (cross-tab UX matters): `patient_registrations`, `home_visits`, `tests`, `app_settings`, `message_templates`, `estimates`.
-
----
-
-## Files Changed
+## Files
 
 ```text
-supabase/migrations/<new>.sql        — drop CRM RPCs, simplify WA RPCs, trim publication, add patient_results indexes
-src/App.tsx                          — remove /crm route + import
-src/components/AppLayout.tsx         — remove CRM nav link
-src/pages/CRM.tsx                    — replace with disabled stub
-src/components/crm/CRMSequences.tsx  — stub
-src/components/marketing/AutomatedMarketing.tsx — stub
-src/lib/dripCardSenders.ts           — short-circuit all senders
-src/lib/syncPatientDemographics.ts   — no-op
-src/hooks/useRealtimeSync.ts         — remove abnormal_history/patient_results/sample_tubes/etc. from union type
-src/components/lims/ResultsEntry.tsx — debounce parameter save
+supabase/migrations/<new>.sql
+  — DROP TABLE message_send_log, drip_campaign_log, drip_mobile_cycles,
+                loyalty_cards, loyalty_card_jobs
+  — DROP FUNCTION get_new_numbers_paginated
+  — TRUNCATE webhook_messages
+  — Unschedule cleanup-prescriptions cron
+
+supabase/functions/whatsapp-webhook/index.ts   — strip msl block (lines 70-82)
+supabase/functions/cleanup-prescriptions/      — DELETE entire function
+
+src/lib/messageLog.ts                          — DELETE
+src/lib/dripCardSenders.ts                     — DELETE
+src/components/marketing/MessageLog.tsx        — DELETE
+src/components/marketing/MarketingHistory.tsx  — DELETE
+src/components/marketing/MarketingRetry.tsx    — DELETE
+src/components/marketing/AutomatedMarketing.tsx — DELETE
+src/components/marketing/NewNumbers.tsx        — DELETE
+src/components/LoyaltyCardHistory.tsx          — DELETE
+
+src/pages/Marketing.tsx                        — keep Send + Templates tabs only
+src/pages/LoyaltyCards.tsx                     — remove History tab
+src/components/LoyaltyCardSender.tsx           — strip log writes
+src/components/marketing/MarketingSender.tsx   — strip logMessageSend
+src/components/PrescriptionScanDialog.tsx      — auto-delete after scan
+src/lib/cloudUsage.ts                          — drop deleted tables
+
+src/pages/WhatsAppChat.tsx                     — remove logMessageSend import
+src/pages/EstimateDashboard.tsx                — remove import
+src/pages/CreateEstimate.tsx                   — remove import
+src/components/EditHomeVisitDialog.tsx         — remove import
+src/components/EditEstimateDialog.tsx          — remove import
+src/components/AddHomeVisitDialog.tsx          — remove import
+src/components/ReceiptViewDialog.tsx           — remove import
+src/components/PaymentDetailsDialog.tsx        — remove import
+src/components/lims/InvoicePreview.tsx         — remove import
+src/components/crm/CRMImportReview.tsx         — remove import
+
+Storage purge (one-time, via inline edge function call):
+  chat-attachments bucket — delete all objects
+  loyalty-cards bucket    — delete all objects
+  prescriptions bucket    — delete all objects (clean slate)
 ```
 
-No new tables. No tables dropped. LIMS, registration, dispatch, results entry, dashboards remain fully functional.
+## Memory updates
+- Update Core: log message_send_log/drip_*/loyalty_cards as permanently dropped (do not re-create)
+- Update Core: prescriptions are deleted immediately post-scan (no storage retention)
+- Remove memory file `mem://features/communication/universal-message-log` (now obsolete)
 
----
+## Expected impact
+| Item | Before | After |
+|---|---|---|
+| `message_send_log` writes | every send | gone |
+| Webhook delivery updates | 2 tables × 2 queries | 1 table × 1 query |
+| `loyalty_cards` rows | grows per card | gone |
+| `chat-attachments` storage | growing | 0 (then only new chat media) |
+| `prescriptions` storage | 30-day retention | ~0 (deleted on scan) |
+| Marketing page | working | working (2 tabs) |
+| Login history | working | working |
 
-## Expected Impact
-
-| Cost Source                          | Before (cumulative)  | After                |
-|--------------------------------------|----------------------|----------------------|
-| Realtime WAL decode (top query)      | 8.9M calls / 47M ms  | ~1M calls / 5M ms (−85%) |
-| `crm_contacts` reads via WA RPCs     | 729K calls / 9.2M ms | ~0                   |
-| `patient_results` realtime fan-out   | 915 events/day × tabs| 0                    |
-| `patient_results` query plan cost    | seq-friendly         | indexed (10× faster as it grows) |
-| `drip_*`, `abnormal_*` reads         | 244K calls           | 0                    |
-
-**Approve and I'll implement in one pass.**
+Approve and I'll do it in one pass.

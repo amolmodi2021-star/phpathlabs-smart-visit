@@ -302,22 +302,8 @@ const LoyaltyCardSender = () => {
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("Canvas not supported");
 
-      // Create job. We deliberately do NOT persist the uploaded Excel rows —
-      // they live only in the browser for the duration of card generation,
-      // then per-card data is written to `loyalty_cards`. Skipping `excel_data`
-      // keeps the DB lean even when uploading 50k-row sheets.
-      const { data: job, error: jobError } = await supabase.from("loyalty_card_jobs").insert({
-        template_id: selectedTemplateId,
-        status: "processing",
-        total_cards: excelData.length,
-        queue_enabled: queueEnabled,
-        delay_ms: delayMs,
-        whatsapp_template_name: null,
-        whatsapp_variables_mapping: {},
-      }).select().single();
-
-      if (jobError) throw jobError;
-
+      // Card history / job tracking removed — cards are rendered, uploaded to
+      // Cloudinary, and sent via WhatsApp. No DB rows are written.
       const placeholders = (template.placeholders as any[]) || [];
       const BATCH_SIZE = 5; // Upload 5 in parallel
 
@@ -350,39 +336,19 @@ const LoyaltyCardSender = () => {
         // Upload all blobs to Cloudinary in parallel (free egress, no filename collisions).
         // Mirrors the drip-sender path so storage costs stay at $0 instead of Lovable Cloud's
         // paid egress (~$4–5/day for 1k cards).
-        await Promise.all(renderResults.map(async ({ patientData, blob }, batchIdx) => {
+        // Card history / job tracking removed — no DB rows are written.
+        await Promise.all(renderResults.map(async ({ blob }, batchIdx) => {
           const idx = i + batchIdx;
           try {
-            const url = await uploadJpegToCloudinaryWithRetry(async () => blob);
-            await supabase.from("loyalty_cards").insert({
-              job_id: job.id,
-              patient_name: patientData["Name"],
-              mobile: patientData["Mobile"],
-              umr: patientData["UMR"],
-              discount: patientData["Discount %"],
-              expiry_date: patientData["Expiry Date"],
-              image_url: url,
-              whatsapp_status: "pending",
-            });
+            await uploadJpegToCloudinaryWithRetry(async () => blob);
           } catch (err) {
             console.error("Failed card for row", idx, err);
-            await supabase.from("loyalty_cards").insert({
-              job_id: job.id,
-              patient_name: patientData["Name"],
-              mobile: patientData["Mobile"],
-              umr: patientData["UMR"],
-              discount: patientData["Discount %"],
-              expiry_date: patientData["Expiry Date"],
-              whatsapp_status: "failed",
-            });
           }
         }));
 
         setProgress({ current: Math.min(i + BATCH_SIZE, excelData.length), total: excelData.length });
       }
 
-      await supabase.from("loyalty_card_jobs").update({ status: "completed", sent_count: excelData.length }).eq("id", job.id);
-      queryClient.invalidateQueries({ queryKey: ["loyalty_card_jobs"] });
       toast({ title: "All cards generated!" });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });

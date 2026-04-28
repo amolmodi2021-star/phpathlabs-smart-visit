@@ -96,11 +96,7 @@ const BillingDashboard = () => {
       .split("{days_overdue}").join(String(overdue));
     shareOnWhatsApp(pickup.phone, msg);
     await markReminderSent(inv.id);
-    await supabase.from("message_send_log").insert({
-      mobile_number: pickup.phone.replace(/\D/g, "").slice(-10),
-      patient_name: pickup.name,
-      message_type: "pickup_invoice_reminder",
-    } as any);
+    // message_send_log table dropped — no logging on pickup invoice reminders.
     qc.invalidateQueries({ queryKey: ["pickup_invoices"] });
     toast.success("Reminder opened in WhatsApp");
   };
