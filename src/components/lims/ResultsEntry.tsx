@@ -18,6 +18,9 @@ import { Search, User, Monitor, Save, Calculator, Wifi, WifiOff, ChevronDown, Ch
 import { DescriptiveCombobox } from "./DescriptiveCombobox";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
+import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
+import { signalSync } from "@/lib/limsSyncSignal";
+import NewBadge from "./NewBadge";
 import OutsourcedResults from "./OutsourcedResults";
 import { format } from "date-fns";
 import { toast } from "sonner";
