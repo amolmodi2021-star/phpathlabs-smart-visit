@@ -166,13 +166,14 @@ export async function generateAbnormalCardForDrip(
     const canvasWidth = tpl.canvas_width || 900;
     const headerBandHeight = tpl.show_header_band !== false ? (tpl.header_band_height || 130) : 0;
 
-    // Patient details band: tallest placeholder y + fontSize gives band height
+    // Patient details band: explicit override or auto-fit from placeholders
     const placeholders = tpl.placeholders || [];
-    const detailsBandHeight = placeholders.reduce((max, p) => {
+    const autoDetails = placeholders.reduce((max, p) => {
       const fs = p.fontSize || 25;
       const bottom = (p.y || 0) + fs + 10;
       return Math.max(max, bottom);
-    }, 120);
+    }, 60);
+    const detailsBandHeight = tpl.details_band_height && tpl.details_band_height > 0 ? tpl.details_band_height : autoDetails;
 
     const bandsAbove = (tpl.bands || []).filter((b) => b.position === "above-table");
     const bandsBelow = (tpl.bands || []).filter((b) => b.position === "below-table");
