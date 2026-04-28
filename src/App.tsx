@@ -24,7 +24,7 @@ import ReportLayoutSettings from "./pages/ReportLayoutSettings";
 import LoyaltyCards from "./pages/LoyaltyCards";
 import WhatsAppWebhook from "./pages/WhatsAppWebhook";
 import Marketing from "./pages/Marketing";
-import CRM from "./pages/CRM";
+// CRM module disabled (cost optimization 2026-04-28)
 import LimsDemo from "./pages/LimsDemo";
 import Lims from "./pages/Lims";
 import WhatsAppSettingsPage from "./pages/WhatsAppSettingsPage";
@@ -135,7 +135,7 @@ const App = () => (
           <Route path="/phlebo-dashboard" element={<ProtectedRoute route="/phlebo-dashboard"><PhleboDashboard /></ProtectedRoute>} />
           <Route path="/loyalty-cards" element={<ProtectedRoute route="/loyalty-cards"><LoyaltyCards /></ProtectedRoute>} />
           <Route path="/marketing" element={<ProtectedRoute route="/marketing"><Marketing /></ProtectedRoute>} />
-          <Route path="/crm" element={<ProtectedRoute route="/crm"><CRM /></ProtectedRoute>} />
+          {/* /crm route removed (cost optimization 2026-04-28) */}
           <Route path="/lims" element={<ProtectedRoute route="/lims"><Lims /></ProtectedRoute>} />
           <Route path="/lims-demo" element={<ProtectedRoute route="/lims-demo"><LimsDemo /></ProtectedRoute>} />
           <Route path="/whatsapp-webhook" element={<ProtectedRoute route="/whatsapp-webhook"><WhatsAppWebhook /></ProtectedRoute>} />

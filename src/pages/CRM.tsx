@@ -1,49 +1,11 @@
-import { useState } from "react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getAllowedSections } from "@/lib/auth";
-import CRMContacts from "@/components/crm/CRMContacts";
-import CRMImport from "@/components/crm/CRMImport";
-import CRMImportReview from "@/components/crm/CRMImportReview";
-import CRMAbnormalTests from "@/components/crm/CRMAbnormalTests";
-import CRMBlacklist from "@/components/crm/CRMBlacklist";
-import CRMSequences from "@/components/crm/CRMSequences";
-import CRMSettings from "@/components/crm/CRMSettings";
-import AbnormalCardDesigner from "@/components/crm/AbnormalCardDesigner";
-
-const allCrmTabs = [
-  { key: "contacts", label: "Contacts" },
-  { key: "import", label: "Import Data" },
-  { key: "review", label: "Review & Approve" },
-  { key: "abnormal", label: "Abnormal Tests" },
-  { key: "card-designer", label: "Card Designer" },
-  { key: "blacklist", label: "Blacklist" },
-  { key: "sequences", label: "Sequences" },
-  { key: "settings", label: "Settings" },
-];
-
-const CRM = () => {
-  const allowed = getAllowedSections("/crm");
-  const visibleTabs = allowed ? allCrmTabs.filter((t) => allowed.includes(t.key)) : allCrmTabs;
-  const [activeTab, setActiveTab] = useState(visibleTabs[0]?.key || "contacts");
-
-  return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold">CRM — Patient & Prospect Management</h1>
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="flex flex-wrap h-auto gap-1">
-          {visibleTabs.map((t) => <TabsTrigger key={t.key} value={t.key}>{t.label}</TabsTrigger>)}
-        </TabsList>
-        <TabsContent value="contacts">{activeTab === "contacts" && <CRMContacts />}</TabsContent>
-        <TabsContent value="import">{activeTab === "import" && <CRMImport />}</TabsContent>
-        <TabsContent value="review">{activeTab === "review" && <CRMImportReview />}</TabsContent>
-        <TabsContent value="abnormal">{activeTab === "abnormal" && <CRMAbnormalTests />}</TabsContent>
-        <TabsContent value="card-designer">{activeTab === "card-designer" && <AbnormalCardDesigner />}</TabsContent>
-        <TabsContent value="blacklist">{activeTab === "blacklist" && <CRMBlacklist />}</TabsContent>
-        <TabsContent value="sequences">{activeTab === "sequences" && <CRMSequences />}</TabsContent>
-        <TabsContent value="settings">{activeTab === "settings" && <CRMSettings />}</TabsContent>
-      </Tabs>
+// CRM module disabled (cost optimization 2026-04-28)
+const CRM = () => (
+  <div className="flex h-full items-center justify-center p-12">
+    <div className="text-center text-muted-foreground">
+      <h2 className="text-xl font-semibold mb-2">CRM module is disabled</h2>
+      <p className="text-sm">This module has been turned off to reduce backend costs.</p>
     </div>
-  );
-};
+  </div>
+);
 
 export default CRM;

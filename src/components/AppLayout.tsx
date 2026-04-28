@@ -26,7 +26,7 @@ const allNavItems = [
   { to: "/phlebo-dashboard", label: "Phlebo Dashboard", icon: BarChart3 },
   { to: "/loyalty-cards", label: "Loyalty Cards", icon: CreditCard },
   { to: "/marketing", label: "Marketing", icon: Megaphone },
-  { to: "/crm", label: "CRM", icon: Contact },
+  // CRM link removed (cost optimization 2026-04-28) — module disabled.
   { to: "/lims", label: "LIMS", icon: Activity },
   { to: "/report-analytics", label: "Report Analytics", icon: BarChart2 },
   { to: "/whatsapp-webhook", label: "WhatsApp Webhook", icon: Webhook },
