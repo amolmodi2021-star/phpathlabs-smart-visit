@@ -60,6 +60,7 @@ interface TableConfig {
   borderColor?: string;
   resultColor?: string;
   colWidths?: number[];
+  colAligns?: Align[];
 }
 
 interface Template {
