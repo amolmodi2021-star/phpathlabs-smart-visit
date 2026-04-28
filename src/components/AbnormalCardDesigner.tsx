@@ -484,8 +484,17 @@ const AbnormalCardDesigner = () => {
           </CardTitle></CardHeader>
           <CardContent className="space-y-2">
             <div className="grid grid-cols-2 gap-2">
-              <div><Label className="text-xs">Height</Label><Input type="number" value={tpl.header_band_height} onChange={(e) => update({ header_band_height: Number(e.target.value) })} /></div>
+              <div><Label className="text-xs">Header Band Height</Label><Input type="number" value={tpl.header_band_height} onChange={(e) => update({ header_band_height: Number(e.target.value) })} /></div>
               <div><Label className="text-xs">Bg Color</Label><input type="color" value={tpl.header_bg_color} onChange={(e) => update({ header_bg_color: e.target.value })} className="h-9 w-full rounded border" /></div>
+              <div className="col-span-2">
+                <Label className="text-xs">Details Band Height (gap below header — leave empty to auto-fit)</Label>
+                <Input
+                  type="number"
+                  placeholder="auto"
+                  value={tpl.details_band_height ?? ""}
+                  onChange={(e) => update({ details_band_height: e.target.value === "" ? null : Number(e.target.value) })}
+                />
+              </div>
             </div>
             <div>
               <Label className="text-xs">Logo</Label>
