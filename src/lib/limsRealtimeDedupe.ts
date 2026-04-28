@@ -13,7 +13,7 @@ const propagatedIds = new Map<string, number>();
 const invalidatedKeys = new Map<string, number>();
 
 const PROPAGATED_TTL_MS = 5000;
-const INVALIDATED_TTL_MS = 750;
+const INVALIDATED_TTL_MS = 2000;
 
 function gc(map: Map<string, number>) {
   const now = Date.now();
