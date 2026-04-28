@@ -732,6 +732,7 @@ const ResultVerification = () => {
         await supabase.from("outsourced_test_snips").update({ outsource_status: "verified" } as any).eq("registration_id", reg.id).eq("test_id", testId).in("outsource_status", ["results_entered", "sent", "results_saved"]);
       }
       toast.success(`All tests verified for ${reg.patient_name}`);
+      signalSync("doctor_approval", reg.id);
       recalculateRegistrationStatus(reg.id).catch(console.error);
       qc.invalidateQueries({ queryKey: ["verification_results_v2"] });
       qc.invalidateQueries({ queryKey: ["verification_outsourced_v2"] });
@@ -806,6 +807,7 @@ const ResultVerification = () => {
       setEditedTestNotes((prev) => { const next = { ...prev }; delete next[`${regId}||${testId}`]; return next; });
 
       toast.success(`${testName} sent back to Results Entry`);
+      signalSync("results", regId);
       qc.invalidateQueries({ queryKey: ["verification_results_v2"] });
       qc.invalidateQueries({ queryKey: ["verification_outsourced_v2"] });
       qc.invalidateQueries({ queryKey: ["verification_regs_v2"] });
