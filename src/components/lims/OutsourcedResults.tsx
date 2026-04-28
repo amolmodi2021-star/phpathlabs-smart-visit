@@ -179,6 +179,28 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     },
   });
 
+  // Fetch sample_tubes to derive leaf test ids per registration (expands PRL/HLT containers)
+  const { data: leafTestIdsByReg = {} } = useQuery({
+    queryKey: ["outsourced_sample_tubes_leaves", regIds.join(",")],
+    enabled: regIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("sample_tubes" as any)
+        .select("registration_id, test_ids")
+        .in("registration_id", regIds);
+      if (error) throw error;
+      const map: Record<string, Set<string>> = {};
+      (data || []).forEach((tube: any) => {
+        const rid = tube.registration_id;
+        if (!rid) return;
+        if (!map[rid]) map[rid] = new Set<string>();
+        const ids: string[] = Array.isArray(tube.test_ids) ? tube.test_ids : [];
+        ids.forEach((id) => map[rid].add(id));
+      });
+      return map;
+    },
+  });
+
   // Fetch existing manual results
   const { data: existingResults = [] } = useQuery({
     queryKey: ["outsourced_manual_results", regIds.join(",")],
