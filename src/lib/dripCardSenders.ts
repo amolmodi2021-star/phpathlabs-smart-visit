@@ -12,6 +12,7 @@
  */
 import { exportCanvasAsCompressedJpeg } from "@/lib/cardRenderer";
 import { uploadJpegToCloudinaryWithRetry } from "@/lib/cardStorageCloudinary";
+import { sortAbnormalTestsByDateDesc } from "@/lib/abnormalTests";
 
 interface AbnormalTest {
   test_name: string;
@@ -163,6 +164,8 @@ export async function generateAbnormalCardForDrip(
     if (!cardTemplate) throw new Error("missing template");
 
     const tpl = cardTemplate as AbnormalCardTemplate;
+    // Sort tests by test_date descending (latest on top)
+    tests = sortAbnormalTestsByDateDesc(tests);
     const canvasWidth = tpl.canvas_width || 900;
     const headerBandHeight = tpl.show_header_band !== false ? (tpl.header_band_height || 130) : 0;
 
