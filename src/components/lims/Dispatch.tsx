@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
+import { formatAgeGender } from "@/lib/ageGender";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
