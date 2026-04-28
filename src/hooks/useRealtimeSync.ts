@@ -80,12 +80,14 @@ export function useRealtimeSync(
       });
     };
 
-    const channel = supabase.channel(`realtime-${tablesKey}`);
+    const channel = supabase.channel(`realtime-${channelKey}`);
 
     tableList.forEach((table) => {
+      const config: Record<string, unknown> = { event: "*", schema: "public", table };
+      if (filter) config.filter = filter;
       channel.on(
         "postgres_changes" as never,
-        { event: "*", schema: "public", table } as never,
+        config as never,
         (payload: { new?: { id?: string }; old?: { id?: string } }) => {
           const id = payload?.new?.id ?? payload?.old?.id;
           if (timerRef.current) clearTimeout(timerRef.current);
@@ -110,5 +112,5 @@ export function useRealtimeSync(
       supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tablesKey, queryClient, debounceMs, enabled]);
+  }, [channelKey, queryClient, debounceMs, enabled, filter]);
 }
