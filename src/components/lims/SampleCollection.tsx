@@ -20,6 +20,8 @@ import { printBarcodes } from "@/lib/barcodePrint";
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { buildSampleTubeGroups, TubeGroupingItem } from "@/lib/sampleTubeGrouping";
 import { formatAgeGender } from "@/lib/ageGender";
+import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
+import NewBadge from "./NewBadge";
 
 const TUBE_COLOR_MAP: Record<string, string> = {
   red: "#e53e3e", lavender: "#b794f4", purple: "#9f7aea", yellow: "#ecc94b",
@@ -274,7 +276,9 @@ const SampleCollection = () => {
     }));
   }, [registrations, allTubes]);
 
-  const toggleTube = (regId: string, tubeId: string) => {
+  // ─── NEW arrivals badge tracker (only pending list) ───
+  const pendingRegIds = useMemo(() => pendingGroups.map(g => g.registration.id), [pendingGroups]);
+  const { isNew: isNewArrival, markSeen: markArrivalSeen } = useNewArrivalsBadge("sample_collection", pendingRegIds);
     setSelectedTubes(prev => {
       const regSet = new Set(prev[regId] || []);
       if (regSet.has(tubeId)) regSet.delete(tubeId);
