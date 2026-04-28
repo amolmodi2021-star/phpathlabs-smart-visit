@@ -245,13 +245,30 @@ async function renderAbnormalPreview(canvas: HTMLCanvasElement, tpl: Template, l
 
   const colWeights = tc.colWidths && tc.colWidths.length === 4 ? tc.colWidths : [0.38, 0.18, 0.18, 0.26];
   const colWidths = colWeights.map((w) => Math.floor(w * canvasWidth));
+  const colAligns: Align[] = (tc.colAligns && tc.colAligns.length === 4 ? tc.colAligns : ["left","center","center","center"]) as Align[];
+
+  // Helper: shrink font size until text fits within maxWidth
+  const fitFontSize = (text: string, baseSize: number, maxWidth: number, bold: boolean, family: string) => {
+    let size = baseSize;
+    while (size > 8) {
+      ctx.font = `${bold ? "bold " : ""}${size}px ${family}, Helvetica, sans-serif`;
+      if (ctx.measureText(text).width <= maxWidth) return size;
+      size -= 1;
+    }
+    return size;
+  };
+
   ctx.fillStyle = tc.headerBg || "#2E3192";
   ctx.fillRect(0, cy, canvasWidth, tHeaderH);
-  ctx.font = `bold ${headerFs}px ${tc.headerFont || "Arial"}, Helvetica, sans-serif`;
   ctx.fillStyle = tc.headerFontColor || "#FFFFFF"; ctx.textBaseline = "middle"; ctx.textAlign = "center";
   const headers = ["Test Name", "Date", "Result", "Normal Range"];
   let xc = 0;
-  headers.forEach((h, i) => { ctx.fillText(h, xc + colWidths[i] / 2, cy + tHeaderH / 2); xc += colWidths[i]; });
+  headers.forEach((h, i) => {
+    const fs = fitFontSize(h, headerFs, colWidths[i] - 12, true, tc.headerFont || "Arial");
+    ctx.font = `bold ${fs}px ${tc.headerFont || "Arial"}, Helvetica, sans-serif`;
+    ctx.fillText(h, xc + colWidths[i] / 2, cy + tHeaderH / 2);
+    xc += colWidths[i];
+  });
   cy += tHeaderH;
 
   const rfs = tc.rowFontSize || 24;
@@ -264,10 +281,15 @@ async function renderAbnormalPreview(canvas: HTMLCanvasElement, tpl: Template, l
     const cells = [t.test_name, t.test_date, t.result_value, t.normal_range];
     let cx = 0;
     cells.forEach((cell, ci) => {
-      ctx.fillStyle = ci === 2 ? rc : rfc;
-      ctx.font = `${ci === 2 ? "bold " : ""}${rfs}px Arial, Helvetica, sans-serif`;
-      ctx.textBaseline = "middle"; ctx.textAlign = "center";
-      ctx.fillText(cell, cx + colWidths[ci] / 2, cy + rowH / 2);
+      const al = colAligns[ci] || "center";
+      const isResult = ci === 2;
+      const maxW = colWidths[ci] - 12;
+      const fs = fitFontSize(cell, rfs, maxW, isResult, "Arial");
+      ctx.fillStyle = isResult ? rc : rfc;
+      ctx.font = `${isResult ? "bold " : ""}${fs}px Arial, Helvetica, sans-serif`;
+      ctx.textBaseline = "middle"; ctx.textAlign = al;
+      const tx = al === "left" ? cx + 6 : al === "right" ? cx + colWidths[ci] - 6 : cx + colWidths[ci] / 2;
+      ctx.fillText(cell, tx, cy + rowH / 2);
       cx += colWidths[ci];
     });
     ctx.strokeStyle = bc; ctx.lineWidth = 1;
