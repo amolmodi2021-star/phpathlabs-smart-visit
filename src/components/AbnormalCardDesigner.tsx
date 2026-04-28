@@ -245,6 +245,7 @@ async function renderAbnormalPreview(canvas: HTMLCanvasElement, tpl: Template, l
     cy += h;
   };
   bandsAbove.forEach(drawBand);
+  if (bandsAbove.length > 0) cy += 12;
 
   const colWeights = tc.colWidths && tc.colWidths.length === 4 ? tc.colWidths : [0.38, 0.18, 0.18, 0.26];
   const colWidths = colWeights.map((w) => Math.floor(w * canvasWidth));
