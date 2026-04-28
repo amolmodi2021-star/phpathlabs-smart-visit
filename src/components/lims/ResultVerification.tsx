@@ -22,6 +22,7 @@ import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import { signalSync } from "@/lib/limsSyncSignal";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
+import SyncingOverlay from "./SyncingOverlay";
 import NewBadge from "./NewBadge";
 
 const QUALITATIVE_PAIRS = [
@@ -1117,6 +1118,7 @@ const ResultVerification = () => {
 
   return (
     <div className="space-y-4">
+      <SyncingOverlay target="verification" visibleIds={regIds} />
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />

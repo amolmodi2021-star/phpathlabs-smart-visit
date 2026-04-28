@@ -21,6 +21,7 @@ import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import { signalSync } from "@/lib/limsSyncSignal";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
+import SyncingOverlay from "./SyncingOverlay";
 import NewBadge from "./NewBadge";
 import OutsourcedResults from "./OutsourcedResults";
 import { format } from "date-fns";
@@ -1645,6 +1646,7 @@ const ResultsEntry = () => {
 
   return (
     <div className="space-y-4">
+      <SyncingOverlay target="results" visibleIds={regIds} />
       {/* Mode tabs */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
         <div className="relative w-full sm:flex-1 sm:max-w-sm">

@@ -24,6 +24,7 @@ import SelectApproverDialog, { ApproverChoice } from "./SelectApproverDialog";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import { signalSync } from "@/lib/limsSyncSignal";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
+import SyncingOverlay from "./SyncingOverlay";
 import NewBadge from "./NewBadge";
 
 const QUALITATIVE_PAIRS = [
@@ -916,6 +917,7 @@ const DoctorApproval = () => {
 
   return (
     <div className="space-y-4">
+      <SyncingOverlay target="doctor_approval" visibleIds={regIds} />
       <Tabs value={activeSection} onValueChange={v => setActiveSection(v as any)} className="w-auto">
         <TabsList className="h-9">
           <TabsTrigger value="approval" className="text-xs gap-1 h-7"><Stethoscope className="h-3.5 w-3.5" /> Doctor Approval</TabsTrigger>

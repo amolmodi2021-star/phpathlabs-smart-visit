@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
+import SyncingOverlay from "./SyncingOverlay";
 import { formatAgeGender } from "@/lib/ageGender";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -397,6 +398,7 @@ const Dispatch = () => {
 
   return (
     <div className="space-y-3">
+      <SyncingOverlay target="dispatch" visibleIds={regIds} />
       <div className="flex flex-wrap items-center gap-2">
         <Popover>
           <PopoverTrigger asChild>
