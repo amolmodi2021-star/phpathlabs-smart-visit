@@ -1,40 +1,33 @@
-## Goal
-When a numeric result arrives prefixed with a comparison operator — `>2000`, `> 2000`, `<2000`, `< 2000`, `>=2000`, `≥ 2000`, `<=2`, `≤ 2` — auto-flag it as **H** (high) or **L** (low) regardless of how the operator and number are spaced. The current `computeAbnormalFlag` strips the operator and only compares the bare number, so `>2000` against a normal range of `0–3000` is incorrectly returned as `N`.
+## Why the `>5` for TSH isn't flagging
 
-## Where the fix lives
-Single file: `src/lib/reportFlags.ts`. Every screen (Results Entry, Verification, Doctor Approval, PDF report, abnormal history) already routes through `computeAbnormalFlag` / `normalizeTestResultFlags`, so one fix propagates everywhere — including bidirectional analyzer interface results, since they also pass through the same flag computation.
+Honest answer: the previous fix only updated `src/lib/reportFlags.ts` (`computeAbnormalFlag`), but **nothing in the LIMS workflow actually calls that helper**. It's only used for downstream report rendering. Both manual entry and the interface use their own local copies of the flag logic that strip operators via `parseFloat()`, so `>5` becomes `5` and falls inside the TSH range → flagged Normal.
 
-## Logic change
+There are **5 duplicate `calculateFlag` implementations** plus the interface edge function — all with the same operator-blind bug:
 
-1. Add an `ResultOperator` detector that recognises a leading `>`, `>=`, `≥`, `<`, `<=`, `≤` followed by optional whitespace and a number. Tolerant of spaces, case-insensitive.
+| Location | Path |
+|---|---|
+| Manual entry | `src/components/lims/ResultsEntry.tsx` (line 679) |
+| Verification | `src/components/lims/ResultVerification.tsx` (line 432) |
+| Doctor approval | `src/components/lims/DoctorApproval.tsx` (line 335) |
+| Modified approval | `src/components/lims/ModifiedApproval.tsx` (line 170) |
+| Interface ingest | `supabase/functions/lims-interface/index.ts` (`computeFlagFromInterface`, line 56; plus a second inline numeric block ~line 212) |
 
-2. In `computeAbnormalFlag`, after extracting the number, also detect the operator. Apply these rules (standard lab interpretation of capped/saturating readings):
+## Plan
 
-   - **`>X` (or `≥X`)**: the true value is at or above X, possibly higher.
-     - If a `high` bound exists and `X ≥ high` → **H** (definitely above range).
-     - Else if a `high` bound exists and `X < high` → still **H** is the safe call when the result is reported as ">X" because analyzers only report this when the reading saturates the upper limit; treat as **H**.
-     - If no `high` exists but a `low` exists and `X ≥ low` → **N** (within open-ended range).
-     - If no bounds at all → **H** (operator implies abnormal/notable).
+1. **Add a shared operator detector** to each of the 5 client copies of `calculateFlag` and to the edge function's `computeFlagFromInterface`. Logic mirrors what's already in `reportFlags.ts`:
+   - Regex `^(?:>=|≥|>)\s*-?\d*\.?\d+` → treat as **H**
+   - Regex `^(?:<=|≤|<)\s*-?\d*\.?\d+` → treat as **L**
+   - Whitespace-tolerant (`>5`, `> 5`, `>= 5`, `≥5` all handled)
+   - Applied **before** the numeric range comparison, so the value flags correctly even when the trailing number falls inside the normal range.
 
-   - **`<X` (or `≤X`)**: the true value is at or below X, possibly lower.
-     - Mirror the above with `low`. If `low` exists and `X ≤ low` → **L**. Else with `low` and `X > low` → **L** (saturating below detection limit). No bounds → **L**.
+2. **Edge function (`lims-interface`)**: also apply the same operator check to the secondary numeric block around line 212 that writes flags directly during ingest.
 
-3. When no operator is present, behaviour is unchanged (existing equality comparison against low/high).
+3. **No DB migration needed.** Flags are recomputed on render/save, so existing rows will reflect the new logic the next time they're touched. Already-saved historical flags are not retroactively rewritten (matches current behaviour).
 
-4. Whitespace handling is already implicit — the regex allows `\s*` between the operator and number, so `>2000`, `> 2000`, `>  2000` all match.
+4. **Out of scope (won't change):** qualitative/descriptive comparisons, calculated parameters, range-text parsing — those already work and aren't affected by operator prefixes.
 
-## Examples after fix
+## Result after fix
 
-| Result | Range | Old flag | New flag |
-|--------|-------|----------|----------|
-| `>2000` | 0–1500 | H | H (unchanged) |
-| `>2000` | 0–3000 | N (wrong) | **H** |
-| `> 2000` | 0–3000 | N (wrong) | **H** |
-| `≥2000` | 0–3000 | N (wrong) | **H** |
-| `<2` | 5–20 | L | L (unchanged) |
-| `< 2` | 0.5–20 | N (wrong) | **L** |
-| `≤ 0.1` | 0.5–10 | L | L |
-| `2000` (plain) | 0–3000 | N | N (unchanged) |
-
-## No DB changes
-Pure presentation/computation logic; no schema or migration needed.
+- Manual entry of `>5`, `> 5`, `≥5` for TSH → flagged **HIGH** immediately and on save.
+- Interface-pushed `<0.01` for TSH → flagged **LOW**.
+- Behaviour identical across Results Entry, Verification, Doctor Approval, Modified Approval, and downstream report rendering.
