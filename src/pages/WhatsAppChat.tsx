@@ -2,8 +2,9 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { ArrowLeft, Search, Check, CheckCheck, X, MapPin, Image as ImageIcon, MessageCircle, Info, Filter, Send, Paperclip, FileText, Loader2, AlertCircle, MailOpen, ChevronUp } from "lucide-react";
+import { ArrowLeft, Search, Check, CheckCheck, X, MapPin, Image as ImageIcon, MessageCircle, Info, Filter, Send, Paperclip, FileText, Loader2, AlertCircle, MailOpen, ChevronUp, Trash2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import { Input } from "@/components/ui/input";
 import { format, isToday, isYesterday, parseISO } from "date-fns";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -124,6 +125,10 @@ export default function WhatsAppChat() {
 
   // WA global settings
   const [waSettings, setWaSettings] = useState<Record<string, string>>({});
+
+  // Delete-all-chats password gate
+  const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
 
   // Debounce search
   useEffect(() => {
@@ -284,19 +289,8 @@ export default function WhatsAppChat() {
     return () => { supabase.removeChannel(channel); };
   }, [queryClient, selectedMobile]);
 
-  // Also subscribe to message_send_log changes
-  useEffect(() => {
-    const channel = supabase
-      .channel("wa-chat-sendlog-rt")
-      .on("postgres_changes", { event: "*", schema: "public", table: "message_send_log" }, () => {
-        queryClient.invalidateQueries({ queryKey: ["wa-contacts"] });
-        if (selectedMobile) {
-          queryClient.invalidateQueries({ queryKey: ["wa-messages", selectedMobile] });
-        }
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [queryClient, selectedMobile]);
+  // (message_send_log realtime subscription removed — chat now reads only from webhook_messages)
+
 
   // Load global WA settings
   useEffect(() => {
@@ -397,24 +391,16 @@ export default function WhatsAppChat() {
       const msgContent = type === "text" ? (body || "") : `[${type}] ${caption || mediaUrl || ""}`;
       const tempId = crypto.randomUUID();
 
-      const [wmInsert, mslInsert] = await Promise.all([
-        supabase.from("webhook_messages").insert({
-          sender_number: `+91${selectedMobile}`,
-          message: msgContent,
-          direction: "outbound",
-          message_type: type,
-          media_url: type !== "text" ? mediaUrl : null,
-          message_id: tempId,
-          delivery_status: "pending",
-        }).select("id").single(),
-        supabase.from("message_send_log").insert({
-          mobile_number: selectedMobile,
-          patient_name: selectedContact?.name || selectedContact?.profileName || null,
-          message_type: type === "text" ? "Chat Reply" : `Chat ${type.charAt(0).toUpperCase() + type.slice(1)}`,
-          message_id: tempId,
-          delivery_status: "pending",
-        }).select("id").single(),
-      ]);
+      // Write only to webhook_messages — chat reads exclusively from this table now.
+      await supabase.from("webhook_messages").insert({
+        sender_number: `+91${selectedMobile}`,
+        message: msgContent,
+        direction: "outbound",
+        message_type: type,
+        media_url: type !== "text" ? mediaUrl : null,
+        message_id: tempId,
+        delivery_status: "pending",
+      });
 
       const { data: proxyRes, error } = await supabase.functions.invoke("whatsapp-proxy", {
         body: { apiBaseUrl: baseUrl, apiKey, authHeaderName, authHeaderPrefix, payload },
@@ -425,15 +411,13 @@ export default function WhatsAppChat() {
       const messageId = extractMessageId(proxyRes) || "";
 
       if (messageId) {
-        await Promise.all([
-          supabase.from("webhook_messages").update({ message_id: messageId, delivery_status: "sent" }).eq("message_id", tempId),
-          supabase.from("message_send_log").update({ message_id: messageId, delivery_status: "sent" } as any).eq("message_id", tempId),
-        ]);
+        await supabase.from("webhook_messages")
+          .update({ message_id: messageId, delivery_status: "sent" })
+          .eq("message_id", tempId);
       } else {
-        await Promise.all([
-          supabase.from("webhook_messages").update({ delivery_status: "sent" }).eq("message_id", tempId),
-          supabase.from("message_send_log").update({ delivery_status: "sent" } as any).eq("message_id", tempId),
-        ]);
+        await supabase.from("webhook_messages")
+          .update({ delivery_status: "sent" })
+          .eq("message_id", tempId);
       }
 
       queryClient.invalidateQueries({ queryKey: ["wa-messages", selectedMobile] });
@@ -644,6 +628,18 @@ export default function WhatsAppChat() {
             <span className="absolute -top-1 -right-1 bg-green-500 text-white text-[9px] font-bold rounded-full h-4 min-w-[16px] flex items-center justify-center px-0.5">
               {totalUnread}
             </span>
+          )}
+        </button>
+        <button
+          onClick={() => setShowDeleteAllDialog(true)}
+          className="p-1.5 rounded-full hover:bg-white/10 transition-colors"
+          title="Delete all chats"
+          disabled={deletingAll}
+        >
+          {deletingAll ? (
+            <Loader2 className="h-4 w-4 text-white animate-spin" />
+          ) : (
+            <Trash2 className="h-4 w-4 text-white" />
           )}
         </button>
       </div>
@@ -934,10 +930,38 @@ export default function WhatsAppChat() {
     </div>
   );
 
+  const handleDeleteAllChats = async () => {
+    setDeletingAll(true);
+    try {
+      const { data, error } = await supabase.rpc("delete_all_whatsapp_chats" as any);
+      if (error) throw error;
+      const count = typeof data === "number" ? data : 0;
+      setSelectedMobile(null);
+      setManualUnreadMobiles(new Set());
+      queryClient.invalidateQueries({ queryKey: ["wa-contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["wa-messages"] });
+      toast.success(`Deleted ${count} chat message${count === 1 ? "" : "s"}`);
+    } catch (err: any) {
+      toast.error("Failed to delete chats: " + (err.message || "Unknown error"));
+    } finally {
+      setDeletingAll(false);
+    }
+  };
+
+  const deleteAllDialog = (
+    <DeletePasswordDialog
+      open={showDeleteAllDialog}
+      onOpenChange={setShowDeleteAllDialog}
+      onSuccess={handleDeleteAllChats}
+      description="This will permanently delete every WhatsApp chat message (incoming and outgoing). This cannot be undone."
+    />
+  );
+
   if (isMobile) {
     return (
       <div className="h-[calc(100vh-3.5rem)] -m-4 md:-m-6">
         {selectedMobile ? chatPanel : contactListPanel}
+        {deleteAllDialog}
       </div>
     );
   }
@@ -950,6 +974,7 @@ export default function WhatsAppChat() {
       <div className="flex-1 flex flex-col">
         {selectedMobile ? chatPanel : emptyChat}
       </div>
+      {deleteAllDialog}
     </div>
   );
 }
