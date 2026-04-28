@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Eye, EyeOff, Settings, Plus, Trash2, Edit2, Search } from "lucide-react";
+import { Eye, EyeOff, Settings, Plus, Trash2, Edit2 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import PasswordGate from "@/components/PasswordGate";
