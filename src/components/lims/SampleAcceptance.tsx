@@ -425,6 +425,7 @@ const SampleAcceptance = () => {
                             <Badge variant="outline" className="ml-2 text-xs">{statusLabel(reg.status)}</Badge>
                           )}
                         </TableCell>
+                        <TableCell className="text-sm font-mono">{formatAgeGender(reg.dob, reg.gender)}</TableCell>
                         <TableCell>{reg.mobile_number}</TableCell>
                         <TableCell>
                           <div className="flex gap-1 flex-wrap">
