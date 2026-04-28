@@ -596,6 +596,7 @@ const SampleCollection = () => {
                       )}
                     </div>
                   </TableCell>
+                  <TableCell className="text-sm font-mono">{formatAgeGender(reg.dob, reg.gender)}</TableCell>
                   <TableCell className="text-sm">{reg.mobile_number}</TableCell>
                   <TableCell><Badge variant="outline" className="text-xs">{getVisitLabel(reg.visit_type)}</Badge></TableCell>
                   <TableCell className="text-sm">
