@@ -22,6 +22,8 @@ import { toast } from "sonner";
 import { format, startOfDay, endOfDay, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
+import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
+import NewBadge from "./NewBadge";
 
 type TestStatus = "registered" | "sample_collected" | "sample_accepted" | "results_entered" | "verified" | "approved" | "dispatched";
 
