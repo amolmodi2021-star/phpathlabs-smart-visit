@@ -1,55 +1,90 @@
-## Goal
+# Plan — Cross-Tab Sync Loader + "NEW" Badges in LIMS
 
-When a parameter's numeric result comes in as a negative value (e.g. `-1.02`, `- 1.02`, ` -0.5`, including operator-prefixed `> -2`), make it visually obvious as a likely instrument/typing error across all three workflow screens. Saving, verifying, and approving must still be allowed — this is a warning, not a block.
+Two related quality-of-life upgrades for the LIMS pipeline so the user can see (a) when freshly saved data is still propagating between modules, and (b) which patients are newly arrived in each queue.
 
-## Detection rule
+---
 
-A result is "suspect negative" when:
-- After trimming whitespace and any leading comparison operator (`>`, `>=`, `≥`, `<`, `<=`, `≤`), the remaining value parses to a finite number `< 0`.
-- Whitespace between operator/sign and digits is ignored, so `-1.02`, `- 1.02`, `>-1`, `> -1` all match.
-- Pure text results (e.g. "Negative", "Absent") are NOT flagged — only numeric values.
+## 1. Cross-Tab "Syncing…" Loader
 
-This will live in a tiny helper inside each screen (kept local to match the existing pattern of duplicated `calculateFlag` helpers) so we don't need a new shared module:
+**Trigger:** Only when the user has just performed an action in one module that pushes a patient into the next module (Save & Verify, Send Back, Approve, Dispatch, etc.) **and then switches tabs**. Never shown while staying on the same screen.
 
-```ts
-const isSuspectNegativeResult = (value: string | number | null | undefined): boolean => {
-  if (value === null || value === undefined) return false;
-  const stripped = String(value).trim().replace(/^(?:>=|≥|>|<=|≤|<)\s*/, "").trim();
-  if (!stripped) return false;
-  const num = Number.parseFloat(stripped.replace(/,/g, ""));
-  return Number.isFinite(num) && num < 0;
-};
+### Mechanism
+
+- Add a tiny shared store (Zustand or a single React context — pick Zustand to match existing patterns if any; else context) keyed by destination tab:
+  ```ts
+  // src/lib/limsSyncSignal.ts
+  signalSync(target: "verification" | "results" | "doctor_approval" | "dispatch" | "completed_hv", regId: string, ttlMs = 8000)
+  consumeSync(target): { active: boolean, regIds: string[] }
+  ```
+- When `signalSync` is called, it stamps `{target, regIds, expiresAt: now+ttl}` in memory.
+- `Lims.tsx` watches `searchParams.tab`. On tab change, if a pending signal exists for that tab whose `regIds` are not yet present in that tab's first query result, render an overlay: small spinner + text "Syncing latest changes…" pinned to the top of the tab content. The overlay auto-dismisses when (a) the regIds appear in the list, or (b) TTL expires.
+
+### Where to call `signalSync`
+
+- **ResultsEntry.tsx** → after Save & Verify success (line ~810 area, the existing invalidate block): `signalSync("verification", reg.id)`.
+- **ResultVerification.tsx** → after Send Back success: `signalSync("results", reg.id)`. After Verify success: `signalSync("doctor_approval", reg.id)`.
+- **DoctorApproval.tsx** → after Approve success: `signalSync("dispatch", reg.id)`. After Send Back: `signalSync("verification", reg.id)`.
+- **Dispatch.tsx** → not needed downstream, but on Send Back: `signalSync("doctor_approval", reg.id)`.
+- **CompletedHomeVisits / SampleAcceptance** → similar where applicable.
+
+### Overlay component
+
+`src/components/lims/SyncingOverlay.tsx` — a thin sticky banner (not a full-screen blocker) so the user can still scroll/interact:
 ```
+[spinner] Syncing latest changes from previous step…
+```
+Mounted once inside each `<TabsContent>` that is a destination tab; reads its own target via prop.
 
-## Visual highlight
+---
 
-Consistent treatment everywhere so users learn the cue:
+## 2. "NEW" Badges Per Module
 
-1. **Test name header** — when ANY parameter in the test has a suspect-negative value:
-   - Text becomes `text-red-600` and `font-bold`
-   - Small inline badge `⚠ Negative value — please verify` (red bg, white text, `text-[10px]`) next to the test name
+Show a small `NEW` badge on patient rows that have arrived in that specific module since the user last viewed/clicked them. Clicking the row clears the badge for that module.
 
-2. **Parameter row** — for the specific row(s) with the negative value:
-   - Result input: red border (`border-red-500 ring-1 ring-red-300`) and `text-red-700 font-semibold`
-   - Row background tint: `bg-red-50`
-   - Inline `⚠` icon (lucide `AlertTriangle`, `text-red-600 h-3.5 w-3.5`) right after the input
+### Storage
 
-3. **Saving / verifying / approving stays enabled.** No confirm dialog, no disabled buttons. The highlight persists through Results Entry → Verification → Doctor Approval → Modified Approval as long as the value remains negative.
+- Per-module `localStorage` key holding **the set of seen registration IDs** for that module:
+  - `lims_seen_results`, `lims_seen_verification`, `lims_seen_doctor_approval`, `lims_seen_dispatch`, `lims_seen_sample_collection`, `lims_seen_sample_acceptance`, `lims_seen_completed_hv`.
+- *(Note: project memory disallows localStorage for **data caching**. This is a per-user UI preference — same category as "expanded row state" — not cached server data, so it's acceptable. If the user prefers, we can move it to `app_settings` keyed by username; ask only if they object.)*
 
-## Files to edit
+### Hook
 
-| File | What changes |
-|---|---|
-| `src/components/lims/ResultsEntry.tsx` | Add helper; in render, when iterating params compute `hasNegative` per test group → apply red styles to test-name span (line ~880 area) and per-row input/background/icon |
-| `src/components/lims/ResultVerification.tsx` | Same helper + same styling on test name (line 1043) and each parameter row |
-| `src/components/lims/DoctorApproval.tsx` | Same helper + same styling on test name (line 840) and each parameter row |
-| `src/components/lims/ModifiedApproval.tsx` | Same helper + same styling on test name (line 397) and each parameter row, taking the currently-edited `currentValue` (not just the saved one) into account |
+`src/hooks/useNewArrivalsBadge.ts`:
+```ts
+useNewArrivalsBadge(moduleKey: string, currentIds: string[])
+  → { isNew(id): boolean, markSeen(id): void }
+```
+Behavior:
+- On first ever visit (no key in storage): mark **all** current ids as seen → no badges (avoids flooding).
+- On later visits: any id in `currentIds` not in the seen set is `NEW`. Storage is updated to keep only ids still present (prune stale).
+- `markSeen(id)` adds the id and persists.
 
-Detection uses the **live edited value** (where the user is typing) in Results Entry and Modified Approval, and the saved `result_value` in Verification / Doctor Approval (which are read-only there).
+### UI
 
-## Out of scope
+- Add a small `<Badge variant="destructive" className="ml-2 text-[10px] py-0 px-1.5">NEW</Badge>` next to the patient name in each module's row header.
+- Wire `markSeen(reg.id)` into the existing row click / accordion-expand handler for each module.
 
-- No DB schema change.
-- No change to the flag logic (H/L/N) — negative values still compute their normal flag; the highlight is purely a UI warning overlay.
-- Reports/PDF rendering unchanged (negative values will print as-is, since the user said "allow to continue").
-- Interface ingest doesn't need changes — it just stores the value; the screens warn on display.
+### Modules to instrument
+
+- ResultsEntry (`results_accepted_regs` list)
+- ResultVerification (`verification_regs_v2`)
+- DoctorApproval (`doctor_approval_regs`)
+- Dispatch (`dispatch_regs`)
+- SampleCollection
+- SampleAcceptance
+- CompletedHomeVisits
+
+---
+
+## Files to Edit
+
+- **New:** `src/lib/limsSyncSignal.ts`, `src/components/lims/SyncingOverlay.tsx`, `src/hooks/useNewArrivalsBadge.ts`.
+- **Edit:** `src/pages/Lims.tsx` (mount overlays per destination tab).
+- **Edit (signalSync calls + NEW badges + markSeen):** `ResultsEntry.tsx`, `ResultVerification.tsx`, `DoctorApproval.tsx`, `Dispatch.tsx`, `SampleCollection.tsx`, `SampleAcceptance.tsx`, `CompletedHomeVisits.tsx`.
+
+## Out of Scope
+
+- No changes to data fetching cadence — existing `useRealtimeSync` + invalidations already handle propagation; we are only surfacing the in-flight state visually.
+- No new database tables.
+
+Approve and I'll implement.

@@ -19,6 +19,9 @@ import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { toast } from "sonner";
 import { formatDateDDMMYYYY } from "@/lib/utils";
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
+import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
+import { signalSync } from "@/lib/limsSyncSignal";
+import NewBadge from "./NewBadge";
 
 const QUALITATIVE_PAIRS = [
   { label: "Absent / Present", values: ["Absent", "Present"] },
@@ -567,6 +570,10 @@ const ResultVerification = () => {
     return { totalPatients: filteredEntries.length, totalParams };
   }, [filteredEntries]);
 
+  // ─── NEW arrivals badge tracker ───
+  const filteredRegIds = useMemo(() => filteredEntries.map(e => e.registration.id), [filteredEntries]);
+  const { isNew: isNewArrival, markSeen: markArrivalSeen } = useNewArrivalsBadge("verification", filteredRegIds);
+
   const groupByMachine = (params: ParameterResult[]) => {
     const groups: Record<string, { machineName: string; params: ParameterResult[] }> = {};
     for (const p of params) {
@@ -680,6 +687,7 @@ const ResultVerification = () => {
       await supabase.from("outsourced_test_snips").update({ outsource_status: "verified" } as any).eq("registration_id", reg.id).eq("test_id", testId).in("outsource_status", ["results_entered", "entered", "sent", "results_saved"]);
       
       toast.success(`${testName} verified & sent to Doctor Approval`);
+      signalSync("doctor_approval", reg.id);
       recalculateRegistrationStatus(reg.id).catch(console.error);
       setEditedValues(prev => {
         const next = { ...prev };
@@ -728,6 +736,7 @@ const ResultVerification = () => {
         await supabase.from("outsourced_test_snips").update({ outsource_status: "verified" } as any).eq("registration_id", reg.id).eq("test_id", testId).in("outsource_status", ["results_entered", "sent", "results_saved"]);
       }
       toast.success(`All tests verified for ${reg.patient_name}`);
+      signalSync("doctor_approval", reg.id);
       recalculateRegistrationStatus(reg.id).catch(console.error);
       qc.invalidateQueries({ queryKey: ["verification_results_v2"] });
       qc.invalidateQueries({ queryKey: ["verification_outsourced_v2"] });
@@ -802,6 +811,7 @@ const ResultVerification = () => {
       setEditedTestNotes((prev) => { const next = { ...prev }; delete next[`${regId}||${testId}`]; return next; });
 
       toast.success(`${testName} sent back to Results Entry`);
+      signalSync("results", regId);
       qc.invalidateQueries({ queryKey: ["verification_results_v2"] });
       qc.invalidateQueries({ queryKey: ["verification_outsourced_v2"] });
       qc.invalidateQueries({ queryKey: ["verification_regs_v2"] });
@@ -1177,11 +1187,12 @@ const ResultVerification = () => {
             const isVerifying = verifyingKey === reg.id;
             return (
               <Card key={reg.id} className={isExpanded ? "ring-1 ring-primary/30" : ""}>
-                <div className="flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/30 transition-colors" onClick={() => setExpandedPatient(isExpanded ? null : reg.id)}>
+                <div className="flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/30 transition-colors" onClick={() => { markArrivalSeen(reg.id); setExpandedPatient(isExpanded ? null : reg.id); }}>
                   {isExpanded ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-medium font-mono">{reg.invoice_number}</span>
+                      <NewBadge show={isNewArrival(reg.id)} />
                       {reg.status !== "sample_accepted" && reg.status !== "entered" && Array.isArray(reg.accepted_samples) && reg.accepted_samples.length > 0 && (
                         <Badge className="bg-amber-100 text-amber-700 text-[10px]">PARTIAL</Badge>
                       )}

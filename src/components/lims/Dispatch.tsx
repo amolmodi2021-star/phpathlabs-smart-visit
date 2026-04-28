@@ -22,6 +22,8 @@ import { toast } from "sonner";
 import { format, startOfDay, endOfDay, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
+import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
+import NewBadge from "./NewBadge";
 
 type TestStatus = "registered" | "sample_collected" | "sample_accepted" | "results_entered" | "verified" | "approved" | "dispatched";
 
@@ -275,6 +277,10 @@ const Dispatch = () => {
     });
   }, [dispatchEntries]);
 
+  // ─── NEW arrivals badge tracker ───
+  const dispatchRegIds = useMemo(() => sortedDispatchEntries.map(e => e.registration.id), [sortedDispatchEntries]);
+  const { isNew: isNewArrival, markSeen: markArrivalSeen } = useNewArrivalsBadge("dispatch", dispatchRegIds);
+
   // Auto-select first patient when entries change
   useEffect(() => {
     if (sortedDispatchEntries.length > 0 && (!selectedPatientId || !sortedDispatchEntries.find(e => e.registration.id === selectedPatientId))) {
@@ -461,7 +467,7 @@ const Dispatch = () => {
                       <div
                         key={reg.id}
                         className={`px-3 py-2.5 cursor-pointer transition-colors hover:bg-muted/50 ${isSelected ? "bg-primary/5 border-l-2 border-l-primary" : "border-l-2 border-l-transparent"}`}
-                        onClick={() => { setSelectedPatientId(reg.id); if (isMobile) setMobileShowDetail(true); }}
+                        onClick={() => { markArrivalSeen(reg.id); setSelectedPatientId(reg.id); if (isMobile) setMobileShowDetail(true); }}
                       >
                         <div className="flex items-start gap-2">
                           <div className="mt-1 shrink-0">{getCompletionDot(entry.completionStatus)}</div>
@@ -469,6 +475,7 @@ const Dispatch = () => {
                             <div className="flex items-center gap-1.5">
                               {reg.is_stat && entry.completionStatus !== "all_done" && <span className="relative flex h-2 w-2 shrink-0"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-destructive" /></span>}
                               <span className="font-medium text-sm truncate">{reg.patient_name}</span>
+                              <NewBadge show={isNewArrival(reg.id)} />
                               <Badge variant="outline" className="text-[10px] font-mono shrink-0 px-1 py-0">{formatAgeGender(reg.dob, reg.gender)}</Badge>
                             </div>
                             <div className="flex items-center gap-2 mt-0.5">

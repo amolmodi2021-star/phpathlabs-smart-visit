@@ -18,6 +18,9 @@ import { Search, User, Monitor, Save, Calculator, Wifi, WifiOff, ChevronDown, Ch
 import { DescriptiveCombobox } from "./DescriptiveCombobox";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
+import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
+import { signalSync } from "@/lib/limsSyncSignal";
+import NewBadge from "./NewBadge";
 import OutsourcedResults from "./OutsourcedResults";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -969,7 +972,8 @@ const ResultsEntry = () => {
       const testName = entry.parameters.find(p => p.testId === testId)?.testName || entry.snipOnlyTests.find(s => s.testId === testId)?.testName || "Test";
       toast.success(`${testName} saved & sent to verification`);
       const regId = entry.registration.id;
-      // Clear edited values for this test's params only
+      // Signal Verification tab to show "Syncing…" until this regId appears there
+      signalSync("verification", regId);
       setEditedValues(prev => {
         const next = { ...prev };
         entry.parameters.filter(p => p.testId === testId).forEach(p => {
@@ -1061,6 +1065,10 @@ const ResultsEntry = () => {
       }))
       .filter(e => e.parameters.length > 0 || e.incompleteTests.length > 0 || e.snipOnlyTests.length > 0);
   }, [patientEntries, mode, selectedMachine]);
+
+  // ─── NEW arrivals badge tracker ───
+  const filteredRegIds = useMemo(() => filteredEntries.map(e => e.registration.id), [filteredEntries]);
+  const { isNew: isNewArrival, markSeen: markArrivalSeen } = useNewArrivalsBadge("results", filteredRegIds);
 
   // ─── Stats (based on filtered entries, excludes already-entered patients) ───
   const stats = useMemo(() => {
@@ -1753,12 +1761,13 @@ const ResultsEntry = () => {
                   <Card key={reg.id} className={isExpanded ? "ring-1 ring-primary/30" : ""}>
                     <div
                       className="flex flex-wrap items-center gap-2 sm:gap-3 p-3 cursor-pointer hover:bg-muted/30 transition-colors"
-                      onClick={() => setExpandedPatient(isExpanded ? null : reg.id)}
+                      onClick={() => { markArrivalSeen(reg.id); setExpandedPatient(isExpanded ? null : reg.id); }}
                     >
                       {isExpanded ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="font-medium font-mono">{reg.invoice_number}</span>
+                          <NewBadge show={isNewArrival(reg.id)} />
                           {reg.status !== "sample_accepted" && Array.isArray(reg.accepted_samples) && reg.accepted_samples.length > 0 && (
                             <Badge className="bg-amber-100 text-amber-700 text-[10px]">PARTIAL</Badge>
                           )}

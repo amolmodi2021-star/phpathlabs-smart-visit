@@ -20,6 +20,8 @@ import { printBarcodes } from "@/lib/barcodePrint";
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { buildSampleTubeGroups, TubeGroupingItem } from "@/lib/sampleTubeGrouping";
 import { formatAgeGender } from "@/lib/ageGender";
+import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
+import NewBadge from "./NewBadge";
 
 const TUBE_COLOR_MAP: Record<string, string> = {
   red: "#e53e3e", lavender: "#b794f4", purple: "#9f7aea", yellow: "#ecc94b",
@@ -273,6 +275,10 @@ const SampleCollection = () => {
       tubes: allTubes.filter(t => t.registration_id === reg.id && t.status === "collected" && !isTubeFullyCancelled(t, reg)),
     }));
   }, [registrations, allTubes]);
+
+  // ─── NEW arrivals badge tracker (only pending list) ───
+  const pendingRegIds = useMemo(() => pendingGroups.map(g => g.registration.id), [pendingGroups]);
+  const { isNew: isNewArrival, markSeen: markArrivalSeen } = useNewArrivalsBadge("sample_collection", pendingRegIds);
 
   const toggleTube = (regId: string, tubeId: string) => {
     setSelectedTubes(prev => {
@@ -574,6 +580,7 @@ const SampleCollection = () => {
                   className={`cursor-pointer hover:bg-muted/50 ${reg.is_stat ? "bg-destructive/5 border-l-2 border-l-destructive" : ""}`}
                   onClick={() => {
                     const next = isExpanded ? null : reg.id;
+                    markArrivalSeen(reg.id);
                     setExpandedRow(next);
                     if (next) void recalcTubesForRegistration(reg.id);
                   }}>
@@ -584,6 +591,7 @@ const SampleCollection = () => {
                   <TableCell>
                     <div className="font-medium">
                       {reg.patient_name}
+                      {isPending && <NewBadge show={isNewArrival(reg.id)} className="ml-1.5 align-middle" />}
                       {reg.is_stat && (
                         <span className="relative inline-flex h-2.5 w-2.5 ml-1.5 align-middle">
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75"></span>

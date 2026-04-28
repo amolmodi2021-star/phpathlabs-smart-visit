@@ -17,6 +17,8 @@ import { formatAgeGender } from "@/lib/ageGender";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { printBarcodes } from "@/lib/barcodePrint";
+import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
+import NewBadge from "./NewBadge";
 
 const TUBE_COLOR_MAP: Record<string, string> = {
   red: "#e53e3e", lavender: "#b794f4", purple: "#9f7aea", yellow: "#ecc94b",
@@ -180,6 +182,10 @@ const SampleAcceptance = () => {
     }
     return map;
   }, [pendingGroups]);
+
+  // ─── NEW arrivals badge tracker (only pending list) ───
+  const pendingRegIds = useMemo(() => pendingGroups.map(g => g.registration.id), [pendingGroups]);
+  const { isNew: isNewArrival, markSeen: markArrivalSeen } = useNewArrivalsBadge("sample_acceptance", pendingRegIds);
 
   const toggleTube = (tubeId: string) => {
     setSelectedTubes(prev => {
@@ -401,7 +407,7 @@ const SampleAcceptance = () => {
                   return (
                     <>
                       <TableRow key={reg.id} className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => setExpandedRow(isExpanded ? null : reg.id)}>
+                        onClick={() => { markArrivalSeen(reg.id); setExpandedRow(isExpanded ? null : reg.id); }}>
                         <TableCell>
                           {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                         </TableCell>
@@ -415,6 +421,7 @@ const SampleAcceptance = () => {
                         <TableCell className="font-mono font-medium">{reg.invoice_number}</TableCell>
                         <TableCell>
                           <span className="font-medium">{reg.patient_name}</span>
+                          {!isAccepted && <NewBadge show={isNewArrival(reg.id)} className="ml-1.5 align-middle" />}
                           {reg.is_stat && (
                             <span className="relative inline-flex h-2.5 w-2.5 ml-1.5 align-middle">
                               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75"></span>
