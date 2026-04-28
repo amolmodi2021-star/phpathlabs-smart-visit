@@ -494,27 +494,6 @@ export type Database = {
         }
         Relationships: []
       }
-      cleanup_runs: {
-        Row: {
-          function_name: string
-          id: string
-          ran_at: string
-          summary: Json | null
-        }
-        Insert: {
-          function_name: string
-          id?: string
-          ran_at?: string
-          summary?: Json | null
-        }
-        Update: {
-          function_name?: string
-          id?: string
-          ran_at?: string
-          summary?: Json | null
-        }
-        Relationships: []
-      }
       combo_profiles: {
         Row: {
           combo_id: string
