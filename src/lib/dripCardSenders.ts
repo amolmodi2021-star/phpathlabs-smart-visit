@@ -154,9 +154,10 @@ function formatDateDDMMYYYY(value: string): string {
 export async function generateAbnormalCardForDrip(
   patient: { patient_name: string; mobile_number: string; umr_number: string },
   tests: AbnormalTest[],
-  cardTemplate: AbnormalCardTemplate | undefined,
+  cardTemplate: unknown,
   _footerText: string,
 ): Promise<string | null> {
+  const _tpl = cardTemplate as AbnormalCardTemplate | undefined;
   try {
     if (!cardTemplate) throw new Error("missing template");
 
