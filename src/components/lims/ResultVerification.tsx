@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { formatAgeGender } from "@/lib/ageGender";
+import { isSuspectNegativeResult } from "@/lib/reportFlags";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -12,7 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Search, User, Monitor, Calculator, Wifi, ChevronDown, ChevronUp, Loader2, FlaskConical, CheckCircle2, SendHorizonal, Eye, Undo2, ClipboardCheck, StickyNote, Trash2 } from "lucide-react";
+import { Search, User, Monitor, Calculator, Wifi, ChevronDown, ChevronUp, Loader2, FlaskConical, CheckCircle2, SendHorizonal, Eye, Undo2, ClipboardCheck, StickyNote, Trash2, AlertTriangle } from "lucide-react";
 import { DescriptiveCombobox } from "./DescriptiveCombobox";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { toast } from "sonner";
@@ -848,7 +849,9 @@ const ResultVerification = () => {
     const currentValue = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
     const autoFlag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText);
     const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : autoFlag;
-    const rowBg = (flag === "H" || flag === "L" || flag === "A" || flag === "X") ? "bg-destructive/5" : "";
+    const isNegative = isSuspectNegativeResult(currentValue);
+    const rowBg = isNegative ? "bg-red-50" : ((flag === "H" || flag === "L" || flag === "A" || flag === "X") ? "bg-destructive/5" : "");
+    const negCls = isNegative ? "border-red-500 ring-1 ring-red-300 text-red-700 font-semibold" : "";
 
     return (
       <TableRow key={key} className={rowBg}>
@@ -880,7 +883,7 @@ const ResultVerification = () => {
         <TableCell className="py-1.5 w-[180px]">
           {p.isCalculated ? (
             <div className="flex items-center gap-1">
-              <Input value={currentValue} onChange={(e) => handleValueChange(regId, p.parameterId, e.target.value, entry)} className="h-7 text-sm w-[120px] font-mono" placeholder="Auto" />
+              <Input value={currentValue} onChange={(e) => handleValueChange(regId, p.parameterId, e.target.value, entry)} className={`h-7 text-sm w-[120px] font-mono ${negCls}`} placeholder="Auto" />
               <Button type="button" variant="ghost" size="icon" className="h-7 w-7" title="Recalculate" onClick={() => { if (!p.calculationFormula) return; const paramValues: Record<string, string> = {}; entry.parameters.forEach((ep) => { paramValues[ep.parameterId] = editedValues[`${regId}||${ep.parameterId}`] ?? ep.resultValue ?? ""; }); const result = evaluateFormula(p.calculationFormula, paramValues); if (result) handleValueChange(regId, p.parameterId, result, entry); }}><Calculator className="h-3 w-3 text-primary" /></Button>
             </div>
           ) : p.rangeType === "qualitative" && getQualitativeOptions(p.expectedValue).length > 0 ? (
@@ -906,14 +909,14 @@ const ResultVerification = () => {
             <Input
               value={currentValue}
               onChange={e => handleValueChange(regId, p.parameterId, e.target.value, entry)}
-              className="h-7 text-sm w-[180px]"
+              className={`h-7 text-sm w-[180px] ${negCls}`}
               placeholder="Enter result"
             />
           ) : (
             <Input
               value={currentValue}
               onChange={e => handleValueChange(regId, p.parameterId, e.target.value, entry)}
-              className={`h-7 text-sm w-[180px] ${flag === "H" || flag === "L" || flag === "A" || flag === "X" ? "border-destructive text-destructive font-bold" : ""}`}
+              className={`h-7 text-sm w-[180px] ${isNegative ? "border-red-500 ring-1 ring-red-300 text-red-700 font-semibold" : (flag === "H" || flag === "L" || flag === "A" || flag === "X" ? "border-destructive text-destructive font-bold" : "")}`}
               placeholder="Enter result"
             />
           )}
@@ -1040,7 +1043,23 @@ const ResultVerification = () => {
                 <div key={tg.testId} className="ml-1">
                   <div className="flex items-center justify-between px-1 py-0.5 bg-muted/40 rounded-t">
                     <div className="flex items-center gap-2">
-                      <span className="text-base font-bold text-foreground">{tg.testName}</span>
+                      {(() => {
+                        const hasNegative = tg.params.some(p => {
+                          const k = `${reg.id}||${p.parameterId}`;
+                          const v = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
+                          return isSuspectNegativeResult(v);
+                        });
+                        return (
+                          <>
+                            <span className={`text-base font-bold ${hasNegative ? "text-red-600" : "text-foreground"}`}>{tg.testName}</span>
+                            {hasNegative && (
+                              <Badge className="text-[10px] bg-red-600 text-white hover:bg-red-700 gap-0.5">
+                                <AlertTriangle className="h-3 w-3" /> Negative value — please verify
+                              </Badge>
+                            )}
+                          </>
+                        );
+                      })()}
                       <StickyNote
                         className={`inline h-3.5 w-3.5 cursor-pointer shrink-0 ${getTestNote(reg.id, tg.testId) ? 'text-amber-600' : 'text-muted-foreground hover:text-primary'}`}
                         onClick={() => {
