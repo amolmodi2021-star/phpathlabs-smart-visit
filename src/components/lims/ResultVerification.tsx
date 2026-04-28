@@ -573,6 +573,8 @@ const ResultVerification = () => {
   // ─── NEW arrivals badge tracker ───
   const filteredRegIds = useMemo(() => filteredEntries.map(e => e.registration.id), [filteredEntries]);
   const { isNew: isNewArrival, markSeen: markArrivalSeen } = useNewArrivalsBadge("verification", filteredRegIds);
+
+  const groupByMachine = (params: ParameterResult[]) => {
     const groups: Record<string, { machineName: string; params: ParameterResult[] }> = {};
     for (const p of params) {
       const machine = p.machineName || "Others";
