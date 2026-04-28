@@ -17,7 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Search, User, Monitor, Save, Calculator, Wifi, WifiOff, ChevronDown, ChevronUp, Check, Loader2, FlaskConical, Package, SendHorizonal, ArrowRightLeft, Eye, Trash2, StickyNote, RefreshCw, AlertTriangle } from "lucide-react";
 import { DescriptiveCombobox } from "./DescriptiveCombobox";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
-import { useRealtimeSync } from "@/hooks/useRealtimeSync";
+
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import { signalSync } from "@/lib/limsSyncSignal";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
@@ -214,6 +214,8 @@ const ResultsEntry = () => {
       if (error) throw error;
       return (data || []) as any[];
     },
+    refetchOnWindowFocus: true,
+    staleTime: 30_000,
   });
 
   const reTotalPages = Math.ceil(reCount / RE_PAGE_SIZE);

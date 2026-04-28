@@ -17,7 +17,7 @@ import { toast } from "sonner";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { printBarcodes } from "@/lib/barcodePrint";
-import { useRealtimeSync } from "@/hooks/useRealtimeSync";
+
 import { buildSampleTubeGroups, TubeGroupingItem } from "@/lib/sampleTubeGrouping";
 import { formatAgeGender } from "@/lib/ageGender";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
@@ -101,6 +101,8 @@ const SampleCollection = () => {
       if (error) throw error;
       return (data || []) as unknown as SampleTubeRow[];
     },
+    refetchOnWindowFocus: true,
+    staleTime: 30_000,
   });
 
   // Get unique registration IDs from tubes
