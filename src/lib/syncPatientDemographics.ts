@@ -9,10 +9,9 @@ import type { QueryClient } from "@tanstack/react-query";
  * holds a denormalized copy — keyed by UMR so ALL historical visits of the
  * same patient get the corrected details, not just the current invoice.
  *
- * Audit-trail tables (message_send_log, drip_campaign_log, abnormal_history,
- * payment_transactions, pickup_point_invoice_items) are intentionally NOT
- * touched — they are immutable records of what was sent / paid at that
- * moment in time.
+ * Audit-trail tables (abnormal_history, payment_transactions,
+ * pickup_point_invoice_items) are intentionally NOT touched — they are
+ * immutable records of what was sent / paid at that moment in time.
  */
 
 export interface PatientDemographics {
@@ -100,10 +99,7 @@ export async function syncPatientDemographicsByUmr(
     } as any)
     .eq("umr_id", umr);
 
-  // 5. Loyalty cards table dropped — no-op
-  const loyalty = Promise.resolve({ error: null });
-
-  // 6. Estimates — same UMR
+  // 5. Estimates — same UMR
   const estimates = supabase
     .from("estimates")
     .update({
@@ -116,7 +112,7 @@ export async function syncPatientDemographicsByUmr(
     } as any)
     .eq("umr_number", umr);
 
-  // 7. LIMS test orders — keyed by sample_id (= invoice number prefix).
+  // 6. LIMS test orders — keyed by sample_id (= invoice number prefix).
   //    Pull all invoices belonging to this UMR first, then update by IN clause.
   const ordersUpdate = (async () => {
     const { data: regs } = await supabase
@@ -132,14 +128,13 @@ export async function syncPatientDemographicsByUmr(
   })();
 
   const results = await Promise.allSettled([
-    sisterRegs, approved, crm, master, loyalty, estimates, ordersUpdate,
+    sisterRegs, approved, crm, master, estimates, ordersUpdate,
   ]);
   const labels = [
     "patient_registrations (sister visits)",
     "approved_reports",
     "crm_contacts",
     "patient_master",
-    "loyalty_cards",
     "estimates",
     "lims_test_orders",
   ];
@@ -184,7 +179,6 @@ export function invalidatePatientCaches(qc: QueryClient): void {
     "crm_contacts",
     "patient_master",
     "estimates",
-    "loyalty_cards",
   ];
   keys.forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
 }
