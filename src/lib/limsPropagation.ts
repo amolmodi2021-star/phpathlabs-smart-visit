@@ -17,6 +17,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { recalculateRegistrationStatus } from "./limsStatus";
 import { signalSync, type SyncTarget } from "./limsSyncSignal";
+import { markPropagated, markInvalidated } from "./limsRealtimeDedupe";
 
 export type LimsModule =
   | "results"

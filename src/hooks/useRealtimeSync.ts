@@ -84,9 +84,8 @@ export function useRealtimeSync(
 
     tableList.forEach((table) => {
       channel.on(
-        // @ts-expect-error - supabase realtime types
-        "postgres_changes",
-        { event: "*", schema: "public", table },
+        "postgres_changes" as never,
+        { event: "*", schema: "public", table } as never,
         (payload: { new?: { id?: string }; old?: { id?: string } }) => {
           const id = payload?.new?.id ?? payload?.old?.id;
           if (timerRef.current) clearTimeout(timerRef.current);
