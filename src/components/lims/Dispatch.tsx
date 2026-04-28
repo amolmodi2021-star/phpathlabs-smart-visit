@@ -88,7 +88,7 @@ const Dispatch = () => {
     queryKey: ["dispatch_regs", debouncedSearch, dateFrom.toISOString(), dateTo.toISOString(), dispatchPage],
     queryFn: async () => {
       let query = supabase.from("patient_registrations")
-        .select("id, invoice_number, patient_name, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, created_at, updated_at, bill_cancelled, registered_by, due_amount")
+        .select("id, invoice_number, patient_name, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, gender, dob, created_at, updated_at, bill_cancelled, registered_by, due_amount")
         .eq("bill_cancelled", false)
         .gte("created_at", dateFrom.toISOString())
         .lte("created_at", dateTo.toISOString())
