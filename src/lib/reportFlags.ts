@@ -232,6 +232,24 @@ export const computeAbnormalFlag = (row: FlagEvaluationInput): AbnormalFlag => {
   return "N";
 };
 
+/**
+ * Detect a "suspect negative" numeric result — almost always an instrument
+ * error or typing slip (e.g. "-1.02", "- 1.02", ">-1", "> -2"). The UI uses
+ * this to highlight test names and parameter rows in red across the LIMS
+ * workflow without blocking save/verify/approve. Pure text results
+ * ("Negative", "Absent", etc.) are NOT flagged.
+ */
+export const isSuspectNegativeResult = (value: string | number | null | undefined): boolean => {
+  if (value === null || value === undefined) return false;
+  const stripped = String(value).trim().replace(/^(?:>=|≥|>|<=|≤|<)\s*/, "").trim();
+  if (!stripped) return false;
+  // Must look numeric (optionally signed, with digits and optional decimal),
+  // possibly with a space between sign and digits.
+  if (!/^-\s*\d*\.?\d+\s*$/.test(stripped.replace(/,/g, ""))) return false;
+  const num = Number.parseFloat(stripped.replace(/,/g, "").replace(/-\s+/, "-"));
+  return Number.isFinite(num) && num < 0;
+};
+
 export const normalizeTestResultFlags = <T extends FlagEvaluationInput>(rows: T[]): (T & { flag: AbnormalFlag })[] => {
   return rows.map((row) => ({
     ...row,
