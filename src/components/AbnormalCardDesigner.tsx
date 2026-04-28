@@ -125,6 +125,7 @@ const DEFAULT_TPL: Template = {
     borderColor: "#E0E0E8",
     resultColor: "#ed1c23",
     colWidths: [0.38, 0.18, 0.18, 0.26],
+    colAligns: ["left", "center", "center", "center"],
   },
   footer_lines: [
     { text: "Powered by PH PathLabs · LabLine 6356 55 66 99", align: "center", fontSize: 16, fontColor: "#666666" },
