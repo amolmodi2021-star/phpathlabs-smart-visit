@@ -52,9 +52,11 @@ interface GroupedRegistration {
 
 const SampleCollection = () => {
   const qc = useQueryClient();
-  // Auto-refresh when new tubes are inserted (e.g. fresh registration) or registrations change
-  useRealtimeSync("sample_tubes", ["sample_tubes_collection", "sample_collection_regs"]);
-  useRealtimeSync("patient_registrations", ["sample_collection_regs", "sample_tubes_collection"]);
+  // Single channel for both tables — fewer realtime listeners per client.
+  useRealtimeSync(
+    ["sample_tubes", "patient_registrations"],
+    ["sample_tubes_collection", "sample_collection_regs"],
+  );
   const [activeTab, setActiveTab] = useState("pending");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");

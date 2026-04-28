@@ -124,8 +124,11 @@ const RE_PAGE_SIZE = 50;
 
 const ResultsEntry = () => {
   const qc = useQueryClient();
-  useRealtimeSync("outsourced_test_snips", ["results_outsourced_snips", "outsourced_snips", "outsourced_accepted_regs"]);
-  useRealtimeSync("patient_results", ["patient_results_existing"]);
+  // Single channel for both tables — fewer realtime listeners per client.
+  useRealtimeSync(
+    ["outsourced_test_snips", "patient_results"],
+    ["results_outsourced_snips", "outsourced_snips", "outsourced_accepted_regs", "patient_results_existing"],
+  );
   const { data: masterMachines = [] } = useMasterLookup("machine_name");
   const [mode, setMode] = useState<"patient" | "machine" | "outsourced">("patient");
   const [search, setSearch] = useState("");

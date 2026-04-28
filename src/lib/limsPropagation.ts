@@ -17,6 +17,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { recalculateRegistrationStatus } from "./limsStatus";
 import { signalSync, type SyncTarget } from "./limsSyncSignal";
+import { markPropagated, markInvalidated } from "./limsRealtimeDedupe";
 
 export type LimsModule =
   | "results"
@@ -126,16 +127,21 @@ export async function propagateRegistrationChange(
   destinations.forEach((m) => MODULE_KEYS[m]?.forEach((k) => keys.add(k)));
   (opts.extraKeys || []).forEach((k) => keys.add(k));
 
+  // 2a. Mark these ids as just-propagated so the realtime echo for the actor's
+  //     own write is suppressed (no duplicate refetch on this client).
+  ids.forEach(markPropagated);
+
   // 3. Invalidate inactive caches (cheap), force-refetch active ones (visible tab).
   await Promise.all(
-    Array.from(keys).map((k) =>
-      qc.invalidateQueries({
+    Array.from(keys).map((k) => {
+      markInvalidated(k); // dedupe window: realtime won't re-invalidate within 750 ms
+      return qc.invalidateQueries({
         queryKey: [k],
         // Only the active observers refetch immediately; inactive queries are
         // flagged stale and refetch on next mount. Keeps multi-user fan-out cheap.
         refetchType: "active",
-      }),
-    ),
+      });
+    }),
   );
 
   // 4. Tell the SyncingOverlay in each destination tab that this regId is
