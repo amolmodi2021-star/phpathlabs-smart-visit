@@ -1066,6 +1066,10 @@ const ResultsEntry = () => {
       .filter(e => e.parameters.length > 0 || e.incompleteTests.length > 0 || e.snipOnlyTests.length > 0);
   }, [patientEntries, mode, selectedMachine]);
 
+  // ─── NEW arrivals badge tracker ───
+  const filteredRegIds = useMemo(() => filteredEntries.map(e => e.registration.id), [filteredEntries]);
+  const { isNew: isNewArrival, markSeen: markArrivalSeen } = useNewArrivalsBadge("results", filteredRegIds);
+
   // ─── Stats (based on filtered entries, excludes already-entered patients) ───
   const stats = useMemo(() => {
     let totalParams = 0, pendingParams = 0, enteredParams = 0, awaitingInterface = 0;
