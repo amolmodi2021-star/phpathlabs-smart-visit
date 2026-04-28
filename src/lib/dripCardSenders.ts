@@ -157,11 +157,10 @@ export async function generateAbnormalCardForDrip(
   cardTemplate: unknown,
   _footerText: string,
 ): Promise<string | null> {
-  const _tpl = cardTemplate as AbnormalCardTemplate | undefined;
   try {
     if (!cardTemplate) throw new Error("missing template");
 
-    const tpl = cardTemplate;
+    const tpl = cardTemplate as AbnormalCardTemplate;
     const canvasWidth = tpl.canvas_width || 900;
     const headerBandHeight = tpl.show_header_band !== false ? (tpl.header_band_height || 130) : 0;
 
