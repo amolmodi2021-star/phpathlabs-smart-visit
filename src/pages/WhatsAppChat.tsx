@@ -630,6 +630,18 @@ export default function WhatsAppChat() {
             </span>
           )}
         </button>
+        <button
+          onClick={() => setShowDeleteAllDialog(true)}
+          className="p-1.5 rounded-full hover:bg-white/10 transition-colors"
+          title="Delete all chats"
+          disabled={deletingAll}
+        >
+          {deletingAll ? (
+            <Loader2 className="h-4 w-4 text-white animate-spin" />
+          ) : (
+            <Trash2 className="h-4 w-4 text-white" />
+          )}
+        </button>
       </div>
 
       {/* Search */}
