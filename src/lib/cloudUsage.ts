@@ -42,7 +42,7 @@ export interface CloudUsageStats {
   generated_at: string;
 }
 
-// Tables tracked by prune-old-logs and their retention windows
+// Retention windows shown in the Cloud Usage UI for reference only
 export const RETENTION_RULES: Record<string, { days: number; column: string }> = {
   lims_interface_logs: { days: 90, column: "created_at" },
   app_user_login_history: { days: 365, column: "login_at" },
