@@ -38,7 +38,7 @@ export interface CloudUsageStats {
 
 // Retention windows shown in the Cloud Usage UI for reference only
 export const RETENTION_RULES: Record<string, { days: number; column: string }> = {
-  lims_interface_logs: { days: 30, column: "created_at" },
+  lims_interface_logs: { days: 7, column: "created_at" },
   app_user_login_history: { days: 7, column: "login_at" },
   lims_unmapped_results: { days: 7, column: "received_at" },
   report_link_events: { days: 7, column: "occurred_at" },

@@ -132,7 +132,7 @@ const LimsDemo = () => {
   const { data: logs = [] } = useQuery({
     queryKey: ["lims-logs"],
     queryFn: async () => {
-      const { data } = await supabase.from("lims_interface_logs").select("*").order("created_at", { ascending: false }).limit(100);
+      const { data } = await supabase.from("lims_interface_logs").select("*").order("created_at", { ascending: false });
       return data || [];
     },
     refetchInterval: POLL_MS,
