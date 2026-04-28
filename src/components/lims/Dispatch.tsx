@@ -502,6 +502,7 @@ const Dispatch = () => {
                     );
                   })}
                 </div>
+                )}
               </ScrollArea>
               {dispatchTotalPages > 1 && (
                 <div className="p-2 border-t flex items-center justify-between">
