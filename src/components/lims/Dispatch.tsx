@@ -92,7 +92,7 @@ const Dispatch = () => {
     queryKey: ["dispatch_regs", debouncedSearch, dateFrom.toISOString(), dateTo.toISOString(), dispatchPage],
     queryFn: async () => {
       let query = supabase.from("patient_registrations")
-        .select("id, invoice_number, patient_name, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, gender, dob, created_at, updated_at, bill_cancelled, registered_by, due_amount")
+        .select("id, invoice_number, patient_name, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, gender, dob, created_at, updated_at, bill_cancelled, registered_by, due_amount, pickup_point_id")
         .eq("bill_cancelled", false)
         .gte("created_at", dateFrom.toISOString())
         .lte("created_at", dateTo.toISOString())
@@ -151,6 +151,22 @@ const Dispatch = () => {
   });
 
   const heldSet = useMemo(() => new Set(heldRegIds), [heldRegIds]);
+
+  const { data: creditPickupIds = [] } = useQuery({
+    queryKey: ["dispatch_credit_pickup_points"],
+    queryFn: async () => {
+      const { data } = await supabase.from("pickup_points").select("id, billing_type").eq("billing_type", "credit");
+      return (data || []).map((p: any) => p.id) as string[];
+    },
+  });
+  const creditPickupSet = useMemo(() => new Set(creditPickupIds), [creditPickupIds]);
+  const isPaymentBlocked = (reg: any) => {
+    if (!reg) return false;
+    if ((reg.due_amount ?? 0) <= 0) return false;
+    // Credit pickup-point patients are billed monthly — bypass the DUE block
+    if (reg.pickup_point_id && creditPickupSet.has(reg.pickup_point_id)) return false;
+    return true;
+  };
 
   const dispatchEntries = useMemo(() => {
     return registrations.filter((reg: any) => !heldSet.has(reg.id)).map((reg: any) => {
@@ -491,8 +507,8 @@ const Dispatch = () => {
                               {formatDate(reg.created_at)}
                             </div>
                             {reg.due_amount > 0 && (
-                              <Badge variant="destructive" className="mt-1 text-[10px] px-1.5 py-0">
-                                DUE ₹{reg.due_amount}
+                              <Badge variant={isPaymentBlocked(reg) ? "destructive" : "secondary"} className="mt-1 text-[10px] px-1.5 py-0">
+                                DUE ₹{reg.due_amount}{!isPaymentBlocked(reg) ? " · CREDIT" : ""}
                               </Badge>
                             )}
                           </div>
@@ -544,22 +560,22 @@ const Dispatch = () => {
                       </div>
                       <div className={cn("flex items-center gap-2", isMobile && "w-full overflow-x-auto")}>
                         {selectedEntry.registration.due_amount > 0 && (
-                          <Badge variant="destructive" className="text-xs px-2 py-1 shrink-0">
-                            DUE ₹{selectedEntry.registration.due_amount}
+                          <Badge variant={isPaymentBlocked(selectedEntry.registration) ? "destructive" : "secondary"} className="text-xs px-2 py-1 shrink-0">
+                            DUE ₹{selectedEntry.registration.due_amount}{!isPaymentBlocked(selectedEntry.registration) ? " · CREDIT" : ""}
                           </Badge>
                         )}
                         {selectedEntry.tests.some(t => t.status === "approved" || t.status === "dispatched") && (
                           <>
-                            <Button size="sm" variant="outline" className="gap-1 shrink-0" disabled={selectedEntry.registration.due_amount > 0} onClick={() => openReportSelectDialog(selectedEntry)}>
+                            <Button size="sm" variant="outline" className="gap-1 shrink-0" disabled={isPaymentBlocked(selectedEntry.registration)} onClick={() => openReportSelectDialog(selectedEntry)}>
                               <Eye className="h-4 w-4" /> {!isMobile && "View"} Report
                             </Button>
-                            <Button size="sm" variant="outline" className="gap-1 shrink-0" disabled={selectedEntry.registration.due_amount > 0} onClick={() => dispatchViaWhatsApp(selectedEntry.registration)}>
+                            <Button size="sm" variant="outline" className="gap-1 shrink-0" disabled={isPaymentBlocked(selectedEntry.registration)} onClick={() => dispatchViaWhatsApp(selectedEntry.registration)}>
                               <MessageSquare className="h-4 w-4" /> {!isMobile && "WhatsApp"}
                             </Button>
                           </>
                         )}
                         {selectedEntry.approvedCount > 0 && (
-                          <Button size="sm" className="gap-1 shrink-0" disabled={selectedEntry.registration.due_amount > 0 || actionKey === `${selectedEntry.registration.id}||dispatch`} onClick={() => markAsDispatched(selectedEntry)}>
+                          <Button size="sm" className="gap-1 shrink-0" disabled={isPaymentBlocked(selectedEntry.registration) || actionKey === `${selectedEntry.registration.id}||dispatch`} onClick={() => markAsDispatched(selectedEntry)}>
                             {actionKey === `${selectedEntry.registration.id}||dispatch` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Dispatch All
                           </Button>
                         )}
@@ -600,7 +616,7 @@ const Dispatch = () => {
                               <div className={cn("flex items-center gap-1.5 shrink-0", isMobile && "flex-wrap w-full justify-end")}>
                                 {/* View Snip */}
                                 {test.status === "approved" && test.snipUrls.length > 0 && (
-                                  <Button size="sm" variant="ghost" className="h-8 text-xs gap-1" disabled={selectedEntry.registration.due_amount > 0} onClick={() => setViewSnipImages(test.snipUrls)}>
+                                  <Button size="sm" variant="ghost" className="h-8 text-xs gap-1" disabled={isPaymentBlocked(selectedEntry.registration)} onClick={() => setViewSnipImages(test.snipUrls)}>
                                     <Eye className="h-3.5 w-3.5" /> Snip
                                   </Button>
                                 )}
@@ -629,10 +645,10 @@ const Dispatch = () => {
                                 {/* WhatsApp & Dispatch */}
                                 {test.status === "approved" && (
                                   <>
-                                    <Button size="sm" variant="outline" className="h-8 text-xs gap-1" disabled={selectedEntry.registration.due_amount > 0} onClick={() => dispatchViaWhatsApp(selectedEntry.registration)}>
+                                    <Button size="sm" variant="outline" className="h-8 text-xs gap-1" disabled={isPaymentBlocked(selectedEntry.registration)} onClick={() => dispatchViaWhatsApp(selectedEntry.registration)}>
                                       <MessageSquare className="h-3.5 w-3.5" />
                                     </Button>
-                                    <Button size="sm" className="h-8 text-xs gap-1" disabled={selectedEntry.registration.due_amount > 0 || isTestDispatching} onClick={() => markTestDispatched(selectedEntry.registration.id, test.testId, test.testName)}>
+                                    <Button size="sm" className="h-8 text-xs gap-1" disabled={isPaymentBlocked(selectedEntry.registration) || isTestDispatching} onClick={() => markTestDispatched(selectedEntry.registration.id, test.testId, test.testName)}>
                                       {isTestDispatching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />} Dispatch
                                     </Button>
                                   </>
@@ -714,7 +730,7 @@ const Dispatch = () => {
                 </label>
               ))}
             </div>
-            <Button className="w-full" disabled={selectedTestIds.size === 0 || (reportSelectEntry?.registration?.due_amount ?? 0) > 0} onClick={handleGenerateReport}>
+            <Button className="w-full" disabled={selectedTestIds.size === 0 || isPaymentBlocked(reportSelectEntry?.registration)} onClick={handleGenerateReport}>
               <Eye className="h-4 w-4 mr-1" /> Generate Report ({selectedTestIds.size} test{selectedTestIds.size !== 1 ? "s" : ""})
             </Button>
           </div>
