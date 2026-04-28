@@ -1169,6 +1169,7 @@ const ResultVerification = () => {
                         </span>
                       )}
                         <span className="text-sm text-muted-foreground">{reg.patient_name}</span>
+                        <Badge variant="outline" className="text-[10px] font-mono">{formatAgeGender(reg.dob, reg.gender)}</Badge>
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {reg.mobile_number} • {entry.parameters.length} parameters to verify
