@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
+import { propagateRegistrationChange } from "@/lib/limsPropagation";
 import { formatAgeGender } from "@/lib/ageGender";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -322,10 +323,8 @@ const Dispatch = () => {
       if (!stillPending) {
         await supabase.from("patient_registrations").update({ status: "dispatched" } as any).eq("id", reg.id);
       }
+      await propagateRegistrationChange(qc, reg.id, ["dispatch", "doctor_approval"]);
       toast.success(`Reports dispatched for ${reg.patient_name}`);
-      recalculateRegistrationStatus(reg.id).catch(console.error);
-      qc.invalidateQueries({ queryKey: ["dispatch_"] });
-      qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
     } catch (err: any) { toast.error(err.message || "Dispatch failed"); }
     finally { setActionKey(null); }
   };
@@ -335,9 +334,8 @@ const Dispatch = () => {
     try {
       await supabase.from("patient_results").update({ status: "dispatched", dispatched_at: new Date().toISOString(), dispatched_by: getCurrentUserName() } as any).eq("registration_id", regId).eq("test_id", testId).eq("status", "approved");
       await supabase.from("outsourced_test_snips").update({ outsource_status: "dispatched" } as any).eq("registration_id", regId).eq("test_id", testId).eq("outsource_status", "approved");
+      await propagateRegistrationChange(qc, regId, ["dispatch"]);
       toast.success(`${testName} marked as dispatched`);
-      qc.invalidateQueries({ queryKey: ["dispatch_"] });
-      qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
     } catch (err: any) { toast.error(err.message || "Dispatch failed"); }
     finally { setActionKey(null); }
   };
