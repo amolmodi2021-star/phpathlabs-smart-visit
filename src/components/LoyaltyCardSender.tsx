@@ -452,7 +452,7 @@ const LoyaltyCardSender = () => {
       <div className="flex items-center gap-4">
         <Button onClick={generateCards} disabled={generating || !selectedTemplateId || excelData.length === 0}>
           {generating ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Play className="h-4 w-4 mr-1" />}
-          {generating ? "Generating..." : "Generate Cards"}
+          {generating ? "Generating & Sending..." : "Generate & Send Cards"}
         </Button>
         {generating && (
           <div className="flex-1 max-w-md space-y-1">
