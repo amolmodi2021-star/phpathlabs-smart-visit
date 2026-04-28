@@ -6,9 +6,6 @@ verify_jwt = false
 [functions.generate-loyalty-card]
 verify_jwt = false
 
-[functions.send-loyalty-whatsapp]
-verify_jwt = false
-
 [functions.abnormal-tests-import]
 verify_jwt = false
 
