@@ -77,6 +77,7 @@ interface Template {
   logo_width: number;
   logo_height: number;
   placeholders: Placeholder[];
+  details_band_height?: number | null;
   bands: Band[];
   table_config: TableConfig;
   footer_lines: FooterLine[];
@@ -110,6 +111,7 @@ const DEFAULT_TPL: Template = {
     { field: "UMR", x: 5, y: 85, fontSize: 22, fontColor: "#333333" },
     { field: "Barcode", x: 60, y: 30, fontSize: 50, fontColor: "#000000" },
   ],
+  details_band_height: null,
   bands: [
     { text: "HEALTH HISTORY FOR", height: 50, color: "#2E3192", textColor: "#FFFFFF", fontSize: 22, bold: true, align: "center", position: "above-table" },
   ],
@@ -177,7 +179,8 @@ async function renderAbnormalPreview(canvas: HTMLCanvasElement, tpl: Template, l
   const ctx = canvas.getContext("2d"); if (!ctx) return;
   const canvasWidth = tpl.canvas_width || 900;
   const headerBandHeight = tpl.show_header_band ? (tpl.header_band_height || 130) : 0;
-  const detailsBandHeight = (tpl.placeholders || []).reduce((m, p) => Math.max(m, (p.y || 0) + (p.fontSize || 25) + 10), 120);
+  const autoDetails = (tpl.placeholders || []).reduce((m, p) => Math.max(m, (p.y || 0) + (p.fontSize || 25) + 10), 60);
+  const detailsBandHeight = tpl.details_band_height && tpl.details_band_height > 0 ? tpl.details_band_height : autoDetails;
   const bandsAbove = (tpl.bands || []).filter((b) => b.position === "above-table");
   const bandsBelow = (tpl.bands || []).filter((b) => b.position === "below-table");
   const aboveT = bandsAbove.reduce((s, b) => s + (b.height || 60), 0);
@@ -366,6 +369,7 @@ const AbnormalCardDesigner = () => {
         background_color: tpl.background_color,
         show_header_band: tpl.show_header_band,
         header_band_height: tpl.header_band_height,
+        details_band_height: tpl.details_band_height ?? null,
         header_bg_color: tpl.header_bg_color,
         header_font_color: tpl.header_font_color,
         logo_url: tpl.logo_url,
@@ -398,6 +402,7 @@ const AbnormalCardDesigner = () => {
       background_color: t.background_color || "#FFFFFF",
       show_header_band: t.show_header_band !== false,
       header_band_height: t.header_band_height || 130,
+      details_band_height: t.details_band_height ?? null,
       header_bg_color: t.header_bg_color || "#FFFFFF",
       header_font_color: t.header_font_color || "#000000",
       logo_url: t.logo_url || null,
@@ -479,8 +484,17 @@ const AbnormalCardDesigner = () => {
           </CardTitle></CardHeader>
           <CardContent className="space-y-2">
             <div className="grid grid-cols-2 gap-2">
-              <div><Label className="text-xs">Height</Label><Input type="number" value={tpl.header_band_height} onChange={(e) => update({ header_band_height: Number(e.target.value) })} /></div>
+              <div><Label className="text-xs">Header Band Height</Label><Input type="number" value={tpl.header_band_height} onChange={(e) => update({ header_band_height: Number(e.target.value) })} /></div>
               <div><Label className="text-xs">Bg Color</Label><input type="color" value={tpl.header_bg_color} onChange={(e) => update({ header_bg_color: e.target.value })} className="h-9 w-full rounded border" /></div>
+              <div className="col-span-2">
+                <Label className="text-xs">Details Band Height (gap below header — leave empty to auto-fit)</Label>
+                <Input
+                  type="number"
+                  placeholder="auto"
+                  value={tpl.details_band_height ?? ""}
+                  onChange={(e) => update({ details_band_height: e.target.value === "" ? null : Number(e.target.value) })}
+                />
+              </div>
             </div>
             <div>
               <Label className="text-xs">Logo</Label>
