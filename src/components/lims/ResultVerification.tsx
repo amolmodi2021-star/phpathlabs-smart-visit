@@ -993,6 +993,7 @@ const ResultVerification = () => {
               </span>
             )}
             <span className="text-sm text-muted-foreground ml-2">{reg.patient_name}</span>
+            <Badge variant="outline" className="text-[10px] font-mono ml-1">{formatAgeGender(reg.dob, reg.gender)}</Badge>
           </div>
         </div>
 
