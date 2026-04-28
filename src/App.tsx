@@ -24,7 +24,7 @@ import ReportLayoutSettings from "./pages/ReportLayoutSettings";
 import LoyaltyCards from "./pages/LoyaltyCards";
 import WhatsAppWebhook from "./pages/WhatsAppWebhook";
 import Marketing from "./pages/Marketing";
-import CRM from "./pages/CRM";
+// CRM module disabled (cost optimization 2026-04-28)
 import LimsDemo from "./pages/LimsDemo";
 import Lims from "./pages/Lims";
 import WhatsAppSettingsPage from "./pages/WhatsAppSettingsPage";
