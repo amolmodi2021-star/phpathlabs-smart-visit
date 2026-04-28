@@ -580,6 +580,7 @@ const SampleCollection = () => {
                   className={`cursor-pointer hover:bg-muted/50 ${reg.is_stat ? "bg-destructive/5 border-l-2 border-l-destructive" : ""}`}
                   onClick={() => {
                     const next = isExpanded ? null : reg.id;
+                    markArrivalSeen(reg.id);
                     setExpandedRow(next);
                     if (next) void recalcTubesForRegistration(reg.id);
                   }}>
@@ -590,6 +591,7 @@ const SampleCollection = () => {
                   <TableCell>
                     <div className="font-medium">
                       {reg.patient_name}
+                      {isPending && <NewBadge show={isNewArrival(reg.id)} className="ml-1.5 align-middle" /></>}
                       {reg.is_stat && (
                         <span className="relative inline-flex h-2.5 w-2.5 ml-1.5 align-middle">
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75"></span>
