@@ -219,20 +219,29 @@ const EstimateDashboard = () => {
         </div>
       </div>
 
-      <Input
-        placeholder="Search by patient name or mobile number..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="w-full"
-        autoComplete="off"
-        autoCorrect="off"
-        autoCapitalize="off"
-        spellCheck={false}
-        name="estimate-search"
-        data-lpignore="true"
-        data-form-type="other"
-        data-1p-ignore="true"
-      />
+      <div className="flex items-center gap-2">
+        <Input
+          placeholder={searchAllDates ? "Search all estimates..." : "Search last 7 days..."}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="flex-1"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          name="estimate-search"
+          data-lpignore="true"
+          data-form-type="other"
+          data-1p-ignore="true"
+        />
+        <label className="flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap cursor-pointer">
+          <Checkbox checked={searchAllDates} onCheckedChange={(v) => setSearchAllDates(!!v)} />
+          Search all dates
+        </label>
+      </div>
+      {!searchAllDates && (
+        <p className="text-xs text-muted-foreground">Showing last 7 days only. Tick "Search all dates" to widen.</p>
+      )}
 
       {isLoading ? <p className="text-sm text-muted-foreground">Loading...</p> : filteredEstimates.length === 0 ? (
         <p className="text-sm text-muted-foreground text-center py-8">No estimates yet.</p>
