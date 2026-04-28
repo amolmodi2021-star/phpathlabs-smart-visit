@@ -19,7 +19,7 @@ const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const PhlebotomistManagement = () => {
   useRealtimeSync("phlebotomists", ["phlebotomists"]);
-  useRealtimeSync("phlebotomist_leaves", ["phlebotomist_leaves"]);
+  // phlebotomist_leaves not in realtime publication; rely on local refetch after writes.
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
