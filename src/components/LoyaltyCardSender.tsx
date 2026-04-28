@@ -302,22 +302,8 @@ const LoyaltyCardSender = () => {
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("Canvas not supported");
 
-      // Create job. We deliberately do NOT persist the uploaded Excel rows —
-      // they live only in the browser for the duration of card generation,
-      // then per-card data is written to `loyalty_cards`. Skipping `excel_data`
-      // keeps the DB lean even when uploading 50k-row sheets.
-      const { data: job, error: jobError } = await supabase.from("loyalty_card_jobs").insert({
-        template_id: selectedTemplateId,
-        status: "processing",
-        total_cards: excelData.length,
-        queue_enabled: queueEnabled,
-        delay_ms: delayMs,
-        whatsapp_template_name: null,
-        whatsapp_variables_mapping: {},
-      }).select().single();
-
-      if (jobError) throw jobError;
-
+      // Card history / job tracking removed — cards are rendered, uploaded to
+      // Cloudinary, and sent via WhatsApp. No DB rows are written.
       const placeholders = (template.placeholders as any[]) || [];
       const BATCH_SIZE = 5; // Upload 5 in parallel
 
