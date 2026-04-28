@@ -16,9 +16,7 @@ interface Props {
 
 // Map from cron job name → edge function name
 const CRON_TO_FN: Record<string, string> = {
-  "cleanup-card-images-midnight": "cleanup-card-images",
   "cleanup-outsourced-snips-daily": "cleanup-outsourced-snips",
-  "prune-old-logs-nightly": "prune-old-logs",
 };
 
 const CronJobs = ({ cronJobs, lastRuns, onRefetch }: Props) => {
