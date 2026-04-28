@@ -1512,7 +1512,23 @@ const ResultsEntry = () => {
                   >
                     <div className="flex items-center gap-2 flex-wrap">
                       {isTestExpanded ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
-                      <span className="text-base font-bold text-foreground">{tg.testName}</span>
+                      {(() => {
+                        const hasNegative = tg.params.some(p => {
+                          const k = `${reg.id}||${p.parameterId}`;
+                          const v = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
+                          return isSuspectNegativeResult(v);
+                        });
+                        return (
+                          <>
+                            <span className={`text-base font-bold ${hasNegative ? "text-red-600" : "text-foreground"}`}>{tg.testName}</span>
+                            {hasNegative && (
+                              <Badge className="text-[10px] bg-red-600 text-white hover:bg-red-700 gap-0.5">
+                                <AlertTriangle className="h-3 w-3" /> Negative value — please verify
+                              </Badge>
+                            )}
+                          </>
+                        );
+                      })()}
                       <Badge variant="outline" className="text-[10px]">{filledCount}/{tg.params.length}</Badge>
                       {isFullTestOutsourced && (() => {
                         const allHaveResults = tg.params.every(p => {
