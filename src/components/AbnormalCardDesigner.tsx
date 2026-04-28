@@ -288,7 +288,7 @@ async function renderAbnormalPreview(canvas: HTMLCanvasElement, tpl: Template, l
       ctx.fillStyle = isResult ? rc : rfc;
       ctx.font = `${isResult ? "bold " : ""}${fs}px Arial, Helvetica, sans-serif`;
       ctx.textBaseline = "middle"; ctx.textAlign = al;
-      const tx = al === "left" ? cx + 6 : al === "right" ? cx + colWidths[ci] - 6 : cx + colWidths[ci] / 2;
+      const tx = al === "left" ? cx + 18 : al === "right" ? cx + colWidths[ci] - 18 : cx + colWidths[ci] / 2;
       ctx.fillText(cell, tx, cy + rowH / 2);
       cx += colWidths[ci];
     });
