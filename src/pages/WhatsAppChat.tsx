@@ -930,10 +930,38 @@ export default function WhatsAppChat() {
     </div>
   );
 
+  const handleDeleteAllChats = async () => {
+    setDeletingAll(true);
+    try {
+      const { data, error } = await supabase.rpc("delete_all_whatsapp_chats" as any);
+      if (error) throw error;
+      const count = typeof data === "number" ? data : 0;
+      setSelectedMobile(null);
+      setManualUnreadMobiles(new Set());
+      queryClient.invalidateQueries({ queryKey: ["wa-contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["wa-messages"] });
+      toast.success(`Deleted ${count} chat message${count === 1 ? "" : "s"}`);
+    } catch (err: any) {
+      toast.error("Failed to delete chats: " + (err.message || "Unknown error"));
+    } finally {
+      setDeletingAll(false);
+    }
+  };
+
+  const deleteAllDialog = (
+    <DeletePasswordDialog
+      open={showDeleteAllDialog}
+      onOpenChange={setShowDeleteAllDialog}
+      onSuccess={handleDeleteAllChats}
+      description="This will permanently delete every WhatsApp chat message (incoming and outgoing). This cannot be undone."
+    />
+  );
+
   if (isMobile) {
     return (
       <div className="h-[calc(100vh-3.5rem)] -m-4 md:-m-6">
         {selectedMobile ? chatPanel : contactListPanel}
+        {deleteAllDialog}
       </div>
     );
   }
@@ -946,6 +974,7 @@ export default function WhatsAppChat() {
       <div className="flex-1 flex flex-col">
         {selectedMobile ? chatPanel : emptyChat}
       </div>
+      {deleteAllDialog}
     </div>
   );
 }
