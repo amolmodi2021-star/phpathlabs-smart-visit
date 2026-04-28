@@ -84,29 +84,7 @@ const CloudUsage = () => {
 
       <StorageBreakdown buckets={stats.buckets} onRefetch={load} />
       <DatabaseTables tables={stats.tables} onRefetch={load} />
-      <CronJobs cronJobs={stats.cron_jobs} lastRuns={stats.last_runs} onRefetch={load} />
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Recent Cleanup Runs</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {Object.keys(stats.last_runs).length === 0 ? (
-            <p className="text-sm text-muted-foreground">No cleanup runs recorded yet. Trigger one above to populate this section.</p>
-          ) : (
-            <ul className="space-y-2 text-sm">
-              {Object.entries(stats.last_runs).map(([fn, r]) => (
-                <li key={fn} className="flex items-center justify-between border-b pb-2">
-                  <span className="font-mono text-xs">{fn}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {format(new Date(r.ran_at), "dd-MM-yyyy HH:mm:ss")}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+      <CronJobs cronJobs={stats.cron_jobs} onRefetch={load} />
     </div>
   );
 };

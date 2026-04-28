@@ -1,133 +1,33 @@
-# Drop all WhatsApp / message logging — keep Marketing UI + login history
+## Cloud Cost Cleanup — Retention & Drop Plan
 
-You want **zero logging for WhatsApp / messaging**. Marketing section stays usable. Login history stays. Prescriptions get auto-deleted right after scanning (no storage at all).
+Apply aggressive retention to all remaining growth tables and drop the unused audit table.
 
-## What gets deleted
+### Database Migration
 
-### 1. Database tables — DROPPED entirely
-- `message_send_log` — the big one
-- `drip_campaign_log`
-- `drip_mobile_cycles`
-- `loyalty_cards` (per-card send-status log)
-- `loyalty_card_jobs` (bulk send job tracker)
+1. **Drop `cleanup_runs` table** entirely (no audit needed).
+2. **Update `get_cloud_usage_stats` RPC** to remove the `last_runs` lookup that referenced `cleanup_runs` (replace with empty `{}`).
+3. **Schedule pg_cron jobs** (daily at 02:30 IST) to auto-delete:
+   - `lims_unmapped_results` where `received_at < now() - interval '7 days'` AND `is_resolved = true` (keep unresolved so staff can still map them; if you want strict 7-day regardless, say so).
+   - `report_link_events` where `occurred_at < now() - interval '7 days'`.
+   - `report_link_sessions` where `created_at < now() - interval '7 days'` (verify column name in migration).
+   - `app_user_login_history` where `login_at < now() - interval '7 days'`.
+4. Run a one-time purge of all rows already older than 7 days in those four tables to immediately reclaim space.
 
-### 2. Database tables — KEPT
-- `app_user_login_history` ✅ keep
-- `webhook_messages` ✅ keep (powers WhatsApp Chat — but TRUNCATE once now to clear history)
-- `marketing_templates` ✅ keep (template definitions, not logs)
-- `marketing_campaigns` ✅ keep (campaign config, used by MarketingSender to drive the bulk send)
-- `crm_blacklist`, `drip_campaign_filters` ✅ keep (config, no log churn)
-- `lims_interface_logs` ✅ keep (this is instrument I/O, not message log — separate concern)
+### Code Changes
 
-### 3. RPCs — DROPPED
-- `get_new_numbers_paginated` (only reads `message_send_log`)
+- **`src/lib/cloudUsage.ts`**: Remove `last_runs` from `CloudUsageStats` interface and update `RETENTION_RULES` to reflect new 7-day windows for `lims_unmapped_results`, `report_link_events`, `report_link_sessions`, `app_user_login_history`. Drop `webhook_messages` entry (handled by separate user-driven purge) — or keep at 90d, will confirm.
+- **`src/components/cloud/CronJobs.tsx`**: Remove any UI references to `cleanup_runs` / "last run" badges since the table is gone.
+- **`src/components/cloud/DatabaseTables.tsx`**: Remove `cleanup_runs` from any displayed lists.
 
-### 4. Webhook (`whatsapp-webhook` edge function)
-- Strip the `message_send_log` UPDATE block (lines 70–82). Webhook will only update `webhook_messages.delivery_status` for actual chat messages.
+### Clarifying question
 
-### 5. Frontend code
-- **DELETE** `src/lib/messageLog.ts`
-- **DELETE** `src/lib/dripCardSenders.ts` (already a stub, no live callers)
-- **DELETE** `src/components/marketing/MessageLog.tsx`
-- **DELETE** `src/components/marketing/MarketingHistory.tsx`
-- **DELETE** `src/components/marketing/MarketingRetry.tsx`
-- **DELETE** `src/components/marketing/AutomatedMarketing.tsx` (drip)
-- **DELETE** `src/components/marketing/NewNumbers.tsx` (reads dropped RPC)
-- **DELETE** `src/components/LoyaltyCardHistory.tsx` (reads `loyalty_cards`)
-- **KEEP** `src/components/marketing/MarketingSender.tsx` — but strip the `logMessageSend` import + calls
-- **KEEP** `src/components/marketing/MarketingTemplates.tsx`
-- **KEEP** `src/components/LoyaltyCardSender.tsx` — strip log writes, keep send flow
-- **KEEP** `src/pages/LoyaltyCards.tsx` — remove the History tab only
-- **UPDATE** `src/pages/Marketing.tsx` — keep just **Send Messages** and **Templates** tabs (remove "New Numbers")
+For `lims_unmapped_results`: should the 7-day cron delete **only resolved** rows (safer — unresolved stays for manual mapping) or **all rows >7 days** regardless of resolved status (more aggressive — may lose unmapped machine results)?
 
-Strip `logMessageSend` / `extractMessageId` imports + calls from these files (the calls are already no-ops, just clean it up):
-- `src/pages/WhatsAppChat.tsx`
-- `src/pages/EstimateDashboard.tsx`
-- `src/pages/CreateEstimate.tsx`
-- `src/components/EditHomeVisitDialog.tsx`
-- `src/components/EditEstimateDialog.tsx`
-- `src/components/AddHomeVisitDialog.tsx`
-- `src/components/ReceiptViewDialog.tsx`
-- `src/components/PaymentDetailsDialog.tsx`
-- `src/components/lims/InvoicePreview.tsx`
-- `src/components/marketing/MarketingSender.tsx`
-- `src/components/crm/CRMImportReview.tsx`
+I'll default to **all rows >7 days regardless** since you said "bare minimum cost". Confirm or correct in your approval.
 
-### 6. Prescription auto-delete (no retention)
-Currently `cleanup-prescriptions` runs a cron that deletes after 30 days. You want **immediate deletion after scanning**. Two changes:
+### Summary
 
-- **Edit `src/components/PrescriptionScanDialog.tsx`** — after the AI parse completes (success or failure), `await supabase.storage.from('prescriptions').remove([uploadedPath])`. The image is only needed long enough for Gemini to read it.
-- **Delete the `cleanup-prescriptions` cron + edge function** (no longer needed). Bucket stays for transient uploads.
-
-### 7. WhatsApp Chat data wipe (one-time)
-- `TRUNCATE webhook_messages` — wipes all chat history
-- Empty `chat-attachments` storage bucket — deletes all received/sent media
-- Empty `loyalty-cards` storage bucket — no longer tracked anywhere
-
-### 8. CloudUsage cleanup
-- Remove dropped tables from `src/lib/cloudUsage.ts` retention/forever lists
-- Remove `cleanup-prescriptions` from cron job display
-
-## Files
-
-```text
-supabase/migrations/<new>.sql
-  — DROP TABLE message_send_log, drip_campaign_log, drip_mobile_cycles,
-                loyalty_cards, loyalty_card_jobs
-  — DROP FUNCTION get_new_numbers_paginated
-  — TRUNCATE webhook_messages
-  — Unschedule cleanup-prescriptions cron
-
-supabase/functions/whatsapp-webhook/index.ts   — strip msl block (lines 70-82)
-supabase/functions/cleanup-prescriptions/      — DELETE entire function
-
-src/lib/messageLog.ts                          — DELETE
-src/lib/dripCardSenders.ts                     — DELETE
-src/components/marketing/MessageLog.tsx        — DELETE
-src/components/marketing/MarketingHistory.tsx  — DELETE
-src/components/marketing/MarketingRetry.tsx    — DELETE
-src/components/marketing/AutomatedMarketing.tsx — DELETE
-src/components/marketing/NewNumbers.tsx        — DELETE
-src/components/LoyaltyCardHistory.tsx          — DELETE
-
-src/pages/Marketing.tsx                        — keep Send + Templates tabs only
-src/pages/LoyaltyCards.tsx                     — remove History tab
-src/components/LoyaltyCardSender.tsx           — strip log writes
-src/components/marketing/MarketingSender.tsx   — strip logMessageSend
-src/components/PrescriptionScanDialog.tsx      — auto-delete after scan
-src/lib/cloudUsage.ts                          — drop deleted tables
-
-src/pages/WhatsAppChat.tsx                     — remove logMessageSend import
-src/pages/EstimateDashboard.tsx                — remove import
-src/pages/CreateEstimate.tsx                   — remove import
-src/components/EditHomeVisitDialog.tsx         — remove import
-src/components/EditEstimateDialog.tsx          — remove import
-src/components/AddHomeVisitDialog.tsx          — remove import
-src/components/ReceiptViewDialog.tsx           — remove import
-src/components/PaymentDetailsDialog.tsx        — remove import
-src/components/lims/InvoicePreview.tsx         — remove import
-src/components/crm/CRMImportReview.tsx         — remove import
-
-Storage purge (one-time, via inline edge function call):
-  chat-attachments bucket — delete all objects
-  loyalty-cards bucket    — delete all objects
-  prescriptions bucket    — delete all objects (clean slate)
-```
-
-## Memory updates
-- Update Core: log message_send_log/drip_*/loyalty_cards as permanently dropped (do not re-create)
-- Update Core: prescriptions are deleted immediately post-scan (no storage retention)
-- Remove memory file `mem://features/communication/universal-message-log` (now obsolete)
-
-## Expected impact
-| Item | Before | After |
-|---|---|---|
-| `message_send_log` writes | every send | gone |
-| Webhook delivery updates | 2 tables × 2 queries | 1 table × 1 query |
-| `loyalty_cards` rows | grows per card | gone |
-| `chat-attachments` storage | growing | 0 (then only new chat media) |
-| `prescriptions` storage | 30-day retention | ~0 (deleted on scan) |
-| Marketing page | working | working (2 tabs) |
-| Login history | working | working |
-
-Approve and I'll do it in one pass.
+- 1 table dropped (`cleanup_runs`)
+- 4 new daily cron jobs (7-day retention)
+- 1 RPC updated, 2-3 frontend files cleaned
+- One-time purge included in migration
