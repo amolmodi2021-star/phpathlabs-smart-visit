@@ -40,8 +40,13 @@ const RegisteredPatients = () => {
 
   // When user is searching, ignore date filter so older records are findable
   const applyDateFilter = !debouncedSearch;
-  const fromIso = applyDateFilter && fromDate ? new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate(), 0, 0, 0).toISOString() : null;
+  let fromIso = applyDateFilter && fromDate ? new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate(), 0, 0, 0).toISOString() : null;
   const toIso = applyDateFilter && toDate ? new Date(toDate.getFullYear(), toDate.getMonth(), toDate.getDate(), 23, 59, 59, 999).toISOString() : null;
+  // Cost-saving safety cap: when no date filter AND no search, cap to last 90 days
+  // to prevent full-table scans as patient_registrations grows over time.
+  if (applyDateFilter && !fromIso && !toIso) {
+    fromIso = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+  }
 
   const handleSearch = (val: string) => {
     setSearch(val);
