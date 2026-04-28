@@ -20,6 +20,7 @@ import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import { signalSync } from "@/lib/limsSyncSignal";
+import { propagateRegistrationChange } from "@/lib/limsPropagation";
 import NewBadge from "./NewBadge";
 import OutsourcedResults from "./OutsourcedResults";
 import { format } from "date-fns";
@@ -968,12 +969,9 @@ const ResultsEntry = () => {
       // Update outsourced snip status to results_entered so it flows to Verification
       await supabase.from("outsourced_test_snips").update({ outsource_status: "results_entered" } as any).eq("registration_id", reg.id).eq("test_id", testId).in("outsource_status", ["pending", "sent", "results_saved"]);
     },
-    onSuccess: (_, { entry, testId }) => {
+    onSuccess: async (_, { entry, testId }) => {
       const testName = entry.parameters.find(p => p.testId === testId)?.testName || entry.snipOnlyTests.find(s => s.testId === testId)?.testName || "Test";
-      toast.success(`${testName} saved & sent to verification`);
       const regId = entry.registration.id;
-      // Signal Verification tab to show "Syncing…" until this regId appears there
-      signalSync("verification", regId);
       setEditedValues(prev => {
         const next = { ...prev };
         entry.parameters.filter(p => p.testId === testId).forEach(p => {
@@ -983,17 +981,10 @@ const ResultsEntry = () => {
       });
       setSavingTestKey(null);
       setBlankConfirmTestParams(null);
-      // Remove highlight for this reg if no more blank issues
       setHighlightBlanksForRegs(prev => { const next = new Set(prev); next.delete(`${regId}||${testId}`); return next; });
-      // Recalculate registration status
-      recalculateRegistrationStatus(regId).catch(console.error);
-      qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
-      qc.invalidateQueries({ queryKey: ["verification_results_v2"] });
-      qc.invalidateQueries({ queryKey: ["verification_outsourced_v2"] });
-      qc.invalidateQueries({ queryKey: ["outsourced_manual_results"] });
-      qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
-      qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] });
-      qc.invalidateQueries({ queryKey: ["results_accepted_regs"] });
+      // Awaited recalc + correct invalidations + sync signal — single source of truth
+      await propagateRegistrationChange(qc, regId, ["results", "verification"]);
+      toast.success(`${testName} saved & sent to verification`);
     },
     onError: (err: any) => {
       toast.error(err.message || "Failed to save results");
