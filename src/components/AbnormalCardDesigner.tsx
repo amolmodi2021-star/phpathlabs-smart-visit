@@ -192,7 +192,7 @@ async function renderAbnormalPreview(canvas: HTMLCanvasElement, tpl: Template, l
   const tableH = tHeaderH + SAMPLE_TESTS.length * rowH;
   const footerH = (tpl.footer_lines || []).reduce((s, fl) => s + (fl.fontSize || 20) + 14, 30);
   const padding = 30;
-  const canvasHeight = headerBandHeight + detailsBandHeight + aboveT + tableH + belowT + footerH + padding;
+  const canvasHeight = headerBandHeight + detailsBandHeight + aboveT + 12 + tableH + belowT + footerH + padding;
 
   canvas.width = canvasWidth;
   canvas.height = canvasHeight;
@@ -245,6 +245,7 @@ async function renderAbnormalPreview(canvas: HTMLCanvasElement, tpl: Template, l
     cy += h;
   };
   bandsAbove.forEach(drawBand);
+  if (bandsAbove.length > 0) cy += 12;
 
   const colWeights = tc.colWidths && tc.colWidths.length === 4 ? tc.colWidths : [0.38, 0.18, 0.18, 0.26];
   const colWidths = colWeights.map((w) => Math.floor(w * canvasWidth));

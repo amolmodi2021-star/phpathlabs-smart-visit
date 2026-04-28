@@ -194,7 +194,7 @@ export async function generateAbnormalCardForDrip(
 
     const padding = 30;
     const canvasHeight =
-      headerBandHeight + detailsBandHeight + aboveBandsTotal + tableHeight + belowBandsTotal + footerHeight + padding;
+      headerBandHeight + detailsBandHeight + aboveBandsTotal + 12 + tableHeight + belowBandsTotal + footerHeight + padding;
 
     const canvas = document.createElement("canvas");
     canvas.width = canvasWidth;
@@ -279,6 +279,9 @@ export async function generateAbnormalCardForDrip(
     };
 
     bandsAbove.forEach(drawBand);
+    // Small vertical gap between "Health History for ..." band and the table
+    const bandTableGap = bandsAbove.length > 0 ? 12 : 0;
+    cursorY += bandTableGap;
 
     // Abnormal tests table
     const colWeights = tableCfg.colWidths && tableCfg.colWidths.length === 4
