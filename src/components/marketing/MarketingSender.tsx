@@ -214,14 +214,7 @@ const MarketingSender = () => {
       }
     }
 
-    await supabase.from("marketing_campaigns").update({
-      sent_count: sentCount,
-      failed_count: failedCount,
-      status: failedCount === 0 ? "completed" : "completed_with_errors",
-    }).eq("id", campaign.id);
-
     setSending(false);
-    queryClient.invalidateQueries({ queryKey: ["marketing_campaigns"] });
     toast.success(`Sent: ${sentCount}, Failed: ${failedCount}`);
   };
 
