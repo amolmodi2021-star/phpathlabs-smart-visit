@@ -422,6 +422,10 @@ const DoctorApproval = () => {
 
   const stats = useMemo(() => ({ totalPatients: filteredEntries.length, totalParams: filteredEntries.reduce((s, e) => s + e.parameters.length, 0) }), [filteredEntries]);
 
+  // ─── NEW arrivals badge tracker ───
+  const filteredRegIds = useMemo(() => filteredEntries.map(e => e.registration.id), [filteredEntries]);
+  const { isNew: isNewArrival, markSeen: markArrivalSeen } = useNewArrivalsBadge("doctor_approval", filteredRegIds);
+
   const groupByMachine = (params: ParameterResult[]) => { const g: Record<string, { machineName: string; params: ParameterResult[] }> = {}; for (const p of params) { const m = p.machineName || "Others"; if (!g[m]) g[m] = { machineName: m, params: [] }; g[m].params.push(p); } return Object.values(g); };
   const groupByTest = (params: ParameterResult[]) => { const g: Record<string, { testId: string; testName: string; params: ParameterResult[] }> = {}; for (const p of params) { if (!g[p.testId]) g[p.testId] = { testId: p.testId, testName: p.testName, params: [] }; g[p.testId].params.push(p); } return Object.values(g); };
 
