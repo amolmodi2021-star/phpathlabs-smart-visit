@@ -21,6 +21,9 @@ import { formatDateDDMMYYYY } from "@/lib/utils";
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 import ModifiedApproval from "./ModifiedApproval";
 import SelectApproverDialog, { ApproverChoice } from "./SelectApproverDialog";
+import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
+import { signalSync } from "@/lib/limsSyncSignal";
+import NewBadge from "./NewBadge";
 
 const QUALITATIVE_PAIRS = [
   { label: "Absent / Present", values: ["Absent", "Present"] },
