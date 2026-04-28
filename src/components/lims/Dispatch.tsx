@@ -522,6 +522,7 @@ const Dispatch = () => {
                           )}
                           <User className="h-5 w-5 text-muted-foreground" />
                           <h3 className={cn("font-semibold", isMobile ? "text-base" : "text-lg")}>{selectedEntry.registration.patient_name}</h3>
+                          <Badge variant="outline" className="text-xs font-mono">{formatAgeGender(selectedEntry.registration.dob, selectedEntry.registration.gender)}</Badge>
                           {selectedEntry.registration.is_stat && selectedEntry.completionStatus !== "all_done" && <Badge variant="destructive" className="text-[10px]">STAT</Badge>}
                           {getCompletionDot(selectedEntry.completionStatus)}
                         </div>
