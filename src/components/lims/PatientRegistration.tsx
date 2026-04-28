@@ -194,19 +194,7 @@ const PatientRegistration = () => {
       }
     });
 
-    // 3. Search crm_contacts
-    const { data: crm } = await supabase.from("crm_contacts").select("*").ilike("mobile_number", `%${digits}%`).order("location").limit(10);
-    (crm || []).forEach((c: any) => {
-      const k = key(c.patient_name, c.mobile_number);
-      if (!seen.has(k)) {
-        seen.add(k);
-        others.push({
-          source: `CRM (${c.location || "—"})`, patient_name: c.patient_name || "",
-          umr_number: c.umr_number, mobile_number: c.mobile_number || "",
-          doctor_name: c.doctor_name,
-        });
-      }
-    });
+    // 3. crm_contacts lookup removed — CRM module disabled (cost optimization 2026-04-28)
 
     // 4. Search estimates
     const { data: est } = await supabase.from("estimates").select("*").ilike("whatsapp_number", `%${digits}%`).limit(10);

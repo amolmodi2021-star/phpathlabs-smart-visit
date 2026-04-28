@@ -77,15 +77,7 @@ export async function syncPatientDemographicsByUmr(
     } as any)
     .eq("umr_number", umr);
 
-  // 3. CRM contacts — matched by UMR
-  const crm = supabase
-    .from("crm_contacts")
-    .update({
-      patient_name: demo.patient_name,
-      mobile_number: demo.mobile_number ?? null,
-      doctor_name: demo.doctor_name ?? null,
-    } as any)
-    .eq("umr_number", umr);
+  // 3. CRM contacts removed (CRM module disabled — cost optimization 2026-04-28)
 
   // 4. Patient master — umr_id is the column name
   const master = supabase
@@ -128,12 +120,11 @@ export async function syncPatientDemographicsByUmr(
   })();
 
   const results = await Promise.allSettled([
-    sisterRegs, approved, crm, master, estimates, ordersUpdate,
+    sisterRegs, approved, master, estimates, ordersUpdate,
   ]);
   const labels = [
     "patient_registrations (sister visits)",
     "approved_reports",
-    "crm_contacts",
     "patient_master",
     "estimates",
     "lims_test_orders",
@@ -176,7 +167,6 @@ export function invalidatePatientCaches(qc: QueryClient): void {
     "bad_debts",
     "approved_reports",
     "lims_report_view",
-    "crm_contacts",
     "patient_master",
     "estimates",
   ];

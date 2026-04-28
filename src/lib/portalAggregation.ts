@@ -62,31 +62,12 @@ export async function fetchDepartmentMap(): Promise<{
 }
 
 /**
- * Fetch all abnormal test history rows for a UMR.
- * Joins via crm_contacts.primary_key (umr_number -> primary_keys) -> crm_abnormal_tests.
- * Returns grouped { test_name: rows[] } sorted by test_date desc within each group.
+ * Abnormal history fetch DISABLED — CRM tables are dropped/unused
+ * (cost optimization 2026-04-28). Returns empty grouping so the patient
+ * report portal renders cleanly without an "abnormal history" section.
  */
-export async function fetchAbnormalForUmr(umrNumber: string | null | undefined) {
-  if (!umrNumber) return {};
-  const { data: contacts } = await supabase
-    .from("crm_contacts")
-    .select("primary_key")
-    .eq("umr_number", umrNumber);
-  const pks = (contacts || []).map((c: any) => c.primary_key).filter(Boolean);
-  if (pks.length === 0) return {};
-  const { data: rows } = await supabase
-    .from("crm_abnormal_tests")
-    .select("test_name, result_value, normal_range, test_date, created_at")
-    .in("contact_primary_key", pks);
-  const grouped: Record<string, any[]> = {};
-  (rows || []).forEach((r: any) => {
-    const key = (r.test_name || "").trim();
-    if (!key) return;
-    const upper = key.toUpperCase();
-    if (!grouped[upper]) grouped[upper] = [];
-    grouped[upper].push({ ...r, test_name: key });
-  });
-  return grouped;
+export async function fetchAbnormalForUmr(_umrNumber: string | null | undefined) {
+  return {} as Record<string, any[]>;
 }
 
 /**
