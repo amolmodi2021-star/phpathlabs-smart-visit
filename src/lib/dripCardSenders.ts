@@ -282,15 +282,31 @@ export async function generateAbnormalCardForDrip(
     const colWidths = colWeights.map((w) => Math.floor(w * canvasWidth));
 
     // Header row
+    const colAligns = (tableCfg.colAligns && tableCfg.colAligns.length === 4
+      ? tableCfg.colAligns
+      : ["left", "center", "center", "center"]) as Array<"left" | "center" | "right">;
+
+    // Helper: shrink font to fit within column width
+    const fitFontSize = (text: string, baseSize: number, maxWidth: number, bold: boolean, family: string) => {
+      let size = baseSize;
+      while (size > 8) {
+        ctx.font = `${bold ? "bold " : ""}${size}px ${family}, Helvetica, sans-serif`;
+        if (ctx.measureText(text).width <= maxWidth) return size;
+        size -= 1;
+      }
+      return size;
+    };
+
     ctx.fillStyle = tableCfg.headerBg || "#2E3192";
     ctx.fillRect(0, cursorY, canvasWidth, tableHeaderHeight);
-    ctx.font = `bold ${headerFontSize}px ${tableCfg.headerFont || "Arial"}, Helvetica, sans-serif`;
     ctx.fillStyle = tableCfg.headerFontColor || "#FFFFFF";
     ctx.textBaseline = "middle";
     ctx.textAlign = "center";
     const headers = ["Test Name", "Date", "Result", "Normal Range"];
     let xCursor = 0;
     headers.forEach((h, i) => {
+      const fs = fitFontSize(h, headerFontSize, colWidths[i] - 12, true, tableCfg.headerFont || "Arial");
+      ctx.font = `bold ${fs}px ${tableCfg.headerFont || "Arial"}, Helvetica, sans-serif`;
       ctx.fillText(h, xCursor + colWidths[i] / 2, cursorY + tableHeaderHeight / 2);
       xCursor += colWidths[i];
     });
@@ -314,19 +330,18 @@ export async function generateAbnormalCardForDrip(
         t.result_value || "",
         t.normal_range || "",
       ];
-      ctx.font = `${rowFontSize}px Arial, Helvetica, sans-serif`;
       ctx.textBaseline = "middle";
-      ctx.textAlign = "center";
       let cx = 0;
       cells.forEach((cell, ci) => {
-        ctx.fillStyle = ci === 2 ? resultColor : rowFontColor;
-        ctx.font = `${ci === 2 ? "bold " : ""}${rowFontSize}px Arial, Helvetica, sans-serif`;
-        // Truncate if too wide
-        let txt = cell;
-        const maxW = colWidths[ci] - 16;
-        while (ctx.measureText(txt).width > maxW && txt.length > 3) txt = txt.slice(0, -2);
-        if (txt !== cell) txt = txt.slice(0, -1) + "…";
-        ctx.fillText(txt, cx + colWidths[ci] / 2, cursorY + rowHeight / 2);
+        const isResult = ci === 2;
+        const al = colAligns[ci] || "center";
+        const maxW = colWidths[ci] - 12;
+        const fs = fitFontSize(cell, rowFontSize, maxW, isResult, "Arial");
+        ctx.fillStyle = isResult ? resultColor : rowFontColor;
+        ctx.font = `${isResult ? "bold " : ""}${fs}px Arial, Helvetica, sans-serif`;
+        ctx.textAlign = al;
+        const tx = al === "left" ? cx + 6 : al === "right" ? cx + colWidths[ci] - 6 : cx + colWidths[ci] / 2;
+        ctx.fillText(cell, tx, cursorY + rowHeight / 2);
         cx += colWidths[ci];
       });
       // Bottom border
