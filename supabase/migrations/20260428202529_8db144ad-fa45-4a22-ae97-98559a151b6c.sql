@@ -1,0 +1,1 @@
+ALTER TABLE public.abnormal_card_templates ADD COLUMN IF NOT EXISTS details_band_height integer;

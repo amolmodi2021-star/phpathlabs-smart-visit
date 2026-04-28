@@ -20,6 +20,7 @@ export type Database = {
           bands: Json | null
           canvas_width: number | null
           created_at: string | null
+          details_band_height: number | null
           footer_lines: Json | null
           header_band_height: number | null
           header_bg_color: string | null
@@ -41,6 +42,7 @@ export type Database = {
           bands?: Json | null
           canvas_width?: number | null
           created_at?: string | null
+          details_band_height?: number | null
           footer_lines?: Json | null
           header_band_height?: number | null
           header_bg_color?: string | null
@@ -62,6 +64,7 @@ export type Database = {
           bands?: Json | null
           canvas_width?: number | null
           created_at?: string | null
+          details_band_height?: number | null
           footer_lines?: Json | null
           header_band_height?: number | null
           header_bg_color?: string | null
