@@ -25,11 +25,6 @@ export interface CronJob {
   command: string;
 }
 
-export interface LastRun {
-  ran_at: string;
-  summary: any;
-}
-
 export interface CloudUsageStats {
   db_size_bytes: number;
   db_size_pretty: string;
@@ -38,15 +33,16 @@ export interface CloudUsageStats {
   tables: TableStat[];
   buckets: BucketStat[];
   cron_jobs: CronJob[];
-  last_runs: Record<string, LastRun>;
   generated_at: string;
 }
 
 // Retention windows shown in the Cloud Usage UI for reference only
 export const RETENTION_RULES: Record<string, { days: number; column: string }> = {
-  lims_interface_logs: { days: 90, column: "created_at" },
-  app_user_login_history: { days: 365, column: "login_at" },
-  webhook_messages: { days: 90, column: "created_at" },
+  lims_interface_logs: { days: 30, column: "created_at" },
+  app_user_login_history: { days: 7, column: "login_at" },
+  lims_unmapped_results: { days: 7, column: "received_at" },
+  report_link_events: { days: 7, column: "occurred_at" },
+  report_link_sessions: { days: 7, column: "started_at" },
 };
 
 // Tables that are intentionally retained forever (clinical data)
