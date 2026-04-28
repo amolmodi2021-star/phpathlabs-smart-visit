@@ -18,6 +18,26 @@ const extractNumber = (value: string | number | null | undefined): number | null
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+/**
+ * Detect a leading comparison operator on a result value.
+ *
+ * Lab analyzers and manual entries often report capped readings as
+ * ">2000", "> 2000", ">=2000", "≥ 2000" (above measurable range) or
+ * "<2", "< 2", "<=2", "≤ 2" (below detection limit). The whitespace
+ * between operator and number is inconsistent across instruments and
+ * typists. Returns the operator direction so the flagging logic can
+ * treat the value as a saturating bound rather than an exact equality.
+ */
+type ResultOperator = "gt" | "lt" | null;
+const detectResultOperator = (value: string | number | null | undefined): ResultOperator => {
+  if (value === null || value === undefined) return null;
+  const str = String(value).trim();
+  if (!str) return null;
+  if (/^(?:>=|≥|>)\s*-?\d*\.?\d+/.test(str)) return "gt";
+  if (/^(?:<=|≤|<)\s*-?\d*\.?\d+/.test(str)) return "lt";
+  return null;
+};
+
 const NORMAL_CATEGORY_KEYWORDS = [
   "normal", "non-diabetic", "nondiabetic", "non diabetic",
   "sufficient", "sufficiency", "desirable", "optimal",
