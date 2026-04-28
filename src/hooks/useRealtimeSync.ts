@@ -22,22 +22,21 @@ type TableName =
   | "lims_no_map_required";
 
 /**
- * Debounced realtime subscription. Coalesces bursts of postgres_changes
- * (e.g., bulk inserts during drip campaigns / machine result floods) into a
- * single invalidation per query key after `debounceMs` of quiet.
+ * Debounced realtime subscription with multi-user resilience.
  *
- * Default 400ms — imperceptible to humans, drops 99% of redundant refetches
- * during bulk writes.
+ * - Coalesces bursts of postgres_changes into a single invalidation per key
+ *   after `debounceMs` of quiet (default 250 ms).
+ * - Active queries are FORCE-REFETCHED so the visible tab updates immediately;
+ *   inactive queries are only marked stale so multi-user fan-out stays cheap.
+ * - On WebSocket reconnect (e.g. after a load spike or network blip), forces a
+ *   one-shot invalidation so a stuck tab can never display stale data.
  *
  * `enabled` (default true): when false, skips channel subscription entirely.
- * Use this to suppress realtime fan-out during heavy writes (e.g. an active
- * marketing campaign) — set `enabled: !sending` and the broadcast wave that
- * would otherwise hit every subscriber's tab is eliminated.
  */
 export function useRealtimeSync(
   table: TableName,
   queryKeys: string[],
-  debounceMs = 400,
+  debounceMs = 250,
   options: { enabled?: boolean } = {},
 ) {
   const { enabled = true } = options;
@@ -48,6 +47,15 @@ export function useRealtimeSync(
 
   useEffect(() => {
     if (!enabled) return;
+
+    const flush = () => {
+      keysRef.current.forEach((key) => {
+        // Invalidate all observers, but force an immediate refetch only on the
+        // currently mounted/active ones — keeps background tabs cheap.
+        queryClient.invalidateQueries({ queryKey: [key], refetchType: "active" });
+      });
+    };
+
     const channel = supabase
       .channel(`realtime-${table}`)
       .on(
@@ -56,14 +64,16 @@ export function useRealtimeSync(
         () => {
           if (timerRef.current) clearTimeout(timerRef.current);
           timerRef.current = setTimeout(() => {
-            keysRef.current.forEach((key) => {
-              queryClient.invalidateQueries({ queryKey: [key] });
-            });
+            flush();
             timerRef.current = null;
           }, debounceMs);
-        }
+        },
       )
-      .subscribe();
+      .subscribe((status) => {
+        // On (re)subscribe, fire one immediate flush so a tab that was idle
+        // during a disconnect cannot remain on stale data.
+        if (status === "SUBSCRIBED") flush();
+      });
 
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);

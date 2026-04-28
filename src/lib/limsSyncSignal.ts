@@ -40,7 +40,7 @@ function prune(target: SyncTarget) {
   }
 }
 
-export function signalSync(target: SyncTarget, regId: string | string[], ttlMs = 8000) {
+export function signalSync(target: SyncTarget, regId: string | string[], ttlMs = 15000) {
   const ids = Array.isArray(regId) ? regId : [regId];
   if (ids.length === 0) return;
   const existing = pending[target];
