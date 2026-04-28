@@ -17,6 +17,8 @@ import { formatAgeGender } from "@/lib/ageGender";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { printBarcodes } from "@/lib/barcodePrint";
+import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
+import NewBadge from "./NewBadge";
 
 const TUBE_COLOR_MAP: Record<string, string> = {
   red: "#e53e3e", lavender: "#b794f4", purple: "#9f7aea", yellow: "#ecc94b",
@@ -180,6 +182,10 @@ const SampleAcceptance = () => {
     }
     return map;
   }, [pendingGroups]);
+
+  // ─── NEW arrivals badge tracker (only pending list) ───
+  const pendingRegIds = useMemo(() => pendingGroups.map(g => g.registration.id), [pendingGroups]);
+  const { isNew: isNewArrival, markSeen: markArrivalSeen } = useNewArrivalsBadge("sample_acceptance", pendingRegIds);
 
   const toggleTube = (tubeId: string) => {
     setSelectedTubes(prev => {
