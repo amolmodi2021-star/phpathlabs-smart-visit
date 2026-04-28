@@ -308,14 +308,15 @@ export async function generateAbnormalCardForDrip(
     ctx.fillStyle = tableCfg.headerBg || "#2E3192";
     ctx.fillRect(0, cursorY, canvasWidth, tableHeaderHeight);
     ctx.fillStyle = tableCfg.headerFontColor || "#FFFFFF";
-    ctx.textBaseline = "middle";
-    ctx.textAlign = "center";
     const headers = ["Test Name", "Date", "Result", "Normal Range"];
     let xCursor = 0;
     headers.forEach((h, i) => {
       const fs = fitFontSize(h, headerFontSize, colWidths[i] - 12, true, tableCfg.headerFont || "Arial");
       ctx.font = `bold ${fs}px ${tableCfg.headerFont || "Arial"}, Helvetica, sans-serif`;
-      ctx.fillText(h, xCursor + colWidths[i] / 2, cursorY + tableHeaderHeight / 2);
+      ctx.textBaseline = "middle";
+      ctx.textAlign = "center";
+      // Optical centering: nudge down slightly to compensate for canvas "middle" baseline bias
+      ctx.fillText(h, xCursor + colWidths[i] / 2, cursorY + tableHeaderHeight / 2 + fs * 0.08);
       xCursor += colWidths[i];
     });
     cursorY += tableHeaderHeight;

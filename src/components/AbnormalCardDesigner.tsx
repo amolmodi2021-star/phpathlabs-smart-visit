@@ -264,13 +264,16 @@ async function renderAbnormalPreview(canvas: HTMLCanvasElement, tpl: Template, l
 
   ctx.fillStyle = tc.headerBg || "#2E3192";
   ctx.fillRect(0, cy, canvasWidth, tHeaderH);
-  ctx.fillStyle = tc.headerFontColor || "#FFFFFF"; ctx.textBaseline = "middle"; ctx.textAlign = "center";
+  ctx.fillStyle = tc.headerFontColor || "#FFFFFF";
   const headers = ["Test Name", "Date", "Result", "Normal Range"];
   let xc = 0;
   headers.forEach((h, i) => {
     const fs = fitFontSize(h, headerFs, colWidths[i] - 12, true, tc.headerFont || "Arial");
     ctx.font = `bold ${fs}px ${tc.headerFont || "Arial"}, Helvetica, sans-serif`;
-    ctx.fillText(h, xc + colWidths[i] / 2, cy + tHeaderH / 2);
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "center";
+    // Optical centering: nudge down slightly to compensate for canvas "middle" baseline bias
+    ctx.fillText(h, xc + colWidths[i] / 2, cy + tHeaderH / 2 + fs * 0.08);
     xc += colWidths[i];
   });
   cy += tHeaderH;
