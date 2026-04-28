@@ -39,6 +39,7 @@ const EstimateDashboard = () => {
   const [editEstimate, setEditEstimate] = useState<any>(null);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [searchAllDates, setSearchAllDates] = useState(false);
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
   const [deleteDialog, setDeleteDialog] = useState<{ ids: string[]; description: string } | null>(null);
@@ -48,20 +49,28 @@ const EstimateDashboard = () => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 400);
     return () => clearTimeout(t);
   }, [search]);
-  useEffect(() => { setPage(0); }, [debouncedSearch]);
+  useEffect(() => { setPage(0); }, [debouncedSearch, searchAllDates]);
 
+  // COST OPTIMIZATION (2026-04-28): default view limited to last 7 days, with
+  // estimated count instead of exact (no full-table scan). Search box honours
+  // the same 7-day window unless "Search all dates" is ticked. Export still
+  // returns the full set (see handleExport — no date filter applied there).
   const { data: pagedEstimates, isLoading } = useQuery({
-    queryKey: ["estimates", "dashboard", debouncedSearch, page],
+    queryKey: ["estimates", "dashboard", debouncedSearch, page, searchAllDates],
     queryFn: async () => {
       const from = page * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
-      // Status-filtered query — keep exact count so the badge matches the filtered subset.
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       let q = supabase
         .from("estimates")
-        .select("*, estimate_tests(*)", { count: "exact" })
+        .select("*, estimate_tests(*)", { count: "estimated" })
         .eq("status", "Estimate Created")
         .order("created_at", { ascending: false })
         .range(from, to);
+      // Apply 7-day window unless user explicitly opts into all-dates search
+      if (!searchAllDates) {
+        q = q.gte("created_at", sevenDaysAgo);
+      }
       if (debouncedSearch) {
         q = q.or(`patient_name.ilike.%${debouncedSearch}%,whatsapp_number.ilike.%${debouncedSearch}%`);
       }

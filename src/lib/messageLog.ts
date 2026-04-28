@@ -1,67 +1,23 @@
-import { supabase } from "@/integrations/supabase/client";
-
 /**
- * Log every outgoing WhatsApp message to the universal message_send_log table.
- * Fire-and-forget — errors are silently ignored so they don't break the send flow.
+ * COST OPTIMIZATION (2026-04-28): logMessageSend is now a no-op.
+ * The message_send_log table was the second-largest cost driver (2.18 B rows
+ * scanned). User confirmed they don't use the Message Log / Marketing Retry
+ * features, so we stop writing here. Existing historical rows are preserved.
  *
- * COST OPTIMIZATION (2026-04): we no longer persist `message_content` or
- * `retry_payload` here. Storing the full WhatsApp caption was adding ~25 MB/day
- * of database growth and bloated realtime broadcast payloads. The `message_type`
- * column (e.g. "ABC Card", "Abnormal History", "Promotion") is enough audit
- * detail; the WhatsApp Chat UI reads message bodies from `webhook_messages`,
- * not from this log.
- *
- * Trade-off: Marketing/Promotion retries from `retry_payload` are no longer
- * possible — failed rows surface as "missing payload" in the Retry tab. ABC and
- * Abnormal retries are unaffected (they regenerate the card from CRM).
- *
- * Backward-compatible signature: existing callers passing (mobile, name, type)
- * or (mobile, name, type, umr, primaryKey, messageContent, messageId) still
- * work — `messageContent` and `retryPayload` are simply ignored on insert.
+ * The signature is kept identical so every call site keeps compiling without
+ * edits. To re-enable, restore the previous implementation from git history.
  */
 export async function logMessageSend(
-  mobile: string,
-  patientName: string | null | undefined,
-  messageType: string,
-  umrNumber?: string | null,
-  primaryKey?: string | null,
+  _mobile: string,
+  _patientName: string | null | undefined,
+  _messageType: string,
+  _umrNumber?: string | null,
+  _primaryKey?: string | null,
   _messageContent?: string | null,
-  messageIdOrStatus?: string | null,
+  _messageIdOrStatus?: string | null,
   _retryPayload?: Record<string, unknown> | null,
 ) {
-  const mobile10 = (mobile || "").replace(/\D/g, "").slice(-10);
-  if (!mobile10) return;
-
-  // Auto-detect: 7th arg can be a status keyword or a messageId.
-  let deliveryStatus: "sent" | "failed" = "sent";
-  let messageId: string | null = null;
-  if (messageIdOrStatus === "sent" || messageIdOrStatus === "failed") {
-    deliveryStatus = messageIdOrStatus;
-  } else if (messageIdOrStatus) {
-    messageId = messageIdOrStatus;
-  }
-
-  const insertRow: Record<string, unknown> = {
-    mobile_number: mobile10,
-    patient_name: patientName || null,
-    message_type: messageType,
-    umr_number: umrNumber || null,
-    primary_key: primaryKey || null,
-    message_content: null,
-    message_id: messageId,
-    delivery_status: deliveryStatus,
-    retry_payload: null,
-  };
-  if (deliveryStatus === "failed") {
-    insertRow.failed_at = new Date().toISOString();
-    insertRow.retry_count = 0;
-  }
-
-  try {
-    await supabase.from("message_send_log").insert(insertRow as any);
-  } catch {
-    // silently ignore — logging must never break the send flow
-  }
+  // intentionally empty — see header comment
 }
 
 /**

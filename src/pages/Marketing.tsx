@@ -1,16 +1,13 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getAllowedSections } from "@/lib/auth";
 import MarketingSender from "@/components/marketing/MarketingSender";
-import AutomatedMarketing from "@/components/marketing/AutomatedMarketing";
-import MessageLog from "@/components/marketing/MessageLog";
 import NewNumbers from "@/components/marketing/NewNumbers";
-import MarketingRetry from "@/components/marketing/MarketingRetry";
 
+// COST OPTIMIZATION (2026-04-28): Automated, Retry and Message Log tabs disabled
+// — they were the top scanners on drip_campaign_log / drip_mobile_cycles /
+// message_send_log. Files are kept in the repo for future re-enable.
 const allMarketingTabs = [
   { key: "send", label: "Send Messages" },
-  { key: "automated", label: "Automated" },
-  { key: "retry", label: "Retry" },
-  { key: "log", label: "Message Log" },
   { key: "new", label: "New Numbers" },
 ];
 
@@ -26,9 +23,6 @@ const Marketing = () => {
           {visibleTabs.map((t) => <TabsTrigger key={t.key} value={t.key}>{t.label}</TabsTrigger>)}
         </TabsList>
         <TabsContent value="send"><MarketingSender /></TabsContent>
-        <TabsContent value="automated"><AutomatedMarketing /></TabsContent>
-        <TabsContent value="retry"><MarketingRetry /></TabsContent>
-        <TabsContent value="log"><MessageLog /></TabsContent>
         <TabsContent value="new"><NewNumbers /></TabsContent>
       </Tabs>
     </div>
