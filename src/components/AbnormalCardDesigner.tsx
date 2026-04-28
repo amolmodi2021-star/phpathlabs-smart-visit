@@ -402,6 +402,7 @@ const AbnormalCardDesigner = () => {
       background_color: t.background_color || "#FFFFFF",
       show_header_band: t.show_header_band !== false,
       header_band_height: t.header_band_height || 130,
+      details_band_height: t.details_band_height ?? null,
       header_bg_color: t.header_bg_color || "#FFFFFF",
       header_font_color: t.header_font_color || "#000000",
       logo_url: t.logo_url || null,
