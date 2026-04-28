@@ -17,7 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Search, User, Monitor, Save, Calculator, Wifi, WifiOff, ChevronDown, ChevronUp, Check, Loader2, FlaskConical, Package, SendHorizonal, ArrowRightLeft, Eye, Trash2, StickyNote, RefreshCw, AlertTriangle } from "lucide-react";
 import { DescriptiveCombobox } from "./DescriptiveCombobox";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
-import { useRealtimeSync } from "@/hooks/useRealtimeSync";
+
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import { signalSync } from "@/lib/limsSyncSignal";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
@@ -127,7 +127,7 @@ const ResultsEntry = () => {
   // Single channel for both tables — fewer realtime listeners per client.
   // outsourced_test_snips and patient_results are NOT in the realtime publication.
   // Subscribing to them is a wasted channel; local writes invalidate via propagateRegistrationChange.
-  useRealtimeSync("patient_registrations", ["results_outsourced_snips", "outsourced_snips", "outsourced_accepted_regs", "patient_results_existing"]);
+  // Cost optimization: no ambient realtime; same-user via propagateRegistrationChange, cross-user via refetchOnWindowFocus.
   const { data: masterMachines = [] } = useMasterLookup("machine_name");
   const [mode, setMode] = useState<"patient" | "machine" | "outsourced">("patient");
   const [search, setSearch] = useState("");
@@ -214,6 +214,8 @@ const ResultsEntry = () => {
       if (error) throw error;
       return (data || []) as any[];
     },
+    refetchOnWindowFocus: true,
+    staleTime: 30_000,
   });
 
   const reTotalPages = Math.ceil(reCount / RE_PAGE_SIZE);

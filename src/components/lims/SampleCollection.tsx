@@ -17,7 +17,7 @@ import { toast } from "sonner";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { printBarcodes } from "@/lib/barcodePrint";
-import { useRealtimeSync } from "@/hooks/useRealtimeSync";
+
 import { buildSampleTubeGroups, TubeGroupingItem } from "@/lib/sampleTubeGrouping";
 import { formatAgeGender } from "@/lib/ageGender";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
@@ -55,7 +55,7 @@ const SampleCollection = () => {
   // Single channel for both tables — fewer realtime listeners per client.
   // Only patient_registrations is in the realtime publication; sample_tubes is not.
   // Local writes use propagateRegistrationChange to invalidate immediately.
-  useRealtimeSync("patient_registrations", ["sample_tubes_collection", "sample_collection_regs"]);
+  // Cost optimization: no ambient realtime; same-user via propagateRegistrationChange, cross-user via refetchOnWindowFocus.
   const [activeTab, setActiveTab] = useState("pending");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -101,6 +101,8 @@ const SampleCollection = () => {
       if (error) throw error;
       return (data || []) as unknown as SampleTubeRow[];
     },
+    refetchOnWindowFocus: true,
+    staleTime: 30_000,
   });
 
   // Get unique registration IDs from tubes

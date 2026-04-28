@@ -20,7 +20,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import SnipOnLetterhead from "./SnipOnLetterhead";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
-import { useRealtimeSync } from "@/hooks/useRealtimeSync";
+
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
@@ -42,7 +42,7 @@ interface OutsourcedPatient {
 const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   const qc = useQueryClient();
   // outsourced_test_snips not in realtime publication — subscribe to patient_registrations only.
-  useRealtimeSync("patient_registrations", ["outsourced_snips", "results_outsourced_snips", "outsourced_accepted_regs"]);
+  // Cost optimization: no ambient realtime; same-user via propagateRegistrationChange, cross-user via refetchOnWindowFocus.
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
@@ -152,6 +152,8 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       if (error) throw error;
       return (data || []) as any[];
     },
+    refetchOnWindowFocus: true,
+    staleTime: 30_000,
   });
 
   // Fetch tests master
