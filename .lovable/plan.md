@@ -1,45 +1,32 @@
-## Goal
+# Fix: Outsourced tab missing patients whose transferred test belongs to a profile/checkup
 
-In **Test Management → Departments**, expand each department row to show all tests assigned to it, and let the user reorder those tests via drag-and-drop. The chosen order replaces the current alphabetical sort when reports are generated.
+## The bug
 
-## What the user will see
+For invoice **2604280014 (NAYNA JARIWALA)**:
+- `patient_registrations.tests` contains only **SEHAT 3** (a Health Check-up container, id `e5c265f2…`)
+- The user clicked "Transfer to Outsource" on the leaf test **URINE ROUTINE EXAMINATION** (id `45f430ee…`), which lives inside SEHAT 3
+- A row was correctly inserted into `outsourced_test_snips` with `test_id = 45f430ee…`
+- But the **Outsourced Results** tab does not show this patient
 
-Departments tab keeps the existing draggable list of departments. Each row becomes expandable (chevron). Expanded panel shows:
+## Root cause
 
-```text
-▾ BIOCHEMISTRY                                        Order: 2  [Edit] [Del]
-   ┌─────────────────────────────────────────────────────────────┐
-   │ ⋮⋮  LFT (Liver Function Test)                       #1      │
-   │ ⋮⋮  KFT / RFT (Renal Function Test)                 #2      │
-   │ ⋮⋮  LIPID PROFILE                                   #3      │
-   │ ⋮⋮  HBA1C                                           #4      │
-   └─────────────────────────────────────────────────────────────┘
-   (Drag the handle to change the order tests appear in reports)
-```
+`src/components/lims/OutsourcedResults.tsx` builds its patient list by iterating `reg.tests` directly (around line 283) and only emits a row when one of those `test_id`s matches a snip / is naturally outsourced / has a param-level snip.
 
-Empty departments show "No tests assigned to this department".
+Since `reg.tests` for this patient only contains the SEHAT 3 container — and never the leaf URINE ROUTINE — the snip's `test_id` (`45f430ee…`) is never matched, so no entry is produced. The same problem affects every transferred-to-outsourced or param-level-outsourced leaf that came from a Profile (PRL) or Health Check-up (HLT) container.
 
-## How it works
+Every other technical-stage screen (Results Entry, Verification, Doctor Approval, Dispatch) already solves this by calling `expandRegistrationTests(reg.tests, leafTestIds, testsMap)` from `src/lib/expandRegistrationTests.ts`, with `leafTestIds` taken from the union of `sample_tubes.test_ids` for that registration. OutsourcedResults is the only screen that skipped this expansion.
 
-1. Add a new column `report_display_order` (integer, nullable) to the `tests` table. Existing tests get backfilled by alphabetical order within each department so behaviour is unchanged at first load.
-2. The department row in `ReportDepartments.tsx` becomes a collapsible. On expand, fetch the tests where `department_id = <dept.id>` ordered by `report_display_order NULLS LAST, test_name`.
-3. Inside the panel, render a `DndContext` + `SortableContext` of test rows (handle, name, position number). On drag-end, reassign `report_display_order = index + 1` for the affected department's tests and persist via a single batched update.
-4. In **`src/pages/LimsReportView.tsx`** change the test sort (currently `a.testName.localeCompare(b.testName)`) to use `report_display_order` first, falling back to test name. The tests `select(...)` query is extended to include `report_display_order`. Department-level order remains unchanged.
+## Fix
 
-## Technical notes
+Update `src/components/lims/OutsourcedResults.tsx`:
 
-- **Migration**: `ALTER TABLE tests ADD COLUMN report_display_order integer;` then a backfill `UPDATE` using `ROW_NUMBER() OVER (PARTITION BY department_id ORDER BY test_name)`. Add an index on `(department_id, report_display_order)` for fast ordered fetches.
-- **Files touched**
-  - `src/pages/ReportDepartments.tsx` — add expand/collapse state per dept, nested sortable test list, save handler.
-  - `src/lib/tests.ts` — add `getTestsByDepartment(deptId)` and `reorderTestsInDepartment(items)` helpers (mirroring the existing `reorderTestParameters` pattern).
-  - `src/pages/LimsReportView.tsx` — add `report_display_order` to the tests select; build `testOrderMap`; replace alphabetical fallback with `(orderMap[a.testId] ?? 9999) - (orderMap[b.testId] ?? 9999)` then name.
-  - `src/lib/expandRegistrationTests.ts` — verify it does not assume alphabetical order (read-only check; no change expected).
-- **Drag library**: reuse `@dnd-kit/core` + `@dnd-kit/sortable` already used by `SortableRow` in `ReportDepartments.tsx` and by `TestParameterManager.tsx`.
-- **Persistence pattern**: same as `reorderTestParameters` — issue per-row `UPDATE` calls in `Promise.all`, then toast "Order updated".
-- **No impact on**: billing order, results entry grouping (already grouped by machine/instrument), or department ordering itself.
+1. Add a new query that fetches `sample_tubes(registration_id, test_ids)` for the visible `regIds` and builds a `Record<regId, Set<leafTestId>>` map.
+2. In the `patientEntries` `useMemo`, replace the direct `reg.tests` iteration with `expandRegistrationTests(reg.tests, leafTestIds, testsMap)` so leaf tests from PRL/HLT containers are included.
+3. Keep the existing logic that decides whether each leaf is naturally outsourced, transferred-from-inhouse, or parameter-level — it now operates on the expanded leaf list, so the URINE ROUTINE snip will match.
+4. No schema changes; no other files need editing — `getSnip`, `getOutsourceStatus`, `hasManualResults`, etc. are already keyed by `(regId, testId)` of the leaf.
 
-## Out of scope
+## Verification after fix
 
-- Changing how tests are assigned to a department (still done via the test edit form's Department dropdown).
-- Reordering parameters inside a test (already handled in `TestParameterManager`).
-- Cross-department drag (a test belongs to exactly one department).
+- NAYNA JARIWALA (`2604280014`) appears in the Outsourced Results tab under "Not Sent" with URINE ROUTINE EXAMINATION listed (caption: "Transferred from Inhouse").
+- Existing naturally-outsourced tests and param-level outsourced rows continue to display unchanged.
+- Returning a transferred leaf to inhouse still removes it from the list.

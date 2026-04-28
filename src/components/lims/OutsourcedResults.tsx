@@ -21,6 +21,7 @@ import { format } from "date-fns";
 import SnipOnLetterhead from "./SnipOnLetterhead";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
+import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 
