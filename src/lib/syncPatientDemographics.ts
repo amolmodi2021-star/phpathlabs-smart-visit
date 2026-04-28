@@ -167,7 +167,6 @@ export function invalidatePatientCaches(qc: QueryClient): void {
     "bad_debts",
     "approved_reports",
     "lims_report_view",
-    "crm_contacts",
     "patient_master",
     "estimates",
   ];
