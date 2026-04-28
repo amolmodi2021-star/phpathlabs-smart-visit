@@ -1210,7 +1210,7 @@ const ResultsEntry = () => {
               <Input
                 value={currentValue}
                 onChange={e => handleValueChange(regId, p.parameterId, e.target.value, entry)}
-                className="h-7 text-sm w-[120px]"
+                className={`h-7 text-sm w-[120px] ${negCls}`}
                 placeholder="Manual"
                 data-result-input=""
                 onKeyDown={handleResultTabKey}
@@ -1227,7 +1227,7 @@ const ResultsEntry = () => {
               <Input
                 value={currentValue}
                 onChange={(e) => handleValueChange(regId, p.parameterId, e.target.value, entry)}
-                className="h-7 text-sm w-[120px] font-mono"
+                className={`h-7 text-sm w-[120px] font-mono ${negCls}`}
                 placeholder="Auto"
               />
               <Button
@@ -1282,7 +1282,7 @@ const ResultsEntry = () => {
             <Input
               value={currentValue}
               onChange={e => handleValueChange(regId, p.parameterId, e.target.value, entry)}
-              className="h-7 text-sm w-[180px]"
+              className={`h-7 text-sm w-[180px] ${negCls}`}
               placeholder="Enter result"
               data-result-input=""
               onKeyDown={handleResultTabKey}
@@ -1291,7 +1291,7 @@ const ResultsEntry = () => {
             <Input
               value={currentValue}
               onChange={e => handleValueChange(regId, p.parameterId, e.target.value, entry)}
-              className={`h-7 text-sm w-[180px] ${flag === "H" || flag === "L" || flag === "A" || flag === "X" ? "border-destructive text-destructive font-bold" : ""}`}
+              className={`h-7 text-sm w-[180px] ${isNegative ? "border-red-500 ring-1 ring-red-300 text-red-700 font-semibold" : (flag === "H" || flag === "L" || flag === "A" || flag === "X" ? "border-destructive text-destructive font-bold" : "")}`}
               placeholder="Enter result"
               data-result-input=""
               onKeyDown={handleResultTabKey}
