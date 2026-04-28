@@ -126,6 +126,10 @@ export default function WhatsAppChat() {
   // WA global settings
   const [waSettings, setWaSettings] = useState<Record<string, string>>({});
 
+  // Delete-all-chats password gate
+  const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
+
   // Debounce search
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
