@@ -179,7 +179,8 @@ async function renderAbnormalPreview(canvas: HTMLCanvasElement, tpl: Template, l
   const ctx = canvas.getContext("2d"); if (!ctx) return;
   const canvasWidth = tpl.canvas_width || 900;
   const headerBandHeight = tpl.show_header_band ? (tpl.header_band_height || 130) : 0;
-  const detailsBandHeight = (tpl.placeholders || []).reduce((m, p) => Math.max(m, (p.y || 0) + (p.fontSize || 25) + 10), 120);
+  const autoDetails = (tpl.placeholders || []).reduce((m, p) => Math.max(m, (p.y || 0) + (p.fontSize || 25) + 10), 60);
+  const detailsBandHeight = tpl.details_band_height && tpl.details_band_height > 0 ? tpl.details_band_height : autoDetails;
   const bandsAbove = (tpl.bands || []).filter((b) => b.position === "above-table");
   const bandsBelow = (tpl.bands || []).filter((b) => b.position === "below-table");
   const aboveT = bandsAbove.reduce((s, b) => s + (b.height || 60), 0);
