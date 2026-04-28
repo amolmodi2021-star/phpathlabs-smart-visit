@@ -51,10 +51,7 @@ export const RETENTION_RULES: Record<string, { days: number; column: string }> =
 
 // Tables that are intentionally retained forever (clinical data)
 export const FOREVER_TABLES = new Set([
-  "crm_abnormal_tests",
-  "abnormal_history",
   "approved_reports",
-  "crm_contacts",
   "patient_registrations",
   "estimates",
   "estimate_tests",
