@@ -28,7 +28,7 @@ import TimeSlotPicker from "@/components/TimeSlotPicker";
 
 const EstimateDashboard = () => {
   useRealtimeSync("estimates", ["estimates"]);
-  useRealtimeSync("estimate_tests", ["estimates"]);
+  // estimate_tests not in realtime publication; estimates updates above cover the dashboard.
   const qc = useQueryClient();
   const { data: templates } = useMessageTemplates();
   const { getUnavailableReason } = usePhlebotomistAvailability();

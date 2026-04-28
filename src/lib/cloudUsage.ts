@@ -43,6 +43,8 @@ export const RETENTION_RULES: Record<string, { days: number; column: string }> =
   lims_unmapped_results: { days: 7, column: "received_at" },
   report_link_events: { days: 7, column: "occurred_at" },
   report_link_sessions: { days: 7, column: "started_at" },
+  lims_test_orders: { days: 7, column: "created_at" },
+  estimates: { days: 30, column: "created_at" },
 };
 
 // Tables that are intentionally retained forever (clinical data)

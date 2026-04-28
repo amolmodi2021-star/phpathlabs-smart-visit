@@ -53,10 +53,9 @@ interface GroupedRegistration {
 const SampleCollection = () => {
   const qc = useQueryClient();
   // Single channel for both tables — fewer realtime listeners per client.
-  useRealtimeSync(
-    ["sample_tubes", "patient_registrations"],
-    ["sample_tubes_collection", "sample_collection_regs"],
-  );
+  // Only patient_registrations is in the realtime publication; sample_tubes is not.
+  // Local writes use propagateRegistrationChange to invalidate immediately.
+  useRealtimeSync("patient_registrations", ["sample_tubes_collection", "sample_collection_regs"]);
   const [activeTab, setActiveTab] = useState("pending");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");

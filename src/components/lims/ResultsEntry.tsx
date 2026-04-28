@@ -125,10 +125,9 @@ const RE_PAGE_SIZE = 50;
 const ResultsEntry = () => {
   const qc = useQueryClient();
   // Single channel for both tables — fewer realtime listeners per client.
-  useRealtimeSync(
-    ["outsourced_test_snips", "patient_results"],
-    ["results_outsourced_snips", "outsourced_snips", "outsourced_accepted_regs", "patient_results_existing"],
-  );
+  // outsourced_test_snips and patient_results are NOT in the realtime publication.
+  // Subscribing to them is a wasted channel; local writes invalidate via propagateRegistrationChange.
+  useRealtimeSync("patient_registrations", ["results_outsourced_snips", "outsourced_snips", "outsourced_accepted_regs", "patient_results_existing"]);
   const { data: masterMachines = [] } = useMasterLookup("machine_name");
   const [mode, setMode] = useState<"patient" | "machine" | "outsourced">("patient");
   const [search, setSearch] = useState("");
