@@ -22,7 +22,7 @@ const allNavItems = [
   { to: "/phlebotomists", label: "Phlebotomists", icon: Users },
   { to: "/tests", label: "Test Management", icon: TestTubes },
   { to: "/templates", label: "Message Templates", icon: MessageSquare },
-  { to: "/abnormal-history", label: "Abnormal History", icon: AlertTriangle },
+  // Abnormal History link removed (cost optimization 2026-04-28) — page disabled.
   { to: "/phlebo-dashboard", label: "Phlebo Dashboard", icon: BarChart3 },
   { to: "/loyalty-cards", label: "Loyalty Cards", icon: CreditCard },
   { to: "/marketing", label: "Marketing", icon: Megaphone },
