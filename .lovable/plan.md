@@ -1,40 +1,40 @@
 ## Goal
-Show patient age and gender in the format `36/M` (M=Male, F=Female, O=Other) across the LIMS workflow:
+When a numeric result arrives prefixed with a comparison operator — `>2000`, `> 2000`, `<2000`, `< 2000`, `>=2000`, `≥ 2000`, `<=2`, `≤ 2` — auto-flag it as **H** (high) or **L** (low) regardless of how the operator and number are spaced. The current `computeAbnormalFlag` strips the operator and only compares the bare number, so `>2000` against a normal range of `0–3000` is incorrectly returned as `N`.
 
-1. Sample Collection — Pending and Collected
-2. Sample Acceptance — Pending Acceptance and Accepted
-3. Results Entry
-4. Result Verification
-5. Doctor Approval
-6. Dispatch
+## Where the fix lives
+Single file: `src/lib/reportFlags.ts`. Every screen (Results Entry, Verification, Doctor Approval, PDF report, abnormal history) already routes through `computeAbnormalFlag` / `normalizeTestResultFlags`, so one fix propagates everywhere — including bidirectional analyzer interface results, since they also pass through the same flag computation.
 
-## Approach
+## Logic change
 
-### Shared helper
-Create `src/lib/ageGender.ts` exporting:
-- `calcAgeYears(dob)` → integer years from date-of-birth
-- `formatAgeGender(dob, gender)` → `"36/M"`, `"28/F"`, `"5/O"`, or `"—"` when missing
+1. Add an `ResultOperator` detector that recognises a leading `>`, `>=`, `≥`, `<`, `<=`, `≤` followed by optional whitespace and a number. Tolerant of spaces, case-insensitive.
 
-This centralises the logic that currently lives only inside `SampleCollection.tsx`.
+2. In `computeAbnormalFlag`, after extracting the number, also detect the operator. Apply these rules (standard lab interpretation of capped/saturating readings):
 
-### Per-file changes
+   - **`>X` (or `≥X`)**: the true value is at or above X, possibly higher.
+     - If a `high` bound exists and `X ≥ high` → **H** (definitely above range).
+     - Else if a `high` bound exists and `X < high` → still **H** is the safe call when the result is reported as ">X" because analyzers only report this when the reading saturates the upper limit; treat as **H**.
+     - If no `high` exists but a `low` exists and `X ≥ low` → **N** (within open-ended range).
+     - If no bounds at all → **H** (operator implies abnormal/notable).
 
-For each component:
-- Ensure the patient query selects `dob` and `gender` (most already do; Dispatch needs to add them).
-- Add a new column **Age/Gender** immediately after the Patient Name column in the table header, and render `formatAgeGender(reg.dob, reg.gender)` in the corresponding row cell.
-- Update any colSpan values (loading/empty rows) by +1 where applicable.
+   - **`<X` (or `≤X`)**: the true value is at or below X, possibly lower.
+     - Mirror the above with `low`. If `low` exists and `X ≤ low` → **L**. Else with `low` and `X > low` → **L** (saturating below detection limit). No bounds → **L**.
 
-Files to edit:
-- `src/components/lims/SampleCollection.tsx` — switch local `calcAge` to the shared helper; add column in pending + collected tables.
-- `src/components/lims/SampleAcceptance.tsx` — add `dob, gender` to select; add column in pending + accepted tables.
-- `src/components/lims/ResultsEntry.tsx` — add `dob, gender` to select; add column in patient list table.
-- `src/components/lims/ResultVerification.tsx` — same.
-- `src/components/lims/DoctorApproval.tsx` — already selects dob/gender; just add column.
-- `src/components/lims/Dispatch.tsx` — add `dob, gender` to select (line 90); render badge next to patient name in its card layout (Dispatch uses cards, not a table — show `36/M` next to the name).
+3. When no operator is present, behaviour is unchanged (existing equality comparison against low/high).
 
-### Format rules
-- Gender mapping: `Male → M`, `Female → F`, anything else → `O`. Case-insensitive.
-- If DOB missing → show `—/{G}`; if both missing → `—`.
-- Age rounded down to whole years from today.
+4. Whitespace handling is already implicit — the regex allows `\s*` between the operator and number, so `>2000`, `> 2000`, `>  2000` all match.
 
-No database changes required — all data already exists on `patient_registrations`.
+## Examples after fix
+
+| Result | Range | Old flag | New flag |
+|--------|-------|----------|----------|
+| `>2000` | 0–1500 | H | H (unchanged) |
+| `>2000` | 0–3000 | N (wrong) | **H** |
+| `> 2000` | 0–3000 | N (wrong) | **H** |
+| `≥2000` | 0–3000 | N (wrong) | **H** |
+| `<2` | 5–20 | L | L (unchanged) |
+| `< 2` | 0.5–20 | N (wrong) | **L** |
+| `≤ 0.1` | 0.5–10 | L | L |
+| `2000` (plain) | 0–3000 | N | N (unchanged) |
+
+## No DB changes
+Pure presentation/computation logic; no schema or migration needed.
