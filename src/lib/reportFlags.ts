@@ -163,6 +163,7 @@ const computeQualitativeFlag = (row: FlagEvaluationInput): AbnormalFlag | null =
 export const computeAbnormalFlag = (row: FlagEvaluationInput): AbnormalFlag => {
   const existingFlag = String(row.flag ?? "").toUpperCase();
   const value = extractNumber(row.result_value);
+  const operator = detectResultOperator(row.result_value);
   if (value === null) {
     const qualitativeFlag = computeQualitativeFlag(row);
     if (qualitativeFlag) return qualitativeFlag;
@@ -189,6 +190,37 @@ export const computeAbnormalFlag = (row: FlagEvaluationInput): AbnormalFlag => {
       low = high;
       high = temp;
     }
+  }
+
+  // Operator-prefixed results (">2000", "< 2", "≥ 100") indicate the analyzer
+  // saturated its measurable range. Treat as definitively High/Low when the
+  // operator places the true value outside the normal range.
+  //   >X  → true value ≥ X, possibly higher → flag H if X is at/above high,
+  //         or if no high is defined (still abnormal direction).
+  //   <X  → true value ≤ X, possibly lower → mirror with low.
+  if (operator === "gt") {
+    if (high !== null) {
+      if (value >= high) return "H";
+      // ">X" with X below the high bound is unusual but still indicates the
+      // reading saturated upward at the analyzer; flag H to be safe.
+      return "H";
+    }
+    if (low !== null) {
+      // No upper bound; only flag H if X is already at/above the lower bound,
+      // otherwise the value could still be within an open-ended normal range.
+      return value >= low ? "N" : "L";
+    }
+    return "H";
+  }
+  if (operator === "lt") {
+    if (low !== null) {
+      if (value <= low) return "L";
+      return "L";
+    }
+    if (high !== null) {
+      return value <= high ? "N" : "H";
+    }
+    return "L";
   }
 
   if (low === null && high === null) {
