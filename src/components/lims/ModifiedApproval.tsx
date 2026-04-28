@@ -9,9 +9,10 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Search, ChevronDown, ChevronUp, Loader2, Save, Eye, FileCheck, Calculator, StickyNote, Trash2 } from "lucide-react";
+import { Search, ChevronDown, ChevronUp, Loader2, Save, Eye, FileCheck, Calculator, StickyNote, Trash2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import PaginatedTableFooter from "@/components/ui/PaginatedTableFooter";
+import { isSuspectNegativeResult } from "@/lib/reportFlags";
 
 const PAGE_SIZE = 50;
 
@@ -393,8 +394,24 @@ const ModifiedApproval = () => {
                         <div key={tg.testId} className="border rounded-lg overflow-hidden bg-background">
                           <div className="px-3 py-2 bg-muted/40">
                             <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium">{tg.testName}</span>
+                               <div className="flex items-center gap-2">
+                                {(() => {
+                                  const hasNegative = tg.params.some((p: any) => {
+                                    const k = `${report.registration_id}||${p.parameter_id}`;
+                                    const v = editedValues[k] !== undefined ? editedValues[k] : (p.result_value || "");
+                                    return isSuspectNegativeResult(v);
+                                  });
+                                  return (
+                                    <>
+                                      <span className={`text-sm font-medium ${hasNegative ? "text-red-600 font-bold" : ""}`}>{tg.testName}</span>
+                                      {hasNegative && (
+                                        <Badge className="text-[10px] bg-red-600 text-white hover:bg-red-700 gap-0.5">
+                                          <AlertTriangle className="h-3 w-3" /> Negative value — please verify
+                                        </Badge>
+                                      )}
+                                    </>
+                                  );
+                                })()}
                                 {tg.isOutsourced && tg.labName && (
                                   <Badge variant="outline" className="text-[10px] text-green-600 border-green-300">{tg.labName}</Badge>
                                 )}
@@ -464,7 +481,11 @@ const ModifiedApproval = () => {
                                   const rangeMeta = resolveRangeMeta(p.parameter_id);
                                   const autoFlag = calculateFlag(currentValue, p.normal_range_low, p.normal_range_high, rangeMeta.rangeType, undefined, undefined, rangeMeta.normalRangeText);
                                   const currentFlag = editedFlags[key] !== undefined ? editedFlags[key] : (p.flag || autoFlag);
-                                  const rowBg = (rangeMeta.rangeType !== "undefined") && (currentFlag === "H" || currentFlag === "L" || currentFlag === "A" || currentFlag === "X") ? "bg-destructive/5" : "";
+                                  const isNegative = isSuspectNegativeResult(currentValue);
+                                  const rowBg = isNegative
+                                    ? "bg-red-50"
+                                    : ((rangeMeta.rangeType !== "undefined") && (currentFlag === "H" || currentFlag === "L" || currentFlag === "A" || currentFlag === "X") ? "bg-destructive/5" : "");
+                                  const negCls = isNegative ? "border-red-500 ring-1 ring-red-300 text-red-700 font-semibold" : "";
 
                                   // Check if calculated
                                   const testParams = testParamsMap[p.test_id] || [];
@@ -498,9 +519,9 @@ const ModifiedApproval = () => {
                                       </TableCell>
                                       <TableCell className="py-1.5">
                                         {isCalc ? (
-                                          <div className="flex items-center gap-1"><Input value={currentValue} onChange={e => handleValueChange(report.registration_id, p.parameter_id, e.target.value, tg.params)} className="h-7 text-sm w-[120px] font-mono" placeholder="Auto" /><Button type="button" variant="ghost" size="icon" className="h-7 w-7" title="Recalculate" onClick={() => { if (!p.calculation_formula) return; const paramValues: Record<string, string> = {}; tg.params.forEach((ep: any) => { const k = `${report.registration_id}::${ep.parameter_id}`; paramValues[ep.parameter_id] = editedValues[k] ?? ep.result_value ?? ""; }); const result = evaluateFormula(p.calculation_formula, paramValues); if (result) handleValueChange(report.registration_id, p.parameter_id, result, tg.params); }}><Calculator className="h-3 w-3 text-primary" /></Button></div>
+                                          <div className="flex items-center gap-1"><Input value={currentValue} onChange={e => handleValueChange(report.registration_id, p.parameter_id, e.target.value, tg.params)} className={`h-7 text-sm w-[120px] font-mono ${negCls}`} placeholder="Auto" /><Button type="button" variant="ghost" size="icon" className="h-7 w-7" title="Recalculate" onClick={() => { if (!p.calculation_formula) return; const paramValues: Record<string, string> = {}; tg.params.forEach((ep: any) => { const k = `${report.registration_id}::${ep.parameter_id}`; paramValues[ep.parameter_id] = editedValues[k] ?? ep.result_value ?? ""; }); const result = evaluateFormula(p.calculation_formula, paramValues); if (result) handleValueChange(report.registration_id, p.parameter_id, result, tg.params); }}><Calculator className="h-3 w-3 text-primary" /></Button></div>
                                         ) : (
-                                          <Input value={currentValue} onChange={e => handleValueChange(report.registration_id, p.parameter_id, e.target.value, tg.params)} className={`h-7 text-sm w-[160px] ${(currentFlag === "H" || currentFlag === "L" || currentFlag === "A") ? "border-destructive text-destructive font-bold" : ""}`} />
+                                          <Input value={currentValue} onChange={e => handleValueChange(report.registration_id, p.parameter_id, e.target.value, tg.params)} className={`h-7 text-sm w-[160px] ${isNegative ? "border-red-500 ring-1 ring-red-300 text-red-700 font-semibold" : ((currentFlag === "H" || currentFlag === "L" || currentFlag === "A") ? "border-destructive text-destructive font-bold" : "")}`} />
                                         )}
                                       </TableCell>
                                       <TableCell className="py-1.5">

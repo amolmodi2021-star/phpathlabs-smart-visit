@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { formatAgeGender } from "@/lib/ageGender";
+import { isSuspectNegativeResult } from "@/lib/reportFlags";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Search, User, Monitor, Save, Calculator, Wifi, WifiOff, ChevronDown, ChevronUp, Check, Loader2, FlaskConical, Package, SendHorizonal, ArrowRightLeft, Eye, Trash2, StickyNote, RefreshCw } from "lucide-react";
+import { Search, User, Monitor, Save, Calculator, Wifi, WifiOff, ChevronDown, ChevronUp, Check, Loader2, FlaskConical, Package, SendHorizonal, ArrowRightLeft, Eye, Trash2, StickyNote, RefreshCw, AlertTriangle } from "lucide-react";
 import { DescriptiveCombobox } from "./DescriptiveCombobox";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
@@ -1161,7 +1162,11 @@ const ResultsEntry = () => {
 
     const isBlank = !currentValue || currentValue.trim() === "";
     const shouldHighlightBlanks = highlightBlanksForRegs.has(`${regId}||${p.testId}`);
-    const rowBg = (flag === "H" || flag === "L" || flag === "A" || flag === "X") ? "bg-destructive/5" : (isBlank && !p.isCalculated && shouldHighlightBlanks ? "bg-yellow-50" : "");
+    const isNegative = isSuspectNegativeResult(currentValue);
+    const rowBg = isNegative
+      ? "bg-red-50"
+      : ((flag === "H" || flag === "L" || flag === "A" || flag === "X") ? "bg-destructive/5" : (isBlank && !p.isCalculated && shouldHighlightBlanks ? "bg-yellow-50" : ""));
+    const negCls = isNegative ? "border-red-500 ring-1 ring-red-300 text-red-700 font-semibold" : "";
 
     return (
       <TableRow key={key} className={rowBg}>
@@ -1205,7 +1210,7 @@ const ResultsEntry = () => {
               <Input
                 value={currentValue}
                 onChange={e => handleValueChange(regId, p.parameterId, e.target.value, entry)}
-                className="h-7 text-sm w-[120px]"
+                className={`h-7 text-sm w-[120px] ${negCls}`}
                 placeholder="Manual"
                 data-result-input=""
                 onKeyDown={handleResultTabKey}
@@ -1222,7 +1227,7 @@ const ResultsEntry = () => {
               <Input
                 value={currentValue}
                 onChange={(e) => handleValueChange(regId, p.parameterId, e.target.value, entry)}
-                className="h-7 text-sm w-[120px] font-mono"
+                className={`h-7 text-sm w-[120px] font-mono ${negCls}`}
                 placeholder="Auto"
               />
               <Button
@@ -1277,7 +1282,7 @@ const ResultsEntry = () => {
             <Input
               value={currentValue}
               onChange={e => handleValueChange(regId, p.parameterId, e.target.value, entry)}
-              className="h-7 text-sm w-[180px]"
+              className={`h-7 text-sm w-[180px] ${negCls}`}
               placeholder="Enter result"
               data-result-input=""
               onKeyDown={handleResultTabKey}
@@ -1286,7 +1291,7 @@ const ResultsEntry = () => {
             <Input
               value={currentValue}
               onChange={e => handleValueChange(regId, p.parameterId, e.target.value, entry)}
-              className={`h-7 text-sm w-[180px] ${flag === "H" || flag === "L" || flag === "A" || flag === "X" ? "border-destructive text-destructive font-bold" : ""}`}
+              className={`h-7 text-sm w-[180px] ${isNegative ? "border-red-500 ring-1 ring-red-300 text-red-700 font-semibold" : (flag === "H" || flag === "L" || flag === "A" || flag === "X" ? "border-destructive text-destructive font-bold" : "")}`}
               placeholder="Enter result"
               data-result-input=""
               onKeyDown={handleResultTabKey}
@@ -1511,7 +1516,23 @@ const ResultsEntry = () => {
                   >
                     <div className="flex items-center gap-2 flex-wrap">
                       {isTestExpanded ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
-                      <span className="text-base font-bold text-foreground">{tg.testName}</span>
+                      {(() => {
+                        const hasNegative = tg.params.some(p => {
+                          const k = `${reg.id}||${p.parameterId}`;
+                          const v = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
+                          return isSuspectNegativeResult(v);
+                        });
+                        return (
+                          <>
+                            <span className={`text-base font-bold ${hasNegative ? "text-red-600" : "text-foreground"}`}>{tg.testName}</span>
+                            {hasNegative && (
+                              <Badge className="text-[10px] bg-red-600 text-white hover:bg-red-700 gap-0.5">
+                                <AlertTriangle className="h-3 w-3" /> Negative value — please verify
+                              </Badge>
+                            )}
+                          </>
+                        );
+                      })()}
                       <Badge variant="outline" className="text-[10px]">{filledCount}/{tg.params.length}</Badge>
                       {isFullTestOutsourced && (() => {
                         const allHaveResults = tg.params.every(p => {
