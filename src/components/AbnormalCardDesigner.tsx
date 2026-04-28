@@ -596,6 +596,34 @@ const AbnormalCardDesigner = () => {
                 }}
               />
             </div>
+            <div>
+              <Label className="text-xs">Column Alignment (Test Name, Date, Result, Range)</Label>
+              <div className="grid grid-cols-4 gap-2">
+                {(["Test Name","Date","Result","Range"] as const).map((label, idx) => {
+                  const aligns = (tpl.table_config.colAligns || ["left","center","center","center"]) as Align[];
+                  return (
+                    <div key={label}>
+                      <Label className="text-[10px] text-muted-foreground">{label}</Label>
+                      <Select
+                        value={aligns[idx] || "center"}
+                        onValueChange={(v) => {
+                          const next = [...aligns] as Align[];
+                          next[idx] = v as Align;
+                          updateTC({ colAligns: next });
+                        }}
+                      >
+                        <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="left">Left</SelectItem>
+                          <SelectItem value="center">Center</SelectItem>
+                          <SelectItem value="right">Right</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </CardContent>
         </Card>
 
