@@ -100,11 +100,8 @@ export async function syncPatientDemographicsByUmr(
     } as any)
     .eq("umr_id", umr);
 
-  // 5. Loyalty cards — column is `umr`
-  const loyalty = supabase
-    .from("loyalty_cards")
-    .update({ patient_name: demo.patient_name } as any)
-    .eq("umr", umr);
+  // 5. Loyalty cards table dropped — no-op
+  const loyalty = Promise.resolve({ error: null });
 
   // 6. Estimates — same UMR
   const estimates = supabase
