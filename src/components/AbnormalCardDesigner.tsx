@@ -111,6 +111,7 @@ const DEFAULT_TPL: Template = {
     { field: "UMR", x: 5, y: 85, fontSize: 22, fontColor: "#333333" },
     { field: "Barcode", x: 60, y: 30, fontSize: 50, fontColor: "#000000" },
   ],
+  details_band_height: null,
   bands: [
     { text: "HEALTH HISTORY FOR", height: 50, color: "#2E3192", textColor: "#FFFFFF", fontSize: 22, bold: true, align: "center", position: "above-table" },
   ],
