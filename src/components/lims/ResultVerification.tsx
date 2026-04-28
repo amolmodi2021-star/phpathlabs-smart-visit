@@ -21,6 +21,8 @@ import { formatDateDDMMYYYY } from "@/lib/utils";
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import { signalSync } from "@/lib/limsSyncSignal";
+import { propagateRegistrationChange } from "@/lib/limsPropagation";
+import SyncingOverlay from "./SyncingOverlay";
 import NewBadge from "./NewBadge";
 
 const QUALITATIVE_PAIRS = [
@@ -686,18 +688,13 @@ const ResultVerification = () => {
       // Also verify outsourced snips (works for both param-based and snip-only)
       await supabase.from("outsourced_test_snips").update({ outsource_status: "verified" } as any).eq("registration_id", reg.id).eq("test_id", testId).in("outsource_status", ["results_entered", "entered", "sent", "results_saved"]);
       
-      toast.success(`${testName} verified & sent to Doctor Approval`);
-      signalSync("doctor_approval", reg.id);
-      recalculateRegistrationStatus(reg.id).catch(console.error);
       setEditedValues(prev => {
         const next = { ...prev };
         testParams.forEach(p => { delete next[`${reg.id}||${p.parameterId}`]; });
         return next;
       });
-      qc.invalidateQueries({ queryKey: ["verification_results_v2"] });
-      qc.invalidateQueries({ queryKey: ["verification_outsourced_v2"] });
-      qc.invalidateQueries({ queryKey: ["doctor_approval"] });
-      qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
+      await propagateRegistrationChange(qc, reg.id, ["verification", "doctor_approval"]);
+      toast.success(`${testName} verified & sent to Doctor Approval`);
     } catch (err: any) {
       toast.error(err.message || "Verification failed");
     } finally {
@@ -735,13 +732,8 @@ const ResultVerification = () => {
         }
         await supabase.from("outsourced_test_snips").update({ outsource_status: "verified" } as any).eq("registration_id", reg.id).eq("test_id", testId).in("outsource_status", ["results_entered", "sent", "results_saved"]);
       }
+      await propagateRegistrationChange(qc, reg.id, ["verification", "doctor_approval"]);
       toast.success(`All tests verified for ${reg.patient_name}`);
-      signalSync("doctor_approval", reg.id);
-      recalculateRegistrationStatus(reg.id).catch(console.error);
-      qc.invalidateQueries({ queryKey: ["verification_results_v2"] });
-      qc.invalidateQueries({ queryKey: ["verification_outsourced_v2"] });
-      qc.invalidateQueries({ queryKey: ["doctor_approval"] });
-      qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
     } catch (err: any) {
       toast.error(err.message || "Verification failed");
     } finally {
@@ -810,16 +802,10 @@ const ResultVerification = () => {
       setEditedNotes((prev) => stripKeys(prev));
       setEditedTestNotes((prev) => { const next = { ...prev }; delete next[`${regId}||${testId}`]; return next; });
 
+      await propagateRegistrationChange(qc, regId, ["verification", "results"], {
+        extraKeys: ["outsourced_manual_results", "outsourced_snips"],
+      });
       toast.success(`${testName} sent back to Results Entry`);
-      signalSync("results", regId);
-      qc.invalidateQueries({ queryKey: ["verification_results_v2"] });
-      qc.invalidateQueries({ queryKey: ["verification_outsourced_v2"] });
-      qc.invalidateQueries({ queryKey: ["verification_regs_v2"] });
-      qc.invalidateQueries({ queryKey: ["results_accepted_regs"] });
-      qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
-      qc.invalidateQueries({ queryKey: ["outsourced_manual_results"] });
-      qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
-      qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] });
     } catch (err: any) {
       toast.error(err.message || "Failed");
     }
@@ -1132,6 +1118,7 @@ const ResultVerification = () => {
 
   return (
     <div className="space-y-4">
+      <SyncingOverlay target="verification" visibleIds={regIds} />
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />

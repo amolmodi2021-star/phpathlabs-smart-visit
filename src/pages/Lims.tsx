@@ -15,7 +15,7 @@ import Dispatch from "@/components/lims/Dispatch";
 import LimsSettings from "@/components/lims/LimsSettings";
 import DailyReport from "@/components/lims/DailyReport";
 import Billing from "@/components/lims/Billing";
-import SyncingOverlay from "@/components/lims/SyncingOverlay";
+
 
 const allLimsTabs = [
   { key: "register", label: "New Registration" },
@@ -60,19 +60,15 @@ const Lims = () => {
           <SampleAcceptance />
         </TabsContent>
         <TabsContent value="results">
-          <SyncingOverlay target="results" />
           <ResultsEntry />
         </TabsContent>
         <TabsContent value="verification">
-          <SyncingOverlay target="verification" />
           <ResultVerification />
         </TabsContent>
         <TabsContent value="doctor_approval">
-          <SyncingOverlay target="doctor_approval" />
           <DoctorApproval />
         </TabsContent>
         <TabsContent value="dispatch">
-          <SyncingOverlay target="dispatch" />
           <Dispatch />
         </TabsContent>
         <TabsContent value="due_payments">

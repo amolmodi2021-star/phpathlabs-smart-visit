@@ -23,6 +23,8 @@ import ModifiedApproval from "./ModifiedApproval";
 import SelectApproverDialog, { ApproverChoice } from "./SelectApproverDialog";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import { signalSync } from "@/lib/limsSyncSignal";
+import { propagateRegistrationChange } from "@/lib/limsPropagation";
+import SyncingOverlay from "./SyncingOverlay";
 import NewBadge from "./NewBadge";
 
 const QUALITATIVE_PAIRS = [
@@ -429,19 +431,15 @@ const DoctorApproval = () => {
   const groupByMachine = (params: ParameterResult[]) => { const g: Record<string, { machineName: string; params: ParameterResult[] }> = {}; for (const p of params) { const m = p.machineName || "Others"; if (!g[m]) g[m] = { machineName: m, params: [] }; g[m].params.push(p); } return Object.values(g); };
   const groupByTest = (params: ParameterResult[]) => { const g: Record<string, { testId: string; testName: string; params: ParameterResult[] }> = {}; for (const p of params) { if (!g[p.testId]) g[p.testId] = { testId: p.testId, testName: p.testName, params: [] }; g[p.testId].params.push(p); } return Object.values(g); };
 
+  // Legacy fallback — most callers should use propagateRegistrationChange instead.
   const invalidateAll = () => {
-    qc.invalidateQueries({ queryKey: ["doctor_approval_regs"] });
-    qc.invalidateQueries({ queryKey: ["doctor_approval_results"] });
-    qc.invalidateQueries({ queryKey: ["doctor_approval_snips"] });
-    qc.invalidateQueries({ queryKey: ["doctor_approval_history"] });
-    qc.invalidateQueries({ queryKey: ["verification_results_v2"] });
-    qc.invalidateQueries({ queryKey: ["verification_outsourced_v2"] });
-    qc.invalidateQueries({ queryKey: ["verification_regs_v2"] });
-    qc.invalidateQueries({ queryKey: ["results_accepted_regs"] });
-    qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
-    qc.invalidateQueries({ queryKey: ["dispatch_regs"] });
-    qc.invalidateQueries({ queryKey: ["dispatch_results"] });
-    qc.invalidateQueries({ queryKey: ["dispatch_snips"] });
+    [
+      "doctor_approval_regs", "doctor_approval_count", "doctor_approval_results",
+      "doctor_approval_snips", "doctor_approval_history", "doctor_approval_tubes",
+      "verification_results_v2", "verification_outsourced_v2", "verification_regs_v2",
+      "results_accepted_regs", "patient_results_existing",
+      "dispatch_regs", "dispatch_all_results", "dispatch_all_snips",
+    ].forEach((k) => qc.invalidateQueries({ queryKey: [k], refetchType: "active" }));
   };
 
   // Approve test
@@ -516,11 +514,9 @@ const DoctorApproval = () => {
         await supabase.from("patient_registrations").update({ status: "approved" } as any).eq("id", reg.id);
       }
 
-      toast.success(`${testName} approved`);
-      signalSync("dispatch", reg.id);
-      recalculateRegistrationStatus(reg.id).catch(console.error);
       setEditedValues(prev => { const next = { ...prev }; testParams.forEach(p => delete next[`${reg.id}||${p.parameterId}`]); return next; });
-      invalidateAll();
+      await propagateRegistrationChange(qc, reg.id, ["doctor_approval", "dispatch"]);
+      toast.success(`${testName} approved`);
     } catch (err: any) { toast.error(err.message || "Approval failed"); }
     finally { setActionKey(null); }
   };
@@ -595,10 +591,8 @@ const DoctorApproval = () => {
       // Update registration status to approved since all tests were just approved
       await supabase.from("patient_registrations").update({ status: "approved" } as any).eq("id", reg.id);
 
+      await propagateRegistrationChange(qc, reg.id, ["doctor_approval", "dispatch"]);
       toast.success(`All tests approved for ${reg.patient_name}`);
-      signalSync("dispatch", reg.id);
-      recalculateRegistrationStatus(reg.id).catch(console.error);
-      invalidateAll();
     } catch (err: any) { toast.error(err.message || "Approval failed"); }
     finally { setActionKey(null); }
   };
@@ -665,9 +659,8 @@ const DoctorApproval = () => {
       setEditedNotes((prev) => stripKeys(prev));
       setEditedTestNotes((prev) => { const next = { ...prev }; delete next[`${regId}||${testId}`]; return next; });
 
+      await propagateRegistrationChange(qc, regId, ["doctor_approval", "verification"]);
       toast.success(`${testName} sent back for verification`);
-      signalSync("verification", regId);
-      invalidateAll();
     } catch (err: any) { toast.error(err.message || "Failed"); }
     finally { setActionKey(null); }
   };
@@ -827,9 +820,8 @@ const DoctorApproval = () => {
                     const { data: tubesForColSnip } = await supabase.from("sample_tubes").select("collected_at").eq("registration_id", reg.id).not("collected_at", "is", null);
                     const firstCollectedAtSnip = tubesForColSnip?.length ? (tubesForColSnip.map((t: any) => t.collected_at).sort()[0] as string) : null;
                     await supabase.from("approved_reports").upsert({ registration_id: reg.id, invoice_number: reg.invoice_number, umr_number: reg.umr_number, patient_name: reg.patient_name, title: reg.title, gender: reg.gender, dob: reg.dob, mobile_number: reg.mobile_number, email: reg.email, address: reg.address, doctor_name: reg.doctor_name, visit_type: reg.visit_type, is_stat: reg.is_stat, report_language: reg.report_language, approved_by: snipApproverChoice.pathologistName, registration_date: reg.created_at, approval_date: new Date().toISOString(), sample_collection_date: firstCollectedAtSnip, test_results: newResults, outsourced_snip_urls: newSnipUrls } as any, { onConflict: "registration_id" as any, ignoreDuplicates: false });
+                    await propagateRegistrationChange(qc, reg.id, ["doctor_approval", "dispatch"]);
                     toast.success(`${st.testName} approved`);
-                    signalSync("dispatch", reg.id);
-                    invalidateAll();
                   } catch (err: any) { toast.error(err.message || "Approval failed"); }
                   finally { setActionKey(null); }
                 }}>
@@ -925,6 +917,7 @@ const DoctorApproval = () => {
 
   return (
     <div className="space-y-4">
+      <SyncingOverlay target="doctor_approval" visibleIds={regIds} />
       <Tabs value={activeSection} onValueChange={v => setActiveSection(v as any)} className="w-auto">
         <TabsList className="h-9">
           <TabsTrigger value="approval" className="text-xs gap-1 h-7"><Stethoscope className="h-3.5 w-3.5" /> Doctor Approval</TabsTrigger>
