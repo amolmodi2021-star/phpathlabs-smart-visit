@@ -407,7 +407,7 @@ const SampleAcceptance = () => {
                   return (
                     <>
                       <TableRow key={reg.id} className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => setExpandedRow(isExpanded ? null : reg.id)}>
+                        onClick={() => { markArrivalSeen(reg.id); setExpandedRow(isExpanded ? null : reg.id); }}>
                         <TableCell>
                           {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                         </TableCell>
@@ -421,6 +421,7 @@ const SampleAcceptance = () => {
                         <TableCell className="font-mono font-medium">{reg.invoice_number}</TableCell>
                         <TableCell>
                           <span className="font-medium">{reg.patient_name}</span>
+                          {!isAccepted && <NewBadge show={isNewArrival(reg.id)} className="ml-1.5 align-middle" />}
                           {reg.is_stat && (
                             <span className="relative inline-flex h-2.5 w-2.5 ml-1.5 align-middle">
                               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75"></span>
