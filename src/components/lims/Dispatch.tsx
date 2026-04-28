@@ -566,16 +566,16 @@ const Dispatch = () => {
                         )}
                         {selectedEntry.tests.some(t => t.status === "approved" || t.status === "dispatched") && (
                           <>
-                            <Button size="sm" variant="outline" className="gap-1 shrink-0" disabled={selectedEntry.registration.due_amount > 0} onClick={() => openReportSelectDialog(selectedEntry)}>
+                            <Button size="sm" variant="outline" className="gap-1 shrink-0" disabled={isPaymentBlocked(selectedEntry.registration)} onClick={() => openReportSelectDialog(selectedEntry)}>
                               <Eye className="h-4 w-4" /> {!isMobile && "View"} Report
                             </Button>
-                            <Button size="sm" variant="outline" className="gap-1 shrink-0" disabled={selectedEntry.registration.due_amount > 0} onClick={() => dispatchViaWhatsApp(selectedEntry.registration)}>
+                            <Button size="sm" variant="outline" className="gap-1 shrink-0" disabled={isPaymentBlocked(selectedEntry.registration)} onClick={() => dispatchViaWhatsApp(selectedEntry.registration)}>
                               <MessageSquare className="h-4 w-4" /> {!isMobile && "WhatsApp"}
                             </Button>
                           </>
                         )}
                         {selectedEntry.approvedCount > 0 && (
-                          <Button size="sm" className="gap-1 shrink-0" disabled={selectedEntry.registration.due_amount > 0 || actionKey === `${selectedEntry.registration.id}||dispatch`} onClick={() => markAsDispatched(selectedEntry)}>
+                          <Button size="sm" className="gap-1 shrink-0" disabled={isPaymentBlocked(selectedEntry.registration) || actionKey === `${selectedEntry.registration.id}||dispatch`} onClick={() => markAsDispatched(selectedEntry)}>
                             {actionKey === `${selectedEntry.registration.id}||dispatch` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Dispatch All
                           </Button>
                         )}
@@ -616,7 +616,7 @@ const Dispatch = () => {
                               <div className={cn("flex items-center gap-1.5 shrink-0", isMobile && "flex-wrap w-full justify-end")}>
                                 {/* View Snip */}
                                 {test.status === "approved" && test.snipUrls.length > 0 && (
-                                  <Button size="sm" variant="ghost" className="h-8 text-xs gap-1" disabled={selectedEntry.registration.due_amount > 0} onClick={() => setViewSnipImages(test.snipUrls)}>
+                                  <Button size="sm" variant="ghost" className="h-8 text-xs gap-1" disabled={isPaymentBlocked(selectedEntry.registration)} onClick={() => setViewSnipImages(test.snipUrls)}>
                                     <Eye className="h-3.5 w-3.5" /> Snip
                                   </Button>
                                 )}
@@ -645,10 +645,10 @@ const Dispatch = () => {
                                 {/* WhatsApp & Dispatch */}
                                 {test.status === "approved" && (
                                   <>
-                                    <Button size="sm" variant="outline" className="h-8 text-xs gap-1" disabled={selectedEntry.registration.due_amount > 0} onClick={() => dispatchViaWhatsApp(selectedEntry.registration)}>
+                                    <Button size="sm" variant="outline" className="h-8 text-xs gap-1" disabled={isPaymentBlocked(selectedEntry.registration)} onClick={() => dispatchViaWhatsApp(selectedEntry.registration)}>
                                       <MessageSquare className="h-3.5 w-3.5" />
                                     </Button>
-                                    <Button size="sm" className="h-8 text-xs gap-1" disabled={selectedEntry.registration.due_amount > 0 || isTestDispatching} onClick={() => markTestDispatched(selectedEntry.registration.id, test.testId, test.testName)}>
+                                    <Button size="sm" className="h-8 text-xs gap-1" disabled={isPaymentBlocked(selectedEntry.registration) || isTestDispatching} onClick={() => markTestDispatched(selectedEntry.registration.id, test.testId, test.testName)}>
                                       {isTestDispatching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />} Dispatch
                                     </Button>
                                   </>
@@ -730,7 +730,7 @@ const Dispatch = () => {
                 </label>
               ))}
             </div>
-            <Button className="w-full" disabled={selectedTestIds.size === 0 || (reportSelectEntry?.registration?.due_amount ?? 0) > 0} onClick={handleGenerateReport}>
+            <Button className="w-full" disabled={selectedTestIds.size === 0 || isPaymentBlocked(reportSelectEntry?.registration)} onClick={handleGenerateReport}>
               <Eye className="h-4 w-4 mr-1" /> Generate Report ({selectedTestIds.size} test{selectedTestIds.size !== 1 ? "s" : ""})
             </Button>
           </div>
