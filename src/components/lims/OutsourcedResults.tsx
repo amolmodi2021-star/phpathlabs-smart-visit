@@ -42,7 +42,7 @@ interface OutsourcedPatient {
 const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   const qc = useQueryClient();
   // outsourced_test_snips not in realtime publication — subscribe to patient_registrations only.
-  useRealtimeSync("patient_registrations", ["outsourced_snips", "results_outsourced_snips", "outsourced_accepted_regs"]);
+  // Cost optimization: no ambient realtime; same-user via propagateRegistrationChange, cross-user via refetchOnWindowFocus.
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [expandedPatient, setExpandedPatient] = useState<string | null>(null);

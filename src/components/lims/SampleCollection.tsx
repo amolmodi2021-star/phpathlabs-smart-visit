@@ -55,7 +55,7 @@ const SampleCollection = () => {
   // Single channel for both tables — fewer realtime listeners per client.
   // Only patient_registrations is in the realtime publication; sample_tubes is not.
   // Local writes use propagateRegistrationChange to invalidate immediately.
-  useRealtimeSync("patient_registrations", ["sample_tubes_collection", "sample_collection_regs"]);
+  // Cost optimization: no ambient realtime; same-user via propagateRegistrationChange, cross-user via refetchOnWindowFocus.
   const [activeTab, setActiveTab] = useState("pending");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
