@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
+import { formatAgeGender } from "@/lib/ageGender";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -992,6 +993,7 @@ const ResultVerification = () => {
               </span>
             )}
             <span className="text-sm text-muted-foreground ml-2">{reg.patient_name}</span>
+            <Badge variant="outline" className="text-[10px] font-mono ml-1">{formatAgeGender(reg.dob, reg.gender)}</Badge>
           </div>
         </div>
 
@@ -1167,6 +1169,7 @@ const ResultVerification = () => {
                         </span>
                       )}
                         <span className="text-sm text-muted-foreground">{reg.patient_name}</span>
+                        <Badge variant="outline" className="text-[10px] font-mono">{formatAgeGender(reg.dob, reg.gender)}</Badge>
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {reg.mobile_number} • {entry.parameters.length} parameters to verify

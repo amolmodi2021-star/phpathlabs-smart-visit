@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
+import { formatAgeGender } from "@/lib/ageGender";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
@@ -87,7 +88,7 @@ const Dispatch = () => {
     queryKey: ["dispatch_regs", debouncedSearch, dateFrom.toISOString(), dateTo.toISOString(), dispatchPage],
     queryFn: async () => {
       let query = supabase.from("patient_registrations")
-        .select("id, invoice_number, patient_name, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, created_at, updated_at, bill_cancelled, registered_by, due_amount")
+        .select("id, invoice_number, patient_name, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, gender, dob, created_at, updated_at, bill_cancelled, registered_by, due_amount")
         .eq("bill_cancelled", false)
         .gte("created_at", dateFrom.toISOString())
         .lte("created_at", dateTo.toISOString())
@@ -468,6 +469,7 @@ const Dispatch = () => {
                             <div className="flex items-center gap-1.5">
                               {reg.is_stat && entry.completionStatus !== "all_done" && <span className="relative flex h-2 w-2 shrink-0"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-destructive" /></span>}
                               <span className="font-medium text-sm truncate">{reg.patient_name}</span>
+                              <Badge variant="outline" className="text-[10px] font-mono shrink-0 px-1 py-0">{formatAgeGender(reg.dob, reg.gender)}</Badge>
                             </div>
                             <div className="flex items-center gap-2 mt-0.5">
                               <span className="text-xs text-muted-foreground flex items-center gap-1"><Phone className="h-3 w-3" />{reg.mobile_number}</span>
@@ -520,6 +522,7 @@ const Dispatch = () => {
                           )}
                           <User className="h-5 w-5 text-muted-foreground" />
                           <h3 className={cn("font-semibold", isMobile ? "text-base" : "text-lg")}>{selectedEntry.registration.patient_name}</h3>
+                          <Badge variant="outline" className="text-xs font-mono">{formatAgeGender(selectedEntry.registration.dob, selectedEntry.registration.gender)}</Badge>
                           {selectedEntry.registration.is_stat && selectedEntry.completionStatus !== "all_done" && <Badge variant="destructive" className="text-[10px]">STAT</Badge>}
                           {getCompletionDot(selectedEntry.completionStatus)}
                         </div>

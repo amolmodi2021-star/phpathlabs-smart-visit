@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Search, ShieldCheck, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, ScanBarcode, Printer } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { formatAgeGender } from "@/lib/ageGender";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { printBarcodes } from "@/lib/barcodePrint";
@@ -383,6 +384,7 @@ const SampleAcceptance = () => {
                   {!isAccepted && <TableHead className="w-10"></TableHead>}
                   <TableHead>Invoice #</TableHead>
                   <TableHead>Patient Name</TableHead>
+                  <TableHead>Age/Gender</TableHead>
                   <TableHead>Mobile</TableHead>
                   <TableHead>Tubes</TableHead>
                   <TableHead>Date</TableHead>
@@ -423,6 +425,7 @@ const SampleAcceptance = () => {
                             <Badge variant="outline" className="ml-2 text-xs">{statusLabel(reg.status)}</Badge>
                           )}
                         </TableCell>
+                        <TableCell className="text-sm font-mono">{formatAgeGender(reg.dob, reg.gender)}</TableCell>
                         <TableCell>{reg.mobile_number}</TableCell>
                         <TableCell>
                           <div className="flex gap-1 flex-wrap">
@@ -479,7 +482,7 @@ const SampleAcceptance = () => {
                       </TableRow>
                       {isExpanded && (
                         <TableRow key={`${reg.id}-detail`}>
-                          <TableCell colSpan={isAccepted ? 7 : 8} className="bg-muted/30 p-4">
+                          <TableCell colSpan={isAccepted ? 8 : 9} className="bg-muted/30 p-4">
                             <div className="space-y-2">
                               <div className="text-sm font-medium">Sample Details</div>
                               {tubes.map((tube) => {

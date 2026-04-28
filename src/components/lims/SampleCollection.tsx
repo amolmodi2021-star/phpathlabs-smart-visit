@@ -19,6 +19,7 @@ import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { printBarcodes } from "@/lib/barcodePrint";
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { buildSampleTubeGroups, TubeGroupingItem } from "@/lib/sampleTubeGrouping";
+import { formatAgeGender } from "@/lib/ageGender";
 
 const TUBE_COLOR_MAP: Record<string, string> = {
   red: "#e53e3e", lavender: "#b794f4", purple: "#9f7aea", yellow: "#ecc94b",
@@ -553,6 +554,7 @@ const SampleCollection = () => {
             <TableHead className="w-8"></TableHead>
             <TableHead>Invoice</TableHead>
             <TableHead>Patient Name</TableHead>
+            <TableHead>Age/Gender</TableHead>
             <TableHead>Mobile</TableHead>
             <TableHead>Visit</TableHead>
             <TableHead>Tubes</TableHead>
@@ -594,6 +596,7 @@ const SampleCollection = () => {
                       )}
                     </div>
                   </TableCell>
+                  <TableCell className="text-sm font-mono">{formatAgeGender(reg.dob, reg.gender)}</TableCell>
                   <TableCell className="text-sm">{reg.mobile_number}</TableCell>
                   <TableCell><Badge variant="outline" className="text-xs">{getVisitLabel(reg.visit_type)}</Badge></TableCell>
                   <TableCell className="text-sm">
@@ -621,7 +624,7 @@ const SampleCollection = () => {
                 </TableRow>
                 {isExpanded && (
                   <TableRow key={`${reg.id}-expand`}>
-                    <TableCell colSpan={8} className="p-0">
+                    <TableCell colSpan={9} className="p-0">
                       {renderTubeExpansion({ registration: reg, tubes }, isPending)}
                     </TableCell>
                   </TableRow>

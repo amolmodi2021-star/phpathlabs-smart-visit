@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
+import { formatAgeGender } from "@/lib/ageGender";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -773,6 +774,7 @@ const DoctorApproval = () => {
           )}
           {reg.is_stat && <span className="relative inline-flex h-2.5 w-2.5 ml-1.5 align-middle"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" /><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive" /></span>}
           <span className="text-sm text-muted-foreground">{reg.patient_name}</span>
+          <Badge variant="outline" className="text-[10px] font-mono">{formatAgeGender(reg.dob, reg.gender)}</Badge>
         </div>
         {/* Snip-only outsourced tests */}
         {entry.snipOnlyTests.length > 0 && entry.snipOnlyTests.map(st => {
@@ -952,6 +954,7 @@ const DoctorApproval = () => {
                       )}
                       {reg.is_stat && <span className="relative inline-flex h-2.5 w-2.5"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" /><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive" /></span>}
                       <span className="text-sm text-muted-foreground">{reg.patient_name}</span>
+                      <Badge variant="outline" className="text-[10px] font-mono">{formatAgeGender(reg.dob, reg.gender)}</Badge>
                     </div>
                     <div className="text-xs text-muted-foreground">{reg.mobile_number} • {entry.parameters.length} parameters</div>
                   </div>
