@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { logMessageSend } from "@/lib/messageLog";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
