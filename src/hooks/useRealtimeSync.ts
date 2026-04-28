@@ -44,7 +44,7 @@ type TableName =
 export function useRealtimeSync(
   tables: TableName | TableName[],
   queryKeys: string[],
-  debounceMs = 250,
+  debounceMs = 1500,
   options: { enabled?: boolean } = {},
 ) {
   const { enabled = true } = options;
