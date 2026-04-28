@@ -77,15 +77,7 @@ export async function syncPatientDemographicsByUmr(
     } as any)
     .eq("umr_number", umr);
 
-  // 3. CRM contacts — matched by UMR
-  const crm = supabase
-    .from("crm_contacts")
-    .update({
-      patient_name: demo.patient_name,
-      mobile_number: demo.mobile_number ?? null,
-      doctor_name: demo.doctor_name ?? null,
-    } as any)
-    .eq("umr_number", umr);
+  // 3. CRM contacts removed (CRM module disabled — cost optimization 2026-04-28)
 
   // 4. Patient master — umr_id is the column name
   const master = supabase
