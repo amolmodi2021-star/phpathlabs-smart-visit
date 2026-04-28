@@ -120,12 +120,11 @@ export async function syncPatientDemographicsByUmr(
   })();
 
   const results = await Promise.allSettled([
-    sisterRegs, approved, crm, master, estimates, ordersUpdate,
+    sisterRegs, approved, master, estimates, ordersUpdate,
   ]);
   const labels = [
     "patient_registrations (sister visits)",
     "approved_reports",
-    "crm_contacts",
     "patient_master",
     "estimates",
     "lims_test_orders",
