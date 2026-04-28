@@ -21,6 +21,7 @@ import { format } from "date-fns";
 import SnipOnLetterhead from "./SnipOnLetterhead";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
+import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 
@@ -178,6 +179,28 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     },
   });
 
+  // Fetch sample_tubes to derive leaf test ids per registration (expands PRL/HLT containers)
+  const { data: leafTestIdsByReg = {} } = useQuery({
+    queryKey: ["outsourced_sample_tubes_leaves", regIds.join(",")],
+    enabled: regIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("sample_tubes" as any)
+        .select("registration_id, test_ids")
+        .in("registration_id", regIds);
+      if (error) throw error;
+      const map: Record<string, Set<string>> = {};
+      (data || []).forEach((tube: any) => {
+        const rid = tube.registration_id;
+        if (!rid) return;
+        if (!map[rid]) map[rid] = new Set<string>();
+        const ids: string[] = Array.isArray(tube.test_ids) ? tube.test_ids : [];
+        ids.forEach((id) => map[rid].add(id));
+      });
+      return map;
+    },
+  });
+
   // Fetch existing manual results
   const { data: existingResults = [] } = useQuery({
     queryKey: ["outsourced_manual_results", regIds.join(",")],
@@ -277,10 +300,14 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     });
 
     return acceptedRegs.map((reg: any) => {
-      const tests = (reg.tests || []) as any[];
+      const leafSet = leafTestIdsByReg[reg.id] || new Set<string>();
+      // Expand PRL/HLT container rows in reg.tests into their leaf tests using sample_tubes
+      const expanded = leafSet.size > 0
+        ? expandRegistrationTests(reg.tests || [], leafSet, testsMap)
+        : ((reg.tests || []) as any[]);
       const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
       const outsourcedTests: OutsourcedTest[] = [];
-      for (const t of tests) {
+      for (const t of expanded) {
         if (cancelledIds.has(t.test_id)) continue;
         const testInfo = testsMap[t.test_id];
         const testKey = `${reg.id}||${t.test_id}`;
@@ -316,7 +343,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       }
       return { registration: reg, outsourcedTests };
     }).filter(e => e.outsourcedTests.length > 0);
-  }, [acceptedRegs, testsMap, existingSnips]);
+  }, [acceptedRegs, testsMap, existingSnips, leafTestIdsByReg]);
 
   // Get snip record
   const getSnip = (regId: string, testId: string) => {
