@@ -77,6 +77,7 @@ interface Template {
   logo_width: number;
   logo_height: number;
   placeholders: Placeholder[];
+  details_band_height?: number | null;
   bands: Band[];
   table_config: TableConfig;
   footer_lines: FooterLine[];
