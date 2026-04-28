@@ -143,20 +143,7 @@ const MarketingSender = () => {
     // Load global delay (configured in WhatsApp Settings)
     const delayMs = await getMarketingSendDelayMs();
 
-    // Create campaign record
-    const { data: campaign, error: campErr } = await supabase.from("marketing_campaigns").insert({
-      template_id: selectedTemplateId,
-      excel_data: excelData as any,
-      variable_mapping: variableMapping as any,
-      total_messages: excelData.length,
-      delay_ms: delayMs,
-      status: "sending",
-    }).select().single();
-
-    if (campErr || !campaign) {
-      toast.error("Failed to create campaign");
-      return;
-    }
+    // Campaign logging removed (cost optimization) — send without recording.
 
     setSending(true);
     setProgress({ current: 0, total: excelData.length });
@@ -227,14 +214,7 @@ const MarketingSender = () => {
       }
     }
 
-    await supabase.from("marketing_campaigns").update({
-      sent_count: sentCount,
-      failed_count: failedCount,
-      status: failedCount === 0 ? "completed" : "completed_with_errors",
-    }).eq("id", campaign.id);
-
     setSending(false);
-    queryClient.invalidateQueries({ queryKey: ["marketing_campaigns"] });
     toast.success(`Sent: ${sentCount}, Failed: ${failedCount}`);
   };
 

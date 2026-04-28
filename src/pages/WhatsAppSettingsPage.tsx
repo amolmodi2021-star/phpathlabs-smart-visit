@@ -372,66 +372,6 @@ const TemplatesManager = () => {
   );
 };
 
-/* ─── Marketing Campaign History ─── */
-const UnifiedHistory = () => {
-  // Marketing campaigns only — CRM/per-message logging fully removed
-  // (cost optimization 2026-04-28). No reads from crm_contacts or message_send_log.
-  const { data: campaigns = [], isLoading } = useQuery({
-    queryKey: ["unified-history-campaigns"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("marketing_campaigns")
-        .select("*, marketing_templates(template_name)")
-        .order("created_at", { ascending: false })
-        .limit(100);
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Marketing Campaign History</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <p className="text-sm text-muted-foreground">Loading...</p>
-          ) : campaigns.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No campaigns yet.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Template</TableHead>
-                  <TableHead>Total</TableHead>
-                  <TableHead>Sent</TableHead>
-                  <TableHead>Failed</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {campaigns.map((c: any) => (
-                  <TableRow key={c.id}>
-                    <TableCell className="text-sm">{format(new Date(c.created_at), "dd-MM-yyyy hh:mm a")}</TableCell>
-                    <TableCell className="font-medium">{c.marketing_templates?.template_name || "—"}</TableCell>
-                    <TableCell>{c.total_messages}</TableCell>
-                    <TableCell className="text-primary">{c.sent_count}</TableCell>
-                    <TableCell className="text-destructive">{c.failed_count}</TableCell>
-                    <TableCell><Badge variant={c.status === "completed" ? "default" : "secondary"}>{c.status}</Badge></TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  );
-};
-
 /* ─── Page ─── */
 const WhatsAppSettingsPage = () => {
   return (
@@ -442,16 +382,12 @@ const WhatsAppSettingsPage = () => {
           <TabsList>
             <TabsTrigger value="api">API Settings</TabsTrigger>
             <TabsTrigger value="templates">Templates</TabsTrigger>
-            <TabsTrigger value="history">Sent History</TabsTrigger>
           </TabsList>
           <TabsContent value="api">
             <GlobalApiSettings />
           </TabsContent>
           <TabsContent value="templates">
             <TemplatesManager />
-          </TabsContent>
-          <TabsContent value="history">
-            <UnifiedHistory />
           </TabsContent>
         </Tabs>
       </div>
