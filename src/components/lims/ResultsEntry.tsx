@@ -1162,7 +1162,11 @@ const ResultsEntry = () => {
 
     const isBlank = !currentValue || currentValue.trim() === "";
     const shouldHighlightBlanks = highlightBlanksForRegs.has(`${regId}||${p.testId}`);
-    const rowBg = (flag === "H" || flag === "L" || flag === "A" || flag === "X") ? "bg-destructive/5" : (isBlank && !p.isCalculated && shouldHighlightBlanks ? "bg-yellow-50" : "");
+    const isNegative = isSuspectNegativeResult(currentValue);
+    const rowBg = isNegative
+      ? "bg-red-50"
+      : ((flag === "H" || flag === "L" || flag === "A" || flag === "X") ? "bg-destructive/5" : (isBlank && !p.isCalculated && shouldHighlightBlanks ? "bg-yellow-50" : ""));
+    const negCls = isNegative ? "border-red-500 ring-1 ring-red-300 text-red-700 font-semibold" : "";
 
     return (
       <TableRow key={key} className={rowBg}>
