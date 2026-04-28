@@ -554,6 +554,7 @@ const SampleCollection = () => {
             <TableHead className="w-8"></TableHead>
             <TableHead>Invoice</TableHead>
             <TableHead>Patient Name</TableHead>
+            <TableHead>Age/Gender</TableHead>
             <TableHead>Mobile</TableHead>
             <TableHead>Visit</TableHead>
             <TableHead>Tubes</TableHead>
