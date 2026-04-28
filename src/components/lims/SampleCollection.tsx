@@ -279,6 +279,8 @@ const SampleCollection = () => {
   // ─── NEW arrivals badge tracker (only pending list) ───
   const pendingRegIds = useMemo(() => pendingGroups.map(g => g.registration.id), [pendingGroups]);
   const { isNew: isNewArrival, markSeen: markArrivalSeen } = useNewArrivalsBadge("sample_collection", pendingRegIds);
+
+  const toggleTube = (regId: string, tubeId: string) => {
     setSelectedTubes(prev => {
       const regSet = new Set(prev[regId] || []);
       if (regSet.has(tubeId)) regSet.delete(tubeId);
