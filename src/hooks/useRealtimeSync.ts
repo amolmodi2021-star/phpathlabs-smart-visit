@@ -45,15 +45,16 @@ export function useRealtimeSync(
   tables: TableName | TableName[],
   queryKeys: string[],
   debounceMs = 1500,
-  options: { enabled?: boolean } = {},
+  options: { enabled?: boolean; filter?: string } = {},
 ) {
-  const { enabled = true } = options;
+  const { enabled = true, filter } = options;
   const queryClient = useQueryClient();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const keysRef = useRef(queryKeys);
   keysRef.current = queryKeys;
 
   const tablesKey = Array.isArray(tables) ? tables.join(",") : tables;
+  const channelKey = filter ? `${tablesKey}|${filter}` : tablesKey;
 
   useEffect(() => {
     if (!enabled) return;
@@ -79,12 +80,14 @@ export function useRealtimeSync(
       });
     };
 
-    const channel = supabase.channel(`realtime-${tablesKey}`);
+    const channel = supabase.channel(`realtime-${channelKey}`);
 
     tableList.forEach((table) => {
+      const config: Record<string, unknown> = { event: "*", schema: "public", table };
+      if (filter) config.filter = filter;
       channel.on(
         "postgres_changes" as never,
-        { event: "*", schema: "public", table } as never,
+        config as never,
         (payload: { new?: { id?: string }; old?: { id?: string } }) => {
           const id = payload?.new?.id ?? payload?.old?.id;
           if (timerRef.current) clearTimeout(timerRef.current);
@@ -109,5 +112,5 @@ export function useRealtimeSync(
       supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tablesKey, queryClient, debounceMs, enabled]);
+  }, [channelKey, queryClient, debounceMs, enabled, filter]);
 }
