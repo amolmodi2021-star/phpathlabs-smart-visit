@@ -1,6 +1,11 @@
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  wasRecentlyPropagated,
+  wasRecentlyInvalidated,
+  markInvalidated,
+} from "@/lib/limsRealtimeDedupe";
 
 type TableName =
   | "home_visits"
@@ -22,19 +27,23 @@ type TableName =
   | "lims_no_map_required";
 
 /**
- * Debounced realtime subscription with multi-user resilience.
+ * Cost-aware realtime subscription.
  *
- * - Coalesces bursts of postgres_changes into a single invalidation per key
- *   after `debounceMs` of quiet (default 250 ms).
- * - Active queries are FORCE-REFETCHED so the visible tab updates immediately;
- *   inactive queries are only marked stale so multi-user fan-out stays cheap.
- * - On WebSocket reconnect (e.g. after a load spike or network blip), forces a
- *   one-shot invalidation so a stuck tab can never display stale data.
- *
- * `enabled` (default true): when false, skips channel subscription entirely.
+ * - One channel per hook call, even when subscribing to multiple tables.
+ * - Coalesces bursts into a single invalidation per key after `debounceMs`.
+ * - Self-echo suppression: if the affected row was just touched locally via
+ *   `propagateRegistrationChange`, the realtime echo is dropped — the actor
+ *   has already refetched.
+ * - Per-key dedupe (750 ms): the same key is never invalidated twice in
+ *   quick succession by propagation + realtime.
+ * - Hidden-tab gating: when `document.hidden`, only mark stale (no refetch).
+ *   The visible tab will refetch on focus via React Query's default behaviour.
+ * - Reconnect-only flush: the initial SUBSCRIBE no longer triggers a refetch
+ *   (massive cost saving on tab switches). A reconnect still flushes once so
+ *   no tab can be left on stale data after a WebSocket drop.
  */
 export function useRealtimeSync(
-  table: TableName,
+  tables: TableName | TableName[],
   queryKeys: string[],
   debounceMs = 250,
   options: { enabled?: boolean } = {},
@@ -45,40 +54,62 @@ export function useRealtimeSync(
   const keysRef = useRef(queryKeys);
   keysRef.current = queryKeys;
 
+  const tablesKey = Array.isArray(tables) ? tables.join(",") : tables;
+
   useEffect(() => {
     if (!enabled) return;
 
-    const flush = () => {
+    const tableList = Array.isArray(tables) ? tables : [tables];
+    const hasSubscribedOnce = { current: false };
+
+    const flush = (payloadId?: string) => {
+      // Skip echoes for rows we just propagated locally — the actor's tab
+      // already refetched via propagateRegistrationChange.
+      if (payloadId && wasRecentlyPropagated(payloadId)) return;
+
+      const hidden = typeof document !== "undefined" && document.hidden;
+
       keysRef.current.forEach((key) => {
-        // Invalidate all observers, but force an immediate refetch only on the
-        // currently mounted/active ones — keeps background tabs cheap.
-        queryClient.invalidateQueries({ queryKey: [key], refetchType: "active" });
+        if (wasRecentlyInvalidated(key)) return;
+        queryClient.invalidateQueries({
+          queryKey: [key],
+          // Hidden tabs: invalidate only (cheap). Visible tabs: refetch active.
+          refetchType: hidden ? "none" : "active",
+        });
+        markInvalidated(key);
       });
     };
 
-    const channel = supabase
-      .channel(`realtime-${table}`)
-      .on(
+    const channel = supabase.channel(`realtime-${tablesKey}`);
+
+    tableList.forEach((table) => {
+      channel.on(
+        // @ts-expect-error - supabase realtime types
         "postgres_changes",
         { event: "*", schema: "public", table },
-        () => {
+        (payload: { new?: { id?: string }; old?: { id?: string } }) => {
+          const id = payload?.new?.id ?? payload?.old?.id;
           if (timerRef.current) clearTimeout(timerRef.current);
           timerRef.current = setTimeout(() => {
-            flush();
+            flush(id);
             timerRef.current = null;
           }, debounceMs);
         },
-      )
-      .subscribe((status) => {
-        // On (re)subscribe, fire one immediate flush so a tab that was idle
-        // during a disconnect cannot remain on stale data.
-        if (status === "SUBSCRIBED") flush();
-      });
+      );
+    });
+
+    channel.subscribe((status) => {
+      if (status !== "SUBSCRIBED") return;
+      // First subscribe = initial mount; do NOT refetch (cache is fresh enough,
+      // React Query's own staleness rules will handle it). Reconnect only.
+      if (hasSubscribedOnce.current) flush();
+      hasSubscribedOnce.current = true;
+    });
 
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
       supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [table, queryClient, debounceMs, enabled]);
+  }, [tablesKey, queryClient, debounceMs, enabled]);
 }
