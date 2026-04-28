@@ -507,8 +507,8 @@ const Dispatch = () => {
                               {formatDate(reg.created_at)}
                             </div>
                             {reg.due_amount > 0 && (
-                              <Badge variant="destructive" className="mt-1 text-[10px] px-1.5 py-0">
-                                DUE ₹{reg.due_amount}
+                              <Badge variant={isPaymentBlocked(reg) ? "destructive" : "secondary"} className="mt-1 text-[10px] px-1.5 py-0">
+                                DUE ₹{reg.due_amount}{!isPaymentBlocked(reg) ? " · CREDIT" : ""}
                               </Badge>
                             )}
                           </div>
