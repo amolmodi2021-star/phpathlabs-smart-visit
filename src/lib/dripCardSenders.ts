@@ -72,6 +72,7 @@ interface AbnormalCardTemplate {
   }>;
   header_band_height?: number | null;
   show_header_band?: boolean | null;
+  details_band_height?: number | null;
 }
 
 const CODE128_PATTERNS = [
