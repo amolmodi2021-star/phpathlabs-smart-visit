@@ -1428,6 +1428,7 @@ const ResultsEntry = () => {
               </span>
             )}
             <span className="text-sm text-muted-foreground ml-2">{reg.patient_name}</span>
+            <Badge variant="outline" className="text-[10px] font-mono ml-1">{formatAgeGender(reg.dob, reg.gender)}</Badge>
           </div>
           <Badge variant={completion === 100 ? "default" : "outline"} className="text-xs">
             {completion}% Complete
