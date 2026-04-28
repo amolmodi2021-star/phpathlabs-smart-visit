@@ -384,6 +384,7 @@ const SampleAcceptance = () => {
                   {!isAccepted && <TableHead className="w-10"></TableHead>}
                   <TableHead>Invoice #</TableHead>
                   <TableHead>Patient Name</TableHead>
+                  <TableHead>Age/Gender</TableHead>
                   <TableHead>Mobile</TableHead>
                   <TableHead>Tubes</TableHead>
                   <TableHead>Date</TableHead>
