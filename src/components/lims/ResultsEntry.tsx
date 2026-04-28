@@ -972,7 +972,8 @@ const ResultsEntry = () => {
       const testName = entry.parameters.find(p => p.testId === testId)?.testName || entry.snipOnlyTests.find(s => s.testId === testId)?.testName || "Test";
       toast.success(`${testName} saved & sent to verification`);
       const regId = entry.registration.id;
-      // Clear edited values for this test's params only
+      // Signal Verification tab to show "Syncing…" until this regId appears there
+      signalSync("verification", regId);
       setEditedValues(prev => {
         const next = { ...prev };
         entry.parameters.filter(p => p.testId === testId).forEach(p => {
