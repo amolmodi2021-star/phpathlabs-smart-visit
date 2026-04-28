@@ -5,21 +5,19 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Loader2, Play } from "lucide-react";
 import { toast } from "sonner";
-import { CronJob, LastRun, invokeFunction } from "@/lib/cloudUsage";
-import { format } from "date-fns";
+import { CronJob, invokeFunction } from "@/lib/cloudUsage";
 
 interface Props {
   cronJobs: CronJob[];
-  lastRuns: Record<string, LastRun>;
   onRefetch: () => void;
 }
 
-// Map from cron job name → edge function name
+// Map from cron job name → edge function name (only for jobs that call functions)
 const CRON_TO_FN: Record<string, string> = {
   "cleanup-outsourced-snips-daily": "cleanup-outsourced-snips",
 };
 
-const CronJobs = ({ cronJobs, lastRuns, onRefetch }: Props) => {
+const CronJobs = ({ cronJobs, onRefetch }: Props) => {
   const [busy, setBusy] = useState<string | null>(null);
 
   const runNow = async (fnName: string) => {
@@ -50,14 +48,12 @@ const CronJobs = ({ cronJobs, lastRuns, onRefetch }: Props) => {
                 <TableHead>Job</TableHead>
                 <TableHead>Schedule</TableHead>
                 <TableHead>Active</TableHead>
-                <TableHead>Last Run</TableHead>
                 <TableHead className="text-right">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {cronJobs.map((j) => {
                 const fnName = CRON_TO_FN[j.jobname];
-                const last = fnName ? lastRuns[fnName] : undefined;
                 return (
                   <TableRow key={j.jobid}>
                     <TableCell className="font-mono text-xs">{j.jobname}</TableCell>
@@ -66,9 +62,6 @@ const CronJobs = ({ cronJobs, lastRuns, onRefetch }: Props) => {
                       <Badge variant={j.active ? "default" : "secondary"} className="text-[10px]">
                         {j.active ? "Active" : "Paused"}
                       </Badge>
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {last ? format(new Date(last.ran_at), "dd-MM-yyyy HH:mm") : "—"}
                     </TableCell>
                     <TableCell className="text-right">
                       {fnName ? (
