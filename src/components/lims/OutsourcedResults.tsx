@@ -300,10 +300,14 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     });
 
     return acceptedRegs.map((reg: any) => {
-      const tests = (reg.tests || []) as any[];
+      const leafSet = leafTestIdsByReg[reg.id] || new Set<string>();
+      // Expand PRL/HLT container rows in reg.tests into their leaf tests using sample_tubes
+      const expanded = leafSet.size > 0
+        ? expandRegistrationTests(reg.tests || [], leafSet, testsMap)
+        : ((reg.tests || []) as any[]);
       const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
       const outsourcedTests: OutsourcedTest[] = [];
-      for (const t of tests) {
+      for (const t of expanded) {
         if (cancelledIds.has(t.test_id)) continue;
         const testInfo = testsMap[t.test_id];
         const testKey = `${reg.id}||${t.test_id}`;
@@ -339,7 +343,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       }
       return { registration: reg, outsourcedTests };
     }).filter(e => e.outsourcedTests.length > 0);
-  }, [acceptedRegs, testsMap, existingSnips]);
+  }, [acceptedRegs, testsMap, existingSnips, leafTestIdsByReg]);
 
   // Get snip record
   const getSnip = (regId: string, testId: string) => {
