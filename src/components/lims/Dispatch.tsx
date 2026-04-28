@@ -152,6 +152,22 @@ const Dispatch = () => {
 
   const heldSet = useMemo(() => new Set(heldRegIds), [heldRegIds]);
 
+  const { data: creditPickupIds = [] } = useQuery({
+    queryKey: ["dispatch_credit_pickup_points"],
+    queryFn: async () => {
+      const { data } = await supabase.from("pickup_points").select("id, billing_type").eq("billing_type", "credit");
+      return (data || []).map((p: any) => p.id) as string[];
+    },
+  });
+  const creditPickupSet = useMemo(() => new Set(creditPickupIds), [creditPickupIds]);
+  const isPaymentBlocked = (reg: any) => {
+    if (!reg) return false;
+    if ((reg.due_amount ?? 0) <= 0) return false;
+    // Credit pickup-point patients are billed monthly — bypass the DUE block
+    if (reg.pickup_point_id && creditPickupSet.has(reg.pickup_point_id)) return false;
+    return true;
+  };
+
   const dispatchEntries = useMemo(() => {
     return registrations.filter((reg: any) => !heldSet.has(reg.id)).map((reg: any) => {
       const tests = (reg.tests || []) as any[];
