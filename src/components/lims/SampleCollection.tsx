@@ -624,7 +624,7 @@ const SampleCollection = () => {
                 </TableRow>
                 {isExpanded && (
                   <TableRow key={`${reg.id}-expand`}>
-                    <TableCell colSpan={8} className="p-0">
+                    <TableCell colSpan={9} className="p-0">
                       {renderTubeExpansion({ registration: reg, tubes }, isPending)}
                     </TableCell>
                   </TableRow>
