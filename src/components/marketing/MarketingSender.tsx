@@ -211,53 +211,13 @@ const MarketingSender = () => {
           },
         });
         const ok = !proxyErr && proxyResp && proxyResp.status >= 200 && proxyResp.status < 300;
-        if (!ok) {
-          failedCount++;
-          // Log the failure with retry payload so user can retry from the Retry tab
-          if (mobile10) {
-            await supabase.from("message_send_log").insert({
-              mobile_number: mobile10,
-              patient_name: patientName || null,
-              message_type: "Marketing",
-              delivery_status: "failed",
-              failed_at: new Date().toISOString(),
-              retry_payload: retryPayloadSnapshot as any,
-              retry_count: 0,
-            } as any);
-          }
+        if (ok) {
           sentCount++;
-          await logMessageSend(mobile10, patientName, "Marketing");
-          // Update CRM with last sent info — single most-recent row per mobile,
-          // never a blanket update (which would touch every visit row for that mobile).
-          if (mobile10) {
-            const { data: crmRow } = await supabase
-              .from("crm_contacts")
-              .select("id")
-              .eq("mobile_number", mobile10)
-              .order("updated_at", { ascending: false })
-              .limit(1)
-              .maybeSingle();
-            if (crmRow?.id) {
-              await supabase.from("crm_contacts").update({
-                last_sent_type: "Marketing",
-                last_sent_date: new Date().toISOString(),
-              }).eq("id", crmRow.id);
-            }
-          }
+        } else {
+          failedCount++;
         }
       } catch {
         failedCount++;
-        if (mobile10) {
-          await supabase.from("message_send_log").insert({
-            mobile_number: mobile10,
-            patient_name: patientName || null,
-            message_type: "Marketing",
-            delivery_status: "failed",
-            failed_at: new Date().toISOString(),
-            retry_payload: retryPayloadSnapshot as any,
-            retry_count: 0,
-          } as any);
-        }
       }
 
       setProgress({ current: i + 1, total: excelData.length });
