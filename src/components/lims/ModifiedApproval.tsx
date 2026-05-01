@@ -13,6 +13,8 @@ import { Search, ChevronDown, ChevronUp, Loader2, Save, Eye, FileCheck, Calculat
 import { toast } from "sonner";
 import PaginatedTableFooter from "@/components/ui/PaginatedTableFooter";
 import { isSuspectNegativeResult } from "@/lib/reportFlags";
+import TimeResultInput from "./TimeResultInput";
+import { parseTimeResultToSeconds } from "@/lib/timeRange";
 
 const PAGE_SIZE = 50;
 
