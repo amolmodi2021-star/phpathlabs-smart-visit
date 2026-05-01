@@ -728,7 +728,7 @@ const ResultVerification = () => {
       const descriptiveOptions = p?.descriptiveOptions;
       const normalRangeText = p?.normalRangeText;
 
-      const autoFlag = calculateFlag(baseVal, rangeLow, rangeHigh, rangeType, expectedValue, descriptiveOptions, normalRangeText);
+      const autoFlag = calculateFlag(baseVal, rangeLow, rangeHigh, rangeType, expectedValue, descriptiveOptions, normalRangeText, p?.unit ?? live?.unit ?? null);
       const isOutsourced = !!p?.isOutsourced;
       const flag = isOutsourced && editedFlags[k] !== undefined
         ? editedFlags[k]
