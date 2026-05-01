@@ -823,6 +823,7 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
                               <SelectItem value="numeric">Numeric</SelectItem>
                               <SelectItem value="qualitative">Qualitative</SelectItem>
                               <SelectItem value="descriptive">Descriptive</SelectItem>
+                              <SelectItem value="time">Time (Min : Sec)</SelectItem>
                               <SelectItem value="undefined">Undefined</SelectItem>
                             </SelectContent>
                           </Select>
