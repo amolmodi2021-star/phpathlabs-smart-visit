@@ -87,6 +87,8 @@ const isNumericResult = (value?: string): boolean => {
   if (!value) return false;
   const v = String(value).trim();
   if (!v) return false;
+  // Time values like "2:30" are treated as numeric so they render centred under the Result column.
+  if (isCanonicalTimeValue(v)) return true;
   // Treat plain numbers (incl. decimals, negatives, "<10", ">100", "1.2e3") as numeric so
   // they render centered under the Result column instead of as wide descriptive text.
   // Examples that must be numeric: "11.48" (BUN/Creat ratio), "0.84", "-0.5", "<10".
