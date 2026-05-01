@@ -58,23 +58,8 @@ export async function recalculateRegistrationStatus(registrationId: string): Pro
 
   let newStatus = "registered";
 
-  if (hasUntrackedAcceptedTest) {
-    // At least one accepted-tube test has no result row yet. Cap status at the
-    // earliest stage that still routes the registration through Results Entry.
-    if (downstream.some((st: string) => ["entered", "results_entered", "verified", "approved", "dispatched"].includes(st))) {
-      newStatus = "partial_processing";
-    } else if (r.some((x: any) => x.result_value && x.result_value.trim() !== "")) {
-      newStatus = "processing";
-    } else {
-      // Mirror the tube-only branch below.
-      const tubeStatuses = t.map((x: any) => x.status as string);
-      if (tubeStatuses.every((st) => st === "accepted")) newStatus = "sample_accepted";
-      else if (tubeStatuses.some((st) => st === "accepted")) newStatus = "partially_accepted";
-      else if (tubeStatuses.every((st) => st === "collected" || st === "accepted")) newStatus = "sample_collected";
-      else if (tubeStatuses.some((st) => st === "collected")) newStatus = "partially_collected";
-      else newStatus = "registered";
-    }
-  } else if (downstream.length > 0 && downstream.every((st: string) => st === "dispatched")) {
+  // Compute "natural" status from downstream rows alone (original cascade).
+  if (downstream.length > 0 && downstream.every((st: string) => st === "dispatched")) {
     newStatus = "dispatched";
   } else if (downstream.some((st: string) => st === "dispatched")) {
     newStatus = "partially_dispatched";
@@ -106,6 +91,20 @@ export async function recalculateRegistrationStatus(registrationId: string): Pro
     } else {
       newStatus = "registered";
     }
+  }
+
+  // GUARD: if any accepted-tube test has zero result/snip rows (= entry not started),
+  // a "terminal" status (processed/verified/approved/dispatched) is wrong because
+  // real work is still pending. Downgrade ONLY those terminal statuses to their
+  // "partial_*" equivalent — this preserves visibility in BOTH the entry queue
+  // AND every downstream queue (Verification, Doctor Approval, Dispatch) that
+  // already includes the partial_* variants in their filters.
+  if (hasUntrackedAcceptedTest) {
+    if (newStatus === "dispatched") newStatus = "partially_dispatched";
+    else if (newStatus === "approved") newStatus = "partially_approved";
+    else if (newStatus === "verified") newStatus = "partial_verified";
+    else if (newStatus === "processed") newStatus = "partial_processing";
+    // partial_* / processing / sample_* / registered already route through entry — leave alone.
   }
 
   await supabase.from("patient_registrations").update({ status: newStatus } as any).eq("id", registrationId);
