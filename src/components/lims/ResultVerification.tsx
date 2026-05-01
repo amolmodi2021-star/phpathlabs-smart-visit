@@ -435,13 +435,19 @@ const ResultVerification = () => {
   }, [editedTestNotes, loadedTestNotes]);
 
   // Calculate flag
-  const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string, descriptiveOptions?: string[], normalRangeText?: string): string => {
+  const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string, descriptiveOptions?: string[], normalRangeText?: string, unit?: string | null): string => {
     if (!value || value.trim() === "") return "";
     if (rangeType === "undefined") return "";
     if (rangeType === "qualitative" || rangeType === "descriptive") {
-      const ref = (normalRangeText || "").trim().toLowerCase();
+      const u = (unit || "").trim().toLowerCase();
+      const stripUnit = (s: string) => {
+        let t = s.trim().toLowerCase();
+        if (u && t.endsWith(u)) t = t.slice(0, -u.length).trim();
+        return t;
+      };
+      const ref = stripUnit(normalRangeText || "");
       if (!ref) return "";
-      return value.trim().toLowerCase() === ref ? "N" : "X";
+      return stripUnit(value) === ref ? "N" : "X";
     }
     // Operator-prefixed values (">5", "> 5", "≥5", "<0.01", "≤ 2") → cap → H/L
     const trimmed = value.trim();

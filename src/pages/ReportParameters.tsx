@@ -962,6 +962,13 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
                               <Input
                                 value={r.normal_range_text}
                                 onChange={(e) => updateRange(r._idx, "normal_range_text", e.target.value)}
+                                onBlur={(e) => {
+                                  const raw = (e.target.value || "").trim();
+                                  const u = (form.unit || "").trim();
+                                  if (!raw || !u) return;
+                                  if (raw.toLowerCase().endsWith(u.toLowerCase())) return;
+                                  updateRange(r._idx, "normal_range_text", `${raw} ${u}`.replace(/\s+/g, " ").trim());
+                                }}
                                 placeholder={r.range_type === "undefined" ? "e.g. 10 - 50 mL (leave blank for none)" : "e.g. Normal findings"}
                               />
                             </div>
