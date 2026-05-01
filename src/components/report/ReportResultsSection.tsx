@@ -1,4 +1,5 @@
 import React from 'react';
+import { isCanonicalTimeValue, formatTimeResult } from '@/lib/timeRange';
 
 export interface TestResult {
   department?: string;
