@@ -185,7 +185,7 @@ const ResultsEntry = () => {
     queryKey: ["results_accepted_count", debouncedSearch],
     queryFn: async () => {
       let query = supabase.from("patient_registrations").select("id", { count: "exact", head: true })
-        .in("status", ["sample_accepted", "partially_accepted", "processing", "partial_processing"])
+        .in("status", ["sample_accepted", "partially_accepted", "processing", "partial_processing", "partial_verified", "partially_approved", "partially_dispatched"])
         .eq("bill_cancelled", false);
       if (debouncedSearch) query = query.or(`patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%`);
       const { count } = await query;
