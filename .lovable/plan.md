@@ -1,64 +1,63 @@
-## Root cause analysis for invoice 2605010004 (MONIKA GUPTA)
+I found the root cause for invoice 2605010004.
 
-I checked the live DB. The registration has exactly 1 test (TSH) with this state:
+Current database state now has only one result row for the TFT test:
 
-| Field | Value |
-|---|---|
-| `patient_results.status` | `entered` |
-| `patient_results.verified_at` | NULL |
-| `patient_results.verified_by` | NULL |
-| `patient_registrations.status` | `processed` |
-| `sample_tubes.status` | `accepted` |
+```text
+Invoice: 2605010004
+Patient: MONIKA GUPTA
+Test: THYROID FUNCTION TEST (TFT)
+Configured parameters: T3, T4, TSH
+Stored result rows now: only TSH = 0.5, status = entered
+Registration status: processed
+```
 
-**The DB has no record of a Verify action ever happening for this registration.** Only "Save & Send to Verification" (which writes status=`entered`) has touched the row. So either:
+This matches your symptom: after entering TSH, the previously entered T3/T4 rows were removed, so T3/T4 appeared again in Result Entry.
 
-1. The Verify click in `ResultVerification.tsx` silently failed (toast not seen / hidden behind another dialog), OR
-2. The user clicked Verify in a stale tab whose `verifyTest` state had no parameters, so the underlying `delete + insert` was a no-op, OR
-3. The user only opened Verification but didn't actually press Verify (less likely given their certainty).
+Root cause: in `ResultsEntry.tsx`, when only part of a multi-parameter test is currently visible/pending, `Save & Verify` builds an upsert payload only for those visible parameters, but then deletes the entire test's existing `patient_results` rows before inserting the visible subset.
 
-In ALL three cases the current code is fragile. Specifically `verifyTest` (lines 661-702) and `verifyAllForPatient` (706-742) in `ResultVerification.tsx` have these weaknesses:
+So for TFT:
 
-**Bug A — Silent no-op on stale params.** If `entry.parameters.filter(p => p.testId === testId)` returns an empty array (e.g. cached entry built before sample-tube/test_parameters loaded, or a race during refetch), `upserts.length === 0` so the `if (upserts.length > 0)` block is skipped entirely, but the function still proceeds to `propagateRegistrationChange` and shows a green success toast. The DB is never touched. The reg stays at status=`processed` and reappears in both queues forever.
-
-**Bug B — Wrong status filter on delete.** `delete().eq("status", "entered")` only removes rows that are exactly `entered`. If the source row was `pending` (Save Later) or `results_entered` from an interface push, the delete matches nothing, then the insert creates a DUPLICATE row (no unique constraint exists on `patient_results(registration_id, test_id, parameter_id)` — verified). The recalculated status then becomes `partial_verified`, and the registration sticks around in Results Entry forever.
-
-**Bug C — No DB error surfacing.** The `insert` and `update` calls don't capture `{ error }`. If the insert fails (RLS/network/duplicate trigger) the function still proceeds to propagate and toast success.
-
-**Bug D — Re-entry shows registrations that are stuck.** Result Verification queue's status filter accepts `processed`, which is correct. But there's no way for an operator to see "this reg is stuck — its DB row is `entered` but somebody clicked Verify". That's why the user's confusion compounds.
+```text
+Step 1: T3/T4 saved -> rows exist for T3/T4
+Step 2: Results Entry now shows only pending TSH
+Step 3: Save & Verify TSH -> code deletes ALL TFT rows, including T3/T4
+Step 4: inserts only TSH
+Step 5: T3/T4 appear again
+```
 
 ## Fix plan
 
-### 1. Make `verifyTest` and `verifyAllForPatient` in `src/components/lims/ResultVerification.tsx` correct & loud
+1. Fix the destructive save logic in Result Entry
+   - In `src/components/lims/ResultsEntry.tsx`, change `Save & Verify` so it only replaces/upserts the specific parameter rows being saved.
+   - It must no longer run `delete where registration_id + test_id` for a partial parameter save.
+   - Existing rows for sibling parameters in the same test, like T3/T4 when saving TSH, will be preserved.
 
-For each test being verified:
+2. Fix autosave with the same rule
+   - `autoSaveTest` currently has the same full-test delete pattern.
+   - Change autosave to upsert/delete only the parameter IDs it is actually saving, so background autosave cannot wipe sibling parameters either.
 
-a. **Refetch the live `patient_results` rows for `(registration_id, test_id)` from DB** instead of trusting stale React state. Build the upsert list from the DB rows merged with `editedValues`/`editedFlags`/etc. This eliminates Bug A.
+3. Add a live self-check after Save & Verify
+   - After saving a partial test, re-read `patient_results` for that registration/test.
+   - Confirm that previously saved sibling rows were not lost.
+   - If the database write did not persist correctly, show an error instead of a success toast.
 
-b. **Broaden the delete filter**: `.in("status", ["pending", "entered", "results_entered"])` so any prior-state row is removed atomically with the verified insert. Eliminates Bug B.
+4. Repair invoice 2605010004 safely
+   - Preserve the current TSH row.
+   - Because the database no longer contains T3/T4 values, I cannot truthfully restore their numeric values unless they exist somewhere else. I will not invent results.
+   - I will make sure the invoice is left in a consistent state where T3/T4 can be entered once, then saving them will preserve TSH and move the complete TFT forward.
+   - If you remember the T3/T4 values, you can enter them again after the fix; they should not disappear anymore.
 
-c. **Capture and throw on every `error`** from `supabase.from(...).insert/update/delete`. If any step errors, surface a toast and abort. Eliminates Bug C.
+5. Recalculate status after repair
+   - Run the normal LIMS status recalculation for this registration after the data repair so the row lands in the correct queue.
 
-d. **Verify the post-condition**: after insert, re-query `patient_results` to confirm at least one row with `status='verified'` and matching `verified_at` exists for `(reg.id, test_id)`. If not, throw. This is a defence-in-depth check that takes ~1 query and prevents silent failure forever.
+## Expected result after fix
 
-e. **Add a unique index** on `patient_results (registration_id, test_id, parameter_id)` via migration so duplicates can never accumulate going forward. This requires a one-time cleanup migration first to delete duplicate rows (keep the newest per key).
+For multi-parameter tests such as TFT:
 
-### 2. Self-heal for invoice 2605010004 right now
+```text
+Enter T3/T4 -> Save & Verify -> T3/T4 stay stored
+Enter TSH   -> Save & Verify -> T3/T4 are preserved + TSH is stored
+Then all TFT parameters move together to Verification/Doctor Approval flow
+```
 
-Apply a one-off SQL migration that flips this single row to `verified` with proper timestamps, then runs `recalculateRegistrationStatus` so the row leaves the Results queue and proceeds to Doctor Approval. Tag `verified_by = 'system-recovery'` for audit clarity.
-
-### 3. Add a "Stuck registrations" diagnostic in Result Verification
-
-A small admin-only banner (password-gated, like other LIMS tools) that lists registrations whose `patient_registrations.status` is `processed` / `partial_processing` and whose oldest `patient_results.entered_at` is older than 6 hours. This makes future stuck rows visible and gives a one-click "force re-verify" / "force recalculate status" action.
-
-## Files touched
-
-- `src/components/lims/ResultVerification.tsx` — rewrite `verifyTest` & `verifyAllForPatient` per points 1a–1e.
-- New migration: backfill row for reg `95c87cdd-412c-4e19-9a94-4c1b50894f1b`, dedupe `patient_results`, add unique index.
-- `src/components/lims/ResultVerification.tsx` (or a small new sub-component) — the stuck-registrations banner.
-
-## Out of scope (not changing)
-
-- Realtime/cost optimisations done earlier today stay as-is. The fix above does not re-introduce ambient subscriptions; the post-write self-check in 1d is per-action only.
-- ResultsEntry queue logic is correct — once a row is properly `verified`, it disappears from Results as expected.
-
-Approve and I'll implement.
+This fix does not reintroduce realtime subscriptions or high-frequency polling.
