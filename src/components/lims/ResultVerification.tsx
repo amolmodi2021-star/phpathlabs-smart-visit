@@ -1038,6 +1038,12 @@ const ResultVerification = () => {
               <Input value={currentValue} onChange={(e) => handleValueChange(regId, p.parameterId, e.target.value, entry)} className={`h-7 text-sm w-[120px] font-mono ${negCls}`} placeholder="Auto" />
               <Button type="button" variant="ghost" size="icon" className="h-7 w-7" title="Recalculate" onClick={() => { if (!p.calculationFormula) return; const paramValues: Record<string, string> = {}; entry.parameters.forEach((ep) => { paramValues[ep.parameterId] = editedValues[`${regId}||${ep.parameterId}`] ?? ep.resultValue ?? ""; }); const result = evaluateFormula(p.calculationFormula, paramValues); if (result) handleValueChange(regId, p.parameterId, result, entry); }}><Calculator className="h-3 w-3 text-primary" /></Button>
             </div>
+          ) : p.rangeType === "time" ? (
+            <TimeResultInput
+              value={currentValue}
+              onChange={(v) => handleValueChange(regId, p.parameterId, v, entry)}
+              abnormal={flag === "H" || flag === "L" || flag === "A" || flag === "X"}
+            />
           ) : p.rangeType === "qualitative" && getQualitativeOptions(p.expectedValue).length > 0 ? (
             <Select value={currentValue || undefined} onValueChange={(v) => handleValueChange(regId, p.parameterId, v, entry)}>
               <SelectTrigger className="h-7 text-sm !w-[180px] min-w-[180px] max-w-[180px]"><SelectValue placeholder="Select..." /></SelectTrigger>
