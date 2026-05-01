@@ -18,6 +18,7 @@ import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import { exportToExcel, parseExcelFile } from "@/lib/excel";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 import MasterLookupSelect from "@/components/MasterLookupSelect";
+import { secondsToMinSec, minSecToSeconds, formatTimeRange } from "@/lib/timeRange";
 
 const QUALITATIVE_PAIRS = [
   { label: "Absent / Present", values: ["Absent", "Present"] },
@@ -214,8 +215,8 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
               gender: r.gender,
               age_min: r.age_min,
               age_max: r.age_max,
-              normal_range_low: r.range_type === "numeric" ? r.normal_range_low : null,
-              normal_range_high: r.range_type === "numeric" ? r.normal_range_high : null,
+              normal_range_low: (r.range_type === "numeric" || r.range_type === "time") ? r.normal_range_low : null,
+              normal_range_high: (r.range_type === "numeric" || r.range_type === "time") ? r.normal_range_high : null,
               normal_range_text: r.normal_range_text || null,
               range_type: r.range_type || "numeric",
               expected_value: r.range_type === "qualitative" ? (r.expected_value || null) : null,
@@ -822,6 +823,7 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
                               <SelectItem value="numeric">Numeric</SelectItem>
                               <SelectItem value="qualitative">Qualitative</SelectItem>
                               <SelectItem value="descriptive">Descriptive</SelectItem>
+                              <SelectItem value="time">Time (Min : Sec)</SelectItem>
                               <SelectItem value="undefined">Undefined</SelectItem>
                             </SelectContent>
                           </Select>
@@ -973,6 +975,50 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
                               />
                             </div>
                           </div>
+                        ) : r.range_type === "time" ? (
+                          (() => {
+                            const lowMS = secondsToMinSec(r.normal_range_low);
+                            const highMS = secondsToMinSec(r.normal_range_high);
+                            const updateLow = (m: number, s: number) => {
+                              const total = minSecToSeconds(m, s);
+                              const newLow = (m === 0 && s === 0) ? null : total;
+                              updateRange(r._idx, "normal_range_low", newLow);
+                              updateRange(r._idx, "normal_range_text", formatTimeRange(newLow, r.normal_range_high));
+                            };
+                            const updateHigh = (m: number, s: number) => {
+                              const total = minSecToSeconds(m, s);
+                              const newHigh = (m === 0 && s === 0) ? null : total;
+                              updateRange(r._idx, "normal_range_high", newHigh);
+                              updateRange(r._idx, "normal_range_text", formatTimeRange(r.normal_range_low, newHigh));
+                            };
+                            return (
+                              <div className="space-y-2">
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div>
+                                    <Label className="text-xs">Low (Min : Sec)</Label>
+                                    <div className="flex items-center gap-1">
+                                      <Input type="number" min={0} className="h-8 w-20" value={lowMS.min || ""} placeholder="min" onChange={(e) => updateLow(Number(e.target.value) || 0, lowMS.sec)} />
+                                      <span className="font-bold">:</span>
+                                      <Input type="number" min={0} max={59} className="h-8 w-20" value={lowMS.sec || ""} placeholder="sec" onChange={(e) => updateLow(lowMS.min, Number(e.target.value) || 0)} />
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <Label className="text-xs">High (Min : Sec)</Label>
+                                    <div className="flex items-center gap-1">
+                                      <Input type="number" min={0} className="h-8 w-20" value={highMS.min || ""} placeholder="min" onChange={(e) => updateHigh(Number(e.target.value) || 0, highMS.sec)} />
+                                      <span className="font-bold">:</span>
+                                      <Input type="number" min={0} max={59} className="h-8 w-20" value={highMS.sec || ""} placeholder="sec" onChange={(e) => updateHigh(highMS.min, Number(e.target.value) || 0)} />
+                                    </div>
+                                  </div>
+                                </div>
+                                <div>
+                                  <Label className="text-xs">Display Text (auto-generated, editable)</Label>
+                                  <Input value={r.normal_range_text || ""} onChange={(e) => updateRange(r._idx, "normal_range_text", e.target.value)} placeholder="e.g. 2 min – 7 min" />
+                                </div>
+                                <p className="text-[11px] text-muted-foreground">Result entry will show two boxes (Min : Sec). Report will display as "2 min 30 sec".</p>
+                              </div>
+                            );
+                          })()
                         ) : null}
                       </div>
                     ))}

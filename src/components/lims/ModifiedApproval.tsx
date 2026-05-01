@@ -13,6 +13,8 @@ import { Search, ChevronDown, ChevronUp, Loader2, Save, Eye, FileCheck, Calculat
 import { toast } from "sonner";
 import PaginatedTableFooter from "@/components/ui/PaginatedTableFooter";
 import { isSuspectNegativeResult } from "@/lib/reportFlags";
+import TimeResultInput from "./TimeResultInput";
+import { parseTimeResultToSeconds } from "@/lib/timeRange";
 
 const PAGE_SIZE = 50;
 
@@ -215,6 +217,13 @@ const ModifiedApproval = () => {
   const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string, descriptiveOptions?: string[], normalRangeText?: string): string => {
     if (!value || !value.trim()) return "";
     if (rangeType === "undefined") return "";
+    if (rangeType === "time") {
+      const total = parseTimeResultToSeconds(value);
+      if (total == null) return "";
+      if (low != null && total < low) return "L";
+      if (high != null && total > high) return "H";
+      return "N";
+    }
     if (rangeType === "qualitative" || rangeType === "descriptive") {
       const ref = (normalRangeText || "").trim().toLowerCase();
       if (!ref) return "";
@@ -564,6 +573,8 @@ const ModifiedApproval = () => {
                                       <TableCell className="py-1.5">
                                         {isCalc ? (
                                           <div className="flex items-center gap-1"><Input value={currentValue} onChange={e => handleValueChange(report.registration_id, p.parameter_id, e.target.value, tg.params)} className={`h-7 text-sm w-[120px] font-mono ${negCls}`} placeholder="Auto" /><Button type="button" variant="ghost" size="icon" className="h-7 w-7" title="Recalculate" onClick={() => { if (!p.calculation_formula) return; const paramValues: Record<string, string> = {}; tg.params.forEach((ep: any) => { const k = `${report.registration_id}::${ep.parameter_id}`; paramValues[ep.parameter_id] = editedValues[k] ?? ep.result_value ?? ""; }); const result = evaluateFormula(p.calculation_formula, paramValues); if (result) handleValueChange(report.registration_id, p.parameter_id, result, tg.params); }}><Calculator className="h-3 w-3 text-primary" /></Button></div>
+                                        ) : rangeMeta.rangeType === "time" ? (
+                                          <TimeResultInput value={currentValue} onChange={(v) => handleValueChange(report.registration_id, p.parameter_id, v, tg.params)} abnormal={currentFlag === "H" || currentFlag === "L" || currentFlag === "A"} />
                                         ) : (
                                           <Input value={currentValue} onChange={e => handleValueChange(report.registration_id, p.parameter_id, e.target.value, tg.params)} className={`h-7 text-sm w-[160px] ${isNegative ? "border-red-500 ring-1 ring-red-300 text-red-700 font-semibold" : ((currentFlag === "H" || currentFlag === "L" || currentFlag === "A") ? "border-destructive text-destructive font-bold" : "")}`} />
                                         )}

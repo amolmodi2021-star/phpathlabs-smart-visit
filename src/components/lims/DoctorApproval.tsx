@@ -3,6 +3,8 @@ import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { formatAgeGender } from "@/lib/ageGender";
 import { isSuspectNegativeResult } from "@/lib/reportFlags";
+import TimeResultInput from "./TimeResultInput";
+import { parseTimeResultToSeconds, isCanonicalTimeValue, formatTimeResult } from "@/lib/timeRange";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -342,6 +344,13 @@ const DoctorApproval = () => {
   const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string, descriptiveOptions?: string[], normalRangeText?: string, unit?: string | null): string => {
     if (!value || !value.trim()) return "";
     if (rangeType === "undefined") return "";
+    if (rangeType === "time") {
+      const total = parseTimeResultToSeconds(value);
+      if (total == null) return "";
+      if (low != null && total < low) return "L";
+      if (high != null && total > high) return "H";
+      return "N";
+    }
     if (rangeType === "qualitative" || rangeType === "descriptive") {
       const u = (unit || "").trim().toLowerCase();
       const stripUnit = (s: string) => {
@@ -693,7 +702,7 @@ const DoctorApproval = () => {
     if (hist.snipImageUrls && hist.snipImageUrls.length > 0) {
       return (<TableCell className="py-1.5 text-xs"><div className="leading-tight"><Button size="sm" variant="ghost" className="h-5 px-1 text-xs text-blue-600 gap-0.5" onClick={() => setViewSnipImages(hist.snipImageUrls)}><Eye className="h-3 w-3" /> View Snip</Button><div className="text-muted-foreground text-[10px]">{hist.createdAt ? formatDateDDMMYYYY(hist.createdAt) : ""}</div></div></TableCell>);
     }
-    return (<TableCell className="py-1.5 text-xs"><div className="leading-tight"><div className="font-bold">{hist.resultValue}</div><div className="text-muted-foreground">{hist.referenceRange || "—"}</div><div className="text-muted-foreground text-[10px]">{hist.createdAt ? formatDateDDMMYYYY(hist.createdAt) : ""}</div></div></TableCell>);
+    return (<TableCell className="py-1.5 text-xs"><div className="leading-tight"><div className="font-bold">{isCanonicalTimeValue(hist.resultValue) ? formatTimeResult(hist.resultValue) : hist.resultValue}</div><div className="text-muted-foreground">{hist.referenceRange || "—"}</div><div className="text-muted-foreground text-[10px]">{hist.createdAt ? formatDateDDMMYYYY(hist.createdAt) : ""}</div></div></TableCell>);
   };
 
   const renderParamRow = (entry: PatientEntry, p: ParameterResult) => {
@@ -732,6 +741,9 @@ const DoctorApproval = () => {
         {renderHistoryCell(p.parameterId, 0)}{renderHistoryCell(p.parameterId, 1)}
         <TableCell className="py-1.5 w-[180px]">
           {p.isCalculated ? (<div className="flex items-center gap-1"><Input value={currentValue} onChange={(e) => handleValueChange(regId, p.parameterId, e.target.value, entry)} className={`h-7 text-sm w-[120px] font-mono ${negCls}`} placeholder="Auto" /><Button type="button" variant="ghost" size="icon" className="h-7 w-7" title="Recalculate" onClick={() => { if (!p.calculationFormula) return; const paramValues: Record<string, string> = {}; entry.parameters.forEach((ep) => { paramValues[ep.parameterId] = editedValues[`${regId}||${ep.parameterId}`] ?? ep.resultValue ?? ""; }); const result = evaluateFormula(p.calculationFormula, paramValues); if (result) handleValueChange(regId, p.parameterId, result, entry); }}><Calculator className="h-3 w-3 text-primary" /></Button></div>) :
+           p.rangeType === "time" ? (
+            <TimeResultInput value={currentValue} onChange={(v) => handleValueChange(regId, p.parameterId, v, entry)} abnormal={flag === "H" || flag === "L" || flag === "A" || flag === "X"} />
+          ) :
            p.rangeType === "qualitative" && getQualitativeOptions(p.expectedValue).length > 0 ? (
             <Select value={currentValue || undefined} onValueChange={(v) => handleValueChange(regId, p.parameterId, v, entry)}>
               <SelectTrigger className="h-7 text-sm !w-[180px]"><SelectValue placeholder="Select..." /></SelectTrigger>

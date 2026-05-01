@@ -1,4 +1,5 @@
 import React from 'react';
+import { isCanonicalTimeValue, formatTimeResult } from '@/lib/timeRange';
 
 export interface TestResult {
   department?: string;
@@ -86,6 +87,8 @@ const isNumericResult = (value?: string): boolean => {
   if (!value) return false;
   const v = String(value).trim();
   if (!v) return false;
+  // Time values like "2:30" are treated as numeric so they render centred under the Result column.
+  if (isCanonicalTimeValue(v)) return true;
   // Treat plain numbers (incl. decimals, negatives, "<10", ">100", "1.2e3") as numeric so
   // they render centered under the Result column instead of as wide descriptive text.
   // Examples that must be numeric: "11.48" (BUN/Creat ratio), "0.84", "-0.5", "<10".
@@ -134,6 +137,9 @@ const ParamRow = ({ r, rowKey, compact, isMorph, showFlagText, rowFontSize, colC
   // Descriptive right span: Result + RefRange + Flag (if shown) = 2 or 3
   const rightSpan = showFlagText ? 3 : 2;
 
+  // Friendly display for "M:SS" time values
+  const displayResult = isCanonicalTimeValue(r.result_value) ? formatTimeResult(r.result_value) : r.result_value;
+
   return (
     <tr key={rowKey} className={`border-b border-gray-100 ${isAbnormal ? 'bg-red-50 print:bg-transparent' : ''}`} style={{ fontSize: rowFontSize }}>
       <td className={`px-3 ${nameWeight} ${py}`}>
@@ -151,12 +157,12 @@ const ParamRow = ({ r, rowKey, compact, isMorph, showFlagText, rowFontSize, colC
       )}
       {isDescriptive ? (
         <td colSpan={rightSpan} className={`text-left px-2 text-gray-800 ${py}`} style={{ wordBreak: 'break-word', whiteSpace: 'normal' }}>
-          {r.result_value}
+          {displayResult}
         </td>
       ) : (
         <>
           <td className={`text-center ${resultWeight} ${py}`}>
-            {r.result_value}
+            {displayResult}
           </td>
           <td className={`text-center text-gray-600 ${rangeWeight} ${py}`} style={{ whiteSpace: 'pre-line' }}>
             {(r.normal_range_text && r.normal_range_text.trim())

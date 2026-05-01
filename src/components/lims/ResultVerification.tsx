@@ -16,6 +16,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Search, User, Monitor, Calculator, Wifi, ChevronDown, ChevronUp, Loader2, FlaskConical, CheckCircle2, SendHorizonal, Eye, Undo2, ClipboardCheck, StickyNote, Trash2, AlertTriangle } from "lucide-react";
 import { DescriptiveCombobox } from "./DescriptiveCombobox";
+import TimeResultInput from "./TimeResultInput";
+import { parseTimeResultToSeconds } from "@/lib/timeRange";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { toast } from "sonner";
 import { formatDateDDMMYYYY } from "@/lib/utils";
@@ -439,6 +441,13 @@ const ResultVerification = () => {
   const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string, descriptiveOptions?: string[], normalRangeText?: string, unit?: string | null): string => {
     if (!value || value.trim() === "") return "";
     if (rangeType === "undefined") return "";
+    if (rangeType === "time") {
+      const total = parseTimeResultToSeconds(value);
+      if (total == null) return "";
+      if (low != null && total < low) return "L";
+      if (high != null && total > high) return "H";
+      return "N";
+    }
     if (rangeType === "qualitative" || rangeType === "descriptive") {
       const u = (unit || "").trim().toLowerCase();
       const stripUnit = (s: string) => {
@@ -1029,6 +1038,12 @@ const ResultVerification = () => {
               <Input value={currentValue} onChange={(e) => handleValueChange(regId, p.parameterId, e.target.value, entry)} className={`h-7 text-sm w-[120px] font-mono ${negCls}`} placeholder="Auto" />
               <Button type="button" variant="ghost" size="icon" className="h-7 w-7" title="Recalculate" onClick={() => { if (!p.calculationFormula) return; const paramValues: Record<string, string> = {}; entry.parameters.forEach((ep) => { paramValues[ep.parameterId] = editedValues[`${regId}||${ep.parameterId}`] ?? ep.resultValue ?? ""; }); const result = evaluateFormula(p.calculationFormula, paramValues); if (result) handleValueChange(regId, p.parameterId, result, entry); }}><Calculator className="h-3 w-3 text-primary" /></Button>
             </div>
+          ) : p.rangeType === "time" ? (
+            <TimeResultInput
+              value={currentValue}
+              onChange={(v) => handleValueChange(regId, p.parameterId, v, entry)}
+              abnormal={flag === "H" || flag === "L" || flag === "A" || flag === "X"}
+            />
           ) : p.rangeType === "qualitative" && getQualitativeOptions(p.expectedValue).length > 0 ? (
             <Select value={currentValue || undefined} onValueChange={(v) => handleValueChange(regId, p.parameterId, v, entry)}>
               <SelectTrigger className="h-7 text-sm !w-[180px] min-w-[180px] max-w-[180px]"><SelectValue placeholder="Select..." /></SelectTrigger>
@@ -1406,7 +1421,12 @@ const ResultVerification = () => {
                           <TableCell className="py-2 text-xs font-mono text-muted-foreground">{p.paramCode}</TableCell>
                           <TableCell className="py-2 text-sm font-medium">{p.parameterName}</TableCell>
                           <TableCell className="py-2">
-                            {p.rangeType === "qualitative" && getQualitativeOptions(p.expectedValue).length > 0 ? (
+                            {p.rangeType === "time" ? (
+                              <TimeResultInput
+                                value={currentValue}
+                                onChange={(v) => handleValueChange(reg.id, p.parameterId, v, entry)}
+                              />
+                            ) : p.rangeType === "qualitative" && getQualitativeOptions(p.expectedValue).length > 0 ? (
                               <Select value={currentValue || undefined} onValueChange={(v) => handleValueChange(reg.id, p.parameterId, v, entry)}>
                                 <SelectTrigger className="h-7 text-sm w-full"><SelectValue placeholder="Select..." /></SelectTrigger>
                                 <SelectContent>{getQualitativeOptions(p.expectedValue).map((opt: string) => (<SelectItem key={opt} value={opt}>{opt}</SelectItem>))}</SelectContent>

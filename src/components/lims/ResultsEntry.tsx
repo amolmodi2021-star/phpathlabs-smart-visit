@@ -17,6 +17,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Search, User, Monitor, Save, Calculator, Wifi, WifiOff, ChevronDown, ChevronUp, Check, Loader2, FlaskConical, Package, SendHorizonal, ArrowRightLeft, Eye, Trash2, StickyNote, RefreshCw, AlertTriangle } from "lucide-react";
 import { DescriptiveCombobox } from "./DescriptiveCombobox";
+import TimeResultInput from "./TimeResultInput";
+import { parseTimeResultToSeconds } from "@/lib/timeRange";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
@@ -690,6 +692,13 @@ const ResultsEntry = () => {
   const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string, descriptiveOptions?: string[], normalRangeText?: string, unit?: string | null): string => {
     if (!value || value.trim() === "") return "";
     if (rangeType === "undefined") return "";
+    if (rangeType === "time") {
+      const total = parseTimeResultToSeconds(value);
+      if (total == null) return "";
+      if (low != null && total < low) return "L";
+      if (high != null && total > high) return "H";
+      return "N";
+    }
     if (rangeType === "qualitative" || rangeType === "descriptive") {
       const u = (unit || "").trim().toLowerCase();
       const stripUnit = (s: string) => {
@@ -1279,6 +1288,13 @@ const ResultsEntry = () => {
               </Button>
               <Badge variant="secondary" className="text-xs gap-0.5">Calc</Badge>
             </div>
+          ) : p.rangeType === "time" ? (
+            <TimeResultInput
+              value={currentValue}
+              onChange={(v) => handleValueChange(regId, p.parameterId, v, entry)}
+              onKeyDown={handleResultTabKey}
+              abnormal={flag === "H" || flag === "L" || flag === "A" || flag === "X"}
+            />
           ) : p.rangeType === "qualitative" && getQualitativeOptions(p.expectedValue).length > 0 ? (
             <Select
               value={currentValue || undefined}
@@ -1913,7 +1929,13 @@ const ResultsEntry = () => {
                           <TableCell className="py-2 text-xs font-mono text-muted-foreground">{p.paramCode}</TableCell>
                           <TableCell className="py-2 text-sm font-medium">{p.parameterName}</TableCell>
                           <TableCell className="py-2">
-                            {p.rangeType === "qualitative" && getQualitativeOptions(p.expectedValue).length > 0 ? (
+                            {p.rangeType === "time" ? (
+                              <TimeResultInput
+                                value={currentValue}
+                                onChange={(v) => handleValueChange(reg.id, p.parameterId, v, entry)}
+                                onKeyDown={handleResultTabKey}
+                              />
+                            ) : p.rangeType === "qualitative" && getQualitativeOptions(p.expectedValue).length > 0 ? (
                               <Select
                                 value={currentValue || undefined}
                                 onValueChange={(v) => handleValueChange(reg.id, p.parameterId, v, entry)}
