@@ -135,16 +135,18 @@ const ModifiedApproval = () => {
         }
       }
 
-      // Inject any calculated parameters that exist in the test definition but
-      // are missing from saved patient_results (e.g. couldn't be auto-evaluated
-      // at approval time). This ensures they appear in Modified Approval so the
-      // user can edit/recalculate them.
+      // Inject any parameters that exist in the test definition but are missing
+      // from saved patient_results — including subheaders. This guarantees the
+      // Modified Approval view always shows the full structure of every test
+      // (calculated params that didn't auto-evaluate, params that were skipped
+      // during entry, subheader rows, etc.) so nothing is silently hidden.
       Object.values(testGroups).forEach((tg) => {
         const defs = (testParamsMap as any)[tg.testId] || [];
         const existingPids = new Set(tg.params.map((p: any) => p.parameter_id));
         defs.forEach((tp: any) => {
+          if (tp.is_subheader) return; // subheaders aren't editable rows here
           const rtp = tp.report_test_parameters;
-          if (!rtp || !rtp.is_calculated) return;
+          if (!rtp) return;
           if (existingPids.has(tp.parameter_id)) return;
           tg.params.push({
             registration_id: regId,
@@ -161,7 +163,7 @@ const ModifiedApproval = () => {
             note: "",
             test_note: "",
             calculation_formula: rtp.calculation_formula || [],
-            is_calculated: true,
+            is_calculated: !!rtp.is_calculated,
             __synthetic: true,
             display_order: tp.display_order ?? 9999,
           });
