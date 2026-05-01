@@ -641,11 +641,30 @@ const SampleAcceptance = () => {
           </TabsTrigger>
           <TabsTrigger value="accepted">
             Accepted
-            {acceptedGroups.length > 0 && <Badge variant="secondary" className="ml-2 text-xs">{acceptedGroups.length}</Badge>}
+            {totalAcceptedCount > 0 && (
+              <Badge variant="secondary" className="ml-2 text-xs">
+                {hasMoreAccepted ? `${acceptedGroups.length} / ${totalAcceptedCount}` : totalAcceptedCount}
+              </Badge>
+            )}
           </TabsTrigger>
         </TabsList>
         <TabsContent value="pending">{renderTable(pendingGroups, false, isLoading)}</TabsContent>
-        <TabsContent value="accepted">{renderTable(acceptedGroups, true, isLoadingAccepted)}</TabsContent>
+        <TabsContent value="accepted">
+          {renderTable(acceptedGroups, true, isLoadingAccepted)}
+          {hasMoreAccepted && (
+            <div className="flex justify-center mt-4">
+              <Button
+                variant="outline"
+                onClick={() => setAcceptedLimit((n) => n + ACCEPTED_PAGE_SIZE)}
+              >
+                Load {Math.min(ACCEPTED_PAGE_SIZE, totalAcceptedCount - acceptedLimit)} more
+                <span className="ml-2 text-xs text-muted-foreground">
+                  (showing {acceptedGroups.length} of {totalAcceptedCount})
+                </span>
+              </Button>
+            </div>
+          )}
+        </TabsContent>
       </Tabs>
 
       {/* Reject / Repeat Collection Dialog */}
