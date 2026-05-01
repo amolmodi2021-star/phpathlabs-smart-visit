@@ -217,6 +217,13 @@ const ModifiedApproval = () => {
   const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string, descriptiveOptions?: string[], normalRangeText?: string): string => {
     if (!value || !value.trim()) return "";
     if (rangeType === "undefined") return "";
+    if (rangeType === "time") {
+      const total = parseTimeResultToSeconds(value);
+      if (total == null) return "";
+      if (low != null && total < low) return "L";
+      if (high != null && total > high) return "H";
+      return "N";
+    }
     if (rangeType === "qualitative" || rangeType === "descriptive") {
       const ref = (normalRangeText || "").trim().toLowerCase();
       if (!ref) return "";
