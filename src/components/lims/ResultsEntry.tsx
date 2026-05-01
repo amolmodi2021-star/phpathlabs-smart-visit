@@ -826,16 +826,17 @@ const ResultsEntry = () => {
     }
     if (upserts.length === 0) return;
     try {
-      // Get outsourced param IDs to preserve their results
-      const outsourcedParams = outsourcedParamSets[`${regId}||${testId}`];
-      if (outsourcedParams && outsourcedParams.size > 0) {
-        // Delete only non-outsourced params
-        const paramIdsToDelete = upserts.map(u => u.parameter_id);
-        for (const pid of paramIdsToDelete) {
-          await supabase.from("patient_results").delete().eq("registration_id", regId).eq("test_id", testId).eq("parameter_id", pid);
-        }
-      } else {
-        await supabase.from("patient_results").delete().eq("registration_id", regId).eq("test_id", testId);
+      // PARTIAL-SAFE: only replace the exact parameter rows we are about to write.
+      // Never wipe the whole test — sibling parameters (e.g. T3/T4 when saving TSH)
+      // could be in `entered`/`verified` state and must be preserved.
+      const paramIdsToReplace = upserts.map((u) => u.parameter_id);
+      if (paramIdsToReplace.length > 0) {
+        await supabase
+          .from("patient_results")
+          .delete()
+          .eq("registration_id", regId)
+          .eq("test_id", testId)
+          .in("parameter_id", paramIdsToReplace);
       }
       await supabase.from("patient_results").insert(upserts as any);
     } catch {
