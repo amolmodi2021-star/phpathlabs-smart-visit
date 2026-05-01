@@ -702,7 +702,7 @@ const DoctorApproval = () => {
     if (hist.snipImageUrls && hist.snipImageUrls.length > 0) {
       return (<TableCell className="py-1.5 text-xs"><div className="leading-tight"><Button size="sm" variant="ghost" className="h-5 px-1 text-xs text-blue-600 gap-0.5" onClick={() => setViewSnipImages(hist.snipImageUrls)}><Eye className="h-3 w-3" /> View Snip</Button><div className="text-muted-foreground text-[10px]">{hist.createdAt ? formatDateDDMMYYYY(hist.createdAt) : ""}</div></div></TableCell>);
     }
-    return (<TableCell className="py-1.5 text-xs"><div className="leading-tight"><div className="font-bold">{hist.resultValue}</div><div className="text-muted-foreground">{hist.referenceRange || "—"}</div><div className="text-muted-foreground text-[10px]">{hist.createdAt ? formatDateDDMMYYYY(hist.createdAt) : ""}</div></div></TableCell>);
+    return (<TableCell className="py-1.5 text-xs"><div className="leading-tight"><div className="font-bold">{isCanonicalTimeValue(hist.resultValue) ? formatTimeResult(hist.resultValue) : hist.resultValue}</div><div className="text-muted-foreground">{hist.referenceRange || "—"}</div><div className="text-muted-foreground text-[10px]">{hist.createdAt ? formatDateDDMMYYYY(hist.createdAt) : ""}</div></div></TableCell>);
   };
 
   const renderParamRow = (entry: PatientEntry, p: ParameterResult) => {
