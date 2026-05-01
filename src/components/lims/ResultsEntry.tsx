@@ -17,6 +17,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Search, User, Monitor, Save, Calculator, Wifi, WifiOff, ChevronDown, ChevronUp, Check, Loader2, FlaskConical, Package, SendHorizonal, ArrowRightLeft, Eye, Trash2, StickyNote, RefreshCw, AlertTriangle } from "lucide-react";
 import { DescriptiveCombobox } from "./DescriptiveCombobox";
+import TimeResultInput from "./TimeResultInput";
+import { parseTimeResultToSeconds } from "@/lib/timeRange";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
