@@ -1,0 +1,81 @@
+/**
+ * Helpers for the "time" range type (minutes + seconds).
+ *
+ * Storage conventions:
+ *   - parameter_normal_ranges.normal_range_low / normal_range_high  → total seconds
+ *   - patient_results.result_value                                  → canonical "M:SS" string
+ *
+ * Display conventions (PDF + UI):
+ *   - "2 min 30 sec", "3 min", "45 sec"
+ *   - Range: "2 min – 7 min" / "1 min 30 sec – 7 min"
+ */
+
+export const TIME_RESULT_PATTERN = /^(\d{1,3}):([0-5]?\d)$/;
+
+export function secondsToMinSec(total: number | null | undefined): { min: number; sec: number } {
+  if (total == null || isNaN(Number(total))) return { min: 0, sec: 0 };
+  const t = Math.max(0, Math.round(Number(total)));
+  return { min: Math.floor(t / 60), sec: t % 60 };
+}
+
+export function minSecToSeconds(min: number | string | null | undefined, sec: number | string | null | undefined): number {
+  const m = Math.max(0, Math.floor(Number(min) || 0));
+  const s = Math.max(0, Math.floor(Number(sec) || 0));
+  // allow seconds > 59 → roll over
+  return m * 60 + s;
+}
+
+/** "2:30" → "2 min 30 sec".  "0:45" → "45 sec".  "3:00" → "3 min". */
+export function formatTimeResult(value: string | null | undefined): string {
+  if (!value) return "";
+  const v = String(value).trim();
+  const m = v.match(TIME_RESULT_PATTERN);
+  if (!m) return v; // not in canonical form — return as-is
+  const min = parseInt(m[1], 10);
+  const sec = parseInt(m[2], 10);
+  if (min === 0 && sec === 0) return "";
+  if (min === 0) return `${sec} sec`;
+  if (sec === 0) return `${min} min`;
+  return `${min} min ${sec} sec`;
+}
+
+export function isCanonicalTimeValue(value: string | null | undefined): boolean {
+  if (!value) return false;
+  return TIME_RESULT_PATTERN.test(String(value).trim());
+}
+
+/** total seconds → "2 min 30 sec" piece (used inside a range). */
+function formatSecondsPiece(total: number | null | undefined): string {
+  if (total == null) return "";
+  const { min, sec } = secondsToMinSec(total);
+  if (min === 0 && sec === 0) return "0 sec";
+  if (min === 0) return `${sec} sec`;
+  if (sec === 0) return `${min} min`;
+  return `${min} min ${sec} sec`;
+}
+
+export function formatTimeRange(lowSec: number | null | undefined, highSec: number | null | undefined): string {
+  const hasLow = lowSec != null;
+  const hasHigh = highSec != null;
+  if (!hasLow && !hasHigh) return "";
+  if (hasLow && hasHigh) return `${formatSecondsPiece(lowSec)} – ${formatSecondsPiece(highSec)}`;
+  if (hasLow) return `≥ ${formatSecondsPiece(lowSec)}`;
+  return `≤ ${formatSecondsPiece(highSec)}`;
+}
+
+/** Parse a stored result ("2:30") into total seconds; returns null if invalid. */
+export function parseTimeResultToSeconds(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const m = String(value).trim().match(TIME_RESULT_PATTERN);
+  if (!m) return null;
+  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+}
+
+/** Build canonical "M:SS" from raw min/sec inputs (handles sec rollover). */
+export function buildCanonicalTime(min: number | string | null | undefined, sec: number | string | null | undefined): string {
+  const total = minSecToSeconds(min, sec);
+  if (total === 0 && (min === "" || min == null) && (sec === "" || sec == null)) return "";
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
