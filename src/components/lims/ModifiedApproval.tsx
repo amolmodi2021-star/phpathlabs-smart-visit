@@ -166,10 +166,13 @@ const ModifiedApproval = () => {
             display_order: tp.display_order ?? 9999,
           });
         });
-        // Preserve display_order when present
+        // Sort by display_order from test definition so calculated params slot
+        // into their natural position rather than appearing at the end.
+        const orderMap: Record<string, number> = {};
+        defs.forEach((tp: any) => { orderMap[tp.parameter_id] = tp.display_order ?? 9999; });
         tg.params.sort((a: any, b: any) => {
-          const da = a.display_order ?? 9999;
-          const db = b.display_order ?? 9999;
+          const da = orderMap[a.parameter_id] ?? 9999;
+          const db = orderMap[b.parameter_id] ?? 9999;
           return da - db;
         });
       });
