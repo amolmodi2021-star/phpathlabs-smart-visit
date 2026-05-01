@@ -1288,6 +1288,13 @@ const ResultsEntry = () => {
               </Button>
               <Badge variant="secondary" className="text-xs gap-0.5">Calc</Badge>
             </div>
+          ) : p.rangeType === "time" ? (
+            <TimeResultInput
+              value={currentValue}
+              onChange={(v) => handleValueChange(regId, p.parameterId, v, entry)}
+              onKeyDown={handleResultTabKey}
+              abnormal={flag === "H" || flag === "L" || flag === "A" || flag === "X"}
+            />
           ) : p.rangeType === "qualitative" && getQualitativeOptions(p.expectedValue).length > 0 ? (
             <Select
               value={currentValue || undefined}
