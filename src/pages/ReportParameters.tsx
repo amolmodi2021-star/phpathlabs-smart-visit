@@ -975,6 +975,50 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
                               />
                             </div>
                           </div>
+                        ) : r.range_type === "time" ? (
+                          (() => {
+                            const lowMS = secondsToMinSec(r.normal_range_low);
+                            const highMS = secondsToMinSec(r.normal_range_high);
+                            const updateLow = (m: number, s: number) => {
+                              const total = minSecToSeconds(m, s);
+                              const newLow = (m === 0 && s === 0) ? null : total;
+                              updateRange(r._idx, "normal_range_low", newLow);
+                              updateRange(r._idx, "normal_range_text", formatTimeRange(newLow, r.normal_range_high));
+                            };
+                            const updateHigh = (m: number, s: number) => {
+                              const total = minSecToSeconds(m, s);
+                              const newHigh = (m === 0 && s === 0) ? null : total;
+                              updateRange(r._idx, "normal_range_high", newHigh);
+                              updateRange(r._idx, "normal_range_text", formatTimeRange(r.normal_range_low, newHigh));
+                            };
+                            return (
+                              <div className="space-y-2">
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div>
+                                    <Label className="text-xs">Low (Min : Sec)</Label>
+                                    <div className="flex items-center gap-1">
+                                      <Input type="number" min={0} className="h-8 w-20" value={lowMS.min || ""} placeholder="min" onChange={(e) => updateLow(Number(e.target.value) || 0, lowMS.sec)} />
+                                      <span className="font-bold">:</span>
+                                      <Input type="number" min={0} max={59} className="h-8 w-20" value={lowMS.sec || ""} placeholder="sec" onChange={(e) => updateLow(lowMS.min, Number(e.target.value) || 0)} />
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <Label className="text-xs">High (Min : Sec)</Label>
+                                    <div className="flex items-center gap-1">
+                                      <Input type="number" min={0} className="h-8 w-20" value={highMS.min || ""} placeholder="min" onChange={(e) => updateHigh(Number(e.target.value) || 0, highMS.sec)} />
+                                      <span className="font-bold">:</span>
+                                      <Input type="number" min={0} max={59} className="h-8 w-20" value={highMS.sec || ""} placeholder="sec" onChange={(e) => updateHigh(highMS.min, Number(e.target.value) || 0)} />
+                                    </div>
+                                  </div>
+                                </div>
+                                <div>
+                                  <Label className="text-xs">Display Text (auto-generated, editable)</Label>
+                                  <Input value={r.normal_range_text || ""} onChange={(e) => updateRange(r._idx, "normal_range_text", e.target.value)} placeholder="e.g. 2 min – 7 min" />
+                                </div>
+                                <p className="text-[11px] text-muted-foreground">Result entry will show two boxes (Min : Sec). Report will display as "2 min 30 sec".</p>
+                              </div>
+                            );
+                          })()
                         ) : null}
                       </div>
                     ))}
