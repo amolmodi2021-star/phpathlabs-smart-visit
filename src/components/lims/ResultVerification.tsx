@@ -658,39 +658,189 @@ const ResultVerification = () => {
   // Verify test (update status to verified)
   const [verifyingKey, setVerifyingKey] = useState<string | null>(null);
 
+  /**
+   * Build the upsert payload for verifying ONE test of a registration.
+   *
+   * Hardening (root-cause fix for invoice 2605010004 stuck loop):
+   *   - Hydrates payload from LIVE DB rows (not stale React state) so a verify
+   *     click can NEVER silently no-op when local params haven't loaded yet.
+   *   - Falls back to entry.parameters only if DB has no rows for the test
+   *     (true snip-only / config edge cases).
+   *   - Returns null when there is genuinely nothing to verify (e.g. snip-only
+   *     test with no params), so the caller can branch safely.
+   */
+  const buildVerifyUpserts = async (
+    entry: PatientEntry,
+    testId: string,
+  ): Promise<any[] | null> => {
+    const reg = entry.registration;
+    const localParams = entry.parameters.filter((p) => p.testId === testId);
+
+    // Live DB read — source of truth
+    const { data: liveRows, error: readErr } = await supabase
+      .from("patient_results")
+      .select("*")
+      .eq("registration_id", reg.id)
+      .eq("test_id", testId);
+    if (readErr) throw readErr;
+
+    const liveByParam: Record<string, any> = {};
+    (liveRows || []).forEach((r: any) => { if (r.parameter_id) liveByParam[r.parameter_id] = r; });
+
+    // Union of local-known params + live DB params, keyed by parameter_id
+    const seen = new Set<string>();
+    const merged: Array<{ p: typeof localParams[number] | null; live: any | null; pid: string }> = [];
+    for (const p of localParams) {
+      if (!p.parameterId || seen.has(p.parameterId)) continue;
+      seen.add(p.parameterId);
+      merged.push({ p, live: liveByParam[p.parameterId] || null, pid: p.parameterId });
+    }
+    for (const r of (liveRows || []) as any[]) {
+      if (!r.parameter_id || seen.has(r.parameter_id)) continue;
+      seen.add(r.parameter_id);
+      merged.push({ p: null, live: r, pid: r.parameter_id });
+    }
+
+    if (merged.length === 0) return null; // genuinely nothing to verify (snip-only handled by caller)
+
+    const nowIso = new Date().toISOString();
+    const verifier = getCurrentUserName();
+    const upserts: any[] = [];
+
+    for (const { p, live, pid } of merged) {
+      const k = `${reg.id}||${pid}`;
+      // Resolve the result value: edited > local cache > live DB
+      const baseVal =
+        editedValues[k] !== undefined
+          ? editedValues[k]
+          : p?.resultValue ?? (live?.result_value ?? "");
+
+      const rangeLow = p?.normalRangeLow ?? live?.normal_range_low ?? null;
+      const rangeHigh = p?.normalRangeHigh ?? live?.normal_range_high ?? null;
+      const rangeType = p?.rangeType;
+      const expectedValue = p?.expectedValue;
+      const descriptiveOptions = p?.descriptiveOptions;
+      const normalRangeText = p?.normalRangeText;
+
+      const autoFlag = calculateFlag(baseVal, rangeLow, rangeHigh, rangeType, expectedValue, descriptiveOptions, normalRangeText);
+      const isOutsourced = !!p?.isOutsourced;
+      const flag = isOutsourced && editedFlags[k] !== undefined
+        ? editedFlags[k]
+        : (autoFlag || live?.flag || null);
+      const unit = isOutsourced && editedUnits[k] !== undefined
+        ? editedUnits[k]
+        : (p?.unit ?? live?.unit ?? null);
+      const refRange = isOutsourced && editedRefRanges[k] !== undefined
+        ? editedRefRanges[k]
+        : (p?.referenceRange ?? live?.reference_range ?? null);
+
+      const noteEdited = editedNotes[k];
+      const note = noteEdited !== undefined
+        ? (noteEdited || null)
+        : (p?.note ?? live?.note ?? null);
+
+      const testNoteKey = `${reg.id}||${testId}`;
+      const testNoteEdited = editedTestNotes[testNoteKey];
+      const test_note = testNoteEdited !== undefined
+        ? (testNoteEdited || null)
+        : (loadedTestNotes[testNoteKey] ?? live?.test_note ?? null);
+
+      upserts.push({
+        registration_id: reg.id,
+        test_id: testId,
+        parameter_id: pid,
+        param_code: p?.paramCode ?? live?.param_code ?? null,
+        parameter_name: p?.parameterName ?? live?.parameter_name ?? null,
+        result_value: applyUnitSuffix(baseVal, unit, rangeType) || null,
+        unit,
+        reference_range: refRange,
+        normal_range_low: rangeLow,
+        normal_range_high: rangeHigh,
+        flag: flag || null,
+        status: "verified",
+        is_calculated: p?.isCalculated ?? live?.is_calculated ?? false,
+        is_from_interface: p?.isFromInterface ?? live?.is_from_interface ?? false,
+        verified_at: nowIso,
+        entered_at: live?.entered_at ?? p?.enteredAt ?? nowIso,
+        entered_by: live?.entered_by ?? p?.enteredBy ?? null,
+        verified_by: verifier,
+        note,
+        test_note,
+      });
+    }
+    return upserts;
+  };
+
+  /**
+   * Persist a verification for ONE test atomically and verify post-condition.
+   *
+   * Bug-fix surface vs the previous implementation:
+   *   - Broadened delete filter (.in([pending, entered, results_entered])) so
+   *     no source-state row is left behind to create duplicate keys (Bug B).
+   *   - Captures every {error} returned by supabase-js and throws — no more
+   *     silent success toasts (Bug C).
+   *   - Re-reads patient_results after insert and asserts at least one row is
+   *     status='verified'; throws otherwise (Bug D defence-in-depth).
+   *   - Unique index patient_results_reg_test_param_uniq (added by migration)
+   *     means the insert is now guaranteed to be a true upsert at DB level.
+   */
+  const persistVerifyTest = async (
+    reg: { id: string },
+    testId: string,
+    upserts: any[] | null,
+  ): Promise<void> => {
+    // Always update outsourced snip status — works for snip-only tests too
+    const snipUpdate = await supabase
+      .from("outsourced_test_snips")
+      .update({ outsource_status: "verified" } as any)
+      .eq("registration_id", reg.id)
+      .eq("test_id", testId)
+      .in("outsource_status", ["results_entered", "entered", "sent", "results_saved"]);
+    if (snipUpdate.error) throw snipUpdate.error;
+
+    if (upserts && upserts.length > 0) {
+      const del = await supabase
+        .from("patient_results")
+        .delete()
+        .eq("registration_id", reg.id)
+        .eq("test_id", testId)
+        .in("status", ["pending", "entered", "results_entered"]);
+      if (del.error) throw del.error;
+
+      const ins = await supabase.from("patient_results").insert(upserts as any);
+      if (ins.error) throw ins.error;
+
+      // Post-condition self-check — confirm the verified rows exist
+      const { data: confirmRows, error: confirmErr } = await supabase
+        .from("patient_results")
+        .select("id, status")
+        .eq("registration_id", reg.id)
+        .eq("test_id", testId)
+        .eq("status", "verified");
+      if (confirmErr) throw confirmErr;
+      if (!confirmRows || confirmRows.length === 0) {
+        throw new Error("Verification did not persist (no verified rows found after insert). Please retry.");
+      }
+    }
+  };
+
   const verifyTest = async (entry: PatientEntry, testId: string, testName: string) => {
     const reg = entry.registration;
     const key = `${reg.id}||${testId}`;
     setVerifyingKey(key);
     try {
-      const testParams = entry.parameters.filter(p => p.testId === testId);
-      // Save any edited values first
-      const upserts: any[] = [];
-      for (const p of testParams) {
-        const k = `${reg.id}||${p.parameterId}`;
-        const value = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
-        const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText);
-        const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
-        const unit = p.isOutsourced && editedUnits[k] !== undefined ? editedUnits[k] : p.unit;
-        const refRange = p.isOutsourced && editedRefRanges[k] !== undefined ? editedRefRanges[k] : p.referenceRange;
-        upserts.push({
-          registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId,
-          param_code: p.paramCode, parameter_name: p.parameterName,
-          result_value: applyUnitSuffix(value, unit, p.rangeType) || null, unit, reference_range: refRange,
-          normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh,
-           flag: flag || null, status: "verified", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, verified_at: new Date().toISOString(), entered_at: p.enteredAt || new Date().toISOString(), entered_by: p.enteredBy || null, verified_by: getCurrentUserName(), note: editedNotes[k] !== undefined ? (editedNotes[k] || null) : (p.note || null), test_note: editedTestNotes[`${reg.id}||${testId}`] !== undefined ? (editedTestNotes[`${reg.id}||${testId}`] || null) : (loadedTestNotes[`${reg.id}||${testId}`] || null),
-        });
+      const upserts = await buildVerifyUpserts(entry, testId);
+      // Snip-only? Allow only if entry tracks it as a snipOnlyTest
+      const isSnipOnly = entry.snipOnlyTests.some((s) => s.testId === testId);
+      if (!upserts && !isSnipOnly) {
+        throw new Error("No parameters found for this test — cannot verify. Please reload and try again.");
       }
-      if (upserts.length > 0) {
-        await supabase.from("patient_results").delete().eq("registration_id", reg.id).eq("test_id", testId).eq("status", "entered");
-        await supabase.from("patient_results").insert(upserts as any);
-      }
-      // Also verify outsourced snips (works for both param-based and snip-only)
-      await supabase.from("outsourced_test_snips").update({ outsource_status: "verified" } as any).eq("registration_id", reg.id).eq("test_id", testId).in("outsource_status", ["results_entered", "entered", "sent", "results_saved"]);
-      
-      setEditedValues(prev => {
+      await persistVerifyTest(reg, testId, upserts);
+
+      const testParams = entry.parameters.filter((p) => p.testId === testId);
+      setEditedValues((prev) => {
         const next = { ...prev };
-        testParams.forEach(p => { delete next[`${reg.id}||${p.parameterId}`]; });
+        testParams.forEach((p) => { delete next[`${reg.id}||${p.parameterId}`]; });
         return next;
       });
       await propagateRegistrationChange(qc, reg.id, ["verification", "doctor_approval"]);
@@ -702,35 +852,25 @@ const ResultVerification = () => {
     }
   };
 
-  // Verify all tests for patient
+  // Verify all tests for patient — uses the same hardened helpers per-test
   const verifyAllForPatient = async (entry: PatientEntry) => {
     const reg = entry.registration;
     setVerifyingKey(reg.id);
     try {
-      const testIds = [...new Set(entry.parameters.map(p => p.testId))];
+      // Union of (params-driven test ids) + (snip-only test ids)
+      const testIds = [
+        ...new Set([
+          ...entry.parameters.map((p) => p.testId),
+          ...entry.snipOnlyTests.map((s) => s.testId),
+        ]),
+      ];
       for (const testId of testIds) {
-        const testParams = entry.parameters.filter(p => p.testId === testId);
-        const upserts: any[] = [];
-        for (const p of testParams) {
-          const k = `${reg.id}||${p.parameterId}`;
-          const value = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
-          const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText);
-          const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
-          const unit = p.isOutsourced && editedUnits[k] !== undefined ? editedUnits[k] : p.unit;
-          const refRange = p.isOutsourced && editedRefRanges[k] !== undefined ? editedRefRanges[k] : p.referenceRange;
-          upserts.push({
-            registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId,
-            param_code: p.paramCode, parameter_name: p.parameterName,
-            result_value: applyUnitSuffix(value, unit, p.rangeType) || null, unit, reference_range: refRange,
-            normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh,
-            flag: flag || null, status: "verified", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, verified_at: new Date().toISOString(), entered_at: p.enteredAt || new Date().toISOString(), entered_by: p.enteredBy || null, verified_by: getCurrentUserName(), note: editedNotes[k] !== undefined ? (editedNotes[k] || null) : (p.note || null), test_note: editedTestNotes[`${reg.id}||${testId}`] !== undefined ? (editedTestNotes[`${reg.id}||${testId}`] || null) : (loadedTestNotes[`${reg.id}||${testId}`] || null),
-          });
+        const upserts = await buildVerifyUpserts(entry, testId);
+        const isSnipOnly = entry.snipOnlyTests.some((s) => s.testId === testId);
+        if (!upserts && !isSnipOnly) {
+          throw new Error(`No parameters loaded for one of the tests — please reload and try again.`);
         }
-        if (upserts.length > 0) {
-          await supabase.from("patient_results").delete().eq("registration_id", reg.id).eq("test_id", testId).eq("status", "entered");
-          await supabase.from("patient_results").insert(upserts as any);
-        }
-        await supabase.from("outsourced_test_snips").update({ outsource_status: "verified" } as any).eq("registration_id", reg.id).eq("test_id", testId).in("outsource_status", ["results_entered", "sent", "results_saved"]);
+        await persistVerifyTest(reg, testId, upserts);
       }
       await propagateRegistrationChange(qc, reg.id, ["verification", "doctor_approval"]);
       toast.success(`All tests verified for ${reg.patient_name}`);

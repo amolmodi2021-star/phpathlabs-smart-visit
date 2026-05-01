@@ -1,57 +1,64 @@
-# Realtime Cost Trim — Targeted Cleanup
+## Root cause analysis for invoice 2605010004 (MONIKA GUPTA)
 
-## Findings from the scan
+I checked the live DB. The registration has exactly 1 test (TSH) with this state:
 
-**`setInterval` usage (4 instances):** All already optimized. The two that touch the database (`App.tsx` 15s auth-epoch, `PatientReportPortal.tsx` 120s status) both pause when the tab is hidden. The other two are pure UI timers with no DB calls. **No changes needed.**
+| Field | Value |
+|---|---|
+| `patient_results.status` | `entered` |
+| `patient_results.verified_at` | NULL |
+| `patient_results.verified_by` | NULL |
+| `patient_registrations.status` | `processed` |
+| `sample_tubes.status` | `accepted` |
 
-**`useRealtimeSync` usage (8 instances):** 5 are on low-churn tables and fine. **3 are unfiltered subscriptions on `patient_registrations`** — the busiest table in your system. Every patient registration, edit, or status change anywhere in the LIMS currently wakes up these components in every open tab, even when the user isn't looking at that screen.
+**The DB has no record of a Verify action ever happening for this registration.** Only "Save & Send to Verification" (which writes status=`entered`) has touched the row. So either:
 
-The 3 components in question:
-- `src/components/lims/SampleCollection.tsx`
-- `src/components/lims/ResultsEntry.tsx`
-- `src/components/lims/OutsourcedResults.tsx`
+1. The Verify click in `ResultVerification.tsx` silently failed (toast not seen / hidden behind another dialog), OR
+2. The user clicked Verify in a stale tab whose `verifyTest` state had no parameters, so the underlying `delete + insert` was a no-op, OR
+3. The user only opened Verification but didn't actually press Verify (less likely given their certainty).
 
-Each one subscribes to the whole table because they need to know when *any* registration moves into their queue — and we can't pre-filter by registration_id (the queue is dynamic).
+In ALL three cases the current code is fragile. Specifically `verifyTest` (lines 661-702) and `verifyAllForPatient` (706-742) in `ResultVerification.tsx` have these weaknesses:
 
-## The fix
+**Bug A — Silent no-op on stale params.** If `entry.parameters.filter(p => p.testId === testId)` returns an empty array (e.g. cached entry built before sample-tube/test_parameters loaded, or a race during refetch), `upserts.length === 0` so the `if (upserts.length > 0)` block is skipped entirely, but the function still proceeds to `propagateRegistrationChange` and shows a green success toast. The DB is never touched. The reg stays at status=`processed` and reappears in both queues forever.
 
-Replace the always-on realtime subscription with a cheaper combination that already exists in the codebase:
+**Bug B — Wrong status filter on delete.** `delete().eq("status", "entered")` only removes rows that are exactly `entered`. If the source row was `pending` (Save Later) or `results_entered` from an interface push, the delete matches nothing, then the insert creates a DUPLICATE row (no unique constraint exists on `patient_results(registration_id, test_id, parameter_id)` — verified). The recalculated status then becomes `partial_verified`, and the registration sticks around in Results Entry forever.
 
-1. **`refetchOnWindowFocus: true`** on the existing React Query queries in these 3 components — refetches the queue the moment the user returns to the tab.
-2. **`propagateRegistrationChange`** — already invalidates these query keys when the same user performs an action that should move a row between queues (it's referenced in the Core memory rule).
-3. **Drop the `useRealtimeSync` calls** in these 3 files entirely.
+**Bug C — No DB error surfacing.** The `insert` and `update` calls don't capture `{ error }`. If the insert fails (RLS/network/duplicate trigger) the function still proceeds to propagate and toast success.
 
-The result: zero ambient realtime traffic for `patient_registrations` from these screens. Updates still appear:
-- Instantly when *this user* causes the change (via `propagateRegistrationChange`)
-- On tab focus when *another user* caused the change (via `refetchOnWindowFocus`)
+**Bug D — Re-entry shows registrations that are stuck.** Result Verification queue's status filter accepts `processed`, which is correct. But there's no way for an operator to see "this reg is stuck — its DB row is `entered` but somebody clicked Verify". That's why the user's confusion compounds.
 
-For a single-lab LIMS where most users are usually looking at one tab at a time, this is indistinguishable from realtime in practice.
+## Fix plan
 
-## What stays untouched
+### 1. Make `verifyTest` and `verifyAllForPatient` in `src/components/lims/ResultVerification.tsx` correct & loud
 
-- `patient_registrations` realtime in `RegisteredPatients`, `HomeVisits`, dashboards — these are the primary "live status" screens and benefit from realtime.
-- `home_visits`, `tests`, `app_settings`, `message_templates`, `estimates` subscriptions — low-churn, small payloads, useful.
-- All 4 `setInterval` callsites — already correctly tuned.
-- The realtime publication itself (the 6-table allowlist in the Core memory) — unchanged.
+For each test being verified:
 
-## Files to change
+a. **Refetch the live `patient_results` rows for `(registration_id, test_id)` from DB** instead of trusting stale React state. Build the upsert list from the DB rows merged with `editedValues`/`editedFlags`/etc. This eliminates Bug A.
 
-```text
-src/components/lims/SampleCollection.tsx   — remove useRealtimeSync call;
-                                              add refetchOnWindowFocus to its useQuery
-src/components/lims/ResultsEntry.tsx       — same
-src/components/lims/OutsourcedResults.tsx  — same
-```
+b. **Broaden the delete filter**: `.in("status", ["pending", "entered", "results_entered"])` so any prior-state row is removed atomically with the verified insert. Eliminates Bug B.
 
-## Verification after change
+c. **Capture and throw on every `error`** from `supabase.from(...).insert/update/delete`. If any step errors, surface a toast and abort. Eliminates Bug C.
 
-- Open Sample Collection, Results Entry, Outsourced in 3 tabs.
-- Register a new patient in a 4th tab.
-- Switch to each of the 3 tabs and confirm the new row appears on focus (no manual refresh needed).
-- Confirm `propagateRegistrationChange` continues to push instant updates when the same tab makes the change.
+d. **Verify the post-condition**: after insert, re-query `patient_results` to confirm at least one row with `status='verified'` and matching `verified_at` exists for `(reg.id, test_id)`. If not, throw. This is a defence-in-depth check that takes ~1 query and prevents silent failure forever.
 
-## Expected cost impact
+e. **Add a unique index** on `patient_results (registration_id, test_id, parameter_id)` via migration so duplicates can never accumulate going forward. This requires a one-time cleanup migration first to delete duplicate rows (keep the newest per key).
 
-Removes the largest remaining source of unfiltered realtime events. With ~50 patients/day and frequent edits, this likely cuts realtime event volume from these 3 screens by **80–95%** — without any UX degradation for typical single-tab usage.
+### 2. Self-heal for invoice 2605010004 right now
 
-No new memory entries needed; the Core rule about the realtime publication and `propagateRegistrationChange` already covers this pattern.
+Apply a one-off SQL migration that flips this single row to `verified` with proper timestamps, then runs `recalculateRegistrationStatus` so the row leaves the Results queue and proceeds to Doctor Approval. Tag `verified_by = 'system-recovery'` for audit clarity.
+
+### 3. Add a "Stuck registrations" diagnostic in Result Verification
+
+A small admin-only banner (password-gated, like other LIMS tools) that lists registrations whose `patient_registrations.status` is `processed` / `partial_processing` and whose oldest `patient_results.entered_at` is older than 6 hours. This makes future stuck rows visible and gives a one-click "force re-verify" / "force recalculate status" action.
+
+## Files touched
+
+- `src/components/lims/ResultVerification.tsx` — rewrite `verifyTest` & `verifyAllForPatient` per points 1a–1e.
+- New migration: backfill row for reg `95c87cdd-412c-4e19-9a94-4c1b50894f1b`, dedupe `patient_results`, add unique index.
+- `src/components/lims/ResultVerification.tsx` (or a small new sub-component) — the stuck-registrations banner.
+
+## Out of scope (not changing)
+
+- Realtime/cost optimisations done earlier today stay as-is. The fix above does not re-introduce ambient subscriptions; the post-write self-check in 1d is per-action only.
+- ResultsEntry queue logic is correct — once a row is properly `verified`, it disappears from Results as expected.
+
+Approve and I'll implement.
