@@ -103,6 +103,11 @@ const BillingDashboard = () => {
 
   return (
     <div className="space-y-4">
+      <div className="flex justify-end">
+        <RefreshButton
+          queryKeys={["pickup_invoices", "credit_pickup_points", "pickup_default_reminder_days"]}
+        />
+      </div>
       <Card>
         <CardContent className="p-4 grid grid-cols-1 md:grid-cols-4 gap-3">
           <div>

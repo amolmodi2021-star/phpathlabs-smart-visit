@@ -1,3 +1,4 @@
+import RefreshButton from "@/components/lims/RefreshButton";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { formatAgeGender } from "@/lib/ageGender";
@@ -1270,6 +1271,9 @@ const ResultVerification = () => {
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Search patient, invoice, mobile…" value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
         </div>
+        <RefreshButton
+          queryKeys={["verification_regs_count", "verification_regs_v2", "verification_results_v2", "verification_tubes", "verification_outsourced_v2", "results_tests_map", "results_test_params_full", "results_normal_ranges"]}
+        />
         <Tabs value={mode} onValueChange={v => setMode(v as any)} className="w-auto">
           <TabsList className="h-9">
             <TabsTrigger value="patient" className="text-xs gap-1 h-7"><User className="h-3.5 w-3.5" /> Patient Wise</TabsTrigger>

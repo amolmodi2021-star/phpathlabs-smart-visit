@@ -1,3 +1,4 @@
+import RefreshButton from "@/components/lims/RefreshButton";
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -656,6 +657,10 @@ const SampleCollection = () => {
           <Input value={search} onChange={(e) => handleSearch(e.target.value)}
             placeholder="Search by name, mobile, invoice..." className="pl-8" />
         </div>
+        <RefreshButton
+          queryKeys={["sample_tubes_collection", "sample_collection_regs", "pickup_points_lookup", "patient_registrations"]}
+          className="ml-auto"
+        />
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setExpandedRow(null); }}>

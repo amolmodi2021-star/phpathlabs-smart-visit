@@ -66,6 +66,9 @@ const BillingGenerate = () => {
 
   return (
     <div className="space-y-4">
+      <div className="flex justify-end">
+        <RefreshButton queryKeys={["credit_pickup_points", "eligible_regs", "pickup_invoices"]} />
+      </div>
       <Card>
         <CardContent className="p-4 space-y-3">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">

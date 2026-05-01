@@ -1,61 +1,60 @@
-## Goal
+# Add Refresh Button to All LIMS Stages
 
-For parameters with **Range Type = Descriptive** (and the analogous **Undefined** type that uses the same display-text field), make the **Display Text** behave like Numeric ranges already do for unit handling:
+## Problem
+When one user saves changes, other users don't see the updates until they manually refresh the browser. We need a one-click refresh control on every workflow stage so users can pull the latest data on demand without reloading the whole page (and losing filters/search/scroll position).
 
-1. **Auto-append the parameter's Unit** when the user types a display-text value in the Parameters dialog (e.g. typing `12` with Unit `secs` becomes `12 secs`).
-2. **Ignore the Unit** when comparing the entered result against the display text for highlighting (X flag). So if Display Text = `12 secs` and the technician enters `12`, it should remain Normal (no red X), not be marked as a mismatch.
+## Solution
+Add a small **Refresh** button (icon + label, top-right of each section's header / filter row) to every LIMS stage listed below. Clicking it will:
 
-## Files to change
+1. Invalidate and refetch all React Query caches used by that page (so we get fresh data instantly without losing the user's filters, search text, pagination, or scroll position).
+2. Show a brief spinning icon while the refetch is in progress.
+3. Show a small toast ("Refreshed") on completion.
 
-### 1. `src/pages/ReportParameters.tsx` — auto-fill unit into Display Text
+This is faster and more user-friendly than `window.location.reload()` while achieving the same goal — guaranteed fresh data on demand.
 
-In the descriptive/undefined branch (around lines 956–967), wire up the Display Text `onChange` to append the parameter unit when the typed value is purely numeric (or when it doesn't already end with the unit). Implementation:
+## Stages to update
 
-- On change, take the raw input.
-- If `form.unit` is set and the trimmed value does **not** already end with the unit (case-insensitive), and the trimmed value is non-empty, store `"<value> <unit>"` (collapsed spaces). Otherwise store as-is.
-- This mirrors `applyUnitSuffix` used elsewhere but is applied at edit time so the user sees the final stored text.
+| # | Component | File |
+|---|---|---|
+| 1 | Sample Collection | `src/components/lims/SampleCollection.tsx` |
+| 2 | Sample Acceptance | `src/components/lims/SampleAcceptance.tsx` |
+| 3 | Results Entry | `src/components/lims/ResultsEntry.tsx` |
+| 4 | Result Verification | `src/components/lims/ResultVerification.tsx` |
+| 5 | Doctor Approval | `src/components/lims/DoctorApproval.tsx` |
+| 6 | Dispatch | `src/components/lims/Dispatch.tsx` |
+| 7 | Due Payments | `src/components/lims/DuePayments.tsx` |
+| 8 | Bad Debts | `src/components/lims/BadDebts.tsx` |
+| 9 | Billing (Generate + Dashboard) | `src/components/lims/BillingGenerate.tsx`, `src/components/lims/BillingDashboard.tsx` |
+| 10 | Daily Report | `src/components/lims/DailyReport.tsx` |
+| 11 | Completed Home Visits | `src/components/lims/CompletedHomeVisits.tsx` |
 
-(The Numeric branch already auto-fills `low - high <unit>` via `updateRange`, so this brings Descriptive in line.)
+## UI design
 
-### 2. Highlight comparison — strip unit before matching
+A consistent button placed at the top-right of each stage's header / filter bar:
 
-Update `calculateFlag` in three files so the descriptive/qualitative branch ignores the unit suffix:
-
-- `src/components/lims/ResultsEntry.tsx` (line 689)
-- `src/components/lims/ResultVerification.tsx` (line 438)
-- `src/components/lims/DoctorApproval.tsx` (line 341)
-
-Change the signature to also accept `unit?: string | null`, and update the descriptive/qualitative comparison block:
-
-```ts
-if (rangeType === "qualitative" || rangeType === "descriptive") {
-  const stripUnit = (s: string) => {
-    let t = s.trim().toLowerCase();
-    const u = (unit || "").trim().toLowerCase();
-    if (u && t.endsWith(u)) t = t.slice(0, -u.length).trim();
-    return t;
-  };
-  const ref = stripUnit(normalRangeText || "");
-  if (!ref) return "";
-  return stripUnit(value) === ref ? "N" : "X";
-}
+```text
+[ ⟳ Refresh ]
 ```
 
-Pass `p.unit` (already on the parameter object) at every existing `calculateFlag(...)` call site in those three files.
+- Variant: `outline`, size `sm`
+- Icon: `RefreshCw` from `lucide-react` (spins via `animate-spin` while refetching)
+- Tooltip: "Reload latest data from server"
 
-## Behaviour after change
+## Technical details
 
-| Display Text saved | Unit | Result entered | Flag |
-|---|---|---|---|
-| `12 secs` (auto-filled from `12`) | `secs` | `12` | N |
-| `12 secs` | `secs` | `12 secs` | N |
-| `12 secs` | `secs` | `15` | X (highlight) |
-| `Normal` | (none) | `Abnormal` | X (unchanged) |
+Create a small reusable component `src/components/lims/RefreshButton.tsx`:
 
-Numeric, qualitative-pair, and undefined types are not affected beyond the unit-stripping safety added to qualitative (which is harmless because qualitative display texts don't contain units).
+```tsx
+type Props = { queryKeys: string[]; label?: string };
+```
+
+It uses `useQueryClient()` to invalidate every key in `queryKeys` with `refetchType: "active"`, tracks an `isRefreshing` state, and renders the spinning icon + toast.
+
+For each stage, pass the page-specific query keys (e.g. for Sample Collection: `["sample_tubes_collection", "sample_collection_regs", "patient_registrations", "pickup_points_lookup"]`). Keys are already known from the existing `useQuery`/`invalidateQueries` calls in each file.
+
+No DB, edge function, or schema changes are required.
 
 ## Out of scope
 
-- No DB schema changes.
-- No changes to PDF report rendering — display text is already shown as stored.
-- Existing parameters whose Display Text was saved without a unit will continue to render and compare as-is; only newly edited descriptive ranges will gain the auto-appended unit.
+- Auto-refresh / realtime subscriptions (the user explicitly asked for a manual button only).
+- Changes to non-LIMS pages (CRM, Marketing, etc.).

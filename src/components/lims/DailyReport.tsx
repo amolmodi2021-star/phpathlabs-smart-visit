@@ -1,3 +1,4 @@
+import RefreshButton from "@/components/lims/RefreshButton";
 import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -946,6 +947,10 @@ const DailyReport = () => {
           </Button>
         )}
         {adminUnlocked && <Badge variant="secondary">Admin Mode</Badge>}
+        <RefreshButton
+          queryKeys={["payment-transactions", "daily-report-registrations", "daily-report-channels", "daily-report-pickups"]}
+          className="ml-auto"
+        />
       </div>
 
       <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3 flex-wrap">
