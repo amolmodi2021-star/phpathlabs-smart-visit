@@ -135,9 +135,51 @@ const ModifiedApproval = () => {
         }
       }
 
+      // Inject any calculated parameters that exist in the test definition but
+      // are missing from saved patient_results (e.g. couldn't be auto-evaluated
+      // at approval time). This ensures they appear in Modified Approval so the
+      // user can edit/recalculate them.
+      Object.values(testGroups).forEach((tg) => {
+        const defs = (testParamsMap as any)[tg.testId] || [];
+        const existingPids = new Set(tg.params.map((p: any) => p.parameter_id));
+        defs.forEach((tp: any) => {
+          const rtp = tp.report_test_parameters;
+          if (!rtp || !rtp.is_calculated) return;
+          if (existingPids.has(tp.parameter_id)) return;
+          tg.params.push({
+            registration_id: regId,
+            test_id: tg.testId,
+            parameter_id: tp.parameter_id,
+            param_code: rtp.param_code,
+            parameter_name: rtp.parameter_name,
+            result_value: "",
+            unit: rtp.unit || "",
+            reference_range: rtp.normal_range_text || "",
+            normal_range_low: rtp.normal_range_low,
+            normal_range_high: rtp.normal_range_high,
+            flag: "",
+            note: "",
+            test_note: "",
+            calculation_formula: rtp.calculation_formula || [],
+            is_calculated: true,
+            __synthetic: true,
+            display_order: tp.display_order ?? 9999,
+          });
+        });
+        // Sort by display_order from test definition so calculated params slot
+        // into their natural position rather than appearing at the end.
+        const orderMap: Record<string, number> = {};
+        defs.forEach((tp: any) => { orderMap[tp.parameter_id] = tp.display_order ?? 9999; });
+        tg.params.sort((a: any, b: any) => {
+          const da = orderMap[a.parameter_id] ?? 9999;
+          const db = orderMap[b.parameter_id] ?? 9999;
+          return da - db;
+        });
+      });
+
       return { report, testGroups: Object.values(testGroups) };
     }).filter(e => e.testGroups.length > 0);
-  }, [approvedReports, approvedResults, approvedSnips, testsMap]);
+  }, [approvedReports, approvedResults, approvedSnips, testsMap, testParamsMap]);
 
   // Loaded test-level notes: first non-null test_note per (regId, testId)
   const loadedTestNotes = useMemo(() => {
