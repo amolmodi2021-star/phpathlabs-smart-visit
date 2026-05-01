@@ -16,6 +16,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Search, User, Monitor, Calculator, Wifi, ChevronDown, ChevronUp, Loader2, FlaskConical, CheckCircle2, SendHorizonal, Eye, Undo2, ClipboardCheck, StickyNote, Trash2, AlertTriangle } from "lucide-react";
 import { DescriptiveCombobox } from "./DescriptiveCombobox";
+import TimeResultInput from "./TimeResultInput";
+import { parseTimeResultToSeconds } from "@/lib/timeRange";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { toast } from "sonner";
 import { formatDateDDMMYYYY } from "@/lib/utils";
