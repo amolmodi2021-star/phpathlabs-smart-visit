@@ -229,8 +229,8 @@ const SampleAcceptance = () => {
   }, [pendingGroups]);
 
   // ─── NEW arrivals badge tracker (only pending list) ───
-  const pendingRegIds = useMemo(() => pendingGroups.map(g => g.registration.id), [pendingGroups]);
-  const { isNew: isNewArrival, markSeen: markArrivalSeen } = useNewArrivalsBadge("sample_acceptance", pendingRegIds);
+  const pendingGroupRegIds = useMemo(() => pendingGroups.map(g => g.registration.id), [pendingGroups]);
+  const { isNew: isNewArrival, markSeen: markArrivalSeen } = useNewArrivalsBadge("sample_acceptance", pendingGroupRegIds);
 
   const toggleTube = (tubeId: string) => {
     setSelectedTubes(prev => {
