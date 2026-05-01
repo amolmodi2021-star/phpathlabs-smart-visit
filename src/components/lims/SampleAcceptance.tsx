@@ -48,6 +48,8 @@ interface GroupedRegistration {
   tubes: SampleTubeRow[];
 }
 
+const ACCEPTED_PAGE_SIZE = 50;
+
 const SampleAcceptance = () => {
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState("pending");
@@ -57,6 +59,7 @@ const SampleAcceptance = () => {
   const [selectedTubes, setSelectedTubes] = useState<Set<string>>(new Set());
   const [rejectDialog, setRejectDialog] = useState<{ open: boolean; reg: any; tubeIds: string[] }>({ open: false, reg: null, tubeIds: [] });
   const [rejectRemarks, setRejectRemarks] = useState("");
+  const [acceptedLimit, setAcceptedLimit] = useState(ACCEPTED_PAGE_SIZE);
   const searchRef = useRef<HTMLInputElement>(null);
 
   const handleSearch = (val: string) => {
@@ -64,6 +67,10 @@ const SampleAcceptance = () => {
     clearTimeout((window as any).__saSearchTimeout);
     (window as any).__saSearchTimeout = setTimeout(() => setDebouncedSearch(val), 400);
   };
+
+  // Reset accepted lazy-load window whenever search or tab changes
+  useEffect(() => { setAcceptedLimit(ACCEPTED_PAGE_SIZE); }, [debouncedSearch, activeTab]);
+
 
   // Fetch collected tubes (pending acceptance)
   const { data: collectedTubes = [], isLoading } = useQuery({
@@ -93,11 +100,42 @@ const SampleAcceptance = () => {
     },
   });
 
-  // Get registration IDs
-  const allTubes = useMemo(() => [...collectedTubes, ...acceptedTubes], [collectedTubes, acceptedTubes]);
-  const regIds = useMemo(() => [...new Set(allTubes.map(t => t.registration_id))], [allTubes]);
+  // Build ordered, deduped accepted registration IDs (newest acceptance first),
+  // then slice to the lazy-loaded window. This is what we'll request from the
+  // (heavier) registrations table — keeps cloud cost proportional to what's shown.
+  const acceptedRegIdsOrdered = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const t of acceptedTubes) {
+      if (!seen.has(t.registration_id)) {
+        seen.add(t.registration_id);
+        out.push(t.registration_id);
+      }
+    }
+    return out;
+  }, [acceptedTubes]);
 
-  // Fetch registrations
+  const visibleAcceptedRegIds = useMemo(
+    () => acceptedRegIdsOrdered.slice(0, acceptedLimit),
+    [acceptedRegIdsOrdered, acceptedLimit]
+  );
+  const totalAcceptedCount = acceptedRegIdsOrdered.length;
+  const hasMoreAccepted = totalAcceptedCount > acceptedLimit;
+
+  // Pending always loads in full (it's already a small working queue).
+  const pendingRegIds = useMemo(
+    () => [...new Set(collectedTubes.map(t => t.registration_id))],
+    [collectedTubes]
+  );
+
+  // Registrations we actually need to fetch = pending + visible accepted slice.
+  const regIds = useMemo(
+    () => [...new Set([...pendingRegIds, ...visibleAcceptedRegIds])],
+    [pendingRegIds, visibleAcceptedRegIds]
+  );
+
+  // Fetch registrations (only for IDs we need to display). Exclude fully
+  // dispatched / cancelled records — they should never appear in this stage.
   const { data: registrations = [] } = useQuery({
     queryKey: ["sample_acceptance_regs", regIds.join(","), debouncedSearch],
     enabled: regIds.length > 0,
@@ -107,6 +145,7 @@ const SampleAcceptance = () => {
         .select("*")
         .in("id", regIds)
         .eq("bill_cancelled", false)
+        .not("status", "in", '("dispatched","cancelled")')
         .order("is_stat", { ascending: false })
         .order("invoice_number", { ascending: false });
       if (debouncedSearch) {
@@ -158,7 +197,8 @@ const SampleAcceptance = () => {
   });
 
 
-  // Group by registration
+  // Group by registration. Dispatched/cancelled regs are already filtered out
+  // server-side by the registrations query above.
   const pendingGroups = useMemo((): GroupedRegistration[] => {
     return registrations.filter(reg => collectedTubes.some(t => t.registration_id === reg.id)).map(reg => ({
       registration: reg,
@@ -167,11 +207,15 @@ const SampleAcceptance = () => {
   }, [registrations, collectedTubes]);
 
   const acceptedGroups = useMemo((): GroupedRegistration[] => {
-    return registrations.filter(reg => acceptedTubes.some(t => t.registration_id === reg.id)).map(reg => ({
-      registration: reg,
-      tubes: acceptedTubes.filter(t => t.registration_id === reg.id),
-    }));
-  }, [registrations, acceptedTubes]);
+    const visibleSet = new Set(visibleAcceptedRegIds);
+    return registrations
+      .filter(reg => visibleSet.has(reg.id) && acceptedTubes.some(t => t.registration_id === reg.id))
+      .map(reg => ({
+        registration: reg,
+        tubes: acceptedTubes.filter(t => t.registration_id === reg.id),
+      }));
+  }, [registrations, acceptedTubes, visibleAcceptedRegIds]);
+
 
   // Build sample ID map for barcode scanning
   const sampleIdToTubeMap = useMemo(() => {
