@@ -218,6 +218,10 @@ const CompletedHomeVisits = () => {
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input value={search} onChange={e => handleSearch(e.target.value)} placeholder="Search by name, mobile, UMR..." className="pl-8" />
         </div>
+        <RefreshButton
+          queryKeys={["completed_home_visits", "registered_home_visit_ids", "review_estimate_tests", "home_visits", "patient_registrations", "patient_registrations_count"]}
+          className="ml-auto"
+        />
       </div>
 
       <div className="text-sm text-muted-foreground">

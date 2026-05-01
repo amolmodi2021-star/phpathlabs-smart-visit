@@ -582,6 +582,10 @@ const SampleAcceptance = () => {
             value={search} onChange={(e) => handleSearch(e.target.value)} className="pl-9" />
           <ScanBarcode className="absolute right-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
         </div>
+        <RefreshButton
+          queryKeys={["sample_tubes_acceptance_pending", "sample_tubes_acceptance_accepted", "sample_acceptance_regs", "tests_sample_tube_map", "test_param_interface_map", "patient_registrations"]}
+          className="ml-auto"
+        />
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>

@@ -1688,6 +1688,9 @@ const ResultsEntry = () => {
             className="pl-9"
           />
         </div>
+        <RefreshButton
+          queryKeys={["results_accepted_count", "results_accepted_regs", "results_accepted_tubes", "patient_results_existing", "results_outsourced_snips", "results_tests_map", "results_test_params_full", "results_normal_ranges", "outsourced_snips", "outsourced_accepted_regs", "outsourced_manual_results"]}
+        />
         <Tabs value={mode} onValueChange={v => setMode(v as any)} className="w-auto">
           <TabsList className="h-9">
             <TabsTrigger value="patient" className="text-xs gap-1 h-7">

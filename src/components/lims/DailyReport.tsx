@@ -946,6 +946,10 @@ const DailyReport = () => {
           </Button>
         )}
         {adminUnlocked && <Badge variant="secondary">Admin Mode</Badge>}
+        <RefreshButton
+          queryKeys={["payment-transactions", "daily-report-registrations", "daily-report-channels", "daily-report-pickups"]}
+          className="ml-auto"
+        />
       </div>
 
       <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3 flex-wrap">

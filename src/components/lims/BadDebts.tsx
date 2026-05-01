@@ -49,12 +49,18 @@ const BadDebts = () => {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 max-w-md">
-        <Search className="h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Search by name, mobile, invoice..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 max-w-md flex-1">
+          <Search className="h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search by name, mobile, invoice..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <RefreshButton
+          queryKeys={["lims-bad-debts", "lims-due-payments"]}
+          className="ml-auto"
         />
       </div>
 

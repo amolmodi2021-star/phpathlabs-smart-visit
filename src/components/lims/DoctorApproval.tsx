@@ -924,12 +924,18 @@ const DoctorApproval = () => {
   return (
     <div className="space-y-4">
       <SyncingOverlay target="doctor_approval" visibleIds={regIds} />
-      <Tabs value={activeSection} onValueChange={v => setActiveSection(v as any)} className="w-auto">
-        <TabsList className="h-9">
-          <TabsTrigger value="approval" className="text-xs gap-1 h-7"><Stethoscope className="h-3.5 w-3.5" /> Doctor Approval</TabsTrigger>
-          <TabsTrigger value="modified" className="text-xs gap-1 h-7"><FileCheck className="h-3.5 w-3.5" /> Modified Approval</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      <div className="flex items-center gap-3 flex-wrap">
+        <Tabs value={activeSection} onValueChange={v => setActiveSection(v as any)} className="w-auto">
+          <TabsList className="h-9">
+            <TabsTrigger value="approval" className="text-xs gap-1 h-7"><Stethoscope className="h-3.5 w-3.5" /> Doctor Approval</TabsTrigger>
+            <TabsTrigger value="modified" className="text-xs gap-1 h-7"><FileCheck className="h-3.5 w-3.5" /> Modified Approval</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        <RefreshButton
+          queryKeys={["doctor_approval_count", "doctor_approval_regs", "doctor_approval_results", "doctor_approval_tubes", "doctor_approval_snips", "results_tests_map", "results_test_params_full", "results_normal_ranges"]}
+          className="ml-auto"
+        />
+      </div>
 
       {activeSection === "modified" ? (
         <ModifiedApproval />
