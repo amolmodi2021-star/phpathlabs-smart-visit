@@ -1,3 +1,4 @@
+import RefreshButton from "@/components/lims/RefreshButton";
 import { useState, useEffect, useMemo } from "react";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";

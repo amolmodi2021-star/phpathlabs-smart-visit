@@ -1,3 +1,4 @@
+import RefreshButton from "@/components/lims/RefreshButton";
 import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
