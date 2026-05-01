@@ -200,7 +200,7 @@ const ResultsEntry = () => {
       let query = supabase
         .from("patient_registrations")
         .select("id, invoice_number, patient_name, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, gender, dob, created_at, updated_at, bill_cancelled, doctor_name")
-        .in("status", ["sample_accepted", "partially_accepted", "processing", "partial_processing"])
+        .in("status", ["sample_accepted", "partially_accepted", "processing", "partial_processing", "partial_verified", "partially_approved", "partially_dispatched"])
         .eq("bill_cancelled", false)
         .order("is_stat", { ascending: false })
         .order("invoice_number", { ascending: false })
