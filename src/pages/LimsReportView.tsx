@@ -1062,13 +1062,13 @@ const LimsReportView = () => {
                     );
                   }
                   return (
-                    <div className="pt-1 border-t flex justify-end gap-8 print:break-inside-avoid">
+                    <div className="pt-1 border-t flex justify-end items-start gap-6 print:break-inside-avoid flex-nowrap">
                       {uniqueSigs.map((sig, idx) => (
-                        <div key={idx} className="text-center">
+                        <div key={idx} className="text-center" style={{ minWidth: 0, flexShrink: 0 }}>
                           {sig.signatureUrl && <img src={sig.signatureUrl} crossOrigin="anonymous" alt="Signature" className="h-8 mx-auto mb-0" />}
-                          <p className="font-semibold text-[10px] leading-tight">{sig.pathologist_name}</p>
-                          {sig.qualification && <p className="text-[9px] leading-tight" style={{ color: "hsl(var(--muted-foreground))" }}>{sig.qualification}</p>}
-                          {sig.designation && <p className="text-[9px] leading-tight" style={{ color: "hsl(var(--muted-foreground))" }}>{sig.designation}</p>}
+                          <p className="font-semibold text-[10px] leading-tight" style={{ whiteSpace: "nowrap" }}>{sig.pathologist_name}</p>
+                          {sig.qualification && <p className="text-[9px] leading-tight" style={{ color: "hsl(var(--muted-foreground))", whiteSpace: "nowrap" }}>{sig.qualification}</p>}
+                          {sig.designation && <p className="text-[9px] leading-tight" style={{ color: "hsl(var(--muted-foreground))", whiteSpace: "nowrap" }}>{sig.designation}</p>}
                         </div>
                       ))}
                     </div>
