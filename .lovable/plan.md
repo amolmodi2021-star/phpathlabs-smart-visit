@@ -1,60 +1,52 @@
-# Add Refresh Button to All LIMS Stages
+# Sample Acceptance — Lazy Load Accepted Tab + Hide Dispatched
 
-## Problem
-When one user saves changes, other users don't see the updates until they manually refresh the browser. We need a one-click refresh control on every workflow stage so users can pull the latest data on demand without reloading the whole page (and losing filters/search/scroll position).
+## Goals
+1. **Save cloud cost**: only fetch the heavy `patient_registrations` rows for the patients we actually display.
+2. **Lazy load**: show top **50** accepted patients first, with a "Load 50 more" button at the bottom.
+3. **Hide fully dispatched / cancelled**: re-verify these never appear in the Accepted tab.
 
-## Solution
-Add a small **Refresh** button (icon + label, top-right of each section's header / filter row) to every LIMS stage listed below. Clicking it will:
+## Current behavior (verified)
+File: `src/components/lims/SampleAcceptance.tsx`
+- `acceptedTubes` query pulls **all** rows from `sample_tubes` where `status = 'accepted'` (currently ~179 across ~178 registrations in the live DB).
+- All those registration IDs are then fed into a single `patient_registrations` query that selects `*` — heavy payload — without filtering out `dispatched` or `cancelled`.
+- `acceptedGroups` is rendered uncapped (whole list).
 
-1. Invalidate and refetch all React Query caches used by that page (so we get fresh data instantly without losing the user's filters, search text, pagination, or scroll position).
-2. Show a brief spinning icon while the refetch is in progress.
-3. Show a small toast ("Refreshed") on completion.
+So today the Accepted tab loads every accepted-but-not-yet-deleted registration, including 1 fully `dispatched` and 1 `cancelled` row that should not be there.
 
-This is faster and more user-friendly than `window.location.reload()` while achieving the same goal — guaranteed fresh data on demand.
+## Plan
 
-## Stages to update
+### 1. Constant + state
+- Add `const ACCEPTED_PAGE_SIZE = 50;` at module top.
+- Add `const [acceptedLimit, setAcceptedLimit] = useState(ACCEPTED_PAGE_SIZE);`.
+- Reset `acceptedLimit` to 50 whenever `debouncedSearch` or `activeTab` changes (via a small `useEffect`).
 
-| # | Component | File |
-|---|---|---|
-| 1 | Sample Collection | `src/components/lims/SampleCollection.tsx` |
-| 2 | Sample Acceptance | `src/components/lims/SampleAcceptance.tsx` |
-| 3 | Results Entry | `src/components/lims/ResultsEntry.tsx` |
-| 4 | Result Verification | `src/components/lims/ResultVerification.tsx` |
-| 5 | Doctor Approval | `src/components/lims/DoctorApproval.tsx` |
-| 6 | Dispatch | `src/components/lims/Dispatch.tsx` |
-| 7 | Due Payments | `src/components/lims/DuePayments.tsx` |
-| 8 | Bad Debts | `src/components/lims/BadDebts.tsx` |
-| 9 | Billing (Generate + Dashboard) | `src/components/lims/BillingGenerate.tsx`, `src/components/lims/BillingDashboard.tsx` |
-| 10 | Daily Report | `src/components/lims/DailyReport.tsx` |
-| 11 | Completed Home Visits | `src/components/lims/CompletedHomeVisits.tsx` |
+### 2. Slice the accepted reg-id list
+- Keep the existing lightweight `sample_tubes_acceptance_accepted` query (already ordered by `accepted_at desc`).
+- Derive `acceptedRegIdsOrdered` — deduped, in acceptance-time order.
+- `visibleAcceptedRegIds = acceptedRegIdsOrdered.slice(0, acceptedLimit)`.
+- `hasMoreAccepted = acceptedRegIdsOrdered.length > acceptedLimit`.
 
-## UI design
+### 3. Trim the heavy registrations fetch
+- Build `pendingRegIds` from `collectedTubes` (small, full).
+- New `regIds = unique([...pendingRegIds, ...visibleAcceptedRegIds])`.
+- Add `.not("status", "in", '("dispatched","cancelled")')` to the `patient_registrations` query so dispatched / cancelled records are filtered server-side and never reach the client (defense in depth — even if a tube is still `accepted` for some reason).
 
-A consistent button placed at the top-right of each stage's header / filter bar:
+### 4. Update grouping
+- `acceptedGroups` filters `registrations` by `visibleAcceptedRegIds` so the rendered list respects the page window even if the cache holds more.
 
-```text
-[ ⟳ Refresh ]
-```
+### 5. Load-more button
+- Below `<TabsContent value="accepted">`, when `hasMoreAccepted`, render an outline button:
+  `Load 50 more  (showing X of Y)` → `setAcceptedLimit(n => n + ACCEPTED_PAGE_SIZE)`.
+- Update the Accepted tab badge to show `visible / total` (e.g. `50 / 178`).
 
-- Variant: `outline`, size `sm`
-- Icon: `RefreshCw` from `lucide-react` (spins via `animate-spin` while refetching)
-- Tooltip: "Reload latest data from server"
+### 6. Sanity
+- Pending tab is unchanged (always shows full pending queue).
+- Tube counts, badges, and `useNewArrivalsBadge` (driven by `pendingGroups`) are unaffected.
+- No DB schema changes; no realtime publication changes.
 
-## Technical details
-
-Create a small reusable component `src/components/lims/RefreshButton.tsx`:
-
-```tsx
-type Props = { queryKeys: string[]; label?: string };
-```
-
-It uses `useQueryClient()` to invalidate every key in `queryKeys` with `refetchType: "active"`, tracks an `isRefreshing` state, and renders the spinning icon + toast.
-
-For each stage, pass the page-specific query keys (e.g. for Sample Collection: `["sample_tubes_collection", "sample_collection_regs", "patient_registrations", "pickup_points_lookup"]`). Keys are already known from the existing `useQuery`/`invalidateQueries` calls in each file.
-
-No DB, edge function, or schema changes are required.
+## Files touched
+- `src/components/lims/SampleAcceptance.tsx` — only file.
 
 ## Out of scope
-
-- Auto-refresh / realtime subscriptions (the user explicitly asked for a manual button only).
-- Changes to non-LIMS pages (CRM, Marketing, etc.).
+- Pagination of the pending tab (queue should stay fully visible by design).
+- Server-side keyset pagination of `sample_tubes` (current sample_tubes payload is small text rows; the cost comes from `patient_registrations.*`, which is what we are trimming).
