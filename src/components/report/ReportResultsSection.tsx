@@ -137,6 +137,9 @@ const ParamRow = ({ r, rowKey, compact, isMorph, showFlagText, rowFontSize, colC
   // Descriptive right span: Result + RefRange + Flag (if shown) = 2 or 3
   const rightSpan = showFlagText ? 3 : 2;
 
+  // Friendly display for "M:SS" time values
+  const displayResult = isCanonicalTimeValue(r.result_value) ? formatTimeResult(r.result_value) : r.result_value;
+
   return (
     <tr key={rowKey} className={`border-b border-gray-100 ${isAbnormal ? 'bg-red-50 print:bg-transparent' : ''}`} style={{ fontSize: rowFontSize }}>
       <td className={`px-3 ${nameWeight} ${py}`}>
@@ -154,12 +157,12 @@ const ParamRow = ({ r, rowKey, compact, isMorph, showFlagText, rowFontSize, colC
       )}
       {isDescriptive ? (
         <td colSpan={rightSpan} className={`text-left px-2 text-gray-800 ${py}`} style={{ wordBreak: 'break-word', whiteSpace: 'normal' }}>
-          {r.result_value}
+          {displayResult}
         </td>
       ) : (
         <>
           <td className={`text-center ${resultWeight} ${py}`}>
-            {r.result_value}
+            {displayResult}
           </td>
           <td className={`text-center text-gray-600 ${rangeWeight} ${py}`} style={{ whiteSpace: 'pre-line' }}>
             {(r.normal_range_text && r.normal_range_text.trim())
