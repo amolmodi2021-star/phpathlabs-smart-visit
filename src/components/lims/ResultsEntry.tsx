@@ -686,13 +686,19 @@ const ResultsEntry = () => {
   }, [editedTestNotes, loadedTestNotes]);
 
   // ─── Calculate flag ───
-  const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string, descriptiveOptions?: string[], normalRangeText?: string): string => {
+  const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string, descriptiveOptions?: string[], normalRangeText?: string, unit?: string | null): string => {
     if (!value || value.trim() === "") return "";
     if (rangeType === "undefined") return "";
     if (rangeType === "qualitative" || rangeType === "descriptive") {
-      const ref = (normalRangeText || "").trim().toLowerCase();
+      const u = (unit || "").trim().toLowerCase();
+      const stripUnit = (s: string) => {
+        let t = s.trim().toLowerCase();
+        if (u && t.endsWith(u)) t = t.slice(0, -u.length).trim();
+        return t;
+      };
+      const ref = stripUnit(normalRangeText || "");
       if (!ref) return "";
-      return value.trim().toLowerCase() === ref ? "N" : "X";
+      return stripUnit(value) === ref ? "N" : "X";
     }
     // Operator-prefixed values (">5", "> 5", "≥5", "<0.01", "≤ 2") indicate the
     // analyzer/operator capped the reading. Treat as definitively H/L regardless
@@ -800,7 +806,7 @@ const ResultsEntry = () => {
     for (const p of testParams) {
       const key = `${regId}||${p.parameterId}`;
       const value = currentEdits[key] !== undefined ? currentEdits[key] : p.resultValue;
-      const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText);
+      const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit);
       const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : autoFlag;
       const unit = p.isOutsourced && editedUnits[key] !== undefined ? editedUnits[key] : p.unit;
       const refRange = p.isOutsourced && editedRefRanges[key] !== undefined ? editedRefRanges[key] : p.referenceRange;
@@ -927,7 +933,7 @@ const ResultsEntry = () => {
       for (const p of testParams) {
         const key = `${reg.id}||${p.parameterId}`;
         const value = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
-        const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText);
+        const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit);
         const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : autoFlag;
         const unit = p.isOutsourced && editedUnits[key] !== undefined ? editedUnits[key] : p.unit;
         const refRange = p.isOutsourced && editedRefRanges[key] !== undefined ? editedRefRanges[key] : p.referenceRange;
@@ -1179,7 +1185,7 @@ const ResultsEntry = () => {
     const regId = entry.registration.id;
     const key = `${regId}||${p.parameterId}`;
     const currentValue = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
-    const autoFlag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText);
+    const autoFlag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit);
     const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : autoFlag;
     const isInterfaceParameter = p.sendForInterface && !p.isCalculated;
     const isAwaiting = isInterfaceParameter && !currentValue;
@@ -1895,7 +1901,7 @@ const ResultsEntry = () => {
                     {blankParams.map(p => {
                       const key = `${reg.id}||${p.parameterId}`;
                       const currentValue = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
-                      const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText);
+                      const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit);
                       const isInterfaceParameter = p.sendForInterface && !p.isCalculated;
                       const isAwaiting = isInterfaceParameter && !currentValue;
                       return (
