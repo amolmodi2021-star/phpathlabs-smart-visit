@@ -29,6 +29,10 @@ export async function fetchAllByIds<T = any>(
       .from(table)
       .select(select)
       .in(column, ids)
+      // Stable ordering is mandatory with offset/range pagination. Without it,
+      // PostgREST may return rows in a different physical order on each page,
+      // causing intermittent skipped/duplicated rows in Dispatch/Results queues.
+      .order("id", { ascending: true })
       .range(from, from + PAGE - 1);
     if (error) throw error;
     const rows = (data || []) as T[];
