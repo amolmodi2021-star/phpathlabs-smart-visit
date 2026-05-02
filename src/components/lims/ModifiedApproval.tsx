@@ -29,6 +29,7 @@ const ModifiedApproval = () => {
   const [editedRefRanges, setEditedRefRanges] = useState<Record<string, string>>({});
   const [editedFlags, setEditedFlags] = useState<Record<string, string>>({});
   const [editedNotes, setEditedNotes] = useState<Record<string, string>>({});
+  const [savedOverrides, setSavedOverrides] = useState<Record<string, { value: string; unit: string; ref: string; flag: string; note: string | null; testNote: string | null }>>({});
   const [activeNoteKey, setActiveNoteKey] = useState<string | null>(null);
   const [editedTestNotes, setEditedTestNotes] = useState<Record<string, string>>({});
   const [activeTestNoteKey, setActiveTestNoteKey] = useState<string | null>(null);
@@ -294,6 +295,7 @@ const ModifiedApproval = () => {
     try {
       const allTestResults: any[] = [];
       const allSnipUrls: string[] = [];
+      const nextSavedOverrides: Record<string, { value: string; unit: string; ref: string; flag: string; note: string | null; testNote: string | null }> = {};
 
       for (const tg of testGroups) {
         const testNoteKey = `${regId}||${tg.testId}`;
@@ -303,14 +305,15 @@ const ModifiedApproval = () => {
 
         for (const p of tg.params) {
           const key = `${regId}||${p.parameter_id}`;
-          const rawValue = editedValues[key] !== undefined ? editedValues[key] : p.result_value;
-          const newUnit = editedUnits[key] !== undefined ? editedUnits[key] : p.unit;
-          const newRefRange = editedRefRanges[key] !== undefined ? editedRefRanges[key] : p.reference_range;
+          const saved = savedOverrides[key];
+          const rawValue = editedValues[key] !== undefined ? editedValues[key] : (saved?.value ?? p.result_value);
+          const newUnit = editedUnits[key] !== undefined ? editedUnits[key] : (saved?.unit ?? p.unit);
+          const newRefRange = editedRefRanges[key] !== undefined ? editedRefRanges[key] : (saved?.ref ?? p.reference_range);
           const rangeMeta = resolveRangeMeta(p.parameter_id);
           const newValue = rangeMeta.rangeType === "time" ? toCanonicalTimeResult(rawValue) : rawValue;
           const newFlag = editedFlags[key] !== undefined ? editedFlags[key] : (calculateFlag(newValue, p.normal_range_low, p.normal_range_high, rangeMeta.rangeType, undefined, undefined, rangeMeta.normalRangeText) || p.flag);
           const noteKey = `${regId}||${p.parameter_id}`;
-          const newNote = editedNotes[noteKey] !== undefined ? (editedNotes[noteKey] || null) : (p.note ?? null);
+          const newNote = editedNotes[noteKey] !== undefined ? (editedNotes[noteKey] || null) : (saved?.note ?? p.note ?? null);
 
           // Update existing patient_results row, OR insert one if this is a
           // synthetic row (parameter present in test definition but never
@@ -358,6 +361,7 @@ const ModifiedApproval = () => {
             note: newNote,
             test_note: newTestNote,
           });
+          nextSavedOverrides[key] = { value: newValue || "", unit: newUnit || "", ref: newRefRange || "", flag: newFlag || "", note: newNote, testNote: newTestNote };
         }
 
         if (tg.snipUrls.length > 0) {
@@ -386,6 +390,7 @@ const ModifiedApproval = () => {
         qc.invalidateQueries({ queryKey: ["dispatch_"] }),
       ]);
 
+      setSavedOverrides(prev => ({ ...prev, ...nextSavedOverrides }));
       toast.success(`Changes saved for ${report.patient_name}`);
       // Clear edited state only after the reloaded patient_results rows are back.
       // Synthetic rows (like BT entered first) otherwise fall back to their old
@@ -562,12 +567,13 @@ const ModifiedApproval = () => {
                               <TableBody>
                                 {tg.params.map(p => {
                                   const key = `${report.registration_id}||${p.parameter_id}`;
-                                  const currentValue = editedValues[key] !== undefined ? editedValues[key] : (p.result_value || "");
-                                  const currentUnit = editedUnits[key] !== undefined ? editedUnits[key] : (p.unit || "");
-                                  const currentRef = editedRefRanges[key] !== undefined ? editedRefRanges[key] : (p.reference_range || "");
+                                  const saved = savedOverrides[key];
+                                  const currentValue = editedValues[key] !== undefined ? editedValues[key] : (saved?.value ?? p.result_value ?? "");
+                                  const currentUnit = editedUnits[key] !== undefined ? editedUnits[key] : (saved?.unit ?? p.unit ?? "");
+                                  const currentRef = editedRefRanges[key] !== undefined ? editedRefRanges[key] : (saved?.ref ?? p.reference_range ?? "");
                                   const rangeMeta = resolveRangeMeta(p.parameter_id);
                                   const autoFlag = calculateFlag(currentValue, p.normal_range_low, p.normal_range_high, rangeMeta.rangeType, undefined, undefined, rangeMeta.normalRangeText);
-                                  const currentFlag = editedFlags[key] !== undefined ? editedFlags[key] : (p.flag || autoFlag);
+                                  const currentFlag = editedFlags[key] !== undefined ? editedFlags[key] : (saved?.flag || p.flag || autoFlag);
                                   const isNegative = isSuspectNegativeResult(currentValue);
                                   const rowBg = isNegative
                                     ? "bg-red-50"
