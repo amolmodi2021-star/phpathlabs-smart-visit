@@ -40,7 +40,7 @@ export default function TimeResultInput({ value, onChange, onKeyDown, className,
         type="number"
         min={0}
         value={normalizedValue && m ? min : ""}
-        placeholder="min"
+        placeholder="mins"
         className={cls}
         onChange={(e) => update(e.target.value, sec)}
         onKeyDown={onKeyDown}
@@ -52,7 +52,7 @@ export default function TimeResultInput({ value, onChange, onKeyDown, className,
         min={0}
         max={59}
         value={normalizedValue && m ? sec : ""}
-        placeholder="sec"
+        placeholder="secs"
         className={cls}
         onChange={(e) => update(min, e.target.value)}
         onKeyDown={onKeyDown}
