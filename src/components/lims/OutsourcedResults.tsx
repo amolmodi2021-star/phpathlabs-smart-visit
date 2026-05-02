@@ -792,10 +792,15 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         const s = getTestStatus(e.registration.id, t.testId);
         // Skip tests that have all results filled and verified
         if (s === "results_saved") {
-          if (snip?.result_mode === "snip") {
-            const testResults = existingResults.filter((r: any) => r.registration_id === e.registration.id && r.test_id === t.testId);
-            if (testResults.length > 0 && testResults.every((r: any) => r.status === "verified")) continue;
-          } else if (hasAllResultsFilled(e.registration.id, t.testId, t.outsourcedParameterIds)) continue;
+          const testResults = existingResults.filter((r: any) => r.registration_id === e.registration.id && r.test_id === t.testId);
+          // If any row is back at pending/entered (send-back from Verification),
+          // count it as still "Results Saved" — it needs the user's attention.
+          const hasOpenRow = testResults.some((r: any) => r.status === "pending" || r.status === "entered");
+          if (!hasOpenRow) {
+            if (snip?.result_mode === "snip") {
+              if (testResults.length > 0 && testResults.every((r: any) => r.status === "verified")) continue;
+            } else if (hasAllResultsFilled(e.registration.id, t.testId, t.outsourcedParameterIds)) continue;
+          }
         }
         if (s === "not_sent") notSent++;
         else if (s === "awaiting_results") awaiting++;
@@ -960,8 +965,14 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                         const existing = existingResults.find(
                           (r: any) => r.registration_id === regId && r.parameter_id === p.id
                         );
-                        // Skip parameters that already have a result value saved
-                        if (existing?.result_value && existing.result_value.trim() !== "" && editedValues[valKey] === undefined) {
+                        // Hide ONLY when this row is already finalised downstream
+                        // (verified / approved / dispatched). For pending/entered rows
+                        // — including those pushed back from Verification — keep the
+                        // row visible and pre-fill with the saved value so the user
+                        // can review and edit. Without this, reopening the test card
+                        // shows a blank table because every saved value would be
+                        // hidden.
+                        if (existing && ["verified", "approved", "dispatched"].includes(existing.status) && editedValues[valKey] === undefined) {
                           return null;
                         }
                         const currentValue = editedValues[valKey] !== undefined ? editedValues[valKey] : (existing?.result_value || "");
@@ -1072,13 +1083,24 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         <div className="space-y-2">
           {patientEntries.map(entry => {
             const reg = entry.registration;
-            // Filter out tests where all results are already filled
+            // Filter out tests where all results are already filled AND finalised
             const visibleTests = entry.outsourcedTests.filter(t => {
               const status = getTestStatus(reg.id, t.testId);
               // Hide tests that have progressed past results stage
               if (status === "completed") return false;
               if (status === "results_saved") {
                 const snip = getSnip(reg.id, t.testId);
+                const testResults = existingResults.filter(
+                  (r: any) => r.registration_id === reg.id && r.test_id === t.testId
+                );
+                // If any saved row is back at pending/entered (e.g. pushed back
+                // from Verification), keep the test visible so the user can
+                // re-edit and re-save. Without this, send-back silently hides
+                // the test and there is no way to act on it.
+                const hasOpenRow = testResults.some(
+                  (r: any) => r.status === "pending" || r.status === "entered"
+                );
+                if (hasOpenRow) return true;
                 // For snip mode, results are complete — hide from pending list
                 if (snip?.result_mode === "snip") {
                   const imageUrls = getSnipImageUrls(reg.id, t.testId);
