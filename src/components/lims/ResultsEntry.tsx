@@ -278,12 +278,8 @@ const ResultsEntry = () => {
     queryKey: ["patient_results_existing", regIds.join(",")],
     enabled: regIds.length > 0,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("patient_results")
-        .select("*")
-        .in("registration_id", regIds);
-      if (error) throw error;
-      return (data || []) as any[];
+      // Paginated to avoid Supabase's 1000-row cap silently dropping rows.
+      return await fetchAllByIds<any>("patient_results", "*", "registration_id", regIds);
     },
   });
 
@@ -318,12 +314,7 @@ const ResultsEntry = () => {
     queryKey: ["results_outsourced_snips", regIds.join(",")],
     enabled: regIds.length > 0,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("outsourced_test_snips")
-        .select("registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, sent_at, result_mode, snip_image_urls")
-        .in("registration_id", regIds);
-      if (error) throw error;
-      return (data || []) as any[];
+      return await fetchAllByIds<any>("outsourced_test_snips", "registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, sent_at, result_mode, snip_image_urls", "registration_id", regIds);
     },
   });
 
