@@ -15,10 +15,17 @@ interface Props {
  * Empty min and empty sec → emits "" (no result).
  */
 export default function TimeResultInput({ value, onChange, onKeyDown, className, disabled, abnormal }: Props) {
-  const normalizedValue = (value || "").trim().match(TIME_RESULT_PATTERN) ? value : toCanonicalTimeResult(value);
+  const rawTrimmed = (value || "").trim();
+  const directMatch = rawTrimmed.match(TIME_RESULT_PATTERN);
+  const normalizedValue = directMatch ? rawTrimmed : toCanonicalTimeResult(value);
   const m = (normalizedValue || "").trim().match(TIME_RESULT_PATTERN);
   const min = m ? parseInt(m[1], 10) : 0;
   const sec = m ? parseInt(m[2], 10) : 0;
+  // Debug instrumentation — remove once issue is confirmed fixed.
+  if (typeof window !== "undefined" && (window as any).__DEBUG_TIME_INPUT) {
+    // eslint-disable-next-line no-console
+    console.log("[TimeResultInput]", { rawValue: value, rawTrimmed, normalizedValue, min, sec, matched: !!m });
+  }
 
   const update = (newMin: number | string, newSec: number | string) => {
     const mn = newMin === "" ? "" : Math.max(0, Math.floor(Number(newMin) || 0));
