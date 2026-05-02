@@ -311,15 +311,44 @@ const ModifiedApproval = () => {
           const noteKey = `${regId}||${p.parameter_id}`;
           const newNote = editedNotes[noteKey] !== undefined ? (editedNotes[noteKey] || null) : (p.note ?? null);
 
-          // Update patient_results
-          await supabase.from("patient_results").update({
-            result_value: applyUnitSuffix(newValue, newUnit, rangeMeta.rangeType) || null,
-            unit: newUnit || null,
-            reference_range: newRefRange || null,
-            flag: newFlag || null,
-            note: newNote,
-            test_note: newTestNote,
-          } as any).eq("id", p.id);
+          // Update existing patient_results row, OR insert one if this is a
+          // synthetic row (parameter present in test definition but never
+          // saved to patient_results during initial entry/approval). Without
+          // this insert, edits to those rows would only land in the
+          // approved_reports JSONB snapshot (used by the PDF) but never reach
+          // patient_results — so the value would disappear next time the
+          // record is reopened in Modified Approval.
+          if (p.id) {
+            await supabase.from("patient_results").update({
+              result_value: applyUnitSuffix(newValue, newUnit, rangeMeta.rangeType) || null,
+              unit: newUnit || null,
+              reference_range: newRefRange || null,
+              flag: newFlag || null,
+              note: newNote,
+              test_note: newTestNote,
+            } as any).eq("id", p.id);
+          } else if (newValue && String(newValue).trim() !== "") {
+            const nowIso = new Date().toISOString();
+            await supabase.from("patient_results").insert({
+              registration_id: regId,
+              test_id: p.test_id,
+              parameter_id: p.parameter_id,
+              param_code: p.param_code || null,
+              parameter_name: p.parameter_name || null,
+              result_value: applyUnitSuffix(newValue, newUnit, rangeMeta.rangeType) || null,
+              unit: newUnit || null,
+              reference_range: newRefRange || null,
+              normal_range_low: p.normal_range_low ?? null,
+              normal_range_high: p.normal_range_high ?? null,
+              flag: newFlag || null,
+              status: "approved",
+              is_calculated: !!p.is_calculated,
+              approved_at: nowIso,
+              approved_by: report.approved_by || null,
+              note: newNote,
+              test_note: newTestNote,
+            } as any);
+          }
 
           allTestResults.push({
             test_id: p.test_id, test_name: tg.testName,
