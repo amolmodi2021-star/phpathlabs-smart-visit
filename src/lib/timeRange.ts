@@ -6,8 +6,8 @@
  *   - patient_results.result_value                                  → canonical "M:SS" string
  *
  * Display conventions (PDF + UI):
- *   - "2 min 30 sec", "3 min", "45 sec"
- *   - Range: "2 min – 7 min" / "1 min 30 sec – 7 min"
+ *   - "2 mins 30 secs", "3 mins", "45 secs"
+ *   - Range: "2 mins – 7 mins" / "1 min 30 secs – 7 mins"
  */
 
 export const TIME_RESULT_PATTERN = /^(\d{1,3}):([0-5]?\d)$/;
@@ -25,7 +25,7 @@ export function minSecToSeconds(min: number | string | null | undefined, sec: nu
   return m * 60 + s;
 }
 
-/** "2:30" → "2 min 30 sec".  "0:45" → "45 sec".  "3:00" → "3 min". */
+/** "2:30" → "2 mins 30 secs".  "0:45" → "45 secs".  "3:00" → "3 mins". */
 export function formatTimeResult(value: string | null | undefined): string {
   if (!value) return "";
   const v = String(value).trim();
@@ -34,9 +34,9 @@ export function formatTimeResult(value: string | null | undefined): string {
   const min = parseInt(m[1], 10);
   const sec = parseInt(m[2], 10);
   if (min === 0 && sec === 0) return "";
-  if (min === 0) return `${sec} sec`;
-  if (sec === 0) return `${min} min`;
-  return `${min} min ${sec} sec`;
+  if (min === 0) return `${sec} secs`;
+  if (sec === 0) return `${min} mins`;
+  return `${min} mins ${sec} secs`;
 }
 
 export function isCanonicalTimeValue(value: string | null | undefined): boolean {
@@ -44,14 +44,14 @@ export function isCanonicalTimeValue(value: string | null | undefined): boolean 
   return TIME_RESULT_PATTERN.test(String(value).trim());
 }
 
-/** total seconds → "2 min 30 sec" piece (used inside a range). */
+/** total seconds → "2 mins 30 secs" piece (used inside a range). */
 function formatSecondsPiece(total: number | null | undefined): string {
   if (total == null) return "";
   const { min, sec } = secondsToMinSec(total);
-  if (min === 0 && sec === 0) return "0 sec";
-  if (min === 0) return `${sec} sec`;
-  if (sec === 0) return `${min} min`;
-  return `${min} min ${sec} sec`;
+  if (min === 0 && sec === 0) return "0 secs";
+  if (min === 0) return `${sec} secs`;
+  if (sec === 0) return `${min} mins`;
+  return `${min} mins ${sec} secs`;
 }
 
 export function formatTimeRange(lowSec: number | null | undefined, highSec: number | null | undefined): string {
