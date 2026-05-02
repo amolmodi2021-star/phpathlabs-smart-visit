@@ -22,6 +22,7 @@ import SnipOnLetterhead from "./SnipOnLetterhead";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
+import { formatAgeGender } from "@/lib/ageGender";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 
@@ -1126,6 +1127,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                         </span>
                       )}
                       <span className="text-sm text-muted-foreground">{reg.patient_name}</span>
+                      <Badge variant="outline" className="text-[10px] font-mono">{formatAgeGender(reg.dob, reg.gender)}</Badge>
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {reg.mobile_number} • {entry.outsourcedTests.length} test{entry.outsourcedTests.length > 1 ? "s" : ""}
