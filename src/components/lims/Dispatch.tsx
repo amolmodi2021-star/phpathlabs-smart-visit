@@ -25,6 +25,7 @@ import { toast } from "sonner";
 import { format, startOfDay, endOfDay, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
+import { fetchAllByIds } from "@/lib/fetchAllRows";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import NewBadge from "./NewBadge";
 
@@ -114,8 +115,10 @@ const Dispatch = () => {
     queryKey: ["dispatch_all_results", regIds.join(",")],
     enabled: regIds.length > 0,
     queryFn: async () => {
-      const { data } = await supabase.from("patient_results").select("*").in("registration_id", regIds);
-      return (data || []) as any[];
+      // Paginated — a page of 50 registrations can produce >1000 patient_results
+      // rows, and Supabase's default cap silently drops the overflow, making
+      // already-approved tests appear as "Registered" in Dispatch.
+      return await fetchAllByIds<any>("patient_results", "*", "registration_id", regIds);
     },
   });
 
@@ -123,8 +126,7 @@ const Dispatch = () => {
     queryKey: ["dispatch_all_tubes", regIds.join(",")],
     enabled: regIds.length > 0,
     queryFn: async () => {
-      const { data } = await supabase.from("sample_tubes" as any).select("registration_id, test_ids, collected_at, accepted_at, status, collected_by, accepted_by").in("registration_id", regIds);
-      return (data || []) as any[];
+      return await fetchAllByIds<any>("sample_tubes", "registration_id, test_ids, collected_at, accepted_at, status, collected_by, accepted_by", "registration_id", regIds);
     },
   });
 
@@ -132,8 +134,7 @@ const Dispatch = () => {
     queryKey: ["dispatch_all_snips", regIds.join(",")],
     enabled: regIds.length > 0,
     queryFn: async () => {
-      const { data } = await supabase.from("outsourced_test_snips").select("registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, result_mode, snip_image_urls, updated_at, sent_at").in("registration_id", regIds);
-      return (data || []) as any[];
+      return await fetchAllByIds<any>("outsourced_test_snips", "registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, result_mode, snip_image_urls, updated_at, sent_at", "registration_id", regIds);
     },
   });
 
