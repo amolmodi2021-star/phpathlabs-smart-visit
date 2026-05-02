@@ -274,8 +274,13 @@ const RegisteredPatients = () => {
           <Download className="h-4 w-4 mr-1" />Export All
         </Button>
         {isActionAllowed("clear_data") && (
-          <Button variant="destructive" size="sm" onClick={() => setShowClearPwd(true)} disabled={clearing}>
-            <Trash2 className="h-4 w-4 mr-1" />{clearing ? "Clearing..." : "Clear All Data"}
+          <Button variant="destructive" size="sm" disabled={clearing} onClick={() => {
+            const ok = window.confirm(
+              "FACTORY RESET\n\nThis will permanently delete ALL patient records, results, payments, reports, and snipped images, and reset UMR / invoice / sample tube counters.\n\nHome Visits, Estimates, configuration (tests, parameters, channels, pickup points, etc.), and bidirectional interface code mappings will be preserved.\n\nThis cannot be undone. Continue?"
+            );
+            if (ok) setShowClearPwd(true);
+          }}>
+            <Trash2 className="h-4 w-4 mr-1" />{clearing ? "Resetting..." : "Reset"}
           </Button>
         )}
       </div>
@@ -436,22 +441,68 @@ const RegisteredPatients = () => {
         onOpenChange={setShowClearPwd}
         onSuccess={async () => {
           setClearing(true);
+          const NIL = "00000000-0000-0000-0000-000000000000";
+          const wipeBucket = async (bucket: string, prefix = "") => {
+            // Recursively list & delete all objects in the bucket
+            let offset = 0;
+            const PAGE = 1000;
+            while (true) {
+              const { data, error } = await supabase.storage.from(bucket).list(prefix, { limit: PAGE, offset });
+              if (error) { console.warn(`list ${bucket}/${prefix}`, error); break; }
+              if (!data || data.length === 0) break;
+              const folders = data.filter((d: any) => d && d.id === null);
+              const files = data.filter((d: any) => d && d.id !== null).map((d: any) => (prefix ? `${prefix}/${d.name}` : d.name));
+              // Delete files in batches of 100
+              for (let i = 0; i < files.length; i += 100) {
+                const batch = files.slice(i, i + 100);
+                if (batch.length) {
+                  const { error: rmErr } = await supabase.storage.from(bucket).remove(batch);
+                  if (rmErr) console.warn(`remove ${bucket}`, rmErr);
+                }
+              }
+              // Recurse into subfolders
+              for (const f of folders) {
+                await wipeBucket(bucket, prefix ? `${prefix}/${f.name}` : f.name);
+              }
+              if (data.length < PAGE) break;
+              // If we deleted files at this level, don't advance offset (list shifts); otherwise advance for safety
+              if (files.length === 0) offset += data.length; else offset = 0;
+            }
+          };
+
           try {
-            await supabase.from("patient_results").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-            await supabase.from("approved_reports").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-            await supabase.from("outsourced_test_snips").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-            await supabase.from("sample_tubes" as any).delete().neq("id", "00000000-0000-0000-0000-000000000000");
-            await supabase.from("patient_registrations").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+            // 1. Wipe transactional tables (children first)
+            await supabase.from("patient_results").delete().neq("id", NIL);
+            await supabase.from("approved_reports").delete().neq("id", NIL);
+            await supabase.from("outsourced_test_snips").delete().neq("id", NIL);
+            await supabase.from("sample_tubes" as any).delete().neq("id", NIL);
+            await supabase.from("payment_transactions" as any).delete().neq("id", NIL);
+            await supabase.from("pickup_point_invoice_payments" as any).delete().neq("id", NIL);
+            await supabase.from("pickup_point_invoice_items" as any).delete().neq("id", NIL);
+            await supabase.from("pickup_point_invoices" as any).delete().neq("id", NIL);
+            await supabase.from("lims_unmapped_results" as any).delete().neq("id", NIL);
+            await supabase.from("lims_test_orders" as any).delete().neq("id", NIL);
+            await supabase.from("lims_interface_logs" as any).delete().neq("id", NIL);
+            await supabase.from("report_link_events" as any).delete().neq("id", NIL);
+            await supabase.from("report_link_sessions" as any).delete().neq("id", NIL);
+            await supabase.from("report_share_links" as any).delete().neq("id", NIL);
+            await supabase.from("patient_registrations").delete().neq("id", NIL);
+            await supabase.from("patient_master").delete().neq("id", NIL);
+
+            // 2. Reset counters
             await supabase.from("invoice_counter").delete().neq("date_key", "");
             await supabase.from("sample_tube_counter" as any).delete().neq("date_key", "");
-            await supabase.from("patient_master").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-            await supabase.rpc("generate_umr_number" as any).then(() => {});
-            // Reset UMR counter to 0
             await supabase.from("umr_counter" as any).update({ last_sequence: 0 }).eq("counter_key", "main");
-            toast.success("All LIMS data cleared successfully");
+
+            // 3. Wipe snipped image storage buckets (keep buckets, empty contents)
+            await wipeBucket("outsourced-snips");
+            await wipeBucket("report-uploads");
+            await wipeBucket("prescriptions");
+
+            toast.success("Factory reset complete — all patient data and snipped images cleared");
             qc.invalidateQueries();
           } catch (err: any) {
-            toast.error(err.message || "Failed to clear data");
+            toast.error(err.message || "Failed to reset data");
           } finally {
             setClearing(false);
           }
