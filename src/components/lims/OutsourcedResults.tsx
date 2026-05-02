@@ -960,8 +960,14 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                         const existing = existingResults.find(
                           (r: any) => r.registration_id === regId && r.parameter_id === p.id
                         );
-                        // Skip parameters that already have a result value saved
-                        if (existing?.result_value && existing.result_value.trim() !== "" && editedValues[valKey] === undefined) {
+                        // Hide ONLY when this row is already finalised downstream
+                        // (verified / approved / dispatched). For pending/entered rows
+                        // — including those pushed back from Verification — keep the
+                        // row visible and pre-fill with the saved value so the user
+                        // can review and edit. Without this, reopening the test card
+                        // shows a blank table because every saved value would be
+                        // hidden.
+                        if (existing && ["verified", "approved", "dispatched"].includes(existing.status) && editedValues[valKey] === undefined) {
                           return null;
                         }
                         const currentValue = editedValues[valKey] !== undefined ? editedValues[valKey] : (existing?.result_value || "");
