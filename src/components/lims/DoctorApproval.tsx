@@ -524,11 +524,11 @@ const DoctorApproval = () => {
         test_results: mergedResults, outsourced_snip_urls: mergedSnipUrls,
       } as any, { onConflict: "registration_id" as any, ignoreDuplicates: false });
 
-      // Check if all results for this registration are now approved
-      const { data: allRes } = await supabase.from("patient_results").select("status").eq("registration_id", reg.id);
-      if (allRes && allRes.length > 0 && allRes.every((r: any) => r.status === "approved")) {
-        await supabase.from("patient_registrations").update({ status: "approved" } as any).eq("id", reg.id);
-      }
+      // Status is recalculated authoritatively by propagateRegistrationChange below
+      // (which calls recalculateRegistrationStatus). Do NOT write status directly here:
+      // a direct write bypasses the "untracked accepted-tube test" guard and can leave
+      // a registration stranded with status='approved' while real work is still pending,
+      // making it invisible to every queue except Dispatch.
 
       setEditedValues(prev => { const next = { ...prev }; testParams.forEach(p => delete next[`${reg.id}||${p.parameterId}`]); return next; });
       await propagateRegistrationChange(qc, reg.id, ["doctor_approval", "dispatch"]);
@@ -604,8 +604,10 @@ const DoctorApproval = () => {
         sample_collection_date: firstCollectedAtAll,
         test_results: mergedResultsAll, outsourced_snip_urls: mergedSnipUrlsAll,
       } as any, { onConflict: "registration_id" as any, ignoreDuplicates: false });
-      // Update registration status to approved since all tests were just approved
-      await supabase.from("patient_registrations").update({ status: "approved" } as any).eq("id", reg.id);
+      // Status is recalculated authoritatively by propagateRegistrationChange below.
+      // Do NOT write status='approved' directly: that bypasses the guard for accepted
+      // tube tests that have no patient_results / no terminal outsourced snip and can
+      // strand the registration in a state where only Dispatch can see it.
 
       await propagateRegistrationChange(qc, reg.id, ["doctor_approval", "dispatch"]);
       toast.success(`All tests approved for ${reg.patient_name}`);

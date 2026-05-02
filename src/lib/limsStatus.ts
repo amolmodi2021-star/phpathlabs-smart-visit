@@ -27,10 +27,26 @@ export async function recalculateRegistrationStatus(registrationId: string): Pro
     return;
   }
 
-  // Build set of test_ids that have ANY tracking row (result or snip).
+  // Build set of test_ids that have a MEANINGFUL tracking row (work actually started).
+  // - patient_results: only count rows whose status has progressed past 'pending' OR
+  //   that already have a non-empty result_value. A row sitting at 'pending' with no
+  //   value means entry has not started.
+  // - outsourced_test_snips: only count rows whose outsource_status is past 'pending'/'sent'.
+  //   A 'pending' or 'sent' snip means the snip was created at acceptance time but
+  //   results have not been entered yet.
   const trackedTestIds = new Set<string>();
-  r.forEach((x: any) => x.test_id && trackedTestIds.add(x.test_id));
-  s.forEach((x: any) => x.test_id && trackedTestIds.add(x.test_id));
+  r.forEach((x: any) => {
+    if (!x.test_id) return;
+    const hasValue = x.result_value && String(x.result_value).trim() !== "";
+    const pastPending = ["entered", "results_entered", "verified", "approved", "dispatched"].includes(x.status);
+    if (hasValue || pastPending) trackedTestIds.add(x.test_id);
+  });
+  s.forEach((x: any) => {
+    if (!x.test_id) return;
+    if (["results_entered", "entered", "verified", "approved", "dispatched"].includes(x.outsource_status)) {
+      trackedTestIds.add(x.test_id);
+    }
+  });
 
   // Test_ids attached to ACCEPTED tubes — these are tests that should have entries.
   const acceptedTubeTestIds = new Set<string>();
