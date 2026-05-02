@@ -1078,13 +1078,24 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         <div className="space-y-2">
           {patientEntries.map(entry => {
             const reg = entry.registration;
-            // Filter out tests where all results are already filled
+            // Filter out tests where all results are already filled AND finalised
             const visibleTests = entry.outsourcedTests.filter(t => {
               const status = getTestStatus(reg.id, t.testId);
               // Hide tests that have progressed past results stage
               if (status === "completed") return false;
               if (status === "results_saved") {
                 const snip = getSnip(reg.id, t.testId);
+                const testResults = existingResults.filter(
+                  (r: any) => r.registration_id === reg.id && r.test_id === t.testId
+                );
+                // If any saved row is back at pending/entered (e.g. pushed back
+                // from Verification), keep the test visible so the user can
+                // re-edit and re-save. Without this, send-back silently hides
+                // the test and there is no way to act on it.
+                const hasOpenRow = testResults.some(
+                  (r: any) => r.status === "pending" || r.status === "entered"
+                );
+                if (hasOpenRow) return true;
                 // For snip mode, results are complete — hide from pending list
                 if (snip?.result_mode === "snip") {
                   const imageUrls = getSnipImageUrls(reg.id, t.testId);
