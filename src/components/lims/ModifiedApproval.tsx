@@ -379,8 +379,17 @@ const ModifiedApproval = () => {
         approval_date: new Date().toISOString(),
       } as any).eq("id", report.id);
 
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["modified_approval_reports"] }),
+        qc.invalidateQueries({ queryKey: ["modified_approval_results"] }),
+        qc.invalidateQueries({ queryKey: ["modified_approval_snips"] }),
+        qc.invalidateQueries({ queryKey: ["dispatch_"] }),
+      ]);
+
       toast.success(`Changes saved for ${report.patient_name}`);
-      // Clear edited state for this patient
+      // Clear edited state only after the reloaded patient_results rows are back.
+      // Synthetic rows (like BT entered first) otherwise fall back to their old
+      // empty p.result_value and appear blank until a manual refresh.
       const prefix = `${regId}||`;
       setEditedValues(prev => { const n = { ...prev }; Object.keys(n).filter(k => k.startsWith(prefix)).forEach(k => delete n[k]); return n; });
       setEditedUnits(prev => { const n = { ...prev }; Object.keys(n).filter(k => k.startsWith(prefix)).forEach(k => delete n[k]); return n; });
@@ -388,8 +397,6 @@ const ModifiedApproval = () => {
       setEditedFlags(prev => { const n = { ...prev }; Object.keys(n).filter(k => k.startsWith(prefix)).forEach(k => delete n[k]); return n; });
       setEditedNotes(prev => { const n = { ...prev }; Object.keys(n).filter(k => k.startsWith(prefix)).forEach(k => delete n[k]); return n; });
       setEditedTestNotes(prev => { const n = { ...prev }; Object.keys(n).filter(k => k.startsWith(prefix)).forEach(k => delete n[k]); return n; });
-      qc.invalidateQueries({ queryKey: ["modified_approval_"] });
-      qc.invalidateQueries({ queryKey: ["dispatch_"] });
     } catch (err: any) { toast.error(err.message || "Save failed"); }
     finally { setActionKey(null); }
   };
