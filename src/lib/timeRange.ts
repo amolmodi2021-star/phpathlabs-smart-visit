@@ -63,12 +63,28 @@ export function formatTimeRange(lowSec: number | null | undefined, highSec: numb
   return `≤ ${formatSecondsPiece(highSec)}`;
 }
 
-/** Parse a stored result ("2:30") into total seconds; returns null if invalid. */
+/** Parse a stored result ("2:30" or legacy "2 min 30 sec") into total seconds; returns null if invalid. */
 export function parseTimeResultToSeconds(value: string | null | undefined): number | null {
   if (!value) return null;
-  const m = String(value).trim().match(TIME_RESULT_PATTERN);
-  if (!m) return null;
-  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+  const v = String(value).trim();
+  const m = v.match(TIME_RESULT_PATTERN);
+  if (m) return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+
+  const lower = v.toLowerCase();
+  const minMatch = lower.match(/(\d+)\s*(?:m|min|mins|minute|minutes)\b/);
+  const secMatch = lower.match(/(\d+)\s*(?:s|sec|secs|second|seconds)\b/);
+  if (minMatch || secMatch) {
+    return (minMatch ? parseInt(minMatch[1], 10) * 60 : 0) + (secMatch ? parseInt(secMatch[1], 10) : 0);
+  }
+  return null;
+}
+
+export function toCanonicalTimeResult(value: string | null | undefined): string {
+  const total = parseTimeResultToSeconds(value);
+  if (total == null) return "";
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 /** Build canonical "M:SS" from raw min/sec inputs (handles sec rollover). */

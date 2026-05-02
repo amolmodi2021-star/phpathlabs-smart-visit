@@ -14,7 +14,7 @@ import { toast } from "sonner";
 import PaginatedTableFooter from "@/components/ui/PaginatedTableFooter";
 import { isSuspectNegativeResult } from "@/lib/reportFlags";
 import TimeResultInput from "./TimeResultInput";
-import { parseTimeResultToSeconds } from "@/lib/timeRange";
+import { parseTimeResultToSeconds, toCanonicalTimeResult } from "@/lib/timeRange";
 
 const PAGE_SIZE = 50;
 
@@ -303,10 +303,11 @@ const ModifiedApproval = () => {
 
         for (const p of tg.params) {
           const key = `${regId}||${p.parameter_id}`;
-          const newValue = editedValues[key] !== undefined ? editedValues[key] : p.result_value;
+          const rawValue = editedValues[key] !== undefined ? editedValues[key] : p.result_value;
           const newUnit = editedUnits[key] !== undefined ? editedUnits[key] : p.unit;
           const newRefRange = editedRefRanges[key] !== undefined ? editedRefRanges[key] : p.reference_range;
           const rangeMeta = resolveRangeMeta(p.parameter_id);
+          const newValue = rangeMeta.rangeType === "time" ? toCanonicalTimeResult(rawValue) : rawValue;
           const newFlag = editedFlags[key] !== undefined ? editedFlags[key] : (calculateFlag(newValue, p.normal_range_low, p.normal_range_high, rangeMeta.rangeType, undefined, undefined, rangeMeta.normalRangeText) || p.flag);
           const noteKey = `${regId}||${p.parameter_id}`;
           const newNote = editedNotes[noteKey] !== undefined ? (editedNotes[noteKey] || null) : (p.note ?? null);
@@ -318,36 +319,33 @@ const ModifiedApproval = () => {
           // approved_reports JSONB snapshot (used by the PDF) but never reach
           // patient_results — so the value would disappear next time the
           // record is reopened in Modified Approval.
-          if (p.id) {
-            await supabase.from("patient_results").update({
+          const persistPayload = {
               result_value: applyUnitSuffix(newValue, newUnit, rangeMeta.rangeType) || null,
               unit: newUnit || null,
               reference_range: newRefRange || null,
               flag: newFlag || null,
               note: newNote,
               test_note: newTestNote,
-            } as any).eq("id", p.id);
+          };
+
+          if (p.id) {
+            await supabase.from("patient_results").update(persistPayload as any).eq("id", p.id);
           } else if (newValue && String(newValue).trim() !== "") {
             const nowIso = new Date().toISOString();
-            await supabase.from("patient_results").insert({
+            await supabase.from("patient_results").upsert({
+              ...persistPayload,
               registration_id: regId,
               test_id: p.test_id,
               parameter_id: p.parameter_id,
               param_code: p.param_code || null,
               parameter_name: p.parameter_name || null,
-              result_value: applyUnitSuffix(newValue, newUnit, rangeMeta.rangeType) || null,
-              unit: newUnit || null,
-              reference_range: newRefRange || null,
               normal_range_low: p.normal_range_low ?? null,
               normal_range_high: p.normal_range_high ?? null,
-              flag: newFlag || null,
               status: "approved",
               is_calculated: !!p.is_calculated,
               approved_at: nowIso,
               approved_by: report.approved_by || null,
-              note: newNote,
-              test_note: newTestNote,
-            } as any);
+            } as any, { onConflict: "registration_id,test_id,parameter_id" });
           }
 
           allTestResults.push({
