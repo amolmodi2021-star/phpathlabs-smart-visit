@@ -85,7 +85,7 @@ const ALL_TABS = [
 
 const ALL_ACTIONS = [
   { key: "storage_cleanup", label: "Storage Cleanup" },
-  { key: "clear_data", label: "Clear All Data (LIMS)" },
+  { key: "clear_data", label: "Reset (Factory Reset LIMS)" },
 ];
 
 interface AppRole {
