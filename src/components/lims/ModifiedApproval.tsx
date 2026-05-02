@@ -98,7 +98,20 @@ const ModifiedApproval = () => {
   const entries = useMemo(() => {
     return approvedReports.map((report: any) => {
       const regId = report.registration_id;
-      const results = approvedResults.filter((r: any) => r.registration_id === regId);
+      const snapshotResults = Array.isArray(report.test_results) ? report.test_results : [];
+      const dbResults = approvedResults.filter((r: any) => r.registration_id === regId);
+      const seenResultKeys = new Set<string>();
+      const results = [...dbResults, ...snapshotResults.map((r: any) => ({
+        ...r,
+        registration_id: regId,
+        status: "approved",
+        __snapshot: true,
+      }))].filter((r: any) => {
+        const k = `${r.test_id}||${r.parameter_id}`;
+        if (seenResultKeys.has(k)) return false;
+        seenResultKeys.add(k);
+        return true;
+      });
       const snips = approvedSnips.filter((s: any) => s.registration_id === regId);
 
       // Group results by test
