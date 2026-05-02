@@ -567,12 +567,13 @@ const ModifiedApproval = () => {
                               <TableBody>
                                 {tg.params.map(p => {
                                   const key = `${report.registration_id}||${p.parameter_id}`;
-                                  const currentValue = editedValues[key] !== undefined ? editedValues[key] : (p.result_value || "");
-                                  const currentUnit = editedUnits[key] !== undefined ? editedUnits[key] : (p.unit || "");
-                                  const currentRef = editedRefRanges[key] !== undefined ? editedRefRanges[key] : (p.reference_range || "");
+                                  const saved = savedOverrides[key];
+                                  const currentValue = editedValues[key] !== undefined ? editedValues[key] : (saved?.value ?? p.result_value ?? "");
+                                  const currentUnit = editedUnits[key] !== undefined ? editedUnits[key] : (saved?.unit ?? p.unit ?? "");
+                                  const currentRef = editedRefRanges[key] !== undefined ? editedRefRanges[key] : (saved?.ref ?? p.reference_range ?? "");
                                   const rangeMeta = resolveRangeMeta(p.parameter_id);
                                   const autoFlag = calculateFlag(currentValue, p.normal_range_low, p.normal_range_high, rangeMeta.rangeType, undefined, undefined, rangeMeta.normalRangeText);
-                                  const currentFlag = editedFlags[key] !== undefined ? editedFlags[key] : (p.flag || autoFlag);
+                                  const currentFlag = editedFlags[key] !== undefined ? editedFlags[key] : (saved?.flag || p.flag || autoFlag);
                                   const isNegative = isSuspectNegativeResult(currentValue);
                                   const rowBg = isNegative
                                     ? "bg-red-50"
