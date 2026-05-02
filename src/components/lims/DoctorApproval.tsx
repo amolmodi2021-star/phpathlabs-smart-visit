@@ -524,11 +524,11 @@ const DoctorApproval = () => {
         test_results: mergedResults, outsourced_snip_urls: mergedSnipUrls,
       } as any, { onConflict: "registration_id" as any, ignoreDuplicates: false });
 
-      // Check if all results for this registration are now approved
-      const { data: allRes } = await supabase.from("patient_results").select("status").eq("registration_id", reg.id);
-      if (allRes && allRes.length > 0 && allRes.every((r: any) => r.status === "approved")) {
-        await supabase.from("patient_registrations").update({ status: "approved" } as any).eq("id", reg.id);
-      }
+      // Status is recalculated authoritatively by propagateRegistrationChange below
+      // (which calls recalculateRegistrationStatus). Do NOT write status directly here:
+      // a direct write bypasses the "untracked accepted-tube test" guard and can leave
+      // a registration stranded with status='approved' while real work is still pending,
+      // making it invisible to every queue except Dispatch.
 
       setEditedValues(prev => { const next = { ...prev }; testParams.forEach(p => delete next[`${reg.id}||${p.parameterId}`]); return next; });
       await propagateRegistrationChange(qc, reg.id, ["doctor_approval", "dispatch"]);
