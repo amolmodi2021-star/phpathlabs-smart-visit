@@ -1,5 +1,5 @@
 import { Input } from "@/components/ui/input";
-import { TIME_RESULT_PATTERN, buildCanonicalTime } from "@/lib/timeRange";
+import { TIME_RESULT_PATTERN, buildCanonicalTime, toCanonicalTimeResult } from "@/lib/timeRange";
 
 interface Props {
   value: string;
@@ -15,7 +15,8 @@ interface Props {
  * Empty min and empty sec → emits "" (no result).
  */
 export default function TimeResultInput({ value, onChange, onKeyDown, className, disabled, abnormal }: Props) {
-  const m = (value || "").trim().match(TIME_RESULT_PATTERN);
+  const normalizedValue = (value || "").trim().match(TIME_RESULT_PATTERN) ? value : toCanonicalTimeResult(value);
+  const m = (normalizedValue || "").trim().match(TIME_RESULT_PATTERN);
   const min = m ? parseInt(m[1], 10) : 0;
   const sec = m ? parseInt(m[2], 10) : 0;
 
@@ -32,11 +33,11 @@ export default function TimeResultInput({ value, onChange, onKeyDown, className,
   const cls = `h-7 text-sm w-[60px] text-center ${abnormal ? "border-destructive text-destructive font-bold" : ""}`;
 
   return (
-    <div className={`flex items-center gap-1 ${className || ""}`} data-result-input="" data-result-value={value || ""}>
+    <div className={`flex items-center gap-1 ${className || ""}`} data-result-input="" data-result-value={normalizedValue || ""}>
       <Input
         type="number"
         min={0}
-        value={value && m ? min : ""}
+        value={normalizedValue && m ? min : ""}
         placeholder="min"
         className={cls}
         onChange={(e) => update(e.target.value, sec)}
@@ -48,7 +49,7 @@ export default function TimeResultInput({ value, onChange, onKeyDown, className,
         type="number"
         min={0}
         max={59}
-        value={value && m ? sec : ""}
+        value={normalizedValue && m ? sec : ""}
         placeholder="sec"
         className={cls}
         onChange={(e) => update(min, e.target.value)}
