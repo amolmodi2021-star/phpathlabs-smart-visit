@@ -792,10 +792,15 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         const s = getTestStatus(e.registration.id, t.testId);
         // Skip tests that have all results filled and verified
         if (s === "results_saved") {
-          if (snip?.result_mode === "snip") {
-            const testResults = existingResults.filter((r: any) => r.registration_id === e.registration.id && r.test_id === t.testId);
-            if (testResults.length > 0 && testResults.every((r: any) => r.status === "verified")) continue;
-          } else if (hasAllResultsFilled(e.registration.id, t.testId, t.outsourcedParameterIds)) continue;
+          const testResults = existingResults.filter((r: any) => r.registration_id === e.registration.id && r.test_id === t.testId);
+          // If any row is back at pending/entered (send-back from Verification),
+          // count it as still "Results Saved" — it needs the user's attention.
+          const hasOpenRow = testResults.some((r: any) => r.status === "pending" || r.status === "entered");
+          if (!hasOpenRow) {
+            if (snip?.result_mode === "snip") {
+              if (testResults.length > 0 && testResults.every((r: any) => r.status === "verified")) continue;
+            } else if (hasAllResultsFilled(e.registration.id, t.testId, t.outsourcedParameterIds)) continue;
+          }
         }
         if (s === "not_sent") notSent++;
         else if (s === "awaiting_results") awaiting++;
