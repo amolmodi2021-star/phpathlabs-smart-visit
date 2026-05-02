@@ -604,8 +604,10 @@ const DoctorApproval = () => {
         sample_collection_date: firstCollectedAtAll,
         test_results: mergedResultsAll, outsourced_snip_urls: mergedSnipUrlsAll,
       } as any, { onConflict: "registration_id" as any, ignoreDuplicates: false });
-      // Update registration status to approved since all tests were just approved
-      await supabase.from("patient_registrations").update({ status: "approved" } as any).eq("id", reg.id);
+      // Status is recalculated authoritatively by propagateRegistrationChange below.
+      // Do NOT write status='approved' directly: that bypasses the guard for accepted
+      // tube tests that have no patient_results / no terminal outsourced snip and can
+      // strand the registration in a state where only Dispatch can see it.
 
       await propagateRegistrationChange(qc, reg.id, ["doctor_approval", "dispatch"]);
       toast.success(`All tests approved for ${reg.patient_name}`);
