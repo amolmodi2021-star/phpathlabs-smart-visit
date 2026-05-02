@@ -295,6 +295,7 @@ const ModifiedApproval = () => {
     try {
       const allTestResults: any[] = [];
       const allSnipUrls: string[] = [];
+      const nextSavedOverrides: Record<string, { value: string; unit: string; ref: string; flag: string; note: string | null; testNote: string | null }> = {};
 
       for (const tg of testGroups) {
         const testNoteKey = `${regId}||${tg.testId}`;
@@ -360,6 +361,7 @@ const ModifiedApproval = () => {
             note: newNote,
             test_note: newTestNote,
           });
+          nextSavedOverrides[key] = { value: newValue || "", unit: newUnit || "", ref: newRefRange || "", flag: newFlag || "", note: newNote, testNote: newTestNote };
         }
 
         if (tg.snipUrls.length > 0) {
@@ -388,6 +390,7 @@ const ModifiedApproval = () => {
         qc.invalidateQueries({ queryKey: ["dispatch_"] }),
       ]);
 
+      setSavedOverrides(prev => ({ ...prev, ...nextSavedOverrides }));
       toast.success(`Changes saved for ${report.patient_name}`);
       // Clear edited state only after the reloaded patient_results rows are back.
       // Synthetic rows (like BT entered first) otherwise fall back to their old
