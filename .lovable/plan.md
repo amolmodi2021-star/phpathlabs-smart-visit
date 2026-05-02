@@ -1,42 +1,62 @@
-## Problem
+## Goal
 
-Two related issues in **LIMS → Results → Outsourced** section:
+Rename **Clear All Data** on Registered Patients to **Reset** — a true factory reset that wipes ALL patient/transactional LIMS data and snipped images, while preserving Home Visits, Estimates, all configuration, and the bidirectional interface code mappings.
 
-1. **Saved values disappear on reopen.** After entering and saving manual results for an outsourced test, reopening the same test shows a blank entry table. The data is in the database, but the UI hides every parameter that already has a value.
+## Scope
 
-2. **Tests pushed back from Verification disappear from Outsourced.** When Verification sends a record back, the snip's `outsource_status` is correctly reset to `results_saved`, but the Outsourced patient-card filter then hides the test because "all params still have values" — so the user has nowhere to re-edit it.
+### Database tables — WIPED
+- `patient_registrations` (bills, statuses, payments, refunds, cancellations)
+- `patient_results` (results entry, verification, doctor approval state)
+- `approved_reports` (immutable report snapshots)
+- `outsourced_test_snips` (outsourced section data + URLs)
+- `sample_tubes` (Sample Acceptance / Unique Sample IDs)
+- `payment_transactions` (Daily Report, Due Payments, Bad Debts ledger)
+- `patient_master` (UMR registry)
+- `pickup_point_invoices`, `pickup_point_invoice_items`, `pickup_point_invoice_payments`
+- `lims_test_orders`, `lims_unmapped_results`, `lims_interface_logs` (interface transactional queues only)
+- `report_share_links`, `report_link_sessions`, `report_link_events`
 
-The second behaviour the user described — *tests should not appear in Outsourced once moved to Verification* — is already working correctly (`results_entered` / `verified` / `approved` / `dispatched` snip statuses are filtered out). No change needed there.
+### Storage buckets — CONTENTS WIPED
+- `outsourced-snips` (all snipped images for outsourced tests)
+- `report-uploads` (any patient-uploaded report snips)
+- `prescriptions` (scanned patient prescriptions)
 
-## Root cause
+Buckets themselves kept; objects deleted by listing in pages of 1000 and calling `.remove(paths)` in batches of 100.
 
-`src/components/lims/OutsourcedResults.tsx`:
+### Counters — RESET
+- `invoice_counter` — emptied (next bill: YYMMDD0001)
+- `sample_tube_counter` — emptied (next tube: S{YYMMDD}00001)
+- `umr_counter.last_sequence` → 0 (next patient: UMR0000001)
 
-- **Line ~964** (manual entry table): rows are returned `null` when an existing saved value exists, instead of pre-filling and allowing edit.
-- **Line ~1080-1090** (`visibleTests` filter for `results_saved` manual mode): hides the test when `hasAllResultsFilled` is true, which is always true after a send-back from Verification because the values remain (only `status` flips back to `pending`).
+### PRESERVED (NOT touched)
+- **Home Visits**: `home_visits`, `phlebotomists`, `phlebotomist_leaves`
+- **Estimates**: `estimates`, `estimate_tests`
+- **Bidirectional interface mappings**: `lims_code_mapping`, `lims_no_map_required`
+- **Configuration**: `tests`, `test_parameters`, `parameter_normal_ranges`, `report_test_parameters`, `test_sample_tubes`, `report_departments`, `billing_profiles`, `billing_profile_tests`, `profile_parameters`, `combos`, `combo_tests`, `combo_profiles`, `health_checkups`, `health_checkup_tests`, `health_checkup_profiles`, `channels`, `channel_prices`, `pickup_points`, `pickup_point_prices`, `standard_price_lists`, `standard_price_list_items`, `master_lookup`
+- **Templates / branding**: `report_templates`, `report_layout_settings`, `report_profiles`, `pathologist_signatures`, `loyalty_card_templates`, `abnormal_card_templates`, `marketing_templates`, `message_templates`
+- **Storage kept intact**: `signatures`, `letterheads`, `loyalty-cards`, `invoice-assets`, `chat-attachments`
+- **App**: `app_users`, `app_roles`, `app_user_login_history`, `app_settings`, `webhook_messages`
 
-## Fix
+## Implementation
 
-### Single file: `src/components/lims/OutsourcedResults.tsx`
+### Edit `src/components/lims/RegisteredPatients.tsx`
 
-**1. Manual entry table — render saved values, don't hide them**
+- Rename button label `Clear All Data` → `Reset`, busy state `Clearing...` → `Resetting...`. Keep existing `clear_data` permission gate and `ExportPasswordDialog` master-password flow.
+- Add a `window.confirm()` before opening the password dialog:
+  > "FACTORY RESET — Permanently deletes ALL patient records, results, payments, reports, and snipped images. Resets UMR / invoice / sample tube counters. Home Visits, Estimates, configuration, and bidirectional interface mappings will be preserved. Cannot be undone."
+- Replace the current `onSuccess` handler with:
+  1. Delete from every table in the WIPED list (children before parents) using `.neq("id", "00000000-0000-0000-0000-000000000000")`.
+  2. For each bucket in `["outsourced-snips", "report-uploads", "prescriptions"]`: paginate `.list("", { limit: 1000, offset })`, recurse into folders, batch `.remove(paths)` 100 at a time.
+  3. Reset the three counters (empty `invoice_counter`/`sample_tube_counter`, set `umr_counter.last_sequence = 0`).
+  4. `qc.invalidateQueries()` so all LIMS tabs refresh.
+  5. Single try/catch with success/failure toast.
 
-Replace the early `return null` for rows that have a saved value. Always render the row pre-filled with the existing value (or the in-memory edit), so on reopen the user sees what was saved and can edit it.
+### Memory
 
-**2. Card visibility — keep showing tests after send-back**
+Create `mem://features/lims/factory-reset` documenting exact wiped/preserved scope (explicitly noting `lims_code_mapping` and `lims_no_map_required` are preserved). Add a one-line reference to `mem://index.md`.
 
-Adjust the `visibleTests` filter so a `results_saved` test in **manual** mode stays visible whenever any of its `patient_results` rows are at `status='pending'` (which is exactly the state Verification leaves them in after pushing back). If all rows are still `verified`/`approved`/etc., keep the existing "hide" behaviour so the Outsourced list isn't cluttered with already-finalised work.
+## Notes
 
-Same logic for the stats counter (`stats` memo) so the "Results Saved" count stays accurate.
-
-**3. Save flow — preserve the just-saved values in `editedValues`**
-
-After `saveManualResults` succeeds, **stop wiping** the edited values for that registration. This avoids a flash of blank inputs immediately after save, and the next reopen will render directly from `existingResults` anyway.
-
-(Alternative considered: re-seeding `editedValues` from `existingResults` on expand. Rejected — pre-filling from `existing.result_value` directly in the row render is simpler and avoids stale state.)
-
-## Out of scope
-
-- No DB migration. No change to verification / save-and-verify / send-back logic in `ResultsEntry.tsx` or `ResultVerification.tsx` — those already set the correct `outsource_status` transitions.
-- No change to the patient-row layout, sort order, or age/gender badge.
-- No change to snip-mode behaviour (snip pages already persist visibly on reopen).
+- Completed Home Visits tab is rendered from `patient_registrations` joined with `home_visits` — wiping registrations clears the tab without touching `home_visits`.
+- Daily Report / Due Payments / Bad Debts read from `payment_transactions` + `patient_registrations`, both wiped.
+- No schema changes — pure data + storage deletion. No migration required.
