@@ -595,6 +595,10 @@ const LimsReportView = () => {
       const pageElements = printRef.current.querySelectorAll("[data-page]");
       if (pageElements.length === 0) { toast.error("No pages to export"); setDownloading(false); return; }
 
+      // Make sure fonts and all images inside the print container are ready
+      // before capturing — prevents intermittent blank pages.
+      await waitForCaptureReady(printRef.current);
+
       const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       const NATIVE_W = Math.round((PAGE_WIDTH_MM / 25.4) * 96);
       const NATIVE_H = Math.round((PAGE_HEIGHT_MM / 25.4) * 96);
@@ -603,24 +607,10 @@ const LimsReportView = () => {
         const el = pageElements[i] as HTMLElement;
         const isSnipPage = !!el.querySelector('img[data-snip-image]');
         if (isSnipPage) {
-          const png = await toPng(el, {
-            quality: 1,
-            pixelRatio: 2,
-            backgroundColor: "#ffffff",
-            width: NATIVE_W,
-            height: NATIVE_H,
-            style: { transform: "none", transformOrigin: "top left" },
-          });
+          const png = await captureWithRetry(el, NATIVE_W, NATIVE_H, "png");
           pdf.addImage(png, "PNG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM);
         } else {
-          const jpeg = await toJpeg(el, {
-            quality: 0.92,
-            pixelRatio: 2,
-            backgroundColor: "#ffffff",
-            width: NATIVE_W,
-            height: NATIVE_H,
-            style: { transform: "none", transformOrigin: "top left" },
-          });
+          const jpeg = await captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg");
           pdf.addImage(jpeg, "JPEG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, undefined, "FAST");
         }
       }
