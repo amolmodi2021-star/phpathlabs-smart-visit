@@ -724,6 +724,8 @@ const LimsReportView = () => {
       printRef.current.classList.add("print-strip-colors");
       await new Promise(r => setTimeout(r, 150));
 
+      await waitForCaptureReady(printRef.current);
+
       const pageElements = printRef.current.querySelectorAll("[data-page]");
       if (pageElements.length === 0) { toast.error("No pages to print"); setShowLetterhead(originalLetterhead); setDownloading(false); return; }
 
@@ -734,25 +736,9 @@ const LimsReportView = () => {
         const el = pageElements[i] as HTMLElement;
         const isSnipPage = !!el.querySelector('img[data-snip-image]');
         if (isSnipPage) {
-          const png = await toPng(el, {
-            quality: 1,
-            pixelRatio: 2,
-            backgroundColor: "#ffffff",
-            width: NATIVE_W,
-            height: NATIVE_H,
-            style: { transform: "none", transformOrigin: "top left" },
-          });
-          imageUrls.push(png);
+          imageUrls.push(await captureWithRetry(el, NATIVE_W, NATIVE_H, "png"));
         } else {
-          const jpeg = await toJpeg(el, {
-            quality: 0.92,
-            pixelRatio: 2,
-            backgroundColor: "#ffffff",
-            width: NATIVE_W,
-            height: NATIVE_H,
-            style: { transform: "none", transformOrigin: "top left" },
-          });
-          imageUrls.push(jpeg);
+          imageUrls.push(await captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg"));
         }
       }
 
