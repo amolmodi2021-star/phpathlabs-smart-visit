@@ -327,6 +327,7 @@ const PatientRegistration = () => {
       if (!title) throw new Error("Title is required");
       if (!gender) throw new Error("Gender is required");
       if (!isPickup && !dob) throw new Error("Date of birth is required");
+      if (isPickup && !manualAge.trim()) throw new Error("Age is required for pickup point registrations");
       if (selectedTests.length === 0) throw new Error("Select at least one test");
       if (visitType !== "pickup_point" && !address.trim()) throw new Error("Address is required");
       if (paidAmount > calculations.finalAmount) throw new Error("Payment amount cannot exceed the final amount");
@@ -618,7 +619,7 @@ const PatientRegistration = () => {
           <div className="grid grid-cols-2 gap-3">
             {isPickup ? (
               <div>
-                <Label>Age</Label>
+                <Label className={triedSave && !manualAge.trim() ? "text-destructive" : ""}>Age *</Label>
                 <Input value={manualAge} onChange={e => setManualAge(e.target.value)} placeholder="e.g. 35 Years" />
               </div>
             ) : (
