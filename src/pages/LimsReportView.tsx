@@ -18,6 +18,89 @@ import { logEvent } from "@/lib/reportShareLinks";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.mjs";
 
+// ── Capture helpers ──────────────────────────────────────────────
+// Wait until web fonts are ready and every <img> inside a container has
+// finished loading. Without this, html-to-image can occasionally produce
+// blank pages because the DOM is captured before resources resolve.
+const waitForCaptureReady = async (root: HTMLElement) => {
+  try {
+    if ((document as any).fonts?.ready) {
+      await (document as any).fonts.ready;
+    }
+  } catch {}
+  const imgs = Array.from(root.querySelectorAll("img")) as HTMLImageElement[];
+  await Promise.all(
+    imgs.map((img) => {
+      if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+      return new Promise<void>((resolve) => {
+        const done = () => resolve();
+        img.addEventListener("load", done, { once: true });
+        img.addEventListener("error", done, { once: true });
+        // Hard timeout so a single broken image cannot stall export
+        setTimeout(done, 4000);
+      });
+    })
+  );
+  // Two RAFs to let layout/paint settle after fonts/images load
+  await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+};
+
+// Detect a near-blank capture by sampling pixels from a downscaled copy.
+const isBlankDataUrl = async (dataUrl: string): Promise<boolean> => {
+  try {
+    const img = new Image();
+    img.src = dataUrl;
+    await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = () => rej(); });
+    const w = 64, h = Math.max(1, Math.round((img.height / img.width) * 64));
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const ctx = c.getContext("2d");
+    if (!ctx) return false;
+    ctx.drawImage(img, 0, 0, w, h);
+    const data = ctx.getImageData(0, 0, w, h).data;
+    let nonWhite = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      if (r < 245 || g < 245 || b < 245) nonWhite++;
+    }
+    return (nonWhite / (w * h)) < 0.005;
+  } catch {
+    return false;
+  }
+};
+
+// Capture a page with retries (handles intermittent blank captures from html-to-image).
+// pixelRatio 3 → sharp text when zoomed; JPEG q=0.85 keeps file size reasonable.
+const captureWithRetry = async (
+  el: HTMLElement,
+  width: number,
+  height: number,
+  format: "png" | "jpeg",
+): Promise<string> => {
+  const opts = {
+    pixelRatio: 3,
+    backgroundColor: "#ffffff",
+    width,
+    height,
+    cacheBust: true,
+    style: { transform: "none", transformOrigin: "top left" } as Record<string, string>,
+  };
+  let lastUrl = "";
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      lastUrl = format === "png"
+        ? await toPng(el, { ...opts, quality: 1 })
+        : await toJpeg(el, { ...opts, quality: 0.85 });
+      const blank = await isBlankDataUrl(lastUrl);
+      if (!blank) return lastUrl;
+    } catch {
+      // retry
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return lastUrl;
+};
+
 // ── Height constants (mm) ──
 const PAGE_HEIGHT_MM = 297;
 const PAGE_WIDTH_MM = 210;
