@@ -2064,7 +2064,13 @@ const ResultsEntry = () => {
             </Button>
             <Button onClick={() => {
               if (blankConfirmTestParams) {
-                const { entry, testId } = blankConfirmTestParams;
+                const { entry, testId, testName } = blankConfirmTestParams;
+                const issue = getDifferentialIssue(entry, testId);
+                setBlankConfirmTestParams(null);
+                if (issue) {
+                  setDiffConfirm({ entry, testId, testName, sum: issue.sum, diff: issue.diff });
+                  return;
+                }
                 setSavingTestKey(`${entry.registration.id}||${testId}`);
                 saveMutation.mutate({ entry, testId });
               }
@@ -2075,6 +2081,41 @@ const ResultsEntry = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Differential count mismatch dialog */}
+      <AlertDialog open={!!diffConfirm} onOpenChange={(open) => { if (!open) setDiffConfirm(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Differential Count Mismatch</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-1 text-sm">
+                <div><span className="font-medium">Test:</span> {diffConfirm?.testName}</div>
+                <div><span className="font-medium">Current sum:</span> {diffConfirm?.sum}</div>
+                <div>
+                  <span className="font-medium">Difference to 100:</span>{" "}
+                  <span className={(diffConfirm?.diff ?? 0) === 0 ? "" : "text-destructive font-semibold"}>
+                    {diffConfirm?.diff}
+                  </span>{" "}
+                  <span className="text-muted-foreground">
+                    ({(diffConfirm?.diff ?? 0) > 0 ? "less" : (diffConfirm?.diff ?? 0) < 0 ? "more" : "exact"})
+                  </span>
+                </div>
+                <div className="text-muted-foreground pt-1">The sum of WBC differential parameters should be exactly 100. You can continue saving anyway.</div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              if (diffConfirm) {
+                const { entry, testId } = diffConfirm;
+                setDiffConfirm(null);
+                setSavingTestKey(`${entry.registration.id}||${testId}`);
+                saveMutation.mutate({ entry, testId });
+              }
+            }}>Continue Anyway</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {/* Snip Image Viewer Dialog */}
       <Dialog open={!!viewSnipImages} onOpenChange={open => { if (!open) { setViewSnipImages(null); setViewSnipContext(null); } }}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
