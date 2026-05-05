@@ -1171,8 +1171,25 @@ const LimsReportView = () => {
                 )}
               </div>
 
+              {/* Pickup point footer note (every page) */}
+              {pickupFooterNote && (
+                <div
+                  className="mt-auto"
+                  style={{
+                    fontSize: "10px",
+                    lineHeight: 1.35,
+                    padding: "2mm 0 1mm",
+                    borderTop: "1px solid #e5e5e5",
+                    whiteSpace: "pre-wrap",
+                    color: "#333",
+                  }}
+                >
+                  {pickupFooterNote}
+                </div>
+              )}
+
               {/* Signature */}
-              <div className="mt-auto">
+              <div className={pickupFooterNote ? "" : "mt-auto"}>
                 {!isProvisional && (() => {
                   const pageApprovers = page.approvers && page.approvers.length > 0
                     ? page.approvers
