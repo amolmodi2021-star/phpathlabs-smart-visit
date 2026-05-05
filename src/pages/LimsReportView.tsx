@@ -250,7 +250,7 @@ const LimsReportView = () => {
   const [downloading, setDownloading] = useState(false);
   const [hasDownloadedOnce, setHasDownloadedOnce] = useState(false);
   const [sharingWa, setSharingWa] = useState(false);
-  const [showLetterhead, setShowLetterhead] = useState(true);
+  const [showLetterhead, setShowLetterhead] = useState(!isProvisional);
   const [previewScale, setPreviewScale] = useState(1);
 
   // A4 width at 96dpi ≈ 794px. Recompute scale on resize so the page fits the viewport on mobile.
