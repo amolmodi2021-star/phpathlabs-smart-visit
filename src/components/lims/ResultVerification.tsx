@@ -1509,13 +1509,31 @@ const ResultVerification = () => {
             <Button variant="outline" onClick={() => setBlankConfirmTestParams(null)}>Cancel & Review</Button>
             <Button onClick={() => {
               if (blankConfirmTestParams) {
-                const { entry, testId } = blankConfirmTestParams;
+                const { entry, testId, testName } = blankConfirmTestParams;
                 setBlankConfirmTestParams(null);
                 setHighlightBlanksForRegs(prev => { const next = new Set(prev); next.delete(`${entry.registration.id}||${testId}`); return next; });
                 if (testId === "__all__") {
+                  const testIds = [...new Set(entry.parameters.map(p => p.testId))];
+                  const issues: { testName: string; sum: number; diff: number }[] = [];
+                  for (const tid of testIds) {
+                    const issue = computeDiffIssue(entry, tid);
+                    if (issue) {
+                      const tName = entry.parameters.find(p => p.testId === tid)?.testName || "Test";
+                      issues.push({ testName: tName, sum: issue.sum, diff: issue.diff });
+                    }
+                  }
+                  if (issues.length > 0) {
+                    setDiffConfirm({ entry, mode: "all", testId: "__all__", testName: "All Tests", issues });
+                    return;
+                  }
                   verifyAllForPatient(entry);
                 } else {
-                  verifyTest(entry, testId, blankConfirmTestParams.testName);
+                  const issue = computeDiffIssue(entry, testId);
+                  if (issue) {
+                    setDiffConfirm({ entry, mode: "test", testId, testName, issues: [{ testName, sum: issue.sum, diff: issue.diff }] });
+                    return;
+                  }
+                  verifyTest(entry, testId, testName);
                 }
               }
             }}>
@@ -1525,6 +1543,41 @@ const ResultVerification = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Differential count mismatch dialog */}
+      <AlertDialog open={!!diffConfirm} onOpenChange={(open) => { if (!open) setDiffConfirm(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Differential Count Mismatch</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm">
+                {diffConfirm?.issues.map((i, idx) => (
+                  <div key={idx} className="border-l-2 border-destructive pl-2">
+                    <div><span className="font-medium">Test:</span> {i.testName}</div>
+                    <div><span className="font-medium">Current sum:</span> {i.sum}</div>
+                    <div>
+                      <span className="font-medium">Difference to 100:</span>{" "}
+                      <span className="text-destructive font-semibold">{i.diff}</span>{" "}
+                      <span className="text-muted-foreground">({i.diff > 0 ? "less" : i.diff < 0 ? "more" : "exact"})</span>
+                    </div>
+                  </div>
+                ))}
+                <div className="text-muted-foreground pt-1">The sum of WBC differential parameters should be exactly 100. You can continue anyway.</div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              if (diffConfirm) {
+                const { entry, mode, testId, testName } = diffConfirm;
+                setDiffConfirm(null);
+                if (mode === "all") verifyAllForPatient(entry);
+                else verifyTest(entry, testId, testName);
+              }
+            }}>Continue Anyway</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Snip Image Viewer */}
       <Dialog open={!!viewSnipImages} onOpenChange={open => { if (!open) setViewSnipImages(null); }}>
