@@ -20,6 +20,7 @@ import { DescriptiveCombobox } from "./DescriptiveCombobox";
 import TimeResultInput from "./TimeResultInput";
 import { parseTimeResultToSeconds } from "@/lib/timeRange";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
+import { checkDifferentialSum } from "@/lib/differentialCount";
 
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import { signalSync } from "@/lib/limsSyncSignal";
