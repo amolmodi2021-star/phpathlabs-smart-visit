@@ -542,6 +542,7 @@ const LimsReportView = () => {
     setSignatureMap(sigMap);
     setSnipImages(snipPages);
     setTestParamsMap(computedTpMap);
+    setPickupFooterNote(computedFooterNote);
     setLoading(false);
 
     } catch (err: any) {
