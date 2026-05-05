@@ -90,6 +90,7 @@ const DoctorApproval = () => {
   const [approverDialogOpen, setApproverDialogOpen] = useState(false);
   const pendingApprovalRef = useRef<null | ((choice: ApproverChoice) => void)>(null);
   const currentUserSigCacheRef = useRef<{ userId: string | null; checked: boolean; choice: ApproverChoice | null }>({ userId: null, checked: false, choice: null });
+  const [diffConfirm, setDiffConfirm] = useState<{ entry: PatientEntry; mode: "test" | "all"; testId: string; testName: string; issues: { testName: string; sum: number; diff: number }[] } | null>(null);
 
   // Resolve who should sign this approval. Returns null if blocked (toast already shown) or pending dialog selection.
   const resolveApprover = (): Promise<ApproverChoice | null> => {
