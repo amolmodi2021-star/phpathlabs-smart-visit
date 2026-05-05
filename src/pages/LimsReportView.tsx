@@ -976,18 +976,20 @@ const LimsReportView = () => {
           </Button>
         )}
         <h1 className="text-sm sm:text-xl font-bold truncate flex-1 min-w-0">
-          <span className="hidden sm:inline">{isPublic ? "PH PathLabs · " : "Report — "}</span>
+          <span className="hidden sm:inline">{isPublic ? "PH PathLabs · " : isProvisional ? "Provisional Report — " : "Report — "}</span>
           {report.patient_name} ({report.invoice_number})
         </h1>
         <div className="flex items-center gap-2 sm:gap-4 ml-auto flex-wrap">
           {!isPublic && (
             <>
-              <div className="flex items-center gap-2">
-                <Switch id="letterhead-toggle" checked={showLetterhead} onCheckedChange={setShowLetterhead} />
-                <Label htmlFor="letterhead-toggle" className="text-xs sm:text-sm cursor-pointer whitespace-nowrap">
-                  <span className="hidden sm:inline">With </span>Letterhead
-                </Label>
-              </div>
+              {!isProvisional && (
+                <div className="flex items-center gap-2">
+                  <Switch id="letterhead-toggle" checked={showLetterhead} onCheckedChange={setShowLetterhead} />
+                  <Label htmlFor="letterhead-toggle" className="text-xs sm:text-sm cursor-pointer whitespace-nowrap">
+                    <span className="hidden sm:inline">With </span>Letterhead
+                  </Label>
+                </div>
+              )}
               <Button size="sm" variant="outline" onClick={handlePrint} disabled={downloading} aria-label="Print">
                 <Printer className="h-4 w-4 sm:mr-1" />
                 <span className="hidden sm:inline">Print</span>
