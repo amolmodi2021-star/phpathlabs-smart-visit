@@ -628,6 +628,19 @@ const ResultVerification = () => {
     return blanks;
   };
 
+  // Compute differential issue for a single test of an entry
+  const computeDiffIssue = (entry: PatientEntry, testId: string) => {
+    const reg = entry.registration;
+    const testParams = entry.parameters.filter((p) => p.testId === testId);
+    const list = testParams.map((p) => {
+      const key = `${reg.id}||${p.parameterId}`;
+      const val = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
+      return { paramCode: p.paramCode, value: val };
+    });
+    const r = checkDifferentialSum(list);
+    return r.hasDifferential && !r.isOk ? r : null;
+  };
+
   const handleVerifyTest = (entry: PatientEntry, testId: string, testName: string) => {
     // Snip-only test — no params to check, verify directly
     const isSnipOnly = entry.snipOnlyTests.some(s => s.testId === testId);
@@ -650,6 +663,11 @@ const ResultVerification = () => {
       setBlankConfirmTestParams({ entry, testId, testName });
       setHighlightBlanksForRegs(prev => new Set(prev).add(`${entry.registration.id}||${testId}`));
     } else {
+      const issue = computeDiffIssue(entry, testId);
+      if (issue) {
+        setDiffConfirm({ entry, mode: "test", testId, testName, issues: [{ testName, sum: issue.sum, diff: issue.diff }] });
+        return;
+      }
       verifyTest(entry, testId, testName);
     }
   };
@@ -670,6 +688,18 @@ const ResultVerification = () => {
       setBlankParamIds(ids);
       setBlankConfirmTestParams({ entry, testId: "__all__", testName: "All Tests" });
     } else {
+      const issues: { testName: string; sum: number; diff: number }[] = [];
+      for (const tid of testIds) {
+        const issue = computeDiffIssue(entry, tid);
+        if (issue) {
+          const tName = entry.parameters.find(p => p.testId === tid)?.testName || "Test";
+          issues.push({ testName: tName, sum: issue.sum, diff: issue.diff });
+        }
+      }
+      if (issues.length > 0) {
+        setDiffConfirm({ entry, mode: "all", testId: "__all__", testName: "All Tests", issues });
+        return;
+      }
       verifyAllForPatient(entry);
     }
   };
