@@ -970,7 +970,7 @@ const LimsReportView = () => {
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2 sm:gap-3 print:hidden">
         {!isPublic && (
-          <Button variant="outline" size="sm" onClick={() => navigate("/lims?tab=dispatch")}>
+          <Button variant="outline" size="sm" onClick={() => navigate(isProvisional ? "/lims?tab=verification" : "/lims?tab=dispatch")}>
             <ArrowLeft className="h-4 w-4 sm:mr-1" />
             <span className="hidden sm:inline">Back</span>
           </Button>
