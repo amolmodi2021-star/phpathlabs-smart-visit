@@ -239,6 +239,7 @@ const LimsReportView = () => {
   const selectedTestIds = selectedTestIdsParam ? new Set(selectedTestIdsParam.split(",")) : null;
   const publicToken = searchParams.get("public");
   const isPublic = !!publicToken;
+  const isProvisional = searchParams.get("provisional") === "1";
   const autoShareRequested = searchParams.get("share") === "1";
   const printRef = useRef<HTMLDivElement>(null);
   const previewWrapRef = useRef<HTMLDivElement>(null);
