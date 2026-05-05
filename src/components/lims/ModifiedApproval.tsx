@@ -305,8 +305,27 @@ const ModifiedApproval = () => {
     finally { setActionKey(null); }
   };
 
-  const saveChanges = async (report: any, testGroups: any[]) => {
+  const saveChanges = async (report: any, testGroups: any[], skipDiffCheck = false) => {
     const regId = report.registration_id;
+
+    if (!skipDiffCheck) {
+      const issues: { testName: string; sum: number; diff: number }[] = [];
+      for (const tg of testGroups) {
+        const list = (tg.params || []).map((p: any) => {
+          const key = `${regId}||${p.parameter_id}`;
+          const saved = savedOverrides[key];
+          const v = editedValues[key] !== undefined ? editedValues[key] : (saved?.value ?? p.result_value);
+          return { paramCode: p.param_code, value: v };
+        });
+        const r = checkDifferentialSum(list);
+        if (r.hasDifferential && !r.isOk) issues.push({ testName: tg.testName, sum: r.sum, diff: r.diff });
+      }
+      if (issues.length > 0) {
+        setDiffConfirm({ report, testGroups, issues });
+        return;
+      }
+    }
+
     setActionKey(`${regId}||save`);
     try {
       const allTestResults: any[] = [];
