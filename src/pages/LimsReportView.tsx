@@ -286,6 +286,7 @@ const LimsReportView = () => {
   const [testsMap, setTestsMap] = useState<Record<string, any>>({});
   const [testParamsMap, setTestParamsMap] = useState<Record<string, any[]>>({});
   const [snipImages, setSnipImages] = useState<SnipPage[]>([]);
+  const [pickupFooterNote, setPickupFooterNote] = useState<string>("");
 
   useEffect(() => { if (registrationId) loadAllData(); }, [registrationId]);
 
