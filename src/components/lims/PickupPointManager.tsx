@@ -360,6 +360,7 @@ const PickupPointManager = () => {
         contact_person: contactPerson.toUpperCase(), billing_type: billingType,
         billing_cycle: billingCycle, default_discount_pct: discountPct,
         allow_all_tests: allowAllTests,
+        report_footer_note: reportFooterNote.trim() || null,
       };
       let pickupId = editingId;
       let appliedCount = 0;
