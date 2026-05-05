@@ -113,6 +113,7 @@ const ResultVerification = () => {
   const [blankParamCount, setBlankParamCount] = useState(0);
   const [blankParamIds, setBlankParamIds] = useState<Set<string>>(new Set());
   const [highlightBlanksForRegs, setHighlightBlanksForRegs] = useState<Set<string>>(new Set());
+  const [diffConfirm, setDiffConfirm] = useState<{ entry: PatientEntry; mode: "test" | "all"; testId: string; testName: string; issues: { testName: string; sum: number; diff: number }[] } | null>(null);
   const [rvPage, setRvPage] = useState(0);
 
   useEffect(() => {
