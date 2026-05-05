@@ -1146,7 +1146,7 @@ const LimsReportView = () => {
 
               {/* Signature */}
               <div className="mt-auto">
-                {(() => {
+                {!isProvisional && (() => {
                   const pageApprovers = page.approvers && page.approvers.length > 0
                     ? page.approvers
                     : Object.keys(signatureMap).length > 0 ? [Object.keys(signatureMap)[0]] : [];
