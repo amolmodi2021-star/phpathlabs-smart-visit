@@ -338,6 +338,17 @@ const LimsReportView = () => {
         : supabase.from("pathologist_signatures").select("*"),
     ]);
 
+    // Pickup point footer note (printed on every report page)
+    let computedFooterNote = "";
+    if (regData?.pickup_point_id) {
+      const { data: pp } = await supabase
+        .from("pickup_points")
+        .select("report_footer_note")
+        .eq("id", regData.pickup_point_id)
+        .maybeSingle();
+      computedFooterNote = (pp as any)?.report_footer_note || "";
+    }
+
     let reportsArr = reports || [];
 
     // Provisional: synthesize an approved_reports-shaped record from live patient_results
