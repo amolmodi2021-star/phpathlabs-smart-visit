@@ -281,6 +281,7 @@ const PickupPointManager = () => {
   const [billingCycle, setBillingCycle] = useState("monthly");
   const [discountPct, setDiscountPct] = useState(0);
   const [allowAllTests, setAllowAllTests] = useState(false);
+  const [reportFooterNote, setReportFooterNote] = useState("");
   const [cloneFromId, setCloneFromId] = useState("");
   const [applyStdListId, setApplyStdListId] = useState("");
 
@@ -323,6 +324,7 @@ const PickupPointManager = () => {
     setName(""); setPhone(""); setAddress(""); setContactPerson("");
     setBillingType("credit"); setBillingCycle("monthly"); setDiscountPct(0);
     setAllowAllTests(false);
+    setReportFooterNote("");
     setEditingId(null); setCloneFromId(""); setApplyStdListId("");
   };
 
@@ -332,6 +334,7 @@ const PickupPointManager = () => {
     setContactPerson(pp.contact_person || ""); setBillingType(pp.billing_type);
     setBillingCycle(pp.billing_cycle); setDiscountPct(pp.default_discount_pct || 0);
     setAllowAllTests(!!pp.allow_all_tests);
+    setReportFooterNote(pp.report_footer_note || "");
     setApplyStdListId("");
     setFormOpen(true);
   };
@@ -357,6 +360,7 @@ const PickupPointManager = () => {
         contact_person: contactPerson.toUpperCase(), billing_type: billingType,
         billing_cycle: billingCycle, default_discount_pct: discountPct,
         allow_all_tests: allowAllTests,
+        report_footer_note: reportFooterNote.trim() || null,
       };
       let pickupId = editingId;
       let appliedCount = 0;
@@ -653,6 +657,19 @@ const PickupPointManager = () => {
                 {applyStdListId && <p className="text-xs text-muted-foreground mt-1">Disabled — standard list takes precedence.</p>}
               </div>
             )}
+            <div>
+              <Label>Report Footer Note</Label>
+              <Textarea
+                value={reportFooterNote}
+                onChange={e => setReportFooterNote(e.target.value)}
+                placeholder="e.g. Sample collected by Dr. ABC Clinic. Reports authorized for clinic use only."
+                rows={3}
+                className="text-sm"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Printed on every page of the report PDF for patients registered under this pickup point. Keep it short — long text reduces space available for test results on each page.
+              </p>
+            </div>
             <Button className="w-full" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>Save</Button>
           </div>
         </DialogContent>

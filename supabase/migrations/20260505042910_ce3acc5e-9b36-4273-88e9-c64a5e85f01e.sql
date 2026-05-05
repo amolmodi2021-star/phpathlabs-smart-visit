@@ -1,0 +1,1 @@
+ALTER TABLE public.pickup_points ADD COLUMN IF NOT EXISTS report_footer_note text;

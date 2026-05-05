@@ -2034,6 +2034,7 @@ export type Database = {
           id: string
           name: string
           phone: string | null
+          report_footer_note: string | null
           status: string
           updated_at: string
         }
@@ -2048,6 +2049,7 @@ export type Database = {
           id?: string
           name: string
           phone?: string | null
+          report_footer_note?: string | null
           status?: string
           updated_at?: string
         }
@@ -2062,6 +2064,7 @@ export type Database = {
           id?: string
           name?: string
           phone?: string | null
+          report_footer_note?: string | null
           status?: string
           updated_at?: string
         }

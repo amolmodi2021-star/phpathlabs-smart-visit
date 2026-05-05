@@ -286,6 +286,7 @@ const LimsReportView = () => {
   const [testsMap, setTestsMap] = useState<Record<string, any>>({});
   const [testParamsMap, setTestParamsMap] = useState<Record<string, any[]>>({});
   const [snipImages, setSnipImages] = useState<SnipPage[]>([]);
+  const [pickupFooterNote, setPickupFooterNote] = useState<string>("");
 
   useEffect(() => { if (registrationId) loadAllData(); }, [registrationId]);
 
@@ -336,6 +337,17 @@ const LimsReportView = () => {
         ? Promise.resolve({ data: [] as any[] })
         : supabase.from("pathologist_signatures").select("*"),
     ]);
+
+    // Pickup point footer note (printed on every report page)
+    let computedFooterNote = "";
+    if (regData?.pickup_point_id) {
+      const { data: pp } = await supabase
+        .from("pickup_points")
+        .select("report_footer_note")
+        .eq("id", regData.pickup_point_id)
+        .maybeSingle();
+      computedFooterNote = (pp as any)?.report_footer_note || "";
+    }
 
     let reportsArr = reports || [];
 
@@ -530,6 +542,7 @@ const LimsReportView = () => {
     setSignatureMap(sigMap);
     setSnipImages(snipPages);
     setTestParamsMap(computedTpMap);
+    setPickupFooterNote(computedFooterNote);
     setLoading(false);
 
     } catch (err: any) {
@@ -545,7 +558,14 @@ const LimsReportView = () => {
 
     const topMm = (layoutSettings.top_margin_cm || 2.5) * 10;
     const bottomMm = (layoutSettings.bottom_margin_cm || 1.5) * 10;
-    const usableHeight = PAGE_HEIGHT_MM - topMm - bottomMm - HEADER_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM;
+    const footerNoteMm = pickupFooterNote
+      ? 4 + Math.max(
+          1,
+          Math.ceil(pickupFooterNote.length / 110),
+          pickupFooterNote.split(/\r?\n/).length,
+        ) * 4
+      : 0;
+    const usableHeight = PAGE_HEIGHT_MM - topMm - bottomMm - HEADER_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM - footerNoteMm;
 
     // Merge all test_results from all approved reports
     const allResults: TestResultEntry[] = [];
@@ -712,7 +732,7 @@ const LimsReportView = () => {
     });
 
     return { pages: allPages, totalPages: allPages.length };
-  }, [approvedReports, departments, testsMap, testParamsMap, snipImages, layoutSettings]);
+  }, [approvedReports, departments, testsMap, testParamsMap, snipImages, layoutSettings, pickupFooterNote]);
 
   // ── PDF export ──
   const handleDownloadPdf = async () => {
@@ -937,6 +957,13 @@ const LimsReportView = () => {
   const report = approvedReports[0];
   const topMm = (layoutSettings.top_margin_cm || 2.5) * 10;
   const bottomMm = (layoutSettings.bottom_margin_cm || 1.5) * 10;
+  const footerNoteMm = pickupFooterNote
+    ? 4 + Math.max(
+        1,
+        Math.ceil(pickupFooterNote.length / 110),
+        pickupFooterNote.split(/\r?\n/).length,
+      ) * 4
+    : 0;
 
   if (loading) {
     return (
@@ -1121,7 +1148,7 @@ const LimsReportView = () => {
                     />
                   );
                   if (hasFitToPage) {
-                    const availableHeight = PAGE_HEIGHT_MM - topMm - bottomMm - HEADER_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM;
+                    const availableHeight = PAGE_HEIGHT_MM - topMm - bottomMm - HEADER_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM - footerNoteMm;
                     return <AutoScaleContent maxHeightMm={availableHeight}>{resultsContent}</AutoScaleContent>;
                   }
                   return resultsContent;
@@ -1137,15 +1164,32 @@ const LimsReportView = () => {
                       className="max-w-full object-contain"
                       style={{
                         // Reserve full margins + header + signature band + page number + safety gap so snip never overlaps signature.
-                        maxHeight: `${PAGE_HEIGHT_MM - topMm - bottomMm - HEADER_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM - 6}mm`,
+                        maxHeight: `${PAGE_HEIGHT_MM - topMm - bottomMm - HEADER_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM - footerNoteMm - 6}mm`,
                       }}
                     />
                   </div>
                 )}
               </div>
 
+              {/* Pickup point footer note (every page) */}
+              {pickupFooterNote && (
+                <div
+                  className="mt-auto"
+                  style={{
+                    fontSize: "10px",
+                    lineHeight: 1.35,
+                    padding: "2mm 0 1mm",
+                    borderTop: "1px solid #e5e5e5",
+                    whiteSpace: "pre-wrap",
+                    color: "#333",
+                  }}
+                >
+                  {pickupFooterNote}
+                </div>
+              )}
+
               {/* Signature */}
-              <div className="mt-auto">
+              <div className={pickupFooterNote ? "" : "mt-auto"}>
                 {!isProvisional && (() => {
                   const pageApprovers = page.approvers && page.approvers.length > 0
                     ? page.approvers
