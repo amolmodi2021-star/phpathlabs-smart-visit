@@ -461,9 +461,29 @@ const DoctorApproval = () => {
     ].forEach((k) => qc.invalidateQueries({ queryKey: [k], refetchType: "active" }));
   };
 
-  // Approve test
-  const approveTest = async (entry: PatientEntry, testId: string, testName: string) => {
+  // Compute differential issue for a single test of an entry
+  const computeDiffIssue = (entry: PatientEntry, testId: string) => {
     const reg = entry.registration;
+    const testParams = entry.parameters.filter((p) => p.testId === testId);
+    const list = testParams.map((p) => {
+      const k = `${reg.id}||${p.parameterId}`;
+      const val = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
+      return { paramCode: p.paramCode, value: val };
+    });
+    const r = checkDifferentialSum(list);
+    return r.hasDifferential && !r.isOk ? r : null;
+  };
+
+  // Approve test
+  const approveTest = async (entry: PatientEntry, testId: string, testName: string, skipDiffCheck = false) => {
+    const reg = entry.registration;
+    if (!skipDiffCheck) {
+      const issue = computeDiffIssue(entry, testId);
+      if (issue) {
+        setDiffConfirm({ entry, mode: "test", testId, testName, issues: [{ testName, sum: issue.sum, diff: issue.diff }] });
+        return;
+      }
+    }
     // Resolve approver BEFORE setting action key (so cancellation doesn't leave loading state)
     const approver = await resolveApprover();
     if (!approver) return;
