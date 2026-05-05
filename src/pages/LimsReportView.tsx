@@ -1056,6 +1056,29 @@ const LimsReportView = () => {
               />
             )}
 
+            {/* Provisional watermark */}
+            {isProvisional && (
+              <div
+                className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                style={{ zIndex: 2 }}
+                aria-hidden="true"
+              >
+                <span
+                  style={{
+                    transform: "rotate(-35deg)",
+                    fontSize: "92px",
+                    fontWeight: 800,
+                    color: "rgba(120,120,120,0.13)",
+                    letterSpacing: "8px",
+                    whiteSpace: "nowrap",
+                    fontFamily: "Arial, sans-serif",
+                  }}
+                >
+                  PROVISIONAL REPORT
+                </span>
+              </div>
+            )}
+
             {/* Content layer */}
             <div className="relative" style={{ zIndex: 1, paddingTop: `${topMm}mm`, paddingBottom: `${bottomMm}mm`, paddingLeft: "8mm", paddingRight: "8mm", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column" }}>
               {/* Patient Demographics */}
