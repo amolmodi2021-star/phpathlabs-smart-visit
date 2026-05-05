@@ -281,6 +281,7 @@ const PickupPointManager = () => {
   const [billingCycle, setBillingCycle] = useState("monthly");
   const [discountPct, setDiscountPct] = useState(0);
   const [allowAllTests, setAllowAllTests] = useState(false);
+  const [reportFooterNote, setReportFooterNote] = useState("");
   const [cloneFromId, setCloneFromId] = useState("");
   const [applyStdListId, setApplyStdListId] = useState("");
 
