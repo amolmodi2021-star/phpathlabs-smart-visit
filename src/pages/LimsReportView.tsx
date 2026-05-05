@@ -957,6 +957,13 @@ const LimsReportView = () => {
   const report = approvedReports[0];
   const topMm = (layoutSettings.top_margin_cm || 2.5) * 10;
   const bottomMm = (layoutSettings.bottom_margin_cm || 1.5) * 10;
+  const footerNoteMm = pickupFooterNote
+    ? 4 + Math.max(
+        1,
+        Math.ceil(pickupFooterNote.length / 110),
+        pickupFooterNote.split(/\r?\n/).length,
+      ) * 4
+    : 0;
 
   if (loading) {
     return (
