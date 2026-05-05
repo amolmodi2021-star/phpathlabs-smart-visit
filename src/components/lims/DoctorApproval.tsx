@@ -1080,6 +1080,40 @@ const DoctorApproval = () => {
       </>
       )}
       <SelectApproverDialog open={approverDialogOpen} onOpenChange={handleApproverDialogCancel} onConfirm={handleApproverDialogConfirm} />
+      <AlertDialog open={!!diffConfirm} onOpenChange={(open) => { if (!open) setDiffConfirm(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Differential Count Mismatch</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm">
+                {diffConfirm?.issues.map((i, idx) => (
+                  <div key={idx} className="border-l-2 border-destructive pl-2">
+                    <div><span className="font-medium">Test:</span> {i.testName}</div>
+                    <div><span className="font-medium">Current sum:</span> {i.sum}</div>
+                    <div>
+                      <span className="font-medium">Difference to 100:</span>{" "}
+                      <span className="text-destructive font-semibold">{i.diff}</span>{" "}
+                      <span className="text-muted-foreground">({i.diff > 0 ? "less" : i.diff < 0 ? "more" : "exact"})</span>
+                    </div>
+                  </div>
+                ))}
+                <div className="text-muted-foreground pt-1">The sum of WBC differential parameters should be exactly 100. You can continue anyway.</div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              if (diffConfirm) {
+                const { entry, mode, testId, testName } = diffConfirm;
+                setDiffConfirm(null);
+                if (mode === "all") approveAllForPatient(entry, true);
+                else approveTest(entry, testId, testName, true);
+              }
+            }}>Continue Anyway</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
