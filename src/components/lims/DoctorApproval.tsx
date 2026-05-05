@@ -560,8 +560,23 @@ const DoctorApproval = () => {
     finally { setActionKey(null); }
   };
 
-  const approveAllForPatient = async (entry: PatientEntry) => {
+  const approveAllForPatient = async (entry: PatientEntry, skipDiffCheck = false) => {
     const reg = entry.registration;
+    if (!skipDiffCheck) {
+      const testIds = [...new Set(entry.parameters.map((p) => p.testId))];
+      const issues: { testName: string; sum: number; diff: number }[] = [];
+      for (const tid of testIds) {
+        const issue = computeDiffIssue(entry, tid);
+        if (issue) {
+          const tName = entry.parameters.find((p) => p.testId === tid)?.testName || "Test";
+          issues.push({ testName: tName, sum: issue.sum, diff: issue.diff });
+        }
+      }
+      if (issues.length > 0) {
+        setDiffConfirm({ entry, mode: "all", testId: "__all__", testName: "All Tests", issues });
+        return;
+      }
+    }
     const approver = await resolveApprover();
     if (!approver) return;
     setActionKey(`${reg.id}||all||approve`);
