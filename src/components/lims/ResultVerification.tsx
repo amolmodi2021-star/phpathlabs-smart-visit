@@ -94,6 +94,7 @@ const RV_PAGE_SIZE = 50;
 
 const ResultVerification = () => {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const { data: masterMachines = [] } = useMasterLookup("machine_name");
   const [mode, setMode] = useState<"patient" | "machine">("patient");
   const [search, setSearch] = useState("");
