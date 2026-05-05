@@ -1397,6 +1397,23 @@ const ResultVerification = () => {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs gap-1"
+                      title="Preview provisional report"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const testIds = new Set<string>();
+                        entry.parameters.forEach(p => { if (p.testId) testIds.add(p.testId); });
+                        entry.snipOnlyTests.forEach(st => { if (st.testId) testIds.add(st.testId); });
+                        const ids = Array.from(testIds);
+                        const qs = ids.length > 0 ? `&tests=${ids.join(",")}` : "";
+                        navigate(`/lims/report/${reg.id}?provisional=1${qs}`);
+                      }}
+                    >
+                      <Eye className="h-3.5 w-3.5 mr-1" /> View Report
+                    </Button>
                     <Button size="sm" variant="default" className="h-7 text-xs" disabled={isVerifying} onClick={(e) => { e.stopPropagation(); handleVerifyAll(entry); }}>
                       {isVerifying ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <CheckCircle2 className="h-3.5 w-3.5 mr-1" />}
                       Verify All
