@@ -19,6 +19,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Search, User, Monitor, Calculator, ChevronDown, ChevronUp, Loader2, CheckCircle2, Undo2, RotateCcw, Eye, Stethoscope, FileCheck, StickyNote, Trash2, AlertTriangle } from "lucide-react";
 import { DescriptiveCombobox } from "./DescriptiveCombobox";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
+import { checkDifferentialSum } from "@/lib/differentialCount";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { formatDateDDMMYYYY } from "@/lib/utils";
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
