@@ -1404,12 +1404,7 @@ const ResultVerification = () => {
                       title="Preview provisional report"
                       onClick={(e) => {
                         e.stopPropagation();
-                        const testIds = new Set<string>();
-                        entry.parameters.forEach(p => { if (p.testId) testIds.add(p.testId); });
-                        entry.snipOnlyTests.forEach(st => { if (st.testId) testIds.add(st.testId); });
-                        const ids = Array.from(testIds);
-                        const qs = ids.length > 0 ? `&tests=${ids.join(",")}` : "";
-                        navigate(`/lims/report/${reg.id}?provisional=1${qs}`);
+                        navigate(`/lims/report/${reg.id}?provisional=1`);
                       }}
                     >
                       <Eye className="h-3.5 w-3.5 mr-1" /> View Report
