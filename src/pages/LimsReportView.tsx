@@ -765,8 +765,8 @@ const LimsReportView = () => {
         }
       }
 
-      // Update print_date
-      if (registrationId) {
+      // Update print_date (skip for provisional preview — no approved_reports row)
+      if (registrationId && !isProvisional) {
         await supabase.from("approved_reports").update({ print_date: new Date().toISOString() }).eq("registration_id", registrationId);
       }
 
