@@ -1,90 +1,71 @@
+# Provisional Report Preview in Result Verification
 
-## Goal
+Add a "View Report" capability on the Result Verification screen that renders the report exactly the way Dispatch does (same pagination, dept-wise grouping, fit-to-page auto-scaling, profile/test grouping, snips, etc.) but in a **provisional** mode used to verify pre-approval layout.
 
-Whenever a test contains any of the differential-count parameters
-**PRM0090, PRM0080, PRM0086, PRM0048, PRM0019**, the sum of their result values
-should equal **100**. If it doesn't, show a confirmation dialog that:
+## Behaviour
 
-- Reports the current sum.
-- Reports the difference using the user's sign convention:
-  - sum 98 → show **2** (less)
-  - sum 103 → show **-3** (more)
-  - i.e. `100 − sum`
-- Lets the user **Cancel** or **Continue Anyway** (save still proceeds).
+- Triggered per patient from Result Verification, using the existing **selected patient/test** UI (same dialog pattern as Dispatch's "Select Tests for Report").
+- Opens the existing `LimsReportView` route in a new mode: `/lims/report/:regId?provisional=1&tests=<csv>`.
+- In provisional mode:
+  - **No letterhead** (toggle hidden, forced off).
+  - **No signature block** (signature row + page footer signatures suppressed; page numbers stay).
+  - **Diagonal "PROVISIONAL REPORT" watermark** rendered behind every page — very light grey, 45° rotation, large bold sans-serif, repeated/centered, `pointer-events:none`, behind content but above background.
+  - **Header / patient demographics**: identical to current report.
+  - **Results**: identical rendering — `ReportResultsSection`, `AutoScaleContent`, dept ordering, profile grouping, snips, abnormal flags — using the same components.
+  - **Download PDF / Print** buttons remain available (they capture the same provisional layout including watermark) so users can save a copy for review. Share-to-WhatsApp stays hidden (it's already gated behind `isPublic`).
 
-This validation must fire on every save action in:
-1. **Results Entry** — `Save & Send to Verification` (per-test)
-2. **Result Verification** — `Verify Test` and `Verify All`
-3. **Doctor Approval** — single-test approve and bulk approve
-4. **Modified Approval** — re-approve
+## Data source
 
-## Files to change
+`approved_reports` only exists post-approval. For provisional, build the same `test_results` JSONB shape on the fly from live tables:
 
-### New file: `src/lib/differentialCount.ts`
-Shared helper used by all four components.
+1. Read `patient_registrations` row.
+2. Read `patient_results` for the registration where `status IN ('entered','pending','verified','approved','dispatched')` — i.e. anything with a current value (verified preferred; un-verified still shown so the user can see exactly what will go out).
+3. Filter by `tests` query param if present.
+4. Join with `test_parameters` + `report_test_parameters` (descriptions, subheaders) and `tests` master (already loaded via `testsMap`) to reconstruct each `TestResultEntry { test_id, parameter_id, result_value, reference_range, flag, unit, ... }` exactly like an approved snapshot.
+5. Pull `outsourced_test_snips` exactly as today.
+6. Sample collection date: same fallback already used (MIN of `sample_tubes.collected_at`).
+7. Approval date / approver fields: leave empty (signature block is suppressed anyway).
 
-```ts
-export const DIFFERENTIAL_PARAM_CODES = [
-  "PRM0090", "PRM0080", "PRM0086", "PRM0048", "PRM0019",
-];
+Wrap it in the same `[{ test_results, outsourced_snip_urls, patient_*, ... }]` array shape so the rest of `LimsReportView` (pagination, grouping, AutoScaleContent) needs no changes.
 
-export interface DiffCheckParam {
-  paramCode?: string | null;
-  value: string | number | null | undefined;
-}
+## File-level changes
 
-export interface DiffCheckResult {
-  hasDifferential: boolean; // any of the 5 codes present
-  sum: number;
-  diff: number;             // 100 - sum (positive = less, negative = more)
-  isOk: boolean;            // sum === 100 (with small tolerance)
-  presentCodes: string[];
-}
+1. **`src/pages/LimsReportView.tsx`**
+   - Read `provisional = searchParams.get("provisional") === "1"`.
+   - When `provisional`, branch in `loadAllData()`:
+     - Skip `approved_reports` fetch; instead query `patient_results` + `test_parameters` and assemble `filteredReports` in the existing shape.
+     - Skip signature loading & inlining (not needed).
+   - Force `showLetterhead = false` and hide the letterhead toggle when provisional.
+   - Hide print/share toggles? Keep Print + Download (still useful for review).
+   - Inside each page render, when provisional:
+     - Skip `<LimsReportHeader>`? **No** — keep it (user explicitly wants demographics).
+     - Skip the entire signature `<div className="mt-auto">…</div>` block (render only the Page Number).
+     - Add a watermark layer inside the `data-page` container (sibling of letterhead, above background but below content):
+       ```tsx
+       <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 0 }}>
+         <span style={{ transform: "rotate(-35deg)", fontSize: "90px", fontWeight: 800, color: "rgba(180,180,180,0.18)", letterSpacing: "6px", whiteSpace: "nowrap" }}>
+           PROVISIONAL REPORT
+         </span>
+       </div>
+       ```
+     - Title bar text becomes `"Provisional Report — {name} ({invoice})"`.
+   - Back button returns to `/lims?tab=verification` instead of dispatch when provisional.
 
-export function checkDifferentialSum(params: DiffCheckParam[]): DiffCheckResult;
-```
+2. **`src/components/lims/ResultVerification.tsx`**
+   - Add an `Eye` "View Report" button per patient row (next to existing Verify All / actions area).
+   - On click, open a "Select Tests for Report" dialog identical to Dispatch's (filter to tests with `status IN ('entered','pending','verified')`; default all selected).
+   - "Generate Report" button → `navigate(\`/lims/report/${regId}?provisional=1&tests=${ids.join(",")}\`)`.
 
-The helper:
-- Filters params whose `paramCode` is in the differential set.
-- Parses each `value` with `parseFloat` (ignores empty / non-numeric → 0).
-- Returns `isOk = Math.abs(100 - sum) < 0.001`.
+3. **No DB changes**, no edge-function changes, no new dependencies.
 
-### `src/components/lims/ResultsEntry.tsx`
-- In `handleSaveAndVerify` (line ~1029): after the existing blank-check branch decides to save, compute `checkDifferentialSum` on the test's params using the same `editedValues / p.resultValue` resolution already used for blanks.
-- If `hasDifferential && !isOk`, open a new `<Dialog>` (state `diffConfirm: { entry, testId, sum, diff, testName } | null`) instead of calling `saveMutation.mutate`. Dialog shows:
-  > "Differential count for **{testName}** is **{sum}**. Difference to 100: **{diff}**."
-  with **Cancel** + **Continue Anyway** buttons. "Continue" closes dialog and runs `saveMutation.mutate({ entry, testId })`.
-- If existing blank-confirm dialog also fires, run the differential check after the user confirms blanks too (chain: blanks dialog → diff dialog → save).
+## Technical notes
 
-### `src/components/lims/ResultVerification.tsx`
-- In `handleVerifyTest` (line 628) and `handleVerifyAll` (line 654): before invoking the verify mutation, run `checkDifferentialSum` over the involved params (per-test for Verify Test; per-test loop for Verify All — show one dialog listing each offending test, OR sequentially confirm — see "Verify All" note below).
-- Add `diffConfirm` state + Dialog mirroring Results Entry.
-- **Verify All:** aggregate offending tests into a single dialog body listing each `{testName} → sum X (diff Y)` and a single "Continue Anyway" button that proceeds with the original verify-all flow.
+- The watermark is an absolute layer inside the `data-page` element, so the existing `html-to-image` PDF capture (with `pixelRatio: 3` retry logic) will include it automatically — no extra wiring.
+- `AutoScaleContent`, dept ordering, profile grouping, snip pages, and pagination engine all stay untouched — provisional just feeds them a synthetic `test_results` array.
+- Bypassing signatures means we can also skip the `pathologist_signatures` / `urlToDataUrl` work in provisional mode → faster load.
+- Existing differential-count-validation, time-format, abnormal-flag rules are all rendering-side and continue to apply.
 
-### `src/components/lims/DoctorApproval.tsx`
-- Single approve (line ~480 mutation invocation site) and bulk approve (line ~560): same pattern. Run `checkDifferentialSum` per test prior to opening the approver-selection dialog (or right before the actual upsert — placement: right before `saveMutation`/approve action triggers, so the user sees the warning even after picking an approver).
-- Recommended placement: just before the action that currently calls the approver dialog or upserts. Add `diffConfirm` state + Dialog. On "Continue Anyway", resume the original code path (store the pending action in state and re-invoke).
+## Out of scope
 
-### `src/components/lims/ModifiedApproval.tsx`
-- The re-approve action around line 356–369: same pattern. Add `diffConfirm` state + Dialog, intercept the upsert, allow continue.
-
-## Dialog UX (consistent across all four screens)
-
-```
-Title: Differential Count Mismatch
-Body:  Test: <Test Name>
-       Current sum: <sum>
-       Difference to 100: <diff>   ← positive = less, negative = more
-       The sum should be exactly 100.
-Footer: [Cancel]  [Continue Anyway]
-```
-
-Use existing `Dialog` (or `AlertDialog`) imports already present in each file; no new shadcn components required.
-
-## Notes / scope guards
-
-- Validation is **warn-only** — never blocks save (per requirement).
-- If a test contains zero differential-count params, dialog never shows.
-- Numeric parsing only — non-numeric values count as 0 (matches user intent of "sum"; blanks are still flagged by the existing blank-check workflow).
-- No DB migration; param codes already live in `report_test_parameters.param_code` and are already loaded into each component's param list as `paramCode`.
-- No realtime / propagation changes.
+- No memory file required (feature reuses existing report architecture rules).
+- No change to approved-report flow, no change to Dispatch.

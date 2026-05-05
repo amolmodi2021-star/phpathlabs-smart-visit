@@ -1,5 +1,6 @@
 import RefreshButton from "@/components/lims/RefreshButton";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { formatAgeGender } from "@/lib/ageGender";
 import { isSuspectNegativeResult } from "@/lib/reportFlags";
@@ -93,6 +94,7 @@ const RV_PAGE_SIZE = 50;
 
 const ResultVerification = () => {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const { data: masterMachines = [] } = useMasterLookup("machine_name");
   const [mode, setMode] = useState<"patient" | "machine">("patient");
   const [search, setSearch] = useState("");
@@ -1395,6 +1397,18 @@ const ResultVerification = () => {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs gap-1"
+                      title="Preview provisional report"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/lims/report/${reg.id}?provisional=1`);
+                      }}
+                    >
+                      <Eye className="h-3.5 w-3.5 mr-1" /> View Report
+                    </Button>
                     <Button size="sm" variant="default" className="h-7 text-xs" disabled={isVerifying} onClick={(e) => { e.stopPropagation(); handleVerifyAll(entry); }}>
                       {isVerifying ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <CheckCircle2 className="h-3.5 w-3.5 mr-1" />}
                       Verify All
