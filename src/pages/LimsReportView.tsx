@@ -502,9 +502,9 @@ const LimsReportView = () => {
 
     // Fetch test_parameters for hierarchy
     let computedTpMap: Record<string, any[]> = {};
-    const uniqueTestIds = [...new Set((reports || []).flatMap((r: any) =>
+    const uniqueTestIds: string[] = [...new Set(filteredReports.flatMap((r: any) =>
       ((r.test_results || []) as TestResultEntry[]).map(tr => tr.test_id)
-    ))];
+    ))] as string[];
     if (uniqueTestIds.length > 0) {
       const { data: tpData } = await supabase
         .from("test_parameters")
