@@ -1060,16 +1060,16 @@ const LimsReportView = () => {
             {isProvisional && (
               <div
                 className="absolute inset-0 flex items-center justify-center pointer-events-none"
-                style={{ zIndex: 2 }}
+                style={{ zIndex: 2, padding: "0 20mm", overflow: "hidden" }}
                 aria-hidden="true"
               >
                 <span
                   style={{
                     transform: "rotate(-35deg)",
-                    fontSize: "92px",
+                    fontSize: "64px",
                     fontWeight: 800,
                     color: "rgba(120,120,120,0.13)",
-                    letterSpacing: "8px",
+                    letterSpacing: "6px",
                     whiteSpace: "nowrap",
                     fontFamily: "Arial, sans-serif",
                   }}
