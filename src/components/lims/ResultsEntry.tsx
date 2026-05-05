@@ -20,6 +20,7 @@ import { DescriptiveCombobox } from "./DescriptiveCombobox";
 import TimeResultInput from "./TimeResultInput";
 import { parseTimeResultToSeconds } from "@/lib/timeRange";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
+import { checkDifferentialSum } from "@/lib/differentialCount";
 
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import { signalSync } from "@/lib/limsSyncSignal";
@@ -925,6 +926,20 @@ const ResultsEntry = () => {
   const [savingTestKey, setSavingTestKey] = useState<string | null>(null);
   const [blankConfirmTestParams, setBlankConfirmTestParams] = useState<{ entry: PatientEntry; testId: string; testName: string } | null>(null);
   const [blankParamIds, setBlankParamIds] = useState<Set<string>>(new Set());
+  const [diffConfirm, setDiffConfirm] = useState<{ entry: PatientEntry; testId: string; testName: string; sum: number; diff: number } | null>(null);
+
+  // Returns null if no diff issue (or no differential params), otherwise the offending result.
+  const getDifferentialIssue = useCallback((entry: PatientEntry, testId: string) => {
+    const reg = entry.registration;
+    const testParams = entry.parameters.filter((p) => p.testId === testId);
+    const list = testParams.map((p) => {
+      const key = `${reg.id}||${p.parameterId}`;
+      const val = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
+      return { paramCode: p.paramCode, value: val };
+    });
+    const r = checkDifferentialSum(list);
+    return r.hasDifferential && !r.isOk ? r : null;
+  }, [editedValues]);
 
   const saveMutation = useMutation({
     mutationFn: async ({ entry, testId }: { entry: PatientEntry; testId: string }) => {
@@ -1029,7 +1044,7 @@ const ResultsEntry = () => {
   const handleSaveAndVerify = (entry: PatientEntry, testId: string, testName: string) => {
     const reg = entry.registration;
     const testParams = entry.parameters.filter(p => p.testId === testId);
-    
+
     // Snip-only test — no params to check for blanks, just save directly
     const isSnipOnly = entry.snipOnlyTests.some(s => s.testId === testId);
     if (isSnipOnly || testParams.length === 0) {
@@ -1037,7 +1052,7 @@ const ResultsEntry = () => {
       saveMutation.mutate({ entry, testId });
       return;
     }
-    
+
     // Count blank parameters
     let blanks = 0;
     for (const p of testParams) {
@@ -1059,6 +1074,11 @@ const ResultsEntry = () => {
       setBlankConfirmTestParams({ entry, testId, testName });
       setHighlightBlanksForRegs(prev => new Set(prev).add(`${reg.id}||${testId}`));
     } else {
+      const issue = getDifferentialIssue(entry, testId);
+      if (issue) {
+        setDiffConfirm({ entry, testId, testName, sum: issue.sum, diff: issue.diff });
+        return;
+      }
       setSavingTestKey(`${reg.id}||${testId}`);
       saveMutation.mutate({ entry, testId });
     }
@@ -2044,7 +2064,13 @@ const ResultsEntry = () => {
             </Button>
             <Button onClick={() => {
               if (blankConfirmTestParams) {
-                const { entry, testId } = blankConfirmTestParams;
+                const { entry, testId, testName } = blankConfirmTestParams;
+                const issue = getDifferentialIssue(entry, testId);
+                setBlankConfirmTestParams(null);
+                if (issue) {
+                  setDiffConfirm({ entry, testId, testName, sum: issue.sum, diff: issue.diff });
+                  return;
+                }
                 setSavingTestKey(`${entry.registration.id}||${testId}`);
                 saveMutation.mutate({ entry, testId });
               }
@@ -2055,6 +2081,41 @@ const ResultsEntry = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Differential count mismatch dialog */}
+      <AlertDialog open={!!diffConfirm} onOpenChange={(open) => { if (!open) setDiffConfirm(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Differential Count Mismatch</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-1 text-sm">
+                <div><span className="font-medium">Test:</span> {diffConfirm?.testName}</div>
+                <div><span className="font-medium">Current sum:</span> {diffConfirm?.sum}</div>
+                <div>
+                  <span className="font-medium">Difference to 100:</span>{" "}
+                  <span className={(diffConfirm?.diff ?? 0) === 0 ? "" : "text-destructive font-semibold"}>
+                    {diffConfirm?.diff}
+                  </span>{" "}
+                  <span className="text-muted-foreground">
+                    ({(diffConfirm?.diff ?? 0) > 0 ? "less" : (diffConfirm?.diff ?? 0) < 0 ? "more" : "exact"})
+                  </span>
+                </div>
+                <div className="text-muted-foreground pt-1">The sum of WBC differential parameters should be exactly 100. You can continue saving anyway.</div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              if (diffConfirm) {
+                const { entry, testId } = diffConfirm;
+                setDiffConfirm(null);
+                setSavingTestKey(`${entry.registration.id}||${testId}`);
+                saveMutation.mutate({ entry, testId });
+              }
+            }}>Continue Anyway</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {/* Snip Image Viewer Dialog */}
       <Dialog open={!!viewSnipImages} onOpenChange={open => { if (!open) { setViewSnipImages(null); setViewSnipContext(null); } }}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">

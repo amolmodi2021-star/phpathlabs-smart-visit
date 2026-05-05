@@ -15,6 +15,8 @@ import PaginatedTableFooter from "@/components/ui/PaginatedTableFooter";
 import { isSuspectNegativeResult } from "@/lib/reportFlags";
 import TimeResultInput from "./TimeResultInput";
 import { parseTimeResultToSeconds, toCanonicalTimeResult } from "@/lib/timeRange";
+import { checkDifferentialSum } from "@/lib/differentialCount";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 const PAGE_SIZE = 50;
 
@@ -35,6 +37,7 @@ const ModifiedApproval = () => {
   const [activeTestNoteKey, setActiveTestNoteKey] = useState<string | null>(null);
   const [actionKey, setActionKey] = useState<string | null>(null);
   const [viewSnipImages, setViewSnipImages] = useState<string[] | null>(null);
+  const [diffConfirm, setDiffConfirm] = useState<{ report: any; testGroups: any[]; issues: { testName: string; sum: number; diff: number }[] } | null>(null);
 
   useEffect(() => { const t = setTimeout(() => setDebouncedSearch(search), 400); return () => clearTimeout(t); }, [search]);
   useEffect(() => { setPage(0); }, [debouncedSearch]);
@@ -302,8 +305,27 @@ const ModifiedApproval = () => {
     finally { setActionKey(null); }
   };
 
-  const saveChanges = async (report: any, testGroups: any[]) => {
+  const saveChanges = async (report: any, testGroups: any[], skipDiffCheck = false) => {
     const regId = report.registration_id;
+
+    if (!skipDiffCheck) {
+      const issues: { testName: string; sum: number; diff: number }[] = [];
+      for (const tg of testGroups) {
+        const list = (tg.params || []).map((p: any) => {
+          const key = `${regId}||${p.parameter_id}`;
+          const saved = savedOverrides[key];
+          const v = editedValues[key] !== undefined ? editedValues[key] : (saved?.value ?? p.result_value);
+          return { paramCode: p.param_code, value: v };
+        });
+        const r = checkDifferentialSum(list);
+        if (r.hasDifferential && !r.isOk) issues.push({ testName: tg.testName, sum: r.sum, diff: r.diff });
+      }
+      if (issues.length > 0) {
+        setDiffConfirm({ report, testGroups, issues });
+        return;
+      }
+    }
+
     setActionKey(`${regId}||save`);
     try {
       const allTestResults: any[] = [];
@@ -680,6 +702,40 @@ const ModifiedApproval = () => {
           <div className="space-y-4">{viewSnipImages?.map((url, idx) => (<div key={idx} className="border rounded-lg overflow-hidden"><img src={url} alt={`Snip page ${idx + 1}`} className="w-full object-contain" /></div>))}</div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!diffConfirm} onOpenChange={(open) => { if (!open) setDiffConfirm(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Differential Count Mismatch</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm">
+                {diffConfirm?.issues.map((i, idx) => (
+                  <div key={idx} className="border-l-2 border-destructive pl-2">
+                    <div><span className="font-medium">Test:</span> {i.testName}</div>
+                    <div><span className="font-medium">Current sum:</span> {i.sum}</div>
+                    <div>
+                      <span className="font-medium">Difference to 100:</span>{" "}
+                      <span className="text-destructive font-semibold">{i.diff}</span>{" "}
+                      <span className="text-muted-foreground">({i.diff > 0 ? "less" : i.diff < 0 ? "more" : "exact"})</span>
+                    </div>
+                  </div>
+                ))}
+                <div className="text-muted-foreground pt-1">The sum of WBC differential parameters should be exactly 100. You can continue saving anyway.</div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              if (diffConfirm) {
+                const { report, testGroups } = diffConfirm;
+                setDiffConfirm(null);
+                saveChanges(report, testGroups, true);
+              }
+            }}>Continue Anyway</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <PaginatedTableFooter page={page} pageSize={PAGE_SIZE} total={totalReports} onPageChange={setPage} />
     </div>

@@ -19,6 +19,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Search, User, Monitor, Calculator, ChevronDown, ChevronUp, Loader2, CheckCircle2, Undo2, RotateCcw, Eye, Stethoscope, FileCheck, StickyNote, Trash2, AlertTriangle } from "lucide-react";
 import { DescriptiveCombobox } from "./DescriptiveCombobox";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
+import { checkDifferentialSum } from "@/lib/differentialCount";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { formatDateDDMMYYYY } from "@/lib/utils";
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
@@ -88,6 +90,7 @@ const DoctorApproval = () => {
   const [approverDialogOpen, setApproverDialogOpen] = useState(false);
   const pendingApprovalRef = useRef<null | ((choice: ApproverChoice) => void)>(null);
   const currentUserSigCacheRef = useRef<{ userId: string | null; checked: boolean; choice: ApproverChoice | null }>({ userId: null, checked: false, choice: null });
+  const [diffConfirm, setDiffConfirm] = useState<{ entry: PatientEntry; mode: "test" | "all"; testId: string; testName: string; issues: { testName: string; sum: number; diff: number }[] } | null>(null);
 
   // Resolve who should sign this approval. Returns null if blocked (toast already shown) or pending dialog selection.
   const resolveApprover = (): Promise<ApproverChoice | null> => {
@@ -458,9 +461,29 @@ const DoctorApproval = () => {
     ].forEach((k) => qc.invalidateQueries({ queryKey: [k], refetchType: "active" }));
   };
 
-  // Approve test
-  const approveTest = async (entry: PatientEntry, testId: string, testName: string) => {
+  // Compute differential issue for a single test of an entry
+  const computeDiffIssue = (entry: PatientEntry, testId: string) => {
     const reg = entry.registration;
+    const testParams = entry.parameters.filter((p) => p.testId === testId);
+    const list = testParams.map((p) => {
+      const k = `${reg.id}||${p.parameterId}`;
+      const val = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
+      return { paramCode: p.paramCode, value: val };
+    });
+    const r = checkDifferentialSum(list);
+    return r.hasDifferential && !r.isOk ? r : null;
+  };
+
+  // Approve test
+  const approveTest = async (entry: PatientEntry, testId: string, testName: string, skipDiffCheck = false) => {
+    const reg = entry.registration;
+    if (!skipDiffCheck) {
+      const issue = computeDiffIssue(entry, testId);
+      if (issue) {
+        setDiffConfirm({ entry, mode: "test", testId, testName, issues: [{ testName, sum: issue.sum, diff: issue.diff }] });
+        return;
+      }
+    }
     // Resolve approver BEFORE setting action key (so cancellation doesn't leave loading state)
     const approver = await resolveApprover();
     if (!approver) return;
@@ -537,8 +560,23 @@ const DoctorApproval = () => {
     finally { setActionKey(null); }
   };
 
-  const approveAllForPatient = async (entry: PatientEntry) => {
+  const approveAllForPatient = async (entry: PatientEntry, skipDiffCheck = false) => {
     const reg = entry.registration;
+    if (!skipDiffCheck) {
+      const testIds = [...new Set(entry.parameters.map((p) => p.testId))];
+      const issues: { testName: string; sum: number; diff: number }[] = [];
+      for (const tid of testIds) {
+        const issue = computeDiffIssue(entry, tid);
+        if (issue) {
+          const tName = entry.parameters.find((p) => p.testId === tid)?.testName || "Test";
+          issues.push({ testName: tName, sum: issue.sum, diff: issue.diff });
+        }
+      }
+      if (issues.length > 0) {
+        setDiffConfirm({ entry, mode: "all", testId: "__all__", testName: "All Tests", issues });
+        return;
+      }
+    }
     const approver = await resolveApprover();
     if (!approver) return;
     setActionKey(`${reg.id}||all||approve`);
@@ -1042,6 +1080,40 @@ const DoctorApproval = () => {
       </>
       )}
       <SelectApproverDialog open={approverDialogOpen} onOpenChange={handleApproverDialogCancel} onConfirm={handleApproverDialogConfirm} />
+      <AlertDialog open={!!diffConfirm} onOpenChange={(open) => { if (!open) setDiffConfirm(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Differential Count Mismatch</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm">
+                {diffConfirm?.issues.map((i, idx) => (
+                  <div key={idx} className="border-l-2 border-destructive pl-2">
+                    <div><span className="font-medium">Test:</span> {i.testName}</div>
+                    <div><span className="font-medium">Current sum:</span> {i.sum}</div>
+                    <div>
+                      <span className="font-medium">Difference to 100:</span>{" "}
+                      <span className="text-destructive font-semibold">{i.diff}</span>{" "}
+                      <span className="text-muted-foreground">({i.diff > 0 ? "less" : i.diff < 0 ? "more" : "exact"})</span>
+                    </div>
+                  </div>
+                ))}
+                <div className="text-muted-foreground pt-1">The sum of WBC differential parameters should be exactly 100. You can continue anyway.</div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              if (diffConfirm) {
+                const { entry, mode, testId, testName } = diffConfirm;
+                setDiffConfirm(null);
+                if (mode === "all") approveAllForPatient(entry, true);
+                else approveTest(entry, testId, testName, true);
+              }
+            }}>Continue Anyway</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

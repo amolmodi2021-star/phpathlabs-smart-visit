@@ -19,6 +19,8 @@ import { DescriptiveCombobox } from "./DescriptiveCombobox";
 import TimeResultInput from "./TimeResultInput";
 import { parseTimeResultToSeconds } from "@/lib/timeRange";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
+import { checkDifferentialSum } from "@/lib/differentialCount";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { formatDateDDMMYYYY } from "@/lib/utils";
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
@@ -111,6 +113,7 @@ const ResultVerification = () => {
   const [blankParamCount, setBlankParamCount] = useState(0);
   const [blankParamIds, setBlankParamIds] = useState<Set<string>>(new Set());
   const [highlightBlanksForRegs, setHighlightBlanksForRegs] = useState<Set<string>>(new Set());
+  const [diffConfirm, setDiffConfirm] = useState<{ entry: PatientEntry; mode: "test" | "all"; testId: string; testName: string; issues: { testName: string; sum: number; diff: number }[] } | null>(null);
   const [rvPage, setRvPage] = useState(0);
 
   useEffect(() => {
@@ -625,6 +628,19 @@ const ResultVerification = () => {
     return blanks;
   };
 
+  // Compute differential issue for a single test of an entry
+  const computeDiffIssue = (entry: PatientEntry, testId: string) => {
+    const reg = entry.registration;
+    const testParams = entry.parameters.filter((p) => p.testId === testId);
+    const list = testParams.map((p) => {
+      const key = `${reg.id}||${p.parameterId}`;
+      const val = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
+      return { paramCode: p.paramCode, value: val };
+    });
+    const r = checkDifferentialSum(list);
+    return r.hasDifferential && !r.isOk ? r : null;
+  };
+
   const handleVerifyTest = (entry: PatientEntry, testId: string, testName: string) => {
     // Snip-only test — no params to check, verify directly
     const isSnipOnly = entry.snipOnlyTests.some(s => s.testId === testId);
@@ -647,6 +663,11 @@ const ResultVerification = () => {
       setBlankConfirmTestParams({ entry, testId, testName });
       setHighlightBlanksForRegs(prev => new Set(prev).add(`${entry.registration.id}||${testId}`));
     } else {
+      const issue = computeDiffIssue(entry, testId);
+      if (issue) {
+        setDiffConfirm({ entry, mode: "test", testId, testName, issues: [{ testName, sum: issue.sum, diff: issue.diff }] });
+        return;
+      }
       verifyTest(entry, testId, testName);
     }
   };
@@ -667,6 +688,18 @@ const ResultVerification = () => {
       setBlankParamIds(ids);
       setBlankConfirmTestParams({ entry, testId: "__all__", testName: "All Tests" });
     } else {
+      const issues: { testName: string; sum: number; diff: number }[] = [];
+      for (const tid of testIds) {
+        const issue = computeDiffIssue(entry, tid);
+        if (issue) {
+          const tName = entry.parameters.find(p => p.testId === tid)?.testName || "Test";
+          issues.push({ testName: tName, sum: issue.sum, diff: issue.diff });
+        }
+      }
+      if (issues.length > 0) {
+        setDiffConfirm({ entry, mode: "all", testId: "__all__", testName: "All Tests", issues });
+        return;
+      }
       verifyAllForPatient(entry);
     }
   };
@@ -1476,13 +1509,31 @@ const ResultVerification = () => {
             <Button variant="outline" onClick={() => setBlankConfirmTestParams(null)}>Cancel & Review</Button>
             <Button onClick={() => {
               if (blankConfirmTestParams) {
-                const { entry, testId } = blankConfirmTestParams;
+                const { entry, testId, testName } = blankConfirmTestParams;
                 setBlankConfirmTestParams(null);
                 setHighlightBlanksForRegs(prev => { const next = new Set(prev); next.delete(`${entry.registration.id}||${testId}`); return next; });
                 if (testId === "__all__") {
+                  const testIds = [...new Set(entry.parameters.map(p => p.testId))];
+                  const issues: { testName: string; sum: number; diff: number }[] = [];
+                  for (const tid of testIds) {
+                    const issue = computeDiffIssue(entry, tid);
+                    if (issue) {
+                      const tName = entry.parameters.find(p => p.testId === tid)?.testName || "Test";
+                      issues.push({ testName: tName, sum: issue.sum, diff: issue.diff });
+                    }
+                  }
+                  if (issues.length > 0) {
+                    setDiffConfirm({ entry, mode: "all", testId: "__all__", testName: "All Tests", issues });
+                    return;
+                  }
                   verifyAllForPatient(entry);
                 } else {
-                  verifyTest(entry, testId, blankConfirmTestParams.testName);
+                  const issue = computeDiffIssue(entry, testId);
+                  if (issue) {
+                    setDiffConfirm({ entry, mode: "test", testId, testName, issues: [{ testName, sum: issue.sum, diff: issue.diff }] });
+                    return;
+                  }
+                  verifyTest(entry, testId, testName);
                 }
               }
             }}>
@@ -1492,6 +1543,41 @@ const ResultVerification = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Differential count mismatch dialog */}
+      <AlertDialog open={!!diffConfirm} onOpenChange={(open) => { if (!open) setDiffConfirm(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Differential Count Mismatch</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm">
+                {diffConfirm?.issues.map((i, idx) => (
+                  <div key={idx} className="border-l-2 border-destructive pl-2">
+                    <div><span className="font-medium">Test:</span> {i.testName}</div>
+                    <div><span className="font-medium">Current sum:</span> {i.sum}</div>
+                    <div>
+                      <span className="font-medium">Difference to 100:</span>{" "}
+                      <span className="text-destructive font-semibold">{i.diff}</span>{" "}
+                      <span className="text-muted-foreground">({i.diff > 0 ? "less" : i.diff < 0 ? "more" : "exact"})</span>
+                    </div>
+                  </div>
+                ))}
+                <div className="text-muted-foreground pt-1">The sum of WBC differential parameters should be exactly 100. You can continue anyway.</div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              if (diffConfirm) {
+                const { entry, mode, testId, testName } = diffConfirm;
+                setDiffConfirm(null);
+                if (mode === "all") verifyAllForPatient(entry);
+                else verifyTest(entry, testId, testName);
+              }
+            }}>Continue Anyway</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Snip Image Viewer */}
       <Dialog open={!!viewSnipImages} onOpenChange={open => { if (!open) setViewSnipImages(null); }}>
