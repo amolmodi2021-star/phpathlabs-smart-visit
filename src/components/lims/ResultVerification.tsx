@@ -1,5 +1,6 @@
 import RefreshButton from "@/components/lims/RefreshButton";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { formatAgeGender } from "@/lib/ageGender";
 import { isSuspectNegativeResult } from "@/lib/reportFlags";
