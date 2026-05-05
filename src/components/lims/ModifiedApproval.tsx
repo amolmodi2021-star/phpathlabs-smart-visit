@@ -37,6 +37,7 @@ const ModifiedApproval = () => {
   const [activeTestNoteKey, setActiveTestNoteKey] = useState<string | null>(null);
   const [actionKey, setActionKey] = useState<string | null>(null);
   const [viewSnipImages, setViewSnipImages] = useState<string[] | null>(null);
+  const [diffConfirm, setDiffConfirm] = useState<{ report: any; testGroups: any[]; issues: { testName: string; sum: number; diff: number }[] } | null>(null);
 
   useEffect(() => { const t = setTimeout(() => setDebouncedSearch(search), 400); return () => clearTimeout(t); }, [search]);
   useEffect(() => { setPage(0); }, [debouncedSearch]);
