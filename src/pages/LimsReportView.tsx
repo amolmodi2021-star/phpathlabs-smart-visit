@@ -314,6 +314,9 @@ const LimsReportView = () => {
     try {
 
     // Parallel fetches
+    const reportsFetch = isProvisional
+      ? Promise.resolve({ data: [] as any[] })
+      : supabase.from("approved_reports").select("*").eq("registration_id", registrationId);
     const [
       { data: reports },
       { data: regData },
@@ -323,18 +326,58 @@ const LimsReportView = () => {
       { data: snips },
       { data: signatures },
     ] = await Promise.all([
-      supabase.from("approved_reports").select("*").eq("registration_id", registrationId),
+      reportsFetch as any,
       supabase.from("patient_registrations").select("*").eq("id", registrationId).single(),
       supabase.from("report_layout_settings").select("*").limit(1).single(),
       supabase.from("report_departments").select("*").order("display_order", { ascending: true }),
       supabase.from("tests").select("id, test_name, department_id, instrument_name, method, sample_type, interpretation, is_outsourced, display_name, bold_in_report, show_in_report, fit_to_page, dedicated_page, is_single_parameter, report_display_order"),
       supabase.from("outsourced_test_snips").select("*").eq("registration_id", registrationId),
-      supabase.from("pathologist_signatures").select("*"),
+      isProvisional
+        ? Promise.resolve({ data: [] as any[] })
+        : supabase.from("pathologist_signatures").select("*"),
     ]);
+
+    let reportsArr = reports || [];
+
+    // Provisional: synthesize an approved_reports-shaped record from live patient_results
+    if (isProvisional && regData) {
+      const { data: liveResults } = await supabase
+        .from("patient_results")
+        .select("test_id, parameter_id, param_code, parameter_name, result_value, unit, reference_range, normal_range_low, normal_range_high, flag, is_calculated, note, test_note, status")
+        .eq("registration_id", registrationId)
+        .in("status", ["entered", "pending", "verified", "approved", "dispatched"]);
+      // Pull test_name for each test_id from the loaded tests master
+      const testNameById: Record<string, string> = {};
+      (allTests || []).forEach((t: any) => { testNameById[t.id] = t.test_name; });
+      const synthResults = (liveResults || []).map((r: any) => ({
+        ...r,
+        test_name: testNameById[r.test_id] || "",
+      }));
+      reportsArr = [{
+        registration_id: registrationId,
+        invoice_number: regData.invoice_number,
+        umr_number: regData.umr_number,
+        patient_name: regData.patient_name,
+        title: regData.title,
+        gender: regData.gender,
+        dob: regData.dob,
+        mobile_number: regData.mobile_number,
+        email: regData.email,
+        address: regData.address,
+        doctor_name: regData.doctor_name,
+        visit_type: regData.visit_type,
+        is_stat: regData.is_stat,
+        registration_date: regData.created_at,
+        approval_date: null,
+        sample_collection_date: null,
+        approved_by: null,
+        test_results: synthResults,
+        outsourced_snip_urls: [],
+      }];
+    }
 
     // Fallback: if any report is missing sample_collection_date (legacy approvals before
     // collection-date capture), derive it from MIN(sample_tubes.collected_at) for this registration.
-    const reportsArr = reports || [];
     const needsCollectionFallback = reportsArr.some((r: any) => !r.sample_collection_date);
     let fallbackCollectionDate: string | null = null;
     if (needsCollectionFallback) {
