@@ -324,6 +324,7 @@ const PickupPointManager = () => {
     setName(""); setPhone(""); setAddress(""); setContactPerson("");
     setBillingType("credit"); setBillingCycle("monthly"); setDiscountPct(0);
     setAllowAllTests(false);
+    setReportFooterNote("");
     setEditingId(null); setCloneFromId(""); setApplyStdListId("");
   };
 
@@ -333,6 +334,7 @@ const PickupPointManager = () => {
     setContactPerson(pp.contact_person || ""); setBillingType(pp.billing_type);
     setBillingCycle(pp.billing_cycle); setDiscountPct(pp.default_discount_pct || 0);
     setAllowAllTests(!!pp.allow_all_tests);
+    setReportFooterNote(pp.report_footer_note || "");
     setApplyStdListId("");
     setFormOpen(true);
   };
