@@ -926,6 +926,20 @@ const ResultsEntry = () => {
   const [savingTestKey, setSavingTestKey] = useState<string | null>(null);
   const [blankConfirmTestParams, setBlankConfirmTestParams] = useState<{ entry: PatientEntry; testId: string; testName: string } | null>(null);
   const [blankParamIds, setBlankParamIds] = useState<Set<string>>(new Set());
+  const [diffConfirm, setDiffConfirm] = useState<{ entry: PatientEntry; testId: string; testName: string; sum: number; diff: number } | null>(null);
+
+  // Returns null if no diff issue (or no differential params), otherwise the offending result.
+  const getDifferentialIssue = useCallback((entry: PatientEntry, testId: string) => {
+    const reg = entry.registration;
+    const testParams = entry.parameters.filter((p) => p.testId === testId);
+    const list = testParams.map((p) => {
+      const key = `${reg.id}||${p.parameterId}`;
+      const val = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
+      return { paramCode: p.paramCode, value: val };
+    });
+    const r = checkDifferentialSum(list);
+    return r.hasDifferential && !r.isOk ? r : null;
+  }, [editedValues]);
 
   const saveMutation = useMutation({
     mutationFn: async ({ entry, testId }: { entry: PatientEntry; testId: string }) => {
