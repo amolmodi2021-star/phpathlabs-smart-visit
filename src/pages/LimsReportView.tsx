@@ -558,7 +558,14 @@ const LimsReportView = () => {
 
     const topMm = (layoutSettings.top_margin_cm || 2.5) * 10;
     const bottomMm = (layoutSettings.bottom_margin_cm || 1.5) * 10;
-    const usableHeight = PAGE_HEIGHT_MM - topMm - bottomMm - HEADER_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM;
+    const footerNoteMm = pickupFooterNote
+      ? 4 + Math.max(
+          1,
+          Math.ceil(pickupFooterNote.length / 110),
+          pickupFooterNote.split(/\r?\n/).length,
+        ) * 4
+      : 0;
+    const usableHeight = PAGE_HEIGHT_MM - topMm - bottomMm - HEADER_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM - footerNoteMm;
 
     // Merge all test_results from all approved reports
     const allResults: TestResultEntry[] = [];
