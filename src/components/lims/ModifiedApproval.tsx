@@ -15,6 +15,8 @@ import PaginatedTableFooter from "@/components/ui/PaginatedTableFooter";
 import { isSuspectNegativeResult } from "@/lib/reportFlags";
 import TimeResultInput from "./TimeResultInput";
 import { parseTimeResultToSeconds, toCanonicalTimeResult } from "@/lib/timeRange";
+import { checkDifferentialSum } from "@/lib/differentialCount";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 const PAGE_SIZE = 50;
 
