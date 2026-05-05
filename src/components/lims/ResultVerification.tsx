@@ -19,6 +19,8 @@ import { DescriptiveCombobox } from "./DescriptiveCombobox";
 import TimeResultInput from "./TimeResultInput";
 import { parseTimeResultToSeconds } from "@/lib/timeRange";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
+import { checkDifferentialSum } from "@/lib/differentialCount";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { formatDateDDMMYYYY } from "@/lib/utils";
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
