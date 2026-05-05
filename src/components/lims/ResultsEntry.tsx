@@ -1044,7 +1044,7 @@ const ResultsEntry = () => {
   const handleSaveAndVerify = (entry: PatientEntry, testId: string, testName: string) => {
     const reg = entry.registration;
     const testParams = entry.parameters.filter(p => p.testId === testId);
-    
+
     // Snip-only test — no params to check for blanks, just save directly
     const isSnipOnly = entry.snipOnlyTests.some(s => s.testId === testId);
     if (isSnipOnly || testParams.length === 0) {
@@ -1052,7 +1052,7 @@ const ResultsEntry = () => {
       saveMutation.mutate({ entry, testId });
       return;
     }
-    
+
     // Count blank parameters
     let blanks = 0;
     for (const p of testParams) {
@@ -1074,6 +1074,11 @@ const ResultsEntry = () => {
       setBlankConfirmTestParams({ entry, testId, testName });
       setHighlightBlanksForRegs(prev => new Set(prev).add(`${reg.id}||${testId}`));
     } else {
+      const issue = getDifferentialIssue(entry, testId);
+      if (issue) {
+        setDiffConfirm({ entry, testId, testName, sum: issue.sum, diff: issue.diff });
+        return;
+      }
       setSavingTestKey(`${reg.id}||${testId}`);
       saveMutation.mutate({ entry, testId });
     }
