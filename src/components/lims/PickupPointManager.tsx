@@ -657,6 +657,19 @@ const PickupPointManager = () => {
                 {applyStdListId && <p className="text-xs text-muted-foreground mt-1">Disabled — standard list takes precedence.</p>}
               </div>
             )}
+            <div>
+              <Label>Report Footer Note</Label>
+              <Textarea
+                value={reportFooterNote}
+                onChange={e => setReportFooterNote(e.target.value)}
+                placeholder="e.g. Sample collected by Dr. ABC Clinic. Reports authorized for clinic use only."
+                rows={3}
+                className="text-sm"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Printed on every page of the report PDF for patients registered under this pickup point. Keep it short — long text reduces space available for test results on each page.
+              </p>
+            </div>
             <Button className="w-full" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>Save</Button>
           </div>
         </DialogContent>
