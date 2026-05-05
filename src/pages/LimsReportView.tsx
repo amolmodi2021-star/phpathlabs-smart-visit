@@ -1164,7 +1164,7 @@ const LimsReportView = () => {
                       className="max-w-full object-contain"
                       style={{
                         // Reserve full margins + header + signature band + page number + safety gap so snip never overlaps signature.
-                        maxHeight: `${PAGE_HEIGHT_MM - topMm - bottomMm - HEADER_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM - 6}mm`,
+                        maxHeight: `${PAGE_HEIGHT_MM - topMm - bottomMm - HEADER_HEIGHT_MM - SIGNATURE_HEIGHT_MM - PAGE_NUM_HEIGHT_MM - footerNoteMm - 6}mm`,
                       }}
                     />
                   </div>
