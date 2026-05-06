@@ -167,9 +167,12 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
       if (Number.isNaN(selectedDateTime.getTime())) throw new Error("Invalid visit date/time");
       if (selectedDateTime.getTime() < Date.now()) throw new Error("Cannot book for date/time that has already passed");
 
+      const cleanName = patientName.replace(/\s+/g, ' ').trim().toUpperCase();
+      const cleanAddress = address.replace(/\s+/g, ' ').trim().toUpperCase();
+
       // Create estimate
       const { data: est, error: estError } = await supabase.from("estimates").insert({
-        patient_name: patientName ? patientName.toUpperCase() : null,
+        patient_name: cleanName || null,
         whatsapp_number: cleanNumber,
         total_amount: calculations.totalAmount,
         discount_amount: calculations.totalDiscount,
