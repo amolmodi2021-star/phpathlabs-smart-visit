@@ -150,6 +150,7 @@ const PatientRegistration = () => {
   useEffect(() => {
     if (["Mr.", "Master"].includes(title)) setGender("Male");
     else if (["Mrs.", "Ms.", "Miss"].includes(title)) setGender("Female");
+    else if (["Baby Of", "Dr."].includes(title)) setGender("");
   }, [title]);
 
   // Age calc - from DOB for non-pickup, manual for pickup
