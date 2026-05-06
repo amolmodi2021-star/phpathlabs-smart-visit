@@ -696,7 +696,7 @@ const PatientRegistration = () => {
           {visitType !== "pickup_point" && (
             <div>
               <Label className={triedSave && !address.trim() ? "text-destructive" : ""}>Address *</Label>
-              <Input value={address} onChange={e => setAddress(e.target.value.toUpperCase())} placeholder="Patient address" className="uppercase" />
+              <Input value={address} onChange={e => setAddress(e.target.value.toUpperCase())} placeholder="Patient address" className="uppercase" disabled={patientLocked} />
             </div>
           )}
 
