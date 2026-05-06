@@ -18,6 +18,7 @@ import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import { buildSampleTubeGroups } from "@/lib/sampleTubeGrouping";
 import InvoicePreview from "./InvoicePreview";
 import PatientSelectDialog, { type PatientPick } from "./PatientSelectDialog";
+import DoctorAutocomplete, { ensureDoctor } from "./DoctorAutocomplete";
 
 const TITLES = ["Mr.", "Mrs.", "Ms.", "Master", "Miss", "Baby Of", "Dr."];
 const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card", "NEFT"];
