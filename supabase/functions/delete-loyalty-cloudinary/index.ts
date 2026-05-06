@@ -4,8 +4,7 @@
 // well below it. Anything we miss ages out via the 7-day Cloudinary auto-delete
 // rule, so partial failures are non-fatal.
 import { corsHeaders } from "https://esm.sh/@supabase/supabase-js@2.95.0/cors";
-
-const CLOUD_NAME = "dd7qn3t3d";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 
 async function hmacSha1Hex(key: string, msg: string): Promise<string> {
   const enc = new TextEncoder();
