@@ -309,7 +309,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
       const { error: visitError } = await supabase.from("home_visits").update({
         visit_date: visitDate,
         visit_time: visitTime,
-        address: address.toUpperCase(),
+        address: cleanAddress,
         phlebotomist_id: phlebotomistId || null,
       }).eq("id", visit.id);
       if (visitError) throw visitError;
