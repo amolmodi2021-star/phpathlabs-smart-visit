@@ -26,13 +26,8 @@ async function sha1Hex(input: string): Promise<string> {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-async function deleteBatch(publicIds: string[], apiKey: string, apiSecret: string): Promise<{ deleted: number; failed: number }> {
-  // Cloudinary's `delete_resources` requires params sorted alphabetically,
-  // joined as `key=value&...`, then SHA1(params + api_secret).
+async function deleteBatch(cloudName: string, publicIds: string[], apiKey: string, apiSecret: string): Promise<{ deleted: number; failed: number }> {
   const timestamp = Math.floor(Date.now() / 1000);
-  const publicIdsParam = publicIds.join(",");
-  const toSign = `public_ids[]=${publicIds.map((id) => encodeURIComponent(id)).join("&public_ids[]=")}&timestamp=${timestamp}`;
-  // Cloudinary doesn't actually URL-encode for signing — it uses the raw value.
   const rawToSign = `public_ids[]=${publicIds.join("&public_ids[]=")}&timestamp=${timestamp}`;
   const signature = await sha1Hex(rawToSign + apiSecret);
 
@@ -42,7 +37,7 @@ async function deleteBatch(publicIds: string[], apiKey: string, apiSecret: strin
   fd.append("api_key", apiKey);
   fd.append("signature", signature);
 
-  const url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/resources/image/upload`;
+  const url = `https://api.cloudinary.com/v1_1/${cloudName}/resources/image/upload`;
   const res = await fetch(url, { method: "DELETE", body: fd });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
