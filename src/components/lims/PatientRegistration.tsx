@@ -694,7 +694,7 @@ const PatientRegistration = () => {
             {!isPickup && (
               <div>
                 <Label>Doctor Name</Label>
-                <Input value={doctorName} onChange={e => setDoctorName(e.target.value.toUpperCase())} placeholder="SELF" className="uppercase" />
+                <DoctorAutocomplete value={doctorName} onChange={setDoctorName} placeholder="SELF" />
               </div>
             )}
           </div>
