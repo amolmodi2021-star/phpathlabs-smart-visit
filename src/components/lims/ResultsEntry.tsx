@@ -920,9 +920,15 @@ const ResultsEntry = () => {
   const [diffConfirm, setDiffConfirm] = useState<{ entry: PatientEntry; testId: string; testName: string; sum: number; diff: number } | null>(null);
 
   // Returns null if no diff issue (or no differential params), otherwise the offending result.
+  // IMPORTANT: read from the UNFILTERED patientEntries for this registration. The
+  // `entry.parameters` arg is from `filteredEntries`, which strips params whose status
+  // is already entered/verified/approved/dispatched. Diff params that were auto-pushed
+  // by the machine interface (or saved earlier) would otherwise be excluded and the
+  // 100-sum check would silently pass on an incomplete subset.
   const getDifferentialIssue = useCallback((entry: PatientEntry, testId: string) => {
     const reg = entry.registration;
-    const testParams = entry.parameters.filter((p) => p.testId === testId);
+    const rawEntry = patientEntries.find((pe) => pe.registration.id === reg.id) || entry;
+    const testParams = rawEntry.parameters.filter((p) => p.testId === testId);
     const list = testParams.map((p) => {
       const key = `${reg.id}||${p.parameterId}`;
       const val = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
@@ -930,7 +936,7 @@ const ResultsEntry = () => {
     });
     const r = checkDifferentialSum(list);
     return r.hasDifferential && !r.isOk ? r : null;
-  }, [editedValues]);
+  }, [editedValues, patientEntries]);
 
   const saveMutation = useMutation({
     mutationFn: async ({ entry, testId }: { entry: PatientEntry; testId: string }) => {
