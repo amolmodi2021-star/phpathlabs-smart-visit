@@ -369,7 +369,7 @@ const PatientRegistration = () => {
         gender,
         dob: dob || null,
         email: email || null,
-        address: visitType === "pickup_point" ? (selectedPickup?.address || "") : address.toUpperCase(),
+        address: visitType === "pickup_point" ? (selectedPickup?.address || "") : address.replace(/\s+/g, ' ').trim().toUpperCase(),
         doctor_name: (doctorName || "SELF").toUpperCase(),
         umr_number: finalUmr,
         visit_type: visitType,
