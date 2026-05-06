@@ -161,7 +161,7 @@ const AddPatientToVisitDialog = ({ open, onClose, visitDate, visitTime, address,
       // Create estimate
       const { data: estData, error: estError } = await supabase.from("estimates").insert({
         title: title || null,
-        patient_name: patientName.toUpperCase(),
+        patient_name: patientName.replace(/\s+/g, ' ').trim().toUpperCase(),
         gender: gender || null,
         email: email || null,
         doctor_name: doctorName ? doctorName.toUpperCase() : "SELF",
