@@ -25,6 +25,7 @@ import { checkDifferentialSum } from "@/lib/differentialCount";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import { signalSync } from "@/lib/limsSyncSignal";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
+import { fetchResultsEntryCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPendingCandidates";
 import SyncingOverlay from "./SyncingOverlay";
 import NewBadge from "./NewBadge";
 import OutsourcedResults from "./OutsourcedResults";
