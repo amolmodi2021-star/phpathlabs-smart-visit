@@ -224,6 +224,23 @@ const PatientRegistration = () => {
     setShowDropdown(results.length > 0);
   };
 
+  const checkSameDayDuplicate = async (umr: string | null | undefined) => {
+    const u = (umr || "").trim();
+    if (!u) return;
+    const start = new Date(); start.setHours(0, 0, 0, 0);
+    const end = new Date(); end.setHours(23, 59, 59, 999);
+    const { data } = await supabase
+      .from("patient_registrations")
+      .select("invoice_number")
+      .eq("umr_number", u)
+      .eq("bill_cancelled", false)
+      .gte("created_at", start.toISOString())
+      .lte("created_at", end.toISOString());
+    if (data && data.length > 0) {
+      setDuplicateRegInfo({ umr: u, invoices: data.map((r: any) => r.invoice_number).filter(Boolean) });
+    }
+  };
+
   const selectPatient = (p: PatientMatch) => {
     setMobileNumber(p.mobile_number);
     if (p.patient_name) setPatientName(p.patient_name);
@@ -235,6 +252,7 @@ const PatientRegistration = () => {
     if (p.umr_number) setUmrNumber(p.umr_number);
     if (p.address) setAddress(p.address);
     setShowDropdown(false);
+    checkSameDayDuplicate(p.umr_number);
   };
 
   // Get test price (channel/pickup custom price or default)
