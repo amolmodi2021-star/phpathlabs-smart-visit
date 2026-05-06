@@ -202,7 +202,7 @@ const EditEstimateDialog = ({ estimate, open, onClose }: EditEstimateDialogProps
         <div className="space-y-4">
           <div>
             <Label>Patient Name</Label>
-            <Input value={patientName} onChange={(e) => setPatientName(e.target.value)} />
+            <Input value={patientName} onChange={(e) => setPatientName(e.target.value.toUpperCase())} className="uppercase" />
           </div>
           <div>
             <Label>WhatsApp Number *</Label>
