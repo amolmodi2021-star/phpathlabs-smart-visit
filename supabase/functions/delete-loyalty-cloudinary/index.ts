@@ -60,19 +60,37 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const apiKey = Deno.env.get("CLOUDINARY_API_KEY");
-    const apiSecret = Deno.env.get("CLOUDINARY_API_SECRET");
-    if (!apiKey || !apiSecret) {
-      return new Response(JSON.stringify({ error: "Cloudinary credentials not configured" }), {
-        status: 500,
+    const body = await req.json().catch(() => ({} as any));
+    const publicIds: string[] = Array.isArray(body?.publicIds) ? body.publicIds.filter((x: unknown): x is string => typeof x === "string" && x.length > 0) : [];
+    if (publicIds.length === 0) {
+      return new Response(JSON.stringify({ deleted: 0, failed: 0, skipped: 0 }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const body = await req.json().catch(() => ({}));
-    const publicIds: string[] = Array.isArray(body?.publicIds) ? body.publicIds.filter((x: unknown): x is string => typeof x === "string" && x.length > 0) : [];
-    if (publicIds.length === 0) {
-      return new Response(JSON.stringify({ deleted: 0, failed: 0, skipped: 0 }), {
+    // Resolve cloud_name + credentials: prefer the active row in cloudinary_accounts,
+    // fall back to legacy env-var configuration for the original "dd7qn3t3d" account.
+    let cloudName = body?.cloudName as string | undefined;
+    let apiKey = body?.apiKey as string | undefined;
+    let apiSecret = body?.apiSecret as string | undefined;
+
+    if (!cloudName || !apiKey || !apiSecret) {
+      try {
+        const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        const { data } = await sb.from("cloudinary_accounts").select("cloud_name, api_key, api_secret").eq("is_active", true).maybeSingle();
+        if (data) {
+          cloudName = cloudName || data.cloud_name;
+          apiKey = apiKey || data.api_key || undefined;
+          apiSecret = apiSecret || data.api_secret || undefined;
+        }
+      } catch (e) { console.warn("cloudinary_accounts lookup failed", e); }
+    }
+    cloudName = cloudName || "dd7qn3t3d";
+    apiKey = apiKey || Deno.env.get("CLOUDINARY_API_KEY") || "";
+    apiSecret = apiSecret || Deno.env.get("CLOUDINARY_API_SECRET") || "";
+    if (!apiKey || !apiSecret) {
+      return new Response(JSON.stringify({ error: "Cloudinary credentials not configured for active account" }), {
+        status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -84,12 +102,10 @@ Deno.serve(async (req) => {
 
     for (let i = 0; i < publicIds.length; i += BATCH) {
       const slice = publicIds.slice(i, i + BATCH);
-      const r = await deleteBatch(slice, apiKey, apiSecret);
+      const r = await deleteBatch(cloudName, slice, apiKey, apiSecret);
       deleted += r.deleted;
       failed += r.failed;
       batchIndex++;
-      // Stay safely under the 500 Admin API calls/hour cap. After 400 batches in
-      // a single invocation, pause briefly so we never trip the rate limit.
       if (batchIndex % 400 === 0) await new Promise((r) => setTimeout(r, 2000));
     }
 
