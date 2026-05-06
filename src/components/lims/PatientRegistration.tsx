@@ -588,7 +588,10 @@ const PatientRegistration = () => {
                       type="button"
                       className="text-primary underline"
                       onClick={() => {
-                        setPatientLocked(false);
+                        // Keep current patient locked until user actually picks
+                        // a different patient or chooses "New Patient" in the dialog.
+                        // If they cancel the dialog, the form stays locked to the
+                        // previously selected patient.
                         const digits = mobileNumber.replace(/\D/g, "").slice(-10);
                         if (digits.length === 10) {
                           setPickerMobile(digits);
