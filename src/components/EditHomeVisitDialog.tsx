@@ -352,10 +352,10 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
             visitDate: format(new Date(visitDate), "dd-MM-yyyy"),
             visitTime: formatTime(visitTime),
             visitHeader: templates.visit_confirmation_header,
-            address: address.toUpperCase(),
-            patientName: patientName ? patientName.toUpperCase() : undefined,
+            address: cleanAddress,
+            patientName: cleanName || undefined,
           });
-          await logMessageSend(cleanNumber, patientName, "Home Visit", undefined, undefined, msg);
+          await logMessageSend(cleanNumber, cleanName, "Home Visit", undefined, undefined, msg);
           shareOnWhatsApp(cleanNumber, msg);
         }
       }
