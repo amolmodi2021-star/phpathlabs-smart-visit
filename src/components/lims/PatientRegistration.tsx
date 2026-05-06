@@ -17,6 +17,7 @@ import { logPaymentTransaction } from "@/lib/paymentTransactions";
 import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import { buildSampleTubeGroups } from "@/lib/sampleTubeGrouping";
 import InvoicePreview from "./InvoicePreview";
+import PatientSelectDialog, { type PatientPick } from "./PatientSelectDialog";
 
 const TITLES = ["Mr.", "Mrs.", "Ms.", "Master", "Miss", "Baby Of", "Dr."];
 const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card", "NEFT"];
