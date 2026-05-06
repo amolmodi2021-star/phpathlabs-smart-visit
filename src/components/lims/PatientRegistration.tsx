@@ -538,6 +538,14 @@ const PatientRegistration = () => {
         />
       )}
 
+      <PatientSelectDialog
+        open={showPatientPicker}
+        mobile10={pickerMobile}
+        onClose={() => setShowPatientPicker(false)}
+        onSelect={handlePatientPicked}
+        onNewPatient={handleNewPatient}
+      />
+
       <Card>
         <CardContent className="p-4 space-y-4">
           {/* Mobile Number + Pickup Point (side-by-side) */}
