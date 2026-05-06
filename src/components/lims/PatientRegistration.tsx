@@ -471,7 +471,7 @@ const PatientRegistration = () => {
             gender,
             dob: dob || null,
             email: email || null,
-            address: address.toUpperCase(),
+            address: cleanAddr,
             doctor_name: (doctorName || "SELF").toUpperCase(),
             mobile_number: cleanMobile,
           };
