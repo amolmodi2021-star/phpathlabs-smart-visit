@@ -135,7 +135,7 @@ const EditEstimateDialog = ({ estimate, open, onClose }: EditEstimateDialogProps
 
       // Update estimate
       const { error: estError } = await supabase.from("estimates").update({
-        patient_name: patientName ? patientName.toUpperCase() : null,
+        patient_name: patientName ? patientName.replace(/\s+/g, ' ').trim().toUpperCase() : null,
         whatsapp_number: cleanNumber,
         total_amount: calculations.totalAmount,
         discount_amount: calculations.totalDiscount,
