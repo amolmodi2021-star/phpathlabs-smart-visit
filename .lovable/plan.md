@@ -1,64 +1,90 @@
-# Cloudinary Account Manager in WhatsApp Settings
-
 ## Goal
-Let admins register multiple named Cloudinary accounts in WhatsApp Settings, mark exactly one as **Active**, and have all card image uploads (Loyalty/ABC cards + Abnormal History cards) use the active account automatically. Switching the active account later seamlessly routes all subsequent uploads to the new one.
 
-## Where things live today
-- `src/lib/cardStorageCloudinary.ts` hard-codes `CLOUD_NAME = "dd7qn3t3d"` and `UPLOAD_PRESET = "phpathlabs_cards"` and uses unsigned upload.
-- Used by: `src/lib/cardRenderer.ts`, `src/lib/dripCardSenders.ts`, `src/components/LoyaltyCardSender.tsx`, `src/components/AbnormalBulkSender.tsx`.
-- Cleanup edge function `supabase/functions/delete-loyalty-cloudinary/index.ts` uses `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` secrets + same hard-coded cloud name.
-- WhatsApp Settings page: `src/pages/WhatsAppSettingsPage.tsx` + `src/components/WhatsAppSettings.tsx`.
+Use `patient_master` as the single source of truth for patient demographics (title, name, gender, DOB, mobile, address). Old-LIMS data is imported into `patient_master` via Excel. New-registration mobile lookup pulls from `patient_master` so old patients auto-fill on revisit. `ref_doctor` stays only on `patient_registrations` (doctors change per visit). All current functionality remains intact.
 
-## Data model (new table)
-Create `cloudinary_accounts`:
-- `id uuid pk`
-- `account_name text` (user-given label, unique)
-- `cloud_name text` (Cloudinary cloud name)
-- `upload_preset text` (unsigned upload preset)
-- `is_active boolean default false`
-- `created_at`, `updated_at` timestamps
-- RLS: permissive (matches existing settings tables).
-- Trigger / app-side write to enforce single active row (set others to false on activate).
+---
 
-Note: API key/secret for the **delete** function stay as Supabase secrets per cloud account. We will add optional `api_key` / `api_secret_secret_name` columns but the actual secret value is still stored via Lovable Cloud secrets (the user adds `CLOUDINARY_API_KEY_<slug>` if they want deletion for that account). Initial scope can store the api_key in the row for unsigned-upload accounts since deletion uses signed Admin API; we'll prompt the user if they want signed deletion support.
+## 1. Schema changes (migration)
 
-## UI: new "Cloudinary Accounts" section in WhatsApp Settings
-In `src/components/WhatsAppSettings.tsx` add a new card below the existing one:
-- Table of accounts: Name | Cloud Name | Upload Preset | Active (radio) | Edit | Delete.
-- "Add Account" button → dialog with fields: Account Name, Cloud Name, Upload Preset, (optional) API Key, (optional) API Secret.
-- Activating an account flips `is_active` to true for that row and false for all others (single update transaction).
-- Inline test button that uploads a 1x1 pixel to verify credentials and shows toast.
+`patient_master` (additive, non-breaking):
+- Add `title text` (e.g. MR./MRS./BABY OF)
+- Add `address text`
+- Add `source text default 'lims'` — `'lims'` (created from a registration) vs `'legacy'` (imported from old LIMS, no DOB)
+- Add `legacy_imported_at timestamptz` (nullable) — audit timestamp
+- Drop `ref_doctor` column (doctor belongs to the visit, not the patient). Existing values are discarded — already mirrored on each `patient_registrations` row, which remains untouched.
+- Indexes: unique index on `umr_id` (treat as logical PK going forward — keeping existing `id uuid` PK so foreign references and RLS stay intact), btree index on `mobile_number` for fast 10-digit lookup.
 
-## Runtime wiring (active account → uploads)
-1. Add `src/lib/cloudinaryAccount.ts` with:
-   - `getActiveCloudinaryAccount()` → fetches the active row (cached in-memory for 60s + invalidated on settings save).
-   - `uploadJpegToActiveCloudinary(blob)` → uses active row's `cloud_name` + `upload_preset`.
-2. Update `src/lib/cardStorageCloudinary.ts`:
-   - Replace constants with a runtime lookup. Export `uploadJpegToCloudinaryWithRetry(blobFn)` unchanged in signature, but internally it resolves the active account first; throws `cloudinary_not_configured` if none.
-3. No changes needed in callers (`cardRenderer.ts`, `dripCardSenders.ts`, `LoyaltyCardSender.tsx`, `AbnormalBulkSender.tsx`) — they keep calling `uploadJpegToCloudinaryWithRetry`.
+We do NOT change the actual primary key column (still `id uuid`) to avoid breaking any existing foreign references / sync code. Adding a UNIQUE constraint on `umr_id` gives us the same guarantee with zero ripple risk.
 
-## Edge function update (deletion)
-`supabase/functions/delete-loyalty-cloudinary/index.ts`:
-- Accept optional `cloudName`, `apiKey`, `apiSecret` from request body OR fall back to the active row queried via service-role client.
-- Caller (cleanup cron) passes the active account's cloud name; if api key/secret per account isn't stored in DB, it falls back to the existing `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` env vars (back-compat for the legacy "dd7qn3t3d" account).
+`patient_registrations` — no schema changes. `title`, `address`, `doctor_name` stay where they are. Going forward they're written from `patient_master` (except `doctor_name`, which is per-visit input).
 
-## Migration
-- Create `cloudinary_accounts` table + permissive RLS.
-- Seed with the existing hard-coded account so nothing breaks on first deploy:
-  `('Default', 'dd7qn3t3d', 'phpathlabs_cards', true)`.
+---
 
-## Behavior summary
-- Multiple accounts can exist; exactly one active.
-- All Loyalty/ABC + Abnormal card uploads use the currently-active account.
-- Switching active account immediately reroutes new uploads; old image URLs remain valid (they live on whichever account uploaded them).
-- Cleanup function continues to delete from the account it knows credentials for.
+## 2. Excel import flow (legacy migration)
 
-## Files to touch
-- New: `supabase/migrations/<ts>_cloudinary_accounts.sql`
-- New: `src/lib/cloudinaryAccount.ts`
-- Edit: `src/lib/cardStorageCloudinary.ts` (dynamic cloud_name/preset)
-- Edit: `src/components/WhatsAppSettings.tsx` (new section + dialog)
-- Edit: `supabase/functions/delete-loyalty-cloudinary/index.ts` (per-account creds)
+New section in **LIMS → Settings** tab: **"Legacy Patient Import"**, gated by the standard 9819111107 password.
 
-## Open question (will ask after approval if unclear)
-Should deletion of old card images for non-default accounts also be supported now? It requires storing API key/secret per account (acceptable since RLS is permissive but values are sensitive). Default plan: store them in the row, only used server-side by the edge function.
+- Download template button → produces `.xlsx` with columns: `umr_number, mobile_number, title, patient_name, gender, address` (no DOB column, per user).
+- Upload `.xlsx`:
+  - Normalize: mobile → last 10 digits; name/address/title → UPPERCASE, single-spaced; gender → Male/Female/Unspecified.
+  - Skip rows missing `umr_number` or `mobile_number` (report them in the result summary).
+  - **Upsert by `umr_id`** into `patient_master`:
+    - If UMR exists → update title/name/gender/mobile/address only when current value is null/empty (don't overwrite richer data already in the system).
+    - If UMR is new → insert with `source='legacy'`, `legacy_imported_at=now()`, `date_of_birth=null`.
+  - Show summary: inserted / updated / skipped (with reasons), downloadable as CSV.
+
+Files: new `src/components/lims/LegacyPatientImport.tsx`, new `src/lib/legacyPatientsImport.ts`, add tab in `src/components/lims/LimsSettings.tsx`.
+
+---
+
+## 3. Patient lookup on New Registration
+
+`PatientRegistration.tsx` currently searches `patient_registrations` first, then `patient_master`, then `estimates`. Change the priority to:
+
+1. `patient_master` (canonical) — by mobile, returns title, name, gender, DOB, address, UMR.
+2. `patient_registrations` (only for UMRs not already returned by step 1, as a fallback for any historical row whose UMR somehow isn't in `patient_master`).
+3. `estimates` (unchanged).
+
+`PatientSelectDialog.tsx` (the popup) — same change: read primarily from `patient_master`, fall back to `patient_registrations`. Edits in the popup write to `patient_master` (canonical) AND continue to fan out via `syncPatientDemographicsByUmr` so all historical rows in `patient_registrations`, `approved_reports`, `estimates`, `lims_test_orders` reflect the corrected demographics. Behaviour the user already approved (lock fields after select, "Change patient" reopens dialog) is preserved.
+
+Doctor name is **not** pre-filled from `patient_master` — it defaults to the registration's last `doctor_name` for that UMR (existing behavior in `selectPatient`), or "SELF".
+
+---
+
+## 4. Save flow
+
+In `PatientRegistration.tsx` save:
+- Continue inserting the full row in `patient_registrations` (title/address/doctor_name still stored there — required for invoice/report snapshots).
+- Upsert `patient_master` keyed on `umr_id` (not mobile, which can change). Write: title, patient_name, gender, mobile_number, date_of_birth, email, address, last_visit_date. Do NOT write `ref_doctor` (column removed).
+- Existing `syncPatientDemographicsByUmr` call stays as-is — but the `patient_master` block inside it is updated to also sync `title` + `address` and to drop `ref_doctor`.
+
+---
+
+## 5. Files touched
+
+- `supabase/migrations/<ts>_patient_master_canonical.sql` — add columns, unique index, drop `ref_doctor`.
+- `src/lib/syncPatientDemographics.ts` — sync `title` + `address` to `patient_master`; remove `ref_doctor` write.
+- `src/components/lims/PatientRegistration.tsx` — reorder lookup, update upsert payload.
+- `src/components/lims/PatientSelectDialog.tsx` — read from `patient_master` first.
+- `src/components/lims/LimsSettings.tsx` — add new tab.
+- `src/components/lims/LegacyPatientImport.tsx` (new) — UI for download template + upload + result summary.
+- `src/lib/legacyPatientsImport.ts` (new) — parsing, normalization, batched upsert.
+- `public/samples/Sample_Legacy_Patient_Import.xlsx` (new) — downloadable template.
+
+---
+
+## 6. Safety / non-regression
+
+- All schema changes are additive except dropping `patient_master.ref_doctor` — and that column is not read anywhere except inside the lookup mapping (which we're updating in the same change). `patient_registrations.doctor_name` is unaffected; reports/invoices still work.
+- Lookup change is order-of-priority only; if `patient_master` is empty for a mobile, behaviour is identical to today.
+- `RegisteredPatients.tsx` factory-reset already wipes `patient_master` — still works.
+- No changes to RLS, realtime publication, or report generation.
+- Storage: dropping `ref_doctor` and avoiding duplicated writes shrinks `patient_master` slightly; main savings come from not re-storing data, not from changing what `patient_registrations` stores (we keep that for snapshot integrity of historical bills/reports).
+
+---
+
+## Out of scope (confirm if needed)
+
+- Importing old test results / invoices.
+- Changing `patient_registrations` to stop storing title/address (would break invoice & report snapshots — kept as-is intentionally).
+- Migrating existing `patient_master.ref_doctor` values somewhere before drop (not needed — registrations already carry doctor history).
