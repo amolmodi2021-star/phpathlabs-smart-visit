@@ -585,6 +585,25 @@ const PatientRegistration = () => {
         onNewPatient={handleNewPatient}
       />
 
+      <AlertDialog open={!!duplicateRegInfo} onOpenChange={(o) => { if (!o) setDuplicateRegInfo(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Duplicate Registration Today</AlertDialogTitle>
+            <AlertDialogDescription>
+              This patient (UMR <span className="font-mono">{duplicateRegInfo?.umr}</span>) has already been registered today
+              {duplicateRegInfo && duplicateRegInfo.invoices.length > 0 && (
+                <> under invoice <span className="font-mono">{duplicateRegInfo.invoices.join(", ")}</span></>
+              )}
+              . Do you still want to continue with a new registration?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { setDuplicateRegInfo(null); resetForm(); }}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => setDuplicateRegInfo(null)}>Continue</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Card>
         <CardContent className="p-4 space-y-4">
           {/* Mobile Number + Pickup Point (side-by-side) */}
