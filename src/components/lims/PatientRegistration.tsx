@@ -170,30 +170,31 @@ const PatientRegistration = () => {
     const seen = new Set<string>();
     const key = (name: string, mob: string) => `${(name || "").toUpperCase()}|${mob}`;
 
-    // 1. Search patient_registrations (highest priority)
-    const { data: regs } = await supabase.from("patient_registrations").select("*").ilike("mobile_number", `%${digits}%`).eq("bill_cancelled", false).order("created_at", { ascending: false }).limit(10);
-    (regs || []).forEach((r: any) => {
-      const k = key(r.patient_name, r.mobile_number);
-      if (!seen.has(k)) {
-        seen.add(k);
-        priority.push({
-          source: "Registered", patient_name: r.patient_name, title: r.title,
-          gender: r.gender, dob: r.dob, email: r.email, doctor_name: r.doctor_name,
-          umr_number: r.umr_number, mobile_number: r.mobile_number, address: r.address,
-        });
-      }
-    });
-
-    // 2. Search patient_master
+    // 1. Search patient_master (canonical source — includes legacy imports)
     const { data: pm } = await supabase.from("patient_master").select("*").ilike("mobile_number", `%${digits}%`).limit(10);
     (pm || []).forEach((p: any) => {
       const k = key(p.patient_name, p.mobile_number);
       if (!seen.has(k)) {
         seen.add(k);
+        priority.push({
+          source: p.source === "legacy" ? "Legacy" : "Patient Master",
+          patient_name: p.patient_name, title: p.title, gender: p.gender,
+          dob: p.date_of_birth, email: p.email,
+          umr_number: p.umr_id, mobile_number: p.mobile_number, address: p.address,
+        });
+      }
+    });
+
+    // 2. Search patient_registrations (fallback for any UMR not yet in master)
+    const { data: regs } = await supabase.from("patient_registrations").select("*").ilike("mobile_number", `%${digits}%`).eq("bill_cancelled", false).order("created_at", { ascending: false }).limit(10);
+    (regs || []).forEach((r: any) => {
+      const k = key(r.patient_name, r.mobile_number);
+      if (!seen.has(k)) {
+        seen.add(k);
         others.push({
-          source: "Patient Master", patient_name: p.patient_name, gender: p.gender,
-          dob: p.date_of_birth, email: p.email, doctor_name: p.ref_doctor,
-          umr_number: p.umr_id, mobile_number: p.mobile_number,
+          source: "Registered", patient_name: r.patient_name, title: r.title,
+          gender: r.gender, dob: r.dob, email: r.email, doctor_name: r.doctor_name,
+          umr_number: r.umr_number, mobile_number: r.mobile_number, address: r.address,
         });
       }
     });
@@ -425,17 +426,19 @@ const PatientRegistration = () => {
         // Non-fatal: registration was saved successfully
       }
 
-      // Upsert patient_master — skip for pickup_point (no UMR, B2B aggregator)
-      if (visitType !== "pickup_point") {
-        const { data: existing } = await supabase.from("patient_master").select("id").eq("mobile_number", cleanMobile).limit(1).single();
+      // Upsert patient_master keyed by UMR — skip for pickup_point (no UMR, B2B aggregator)
+      if (visitType !== "pickup_point" && finalUmr) {
+        const { data: existing } = await supabase.from("patient_master").select("id").eq("umr_id", finalUmr).limit(1).maybeSingle();
         const pmData: any = {
           patient_name: patientName.replace(/\s+/g, ' ').trim().toUpperCase(),
+          title: title || null,
           mobile_number: cleanMobile,
           gender,
           date_of_birth: dob || null,
           email: email || null,
-          ref_doctor: (doctorName || "SELF").toUpperCase(),
+          address: address ? address.toUpperCase() : null,
           umr_id: finalUmr,
+          source: "lims",
           last_visit_date: new Date().toISOString(),
         };
         if (existing) {
