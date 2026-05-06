@@ -1,55 +1,64 @@
-## Problem
+# Cloudinary Account Manager in WhatsApp Settings
 
-In **Results Entry**, **Result Verification**, and **Doctor Approval** the page footer shows large totals (e.g. "Page 1 of 4 (194 total)") and an "All caught up" empty state on the same page. Clicking **Next** then reveals real pending patients on later pages.
+## Goal
+Let admins register multiple named Cloudinary accounts in WhatsApp Settings, mark exactly one as **Active**, and have all card image uploads (Loyalty/ABC cards + Abnormal History cards) use the active account automatically. Switching the active account later seamlessly routes all subsequent uploads to the new one.
 
-### Root cause
+## Where things live today
+- `src/lib/cardStorageCloudinary.ts` hard-codes `CLOUD_NAME = "dd7qn3t3d"` and `UPLOAD_PRESET = "phpathlabs_cards"` and uses unsigned upload.
+- Used by: `src/lib/cardRenderer.ts`, `src/lib/dripCardSenders.ts`, `src/components/LoyaltyCardSender.tsx`, `src/components/AbnormalBulkSender.tsx`.
+- Cleanup edge function `supabase/functions/delete-loyalty-cloudinary/index.ts` uses `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` secrets + same hard-coded cloud name.
+- WhatsApp Settings page: `src/pages/WhatsAppSettingsPage.tsx` + `src/components/WhatsAppSettings.tsx`.
 
-Each module:
-1. Pulls **50 registrations** from `patient_registrations` filtered by a *broad* status list (e.g. Verification includes `verified`, `approved`, `dispatched` rows).
-2. After fetching, filters down in JavaScript to only those with parameters/snips actually pending at this stage (`status === "entered"` for verification, `verified` for approval, etc.).
-3. The pagination count uses the **broad** list (step 1), but the visible cards use the **narrow** filtered list (step 2). So a page can legitimately render 0 entries while the footer shows hundreds of "pending" rows that aren't actually pending.
+## Data model (new table)
+Create `cloudinary_accounts`:
+- `id uuid pk`
+- `account_name text` (user-given label, unique)
+- `cloud_name text` (Cloudinary cloud name)
+- `upload_preset text` (unsigned upload preset)
+- `is_active boolean default false`
+- `created_at`, `updated_at` timestamps
+- RLS: permissive (matches existing settings tables).
+- Trigger / app-side write to enforce single active row (set others to false on activate).
 
-This also explains why search results show "0 pending" yet older invoices appear after several Next clicks.
+Note: API key/secret for the **delete** function stay as Supabase secrets per cloud account. We will add optional `api_key` / `api_secret_secret_name` columns but the actual secret value is still stored via Lovable Cloud secrets (the user adds `CLOUDINARY_API_KEY_<slug>` if they want deletion for that account). Initial scope can store the api_key in the row for unsigned-upload accounts since deletion uses signed Admin API; we'll prompt the user if they want signed deletion support.
 
-## Fix
+## UI: new "Cloudinary Accounts" section in WhatsApp Settings
+In `src/components/WhatsAppSettings.tsx` add a new card below the existing one:
+- Table of accounts: Name | Cloud Name | Upload Preset | Active (radio) | Edit | Delete.
+- "Add Account" button → dialog with fields: Account Name, Cloud Name, Upload Preset, (optional) API Key, (optional) API Secret.
+- Activating an account flips `is_active` to true for that row and false for all others (single update transaction).
+- Inline test button that uploads a 1x1 pixel to verify credentials and shows toast.
 
-Pagination must count and slice **only registrations that have at least one pending row at the current stage**. Compute the candidate `registration_id` set from the downstream tables first, then fetch the page from `patient_registrations` restricted to that set.
+## Runtime wiring (active account → uploads)
+1. Add `src/lib/cloudinaryAccount.ts` with:
+   - `getActiveCloudinaryAccount()` → fetches the active row (cached in-memory for 60s + invalidated on settings save).
+   - `uploadJpegToActiveCloudinary(blob)` → uses active row's `cloud_name` + `upload_preset`.
+2. Update `src/lib/cardStorageCloudinary.ts`:
+   - Replace constants with a runtime lookup. Export `uploadJpegToCloudinaryWithRetry(blobFn)` unchanged in signature, but internally it resolves the active account first; throws `cloudinary_not_configured` if none.
+3. No changes needed in callers (`cardRenderer.ts`, `dripCardSenders.ts`, `LoyaltyCardSender.tsx`, `AbnormalBulkSender.tsx`) — they keep calling `uploadJpegToCloudinaryWithRetry`.
 
-### Per-module candidate definitions
+## Edge function update (deletion)
+`supabase/functions/delete-loyalty-cloudinary/index.ts`:
+- Accept optional `cloudName`, `apiKey`, `apiSecret` from request body OR fall back to the active row queried via service-role client.
+- Caller (cleanup cron) passes the active account's cloud name; if api key/secret per account isn't stored in DB, it falls back to the existing `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` env vars (back-compat for the legacy "dd7qn3t3d" account).
 
-| Module | Candidate `registration_id`s = registrations with at least one of … |
-|---|---|
-| Results Entry | An `accepted` row in `sample_tubes` whose `test_id` has **no** `patient_results` row with a non-empty `result_value` or status in (`entered`, `results_entered`, `verified`, `approved`, `dispatched`), AND no `outsourced_test_snips` row with `outsource_status` past `pending`/`sent`. |
-| Result Verification | A `patient_results` row with `status = 'entered'`, OR an `outsourced_test_snips` row with `outsource_status IN ('results_entered', 'entered')`. |
-| Doctor Approval | A `patient_results` row with `status = 'verified'`, OR an `outsourced_test_snips` row with `outsource_status = 'verified'`. |
+## Migration
+- Create `cloudinary_accounts` table + permissive RLS.
+- Seed with the existing hard-coded account so nothing breaks on first deploy:
+  `('Default', 'dd7qn3t3d', 'phpathlabs_cards', true)`.
 
-### Implementation
+## Behavior summary
+- Multiple accounts can exist; exactly one active.
+- All Loyalty/ABC + Abnormal card uploads use the currently-active account.
+- Switching active account immediately reroutes new uploads; old image URLs remain valid (they live on whichever account uploaded them).
+- Cleanup function continues to delete from the account it knows credentials for.
 
-For each of `ResultsEntry.tsx`, `ResultVerification.tsx`, `DoctorApproval.tsx`:
+## Files to touch
+- New: `supabase/migrations/<ts>_cloudinary_accounts.sql`
+- New: `src/lib/cloudinaryAccount.ts`
+- Edit: `src/lib/cardStorageCloudinary.ts` (dynamic cloud_name/preset)
+- Edit: `src/components/WhatsAppSettings.tsx` (new section + dialog)
+- Edit: `supabase/functions/delete-loyalty-cloudinary/index.ts` (per-account creds)
 
-1. **New "candidate ids" query** (runs whenever search/filters change, **not** when page changes):
-   - Pull distinct `registration_id`s from the downstream table(s) using `fetchAllByIds`-style chunked pagination so the 1000-row Supabase cap doesn't truncate the candidate list.
-   - For Results Entry: pull all accepted-tube `(registration_id, test_id)` pairs and all existing result/snip `(registration_id, test_id)` rows, then compute the set of regs that still have an unentered accepted test (mirrors `recalculateRegistrationStatus` logic).
-2. **Apply search filter** (`patient_name / mobile / invoice / umr`) by intersecting the candidate id set with a separate id-only query against `patient_registrations`.
-3. **Total count** = size of the resulting id set (replaces the current `count: "exact", head: true` query).
-4. **Page query** = `patient_registrations.select(...).in("id", pageIds)` where `pageIds` is the slice for the current page after sorting by `is_stat desc, invoice_number desc`. Sort the id list in JS using a lightweight `(id, is_stat, invoice_number)` projection fetched once per filter change.
-5. Reset `page` to 0 whenever the candidate id set changes (search edit, realtime invalidation).
-6. Keep the existing `filteredEntries` JS filter as a safety net, but the empty state ("No results pending …") will now only appear when the **actual** total is 0.
-
-### Realtime / propagation
-
-`propagateRegistrationChange` already invalidates the `*_regs_count` and `*_regs_v2` keys for each module. The new candidate-id query will reuse the same query keys (`results_accepted_count` / `verification_regs_count` / `doctor_approval_count` and the corresponding `*_regs` keys) so existing invalidation in `src/lib/limsPropagation.ts` keeps working with no changes.
-
-### Files to edit
-
-- `src/components/lims/ResultsEntry.tsx` — replace count+page queries (lines ~190–226).
-- `src/components/lims/ResultVerification.tsx` — replace count+page queries (lines ~126–160).
-- `src/components/lims/DoctorApproval.tsx` — replace count+page queries (lines ~160–187).
-
-No DB migration, no schema changes, no edge function changes.
-
-### Result for the user
-
-- "Page 1 of N (X total)" will reflect only registrations that genuinely have pending work at that stage.
-- Page 1 will always show the first 50 truly-pending patients; "No results pending …" will only appear when there is nothing left to do.
-- Same behavior across Results Entry, Result Verification, and Doctor Approval.
+## Open question (will ask after approval if unclear)
+Should deletion of old card images for non-default accounts also be supported now? It requires storing API key/secret per account (acceptable since RLS is permissive but values are sensitive). Default plan: store them in the row, only used server-side by the edge function.
