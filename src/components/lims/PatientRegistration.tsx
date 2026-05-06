@@ -526,8 +526,16 @@ const PatientRegistration = () => {
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
                   value={mobileNumber}
-                  onChange={(e) => { setMobileNumber(e.target.value); searchPatients(e.target.value); }}
-                  onFocus={() => patientMatches.length > 0 && setShowDropdown(true)}
+                  onChange={(e) => {
+                    if (patientLocked) return;
+                    const v = e.target.value;
+                    setMobileNumber(v);
+                    const digits = v.replace(/\D/g, "").slice(-10);
+                    if (digits.length === 10) {
+                      setPickerMobile(digits);
+                      setShowPatientPicker(true);
+                    }
+                  }}
                   placeholder="Paste number (any format)"
                   className="pl-8"
                   type="text"
@@ -536,30 +544,32 @@ const PatientRegistration = () => {
                   autoComplete="new-password"
                   data-form-type="other"
                   data-lpignore="true"
-                  role="combobox"
-                  aria-autocomplete="list"
+                  readOnly={patientLocked}
                 />
               </div>
               {mobileNumber && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  Formatted: {mobileNumber.replace(/\D/g, "").slice(-10) || "Need 10+ digits"}
-                  {mobileNumber.replace(/\D/g, "").slice(-10).length === 10 && " ✓"}
-                </p>
-              )}
-              {showDropdown && patientMatches.length > 0 && (
-                <div className="absolute z-50 w-full border rounded-md bg-popover shadow-lg mt-1 max-h-48 overflow-y-auto">
-                  {patientMatches.map((p, i) => (
-                    <button key={i} type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors border-b last:border-0"
-                      onClick={() => selectPatient(p)}>
-                      <div className="font-medium">{p.title} {p.patient_name || "(No name)"}</div>
-                      <div className="text-xs text-muted-foreground">{p.mobile_number} {p.umr_number ? `• ${p.umr_number}` : ""} • {p.source}</div>
+                <p className="text-xs text-muted-foreground mt-1 flex items-center gap-2">
+                  <span>
+                    Formatted: {mobileNumber.replace(/\D/g, "").slice(-10) || "Need 10+ digits"}
+                    {mobileNumber.replace(/\D/g, "").slice(-10).length === 10 && " ✓"}
+                  </span>
+                  {patientLocked && (
+                    <button
+                      type="button"
+                      className="text-primary underline"
+                      onClick={() => {
+                        setPatientLocked(false);
+                        const digits = mobileNumber.replace(/\D/g, "").slice(-10);
+                        if (digits.length === 10) {
+                          setPickerMobile(digits);
+                          setShowPatientPicker(true);
+                        }
+                      }}
+                    >
+                      Change Patient
                     </button>
-                  ))}
-                  <button type="button" className="w-full text-left px-3 py-2 text-xs text-muted-foreground hover:bg-accent"
-                    onClick={() => setShowDropdown(false)}>
-                    Continue with new patient →
-                  </button>
-                </div>
+                  )}
+                </p>
               )}
             </div>
             <div>
