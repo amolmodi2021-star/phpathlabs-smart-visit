@@ -11,10 +11,199 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Eye, EyeOff, Settings, Plus, Trash2, Edit2 } from "lucide-react";
+import { Eye, EyeOff, Settings, Plus, Trash2, Edit2, Cloud, Pencil, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import PasswordGate from "@/components/PasswordGate";
+import { Dialog as UIDialog, DialogContent as UIDialogContent, DialogFooter as UIDialogFooter, DialogHeader as UIDialogHeader, DialogTitle as UIDialogTitle } from "@/components/ui/dialog";
+import { invalidateCloudinaryAccountCache } from "@/lib/cardStorageCloudinary";
+
+/* ─── Cloudinary Accounts ─── */
+interface CloudinaryAccount {
+  id: string;
+  account_name: string;
+  cloud_name: string;
+  upload_preset: string;
+  api_key: string | null;
+  api_secret: string | null;
+  is_active: boolean;
+}
+
+const CloudinaryAccountsManager = () => {
+  const [accounts, setAccounts] = useState<CloudinaryAccount[]>([]);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<CloudinaryAccount | null>(null);
+  const [form, setForm] = useState({ account_name: "", cloud_name: "", upload_preset: "", api_key: "", api_secret: "" });
+  const [showSecret, setShowSecret] = useState(false);
+
+  const load = async () => {
+    const { data, error } = await supabase.from("cloudinary_accounts").select("*").order("created_at", { ascending: true });
+    if (error) { toast.error("Failed to load accounts: " + error.message); return; }
+    setAccounts((data || []) as CloudinaryAccount[]);
+  };
+  useEffect(() => { load(); }, []);
+
+  const openAdd = () => {
+    setEditing(null);
+    setForm({ account_name: "", cloud_name: "", upload_preset: "", api_key: "", api_secret: "" });
+    setDialogOpen(true);
+  };
+  const openEdit = (a: CloudinaryAccount) => {
+    setEditing(a);
+    setForm({ account_name: a.account_name, cloud_name: a.cloud_name, upload_preset: a.upload_preset, api_key: a.api_key || "", api_secret: a.api_secret || "" });
+    setDialogOpen(true);
+  };
+  const save = async () => {
+    if (!form.account_name.trim() || !form.cloud_name.trim() || !form.upload_preset.trim()) {
+      toast.error("Account name, cloud name and upload preset are required"); return;
+    }
+    const payload = {
+      account_name: form.account_name.trim(),
+      cloud_name: form.cloud_name.trim(),
+      upload_preset: form.upload_preset.trim(),
+      api_key: form.api_key.trim() || null,
+      api_secret: form.api_secret.trim() || null,
+    };
+    const { error } = editing
+      ? await supabase.from("cloudinary_accounts").update(payload).eq("id", editing.id)
+      : await supabase.from("cloudinary_accounts").insert(payload);
+    if (error) { toast.error("Save failed: " + error.message); return; }
+    setDialogOpen(false);
+    invalidateCloudinaryAccountCache();
+    await load();
+    toast.success(editing ? "Account updated" : "Account added");
+  };
+  const activate = async (id: string) => {
+    const { error: e1 } = await supabase.from("cloudinary_accounts").update({ is_active: false }).neq("id", id);
+    if (e1) { toast.error("Activate failed: " + e1.message); return; }
+    const { error: e2 } = await supabase.from("cloudinary_accounts").update({ is_active: true }).eq("id", id);
+    if (e2) { toast.error("Activate failed: " + e2.message); return; }
+    invalidateCloudinaryAccountCache();
+    await load();
+    toast.success("Active account updated");
+  };
+  const remove = async (a: CloudinaryAccount) => {
+    if (a.is_active) { toast.error("Activate a different account first"); return; }
+    if (!confirm(`Delete "${a.account_name}"?`)) return;
+    const { error } = await supabase.from("cloudinary_accounts").delete().eq("id", a.id);
+    if (error) { toast.error("Delete failed: " + error.message); return; }
+    invalidateCloudinaryAccountCache();
+    await load();
+    toast.success("Deleted");
+  };
+  const test = async (a: CloudinaryAccount) => {
+    try {
+      const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+      const bytes = Uint8Array.from(atob(png), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: "image/png" });
+      const fd = new FormData();
+      fd.append("file", blob);
+      fd.append("upload_preset", a.upload_preset);
+      const res = await fetch(`https://api.cloudinary.com/v1_1/${a.cloud_name}/image/upload`, { method: "POST", body: fd });
+      if (!res.ok) { const j = await res.json().catch(() => ({} as any)); throw new Error(j?.error?.message || `HTTP ${res.status}`); }
+      toast.success(`✓ ${a.account_name} works`);
+    } catch (e: any) {
+      toast.error(`Test failed: ${e?.message || "Unknown"}`);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader className="py-3 flex-row items-center justify-between space-y-0">
+        <CardTitle className="text-sm flex items-center gap-2"><Cloud className="h-4 w-4" /> Cloudinary Accounts</CardTitle>
+        <Button size="sm" onClick={openAdd} className="h-8"><Plus className="h-3.5 w-3.5 mr-1" /> Add Account</Button>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-muted-foreground">
+          All Loyalty/ABC and Abnormal History card images upload to the <b>active</b> account. Only one account can be active at a time. Switching the active account immediately routes new uploads (and the URLs sent via WhatsApp) to that account.
+        </p>
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="h-9">Active</TableHead>
+                <TableHead className="h-9">Name</TableHead>
+                <TableHead className="h-9">Cloud Name</TableHead>
+                <TableHead className="h-9">Upload Preset</TableHead>
+                <TableHead className="h-9 text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {accounts.length === 0 && (
+                <TableRow><TableCell colSpan={5} className="text-center text-xs text-muted-foreground py-4">No accounts yet. Add one to get started.</TableCell></TableRow>
+              )}
+              {accounts.map((a) => (
+                <TableRow key={a.id}>
+                  <TableCell className="py-2">
+                    {a.is_active ? (
+                      <Badge variant="default" className="gap-1"><CheckCircle2 className="h-3 w-3" />Active</Badge>
+                    ) : (
+                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => activate(a.id)}>Activate</Button>
+                    )}
+                  </TableCell>
+                  <TableCell className="py-2 text-sm font-medium">{a.account_name}</TableCell>
+                  <TableCell className="py-2 text-sm font-mono">{a.cloud_name}</TableCell>
+                  <TableCell className="py-2 text-sm font-mono">{a.upload_preset}</TableCell>
+                  <TableCell className="py-2 text-right">
+                    <div className="flex justify-end gap-1">
+                      <Button size="sm" variant="ghost" className="h-7" onClick={() => test(a)}>Test</Button>
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => openEdit(a)}><Pencil className="h-3.5 w-3.5" /></Button>
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive" onClick={() => remove(a)} disabled={a.is_active}><Trash2 className="h-3.5 w-3.5" /></Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+
+        <UIDialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <UIDialogContent>
+            <UIDialogHeader>
+              <UIDialogTitle>{editing ? "Edit Cloudinary Account" : "Add Cloudinary Account"}</UIDialogTitle>
+            </UIDialogHeader>
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs">Account Name</Label>
+                <Input value={form.account_name} onChange={(e) => setForm({ ...form, account_name: e.target.value })} placeholder="e.g. PathLabs Primary" className="h-9" />
+              </div>
+              <div>
+                <Label className="text-xs">Cloud Name</Label>
+                <Input value={form.cloud_name} onChange={(e) => setForm({ ...form, cloud_name: e.target.value })} placeholder="e.g. dd7qn3t3d" className="h-9 font-mono" />
+              </div>
+              <div>
+                <Label className="text-xs">Unsigned Upload Preset</Label>
+                <Input value={form.upload_preset} onChange={(e) => setForm({ ...form, upload_preset: e.target.value })} placeholder="e.g. phpathlabs_cards" className="h-9 font-mono" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">API Key (optional, for deletion)</Label>
+                  <Input value={form.api_key} onChange={(e) => setForm({ ...form, api_key: e.target.value })} className="h-9 font-mono" />
+                </div>
+                <div>
+                  <Label className="text-xs">API Secret (optional, for deletion)</Label>
+                  <div className="relative">
+                    <Input type={showSecret ? "text" : "password"} value={form.api_secret} onChange={(e) => setForm({ ...form, api_secret: e.target.value })} className="h-9 font-mono pr-8" />
+                    <button type="button" onClick={() => setShowSecret(!showSecret)} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground">
+                      {showSecret ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Create the upload preset in Cloudinary with <b>Signing Mode = Unsigned</b> and folder <code>loyalty-cards</code>. API key/secret are only needed for automated cleanup.
+              </p>
+            </div>
+            <UIDialogFooter>
+              <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
+              <Button onClick={save}>{editing ? "Update" : "Add"}</Button>
+            </UIDialogFooter>
+          </UIDialogContent>
+        </UIDialog>
+      </CardContent>
+    </Card>
+  );
+};
 
 const PREFIX = "wa_global_";
 
@@ -381,10 +570,14 @@ const WhatsAppSettingsPage = () => {
         <Tabs defaultValue="api" className="w-full">
           <TabsList>
             <TabsTrigger value="api">API Settings</TabsTrigger>
+            <TabsTrigger value="cloudinary">Cloudinary</TabsTrigger>
             <TabsTrigger value="templates">Templates</TabsTrigger>
           </TabsList>
           <TabsContent value="api">
             <GlobalApiSettings />
+          </TabsContent>
+          <TabsContent value="cloudinary">
+            <CloudinaryAccountsManager />
           </TabsContent>
           <TabsContent value="templates">
             <TemplatesManager />
