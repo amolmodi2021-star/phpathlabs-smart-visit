@@ -151,7 +151,7 @@ const CreateEstimate = () => {
 
       try {
       const { data: est, error } = await supabase.from("estimates").insert({
-          patient_name: patientName ? patientName.toUpperCase() : null,
+          patient_name: patientName ? patientName.replace(/\s+/g, ' ').trim().toUpperCase() : null,
           whatsapp_number: cleanNumber,
           total_amount: calculations.totalAmount,
           discount_amount: calculations.totalDiscount,
@@ -211,7 +211,7 @@ const CreateEstimate = () => {
       />
       <Card className="glass-card">
         <CardContent className="p-4 space-y-4">
-          <div><Label>Patient Name (Optional)</Label><Input value={patientName} onChange={(e) => setPatientName(e.target.value)} /></div>
+          <div><Label>Patient Name (Optional)</Label><Input value={patientName} onChange={(e) => setPatientName(e.target.value.toUpperCase())} className="uppercase" /></div>
           <div>
             <Label>WhatsApp Number *</Label>
             <Input type="tel" value={whatsappNumber} onChange={(e) => setWhatsappNumber(e.target.value)} placeholder="Paste number (any format)" />

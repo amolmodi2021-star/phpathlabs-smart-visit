@@ -167,9 +167,12 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
       if (Number.isNaN(selectedDateTime.getTime())) throw new Error("Invalid visit date/time");
       if (selectedDateTime.getTime() < Date.now()) throw new Error("Cannot book for date/time that has already passed");
 
+      const cleanName = patientName.replace(/\s+/g, ' ').trim().toUpperCase();
+      const cleanAddress = address.replace(/\s+/g, ' ').trim().toUpperCase();
+
       // Create estimate
       const { data: est, error: estError } = await supabase.from("estimates").insert({
-        patient_name: patientName ? patientName.toUpperCase() : null,
+        patient_name: cleanName || null,
         whatsapp_number: cleanNumber,
         total_amount: calculations.totalAmount,
         discount_amount: calculations.totalDiscount,
@@ -202,7 +205,7 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
         estimate_id: est.id,
         visit_date: visitDate,
         visit_time: visitTime,
-        address: address.toUpperCase(),
+        address: cleanAddress,
         phlebotomist_id: phlebotomistId || null,
       });
       if (visitError) throw visitError;
@@ -229,10 +232,10 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
           footer: templates.footer_text,
           visitDate: format(new Date(visitDate), "dd-MM-yyyy"),
           visitTime: formatTime(),
-          address: address,
-          patientName: patientName ? patientName.toUpperCase() : undefined,
+          address: cleanAddress,
+          patientName: cleanName || undefined,
         });
-        await logMessageSend(cleanNumber, patientName, "Home Visit", undefined, undefined, msg);
+        await logMessageSend(cleanNumber, cleanName, "Home Visit", undefined, undefined, msg);
         shareOnWhatsApp(cleanNumber, msg);
       }
     },
@@ -253,7 +256,7 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
           {/* Patient Info */}
           <div>
             <Label>Patient Name</Label>
-            <Input value={patientName} onChange={(e) => setPatientName(e.target.value)} />
+            <Input value={patientName} onChange={(e) => setPatientName(e.target.value.toUpperCase())} className="uppercase" />
           </div>
           <div>
             <Label>WhatsApp Number *</Label>
@@ -324,7 +327,7 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
           </div>
           <div>
             <Label>Address *</Label>
-            <Textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={2} />
+            <Textarea value={address} onChange={(e) => setAddress(e.target.value.toUpperCase())} rows={2} className="uppercase" />
           </div>
 
           {/* Test Search & Add */}

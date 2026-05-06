@@ -135,7 +135,7 @@ const EditEstimateDialog = ({ estimate, open, onClose }: EditEstimateDialogProps
 
       // Update estimate
       const { error: estError } = await supabase.from("estimates").update({
-        patient_name: patientName ? patientName.toUpperCase() : null,
+        patient_name: patientName ? patientName.replace(/\s+/g, ' ').trim().toUpperCase() : null,
         whatsapp_number: cleanNumber,
         total_amount: calculations.totalAmount,
         discount_amount: calculations.totalDiscount,
@@ -202,7 +202,7 @@ const EditEstimateDialog = ({ estimate, open, onClose }: EditEstimateDialogProps
         <div className="space-y-4">
           <div>
             <Label>Patient Name</Label>
-            <Input value={patientName} onChange={(e) => setPatientName(e.target.value)} />
+            <Input value={patientName} onChange={(e) => setPatientName(e.target.value.toUpperCase())} className="uppercase" />
           </div>
           <div>
             <Label>WhatsApp Number *</Label>

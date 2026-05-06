@@ -263,11 +263,13 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
 
       const cleanNumber = whatsappNumber.replace(/\D/g, "").slice(-10);
       const formattedUmr = umrInput ? `UMR${String(parseInt(umrInput) || 0).padStart(7, "0")}` : null;
+      const cleanName = patientName.replace(/\s+/g, ' ').trim().toUpperCase();
+      const cleanAddress = address.replace(/\s+/g, ' ').trim().toUpperCase();
 
       // Update estimate
       const { error: estError } = await supabase.from("estimates").update({
         title: title || null,
-        patient_name: patientName ? patientName.toUpperCase() : null,
+        patient_name: cleanName || null,
         gender: gender || null,
         email: email || null,
         doctor_name: doctorName ? doctorName.toUpperCase() : "SELF",
@@ -307,7 +309,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
       const { error: visitError } = await supabase.from("home_visits").update({
         visit_date: visitDate,
         visit_time: visitTime,
-        address: address.toUpperCase(),
+        address: cleanAddress,
         phlebotomist_id: phlebotomistId || null,
       }).eq("id", visit.id);
       if (visitError) throw visitError;
@@ -330,6 +332,8 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
         onClose();
 
         if (templates && cleanNumber) {
+          const cleanName = patientName.replace(/\s+/g, ' ').trim().toUpperCase();
+          const cleanAddress = address.replace(/\s+/g, ' ').trim().toUpperCase();
           const tests = selectedTests.map(t => ({ name: t.test_name, price: t.price, fasting: t.fasting_required }));
           const formatTime = (t: string) => {
             const [h, m] = t.split(":");
@@ -350,10 +354,10 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
             visitDate: format(new Date(visitDate), "dd-MM-yyyy"),
             visitTime: formatTime(visitTime),
             visitHeader: templates.visit_confirmation_header,
-            address: address.toUpperCase(),
-            patientName: patientName ? patientName.toUpperCase() : undefined,
+            address: cleanAddress,
+            patientName: cleanName || undefined,
           });
-          await logMessageSend(cleanNumber, patientName, "Home Visit", undefined, undefined, msg);
+          await logMessageSend(cleanNumber, cleanName, "Home Visit", undefined, undefined, msg);
           shareOnWhatsApp(cleanNumber, msg);
         }
       }

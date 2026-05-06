@@ -390,7 +390,7 @@ const PatientRegistration = () => {
         due_amount: (isCreditPickup || isCreditChannel) ? calculations.finalAmount : dueAmount,
         global_discount_type: globalDiscountValue > 0 ? globalDiscountType : null,
         global_discount_value: globalDiscountValue,
-        remarks: remarks.trim() || null,
+        remarks: remarks.replace(/\s+/g, ' ').trim().toUpperCase() || null,
         is_stat: isStat,
         report_language: visitType === "pickup_point" ? "ENGLISH" : reportLanguage.toUpperCase(),
         registered_by: stampedBy,
