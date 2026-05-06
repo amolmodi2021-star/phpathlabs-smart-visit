@@ -399,6 +399,9 @@ const PatientRegistration = () => {
       const { data: reg, error } = await supabase.from("patient_registrations").insert(regData as any).select().single();
       if (error) throw new Error(error.message);
 
+      // Add doctor to master list (history) — non-fatal
+      ensureDoctor(doctorName);
+
       // Create sample_tubes for this registration (expands profiles/checkups to leaf tests)
       try {
         const groups = await buildSampleTubeGroups(
