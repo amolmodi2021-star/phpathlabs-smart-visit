@@ -54,6 +54,9 @@ const PatientRegistration = () => {
   const [mobileNumber, setMobileNumber] = useState("");
   const [patientMatches, setPatientMatches] = useState<PatientMatch[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [showPatientPicker, setShowPatientPicker] = useState(false);
+  const [pickerMobile, setPickerMobile] = useState("");
+  const [patientLocked, setPatientLocked] = useState(false);
   const [title, setTitle] = useState("");
   const [patientName, setPatientName] = useState("");
   const [gender, setGender] = useState("");
