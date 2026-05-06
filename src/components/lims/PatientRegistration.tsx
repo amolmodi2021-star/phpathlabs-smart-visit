@@ -504,6 +504,28 @@ const PatientRegistration = () => {
     setSelectedTests([]); setGlobalDiscountValue(0); setHomeVisitCharges(0);
     setSelectedModes(new Set()); setModeAmounts({}); setInvoiceData(null); setTriedSave(false);
     setManualAge(""); setRemarks(""); setIsStat(false);
+    setPatientLocked(false); setShowPatientPicker(false); setPickerMobile("");
+  };
+
+  const handlePatientPicked = (p: PatientPick) => {
+    setMobileNumber(p.mobile_number);
+    setPatientName(p.patient_name || "");
+    setTitle(p.title || "");
+    setGender(p.gender || "");
+    setDob(p.dob || "");
+    setAddress(p.address || "");
+    setUmrNumber(p.umr_number || "");
+    if (p.email) { setEmail(p.email); setShowEmail(true); }
+    if (p.doctor_name) setDoctorName(p.doctor_name);
+    setPatientLocked(true);
+    setShowPatientPicker(false);
+  };
+
+  const handleNewPatient = (mobile10: string) => {
+    setMobileNumber(mobile10);
+    setUmrNumber("");
+    setPatientLocked(false);
+    setShowPatientPicker(false);
   };
 
   return (
