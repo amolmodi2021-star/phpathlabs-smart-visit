@@ -126,15 +126,15 @@ const ResultVerification = () => {
 
   // Pending candidates (regs with at least one entered result/snip).
   // Pagination is computed from this set so the queue's "X total" matches reality.
-  const { data: pendingIds = [] } = useQuery({
+  const { data: pendingIds = [] as string[] } = useQuery({
     queryKey: ["verification_regs_count", debouncedSearch],
-    queryFn: async () => {
+    queryFn: async (): Promise<string[]> => {
       const candidates = await fetchVerificationCandidateIds();
       return await fetchFilteredSortedIds(candidates, debouncedSearch);
     },
   });
   const rvCount = pendingIds.length;
-  const pageIds = pendingIds.slice(rvPage * RV_PAGE_SIZE, (rvPage + 1) * RV_PAGE_SIZE);
+  const pageIds: string[] = pendingIds.slice(rvPage * RV_PAGE_SIZE, (rvPage + 1) * RV_PAGE_SIZE);
 
   const { data: registrations = [], isLoading: loadingRegs } = useQuery({
     queryKey: ["verification_regs_v2", pageIds.join(",")],
