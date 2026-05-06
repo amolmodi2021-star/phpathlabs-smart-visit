@@ -22,8 +22,10 @@ interface Props {
 export default function DoctorAutocomplete({ value, onChange, disabled, placeholder = "SELF", className }: Props) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [highlight, setHighlight] = useState(0);
   const [pendingDelete, setPendingDelete] = useState<Doctor | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   const { data: doctors = [] } = useQuery({
     queryKey: ["doctors"],
@@ -37,7 +39,6 @@ export default function DoctorAutocomplete({ value, onChange, disabled, placehol
     },
   });
 
-  // Close on outside click
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
@@ -52,6 +53,16 @@ export default function DoctorAutocomplete({ value, onChange, disabled, placehol
     return doctors.filter(d => d.doctor_name.toUpperCase().includes(q)).slice(0, 50);
   }, [doctors, value]);
 
+  // Reset highlight when list changes
+  useEffect(() => { setHighlight(0); }, [value, open]);
+
+  // Scroll highlighted item into view
+  useEffect(() => {
+    if (!open || !listRef.current) return;
+    const el = listRef.current.querySelector<HTMLElement>(`[data-idx="${highlight}"]`);
+    if (el) el.scrollIntoView({ block: "nearest" });
+  }, [highlight, open]);
+
   const handleDelete = async () => {
     if (!pendingDelete) return;
     const { error } = await supabase.from("doctors").delete().eq("id", pendingDelete.id);
@@ -61,25 +72,53 @@ export default function DoctorAutocomplete({ value, onChange, disabled, placehol
     setPendingDelete(null);
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+      setOpen(true);
+      return;
+    }
+    if (!open || filtered.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlight(h => Math.min(h + 1, filtered.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlight(h => Math.max(h - 1, 0));
+    } else if (e.key === "Enter") {
+      const pick = filtered[highlight];
+      if (pick) {
+        e.preventDefault();
+        onChange(pick.doctor_name);
+        setOpen(false);
+      }
+    } else if (e.key === "Escape") {
+      setOpen(false);
+    }
+  };
+
   return (
     <div ref={wrapRef} className="relative">
       <Input
         value={value}
         onChange={(e) => { onChange(e.target.value.toUpperCase()); setOpen(true); }}
         onFocus={() => setOpen(true)}
+        onKeyDown={handleKeyDown}
         placeholder={placeholder}
         disabled={disabled}
         className={`uppercase ${className || ""}`}
         autoComplete="off"
       />
       {open && filtered.length > 0 && !disabled && (
-        <div className="absolute z-50 mt-1 w-full max-h-64 overflow-auto rounded-md border bg-popover shadow-md">
-          {filtered.map((d) => (
+        <div ref={listRef} className="absolute z-50 mt-1 w-full max-h-64 overflow-auto rounded-md border bg-popover shadow-md">
+          {filtered.map((d, idx) => (
             <div
               key={d.id}
-              className="flex items-center justify-between px-2 py-1.5 hover:bg-accent text-sm cursor-pointer group"
+              data-idx={idx}
+              className={`flex items-center justify-between px-2 py-1.5 text-sm cursor-pointer group ${idx === highlight ? "bg-accent" : "hover:bg-accent"}`}
+              onMouseEnter={() => setHighlight(idx)}
               onMouseDown={(e) => {
                 if ((e.target as HTMLElement).closest("[data-del]")) return;
+                e.preventDefault();
                 onChange(d.doctor_name);
                 setOpen(false);
               }}
