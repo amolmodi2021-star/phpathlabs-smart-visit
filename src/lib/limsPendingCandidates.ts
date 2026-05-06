@@ -111,8 +111,13 @@ export async function fetchResultsEntryCandidateIds(): Promise<string[]> {
       const rid = r?.registration_id;
       const tid = r?.test_id;
       if (!rid || !tid) return;
-      const hasValue = r.result_value && String(r.result_value).trim() !== "";
-      if (hasValue || PASSED.includes(r.status)) {
+      // IMPORTANT: do NOT treat hasValue alone as "tracked". Machine-interface /
+      // calculated rows arrive with result_value populated but status='pending' —
+      // they still require manual Results Entry confirmation. Only rows whose
+      // status has actually progressed past 'pending' count as tracked; otherwise
+      // the registration silently disappears from every queue (Entry, Verification,
+      // Doctor Approval) while CBC etc. sit unsubmitted forever.
+      if (PASSED.includes(r.status)) {
         if (!trackedByReg[rid]) trackedByReg[rid] = new Set();
         trackedByReg[rid].add(tid);
       }

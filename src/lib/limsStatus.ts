@@ -34,12 +34,17 @@ export async function recalculateRegistrationStatus(registrationId: string): Pro
   // - outsourced_test_snips: only count rows whose outsource_status is past 'pending'/'sent'.
   //   A 'pending' or 'sent' snip means the snip was created at acceptance time but
   //   results have not been entered yet.
+  // Build set of test_ids that have a MEANINGFUL tracking row (work actually submitted).
+  // - patient_results: ONLY count rows whose status has progressed past 'pending'.
+  //   A row with a pre-filled result_value but status='pending' (machine interface
+  //   auto-push, calculated values) still requires manual Results Entry submission;
+  //   if we treat it as tracked the registration disappears from every queue.
+  // - outsourced_test_snips: only count rows whose outsource_status is past 'pending'/'sent'.
   const trackedTestIds = new Set<string>();
   r.forEach((x: any) => {
     if (!x.test_id) return;
-    const hasValue = x.result_value && String(x.result_value).trim() !== "";
     const pastPending = ["entered", "results_entered", "verified", "approved", "dispatched"].includes(x.status);
-    if (hasValue || pastPending) trackedTestIds.add(x.test_id);
+    if (pastPending) trackedTestIds.add(x.test_id);
   });
   s.forEach((x: any) => {
     if (!x.test_id) return;
