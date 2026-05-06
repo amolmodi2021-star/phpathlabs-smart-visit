@@ -570,10 +570,14 @@ const WhatsAppSettingsPage = () => {
         <Tabs defaultValue="api" className="w-full">
           <TabsList>
             <TabsTrigger value="api">API Settings</TabsTrigger>
+            <TabsTrigger value="cloudinary">Cloudinary</TabsTrigger>
             <TabsTrigger value="templates">Templates</TabsTrigger>
           </TabsList>
           <TabsContent value="api">
             <GlobalApiSettings />
+          </TabsContent>
+          <TabsContent value="cloudinary">
+            <CloudinaryAccountsManager />
           </TabsContent>
           <TabsContent value="templates">
             <TemplatesManager />
