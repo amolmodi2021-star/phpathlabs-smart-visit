@@ -369,7 +369,7 @@ const PatientRegistration = () => {
         gender,
         dob: dob || null,
         email: email || null,
-        address: visitType === "pickup_point" ? (selectedPickup?.address || "") : address.toUpperCase(),
+        address: visitType === "pickup_point" ? (selectedPickup?.address || "") : address.replace(/\s+/g, ' ').trim().toUpperCase(),
         doctor_name: (doctorName || "SELF").toUpperCase(),
         umr_number: finalUmr,
         visit_type: visitType,
@@ -435,7 +435,7 @@ const PatientRegistration = () => {
       if (visitType !== "pickup_point" && finalUmr) {
         const { data: existing } = await supabase.from("patient_master").select("id").eq("umr_id", finalUmr).limit(1).maybeSingle();
         const cleanName = patientName.replace(/\s+/g, ' ').trim().toUpperCase();
-        const cleanAddr = address ? address.toUpperCase().trim() : "";
+        const cleanAddr = address ? address.replace(/\s+/g, ' ').trim().toUpperCase() : "";
         if (existing) {
           // Fill-in only: never overwrite existing master fields with blanks
           const upd: any = { last_visit_date: new Date().toISOString() };
@@ -471,7 +471,7 @@ const PatientRegistration = () => {
             gender,
             dob: dob || null,
             email: email || null,
-            address: address.toUpperCase(),
+            address: cleanAddr,
             doctor_name: (doctorName || "SELF").toUpperCase(),
             mobile_number: cleanMobile,
           };

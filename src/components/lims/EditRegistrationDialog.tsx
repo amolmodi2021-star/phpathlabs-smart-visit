@@ -245,7 +245,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         dob: dob || null,
         email: email || null,
         doctor_name: (doctorName || "SELF").toUpperCase(),
-        address: address.toUpperCase(),
+        address: address.replace(/\s+/g, ' ').trim().toUpperCase(),
         mobile_number: mobileNumber.replace(/\D/g, "").slice(-10),
         remarks: remarks.trim() || null,
         is_stat: isStat,
