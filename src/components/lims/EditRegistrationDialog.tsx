@@ -749,7 +749,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
             </div>
             <div>
               <Label>Doctor Name</Label>
-              <Input value={doctorName} onChange={e => setDoctorName(e.target.value.toUpperCase())} disabled={isBillCancelled} />
+              <DoctorAutocomplete value={doctorName} onChange={setDoctorName} disabled={isBillCancelled} />
             </div>
             <div>
               <Label>Address</Label>
