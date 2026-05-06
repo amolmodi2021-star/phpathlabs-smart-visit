@@ -268,6 +268,9 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       const { error } = await supabase.from("patient_registrations").update(updateData).eq("id", reg.id);
       if (error) throw error;
 
+      // Add doctor to master list (history) — non-fatal
+      ensureDoctor(updateData.doctor_name);
+
       // Fan-out demographics to ALL records sharing this UMR (sister visits,
       // approved report snapshots, CRM, patient master, loyalty cards, estimates,
       // and pending LIMS analyzer orders). Audit-trail tables are intentionally
