@@ -154,13 +154,38 @@ export async function fetchResultsEntryCandidateIds(): Promise<string[]> {
 }
 
 /**
+ * Dispatch: regs with at least one approved-but-not-yet-dispatched test
+ * (patient_results.status='approved' OR outsourced_test_snips.outsource_status='approved').
+ * This guarantees partially-dispatched regs stay visible until every approved test
+ * is dispatched — they would otherwise hide behind the date+pagination window.
+ */
+export async function fetchDispatchCandidateIds(): Promise<string[]> {
+  const ids = new Set<string>();
+  const r1 = await fetchAllRows<any>(() =>
+    supabase.from("patient_results").select("registration_id").eq("status", "approved"),
+  );
+  r1.forEach((x) => x?.registration_id && ids.add(x.registration_id));
+  const r2 = await fetchAllRows<any>(() =>
+    supabase
+      .from("outsourced_test_snips")
+      .select("registration_id")
+      .eq("outsource_status", "approved"),
+  );
+  r2.forEach((x) => x?.registration_id && ids.add(x.registration_id));
+  return Array.from(ids);
+}
+
+/**
  * Given a candidate id set, fetch the subset that matches the search filter
  * and is not bill_cancelled, returning ids sorted by (is_stat desc, invoice_number desc).
  * Chunks the .in() lookup to avoid PostgREST URL/row limits.
+ *
+ * Optional date range filters by created_at.
  */
 export async function fetchFilteredSortedIds(
   candidateIds: string[],
   search: string,
+  opts: { dateFromIso?: string; dateToIso?: string } = {},
 ): Promise<string[]> {
   if (candidateIds.length === 0) return [];
   const chunkSize = 500;
@@ -172,6 +197,8 @@ export async function fetchFilteredSortedIds(
       .select("id, is_stat, invoice_number")
       .in("id", chunk)
       .eq("bill_cancelled", false);
+    if (opts.dateFromIso) q = q.gte("created_at", opts.dateFromIso);
+    if (opts.dateToIso) q = q.lte("created_at", opts.dateToIso);
     if (search) {
       q = q.or(
         `patient_name.ilike.%${search}%,mobile_number.ilike.%${search}%,invoice_number.ilike.%${search}%,umr_number.ilike.%${search}%`,
