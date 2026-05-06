@@ -205,7 +205,7 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
         estimate_id: est.id,
         visit_date: visitDate,
         visit_time: visitTime,
-        address: address.toUpperCase(),
+        address: cleanAddress,
         phlebotomist_id: phlebotomistId || null,
       });
       if (visitError) throw visitError;
