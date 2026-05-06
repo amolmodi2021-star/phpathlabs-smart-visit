@@ -497,6 +497,42 @@ export type Database = {
         }
         Relationships: []
       }
+      cloudinary_accounts: {
+        Row: {
+          account_name: string
+          api_key: string | null
+          api_secret: string | null
+          cloud_name: string
+          created_at: string
+          id: string
+          is_active: boolean
+          updated_at: string
+          upload_preset: string
+        }
+        Insert: {
+          account_name: string
+          api_key?: string | null
+          api_secret?: string | null
+          cloud_name: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          updated_at?: string
+          upload_preset: string
+        }
+        Update: {
+          account_name?: string
+          api_key?: string | null
+          api_secret?: string | null
+          cloud_name?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          updated_at?: string
+          upload_preset?: string
+        }
+        Relationships: []
+      }
       combo_profiles: {
         Row: {
           combo_id: string
