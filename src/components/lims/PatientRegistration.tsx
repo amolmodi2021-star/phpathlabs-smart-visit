@@ -72,6 +72,7 @@ const PatientRegistration = () => {
   const [remarks, setRemarks] = useState("");
   const [isStat, setIsStat] = useState(false);
   const [showHvcConfirm, setShowHvcConfirm] = useState(false);
+  const [duplicateRegInfo, setDuplicateRegInfo] = useState<{ umr: string; invoices: string[] } | null>(null);
 
   // Channel
   const [channelId, setChannelId] = useState("");
