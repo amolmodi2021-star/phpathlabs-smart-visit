@@ -25,6 +25,7 @@ import { checkDifferentialSum } from "@/lib/differentialCount";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import { signalSync } from "@/lib/limsSyncSignal";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
+import { fetchResultsEntryCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPendingCandidates";
 import SyncingOverlay from "./SyncingOverlay";
 import NewBadge from "./NewBadge";
 import OutsourcedResults from "./OutsourcedResults";
@@ -186,44 +187,34 @@ const ResultsEntry = () => {
     return () => clearTimeout(t);
   }, [search]);
 
-  const { data: reCount = 0 } = useQuery({
+  const { data: pendingIds = [] as string[] } = useQuery({
     queryKey: ["results_accepted_count", debouncedSearch],
-    queryFn: async () => {
-      let query = supabase.from("patient_registrations").select("id", { count: "exact", head: true })
-        .in("status", ["sample_accepted", "partially_accepted", "processing", "partial_processing", "partial_verified", "partially_approved", "partially_dispatched"])
-        .eq("bill_cancelled", false);
-      if (debouncedSearch) query = query.or(`patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%`);
-      const { count } = await query;
-      return count || 0;
+    queryFn: async (): Promise<string[]> => {
+      const candidates = await fetchResultsEntryCandidateIds();
+      return await fetchFilteredSortedIds(candidates, debouncedSearch);
     },
   });
+  const reCount = pendingIds.length;
+  const pageIds: string[] = pendingIds.slice(rePage * RE_PAGE_SIZE, (rePage + 1) * RE_PAGE_SIZE);
 
   // ─── Fetch accepted registrations ───
   const { data: acceptedRegs = [], isLoading: loadingRegs } = useQuery({
-    queryKey: ["results_accepted_regs", debouncedSearch, rePage],
+    queryKey: ["results_accepted_regs", pageIds.join(",")],
+    enabled: pageIds.length > 0,
     queryFn: async () => {
-      let query = supabase
+      const { data, error } = await supabase
         .from("patient_registrations")
         .select("id, invoice_number, patient_name, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, gender, dob, created_at, updated_at, bill_cancelled, doctor_name")
-        .in("status", ["sample_accepted", "partially_accepted", "processing", "partial_processing", "partial_verified", "partially_approved", "partially_dispatched"])
-        .eq("bill_cancelled", false)
-        .order("is_stat", { ascending: false })
-        .order("invoice_number", { ascending: false })
-        .range(rePage * RE_PAGE_SIZE, rePage * RE_PAGE_SIZE + RE_PAGE_SIZE - 1);
-      if (debouncedSearch) {
-        query = query.or(
-          `patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%`
-        );
-      }
-      const { data, error } = await query;
+        .in("id", pageIds);
       if (error) throw error;
-      return (data || []) as any[];
+      const order = new Map(pageIds.map((id, i) => [id, i] as const));
+      return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     },
     refetchOnWindowFocus: true,
     staleTime: 30_000,
   });
 
-  const reTotalPages = Math.ceil(reCount / RE_PAGE_SIZE);
+  const reTotalPages = Math.max(1, Math.ceil(reCount / RE_PAGE_SIZE));
 
   // (departments query removed – now using machine-wise grouping)
 

@@ -28,6 +28,7 @@ import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import { signalSync } from "@/lib/limsSyncSignal";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
+import { fetchVerificationCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPendingCandidates";
 import SyncingOverlay from "./SyncingOverlay";
 import NewBadge from "./NewBadge";
 
@@ -123,41 +124,32 @@ const ResultVerification = () => {
     return () => clearTimeout(t);
   }, [search]);
 
-  const { data: rvCount = 0 } = useQuery({
+  // Pending candidates (regs with at least one entered result/snip).
+  // Pagination is computed from this set so the queue's "X total" matches reality.
+  const { data: pendingIds = [] as string[] } = useQuery({
     queryKey: ["verification_regs_count", debouncedSearch],
-    queryFn: async () => {
-      let query = supabase.from("patient_registrations").select("id", { count: "exact", head: true })
-        .in("status", ["processing", "partial_processing", "processed", "partial_verified", "verified", "partially_approved", "approved", "partially_dispatched", "dispatched"])
-        .eq("bill_cancelled", false);
-      if (debouncedSearch) query = query.or(`patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%,umr_number.ilike.%${debouncedSearch}%`);
-      const { count } = await query;
-      return count || 0;
+    queryFn: async (): Promise<string[]> => {
+      const candidates = await fetchVerificationCandidateIds();
+      return await fetchFilteredSortedIds(candidates, debouncedSearch);
     },
   });
+  const rvCount = pendingIds.length;
+  const pageIds: string[] = pendingIds.slice(rvPage * RV_PAGE_SIZE, (rvPage + 1) * RV_PAGE_SIZE);
 
-  // Fetch registrations with entered results
   const { data: registrations = [], isLoading: loadingRegs } = useQuery({
-    queryKey: ["verification_regs_v2", debouncedSearch, rvPage],
+    queryKey: ["verification_regs_v2", pageIds.join(",")],
+    enabled: pageIds.length > 0,
     queryFn: async () => {
-      let query = supabase
+      const { data } = await supabase
         .from("patient_registrations")
         .select("id, invoice_number, patient_name, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, gender, dob, created_at, updated_at, bill_cancelled, doctor_name")
-        .in("status", ["processing", "partial_processing", "processed", "partial_verified", "verified", "partially_approved", "approved", "partially_dispatched", "dispatched"])
-        .eq("bill_cancelled", false)
-        .order("is_stat", { ascending: false })
-        .order("invoice_number", { ascending: false })
-        .range(rvPage * RV_PAGE_SIZE, rvPage * RV_PAGE_SIZE + RV_PAGE_SIZE - 1);
-      if (debouncedSearch) {
-        query = query.or(
-          `patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%,umr_number.ilike.%${debouncedSearch}%`
-        );
-      }
-      const { data } = await query;
-      return (data || []) as any[];
+        .in("id", pageIds);
+      const order = new Map(pageIds.map((id, i) => [id, i] as const));
+      return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     },
   });
 
-  const rvTotalPages = Math.ceil(rvCount / RV_PAGE_SIZE);
+  const rvTotalPages = Math.max(1, Math.ceil(rvCount / RV_PAGE_SIZE));
 
   const regIds = registrations.map((r: any) => r.id);
 
