@@ -232,8 +232,8 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
           footer: templates.footer_text,
           visitDate: format(new Date(visitDate), "dd-MM-yyyy"),
           visitTime: formatTime(),
-          address: address,
-          patientName: patientName ? patientName.toUpperCase() : undefined,
+          address: cleanAddress,
+          patientName: cleanName || undefined,
         });
         await logMessageSend(cleanNumber, patientName, "Home Visit", undefined, undefined, msg);
         shareOnWhatsApp(cleanNumber, msg);
