@@ -147,3 +147,38 @@ export async function fetchResultsEntryCandidateIds(): Promise<string[]> {
   }
   return pending;
 }
+
+/**
+ * Given a candidate id set, fetch the subset that matches the search filter
+ * and is not bill_cancelled, returning ids sorted by (is_stat desc, invoice_number desc).
+ * Chunks the .in() lookup to avoid PostgREST URL/row limits.
+ */
+export async function fetchFilteredSortedIds(
+  candidateIds: string[],
+  search: string,
+): Promise<string[]> {
+  if (candidateIds.length === 0) return [];
+  const chunkSize = 500;
+  const rows: { id: string; is_stat: boolean; invoice_number: string }[] = [];
+  for (let i = 0; i < candidateIds.length; i += chunkSize) {
+    const chunk = candidateIds.slice(i, i + chunkSize);
+    let q: any = supabase
+      .from("patient_registrations")
+      .select("id, is_stat, invoice_number")
+      .in("id", chunk)
+      .eq("bill_cancelled", false);
+    if (search) {
+      q = q.or(
+        `patient_name.ilike.%${search}%,mobile_number.ilike.%${search}%,invoice_number.ilike.%${search}%,umr_number.ilike.%${search}%`,
+      );
+    }
+    const { data, error } = await q;
+    if (error) throw error;
+    (data || []).forEach((r: any) => rows.push(r));
+  }
+  rows.sort((a, b) => {
+    if (!!b.is_stat !== !!a.is_stat) return b.is_stat ? 1 : -1;
+    return (b.invoice_number || "").localeCompare(a.invoice_number || "");
+  });
+  return rows.map((r) => r.id);
+}
