@@ -2,6 +2,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import PickupPointManager from "@/components/lims/PickupPointManager";
 import ChannelManager from "@/components/lims/ChannelManager";
 import InvoiceDesigner from "@/components/lims/InvoiceDesigner";
+import LegacyPatientImport from "@/components/lims/LegacyPatientImport";
 
 const LimsSettings = () => {
   return (
@@ -10,6 +11,7 @@ const LimsSettings = () => {
         <TabsTrigger value="invoice_designer">Invoice Designer</TabsTrigger>
         <TabsTrigger value="pickup">Pickup Points</TabsTrigger>
         <TabsTrigger value="channels">Channels</TabsTrigger>
+        <TabsTrigger value="legacy_import">Legacy Patient Import</TabsTrigger>
       </TabsList>
       <TabsContent value="invoice_designer">
         <InvoiceDesigner />
@@ -19,6 +21,9 @@ const LimsSettings = () => {
       </TabsContent>
       <TabsContent value="channels">
         <ChannelManager />
+      </TabsContent>
+      <TabsContent value="legacy_import">
+        <LegacyPatientImport />
       </TabsContent>
     </Tabs>
   );

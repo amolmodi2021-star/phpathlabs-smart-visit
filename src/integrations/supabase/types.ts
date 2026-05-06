@@ -1429,6 +1429,7 @@ export type Database = {
       }
       patient_master: {
         Row: {
+          address: string | null
           age: string | null
           created_at: string | null
           date_of_birth: string | null
@@ -1437,13 +1438,16 @@ export type Database = {
           gender: string | null
           id: string
           last_visit_date: string | null
+          legacy_imported_at: string | null
           mobile_number: string | null
           patient_name: string
-          ref_doctor: string | null
+          source: string
+          title: string | null
           umr_id: string
           updated_at: string | null
         }
         Insert: {
+          address?: string | null
           age?: string | null
           created_at?: string | null
           date_of_birth?: string | null
@@ -1452,13 +1456,16 @@ export type Database = {
           gender?: string | null
           id?: string
           last_visit_date?: string | null
+          legacy_imported_at?: string | null
           mobile_number?: string | null
           patient_name: string
-          ref_doctor?: string | null
+          source?: string
+          title?: string | null
           umr_id: string
           updated_at?: string | null
         }
         Update: {
+          address?: string | null
           age?: string | null
           created_at?: string | null
           date_of_birth?: string | null
@@ -1467,9 +1474,11 @@ export type Database = {
           gender?: string | null
           id?: string
           last_visit_date?: string | null
+          legacy_imported_at?: string | null
           mobile_number?: string | null
           patient_name?: string
-          ref_doctor?: string | null
+          source?: string
+          title?: string | null
           umr_id?: string
           updated_at?: string | null
         }

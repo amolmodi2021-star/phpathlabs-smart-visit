@@ -79,15 +79,17 @@ export async function syncPatientDemographicsByUmr(
 
   // 3. CRM contacts removed (CRM module disabled — cost optimization 2026-04-28)
 
-  // 4. Patient master — umr_id is the column name
+  // 4. Patient master — umr_id is the column name. Title + address now live here too.
   const master = supabase
     .from("patient_master")
     .update({
       patient_name: demo.patient_name,
+      title: demo.title ?? null,
       gender: demo.gender ?? null,
       mobile_number: demo.mobile_number ?? null,
       email: demo.email ?? null,
       date_of_birth: demo.dob ?? null,
+      address: demo.address ?? null,
     } as any)
     .eq("umr_id", umr);
 
