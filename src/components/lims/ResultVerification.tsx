@@ -28,6 +28,7 @@ import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import { signalSync } from "@/lib/limsSyncSignal";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
+import { fetchVerificationCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPendingCandidates";
 import SyncingOverlay from "./SyncingOverlay";
 import NewBadge from "./NewBadge";
 
