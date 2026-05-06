@@ -18,6 +18,7 @@ import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import { buildSampleTubeGroups } from "@/lib/sampleTubeGrouping";
 import InvoicePreview from "./InvoicePreview";
 import PatientSelectDialog, { type PatientPick } from "./PatientSelectDialog";
+import DoctorAutocomplete, { ensureDoctor } from "./DoctorAutocomplete";
 
 const TITLES = ["Mr.", "Mrs.", "Ms.", "Master", "Miss", "Baby Of", "Dr."];
 const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card", "NEFT"];
@@ -398,6 +399,9 @@ const PatientRegistration = () => {
       const { data: reg, error } = await supabase.from("patient_registrations").insert(regData as any).select().single();
       if (error) throw new Error(error.message);
 
+      // Add doctor to master list (history) — non-fatal
+      ensureDoctor(doctorName);
+
       // Create sample_tubes for this registration (expands profiles/checkups to leaf tests)
       try {
         const groups = await buildSampleTubeGroups(
@@ -693,7 +697,7 @@ const PatientRegistration = () => {
             {!isPickup && (
               <div>
                 <Label>Doctor Name</Label>
-                <Input value={doctorName} onChange={e => setDoctorName(e.target.value.toUpperCase())} placeholder="SELF" className="uppercase" />
+                <DoctorAutocomplete value={doctorName} onChange={setDoctorName} placeholder="SELF" />
               </div>
             )}
           </div>

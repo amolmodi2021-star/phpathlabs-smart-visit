@@ -17,6 +17,7 @@ import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { logPaymentTransaction, syncRegistrationPaymentRow, splitPaymentModes } from "@/lib/paymentTransactions";
 import { syncPatientDemographicsByUmr, invalidatePatientCaches } from "@/lib/syncPatientDemographics";
+import DoctorAutocomplete, { ensureDoctor } from "@/components/lims/DoctorAutocomplete";
 
 const TITLES = ["Mr.", "Mrs.", "Ms.", "Master", "Miss", "Baby Of", "Dr."];
 
@@ -266,6 +267,9 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
 
       const { error } = await supabase.from("patient_registrations").update(updateData).eq("id", reg.id);
       if (error) throw error;
+
+      // Add doctor to master list (history) — non-fatal
+      ensureDoctor(updateData.doctor_name);
 
       // Fan-out demographics to ALL records sharing this UMR (sister visits,
       // approved report snapshots, CRM, patient master, loyalty cards, estimates,
@@ -748,7 +752,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
             </div>
             <div>
               <Label>Doctor Name</Label>
-              <Input value={doctorName} onChange={e => setDoctorName(e.target.value.toUpperCase())} disabled={isBillCancelled} />
+              <DoctorAutocomplete value={doctorName} onChange={setDoctorName} disabled={isBillCancelled} />
             </div>
             <div>
               <Label>Address</Label>
