@@ -332,6 +332,8 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
         onClose();
 
         if (templates && cleanNumber) {
+          const cleanName = patientName.replace(/\s+/g, ' ').trim().toUpperCase();
+          const cleanAddress = address.replace(/\s+/g, ' ').trim().toUpperCase();
           const tests = selectedTests.map(t => ({ name: t.test_name, price: t.price, fasting: t.fasting_required }));
           const formatTime = (t: string) => {
             const [h, m] = t.split(":");
