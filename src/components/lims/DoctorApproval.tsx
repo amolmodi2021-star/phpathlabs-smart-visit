@@ -159,33 +159,29 @@ const DoctorApproval = () => {
   };
   useEffect(() => { const t = setTimeout(() => { setDebouncedSearch(search); setDaPage(0); }, 400); return () => clearTimeout(t); }, [search]);
 
-  const { data: daCount = 0 } = useQuery({
+  const { data: pendingIds = [] as string[] } = useQuery({
     queryKey: ["doctor_approval_count", debouncedSearch],
-    queryFn: async () => {
-      let query = supabase.from("patient_registrations").select("id", { count: "exact", head: true })
-        .in("status", ["partial_verified", "verified", "partially_approved", "approved", "partially_dispatched", "dispatched"])
-        .eq("bill_cancelled", false);
-      if (debouncedSearch) query = query.or(`patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%,umr_number.ilike.%${debouncedSearch}%`);
-      const { count } = await query;
-      return count || 0;
+    queryFn: async (): Promise<string[]> => {
+      const candidates = await fetchDoctorApprovalCandidateIds();
+      return await fetchFilteredSortedIds(candidates, debouncedSearch);
     },
   });
+  const daCount = pendingIds.length;
+  const pageIds: string[] = pendingIds.slice(daPage * DA_PAGE_SIZE, (daPage + 1) * DA_PAGE_SIZE);
 
   const { data: registrations = [], isLoading: loadingRegs } = useQuery({
-    queryKey: ["doctor_approval_regs", debouncedSearch, daPage],
+    queryKey: ["doctor_approval_regs", pageIds.join(",")],
+    enabled: pageIds.length > 0,
     queryFn: async () => {
-      let query = supabase.from("patient_registrations")
+      const { data } = await supabase.from("patient_registrations")
         .select("id, invoice_number, patient_name, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, gender, dob, created_at, updated_at, bill_cancelled, doctor_name")
-        .in("status", ["partial_verified", "verified", "partially_approved", "approved", "partially_dispatched", "dispatched"])
-        .eq("bill_cancelled", false).order("is_stat", { ascending: false }).order("invoice_number", { ascending: false })
-        .range(daPage * DA_PAGE_SIZE, daPage * DA_PAGE_SIZE + DA_PAGE_SIZE - 1);
-      if (debouncedSearch) query = query.or(`patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%,umr_number.ilike.%${debouncedSearch}%`);
-      const { data } = await query;
-      return (data || []) as any[];
+        .in("id", pageIds);
+      const order = new Map(pageIds.map((id, i) => [id, i] as const));
+      return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     },
   });
 
-  const daTotalPages = Math.ceil(daCount / DA_PAGE_SIZE);
+  const daTotalPages = Math.max(1, Math.ceil(daCount / DA_PAGE_SIZE));
 
   const regIds = registrations.map((r: any) => r.id);
 
