@@ -19,6 +19,7 @@ import { buildSampleTubeGroups } from "@/lib/sampleTubeGrouping";
 import InvoicePreview from "./InvoicePreview";
 import PatientSelectDialog, { type PatientPick } from "./PatientSelectDialog";
 import DoctorAutocomplete, { ensureDoctor } from "./DoctorAutocomplete";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 const TITLES = ["Mr.", "Mrs.", "Ms.", "Master", "Miss", "Baby Of", "Dr."];
 const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card", "NEFT"];
@@ -71,6 +72,7 @@ const PatientRegistration = () => {
   const [remarks, setRemarks] = useState("");
   const [isStat, setIsStat] = useState(false);
   const [showHvcConfirm, setShowHvcConfirm] = useState(false);
+  const [duplicateRegInfo, setDuplicateRegInfo] = useState<{ umr: string; invoices: string[] } | null>(null);
 
   // Channel
   const [channelId, setChannelId] = useState("");
@@ -222,6 +224,23 @@ const PatientRegistration = () => {
     setShowDropdown(results.length > 0);
   };
 
+  const checkSameDayDuplicate = async (umr: string | null | undefined) => {
+    const u = (umr || "").trim();
+    if (!u) return;
+    const start = new Date(); start.setHours(0, 0, 0, 0);
+    const end = new Date(); end.setHours(23, 59, 59, 999);
+    const { data } = await supabase
+      .from("patient_registrations")
+      .select("invoice_number")
+      .eq("umr_number", u)
+      .eq("bill_cancelled", false)
+      .gte("created_at", start.toISOString())
+      .lte("created_at", end.toISOString());
+    if (data && data.length > 0) {
+      setDuplicateRegInfo({ umr: u, invoices: data.map((r: any) => r.invoice_number).filter(Boolean) });
+    }
+  };
+
   const selectPatient = (p: PatientMatch) => {
     setMobileNumber(p.mobile_number);
     if (p.patient_name) setPatientName(p.patient_name);
@@ -233,6 +252,7 @@ const PatientRegistration = () => {
     if (p.umr_number) setUmrNumber(p.umr_number);
     if (p.address) setAddress(p.address);
     setShowDropdown(false);
+    checkSameDayDuplicate(p.umr_number);
   };
 
   // Get test price (channel/pickup custom price or default)
@@ -537,6 +557,7 @@ const PatientRegistration = () => {
     if (p.doctor_name) setDoctorName(p.doctor_name);
     setPatientLocked(true);
     setShowPatientPicker(false);
+    checkSameDayDuplicate(p.umr_number);
   };
 
   const handleNewPatient = (mobile10: string) => {
@@ -563,6 +584,25 @@ const PatientRegistration = () => {
         onSelect={handlePatientPicked}
         onNewPatient={handleNewPatient}
       />
+
+      <AlertDialog open={!!duplicateRegInfo} onOpenChange={(o) => { if (!o) setDuplicateRegInfo(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Duplicate Registration Today</AlertDialogTitle>
+            <AlertDialogDescription>
+              This patient (UMR <span className="font-mono">{duplicateRegInfo?.umr}</span>) has already been registered today
+              {duplicateRegInfo && duplicateRegInfo.invoices.length > 0 && (
+                <> under invoice <span className="font-mono">{duplicateRegInfo.invoices.join(", ")}</span></>
+              )}
+              . Do you still want to continue with a new registration?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { setDuplicateRegInfo(null); resetForm(); }}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => setDuplicateRegInfo(null)}>Continue</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Card>
         <CardContent className="p-4 space-y-4">
