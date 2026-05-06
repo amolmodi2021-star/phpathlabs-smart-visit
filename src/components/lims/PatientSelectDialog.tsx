@@ -64,17 +64,35 @@ const PatientSelectDialog = ({ open, mobile10, onClose, onSelect, onNewPatient }
     setEditingUmr(null);
     setDraft(null);
     (async () => {
-      // One row per UMR (latest visit). If UMR null, group by patient_name.
-      const { data } = await supabase
-        .from("patient_registrations")
-        .select("patient_name,title,gender,dob,address,mobile_number,umr_number,email,doctor_name,created_at")
-        .ilike("mobile_number", `%${mobile10}%`)
-        .eq("bill_cancelled", false)
-        .order("created_at", { ascending: false })
-        .limit(50);
+      // Pull from patient_master (canonical) first, then fall back to patient_registrations
+      // for any UMR that isn't yet in master. One row per UMR.
+      const [pmRes, regRes] = await Promise.all([
+        supabase
+          .from("patient_master")
+          .select("patient_name,title,gender,date_of_birth,address,mobile_number,umr_id,email")
+          .ilike("mobile_number", `%${mobile10}%`)
+          .limit(50),
+        supabase
+          .from("patient_registrations")
+          .select("patient_name,title,gender,dob,address,mobile_number,umr_number,email,doctor_name,created_at")
+          .ilike("mobile_number", `%${mobile10}%`)
+          .eq("bill_cancelled", false)
+          .order("created_at", { ascending: false })
+          .limit(50),
+      ]);
       const seen = new Set<string>();
       const out: RegRow[] = [];
-      (data || []).forEach((r: any) => {
+      (pmRes.data || []).forEach((p: any) => {
+        const k = (p.umr_id || `name:${(p.patient_name || "").toUpperCase()}`).trim();
+        if (seen.has(k)) return;
+        seen.add(k);
+        out.push({
+          patient_name: p.patient_name, title: p.title, gender: p.gender,
+          dob: p.date_of_birth, address: p.address, mobile_number: p.mobile_number,
+          umr_number: p.umr_id, email: p.email, doctor_name: null,
+        });
+      });
+      (regRes.data || []).forEach((r: any) => {
         const k = (r.umr_number || `name:${(r.patient_name || "").toUpperCase()}`).trim();
         if (seen.has(k)) return;
         seen.add(k);
