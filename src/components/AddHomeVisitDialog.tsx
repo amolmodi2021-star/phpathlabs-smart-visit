@@ -235,7 +235,7 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
           address: cleanAddress,
           patientName: cleanName || undefined,
         });
-        await logMessageSend(cleanNumber, patientName, "Home Visit", undefined, undefined, msg);
+        await logMessageSend(cleanNumber, cleanName, "Home Visit", undefined, undefined, msg);
         shareOnWhatsApp(cleanNumber, msg);
       }
     },
