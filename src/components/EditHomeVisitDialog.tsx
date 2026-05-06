@@ -263,11 +263,13 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
 
       const cleanNumber = whatsappNumber.replace(/\D/g, "").slice(-10);
       const formattedUmr = umrInput ? `UMR${String(parseInt(umrInput) || 0).padStart(7, "0")}` : null;
+      const cleanName = patientName.replace(/\s+/g, ' ').trim().toUpperCase();
+      const cleanAddress = address.replace(/\s+/g, ' ').trim().toUpperCase();
 
       // Update estimate
       const { error: estError } = await supabase.from("estimates").update({
         title: title || null,
-        patient_name: patientName ? patientName.toUpperCase() : null,
+        patient_name: cleanName || null,
         gender: gender || null,
         email: email || null,
         doctor_name: doctorName ? doctorName.toUpperCase() : "SELF",
