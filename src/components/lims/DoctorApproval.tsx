@@ -29,6 +29,7 @@ import SelectApproverDialog, { ApproverChoice } from "./SelectApproverDialog";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import { signalSync } from "@/lib/limsSyncSignal";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
+import { fetchDoctorApprovalCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPendingCandidates";
 import SyncingOverlay from "./SyncingOverlay";
 import NewBadge from "./NewBadge";
 
