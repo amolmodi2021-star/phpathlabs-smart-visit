@@ -661,7 +661,7 @@ const PatientRegistration = () => {
             </div>
             <div>
               <Label className={triedSave && !gender ? "text-destructive" : ""}>Gender *</Label>
-              <Select value={gender} onValueChange={setGender} disabled={patientLocked}>
+              <Select key={gender || "empty"} value={gender} onValueChange={setGender} disabled={patientLocked}>
                 <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Male">Male</SelectItem>
