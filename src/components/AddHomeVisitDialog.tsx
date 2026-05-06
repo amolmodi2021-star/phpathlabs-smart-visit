@@ -327,7 +327,7 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
           </div>
           <div>
             <Label>Address *</Label>
-            <Textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={2} />
+            <Textarea value={address} onChange={(e) => setAddress(e.target.value.toUpperCase())} rows={2} className="uppercase" />
           </div>
 
           {/* Test Search & Add */}
