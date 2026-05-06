@@ -197,6 +197,8 @@ export async function fetchFilteredSortedIds(
       .select("id, is_stat, invoice_number")
       .in("id", chunk)
       .eq("bill_cancelled", false);
+    if (opts.dateFromIso) q = q.gte("created_at", opts.dateFromIso);
+    if (opts.dateToIso) q = q.lte("created_at", opts.dateToIso);
     if (search) {
       q = q.or(
         `patient_name.ilike.%${search}%,mobile_number.ilike.%${search}%,invoice_number.ilike.%${search}%,umr_number.ilike.%${search}%`,
