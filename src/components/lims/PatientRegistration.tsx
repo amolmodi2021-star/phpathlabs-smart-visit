@@ -637,14 +637,14 @@ const PatientRegistration = () => {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label className={triedSave && !title ? "text-destructive" : ""}>Title *</Label>
-              <Select value={title} onValueChange={setTitle}>
+              <Select value={title} onValueChange={setTitle} disabled={patientLocked}>
                 <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>{TITLES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div>
               <Label className={triedSave && !gender ? "text-destructive" : ""}>Gender *</Label>
-              <Select value={gender} onValueChange={setGender}>
+              <Select value={gender} onValueChange={setGender} disabled={patientLocked}>
                 <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Male">Male</SelectItem>
@@ -657,7 +657,7 @@ const PatientRegistration = () => {
 
           <div>
             <Label className={triedSave && !patientName.trim() ? "text-destructive" : ""}>Patient Name *</Label>
-            <Input value={patientName} onChange={e => setPatientName(e.target.value.toUpperCase())} placeholder="Full name" className="uppercase" />
+            <Input value={patientName} onChange={e => setPatientName(e.target.value.toUpperCase())} placeholder="Full name" className="uppercase" disabled={patientLocked} />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -669,7 +669,7 @@ const PatientRegistration = () => {
             ) : (
               <div>
                 <Label className={triedSave && !dob ? "text-destructive" : ""}>DOB *</Label>
-                <Input type="date" value={dob} onChange={e => setDob(e.target.value)} />
+                <Input type="date" value={dob} onChange={e => setDob(e.target.value)} disabled={patientLocked} />
                 {age && <p className="text-xs text-muted-foreground mt-1">Age: {age}</p>}
               </div>
             )}
