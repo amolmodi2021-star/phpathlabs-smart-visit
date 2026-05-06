@@ -557,6 +557,7 @@ const PatientRegistration = () => {
     if (p.doctor_name) setDoctorName(p.doctor_name);
     setPatientLocked(true);
     setShowPatientPicker(false);
+    checkSameDayDuplicate(p.umr_number);
   };
 
   const handleNewPatient = (mobile10: string) => {
