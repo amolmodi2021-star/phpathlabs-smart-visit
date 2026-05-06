@@ -429,23 +429,33 @@ const PatientRegistration = () => {
       // Upsert patient_master keyed by UMR — skip for pickup_point (no UMR, B2B aggregator)
       if (visitType !== "pickup_point" && finalUmr) {
         const { data: existing } = await supabase.from("patient_master").select("id").eq("umr_id", finalUmr).limit(1).maybeSingle();
-        const pmData: any = {
-          patient_name: patientName.replace(/\s+/g, ' ').trim().toUpperCase(),
-          title: title || null,
-          mobile_number: cleanMobile,
-          gender,
-          date_of_birth: dob || null,
-          email: email || null,
-          address: address ? address.toUpperCase() : null,
-          umr_id: finalUmr,
-          source: "lims",
-          last_visit_date: new Date().toISOString(),
-        };
+        const cleanName = patientName.replace(/\s+/g, ' ').trim().toUpperCase();
+        const cleanAddr = address ? address.toUpperCase().trim() : "";
         if (existing) {
-          await supabase.from("patient_master").update(pmData).eq("id", existing.id);
+          // Fill-in only: never overwrite existing master fields with blanks
+          const upd: any = { last_visit_date: new Date().toISOString() };
+          if (cleanName) upd.patient_name = cleanName;
+          if (title) upd.title = title;
+          if (cleanMobile) upd.mobile_number = cleanMobile;
+          if (gender) upd.gender = gender;
+          if (dob) upd.date_of_birth = dob;
+          if (email) upd.email = email;
+          if (cleanAddr) upd.address = cleanAddr;
+          await supabase.from("patient_master").update(upd).eq("id", existing.id);
         } else {
-          pmData.first_visit_date = new Date().toISOString();
-          await supabase.from("patient_master").insert(pmData);
+          await supabase.from("patient_master").insert({
+            patient_name: cleanName,
+            title: title || null,
+            mobile_number: cleanMobile,
+            gender,
+            date_of_birth: dob || null,
+            email: email || null,
+            address: cleanAddr || null,
+            umr_id: finalUmr,
+            source: "lims",
+            last_visit_date: new Date().toISOString(),
+            first_visit_date: new Date().toISOString(),
+          });
         }
 
         // Sync demographics across all previous registrations with same UMR
