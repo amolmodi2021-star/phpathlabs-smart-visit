@@ -61,6 +61,7 @@ const WhatsAppWebhook = () => {
       saveSetting("webhook_auto_reply_message", autoReplyMessage),
       saveSetting("webhook_wa_me_url", waMeUrl),
       saveSetting("webhook_max_auto_replies_24h", String(maxAutoReplies)),
+      saveSetting("webhook_auto_reply_delay_seconds", String(autoReplyDelaySec)),
     ]);
     setSaving(false);
     toast({ title: "Settings saved" });
