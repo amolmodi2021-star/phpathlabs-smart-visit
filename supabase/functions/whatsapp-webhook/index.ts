@@ -202,6 +202,26 @@ Deno.serve(async (req) => {
         }
       }
 
+      // Optional delay before sending, then re-check the 24h cap so a parallel inbound
+      // doesn't cause us to exceed the limit (and incur extra charges).
+      if (!rateLimited && autoReplyDelaySec > 0) {
+        console.log(`Delaying auto-reply to ${senderNumber} by ${autoReplyDelaySec}s`);
+        await new Promise((r) => setTimeout(r, autoReplyDelaySec * 1000));
+        if (maxAutoReplies > 0) {
+          const since2 = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+          const { count: count2 } = await supabase
+            .from("webhook_messages")
+            .select("id", { count: "exact", head: true })
+            .eq("sender_number", senderNumber)
+            .eq("direction", "outbound")
+            .gte("created_at", since2);
+          if ((count2 ?? 0) >= maxAutoReplies) {
+            rateLimited = true;
+            console.log(`Rate limited after delay: ${senderNumber} has ${count2} auto-replies in 24h (max: ${maxAutoReplies})`);
+          }
+        }
+      }
+
       if (!rateLimited) {
       const authHeaderValue = authHeaderPrefix ? `${authHeaderPrefix} ${apiKey}` : apiKey;
 
