@@ -92,6 +92,7 @@ Deno.serve(async (req) => {
     const baseReplyMessage = settingsMap["webhook_auto_reply_message"] || "Thank you for your message. We will get back to you shortly.";
     const waMeUrl = settingsMap["webhook_wa_me_url"] || "";
     const maxAutoReplies = Number(settingsMap["webhook_max_auto_replies_24h"] || "0");
+    const autoReplyDelaySec = Math.max(0, Math.min(60, Number(settingsMap["webhook_auto_reply_delay_seconds"] || "0")));
     const autoReplyMessage = waMeUrl ? `${baseReplyMessage}\n\n${waMeUrl}` : baseReplyMessage;
     const apiBaseUrl = settingsMap["loyalty_wa_baseUrl"] || "";
     const apiKey = settingsMap["loyalty_wa_apiKey"] || "";
