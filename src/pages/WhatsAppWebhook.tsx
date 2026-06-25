@@ -36,12 +36,13 @@ const WhatsAppWebhook = () => {
       const { data } = await supabase
         .from("app_settings")
         .select("setting_key, setting_value")
-        .in("setting_key", ["webhook_auto_reply_enabled", "webhook_auto_reply_message", "webhook_wa_me_url", "webhook_max_auto_replies_24h"]);
+        .in("setting_key", ["webhook_auto_reply_enabled", "webhook_auto_reply_message", "webhook_wa_me_url", "webhook_max_auto_replies_24h", "webhook_auto_reply_delay_seconds"]);
       (data || []).forEach((s) => {
         if (s.setting_key === "webhook_auto_reply_enabled") setAutoReplyEnabled(s.setting_value !== "false");
         if (s.setting_key === "webhook_auto_reply_message") setAutoReplyMessage(s.setting_value);
         if (s.setting_key === "webhook_wa_me_url" && s.setting_value) setWaMeUrl(s.setting_value);
         if (s.setting_key === "webhook_max_auto_replies_24h") setMaxAutoReplies(Number(s.setting_value) || 0);
+        if (s.setting_key === "webhook_auto_reply_delay_seconds") setAutoReplyDelaySec(Number(s.setting_value) || 0);
       });
     })();
   }, []);
