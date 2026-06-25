@@ -224,6 +224,11 @@ const WhatsAppWebhook = () => {
             <Input type="number" value={maxAutoReplies} onChange={(e) => setMaxAutoReplies(Number(e.target.value))} min={0} className="mt-1 w-40" placeholder="0" />
             <p className="text-xs text-muted-foreground mt-1">Limits how many auto-replies a single number receives within 24 hours. Set to 0 for unlimited.</p>
           </div>
+          <div>
+            <Label>Auto-reply delay (seconds)</Label>
+            <Input type="number" value={autoReplyDelaySec} onChange={(e) => setAutoReplyDelaySec(Math.max(0, Math.min(60, Number(e.target.value) || 0)))} min={0} max={60} className="mt-1 w-40" placeholder="0" />
+            <p className="text-xs text-muted-foreground mt-1">Wait this many seconds before sending the auto-reply (0 = immediate, max 60). Helps avoid charges by re-checking the 24h limit after the delay.</p>
+          </div>
           <div className="flex gap-2">
             <Button onClick={handleSave} disabled={saving}>{saving ? "Saving..." : "Save Settings"}</Button>
             {waMeUrl && (
