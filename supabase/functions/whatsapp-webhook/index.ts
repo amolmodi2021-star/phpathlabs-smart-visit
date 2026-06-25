@@ -75,6 +75,7 @@ Deno.serve(async (req) => {
         "webhook_auto_reply_enabled",
         "webhook_wa_me_url",
         "webhook_max_auto_replies_24h",
+        "webhook_auto_reply_delay_seconds",
         "loyalty_wa_baseUrl",
         "loyalty_wa_apiKey",
         "loyalty_wa_authHeaderName",
@@ -91,6 +92,7 @@ Deno.serve(async (req) => {
     const baseReplyMessage = settingsMap["webhook_auto_reply_message"] || "Thank you for your message. We will get back to you shortly.";
     const waMeUrl = settingsMap["webhook_wa_me_url"] || "";
     const maxAutoReplies = Number(settingsMap["webhook_max_auto_replies_24h"] || "0");
+    const autoReplyDelaySec = Math.max(0, Math.min(60, Number(settingsMap["webhook_auto_reply_delay_seconds"] || "0")));
     const autoReplyMessage = waMeUrl ? `${baseReplyMessage}\n\n${waMeUrl}` : baseReplyMessage;
     const apiBaseUrl = settingsMap["loyalty_wa_baseUrl"] || "";
     const apiKey = settingsMap["loyalty_wa_apiKey"] || "";
@@ -197,6 +199,26 @@ Deno.serve(async (req) => {
         if ((count ?? 0) >= maxAutoReplies) {
           rateLimited = true;
           console.log(`Rate limited: ${senderNumber} has ${count} auto-replies in 24h (max: ${maxAutoReplies})`);
+        }
+      }
+
+      // Optional delay before sending, then re-check the 24h cap so a parallel inbound
+      // doesn't cause us to exceed the limit (and incur extra charges).
+      if (!rateLimited && autoReplyDelaySec > 0) {
+        console.log(`Delaying auto-reply to ${senderNumber} by ${autoReplyDelaySec}s`);
+        await new Promise((r) => setTimeout(r, autoReplyDelaySec * 1000));
+        if (maxAutoReplies > 0) {
+          const since2 = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+          const { count: count2 } = await supabase
+            .from("webhook_messages")
+            .select("id", { count: "exact", head: true })
+            .eq("sender_number", senderNumber)
+            .eq("direction", "outbound")
+            .gte("created_at", since2);
+          if ((count2 ?? 0) >= maxAutoReplies) {
+            rateLimited = true;
+            console.log(`Rate limited after delay: ${senderNumber} has ${count2} auto-replies in 24h (max: ${maxAutoReplies})`);
+          }
         }
       }
 

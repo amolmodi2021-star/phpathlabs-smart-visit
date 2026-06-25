@@ -26,6 +26,7 @@ const WhatsAppWebhook = () => {
   const [saving, setSaving] = useState(false);
   const [waMeUrl, setWaMeUrl] = useState("https://wa.me/+916356556699");
   const [maxAutoReplies, setMaxAutoReplies] = useState(0);
+  const [autoReplyDelaySec, setAutoReplyDelaySec] = useState(0);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
@@ -35,12 +36,13 @@ const WhatsAppWebhook = () => {
       const { data } = await supabase
         .from("app_settings")
         .select("setting_key, setting_value")
-        .in("setting_key", ["webhook_auto_reply_enabled", "webhook_auto_reply_message", "webhook_wa_me_url", "webhook_max_auto_replies_24h"]);
+        .in("setting_key", ["webhook_auto_reply_enabled", "webhook_auto_reply_message", "webhook_wa_me_url", "webhook_max_auto_replies_24h", "webhook_auto_reply_delay_seconds"]);
       (data || []).forEach((s) => {
         if (s.setting_key === "webhook_auto_reply_enabled") setAutoReplyEnabled(s.setting_value !== "false");
         if (s.setting_key === "webhook_auto_reply_message") setAutoReplyMessage(s.setting_value);
         if (s.setting_key === "webhook_wa_me_url" && s.setting_value) setWaMeUrl(s.setting_value);
         if (s.setting_key === "webhook_max_auto_replies_24h") setMaxAutoReplies(Number(s.setting_value) || 0);
+        if (s.setting_key === "webhook_auto_reply_delay_seconds") setAutoReplyDelaySec(Number(s.setting_value) || 0);
       });
     })();
   }, []);
@@ -59,6 +61,7 @@ const WhatsAppWebhook = () => {
       saveSetting("webhook_auto_reply_message", autoReplyMessage),
       saveSetting("webhook_wa_me_url", waMeUrl),
       saveSetting("webhook_max_auto_replies_24h", String(maxAutoReplies)),
+      saveSetting("webhook_auto_reply_delay_seconds", String(autoReplyDelaySec)),
     ]);
     setSaving(false);
     toast({ title: "Settings saved" });
@@ -220,6 +223,11 @@ const WhatsAppWebhook = () => {
             <Label>Max auto-replies per number in 24 hours (0 = unlimited)</Label>
             <Input type="number" value={maxAutoReplies} onChange={(e) => setMaxAutoReplies(Number(e.target.value))} min={0} className="mt-1 w-40" placeholder="0" />
             <p className="text-xs text-muted-foreground mt-1">Limits how many auto-replies a single number receives within 24 hours. Set to 0 for unlimited.</p>
+          </div>
+          <div>
+            <Label>Auto-reply delay (seconds)</Label>
+            <Input type="number" value={autoReplyDelaySec} onChange={(e) => setAutoReplyDelaySec(Math.max(0, Math.min(60, Number(e.target.value) || 0)))} min={0} max={60} className="mt-1 w-40" placeholder="0" />
+            <p className="text-xs text-muted-foreground mt-1">Wait this many seconds before sending the auto-reply (0 = immediate, max 60). Helps avoid charges by re-checking the 24h limit after the delay.</p>
           </div>
           <div className="flex gap-2">
             <Button onClick={handleSave} disabled={saving}>{saving ? "Saving..." : "Save Settings"}</Button>

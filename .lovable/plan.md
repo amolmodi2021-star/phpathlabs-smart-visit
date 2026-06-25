@@ -1,24 +1,26 @@
-# Backfill missing patient_master fields on revisit
+## Add configurable delay (in seconds) before sending WhatsApp auto-reply
 
-## Problem
-Today, when a patient revisits and the registration form is saved, `patient_master` is updated by overwriting every column — including with blanks. So:
-- If address was missing in master and the user now enters one → it correctly saves. ✓
-- But if a field is left blank in the new registration, the existing master value gets wiped to `null`. ✗
+### Goal
+Currently the webhook auto-reply fires immediately on every inbound message, which Meta bills as a service conversation. Add a configurable delay (in seconds) so the auto-reply is deferred — giving time for the 24h rate-limit / user re-engagement logic to potentially suppress duplicate charges, and allowing the admin to tune behaviour.
 
-We want a true "fill-in-the-gaps" behavior: new non-empty values win, but blanks must never erase existing master data.
+### Changes
 
-## Change
+1. **Settings UI — `WhatsAppSettingsPage.tsx` (Webhook tab)**
+   - Add a new numeric input: **"Auto-reply delay (seconds)"** next to the existing auto-reply controls.
+   - Stored in `app_settings` under key `webhook_auto_reply_delay_seconds` (default `0` = immediate, preserves current behaviour).
+   - Helper text: *"Delay before the auto-reply is sent. Useful to avoid charges when the user re-engages quickly."*
 
-In `src/components/lims/PatientRegistration.tsx` (around lines 429–449), when an existing `patient_master` row is found for the UMR, build the update payload conditionally:
+2. **Webhook edge function (`whatsapp-webhook` / inbound handler)**
+   - Read `webhook_auto_reply_delay_seconds` from `app_settings`.
+   - If `> 0`, wait that many seconds (`await new Promise(r => setTimeout(r, n*1000))`) before invoking the auto-reply send, while still respecting the existing 24h rate-limit check (`webhook_max_auto_replies_24h`).
+   - Re-check the 24h auto-reply counter *after* the delay (in case another auto-reply was already sent in the interim), to avoid duplicates.
+   - Keep delay capped (e.g. max 60s) to stay within edge-function execution limits.
 
-- For each demographic field (`title`, `mobile_number`, `gender`, `date_of_birth`, `email`, `address`, `patient_name`), include it in the UPDATE **only if** the new value is non-empty/non-null.
-- Always update `last_visit_date`.
-- Insert path (new master row) stays unchanged — it writes whatever was entered.
+### Technical notes
+- `app_settings` row uses existing JSON `value` pattern — no migration needed.
+- No schema changes; no new tables.
+- Default `0` keeps existing immediate behaviour for users who don't configure it.
 
-Also mirror the same "skip-blank" logic in `src/lib/syncPatientDemographics.ts` for the `patient_master` branch, so an edit from the Registered Section dialog with a blank field doesn't wipe the canonical row either. The fan-out to `patient_registrations` / `approved_reports` / `estimates` keeps current behavior (those are visit-specific snapshots).
-
-## Files
-- `src/components/lims/PatientRegistration.tsx` — conditional update payload for existing master row.
-- `src/lib/syncPatientDemographics.ts` — same skip-blank rule for the `patient_master` update only.
-
-No DB migration required.
+### Out of scope
+- No "skip on re-engage" cancellation logic (user picked Fixed delay only).
+- No changes to outbound messaging or templates.
