@@ -12,6 +12,22 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
+const PAGE = 1000;
+
+async function fetchAll(buildQuery: (from: number, to: number) => any): Promise<any[]> {
+  const out: any[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await buildQuery(from, from + PAGE - 1);
+    if (error) throw error;
+    const rows = data || [];
+    out.push(...rows);
+    if (rows.length < PAGE) break;
+    from += PAGE;
+  }
+  return out;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -22,9 +38,9 @@ Deno.serve(async (req) => {
   }
 
   const url = new URL(req.url);
-  const type = (url.searchParams.get("type") ?? "all").toLowerCase(); // all | estimates | home_visits
-  const from = url.searchParams.get("from"); // YYYY-MM-DD (created_at >= from)
-  const to = url.searchParams.get("to");     // YYYY-MM-DD (created_at <= to 23:59)
+  const type = (url.searchParams.get("type") ?? "all").toLowerCase();
+  const from = url.searchParams.get("from");
+  const to = url.searchParams.get("to");
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -39,15 +55,17 @@ Deno.serve(async (req) => {
 
   try {
     if (type === "all" || type === "estimates") {
-      let q = supabase
-        .from("estimates")
-        .select("id, patient_name, whatsapp_number, created_at")
-        .order("created_at", { ascending: false });
-      if (fromIso) q = q.gte("created_at", fromIso);
-      if (toIso) q = q.lte("created_at", toIso);
-      const { data, error } = await q;
-      if (error) throw error;
-      results.estimates = (data ?? []).map((e) => ({
+      const rows = await fetchAll((f, t) => {
+        let q = supabase
+          .from("estimates")
+          .select("id, patient_name, whatsapp_number, created_at")
+          .order("created_at", { ascending: false })
+          .range(f, t);
+        if (fromIso) q = q.gte("created_at", fromIso);
+        if (toIso) q = q.lte("created_at", toIso);
+        return q;
+      });
+      results.estimates = rows.map((e: any) => ({
         source: "estimate",
         id: e.id,
         patient_name: e.patient_name,
@@ -57,15 +75,17 @@ Deno.serve(async (req) => {
     }
 
     if (type === "all" || type === "home_visits") {
-      let q = supabase
-        .from("home_visits")
-        .select("id, visit_date, visit_time, estimate_id, estimates:estimate_id(patient_name, whatsapp_number)")
-        .order("visit_date", { ascending: false });
-      if (from) q = q.gte("visit_date", from);
-      if (to) q = q.lte("visit_date", to);
-      const { data, error } = await q;
-      if (error) throw error;
-      results.home_visits = (data ?? []).map((h: any) => ({
+      const rows = await fetchAll((f, t) => {
+        let q = supabase
+          .from("home_visits")
+          .select("id, visit_date, visit_time, estimate_id, estimates:estimate_id(patient_name, whatsapp_number)")
+          .order("visit_date", { ascending: false })
+          .range(f, t);
+        if (from) q = q.gte("visit_date", from);
+        if (to) q = q.lte("visit_date", to);
+        return q;
+      });
+      results.home_visits = rows.map((h: any) => ({
         source: "home_visit",
         id: h.id,
         patient_name: h.estimates?.patient_name ?? null,
