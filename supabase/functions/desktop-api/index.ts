@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
       const rows = await fetchAll((f, t) => {
         let q = supabase
           .from("home_visits")
-          .select("id, visit_date, visit_time, estimate_id, estimates:estimate_id(patient_name, whatsapp_number)")
+          .select("id, created_at, visit_date, visit_time, estimate_id, estimates:estimate_id(patient_name, whatsapp_number)")
           .order("visit_date", { ascending: false })
           .range(f, t);
         if (from) q = q.gte("visit_date", from);
@@ -90,7 +90,8 @@ Deno.serve(async (req) => {
         id: h.id,
         patient_name: h.estimates?.patient_name ?? null,
         phone: h.estimates?.whatsapp_number ?? null,
-        date: h.visit_date,
+        date: h.created_at,
+        visit_date: h.visit_date,
         time: h.visit_time,
       }));
     }
