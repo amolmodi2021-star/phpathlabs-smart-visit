@@ -90,7 +90,8 @@ Deno.serve(async (req) => {
         id: h.id,
         patient_name: h.estimates?.patient_name ?? null,
         phone: h.estimates?.whatsapp_number ?? null,
-        date: h.visit_date,
+        date: h.created_at,
+        visit_date: h.visit_date,
         time: h.visit_time,
       }));
     }
