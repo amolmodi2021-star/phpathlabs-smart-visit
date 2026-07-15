@@ -79,10 +79,10 @@ Deno.serve(async (req) => {
         let q = supabase
           .from("home_visits")
           .select("id, created_at, visit_date, visit_time, estimate_id, estimates:estimate_id(patient_name, whatsapp_number)")
-          .order("visit_date", { ascending: false })
+          .order("created_at", { ascending: false })
           .range(f, t);
-        if (from) q = q.gte("visit_date", from);
-        if (to) q = q.lte("visit_date", to);
+        if (fromIso) q = q.gte("created_at", fromIso);
+        if (toIso) q = q.lte("created_at", toIso);
         return q;
       });
       results.home_visits = rows.map((h: any) => ({
