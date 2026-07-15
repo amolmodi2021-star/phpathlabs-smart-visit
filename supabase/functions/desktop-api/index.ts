@@ -96,19 +96,58 @@ Deno.serve(async (req) => {
       }));
     }
 
+    const whatsapp_chats: any[] = [];
+    if (type === "all" || type === "whatsapp" || type === "whatsapp_chats") {
+      const rows = await fetchAll((f, t) => {
+        let q = supabase
+          .from("webhook_messages")
+          .select("sender_number, sender_name, message, created_at, direction")
+          .order("created_at", { ascending: false })
+          .range(f, t);
+        if (fromIso) q = q.gte("created_at", fromIso);
+        if (toIso) q = q.lte("created_at", toIso);
+        return q;
+      });
+      const byMobile = new Map<string, any>();
+      for (const r of rows as any[]) {
+        const digits = String(r.sender_number || "").replace(/\D/g, "");
+        const mobile10 = digits.slice(-10);
+        if (mobile10.length !== 10) continue;
+        const existing = byMobile.get(mobile10);
+        if (!existing || new Date(r.created_at) > new Date(existing.date)) {
+          byMobile.set(mobile10, {
+            source: "whatsapp",
+            id: mobile10,
+            patient_name: r.sender_name || null,
+            phone: mobile10,
+            date: r.created_at,
+            last_message: r.message ?? null,
+            direction: r.direction ?? null,
+          });
+        } else if (!existing.patient_name && r.sender_name) {
+          existing.patient_name = r.sender_name;
+        }
+      }
+      whatsapp_chats.push(...byMobile.values());
+      whatsapp_chats.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }
+
     const combined = [
       ...(results.estimates ?? []),
       ...(results.home_visits ?? []),
+      ...whatsapp_chats,
     ];
 
     return json({
       count: {
         estimates: results.estimates?.length ?? 0,
         home_visits: results.home_visits?.length ?? 0,
+        whatsapp_chats: whatsapp_chats.length,
         total: combined.length,
       },
       data: combined,
     });
+
   } catch (e) {
     console.error("desktop-api error", e);
     return json({ error: (e as Error).message }, 500);
