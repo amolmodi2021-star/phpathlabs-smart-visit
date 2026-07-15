@@ -96,6 +96,30 @@ Deno.serve(async (req) => {
       }));
     }
 
+    const hv_completed: any[] = [];
+    if (type === "all" || type === "hv_completed" || type === "completed_home_visits") {
+      const rows = await fetchAll((f, t) => {
+        let q = supabase
+          .from("home_visits")
+          .select("id, created_at, visit_date, visit_time, updated_at, status, estimate_id, estimates:estimate_id(patient_name, whatsapp_number)")
+          .eq("status", "completed")
+          .order("updated_at", { ascending: false })
+          .range(f, t);
+        if (fromIso) q = q.gte("updated_at", fromIso);
+        if (toIso) q = q.lte("updated_at", toIso);
+        return q;
+      });
+      hv_completed.push(...rows.map((h: any) => ({
+        source: "HV Completed",
+        id: h.id,
+        patient_name: h.estimates?.patient_name ?? null,
+        phone: h.estimates?.whatsapp_number ?? null,
+        date: h.updated_at,
+        visit_date: h.visit_date,
+        time: h.visit_time,
+      })));
+    }
+
     const whatsapp_chats: any[] = [];
     if (type === "all" || type === "whatsapp" || type === "whatsapp_chats") {
       const rows = await fetchAll((f, t) => {
