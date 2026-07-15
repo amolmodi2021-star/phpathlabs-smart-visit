@@ -159,6 +159,7 @@ Deno.serve(async (req) => {
     const combined = [
       ...(results.estimates ?? []),
       ...(results.home_visits ?? []),
+      ...hv_completed,
       ...whatsapp_chats,
     ];
 
@@ -166,6 +167,7 @@ Deno.serve(async (req) => {
       count: {
         estimates: results.estimates?.length ?? 0,
         home_visits: results.home_visits?.length ?? 0,
+        hv_completed: hv_completed.length,
         whatsapp_chats: whatsapp_chats.length,
         total: combined.length,
       },
