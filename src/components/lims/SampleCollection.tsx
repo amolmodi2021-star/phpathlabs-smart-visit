@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { printBarcodes } from "@/lib/barcodePrint";
+import { getTubeSampleId } from "@/lib/tubeSampleId";
 
 import { buildSampleTubeGroups, TubeGroupingItem } from "@/lib/sampleTubeGrouping";
 import { formatAgeGender } from "@/lib/ageGender";
@@ -78,8 +79,7 @@ const SampleCollection = () => {
   const [printConfirmDialog, setPrintConfirmDialog] = useState<{ open: boolean; reg: any; tubes: SampleTubeRow[]; action: (() => void) | null }>({ open: false, reg: null, tubes: [], action: null });
 
   const getBarcodeLabel = (reg: any, tube: SampleTubeRow) => {
-    const suffix = tube.suffix?.trim();
-    return suffix ? `${reg.invoice_number}${suffix}` : String(reg.invoice_number);
+    return getTubeSampleId(reg.invoice_number, tube);
   };
 
   const handleSearch = (val: string) => {

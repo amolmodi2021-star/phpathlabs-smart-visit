@@ -410,7 +410,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     if (relevantParams.length === 0) return false;
     return relevantParams.every((tp: any) => {
       const p = tp.report_test_parameters;
-      const existing = existingResults.find((r: any) => r.registration_id === regId && r.parameter_id === p.id);
+      const existing = existingResults.find((r: any) => r.registration_id === regId && r.test_id === testId && r.parameter_id === p.id);
       return existing?.result_value && existing.result_value.trim() !== "";
     });
   };
@@ -672,7 +672,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         if (!p) continue;
         // For parameter-level outsource, only save outsourced parameters
         if (outsourcedParamIds && outsourcedParamIds.length > 0 && !outsourcedParamIds.includes(p.id)) continue;
-        const valKey = `${regId}||${p.id}`;
+        const valKey = `${regId}||${testId}||${p.id}`;
         const value = editedValues[valKey] || "";
         if (!value) continue;
         const resolved = reg ? resolveNormalRange(p.id, reg) : { text: "", low: null, high: null };
@@ -1044,9 +1044,9 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                         if (test.isParameterLevel && test.outsourcedParameterIds && !test.outsourcedParameterIds.includes(p.id)) {
                           return null;
                         }
-                        const valKey = `${regId}||${p.id}`;
+                        const valKey = `${regId}||${test.testId}||${p.id}`;
                         const existing = existingResults.find(
-                          (r: any) => r.registration_id === regId && r.parameter_id === p.id
+                          (r: any) => r.registration_id === regId && r.test_id === test.testId && r.parameter_id === p.id
                         );
                         // Hide ONLY when this row is already finalised downstream
                         // (verified / approved / dispatched). For pending/entered rows

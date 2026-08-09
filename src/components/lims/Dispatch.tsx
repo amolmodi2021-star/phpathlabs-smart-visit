@@ -207,8 +207,8 @@ const Dispatch = () => {
         else if (hasApprovedResults || hasApprovedSnip) status = "approved";
         else if (hasVerifiedResults || hasVerifiedSnip) status = "verified";
         else if (hasEnteredResults || hasEnteredSnip) status = "results_entered";
-        else if (regStatus === "sample_accepted" || testResults.length > 0) status = "sample_accepted";
-        else if (regStatus === "sample_collected") status = "sample_collected";
+        else if (tube?.status === "accepted" || regStatus === "sample_accepted") status = "sample_accepted";
+        else if (tube?.status === "collected" || regStatus === "sample_collected") status = "sample_collected";
 
         const snipUrls = snip && snip.result_mode === "snip" && Array.isArray(snip.snip_image_urls) ? snip.snip_image_urls : [];
         const approvedResults = testResults.filter((r: any) => r.status === "approved");

@@ -18,6 +18,7 @@ import { formatAgeGender } from "@/lib/ageGender";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { printBarcodes } from "@/lib/barcodePrint";
+import { getTubeSampleId } from "@/lib/tubeSampleId";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import NewBadge from "./NewBadge";
 
@@ -317,7 +318,7 @@ const SampleAcceptance = () => {
         }
 
         if (orderTests.length > 0) {
-          const sampleId = tube.suffix ? `${reg.invoice_number}${tube.suffix}` : reg.invoice_number;
+          const sampleId = getTubeSampleId(reg.invoice_number, tube);
           await supabase.from("lims_test_orders").insert({
             sample_id: sampleId, patient_name: reg.patient_name,
             tests: orderTests, status: "pending",

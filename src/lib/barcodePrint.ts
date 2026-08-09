@@ -3,6 +3,7 @@ import { jsPDF } from "jspdf";
 import bwipjs from "bwip-js/browser";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { getTubeSampleId } from "@/lib/tubeSampleId";
 
 export interface BarcodeTube {
   id: string;
@@ -67,8 +68,7 @@ export const printBarcodes = async (reg: any, tubes: BarcodeTube[]): Promise<voi
   tubes.forEach((tube, idx) => {
     if (idx > 0) doc.addPage([50, 25], "landscape");
 
-    const cleanSuffix = tube.suffix?.trim();
-    const displayValue = cleanSuffix ? `${reg.invoice_number}${cleanSuffix}` : reg.invoice_number;
+    const displayValue = getTubeSampleId(reg.invoice_number, tube);
     // Clean alphanumeric payload only — "auto-Enter" must be configured on the scanner (CR suffix), not baked into the barcode
     const barcodeValue = displayValue;
 
