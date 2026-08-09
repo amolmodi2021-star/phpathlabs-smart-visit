@@ -16,6 +16,10 @@ import { getCurrentUserName } from "@/lib/auth";
 import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import { buildSampleTubeGroups } from "@/lib/sampleTubeGrouping";
 import { registerPatientAtomic } from "@/lib/registerPatientAtomic";
+import {
+  resolveSelectedItemParamSets,
+  computeParamConflictHighlightIds,
+} from "@/lib/testParameterConflicts";
 import InvoicePreview from "./InvoicePreview";
 import PatientSelectDialog, { type PatientPick } from "./PatientSelectDialog";
 import DoctorAutocomplete, { ensureDoctor } from "./DoctorAutocomplete";
@@ -300,6 +304,20 @@ const PatientRegistration = () => {
     (testSearch === "" || t.test_name.toLowerCase().includes(testSearch.toLowerCase())) &&
     (!eligiblePickupTestIds || eligiblePickupTestIds.has(t.id))
   );
+
+  // Highlight tests that share parameters with a larger selected test (fewer params → red).
+  // Does not auto-remove; save remains allowed.
+  const selectedKey = selectedTests.map((t) => `${t.test_id}:${t.item_type || "test"}`).join("|");
+  const { data: paramConflictIds = new Set<string>() } = useQuery({
+    queryKey: ["reg-param-conflicts", selectedKey],
+    queryFn: async () => {
+      if (selectedTests.length < 2) return new Set<string>();
+      const paramSets = await resolveSelectedItemParamSets(selectedTests);
+      return computeParamConflictHighlightIds(paramSets);
+    },
+    enabled: selectedTests.length >= 2,
+    staleTime: 30_000,
+  });
 
   // Auto-apply channel discount when channel is selected
   const effectiveDiscountType = channelId && selectedChannel ? "percent" : globalDiscountType;
@@ -836,28 +854,49 @@ const PatientRegistration = () => {
 
           {selectedTests.length > 0 && (
             <div className="space-y-1">
-              {selectedTests.map(t => (
-                <div key={t.test_id} className="flex items-center gap-2 rounded-lg border px-3 py-1.5">
-                  <span className="text-sm font-medium whitespace-nowrap">{t.test_name}</span>
-                  <span className="text-sm text-muted-foreground">₹{t.price}</span>
-                  {t.fasting_required && <span className="text-xs text-destructive">Fasting</span>}
-                  <div className="ml-auto flex items-center gap-1.5">
-                    {t.discount_applicable && !isCreditPickup && !(channelId && selectedChannel) && (
-                      <>
-                        <Select value={t.individual_discount_type || ""} onValueChange={v => updateTestDiscount(t.test_id, "individual_discount_type", v || null)}>
-                          <SelectTrigger className="w-16 h-7 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
-                          <SelectContent><SelectItem value="percent">%</SelectItem><SelectItem value="amount">₹</SelectItem></SelectContent>
-                        </Select>
-                        {t.individual_discount_type && (
-                          <Input type="number" className="w-16 h-7 text-xs" value={t.individual_discount_value || ""}
-                            onChange={e => updateTestDiscount(t.test_id, "individual_discount_value", parseFloat(e.target.value) || 0)} />
-                        )}
-                      </>
+              {paramConflictIds.size > 0 && (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  Red tests share parameters with a larger test — prefer removing them (saving without removal is allowed).
+                </p>
+              )}
+              {selectedTests.map(t => {
+                const conflicted = paramConflictIds.has(t.test_id);
+                return (
+                  <div
+                    key={t.test_id}
+                    className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 ${
+                      conflicted ? "border-destructive bg-destructive/10" : ""
+                    }`}
+                  >
+                    <span className={`text-sm font-medium whitespace-nowrap ${conflicted ? "text-destructive" : ""}`}>
+                      {t.test_name}
+                    </span>
+                    <span className={`text-sm ${conflicted ? "text-destructive/80" : "text-muted-foreground"}`}>₹{t.price}</span>
+                    {conflicted && (
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-destructive">
+                        Duplicate params
+                      </span>
                     )}
-                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => removeTest(t.test_id)}><X className="h-3.5 w-3.5" /></Button>
+                    {t.fasting_required && <span className="text-xs text-destructive">Fasting</span>}
+                    <div className="ml-auto flex items-center gap-1.5">
+                      {t.discount_applicable && !isCreditPickup && !(channelId && selectedChannel) && (
+                        <>
+                          <Select value={t.individual_discount_type || ""} onValueChange={v => updateTestDiscount(t.test_id, "individual_discount_type", v || null)}>
+                            <SelectTrigger className="w-16 h-7 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
+                            <SelectContent><SelectItem value="percent">%</SelectItem><SelectItem value="amount">₹</SelectItem></SelectContent>
+                          </Select>
+                          {t.individual_discount_type && (
+                            <Input type="number" className="w-16 h-7 text-xs" value={t.individual_discount_value || ""}
+                              onChange={e => updateTestDiscount(t.test_id, "individual_discount_value", parseFloat(e.target.value) || 0)} />
+                          )}
+                        </>
+                      )}
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => removeTest(t.test_id)}><X className="h-3.5 w-3.5" /></Button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
