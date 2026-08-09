@@ -176,7 +176,7 @@ const DoctorApproval = () => {
     enabled: pageIds.length > 0,
     queryFn: async () => {
       const { data } = await supabase.from("patient_registrations")
-        .select("id, invoice_number, patient_name, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, gender, dob, created_at, updated_at, bill_cancelled, doctor_name")
+        .select("id, invoice_number, patient_name, title, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, gender, dob, email, address, created_at, updated_at, bill_cancelled, doctor_name, report_language")
         .in("id", pageIds);
       const order = new Map(pageIds.map((id, i) => [id, i] as const));
       return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));

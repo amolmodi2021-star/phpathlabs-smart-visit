@@ -388,6 +388,17 @@ const LimsReportView = () => {
       }];
     }
 
+    // Prefer live registration demographics when approved snapshot is missing title
+    // (older approvals omitted title from the doctor-approval query).
+    if (regData && reportsArr.length > 0) {
+      reportsArr = reportsArr.map((r: any) => ({
+        ...r,
+        title: r.title || regData.title || null,
+        patient_name: r.patient_name || regData.patient_name || null,
+        gender: r.gender || regData.gender || null,
+      }));
+    }
+
     // Fallback: if any report is missing sample_collection_date (legacy approvals before
     // collection-date capture), derive it from MIN(sample_tubes.collected_at) for this registration.
     const needsCollectionFallback = reportsArr.some((r: any) => !r.sample_collection_date);

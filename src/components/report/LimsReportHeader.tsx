@@ -46,6 +46,36 @@ const calculateAge = (dob: string | null): string => {
   }
 };
 
+const KNOWN_TITLES = ["Mr.", "Mrs.", "Ms.", "Master", "Miss", "Baby Of", "Dr.", "Master.", "Miss.", "Baby Of."];
+
+/** Ensure display name always starts with Mr./Mrs./etc. Prefer stored title; else gender. */
+export function formatPatientDisplayName(
+  title: string | null | undefined,
+  patientName: string | null | undefined,
+  gender?: string | null,
+): string {
+  const name = (patientName || "").trim();
+  if (!name) return "—";
+
+  const nameAlreadyTitled = KNOWN_TITLES.some((t) => {
+    const prefix = t.replace(/\.$/, "");
+    return new RegExp(`^${prefix}\\.?\\s`, "i").test(name);
+  });
+  if (nameAlreadyTitled) return name;
+
+  let resolved = (title || "").trim();
+  if (!resolved) {
+    const g = (gender || "").toLowerCase();
+    if (g.startsWith("m")) resolved = "Mr.";
+    else if (g.startsWith("f")) resolved = "Mrs.";
+  }
+  if (!resolved) return name;
+
+  // Normalize trailing period for common titles
+  if (/^(Mr|Mrs|Ms|Dr)$/i.test(resolved)) resolved = `${resolved}.`;
+  return `${resolved} ${name}`.replace(/\s+/g, " ").trim();
+}
+
 const formatVisitType = (visitType: string | null): string => {
   switch (visitType) {
     case "home_visit":
@@ -65,13 +95,13 @@ const LimsReportHeader = ({
   sampleCollectionDate, approvalDate, printDate, visitType,
 }: LimsReportHeaderProps) => {
   const age = calculateAge(dob);
-  const displayName = [title, patientName].filter(Boolean).join(" ");
+  const displayName = formatPatientDisplayName(title, patientName, gender);
 
   return (
     <div className="border-b pb-1 mb-1" style={{ fontSize: "13px", lineHeight: "1.5" }}>
       {/* Full-width patient name — no side fields so long names fit */}
       <div style={{ overflowWrap: "anywhere", wordBreak: "break-word", marginBottom: "2px" }}>
-        <span className="font-semibold">Patient Name:</span> {displayName || "—"}
+        <span className="font-semibold">Patient Name:</span> {displayName}
       </div>
 
       <div className="grid grid-cols-3 gap-x-4 gap-y-0.5">
