@@ -46,6 +46,19 @@ const calculateAge = (dob: string | null): string => {
   }
 };
 
+const formatVisitType = (visitType: string | null): string => {
+  switch (visitType) {
+    case "home_visit":
+      return "Home Visit";
+    case "lab_visit":
+      return "Lab Visit";
+    case "pickup_point":
+      return "Pickup Point";
+    default:
+      return visitType ? visitType.replace(/_/g, " ") : "—";
+  }
+};
+
 const LimsReportHeader = ({
   patientName, title, gender, dob, umrNumber, doctorName,
   mobileNumber, invoiceNumber, registrationDate,
@@ -56,8 +69,13 @@ const LimsReportHeader = ({
 
   return (
     <div className="border-b pb-1 mb-1" style={{ fontSize: "13px", lineHeight: "1.5" }}>
+      {/* Full-width patient name — no side fields so long names fit */}
+      <div style={{ overflowWrap: "anywhere", wordBreak: "break-word", marginBottom: "2px" }}>
+        <span className="font-semibold">Patient Name:</span> {displayName || "—"}
+      </div>
+
       <div className="grid grid-cols-3 gap-x-4 gap-y-0.5">
-        <div style={{ overflowWrap: 'break-word', wordBreak: 'break-word' }}><span className="font-semibold">Patient Name:</span> {displayName || "—"}</div>
+        <div><span className="font-semibold">Visit Type:</span> {formatVisitType(visitType)}</div>
         <div><span className="font-semibold">Age / Gender:</span> {age} / {gender || "—"}</div>
         <div><span className="font-semibold">UMR No:</span> {umrNumber || "—"}</div>
 
