@@ -617,7 +617,7 @@ const ResultsEntry = () => {
           if (!p) continue;
           const isParamOutsourced = isFullTestOutsourced || (paramOutsourcedSet && paramOutsourcedSet.has(p.id));
           const existing = existingResults.find(
-            (r: any) => r.registration_id === reg.id && r.test_id === t.test_id && r.parameter_id === p.id
+            (r: any) => r.registration_id === reg.id && r.parameter_id === p.id
           );
           testParamResults.push({ param: p, tp, isParamOutsourced, existing });
         }
