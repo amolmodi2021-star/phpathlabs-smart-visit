@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { Trash2, Plus, AlertTriangle } from "lucide-react";
 import { format, parseISO, addDays, getDay } from "date-fns";
 import { usePhlebotomistAvailability } from "@/hooks/usePhlebotomistAvailability";
+import { patientDisplayName } from "@/lib/patientDisplayName";
 
 const DAYS_OF_WEEK = [
   { value: 0, label: "Sun" },
@@ -34,7 +35,7 @@ interface ConflictVisit {
   visit_date: string;
   visit_time: string;
   address: string;
-  estimate?: { patient_name: string | null; whatsapp_number: string } | null;
+  estimate?: { patient_name: string | null; title?: string | null; gender?: string | null; whatsapp_number: string } | null;
 }
 
 const PhlebotomistLeavesDialog = ({ open, onClose, phlebotomist }: Props) => {
@@ -88,7 +89,7 @@ const PhlebotomistLeavesDialog = ({ open, onClose, phlebotomist }: Props) => {
     if (!dates.length || !phlebotomist?.id) return [];
     const { data } = await supabase
       .from("home_visits")
-      .select("id, visit_date, visit_time, address, estimate:estimates(patient_name, whatsapp_number)")
+      .select("id, visit_date, visit_time, address, estimate:estimates(patient_name, title, gender, whatsapp_number)")
       .eq("phlebotomist_id", phlebotomist.id)
       .in("visit_date", dates)
       .neq("status", "Cancelled");
@@ -385,7 +386,7 @@ const PhlebotomistLeavesDialog = ({ open, onClose, phlebotomist }: Props) => {
                       </p>
                       <p className="text-xs text-muted-foreground">{v.address}</p>
                       {(v.estimate as any)?.patient_name && (
-                        <p className="text-xs font-medium mt-0.5">{(v.estimate as any).patient_name}</p>
+                        <p className="text-xs font-medium mt-0.5">{patientDisplayName(v.estimate as any)}</p>
                       )}
                     </div>
                   </div>

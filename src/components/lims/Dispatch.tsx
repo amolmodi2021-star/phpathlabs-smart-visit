@@ -4,6 +4,7 @@ import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
 import SyncingOverlay from "./SyncingOverlay";
 import { formatAgeGender } from "@/lib/ageGender";
+import { patientDisplayName } from "@/lib/patientDisplayName";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
@@ -100,7 +101,7 @@ const Dispatch = () => {
     enabled: dispatchPageIds.length > 0,
     queryFn: async () => {
       const { data } = await supabase.from("patient_registrations")
-        .select("id, invoice_number, patient_name, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, gender, dob, created_at, updated_at, bill_cancelled, registered_by, due_amount, pickup_point_id")
+        .select("id, invoice_number, patient_name, title, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, gender, dob, created_at, updated_at, bill_cancelled, registered_by, due_amount, pickup_point_id")
         .in("id", dispatchPageIds);
       const order = new Map(dispatchPageIds.map((id, i) => [id, i]));
       return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
@@ -323,7 +324,7 @@ const Dispatch = () => {
     const linkLine = portalUrl
       ? `\n\nView status & download:\n${portalUrl}\n(Link valid for 7 days)`
       : "";
-    const message = `Dear ${reg.patient_name},\n\nYour lab reports for Invoice ${reg.invoice_number} are ready.${linkLine}\n\nThank you for choosing PH PathLabs.\nLabLine: 6356 55 66 99`;
+    const message = `Dear ${patientDisplayName(reg)},\n\nYour lab reports for Invoice ${reg.invoice_number} are ready.${linkLine}\n\nThank you for choosing PH PathLabs.\nLabLine: 6356 55 66 99`;
     window.open(`https://wa.me/91${phone}?text=${encodeURIComponent(message)}`, "_blank");
   };
 
@@ -350,7 +351,7 @@ const Dispatch = () => {
         await supabase.from("patient_registrations").update({ status: "dispatched" } as any).eq("id", reg.id);
       }
       await propagateRegistrationChange(qc, reg.id, ["dispatch", "doctor_approval"]);
-      toast.success(`Reports dispatched for ${reg.patient_name}`);
+      toast.success(`Reports dispatched for ${patientDisplayName(reg)}`);
     } catch (err: any) { toast.error(err.message || "Dispatch failed"); }
     finally { setActionKey(null); }
   };
@@ -504,7 +505,7 @@ const Dispatch = () => {
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-1.5">
                               {reg.is_stat && entry.completionStatus !== "all_done" && <span className="relative flex h-2 w-2 shrink-0"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-destructive" /></span>}
-                              <span className="font-medium text-sm truncate">{reg.patient_name}</span>
+                              <span className="font-medium text-sm truncate">{patientDisplayName(reg)}</span>
                               <NewBadge show={isNewArrival(reg.id)} />
                               <Badge variant="outline" className="text-[10px] font-mono shrink-0 px-1 py-0">{formatAgeGender(reg.dob, reg.gender)}</Badge>
                             </div>
@@ -559,7 +560,7 @@ const Dispatch = () => {
                             </Button>
                           )}
                           <User className="h-5 w-5 text-muted-foreground" />
-                          <h3 className={cn("font-semibold", isMobile ? "text-base" : "text-lg")}>{selectedEntry.registration.patient_name}</h3>
+                          <h3 className={cn("font-semibold", isMobile ? "text-base" : "text-lg")}>{patientDisplayName(selectedEntry.registration)}</h3>
                           <Badge variant="outline" className="text-xs font-mono">{formatAgeGender(selectedEntry.registration.dob, selectedEntry.registration.gender)}</Badge>
                           {selectedEntry.registration.is_stat && selectedEntry.completionStatus !== "all_done" && <Badge variant="destructive" className="text-[10px]">STAT</Badge>}
                           {getCompletionDot(selectedEntry.completionStatus)}

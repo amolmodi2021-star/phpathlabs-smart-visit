@@ -2,6 +2,7 @@ import RefreshButton from "@/components/lims/RefreshButton";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { formatAgeGender } from "@/lib/ageGender";
+import { patientDisplayName } from "@/lib/patientDisplayName";
 import { isSuspectNegativeResult } from "@/lib/reportFlags";
 import TimeResultInput from "./TimeResultInput";
 import { parseTimeResultToSeconds, isCanonicalTimeValue, formatTimeResult } from "@/lib/timeRange";
@@ -651,7 +652,7 @@ const DoctorApproval = () => {
       // strand the registration in a state where only Dispatch can see it.
 
       await propagateRegistrationChange(qc, reg.id, ["doctor_approval", "dispatch"]);
-      toast.success(`All tests approved for ${reg.patient_name}`);
+      toast.success(`All tests approved for ${patientDisplayName(reg)}`);
     } catch (err: any) { toast.error(err.message || "Approval failed"); }
     finally { setActionKey(null); }
   };
@@ -844,7 +845,7 @@ const DoctorApproval = () => {
             <Badge className="bg-amber-100 text-amber-700 text-[10px]">PARTIAL</Badge>
           )}
           {reg.is_stat && <span className="relative inline-flex h-2.5 w-2.5 ml-1.5 align-middle"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" /><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive" /></span>}
-          <span className="text-sm text-muted-foreground">{reg.patient_name}</span>
+          <span className="text-sm text-muted-foreground">{patientDisplayName(reg)}</span>
           <Badge variant="outline" className="text-[10px] font-mono">{formatAgeGender(reg.dob, reg.gender)}</Badge>
         </div>
         {/* Snip-only outsourced tests */}
@@ -1048,7 +1049,7 @@ const DoctorApproval = () => {
                         <Badge className="bg-amber-100 text-amber-700 text-[10px]">PARTIAL</Badge>
                       )}
                       {reg.is_stat && <span className="relative inline-flex h-2.5 w-2.5"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" /><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive" /></span>}
-                      <span className="text-sm text-muted-foreground">{reg.patient_name}</span>
+                      <span className="text-sm text-muted-foreground">{patientDisplayName(reg)}</span>
                       <Badge variant="outline" className="text-[10px] font-mono">{formatAgeGender(reg.dob, reg.gender)}</Badge>
                     </div>
                     <div className="text-xs text-muted-foreground">{reg.mobile_number} • {entry.parameters.length} parameters</div>

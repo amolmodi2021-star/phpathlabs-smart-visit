@@ -29,6 +29,7 @@ import { format, isToday, isTomorrow, parseISO, addDays } from "date-fns";
 import { useAbnormalHistory } from "@/hooks/useAbnormalHistory";
 import { useMessageTemplates } from "@/hooks/useMessageTemplates";
 import { buildVisitMessage } from "@/lib/whatsapp";
+import { patientDisplayName } from "@/lib/patientDisplayName";
 
 const statusColors: Record<string, string> = {
   Pending: "bg-warning text-warning-foreground",
@@ -459,7 +460,7 @@ const HomeVisits = () => {
       return {
         "Visit Date": formatDateDDMMYYYY(v.visit_date),
         "Visit Time": formatTime12hr(v.visit_time),
-        "Patient": v.estimates?.patient_name || "",
+        "Patient": (() => { const n = patientDisplayName(v.estimates); return n === "—" ? "" : n; })(),
         "DOB": formatDateDDMMYYYY(v.estimates?.dob),
         "Mobile": v.estimates?.whatsapp_number || "",
         "Address": v.address,
@@ -674,7 +675,7 @@ const HomeVisits = () => {
                         className="mt-1"
                       />
                       <div>
-                        <p className="font-medium text-sm">{est?.patient_name || "—"}</p>
+                        <p className="font-medium text-sm">{patientDisplayName(est)}</p>
                         <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                           <MapPin className="h-3 w-3" />{v.address}
                         </p>
@@ -951,7 +952,7 @@ const HomeVisits = () => {
                 return (
                   <div key={vid} className="flex items-center justify-between bg-muted/50 rounded-lg p-3">
                     <div>
-                      <p className="text-sm font-medium">{est?.patient_name || "—"}</p>
+                      <p className="text-sm font-medium">{patientDisplayName(est)}</p>
                       <p className="text-xs text-muted-foreground">{est?.whatsapp_number}</p>
                       <div className="flex gap-1 mt-1 flex-wrap">
                         {(est?.estimate_tests || []).map((t: any) => (

@@ -9,6 +9,7 @@ import { IndianRupee, TrendingUp, Download, Wallet, ChevronDown, ChevronUp, MapP
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 import PhleboExportDialog from "@/components/PhleboExportDialog";
 import { formatDateDDMMYYYY } from "@/lib/utils";
+import { patientDisplayName } from "@/lib/patientDisplayName";
 
 type PeriodKey = "current" | "previous";
 
@@ -75,7 +76,7 @@ const PhleboDashboard = () => {
       if (estimateIds.length === 0) return [];
       const { data } = await supabase
         .from("estimates")
-        .select("id, home_visit_charges, patient_name, whatsapp_number, umr_number")
+        .select("id, home_visit_charges, patient_name, title, gender, whatsapp_number, umr_number")
         .in("id", estimateIds);
       return data || [];
     },
@@ -112,7 +113,7 @@ const PhleboDashboard = () => {
       if (visitIds.length === 0) return [];
       const { data } = await supabase
         .from("patient_registrations")
-        .select("id, home_visit_id, home_visit_charges, due_amount, final_amount, paid_amount, bill_cancelled, refund_amount, patient_name, mobile_number, umr_number, invoice_number, tests, status")
+        .select("id, home_visit_id, home_visit_charges, due_amount, final_amount, paid_amount, bill_cancelled, refund_amount, patient_name, title, gender, mobile_number, umr_number, invoice_number, tests, status")
         .in("home_visit_id", visitIds);
       return data || [];
     },
@@ -249,7 +250,7 @@ const PhleboDashboard = () => {
       <div className="bg-background border rounded-md p-3 space-y-2">
         <div className="flex items-start justify-between gap-2">
           <div>
-            <div className="text-sm font-semibold">{reg.patient_name || e.patient_name || "—"}</div>
+            <div className="text-sm font-semibold">{patientDisplayName(reg?.patient_name ? reg : e)}</div>
             <div className="text-xs text-muted-foreground space-x-2">
               {reg.umr_number && <span>UMR: {reg.umr_number}</span>}
               {reg.invoice_number && <span>• Inv: {reg.invoice_number}</span>}

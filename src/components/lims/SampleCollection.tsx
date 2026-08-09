@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { printBarcodes } from "@/lib/barcodePrint";
+import { patientDisplayName } from "@/lib/patientDisplayName";
 
 import { buildSampleTubeGroups, TubeGroupingItem } from "@/lib/sampleTubeGrouping";
 import { formatAgeGender } from "@/lib/ageGender";
@@ -610,7 +611,7 @@ const SampleCollection = () => {
                   <TableCell className="font-mono text-sm font-bold">{reg.invoice_number}</TableCell>
                   <TableCell>
                     <div className="font-medium">
-                      {reg.patient_name}
+                      {patientDisplayName(reg)}
                       {isPending && <NewBadge show={isNewArrival(reg.id)} className="ml-1.5 align-middle" />}
                       {reg.is_stat && (
                         <span className="relative inline-flex h-2.5 w-2.5 ml-1.5 align-middle">
@@ -714,7 +715,7 @@ const SampleCollection = () => {
           <DialogHeader>
             <DialogTitle>Reprint Barcodes</DialogTitle>
             <DialogDescription>
-              Patient: <strong>{reprintDialog.reg?.patient_name}</strong> — {reprintDialog.reg?.invoice_number}
+              Patient: <strong>{patientDisplayName(reprintDialog.reg)}</strong> — {reprintDialog.reg?.invoice_number}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
@@ -766,7 +767,7 @@ const SampleCollection = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Cancel Collection?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will revert tube <strong className="font-mono">{cancelCollectDialog.tube ? getBarcodeLabel(cancelCollectDialog.reg, cancelCollectDialog.tube) : ""}</strong> for patient <strong>{cancelCollectDialog.reg?.patient_name}</strong> back to <strong>Pending</strong>. Use this only if the sample was marked collected by mistake. If the tube has already been accepted in the lab, this action will fail.
+              This will revert tube <strong className="font-mono">{cancelCollectDialog.tube ? getBarcodeLabel(cancelCollectDialog.reg, cancelCollectDialog.tube) : ""}</strong> for patient <strong>{patientDisplayName(cancelCollectDialog.reg)}</strong> back to <strong>Pending</strong>. Use this only if the sample was marked collected by mistake. If the tube has already been accepted in the lab, this action will fail.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -793,7 +794,7 @@ const SampleCollection = () => {
             <AlertDialogDescription asChild>
               <div className="space-y-3 text-sm">
                 <div className="space-y-1">
-                  <div><span className="text-muted-foreground">Patient Name:</span> <strong>{printConfirmDialog.reg?.patient_name}</strong></div>
+                  <div><span className="text-muted-foreground">Patient Name:</span> <strong>{patientDisplayName(printConfirmDialog.reg)}</strong></div>
                   <div>
                     <span className="text-muted-foreground">Age / Gender:</span>{" "}
                     <strong>{calcAge(printConfirmDialog.reg?.dob) || "—"} / {printConfirmDialog.reg?.gender || "—"}</strong>

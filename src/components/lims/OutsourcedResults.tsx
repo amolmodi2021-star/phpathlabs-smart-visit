@@ -23,6 +23,7 @@ import { useMasterLookup } from "@/hooks/useMasterLookup";
 
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 import { formatAgeGender } from "@/lib/ageGender";
+import { patientDisplayName } from "@/lib/patientDisplayName";
 import { fetchAllByIds } from "@/lib/fetchAllRows";
 import { fetchOutsourcedCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPendingCandidates";
 import { shortIdsKey } from "@/lib/queryKeys";
@@ -1231,7 +1232,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                           <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive" />
                         </span>
                       )}
-                      <span className="text-sm text-muted-foreground">{reg.patient_name}</span>
+                      <span className="text-sm text-muted-foreground">{patientDisplayName(reg)}</span>
                       <Badge variant="outline" className="text-[10px] font-mono">{formatAgeGender(reg.dob, reg.gender)}</Badge>
                     </div>
                     <div className="text-xs text-muted-foreground">

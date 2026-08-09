@@ -9,6 +9,7 @@ import { shareOnWhatsApp } from "@/lib/whatsapp";
 import { logMessageSend } from "@/lib/messageLog";
 import { formatDateDDMMYYYY, formatDateShort } from "@/lib/utils";
 import { Download, Share2 } from "lucide-react";
+import { patientDisplayName } from "@/lib/patientDisplayName";
 
 interface ReceiptViewDialogProps {
   open: boolean;
@@ -72,7 +73,7 @@ const ReceiptViewDialog = ({ open, onClose, visitData }: ReceiptViewDialogProps)
     const canvas = await generateCanvas();
     if (!canvas) return;
     const link = document.createElement("a");
-    link.download = `receipt-${est?.patient_name || "patient"}-${format(new Date(), "dd-MM-yyyy")}.jpg`;
+    link.download = `receipt-${(patientDisplayName(est) === "—" ? "patient" : patientDisplayName(est)).replace(/\s+/g, "_")}-${format(new Date(), "dd-MM-yyyy")}.jpg`;
     link.href = canvas.toDataURL("image/jpeg", 0.95);
     link.click();
     toast.success("Receipt downloaded");
@@ -88,7 +89,7 @@ const ReceiptViewDialog = ({ open, onClose, visitData }: ReceiptViewDialogProps)
         navigator.share({
           files: [file],
           title: "Visit Receipt",
-          text: `Visit receipt for ${est?.patient_name || "Patient"}`,
+          text: `Visit receipt for ${patientDisplayName(est) === "—" ? "Patient" : patientDisplayName(est)}`,
         }).catch(() => {
           // Fallback: download + WhatsApp text
           handleDownload();
@@ -106,7 +107,7 @@ const ReceiptViewDialog = ({ open, onClose, visitData }: ReceiptViewDialogProps)
   const buildReceiptText = () => {
     let msg = `📋 *PH PathLabs — Home Visit Receipt*\n`;
     if (receiptNumber) msg += `*Receipt No:* ${receiptNumber}\n`;
-    msg += `\n*Patient:* ${[est?.title, est?.patient_name].filter(Boolean).join(" ") || "—"}\n`;
+    msg += `\n*Patient:* ${patientDisplayName(est)}\n`;
     msg += `*Mobile:* ${est?.whatsapp_number || "—"}\n`;
     msg += `*Visit:* ${formatDateDDMMYYYY(visitData?.visit_date) || "—"} | ${visitData?.visit_time ? formatTime12hr(visitData.visit_time) : "—"}\n`;
     msg += `*Address:* ${visitData?.address || "—"}\n\n`;
@@ -145,7 +146,7 @@ const ReceiptViewDialog = ({ open, onClose, visitData }: ReceiptViewDialogProps)
 
             {/* Patient Info */}
             <div className="space-y-0.5 text-xs">
-              <div className="flex justify-between"><span className="text-gray-600">Patient:</span><span className="font-semibold">{[est?.title, est?.patient_name].filter(Boolean).join(" ") || "—"}</span></div>
+              <div className="flex justify-between"><span className="text-gray-600">Patient:</span><span className="font-semibold">{patientDisplayName(est)}</span></div>
               <div className="flex justify-between"><span className="text-gray-600">Mobile:</span><span className="font-semibold">{est?.whatsapp_number || "—"}</span></div>
               {est?.gender && <div className="flex justify-between"><span className="text-gray-600">Gender:</span><span className="font-semibold">{est.gender}</span></div>}
               {est?.dob && <div className="flex justify-between"><span className="text-gray-600">DOB:</span><span className="font-semibold">{formatDateDDMMYYYY(est.dob)}</span></div>}

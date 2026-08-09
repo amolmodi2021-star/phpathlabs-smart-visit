@@ -25,6 +25,7 @@ import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import EditEstimateDialog from "@/components/EditEstimateDialog";
 import TimeSlotPicker from "@/components/TimeSlotPicker";
+import { patientDisplayName } from "@/lib/patientDisplayName";
 
 const EstimateDashboard = () => {
   useRealtimeSync("estimates", ["estimates"]);
@@ -186,7 +187,7 @@ const EstimateDashboard = () => {
       }
       exportToExcel(all.map((e: any) => ({
         Date: format(new Date(e.created_at), "dd-MM-yyyy"),
-        "Patient Name": e.patient_name || "",
+        "Patient Name": (() => { const n = patientDisplayName(e); return n === "—" ? "" : n; })(),
         "WhatsApp": e.whatsapp_number,
         "Total Amount": e.total_amount,
         "Discount": e.discount_amount,
@@ -254,7 +255,7 @@ const EstimateDashboard = () => {
                   <Checkbox checked={selected.includes(est.id)} onCheckedChange={() => toggleSelect(est.id)} className="mt-1 shrink-0" />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between flex-wrap gap-1">
-                      <span className="font-medium text-sm">{est.patient_name || "—"}</span>
+                      <span className="font-medium text-sm">{patientDisplayName(est)}</span>
                       <span className="text-xs text-muted-foreground">{format(new Date(est.created_at), "dd-MM-yyyy")}</span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">{est.whatsapp_number}</p>

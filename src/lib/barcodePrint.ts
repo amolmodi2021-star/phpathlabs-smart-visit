@@ -3,6 +3,7 @@ import { jsPDF } from "jspdf";
 import bwipjs from "bwip-js/browser";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { patientDisplayName } from "@/lib/patientDisplayName";
 
 export interface BarcodeTube {
   id: string;
@@ -58,7 +59,8 @@ export const printBarcodes = async (reg: any, tubes: BarcodeTube[]): Promise<voi
   const gender = reg.gender ? reg.gender.charAt(0) : "";
   const location = reg.pickup_point_id ? ppMap[reg.pickup_point_id] || "" : "";
   const dateTime = format(new Date(), "dd-MM-yyyy hh:mm a");
-  const patientName = reg.patient_name || "";
+  const patientName = patientDisplayName(reg);
+  const patientNameLine = patientName === "—" ? "" : patientName;
 
   // 50mm x 25mm landscape sticker
   const doc = new jsPDF({ unit: "mm", format: [50, 25], orientation: "landscape" });
@@ -83,7 +85,7 @@ export const printBarcodes = async (reg: any, tubes: BarcodeTube[]): Promise<voi
     // --- Row 2: patient name + location ---
     doc.setFontSize(8);
     doc.setFont("helvetica", "bold");
-    const nameLine = location ? `${patientName}  PH ${location}` : patientName;
+    const nameLine = location ? `${patientNameLine}  PH ${location}` : patientNameLine;
     // truncate to fit safe printable width (~43mm)
     const truncated = doc.splitTextToSize(nameLine, 43)[0];
     doc.text(truncated, 3.5, 5.5);

@@ -10,6 +10,7 @@ import { enqueueInvoiceForWhatsAppConsole } from "@/lib/whatsappConsoleBridge";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { getCurrentUserName } from "@/lib/auth";
+import { patientDisplayName } from "@/lib/patientDisplayName";
 
 interface InvoicePreviewProps {
   data: any;
@@ -220,7 +221,7 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
       const caption =
         `📋 *${lab} — Invoice*\n` +
         `Invoice No: ${invoiceNo}\n` +
-        `Patient: ${data.title || ""} ${data.patient_name}\n` +
+        `Patient: ${patientDisplayName(data)}\n` +
         `Amount: ₹${data.final_amount}`;
       const res = await enqueueInvoiceForWhatsAppConsole({
         phone: data.mobile_number,
@@ -355,7 +356,7 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
       let d = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;font-size:11px;margin-bottom:8px">`;
       d += `<div><strong>Invoice #:</strong> ${data.invoice_number}</div>`;
       d += `<div><strong>Date:</strong> ${format(createdAt, "dd-MM-yyyy HH:mm")}</div>`;
-      d += `<div><strong>Patient:</strong> ${data.title || ""} ${data.patient_name}</div>`;
+      d += `<div><strong>Patient:</strong> ${patientDisplayName(data)}</div>`;
       d += `<div><strong>Mobile:</strong> ${data.mobile_number}</div>`;
       if (data.gender) d += `<div><strong>Gender:</strong> ${data.gender}</div>`;
       if (age) d += `<div><strong>Age:</strong> ${age}</div>`;
@@ -438,7 +439,7 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
         }
         summaryHtml += `<div style="display:flex;justify-content:space-between;font-weight:bold;margin-top:4px;padding:2px 0"><span>Paid:</span><span>₹${data.paid_amount}</span></div>`;
         if (Number(data.paid_amount || 0) > 0) {
-          summaryHtml += `<div style="font-size:10px;margin-top:4px;font-style:italic;color:#444">Received with thanks from ${data.title ? data.title + " " : ""}${data.patient_name} a sum of Rs. ${Number(data.paid_amount).toFixed(2)}/- (${numberToWords(Number(data.paid_amount))} Rupees)</div>`;
+          summaryHtml += `<div style="font-size:10px;margin-top:4px;font-style:italic;color:#444">Received with thanks from ${patientDisplayName(data)} a sum of Rs. ${Number(data.paid_amount).toFixed(2)}/- (${numberToWords(Number(data.paid_amount))} Rupees)</div>`;
         }
         if (data.due_amount > 0) {
           summaryHtml += `<div style="display:flex;justify-content:space-between;color:red;font-weight:bold;margin-top:3px"><span>Due:</span><span>₹${data.due_amount}</span></div>`;
@@ -534,7 +535,7 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 3, fontSize: 11, marginBottom: 8 }}>
             <div><strong>Invoice #:</strong> {data.invoice_number}</div>
             <div><strong>Date:</strong> {format(createdAt, "dd-MM-yyyy HH:mm")}</div>
-            <div><strong>Patient:</strong> {data.title} {data.patient_name}</div>
+            <div><strong>Patient:</strong> {patientDisplayName(data)}</div>
             <div><strong>Mobile:</strong> {data.mobile_number}</div>
             {data.gender && <div><strong>Gender:</strong> {data.gender}</div>}
             {age && <div><strong>Age:</strong> {age}</div>}
@@ -605,7 +606,7 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
             </div>
             {Number(data.paid_amount || 0) > 0 && (
               <div style={{ fontSize: 10, marginTop: 4, fontStyle: "italic", color: "#444" }}>
-                Received with thanks from {data.title ? `${data.title} ` : ""}{data.patient_name} a sum of Rs. {Number(data.paid_amount).toFixed(2)}/- ({numberToWords(Number(data.paid_amount))} Rupees)
+                Received with thanks from {patientDisplayName(data)} a sum of Rs. {Number(data.paid_amount).toFixed(2)}/- ({numberToWords(Number(data.paid_amount))} Rupees)
               </div>
             )}
             {data.due_amount > 0 && (

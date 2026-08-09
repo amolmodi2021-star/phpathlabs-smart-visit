@@ -15,6 +15,7 @@ import AutoScaleContent from "@/components/report/AutoScaleContent";
 import type { TestResult, ProfileMeta } from "@/components/report/ReportResultsSection";
 import { toast } from "sonner";
 import { logEvent } from "@/lib/reportShareLinks";
+import { patientDisplayName } from "@/lib/patientDisplayName";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.mjs";
 
@@ -773,7 +774,8 @@ const LimsReportView = () => {
         }
       }
 
-      const patientName = approvedReports[0]?.patient_name || "Report";
+      const patientNameRaw = patientDisplayName(approvedReports[0]);
+      const patientName = !approvedReports[0] || patientNameRaw === "—" ? "Report" : patientNameRaw;
       const invoiceNum = approvedReports[0]?.invoice_number || "";
       const filename = `${patientName}_${invoiceNum}.pdf`;
       pdf.save(filename);
@@ -1015,7 +1017,7 @@ const LimsReportView = () => {
         )}
         <h1 className="text-sm sm:text-xl font-bold truncate flex-1 min-w-0">
           <span className="hidden sm:inline">{isPublic ? "PH PathLabs · " : isProvisional ? "Provisional Report — " : "Report — "}</span>
-          {report.patient_name} ({report.invoice_number})
+          {patientDisplayName(report)} ({report.invoice_number})
         </h1>
         <div className="flex items-center gap-2 sm:gap-4 ml-auto flex-wrap">
           {!isPublic && (

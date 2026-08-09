@@ -1,4 +1,5 @@
 import { format } from "date-fns";
+import { formatPatientDisplayName } from "@/lib/patientDisplayName";
 
 interface LimsReportHeaderProps {
   patientName: string | null;
@@ -45,36 +46,6 @@ const calculateAge = (dob: string | null): string => {
     return "—";
   }
 };
-
-const KNOWN_TITLES = ["Mr.", "Mrs.", "Ms.", "Master", "Miss", "Baby Of", "Dr.", "Master.", "Miss.", "Baby Of."];
-
-/** Ensure display name always starts with Mr./Mrs./etc. Prefer stored title; else gender. */
-export function formatPatientDisplayName(
-  title: string | null | undefined,
-  patientName: string | null | undefined,
-  gender?: string | null,
-): string {
-  const name = (patientName || "").trim();
-  if (!name) return "—";
-
-  const nameAlreadyTitled = KNOWN_TITLES.some((t) => {
-    const prefix = t.replace(/\.$/, "");
-    return new RegExp(`^${prefix}\\.?\\s`, "i").test(name);
-  });
-  if (nameAlreadyTitled) return name;
-
-  let resolved = (title || "").trim();
-  if (!resolved) {
-    const g = (gender || "").toLowerCase();
-    if (g.startsWith("m")) resolved = "Mr.";
-    else if (g.startsWith("f")) resolved = "Mrs.";
-  }
-  if (!resolved) return name;
-
-  // Normalize trailing period for common titles
-  if (/^(Mr|Mrs|Ms|Dr)$/i.test(resolved)) resolved = `${resolved}.`;
-  return `${resolved} ${name}`.replace(/\s+/g, " ").trim();
-}
 
 const formatVisitType = (visitType: string | null): string => {
   switch (visitType) {

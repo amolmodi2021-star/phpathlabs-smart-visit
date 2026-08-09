@@ -34,6 +34,7 @@ import TestStatusTimeline from "@/components/report/TestStatusTimeline";
 import AbnormalHistorySection from "@/components/report/AbnormalHistorySection";
 import PreviousReportsSection from "@/components/report/PreviousReportsSection";
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
+import { patientDisplayName } from "@/lib/patientDisplayName";
 import { cn } from "@/lib/utils";
 
 const LAB_PHONE = "+916356556699";
@@ -595,7 +596,7 @@ const PatientReportPortal = () => {
             <div>
               <div className="flex items-center gap-2">
                 <User className="h-4 w-4 text-muted-foreground" />
-                <h1 className="text-lg font-semibold">{reg.patient_name}</h1>
+                <h1 className="text-lg font-semibold">{patientDisplayName(reg)}</h1>
               </div>
               <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground flex-wrap">
                 <span className="flex items-center gap-1">

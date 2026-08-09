@@ -19,6 +19,7 @@ import { checkDifferentialSum } from "@/lib/differentialCount";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { fetchAllByIds } from "@/lib/fetchAllRows";
 import { shortIdsKey } from "@/lib/queryKeys";
+import { patientDisplayName } from "@/lib/patientDisplayName";
 
 const PAGE_SIZE = 50;
 
@@ -433,7 +434,7 @@ const ModifiedApproval = () => {
       ]);
 
       setSavedOverrides(prev => ({ ...prev, ...nextSavedOverrides }));
-      toast.success(`Changes saved for ${report.patient_name}`);
+      toast.success(`Changes saved for ${patientDisplayName(report)}`);
       // Clear edited state only after the reloaded patient_results rows are back.
       // Synthetic rows (like BT entered first) otherwise fall back to their old
       // empty p.result_value and appear blank until a manual refresh.
@@ -495,7 +496,7 @@ const ModifiedApproval = () => {
                     {isExpanded ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
                     <div className="min-w-0">
                       <div className="font-medium text-sm truncate">
-                        {report.patient_name}
+                        {patientDisplayName(report)}
                         <span className="text-xs text-muted-foreground ml-2">{report.invoice_number}</span>
                       </div>
                       <div className="text-xs text-muted-foreground">

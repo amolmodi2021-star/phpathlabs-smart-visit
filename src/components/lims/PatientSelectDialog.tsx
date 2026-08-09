@@ -13,6 +13,7 @@ import {
   type PatientDemographics,
 } from "@/lib/syncPatientDemographics";
 import { useQueryClient } from "@tanstack/react-query";
+import { patientDisplayName } from "@/lib/patientDisplayName";
 
 const TITLES = ["Mr.", "Mrs.", "Ms.", "Master", "Miss", "Baby Of", "Dr."];
 
@@ -207,7 +208,7 @@ const PatientSelectDialog = ({ open, mobile10, onClose, onSelect, onNewPatient }
                     <div className="flex items-start gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-sm">
-                          {p.title} {p.patient_name}
+                          {patientDisplayName(p)}
                           {p.umr_number && <span className="ml-2 text-xs text-muted-foreground">UMR: {p.umr_number}</span>}
                         </div>
                         <div className="text-xs text-muted-foreground mt-0.5">

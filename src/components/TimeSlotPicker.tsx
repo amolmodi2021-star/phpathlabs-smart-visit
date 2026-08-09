@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Phone } from "lucide-react";
 import { useState } from "react";
+import { patientDisplayName } from "@/lib/patientDisplayName";
 
 // Generate time slots from 06:00 to 20:00 in 30-min intervals
 const TIME_SLOTS: { value: string; label: string }[] = [];
@@ -45,7 +46,7 @@ const TimeSlotPicker = ({ date, phlebotomistId, selectedTime, onSelectTime, excl
       if (!phlebotomistId || !date) return {};
       const { data } = await supabase
         .from("home_visits")
-        .select("id, visit_time, address, estimates(patient_name, whatsapp_number)")
+        .select("id, visit_time, address, estimates(patient_name, title, gender, whatsapp_number)")
         .eq("phlebotomist_id", phlebotomistId)
         .eq("visit_date", date)
         .neq("status", "Cancelled");
@@ -53,8 +54,9 @@ const TimeSlotPicker = ({ date, phlebotomistId, selectedTime, onSelectTime, excl
       const map: Record<string, OccupiedInfo> = {};
       (data || []).forEach((v: any) => {
         if (excludeVisitId && v.id === excludeVisitId) return;
+        const display = patientDisplayName(v.estimates);
         map[v.visit_time] = {
-          patient_name: v.estimates?.patient_name || "Unknown",
+          patient_name: display === "—" ? "Unknown" : display,
           whatsapp_number: v.estimates?.whatsapp_number || "",
           address: v.address || "",
         };

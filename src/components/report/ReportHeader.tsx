@@ -1,3 +1,5 @@
+import { formatPatientDisplayName } from "@/lib/patientDisplayName";
+
 interface ReportHeaderProps {
   extracted: any;
 }
@@ -36,7 +38,7 @@ const ReportHeader = ({ extracted }: ReportHeaderProps) => {
       <div className="grid grid-cols-2 gap-x-8 gap-y-0.5 text-sm">
         {/* Left Column */}
         <div className="grid gap-y-0.5" style={{ gridTemplateColumns: '90px 1fr' }}>
-          <span className="font-semibold">Patient Name</span><span>: {extracted.patient_name}</span>
+          <span className="font-semibold">Patient Name</span><span>: {formatPatientDisplayName(extracted.title, extracted.patient_name, extracted.gender)}</span>
           <span className="font-semibold">Age / Gender</span><span>: {extracted.age} / {extracted.gender}</span>
           <span className="font-semibold">UMR No</span><span>: {extracted.umr_id}</span>
           <span className="font-semibold">Location</span><span>: {extracted.location || "-"}</span>

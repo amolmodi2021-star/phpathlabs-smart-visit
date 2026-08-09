@@ -15,6 +15,7 @@ import { getCurrentUserName } from "@/lib/auth";
 import { buildSampleTubeGroups } from "@/lib/sampleTubeGrouping";
 import { registerPatientAtomic } from "@/lib/registerPatientAtomic";
 import PaginatedTableFooter from "@/components/ui/PaginatedTableFooter";
+import { patientDisplayName } from "@/lib/patientDisplayName";
 
 const PAGE_SIZE = 50;
 
@@ -253,7 +254,7 @@ const CompletedHomeVisits = () => {
                       {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                     </TableCell>
                     <TableCell>
-                      <div className="text-sm font-medium">{e?.title} {e?.patient_name}</div>
+                      <div className="text-sm font-medium">{patientDisplayName(e)}</div>
                       {e?.umr_number && <div className="text-xs text-muted-foreground">{e.umr_number}</div>}
                     </TableCell>
                     <TableCell className="text-sm">{e?.whatsapp_number}</TableCell>
@@ -336,7 +337,7 @@ const CompletedHomeVisits = () => {
             return (
               <div className="space-y-4 text-sm">
                 <div className="grid grid-cols-2 gap-2">
-                  <div><span className="font-medium text-muted-foreground">Name:</span> {e?.title} {e?.patient_name}</div>
+                  <div><span className="font-medium text-muted-foreground">Name:</span> {patientDisplayName(e)}</div>
                   <div><span className="font-medium text-muted-foreground">Mobile:</span> {e?.whatsapp_number}</div>
                   <div><span className="font-medium text-muted-foreground">Gender:</span> {e?.gender || "—"}</div>
                   <div><span className="font-medium text-muted-foreground">DOB:</span> {e?.dob || "—"}</div>

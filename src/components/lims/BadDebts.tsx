@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Search, Loader2, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { patientDisplayName } from "@/lib/patientDisplayName";
 
 const PAGE_SIZE = 50;
 
@@ -44,7 +45,7 @@ const BadDebts = () => {
     queryFn: async () => {
       let q = supabase
         .from("patient_registrations")
-        .select("id, invoice_number, patient_name, mobile_number, doctor_name, created_at, net_amount, paid_amount, due_amount")
+        .select("id, invoice_number, patient_name, title, gender, mobile_number, doctor_name, created_at, net_amount, paid_amount, due_amount")
         .eq("is_bad_debt", true)
         .order("created_at", { ascending: false })
         .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
@@ -118,7 +119,7 @@ const BadDebts = () => {
               {patients.map((p) => (
                 <TableRow key={p.id}>
                   <TableCell className="font-mono text-xs">{p.invoice_number}</TableCell>
-                  <TableCell className="font-medium">{p.patient_name}</TableCell>
+                  <TableCell className="font-medium">{patientDisplayName(p)}</TableCell>
                   <TableCell>{p.mobile_number}</TableCell>
                   <TableCell>{p.doctor_name || "-"}</TableCell>
                   <TableCell>{format(new Date(p.created_at), "dd/MM/yyyy HH:mm")}</TableCell>

@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import InvoicePreview from "./InvoicePreview";
 import { logPaymentTransaction } from "@/lib/paymentTransactions";
+import { patientDisplayName } from "@/lib/patientDisplayName";
 
 const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card", "NEFT"];
 const PAGE_SIZE = 50;
@@ -250,7 +251,7 @@ const DuePayments = () => {
               {patients.map((p) => (
                 <TableRow key={p.id}>
                   <TableCell className="font-mono text-xs">{p.invoice_number}</TableCell>
-                  <TableCell className="font-medium">{p.patient_name}</TableCell>
+                  <TableCell className="font-medium">{patientDisplayName(p)}</TableCell>
                   <TableCell>{p.mobile_number}</TableCell>
                   <TableCell>{p.doctor_name || "-"}</TableCell>
                   <TableCell>{format(new Date(p.created_at), "dd-MM-yyyy hh:mm a")}</TableCell>
@@ -294,7 +295,7 @@ const DuePayments = () => {
           {selected && (
             <div className="space-y-4">
               <div className="text-sm space-y-1">
-                <p><strong>{selected.patient_name}</strong></p>
+                <p><strong>{patientDisplayName(selected)}</strong></p>
                 <p>Invoice: {selected.invoice_number}</p>
                 <p>Due: <span className="text-destructive font-semibold">₹{selected.due_amount}</span></p>
               </div>
@@ -355,7 +356,7 @@ const DuePayments = () => {
           {badDebtConfirm && (
             <div className="space-y-2 text-sm">
               <p>Are you sure you want to mark this as bad debt?</p>
-              <p><strong>{badDebtConfirm.patient_name}</strong> — Invoice: {badDebtConfirm.invoice_number}</p>
+              <p><strong>{patientDisplayName(badDebtConfirm)}</strong> — Invoice: {badDebtConfirm.invoice_number}</p>
               <p>Due: <span className="text-destructive font-semibold">₹{badDebtConfirm.due_amount}</span></p>
             </div>
           )}

@@ -17,6 +17,7 @@ import InvoicePreview from "./InvoicePreview";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
+import { patientDisplayName } from "@/lib/patientDisplayName";
 
 const PAGE_SIZE = 50;
 
@@ -335,7 +336,7 @@ const RegisteredPatients = () => {
                     <TableCell className="text-xs">{r.created_at ? format(new Date(r.created_at), "dd-MM-yyyy hh:mm a") : "—"}</TableCell>
                     <TableCell>
                       <div className="text-sm font-medium">
-                        {r.title} {r.patient_name}
+                        {patientDisplayName(r)}
                         {r.is_stat && !r.bill_cancelled && r.status !== "dispatched" && (
                           <span className="relative inline-flex h-2.5 w-2.5 ml-1.5 align-middle"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75"></span><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive"></span></span>
                         )}

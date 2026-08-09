@@ -18,6 +18,7 @@ import { formatAgeGender } from "@/lib/ageGender";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { printBarcodes } from "@/lib/barcodePrint";
+import { patientDisplayName } from "@/lib/patientDisplayName";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import NewBadge from "./NewBadge";
 
@@ -491,7 +492,7 @@ const SampleAcceptance = () => {
                         )}
                         <TableCell className="font-mono font-medium">{reg.invoice_number}</TableCell>
                         <TableCell>
-                          <span className="font-medium">{reg.patient_name}</span>
+                          <span className="font-medium">{patientDisplayName(reg)}</span>
                           {!isAccepted && <NewBadge show={isNewArrival(reg.id)} className="ml-1.5 align-middle" />}
                           {reg.is_stat && (
                             <span className="relative inline-flex h-2.5 w-2.5 ml-1.5 align-middle">
@@ -707,7 +708,7 @@ const SampleAcceptance = () => {
           <DialogHeader>
             <DialogTitle>Request Repeat Collection</DialogTitle>
             <DialogDescription>
-              Patient: <strong>{rejectDialog.reg?.patient_name}</strong> ({rejectDialog.reg?.invoice_number})
+              Patient: <strong>{patientDisplayName(rejectDialog.reg)}</strong> ({rejectDialog.reg?.invoice_number})
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">

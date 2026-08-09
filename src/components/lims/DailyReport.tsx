@@ -14,6 +14,7 @@ import { format, startOfDay, endOfDay, parseISO } from "date-fns";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import * as XLSX from "@e965/xlsx";
 import jsPDF from "jspdf";
+import { patientDisplayName } from "@/lib/patientDisplayName";
 
 const TRANSACTION_LABELS: Record<string, string> = {
   registration_payment: "Registration",
@@ -87,7 +88,7 @@ const DailyReport = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("patient_registrations")
-        .select("id, visit_type, channel_id, pickup_point_id")
+        .select("id, visit_type, channel_id, pickup_point_id, title, gender, patient_name")
         .in("id", registrationIds);
       if (error) throw error;
       return (data || []) as any[];
@@ -120,6 +121,12 @@ const DailyReport = () => {
     if (v === "pickup_point") return "Pickup Point";
     if (v === "channel") return "Channel";
     return "—";
+  };
+
+  const getPatientName = (r: any) => {
+    const reg = r?.registration_id ? regMap[r.registration_id] : null;
+    const name = patientDisplayName(reg || r);
+    return name === "—" ? "-" : name;
   };
 
   const getRegInfo = (regId?: string) => {
@@ -223,7 +230,7 @@ const DailyReport = () => {
         "Username": r.performed_by || "",
         "Type": TRANSACTION_LABELS[r.transaction_type] || r.transaction_type,
         "Direction": r.direction === "in" ? "Money In" : "Money Out",
-        "Patient Name": r.patient_name || "",
+        "Patient Name": getPatientName(r) === "-" ? "" : getPatientName(r),
         "Visit Type": info.visit,
         "Pickup/Channel Name": info.source,
         "Billing": info.billing === "—" ? "" : info.billing.toUpperCase(),
@@ -410,7 +417,7 @@ const DailyReport = () => {
         time: format(parseISO(r.transaction_date), "hh:mm a"),
         user: r.performed_by || "",
         type: TRANSACTION_LABELS[r.transaction_type] || r.transaction_type,
-        patient: r.patient_name || "-",
+        patient: getPatientName(r),
         visit: visitShort(info.visit),
         source: info.source || "-",
         billing: info.billing === "—" ? "-" : info.billing.toUpperCase().slice(0, 3),
@@ -644,7 +651,7 @@ const DailyReport = () => {
         invDate: formatInvoiceDate(r.invoice_number),
         time: format(parseISO(r.transaction_date), "hh:mm a"),
         type: TRANSACTION_LABELS[r.transaction_type] || r.transaction_type,
-        patient: r.patient_name || "-",
+        patient: getPatientName(r),
         visit: visitShort(info.visit),
         source: info.source || "-",
         billing: info.billing === "—" ? "-" : info.billing.toUpperCase().slice(0, 3),
@@ -1143,7 +1150,7 @@ const DailyReport = () => {
                       {TRANSACTION_LABELS[r.transaction_type] || r.transaction_type}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-sm whitespace-nowrap">{r.patient_name || "-"}</TableCell>
+                  <TableCell className="text-sm whitespace-nowrap">{getPatientName(r)}</TableCell>
                   {(() => {
                     const info = getRegInfo(r.registration_id);
                     return (

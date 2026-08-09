@@ -15,6 +15,7 @@ import { shareOnWhatsApp } from "@/lib/whatsapp";
 import { logMessageSend } from "@/lib/messageLog";
 import { formatDateDDMMYYYY, formatDateShort } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { patientDisplayName } from "@/lib/patientDisplayName";
 
 interface VisitData {
   visit_date: string;
@@ -311,7 +312,7 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
             navigator.share({
               files: [file],
               title: "Visit Receipt",
-              text: `Visit receipt for ${est?.patient_name || "Patient"}`,
+              text: `Visit receipt for ${patientDisplayName(est) === "—" ? "Patient" : patientDisplayName(est)}`,
             }).catch(() => {
               // Fallback: download
               downloadImage(canvas);
@@ -336,7 +337,7 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
 
   const downloadImage = (canvas: HTMLCanvasElement) => {
     const link = document.createElement("a");
-    link.download = `receipt-${est?.patient_name || "patient"}-${format(new Date(), "dd-MM-yyyy")}.jpg`;
+    link.download = `receipt-${(patientDisplayName(est) === "—" ? "patient" : patientDisplayName(est)).replace(/\s+/g, "_")}-${format(new Date(), "dd-MM-yyyy")}.jpg`;
     link.href = canvas.toDataURL("image/jpeg", 0.95);
     link.click();
     toast.success("Receipt image downloaded — share it on WhatsApp");
@@ -352,7 +353,7 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
       const pEst = p.est;
       const pTests = p.tests;
       if (allPatients.length > 1) msg += `--- *Patient ${pIdx + 1} of ${allPatients.length}* ---\n`;
-      msg += `*Patient:* ${[pEst?.title, pEst?.patient_name].filter(Boolean).join(" ") || "—"}\n`;
+      msg += `*Patient:* ${patientDisplayName(pEst)}\n`;
       msg += `*Mobile:* ${pEst?.whatsapp_number || "—"}\n`;
       if (pEst?.gender) msg += `*Gender:* ${pEst.gender}\n`;
       if (pEst?.dob) msg += `*DOB:* ${formatDateDDMMYYYY(pEst.dob)} | *Age:* ${Math.floor((Date.now() - new Date(pEst.dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000))} Years\n`;
@@ -494,7 +495,7 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
                     <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Patient Information</h4>
                     <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
                       <span className="text-muted-foreground">Name:</span>
-                      <span className="font-medium">{[pEst?.title, pEst?.patient_name].filter(Boolean).join(" ") || "—"}</span>
+                      <span className="font-medium">{patientDisplayName(pEst)}</span>
                       <span className="text-muted-foreground">Gender:</span>
                       <span className="font-medium">{pEst?.gender || "—"}</span>
                       <span className="text-muted-foreground">DOB:</span>
@@ -603,7 +604,7 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
                     const cEst = cv.estimates || cv;
                     return (
                       <div key={idx} className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
-                        <span className="text-muted-foreground font-medium col-span-2">{cEst?.patient_name || `Patient ${idx + 1}`}:</span>
+                        <span className="text-muted-foreground font-medium col-span-2">{cEst ? (patientDisplayName(cEst) === "—" ? `Patient ${idx + 1}` : patientDisplayName(cEst)) : `Patient ${idx + 1}`}:</span>
                         <span className="text-muted-foreground pl-2">Tests:</span>
                         <span>₹{cEst?.total_amount || 0}</span>
                         {Number(cEst?.discount_amount) > 0 && (<><span className="text-muted-foreground pl-2">Discount:</span><span className="text-success">-₹{cEst?.discount_amount}</span></>)}
@@ -645,7 +646,7 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
                 <div className="space-y-1 mb-2">
                   {allPatients.map((p, i) => (
                     <div key={i} className="grid grid-cols-[1fr_auto_auto] gap-x-3 text-xs items-center">
-                      <span className="text-muted-foreground truncate">{p.est?.patient_name || `Patient ${i + 1}`}</span>
+                      <span className="text-muted-foreground truncate">{p.est ? (patientDisplayName(p.est) === "—" ? `Patient ${i + 1}` : patientDisplayName(p.est)) : `Patient ${i + 1}`}</span>
                       <span className="text-success font-medium">Paid: ₹{perPatientPayment[i]?.paid ?? 0}</span>
                       <span className={`font-medium ${(perPatientPayment[i]?.due ?? 0) > 0 ? 'text-destructive' : 'text-success'}`}>Due: ₹{perPatientPayment[i]?.due ?? 0}</span>
                     </div>
@@ -744,7 +745,7 @@ const PaymentDetailsDialog = ({ open, onClose, finalAmount, onSave, isPending, i
 
                     {/* Patient Info */}
                     <div className="space-y-0.5 text-xs">
-                      <div className="flex justify-between"><span className="text-gray-600">Patient:</span><span className="font-semibold">{[pEst?.title, pEst?.patient_name].filter(Boolean).join(" ") || "—"}</span></div>
+                      <div className="flex justify-between"><span className="text-gray-600">Patient:</span><span className="font-semibold">{patientDisplayName(pEst)}</span></div>
                       <div className="flex justify-between"><span className="text-gray-600">Mobile:</span><span className="font-semibold">{pEst?.whatsapp_number || "—"}</span></div>
                       {pEst?.gender && <div className="flex justify-between"><span className="text-gray-600">Gender:</span><span className="font-semibold">{pEst.gender}</span></div>}
                       {pEst?.dob && <div className="flex justify-between"><span className="text-gray-600">DOB:</span><span className="font-semibold">{formatDateDDMMYYYY(pEst.dob)}</span></div>}

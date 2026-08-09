@@ -2,6 +2,7 @@ import RefreshButton from "@/components/lims/RefreshButton";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { formatAgeGender } from "@/lib/ageGender";
+import { patientDisplayName } from "@/lib/patientDisplayName";
 import { isSuspectNegativeResult } from "@/lib/reportFlags";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -217,7 +218,7 @@ const ResultsEntry = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("patient_registrations")
-        .select("id, invoice_number, patient_name, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, gender, dob, created_at, updated_at, bill_cancelled, doctor_name")
+        .select("id, invoice_number, patient_name, title, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, gender, dob, created_at, updated_at, bill_cancelled, doctor_name")
         .in("id", pageIds);
       if (error) throw error;
       const order = new Map(pageIds.map((id, i) => [id, i] as const));
@@ -1510,7 +1511,7 @@ const ResultsEntry = () => {
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive" />
               </span>
             )}
-            <span className="text-sm text-muted-foreground ml-2">{reg.patient_name}</span>
+            <span className="text-sm text-muted-foreground ml-2">{patientDisplayName(reg)}</span>
             <Badge variant="outline" className="text-[10px] font-mono ml-1">{formatAgeGender(reg.dob, reg.gender)}</Badge>
           </div>
           <Badge variant={completion === 100 ? "default" : "outline"} className="text-xs">
@@ -1845,7 +1846,7 @@ const ResultsEntry = () => {
                               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive" />
                             </span>
                           )}
-                          <span className="text-sm text-muted-foreground">{reg.patient_name}</span>
+                          <span className="text-sm text-muted-foreground">{patientDisplayName(reg)}</span>
                           <Badge variant="outline" className="text-[10px] font-mono">{formatAgeGender(reg.dob, reg.gender)}</Badge>
                         </div>
                         <div className="text-xs text-muted-foreground">
