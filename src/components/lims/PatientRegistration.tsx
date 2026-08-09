@@ -16,10 +16,7 @@ import { getCurrentUserName } from "@/lib/auth";
 import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import { buildSampleTubeGroups } from "@/lib/sampleTubeGrouping";
 import { registerPatientAtomic } from "@/lib/registerPatientAtomic";
-import {
-  resolveSelectedItemParamSets,
-  computeParamConflictHighlightIds,
-} from "@/lib/testParameterConflicts";
+import { useParamConflictHighlight } from "@/hooks/useParamConflictHighlight";
 import InvoicePreview from "./InvoicePreview";
 import PatientSelectDialog, { type PatientPick } from "./PatientSelectDialog";
 import DoctorAutocomplete, { ensureDoctor } from "./DoctorAutocomplete";
@@ -307,18 +304,7 @@ const PatientRegistration = () => {
 
   // Highlight tests that share parameters with a larger selected test (fewer params → red).
   // Does not auto-remove; save remains allowed.
-  const selectedKey = selectedTests.map((t) => `${t.test_id}:${t.item_type || "test"}`).join("|");
-  const { data: paramConflictIds = [] } = useQuery({
-    queryKey: ["reg-param-conflicts", selectedKey],
-    queryFn: async () => {
-      if (selectedTests.length < 2) return [] as string[];
-      const paramSets = await resolveSelectedItemParamSets(selectedTests);
-      return Array.from(computeParamConflictHighlightIds(paramSets));
-    },
-    enabled: selectedTests.length >= 2,
-    staleTime: 30_000,
-  });
-  const paramConflictSet = useMemo(() => new Set(paramConflictIds), [paramConflictIds]);
+  const paramConflictSet = useParamConflictHighlight(selectedTests, "reg-param-conflicts");
 
   // Auto-apply channel discount when channel is selected
   const effectiveDiscountType = channelId && selectedChannel ? "percent" : globalDiscountType;

@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { X, Search, Send, AlertTriangle } from "lucide-react";
 import { getAllSelectableTests } from "@/lib/allSelectableTests";
+import { useParamConflictHighlight } from "@/hooks/useParamConflictHighlight";
 import TimeSlotPicker from "@/components/TimeSlotPicker";
 import { useMessageTemplates } from "@/hooks/useMessageTemplates";
 import { usePhlebotomistAvailability } from "@/hooks/usePhlebotomistAvailability";
@@ -89,6 +90,8 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
     !selectedTests.find(s => s.test_id === t.id) &&
     (testSearch === "" || t.test_name.toLowerCase().includes(testSearch.toLowerCase()))
   );
+
+  const paramConflictSet = useParamConflictHighlight(selectedTests, "home-visit-param-conflicts");
 
   const addTest = (testId: string) => {
     const t = allTests.find((x: any) => x.id === testId);
@@ -376,27 +379,48 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
           {/* Selected Tests */}
           {selectedTests.length > 0 && (
             <div className="space-y-1">
-              {selectedTests.map(t => (
-                <div key={t.test_id} className="flex items-center gap-2 rounded-lg border px-3 py-1.5">
-                  <span className="text-sm font-medium whitespace-nowrap">{t.test_name}</span>
-                  <span className="text-sm text-muted-foreground">₹{t.price}</span>
-                  {t.fasting_required && <span className="text-xs text-destructive">Fasting</span>}
-                  <div className="ml-auto flex items-center gap-1.5">
-                    {t.discount_applicable && (
-                      <>
-                        <Select value={t.individual_discount_type || ""} onValueChange={(v) => updateTestDiscount(t.test_id, "individual_discount_type", v || null)}>
-                          <SelectTrigger className="w-16 h-7 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
-                          <SelectContent><SelectItem value="percent">%</SelectItem><SelectItem value="amount">₹</SelectItem></SelectContent>
-                        </Select>
-                        {t.individual_discount_type && (
-                          <Input type="number" className="w-16 h-7 text-xs" value={t.individual_discount_value || ""} onChange={(e) => updateTestDiscount(t.test_id, "individual_discount_value", parseFloat(e.target.value) || 0)} />
-                        )}
-                      </>
+              {paramConflictSet.size > 0 && (
+                <p className="text-xs text-destructive flex items-center gap-1">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  Red tests share parameters with a larger test — prefer removing them (saving without removal is allowed).
+                </p>
+              )}
+              {selectedTests.map(t => {
+                const conflicted = paramConflictSet.has(t.test_id);
+                return (
+                  <div
+                    key={t.test_id}
+                    className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 ${
+                      conflicted ? "border-destructive bg-destructive/10" : ""
+                    }`}
+                  >
+                    <span className={`text-sm font-medium whitespace-nowrap ${conflicted ? "text-destructive" : ""}`}>
+                      {t.test_name}
+                    </span>
+                    <span className={`text-sm ${conflicted ? "text-destructive/80" : "text-muted-foreground"}`}>₹{t.price}</span>
+                    {conflicted && (
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-destructive">
+                        Duplicate params
+                      </span>
                     )}
-                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => removeTest(t.test_id)}><X className="h-3.5 w-3.5" /></Button>
+                    {t.fasting_required && <span className="text-xs text-destructive">Fasting</span>}
+                    <div className="ml-auto flex items-center gap-1.5">
+                      {t.discount_applicable && (
+                        <>
+                          <Select value={t.individual_discount_type || ""} onValueChange={(v) => updateTestDiscount(t.test_id, "individual_discount_type", v || null)}>
+                            <SelectTrigger className="w-16 h-7 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
+                            <SelectContent><SelectItem value="percent">%</SelectItem><SelectItem value="amount">₹</SelectItem></SelectContent>
+                          </Select>
+                          {t.individual_discount_type && (
+                            <Input type="number" className="w-16 h-7 text-xs" value={t.individual_discount_value || ""} onChange={(e) => updateTestDiscount(t.test_id, "individual_discount_value", parseFloat(e.target.value) || 0)} />
+                          )}
+                        </>
+                      )}
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => removeTest(t.test_id)}><X className="h-3.5 w-3.5" /></Button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
