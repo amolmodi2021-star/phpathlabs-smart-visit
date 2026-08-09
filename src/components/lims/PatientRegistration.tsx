@@ -308,16 +308,17 @@ const PatientRegistration = () => {
   // Highlight tests that share parameters with a larger selected test (fewer params → red).
   // Does not auto-remove; save remains allowed.
   const selectedKey = selectedTests.map((t) => `${t.test_id}:${t.item_type || "test"}`).join("|");
-  const { data: paramConflictIds = new Set<string>() } = useQuery({
+  const { data: paramConflictIds = [] } = useQuery({
     queryKey: ["reg-param-conflicts", selectedKey],
     queryFn: async () => {
-      if (selectedTests.length < 2) return new Set<string>();
+      if (selectedTests.length < 2) return [] as string[];
       const paramSets = await resolveSelectedItemParamSets(selectedTests);
-      return computeParamConflictHighlightIds(paramSets);
+      return Array.from(computeParamConflictHighlightIds(paramSets));
     },
     enabled: selectedTests.length >= 2,
     staleTime: 30_000,
   });
+  const paramConflictSet = useMemo(() => new Set(paramConflictIds), [paramConflictIds]);
 
   // Auto-apply channel discount when channel is selected
   const effectiveDiscountType = channelId && selectedChannel ? "percent" : globalDiscountType;
@@ -854,14 +855,14 @@ const PatientRegistration = () => {
 
           {selectedTests.length > 0 && (
             <div className="space-y-1">
-              {paramConflictIds.size > 0 && (
+              {paramConflictSet.size > 0 && (
                 <p className="text-xs text-destructive flex items-center gap-1">
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                   Red tests share parameters with a larger test — prefer removing them (saving without removal is allowed).
                 </p>
               )}
               {selectedTests.map(t => {
-                const conflicted = paramConflictIds.has(t.test_id);
+                const conflicted = paramConflictSet.has(t.test_id);
                 return (
                   <div
                     key={t.test_id}
