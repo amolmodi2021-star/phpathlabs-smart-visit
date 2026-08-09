@@ -34,8 +34,12 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     fetch: (input, init) => {
       const headers = new Headers(init?.headers || {});
       const token = getStoredAccessToken();
+      // Staff JWT is signed by user-auth with JWT_SECRET. PostgREST only accepts
+      // JWTs signed with the project's JWT secret — a mismatch yields
+      // "No suitable key or wrong key type". Keep Authorization as the anon key
+      // for REST/Realtime; send staff token separately for edge functions.
       if (token) {
-        headers.set("Authorization", `Bearer ${token}`);
+        headers.set("x-ph-access-token", token);
       }
       return fetch(input, { ...init, headers });
     },
