@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -13,12 +13,43 @@ const ReportLayoutSettings = () => {
   const [topMargin, setTopMargin] = useState(2.5);
   const [bottomMargin, setBottomMargin] = useState(1.5);
   const [letterheadPath, setLetterheadPath] = useState<string | null>(null);
-  const [letterheadUrl, setLetterheadUrl] = useState<string | null>(null);
+  const [letterheadPreviewUrl, setLetterheadPreviewUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [settingsId, setSettingsId] = useState<string | null>(null);
+  const previewUrlRef = useRef<string | null>(null);
 
-  useEffect(() => { loadSettings(); }, []);
+  const revokePreview = () => {
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
+    setLetterheadPreviewUrl(null);
+  };
+
+  /** Download from storage and build a PDF blob URL so the browser previews
+   *  instead of auto-downloading (storage often serves application/octet-stream). */
+  const loadPreview = async (path: string) => {
+    revokePreview();
+    const { data, error } = await supabase.storage.from("letterheads").download(path);
+    if (error || !data) {
+      toast.error("Could not load letterhead preview");
+      return;
+    }
+    const pdfBlob =
+      data.type === "application/pdf"
+        ? data
+        : new Blob([await data.arrayBuffer()], { type: "application/pdf" });
+    const url = URL.createObjectURL(pdfBlob);
+    previewUrlRef.current = url;
+    setLetterheadPreviewUrl(url);
+  };
+
+  useEffect(() => {
+    loadSettings();
+    return () => revokePreview();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const loadSettings = async () => {
     const { data } = await supabase.from("report_layout_settings").select("*").limit(1).single();
@@ -28,8 +59,7 @@ const ReportLayoutSettings = () => {
       setBottomMargin(Number(data.bottom_margin_cm) || 1.5);
       setLetterheadPath(data.letterhead_pdf_path || null);
       if (data.letterhead_pdf_path) {
-        const { data: urlData } = supabase.storage.from("letterheads").getPublicUrl(data.letterhead_pdf_path);
-        setLetterheadUrl(urlData.publicUrl);
+        await loadPreview(data.letterhead_pdf_path);
       }
     }
   };
@@ -37,29 +67,32 @@ const ReportLayoutSettings = () => {
   const handleUploadLetterhead = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.type !== "application/pdf") {
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
       toast.error("Please upload a PDF file");
       return;
     }
     setUploading(true);
     const fileName = `letterhead_${Date.now()}.pdf`;
-    
-    // Delete old file if exists
+
     if (letterheadPath) {
       await supabase.storage.from("letterheads").remove([letterheadPath]);
     }
 
-    const { error } = await supabase.storage.from("letterheads").upload(fileName, file, { upsert: true });
+    const { error } = await supabase.storage.from("letterheads").upload(fileName, file, {
+      upsert: true,
+      contentType: "application/pdf",
+      cacheControl: "3600",
+    });
     if (error) {
       toast.error("Upload failed: " + error.message);
       setUploading(false);
       return;
     }
     setLetterheadPath(fileName);
-    const { data: urlData } = supabase.storage.from("letterheads").getPublicUrl(fileName);
-    setLetterheadUrl(urlData.publicUrl);
+    await loadPreview(fileName);
     toast.success("Letterhead uploaded");
     setUploading(false);
+    e.target.value = "";
   };
 
   const handleRemoveLetterhead = async () => {
@@ -67,7 +100,7 @@ const ReportLayoutSettings = () => {
       await supabase.storage.from("letterheads").remove([letterheadPath]);
     }
     setLetterheadPath(null);
-    setLetterheadUrl(null);
+    revokePreview();
     toast.success("Letterhead removed");
   };
 
@@ -92,7 +125,7 @@ const ReportLayoutSettings = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2">
-        <Button variant="outline" size="sm" onClick={() => navigate("/reports")}>
+        <Button variant="outline" size="sm" onClick={() => navigate(-1)}>
           <ArrowLeft className="h-4 w-4 mr-1" />Back
         </Button>
         <h1 className="text-2xl font-bold">Report Layout Settings</h1>
@@ -102,7 +135,7 @@ const ReportLayoutSettings = () => {
         {/* Margins */}
         <div className="bg-card border rounded-lg p-6 space-y-6">
           <h2 className="text-lg font-semibold">Page Margins</h2>
-          
+
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <Label>Top Margin</Label>
@@ -131,7 +164,6 @@ const ReportLayoutSettings = () => {
             />
           </div>
 
-          {/* Direct input */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label className="text-xs text-muted-foreground">Top (cm)</Label>
@@ -165,7 +197,7 @@ const ReportLayoutSettings = () => {
             Upload a PDF to use as background when printing reports. This will be rendered behind your report content.
           </p>
 
-          {letterheadUrl ? (
+          {letterheadPath ? (
             <div className="space-y-3">
               <div className="flex items-center gap-3 bg-muted rounded-lg p-3">
                 <div className="flex-1 text-sm font-medium truncate">{letterheadPath}</div>
@@ -173,7 +205,17 @@ const ReportLayoutSettings = () => {
                   <Trash2 className="h-4 w-4 mr-1" />Remove
                 </Button>
               </div>
-              <iframe src={letterheadUrl} className="w-full h-[400px] border rounded" title="Letterhead Preview" />
+              {letterheadPreviewUrl ? (
+                <iframe
+                  src={`${letterheadPreviewUrl}#toolbar=0&navpanes=0`}
+                  className="w-full h-[400px] border rounded bg-white"
+                  title="Letterhead Preview"
+                />
+              ) : (
+                <div className="w-full h-[120px] border rounded flex items-center justify-center text-sm text-muted-foreground">
+                  Loading preview…
+                </div>
+              )}
             </div>
           ) : (
             <div>
@@ -182,7 +224,7 @@ const ReportLayoutSettings = () => {
                 <span className="text-sm text-muted-foreground">
                   {uploading ? "Uploading..." : "Click to upload PDF letterhead"}
                 </span>
-                <input type="file" accept=".pdf" className="hidden" onChange={handleUploadLetterhead} disabled={uploading} />
+                <input type="file" accept=".pdf,application/pdf" className="hidden" onChange={handleUploadLetterhead} disabled={uploading} />
               </label>
             </div>
           )}

@@ -146,7 +146,7 @@ export default function WhatsAppChat() {
     queryKey: ["wa-contacts", debouncedSearch, filterUnread],
     queryFn: async ({ pageParam = 0 }) => {
       const { data, error } = await supabase.rpc("get_wa_contacts_paginated", {
-        p_search: debouncedSearch,
+        p_search: debouncedSearch || "",
         p_offset: pageParam * CONTACTS_PAGE_SIZE,
         p_limit: CONTACTS_PAGE_SIZE,
         p_unread_only: filterUnread,
