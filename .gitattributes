@@ -1,0 +1,11 @@
+# Normalize text; UTF-8 enforced by scripts/check-utf8.mjs (npm prebuild).
+* text=auto eol=lf
+
+*.ts text
+*.tsx text
+*.js text
+*.mjs text
+*.css text
+*.json text
+*.md text
+*.sql text

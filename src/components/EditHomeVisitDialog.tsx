@@ -52,6 +52,34 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
 
   const est = visit?.estimates;
 
+  // Always load full estimate_tests (list query may omit test_id / item_type).
+  const { data: estimateTestsFresh } = useQuery({
+    queryKey: ["estimate_tests_edit", est?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("estimate_tests")
+        .select("id, test_id, test_name, price, fasting_required, discount_applicable, individual_discount_type, individual_discount_value, item_type")
+        .eq("estimate_id", est.id);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!est?.id && open,
+  });
+
+  const { data: estimateMeta } = useQuery({
+    queryKey: ["estimate_meta_edit", est?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("estimates")
+        .select("id, title, patient_name, gender, email, doctor_name, umr_number, dob, whatsapp_number, total_amount, discount_amount, home_visit_charges, final_amount, global_discount_type, global_discount_value, status")
+        .eq("id", est.id)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!est?.id && open,
+  });
+
   // Patient demographic fields - only used in completionMode
   const [title, setTitle] = useState("");
   const [patientName, setPatientName] = useState("");
@@ -159,44 +187,57 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
     }
   };
 
-  // Populate form when visit changes
+  const lastPopulatedVisitId = useRef<string | null>(null);
+
+  // Populate form once per open visit after full estimate rows load
   useEffect(() => {
-    if (!visit || !est) return;
-    setTitle(est.title || "");
-    setPatientName(est.patient_name || "");
-    setGender(est.gender || "");
-    setEmail(est.email || "");
-    setDoctorName(est.doctor_name || "SELF");
-    const rawUmr = est.umr_number || "";
+    if (!open) {
+      lastPopulatedVisitId.current = null;
+      return;
+    }
+    if (!visit?.id || !est?.id) return;
+    // Wait for dedicated fetches (undefined = still loading)
+    if (estimateTestsFresh === undefined || estimateMeta === undefined) return;
+    if (lastPopulatedVisitId.current === visit.id) return;
+    lastPopulatedVisitId.current = visit.id;
+
+    const meta = estimateMeta || est;
+    setTitle(meta.title || "");
+    setPatientName(meta.patient_name || "");
+    setGender(meta.gender || "");
+    setEmail(meta.email || "");
+    setDoctorName(meta.doctor_name || "SELF");
+    const rawUmr = meta.umr_number || "";
     setUmrInput(rawUmr.startsWith("UMR") ? String(parseInt(rawUmr.slice(3)) || "") : rawUmr);
-    setDob(est.dob || "");
-    setDobDisplay(dobToDisplay(est.dob || ""));
-    setWhatsappNumber(est.whatsapp_number || "");
+    setDob(meta.dob || "");
+    setDobDisplay(dobToDisplay(meta.dob || ""));
+    setWhatsappNumber(meta.whatsapp_number || "");
     setVisitDate(visit.visit_date || "");
     setVisitTime(visit.visit_time || "");
     setAddress(visit.address || "");
     setPhlebotomistId(visit.phlebotomist_id || "");
-    // phleboLocked is derived from visit.status — no setter needed
-    setGlobalDiscountType((est.global_discount_type as "percent" | "amount") || "percent");
-    setGlobalDiscountValue(Number(est.global_discount_value) || 0);
-    setHomeVisitCharges(String(Number(est.home_visit_charges) || 0));
+    setGlobalDiscountType((meta.global_discount_type as "percent" | "amount") || "percent");
+    setGlobalDiscountValue(Number(meta.global_discount_value) || 0);
+    setHomeVisitCharges(String(Number(meta.home_visit_charges) || 0));
     setShowHvcConfirm(false);
     setAttempted(false);
 
-    const existingTests: EditTest[] = (est.estimate_tests || []).map((t: any) => ({
-      id: t.id,
-      test_id: t.test_id,
-      test_name: t.test_name,
-      price: Number(t.price),
-      fasting_required: t.fasting_required,
-      discount_applicable: t.discount_applicable,
-      individual_discount_type: t.individual_discount_type || null,
-      individual_discount_value: Number(t.individual_discount_value) || 0,
-      item_type: (t.item_type as any) || "test",
-    }));
+    const existingTests: EditTest[] = (estimateTestsFresh || [])
+      .filter((t: any) => !!t.test_id)
+      .map((t: any) => ({
+        id: t.id,
+        test_id: t.test_id,
+        test_name: t.test_name,
+        price: Number(t.price),
+        fasting_required: !!t.fasting_required,
+        discount_applicable: t.discount_applicable !== false,
+        individual_discount_type: t.individual_discount_type || null,
+        individual_discount_value: Number(t.individual_discount_value) || 0,
+        item_type: (t.item_type as any) || "test",
+      }));
     setSelectedTests(existingTests);
     setTestSearch("");
-  }, [visit, est]);
+  }, [open, visit, est, estimateMeta, estimateTestsFresh]);
 
   const availableTests = allTests.filter((t: any) =>
     !selectedTests.find(s => s.test_id === t.id) &&
