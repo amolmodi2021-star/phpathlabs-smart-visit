@@ -28,6 +28,9 @@ import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import { signalSync } from "@/lib/limsSyncSignal";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
+import { fetchAllByIds } from "@/lib/fetchAllRows";
+import { shortIdsKey } from "@/lib/queryKeys";
+import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { fetchVerificationCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPendingCandidates";
 import SyncingOverlay from "./SyncingOverlay";
 import NewBadge from "./NewBadge";
@@ -152,31 +155,25 @@ const ResultVerification = () => {
   const rvTotalPages = Math.max(1, Math.ceil(rvCount / RV_PAGE_SIZE));
 
   const regIds = registrations.map((r: any) => r.id);
+  const regKey = shortIdsKey(regIds, "rv");
+
+  useRealtimeSync("lims_result_notify", ["verification_regs_count", "verification_results_v2", "verification_outsourced_v2"], 1500);
 
   // Fetch entered results
   const { data: existingResults = [] } = useQuery({
-    queryKey: ["verification_results_v2", regIds.join(",")],
+    queryKey: ["verification_results_v2", regKey],
     enabled: regIds.length > 0,
     queryFn: async () => {
-      const { data } = await supabase
-        .from("patient_results")
-        .select("*")
-        .in("registration_id", regIds)
-        .eq("status", "entered");
-      return (data || []) as any[];
+      return await fetchAllByIds<any>("patient_results", "*", "registration_id", regIds, { eq: { status: "entered" } });
     },
   });
 
   // Fetch sample tubes (used to expand PRL/HLT container test rows into leaf test ids)
   const { data: regTubes = [] } = useQuery({
-    queryKey: ["verification_tubes", regIds.join(",")],
+    queryKey: ["verification_tubes", regKey],
     enabled: regIds.length > 0,
     queryFn: async () => {
-      const { data } = await supabase
-        .from("sample_tubes" as any)
-        .select("registration_id, test_ids")
-        .in("registration_id", regIds);
-      return (data || []) as any[];
+      return await fetchAllByIds<any>("sample_tubes", "id, registration_id, test_ids", "registration_id", regIds);
     },
   });
 
@@ -192,15 +189,16 @@ const ResultVerification = () => {
 
   // Fetch outsourced snips with results_entered status
   const { data: outsourcedSnips = [] } = useQuery({
-    queryKey: ["verification_outsourced_v2", regIds.join(",")],
+    queryKey: ["verification_outsourced_v2", regKey],
     enabled: regIds.length > 0,
     queryFn: async () => {
-      const { data } = await supabase
-        .from("outsourced_test_snips")
-        .select("registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, sent_at, result_mode, snip_image_urls")
-        .in("registration_id", regIds)
-        .in("outsource_status", ["results_entered", "entered"]);
-      return (data || []) as any[];
+      return await fetchAllByIds<any>(
+        "outsourced_test_snips",
+        "id, registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, sent_at, result_mode, snip_image_urls",
+        "registration_id",
+        regIds,
+        { in: { outsource_status: ["results_entered", "entered"] } },
+      );
     },
   });
 

@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { X, Search, Send, Lock } from "lucide-react";
+import { X, Search, Send, Lock, AlertTriangle } from "lucide-react";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import TimeSlotPicker from "@/components/TimeSlotPicker";
@@ -73,6 +73,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
   const [genderConfirmOpen, setGenderConfirmOpen] = useState(false);
   const [pendingGender, setPendingGender] = useState<"Male" | "Female" | "">("");
   const [attempted, setAttempted] = useState(false);
+  const [showHvcConfirm, setShowHvcConfirm] = useState(false);
   const [phlebotomistId, setPhlebotomistId] = useState("");
   const [phleboUnlockedForVisitId, setPhleboUnlockedForVisitId] = useState<string | null>(null);
   const phleboLocked = visit?.status === "Registered" && phleboUnlockedForVisitId !== visit?.id;
@@ -178,6 +179,8 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
     setGlobalDiscountType((est.global_discount_type as "percent" | "amount") || "percent");
     setGlobalDiscountValue(Number(est.global_discount_value) || 0);
     setHomeVisitCharges(String(Number(est.home_visit_charges) || 0));
+    setShowHvcConfirm(false);
+    setAttempted(false);
 
     const existingTests: EditTest[] = (est.estimate_tests || []).map((t: any) => ({
       id: t.id,
@@ -259,7 +262,6 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
       if (!whatsappNumber || whatsappNumber.replace(/\D/g, "").length < 10) throw new Error("Valid WhatsApp number required");
       if (selectedTests.length === 0) throw new Error("Select at least one test");
       if (!visitDate || !visitTime || !address.trim()) throw new Error("Visit date, time, and address are required");
-      if (homeVisitCharges === "" || homeVisitCharges === null || homeVisitCharges === undefined) throw new Error("Home visit charges is required (can be 0)");
 
       const cleanNumber = whatsappNumber.replace(/\D/g, "").slice(-10);
       const formattedUmr = umrInput ? `UMR${String(parseInt(umrInput) || 0).padStart(7, "0")}` : null;
@@ -640,8 +642,8 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
 
           {/* Home Visit Charges */}
           <div>
-            <Label className={attempted && (homeVisitCharges === "" || homeVisitCharges === null || homeVisitCharges === undefined) ? "text-destructive" : ""}>Home Visit Charges (₹) *</Label>
-            <Input type="number" value={homeVisitCharges} onChange={(e) => setHomeVisitCharges(e.target.value)} placeholder="Enter charges (can be 0)" />
+            <Label>Home Visit Charges (₹)</Label>
+            <Input type="number" value={homeVisitCharges} onChange={(e) => setHomeVisitCharges(e.target.value)} placeholder="0" />
           </div>
 
           {/* Summary */}
@@ -654,7 +656,19 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
             </div>
           )}
 
-          <Button className="w-full" onClick={() => { setAttempted(true); saveMutation.mutate(); }} disabled={saveMutation.isPending}>
+          <Button
+            className="w-full"
+            onClick={() => {
+              setAttempted(true);
+              const hv = parseFloat(homeVisitCharges);
+              if (homeVisitCharges === "" || Number.isNaN(hv) || hv === 0) {
+                setShowHvcConfirm(true);
+                return;
+              }
+              saveMutation.mutate();
+            }}
+            disabled={saveMutation.isPending}
+          >
             {completionMode ? "Save & Proceed to Payment" : (
               <><Send className="h-4 w-4 mr-1" /> Save & Share</>
             )}
@@ -686,6 +700,29 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
           description="Enter password to change phlebotomist for a registered visit."
         />
       </DialogContent>
+
+      <AlertDialog open={showHvcConfirm} onOpenChange={setShowHvcConfirm}>
+        <AlertDialogContent className="max-w-sm">
+          <AlertDialogHeader>
+            <div className="mx-auto mb-1 flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-600 dark:bg-amber-950 dark:text-amber-400">
+              <AlertTriangle className="h-6 w-6" />
+            </div>
+            <AlertDialogTitle className="text-center">Home Visit Charges Missing</AlertDialogTitle>
+            <AlertDialogDescription className="text-center">
+              Home Visit Charges are blank (₹0). Do you want to save without adding charges?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="sm:justify-center gap-2">
+            <AlertDialogCancel className="mt-0">Go Back</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { setShowHvcConfirm(false); saveMutation.mutate(); }}
+            >
+              Save Without Charges
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 };

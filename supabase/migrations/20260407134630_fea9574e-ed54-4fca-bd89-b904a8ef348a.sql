@@ -20,10 +20,19 @@ SET test_code = 'TST' || lpad(n.rn::text, 4, '0')
 FROM numbered n
 WHERE t.id = n.id;
 
--- Set sequence to max existing code number + 1
-SELECT setval('test_code_seq', COALESCE(
-  (SELECT MAX(NULLIF(regexp_replace(test_code, '[^0-9]', '', 'g'), '')::int) FROM public.tests), 0
-));
+-- Set sequence to max existing code number (safe on empty table)
+DO $$
+DECLARE
+  m int;
+BEGIN
+  SELECT COALESCE(MAX(NULLIF(regexp_replace(test_code, '[^0-9]', '', 'g'), '')::int), 0)
+  INTO m FROM public.tests;
+  IF m < 1 THEN
+    PERFORM setval('test_code_seq', 1, false);
+  ELSE
+    PERFORM setval('test_code_seq', m, true);
+  END IF;
+END $$;
 
 -- Create trigger function to auto-assign test_code on insert
 CREATE OR REPLACE FUNCTION public.auto_assign_test_code()

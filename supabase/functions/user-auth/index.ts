@@ -5,6 +5,133 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+function b64url(bytes: ArrayBuffer | Uint8Array | string): string {
+  const u8 =
+    typeof bytes === "string"
+      ? new TextEncoder().encode(bytes)
+      : bytes instanceof Uint8Array
+        ? bytes
+        : new Uint8Array(bytes);
+  let bin = "";
+  for (let i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i]);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function b64urlDecode(str: string): Uint8Array {
+  const pad = "=".repeat((4 - (str.length % 4)) % 4);
+  const b64 = (str + pad).replace(/-/g, "+").replace(/_/g, "/");
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function resolveJwtSecret(): string {
+  let secretRaw =
+    Deno.env.get("JWT_SECRET") ||
+    Deno.env.get("SUPABASE_JWT_SECRET") ||
+    Deno.env.get("SUPABASE_INTERNAL_JWT_SECRET") ||
+    "";
+
+  // Local edge isolates often lack JWT_SECRET. Detect the well-known local demo
+  // service_role key and use the matching local JWT secret.
+  if (!secretRaw) {
+    const svc = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    const url = Deno.env.get("SUPABASE_URL") || "";
+    const isLocalDemo =
+      svc.includes('"iss":"supabase-demo"') ||
+      svc.includes("supabase-demo") ||
+      svc.startsWith("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1v") ||
+      /127\.0\.0\.1|localhost/i.test(url);
+    if (isLocalDemo) {
+      secretRaw = "super-secret-jwt-token-with-at-least-32-characters-long";
+    }
+  }
+  return secretRaw;
+}
+
+async function issueStaffAccessToken(user: {
+  id: string;
+  username: string;
+  role_id: string | null;
+}): Promise<string> {
+  const secretRaw = resolveJwtSecret();
+  if (!secretRaw) throw new Error("JWT_SECRET is not configured");
+
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: "HS256", typ: "JWT" };
+  const payload = {
+    role: "authenticated",
+    app_role: "staff",
+    username: user.username,
+    role_id: user.role_id,
+    sub: user.id,
+    aud: "authenticated",
+    iss: "supabase",
+    iat: now,
+    exp: now + 12 * 60 * 60,
+  };
+  const body = `${b64url(JSON.stringify(header))}.${b64url(JSON.stringify(payload))}`;
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secretRaw),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body));
+  return `${body}.${b64url(sig)}`;
+}
+
+type StaffClaims = {
+  sub: string;
+  username?: string;
+  role_id?: string | null;
+  app_role?: string;
+  exp?: number;
+};
+
+async function verifyStaffJwt(req: Request): Promise<StaffClaims | null> {
+  const auth = req.headers.get("Authorization") || "";
+  const m = auth.match(/^Bearer\s+(.+)$/i);
+  if (!m) return null;
+  const token = m[1].trim();
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+
+  const secretRaw = resolveJwtSecret();
+  if (!secretRaw) return null;
+
+  const body = `${parts[0]}.${parts[1]}`;
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secretRaw),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["verify"],
+  );
+  const sig = b64urlDecode(parts[2]);
+  const ok = await crypto.subtle.verify("HMAC", key, sig, new TextEncoder().encode(body));
+  if (!ok) return null;
+
+  let payload: StaffClaims;
+  try {
+    payload = JSON.parse(new TextDecoder().decode(b64urlDecode(parts[1])));
+  } catch {
+    return null;
+  }
+  if (!payload?.sub) return null;
+  if (payload.app_role && payload.app_role !== "staff") return null;
+  if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null;
+  return payload;
+}
+
+async function requireStaff(req: Request): Promise<StaffClaims | Response> {
+  const claims = await verifyStaffJwt(req);
+  if (!claims) return json({ error: "Unauthorized" }, 401);
+  return claims;
+}
+
 // Simple password hashing using Web Crypto (SHA-256 + salt)
 async function hashPassword(password: string): Promise<string> {
   const salt = crypto.getRandomValues(new Uint8Array(16));
@@ -40,11 +167,11 @@ Deno.serve(async (req) => {
     const { action, ...params } = await req.json();
 
     if (action === "login") return await handleLogin(params, req);
-    if (action === "reset_password") return await handleResetPassword(params);
-    if (action === "change_password") return await handleChangePassword(params);
-    if (action === "create_user") return await handleCreateUser(params);
-    if (action === "update_user") return await handleUpdateUser(params);
-    if (action === "init_admin_password") return await handleInitAdminPassword(params);
+    if (action === "change_password") return await handleChangePassword(params, req);
+    if (action === "reset_password") return await handleResetPassword(params, req);
+    if (action === "create_user") return await handleCreateUser(params, req);
+    if (action === "update_user") return await handleUpdateUser(params, req);
+    if (action === "init_admin_password") return await handleInitAdminPassword(params, req);
     return json({ error: "Unknown action" }, 400);
   } catch (err: any) {
     return json({ error: err.message }, 500);
@@ -85,7 +212,16 @@ async function handleLogin(
   const ua = req.headers.get("user-agent") || "unknown";
   await supabase.from("app_user_login_history").insert({ user_id: user.id, ip_address: ip, user_agent: ua });
 
+  const access_token = await issueStaffAccessToken({
+    id: user.id,
+    username: user.username,
+    role_id: user.role_id,
+  });
+
   return json({
+    access_token,
+    token_type: "bearer",
+    expires_in: 12 * 60 * 60,
     user: {
       id: user.id,
       username: user.username,
@@ -97,7 +233,13 @@ async function handleLogin(
   });
 }
 
-async function handleResetPassword({ user_id, new_password }: { user_id: string; new_password: string }) {
+async function handleResetPassword(
+  { user_id, new_password }: { user_id: string; new_password: string },
+  req: Request,
+) {
+  const auth = await requireStaff(req);
+  if (auth instanceof Response) return auth;
+
   if (!user_id || !new_password) return json({ error: "user_id and new_password required" }, 400);
   if (new_password.length < 4) return json({ error: "Password must be at least 4 characters" }, 400);
 
@@ -107,14 +249,20 @@ async function handleResetPassword({ user_id, new_password }: { user_id: string;
   return json({ success: true });
 }
 
-async function handleCreateUser(params: {
-  username: string;
-  password: string;
-  display_name?: string;
-  role_id?: string;
-  is_active?: boolean;
-  can_approve_as_doctor?: boolean;
-}) {
+async function handleCreateUser(
+  params: {
+    username: string;
+    password: string;
+    display_name?: string;
+    role_id?: string;
+    is_active?: boolean;
+    can_approve_as_doctor?: boolean;
+  },
+  req: Request,
+) {
+  const auth = await requireStaff(req);
+  if (auth instanceof Response) return auth;
+
   if (!params.username || !params.password) return json({ error: "Username and password required" }, 400);
 
   const hash = await hashPassword(params.password);
@@ -138,13 +286,19 @@ async function handleCreateUser(params: {
   return json({ user: data });
 }
 
-async function handleUpdateUser(params: {
-  user_id: string;
-  display_name?: string;
-  role_id?: string;
-  is_active?: boolean;
-  can_approve_as_doctor?: boolean;
-}) {
+async function handleUpdateUser(
+  params: {
+    user_id: string;
+    display_name?: string;
+    role_id?: string;
+    is_active?: boolean;
+    can_approve_as_doctor?: boolean;
+  },
+  req: Request,
+) {
+  const auth = await requireStaff(req);
+  if (auth instanceof Response) return auth;
+
   if (!params.user_id) return json({ error: "user_id required" }, 400);
 
   const updates: Record<string, any> = {};
@@ -158,7 +312,14 @@ async function handleUpdateUser(params: {
   return json({ success: true });
 }
 
-async function handleChangePassword({ user_id, current_password, new_password }: { user_id: string; current_password: string; new_password: string }) {
+async function handleChangePassword(
+  { user_id, current_password, new_password }: { user_id: string; current_password: string; new_password: string },
+  req: Request,
+) {
+  const auth = await requireStaff(req);
+  if (auth instanceof Response) return auth;
+  if (auth.sub !== user_id) return json({ error: "Forbidden" }, 403);
+
   if (!user_id || !current_password || !new_password) return json({ error: "user_id, current_password, and new_password required" }, 400);
   if (new_password.length < 4) return json({ error: "New password must be at least 4 characters" }, 400);
 
@@ -179,7 +340,15 @@ async function handleChangePassword({ user_id, current_password, new_password }:
   return json({ success: true });
 }
 
-async function handleInitAdminPassword({ password }: { password: string }) {
+async function handleInitAdminPassword(
+  { password, init_secret }: { password: string; init_secret?: string },
+  req: Request,
+) {
+  // Locked down: require INIT_ADMIN_SECRET env match (one-time bootstrap), not open to anon.
+  const expected = Deno.env.get("INIT_ADMIN_SECRET") || "";
+  if (!expected || !init_secret || init_secret !== expected) {
+    return json({ error: "Forbidden" }, 403);
+  }
   if (!password) return json({ error: "password required" }, 400);
 
   const hash = await hashPassword(password);

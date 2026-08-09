@@ -1,25 +1,98 @@
-project_id = "rpbkilhzulaugzrlatts"
+# Local trial stack — ports remapped to avoid Windows excluded range 54251-54350.
+# Production cloud project is NOT used while .env points at these local URLs.
+project_id = "phpathlabs-local"
 
-[functions.parse-prescription]
-verify_jwt = false
+[api]
+enabled = true
+port = 54421
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
 
-[functions.generate-loyalty-card]
-verify_jwt = false
+[db]
+port = 54422
+shadow_port = 54420
+major_version = 15
 
-[functions.abnormal-tests-import]
+[db.pooler]
+enabled = false
+port = 54429
+pool_mode = "transaction"
+default_pool_size = 20
+max_client_conn = 100
+
+[realtime]
+enabled = true
+
+[studio]
+enabled = true
+port = 54423
+api_url = "http://127.0.0.1"
+
+[inbucket]
+enabled = true
+port = 54424
+
+[storage]
+enabled = true
+file_size_limit = "50MiB"
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:8080"
+additional_redirect_urls = ["http://localhost:8080"]
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false
+
+[edge_runtime]
+enabled = true
+policy = "per_worker"
+
+[analytics]
+enabled = true
+port = 54427
+backend = "postgres"
+
+# Public / machine entrypoints (no staff JWT yet)
+[functions.user-auth]
 verify_jwt = false
 
 [functions.lims-interface]
 verify_jwt = false
 
-[functions.user-auth]
+[functions.whatsapp-webhook]
 verify_jwt = false
+
+[functions.desktop-api]
+verify_jwt = false
+
+# Staff-only edge functions — require Authorization Bearer (staff JWT from login)
+[functions.parse-prescription]
+verify_jwt = true
+
+[functions.generate-loyalty-card]
+verify_jwt = true
+
+[functions.delete-loyalty-cloudinary]
+verify_jwt = true
+
+[functions.abnormal-tests-import]
+verify_jwt = true
 
 [functions.cleanup-outsourced-snips]
-verify_jwt = false
+verify_jwt = true
 
 [functions.purge-bucket]
-verify_jwt = false
+verify_jwt = true
 
 [functions.export-crm-contacts]
-verify_jwt = false
+verify_jwt = true
+
+[functions.send-marketing-message]
+verify_jwt = true
+
+[functions.whatsapp-proxy]
+verify_jwt = true

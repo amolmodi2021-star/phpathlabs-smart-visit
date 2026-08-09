@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
   lookupShareLink,
+  fetchPortalBundle,
   logEvent,
   newSessionId,
   startSession,
@@ -32,14 +33,8 @@ import { format } from "date-fns";
 import TestStatusTimeline from "@/components/report/TestStatusTimeline";
 import AbnormalHistorySection from "@/components/report/AbnormalHistorySection";
 import PreviousReportsSection from "@/components/report/PreviousReportsSection";
-import { cn } from "@/lib/utils";
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
-import {
-  fetchSiblingRegistrations,
-  fetchDepartmentMap,
-  fetchAbnormalForUmr,
-  fetchPreviousApprovedReports,
-} from "@/lib/portalAggregation";
+import { cn } from "@/lib/utils";
 
 const LAB_PHONE = "+916356556699";
 const LAB_PHONE_DISPLAY = "6356 55 66 99";
@@ -100,23 +95,23 @@ const PatientReportPortal = () => {
           }
         }
 
-        const link = await lookupShareLink(token);
-        if (!link) {
+        const looked = await lookupShareLink(token);
+        if (!looked) {
+          setState({ kind: "invalid" });
+          return;
+        }
+        if (looked.expired || looked._expired) {
+          setState({ kind: "expired" });
+          return;
+        }
+        const link = looked.link || looked;
+        const reg = looked.registration;
+        if (!reg) {
           setState({ kind: "invalid" });
           return;
         }
         if (new Date(link.expires_at).getTime() < Date.now()) {
           setState({ kind: "expired" });
-          return;
-        }
-
-        const { data: reg, error: regErr } = await supabase
-          .from("patient_registrations")
-          .select("id, invoice_number, patient_name, mobile_number, umr_number, dob, due_amount, created_at, tests, cancelled_tests, status, bill_cancelled")
-          .eq("id", link.registration_id)
-          .maybeSingle();
-        if (regErr || !reg) {
-          setState({ kind: "invalid" });
           return;
         }
         if (reg.bill_cancelled) {
@@ -178,70 +173,57 @@ const PatientReportPortal = () => {
     };
   }, [state.kind, token]);
 
-  // Load full status data + siblings + departments + abnormal + previous
+  // Load full status data via token-scoped RPC (no anon PHI table SELECT)
   useEffect(() => {
     if (state.kind !== "ready") return;
     (async () => {
       setLoadingData(true);
       try {
         const reg = state.registration;
-        const siblings = await fetchSiblingRegistrations(reg.umr_number, reg.created_at);
-        // Ensure current registration is included even if filter missed it.
+        const bundle = await fetchPortalBundle(token);
+        if (!bundle) {
+          setData(null);
+          return;
+        }
         const aggregated = (() => {
           const map = new Map<string, any>();
-          siblings.forEach((s) => map.set(s.id, s));
+          (bundle.aggregated || []).forEach((s: any) => map.set(s.id, s));
           map.set(reg.id, reg);
           return Array.from(map.values()).sort((a, b) =>
             (a.created_at || "").localeCompare(b.created_at || ""),
           );
         })();
-        const regIds = aggregated.map((r) => r.id);
-
-        const [
-          { data: results },
-          { data: tubes },
-          { data: snips },
-          { data: testsData },
-          deptMap,
-          abnormal,
-          previous,
-        ] = await Promise.all([
-          supabase
-            .from("patient_results")
-            .select("registration_id, test_id, status, entered_at, verified_at, approved_at, dispatched_at")
-            .in("registration_id", regIds),
-          supabase
-            .from("sample_tubes" as any)
-            .select("registration_id, test_ids, collected_at, accepted_at")
-            .in("registration_id", regIds),
-          supabase
-            .from("outsourced_test_snips")
-            .select("registration_id, test_id, outsource_status, sent_at, updated_at")
-            .in("registration_id", regIds),
-          supabase.from("tests").select("id, test_name"),
-          fetchDepartmentMap(),
-          fetchAbnormalForUmr(reg.umr_number),
-          fetchPreviousApprovedReports(reg.umr_number, regIds),
-        ]);
         const testsMap: Record<string, any> = {};
-        (testsData || []).forEach((t: any) => {
+        (bundle.tests || []).forEach((t: any) => {
           testsMap[t.id] = t;
+        });
+        const deptName: Record<string, string> = {};
+        const deptOrder: Record<string, number> = {};
+        (bundle.departments || []).forEach((d: any) => {
+          deptName[d.id] = d.department_name;
+          deptOrder[d.department_name] = d.display_order ?? 999;
+        });
+        const testDept: Record<string, string> = {};
+        (bundle.tests || []).forEach((t: any) => {
+          if (t.department_id && deptName[t.department_id]) {
+            testDept[t.id] = deptName[t.department_id];
+          }
         });
         setData({
           aggregated,
-          results: results || [],
-          tubes: tubes || [],
-          snips: snips || [],
+          results: bundle.results || [],
+          tubes: bundle.tubes || [],
+          snips: bundle.snips || [],
           testsMap,
-          deptMap,
-          abnormal,
-          previous,
+          deptMap: { testDept, deptOrder },
+          abnormal: {},
+          previous: bundle.previous || [],
         });
       } finally {
         setLoadingData(false);
       }
     })();
-  }, [state, tick]);
+  }, [state, tick, token]);
 
   const handleVerify = async () => {
     if (state.kind !== "needs_verify") return;

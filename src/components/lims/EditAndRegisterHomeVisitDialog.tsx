@@ -13,8 +13,8 @@ import { X, Search } from "lucide-react";
 import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import { buildSampleTubeGroups } from "@/lib/sampleTubeGrouping";
 import { format, parse, isValid, differenceInYears } from "date-fns";
-import { logPaymentTransaction } from "@/lib/paymentTransactions";
-import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
+import { getCurrentUserName } from "@/lib/auth";
+import { registerPatientAtomic } from "@/lib/registerPatientAtomic";
 
 interface EditTest {
   test_id: string;
@@ -286,83 +286,50 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
       // Payment mode string for home_visits table
       const paymentModeStr = payments.map(p => `${p.mode}: ₹${p.amount}`).join(", ");
 
-      // Generate invoice & UMR
-      const { data: invNum } = await supabase.rpc("generate_invoice_number");
-      let umrNumber = formattedUmr;
-      if (!umrNumber) {
-        const { data: umr } = await supabase.rpc("generate_umr_number");
-        umrNumber = umr;
-      }
+      // Invoice + new-patient UMR allocated inside register_patient_atomic.
+      // Manual/existing UMR (formattedUmr) is kept; blank → server assigns.
+      const umrNumber = formattedUmr || null;
 
       const stampedBy = getCurrentUserName();
       if (!stampedBy) throw new Error("Please sign in again before saving the registration");
 
-      const { data: insertedReg, error } = await supabase.from("patient_registrations").insert({
-        invoice_number: invNum,
-        patient_name: patientName.replace(/\s+/g, ' ').trim().toUpperCase(),
-        mobile_number: cleanNumber,
-        title: title || null,
-        gender: gender || null,
-        dob: dob || null,
-        email: email || null,
-        doctor_name: doctorName ? doctorName.toUpperCase() : "SELF",
-        umr_number: umrNumber,
-        address: address.toUpperCase(),
-        visit_type: "home_visit",
-        tests: regTests,
-        gross_amount: calculations.totalAmount,
-        discount_amount: calculations.totalDiscount,
-        net_amount: calculations.totalAmount - calculations.totalDiscount,
-        home_visit_charges: calculations.hvCharges,
-        final_amount: calculations.finalAmount,
-        paid_amount: totalPaid,
-        due_amount: dueAmount,
-        payments: payments,
-        status: "registered",
-        home_visit_id: visit.id,
-        global_discount_type: globalDiscountValue > 0 ? globalDiscountType : null,
-        global_discount_value: globalDiscountValue,
-        registered_by: stampedBy,
-      } as any).select().single();
-      if (error) throw error;
+      const tubeGroups = await buildSampleTubeGroups(
+        calculations.testDetails.map((t: any) => ({
+          test_id: t.test_id,
+          test_name: t.test_name,
+          item_type: (t as any).item_type || "test",
+        })),
+      );
 
-      // Create sample_tubes for this registration (expands profiles/checkups to leaf tests)
-      try {
-        const groups = await buildSampleTubeGroups(
-          calculations.testDetails.map((t: any) => ({
-            test_id: t.test_id,
-            test_name: t.test_name,
-            item_type: (t as any).item_type || "test",
-          })),
-        );
-
-        for (const g of groups) {
-          const { data: uid } = await supabase.rpc("generate_sample_uid" as any);
-          await supabase.from("sample_tubes" as any).insert({
-            sample_uid: uid as string,
-            registration_id: (insertedReg as any).id,
-            tube_type: g.tubeType,
-            tube_color: g.tubeColor,
-            sample_type: g.sampleType,
-            suffix: g.suffix,
-            test_ids: g.testIds,
-            test_names: g.testNames,
-            status: "pending",
-          });
-        }
-      } catch (tubeErr: any) {
-        console.error("Failed to create sample_tubes:", tubeErr);
-        // Non-fatal
-      }
-
-      // Log payment transaction (always, even when totalPaid = 0)
-      if (insertedReg) {
-        logPaymentTransaction({
-          registration_id: (insertedReg as any).id,
-          invoice_number: (insertedReg as any).invoice_number,
-          patient_name: (insertedReg as any).patient_name,
-          transaction_type: "registration_payment",
-          direction: "in",
+      await registerPatientAtomic({
+        registration: {
+          patient_name: patientName.replace(/\s+/g, ' ').trim().toUpperCase(),
+          mobile_number: cleanNumber,
+          title: title || null,
+          gender: gender || null,
+          dob: dob || null,
+          email: email || null,
+          doctor_name: doctorName ? doctorName.toUpperCase() : "SELF",
+          umr_number: umrNumber,
+          address: address.toUpperCase(),
+          visit_type: "home_visit",
+          tests: regTests,
+          gross_amount: calculations.totalAmount,
+          discount_amount: calculations.totalDiscount,
+          net_amount: calculations.totalAmount - calculations.totalDiscount,
+          home_visit_charges: calculations.hvCharges,
+          final_amount: calculations.finalAmount,
+          paid_amount: totalPaid,
+          due_amount: dueAmount,
+          payments: payments,
+          status: "registered",
+          home_visit_id: visit.id,
+          global_discount_type: globalDiscountValue > 0 ? globalDiscountType : null,
+          global_discount_value: globalDiscountValue,
+          registered_by: stampedBy,
+        },
+        tubes: tubeGroups,
+        payment: {
           payments,
           total_amount: totalPaid,
           gross_amount: calculations.totalAmount,
@@ -370,17 +337,16 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
           final_amount: calculations.finalAmount,
           paid_amount: totalPaid,
           due_amount: dueAmount,
-        });
-      }
-
-      // Update home_visits status and payment
-      await supabase.from("home_visits").update({
-        status: "Registered",
-        address: address.toUpperCase(),
-        payment_mode: paymentModeStr || null,
-        paid_amount: totalPaid,
-        due_amount: dueAmount,
-      }).eq("id", visit.id);
+        },
+        homeVisitId: visit.id,
+        homeVisitPatch: {
+          status: "Registered",
+          address: address.toUpperCase(),
+          payment_mode: paymentModeStr || null,
+          paid_amount: totalPaid,
+          due_amount: dueAmount,
+        },
+      });
     },
     onSuccess: () => {
       toast.success("Home visit edited & registered successfully!");

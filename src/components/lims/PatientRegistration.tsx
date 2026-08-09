@@ -10,12 +10,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { Search, X, Save, Printer, Send, ChevronDown, ChevronUp } from "lucide-react";
+import { Search, X, Save, Printer, Send, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
 import { getTests, TestItem } from "@/lib/tests";
-import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
-import { logPaymentTransaction } from "@/lib/paymentTransactions";
+import { getCurrentUserName } from "@/lib/auth";
 import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import { buildSampleTubeGroups } from "@/lib/sampleTubeGrouping";
+import { registerPatientAtomic } from "@/lib/registerPatientAtomic";
 import InvoicePreview from "./InvoicePreview";
 import PatientSelectDialog, { type PatientPick } from "./PatientSelectDialog";
 import DoctorAutocomplete, { ensureDoctor } from "./DoctorAutocomplete";
@@ -362,27 +362,19 @@ const PatientRegistration = () => {
       const stampedBy = getCurrentUserName();
       if (!stampedBy) throw new Error("Please sign in again before saving the registration");
 
-      // Generate invoice number
-      const { data: invoiceNum, error: invErr } = await supabase.rpc("generate_invoice_number" as any);
-      if (invErr) throw new Error("Failed to generate invoice number");
+      // Invoice + new-patient UMR are allocated server-side inside
+      // register_patient_atomic (same DB transaction) so concurrent
+      // receptionists never clash. Existing patients keep their UMR.
 
-      // Determine UMR: pickup_point registrations skip UMR entirely
-      let finalUmr: string | null = umrNumber || null;
-      if (visitType !== "pickup_point" && !finalUmr) {
-        const { data: newUmr, error: umrErr } = await supabase.rpc("generate_umr_number" as any);
-        if (umrErr) throw new Error("Failed to generate UMR number");
-        finalUmr = newUmr as string;
-        setUmrNumber(finalUmr);
-      } else if (visitType === "pickup_point") {
-        finalUmr = null;
-      }
+      // Pickup point registrations skip UMR entirely.
+      const finalUmr: string | null =
+        visitType === "pickup_point" ? null : (umrNumber || null);
 
       const payments = Array.from(selectedModes)
         .filter(m => (modeAmounts[m] || 0) > 0)
         .map(m => ({ mode: m, amount: modeAmounts[m] || 0 }));
 
       const regData = {
-        invoice_number: invoiceNum as string,
         mobile_number: cleanMobile,
         patient_name: patientName.replace(/\s+/g, ' ').trim().toUpperCase(),
         title,
@@ -416,48 +408,39 @@ const PatientRegistration = () => {
         registered_by: stampedBy,
       };
 
-      const { data: reg, error } = await supabase.from("patient_registrations").insert(regData as any).select().single();
-      if (error) throw new Error(error.message);
+      const tubeGroups = await buildSampleTubeGroups(
+        calculations.testDetails.map((t: any) => ({
+          test_id: t.test_id,
+          test_name: t.test_name,
+          item_type: t.item_type || "test",
+        })),
+      );
+
+      const reg = await registerPatientAtomic({
+        registration: regData,
+        tubes: tubeGroups,
+        payment: {
+          payments,
+          total_amount: regData.paid_amount,
+          gross_amount: calculations.totalAmount,
+          discount_amount: calculations.totalDiscount,
+          final_amount: calculations.finalAmount,
+          paid_amount: regData.paid_amount,
+          due_amount: regData.due_amount,
+        },
+      });
 
       // Add doctor to master list (history) — non-fatal
       ensureDoctor(doctorName);
 
-      // Create sample_tubes for this registration (expands profiles/checkups to leaf tests)
-      try {
-        const groups = await buildSampleTubeGroups(
-          calculations.testDetails.map((t: any) => ({
-            test_id: t.test_id,
-            test_name: t.test_name,
-            item_type: t.item_type || "test",
-          })),
-        );
-
-        for (const g of groups) {
-          const { data: uid } = await supabase.rpc("generate_sample_uid" as any);
-          await supabase.from("sample_tubes" as any).insert({
-            sample_uid: uid as string,
-            registration_id: reg.id,
-            tube_type: g.tubeType,
-            tube_color: g.tubeColor,
-            sample_type: g.sampleType,
-            suffix: g.suffix,
-            test_ids: g.testIds,
-            test_names: g.testNames,
-            status: "pending",
-          });
-        }
-      } catch (tubeErr: any) {
-        console.error("Failed to create sample_tubes:", tubeErr);
-        // Non-fatal: registration was saved successfully
-      }
-
       // Upsert patient_master keyed by UMR — skip for pickup_point (no UMR, B2B aggregator)
-      if (visitType !== "pickup_point" && finalUmr) {
-        const { data: existing } = await supabase.from("patient_master").select("id").eq("umr_id", finalUmr).limit(1).maybeSingle();
+      const assignedUmr = (reg?.umr_number as string | null | undefined) || finalUmr;
+      if (assignedUmr && !umrNumber) setUmrNumber(assignedUmr);
+      if (visitType !== "pickup_point" && assignedUmr) {
+        const { data: existing } = await supabase.from("patient_master").select("id").eq("umr_id", assignedUmr).limit(1).maybeSingle();
         const cleanName = patientName.replace(/\s+/g, ' ').trim().toUpperCase();
         const cleanAddr = address ? address.replace(/\s+/g, ' ').trim().toUpperCase() : "";
         if (existing) {
-          // Fill-in only: never overwrite existing master fields with blanks
           const upd: any = { last_visit_date: new Date().toISOString() };
           if (cleanName) upd.patient_name = cleanName;
           if (title) upd.title = title;
@@ -476,31 +459,29 @@ const PatientRegistration = () => {
             date_of_birth: dob || null,
             email: email || null,
             address: cleanAddr || null,
-            umr_id: finalUmr,
+            umr_id: assignedUmr,
             source: "lims",
             last_visit_date: new Date().toISOString(),
             first_visit_date: new Date().toISOString(),
-          });
+          } as any);
         }
 
         // Sync demographics across all previous registrations with same UMR
-        if (finalUmr) {
-          const demoUpdates: any = {
-            patient_name: patientName.replace(/\s+/g, ' ').trim().toUpperCase(),
-            title,
-            gender,
-            dob: dob || null,
-            email: email || null,
-            address: cleanAddr,
-            doctor_name: (doctorName || "SELF").toUpperCase(),
-            mobile_number: cleanMobile,
-          };
-          await supabase
-            .from("patient_registrations")
-            .update(demoUpdates)
-            .eq("umr_number", finalUmr)
-            .neq("id", reg.id);
-        }
+        const demoUpdates: any = {
+          patient_name: patientName.replace(/\s+/g, ' ').trim().toUpperCase(),
+          title,
+          gender,
+          dob: dob || null,
+          email: email || null,
+          address: cleanAddr,
+          doctor_name: (doctorName || "SELF").toUpperCase(),
+          mobile_number: cleanMobile,
+        };
+        await supabase
+          .from("patient_registrations")
+          .update(demoUpdates)
+          .eq("umr_number", assignedUmr)
+          .neq("id", reg.id);
       }
 
       return reg;
@@ -512,24 +493,6 @@ const PatientRegistration = () => {
         ...reg,
         tests: calculations.testDetails,
         calculations,
-      });
-      // Log payment transaction (fire-and-forget) — always log so due-only registrations appear in Daily Report
-      const payments = Array.from(selectedModes)
-        .filter(m => (modeAmounts[m] || 0) > 0)
-        .map(m => ({ mode: m, amount: modeAmounts[m] || 0 }));
-      logPaymentTransaction({
-        registration_id: reg.id,
-        invoice_number: reg.invoice_number,
-        patient_name: reg.patient_name,
-        transaction_type: "registration_payment",
-        direction: "in",
-        payments,
-        total_amount: paidAmount,
-        gross_amount: calculations.totalAmount,
-        discount_amount: calculations.totalDiscount,
-        final_amount: calculations.finalAmount,
-        paid_amount: paidAmount,
-        due_amount: dueAmount,
       });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -1027,22 +990,28 @@ const PatientRegistration = () => {
       </Card>
 
       {/* Home Visit Charges Confirmation Dialog */}
-      {showHvcConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-background rounded-lg p-6 max-w-sm w-full mx-4 shadow-lg space-y-4">
-            <h3 className="font-semibold text-lg">Confirm Home Visit Charges</h3>
-            <p className="text-sm text-muted-foreground">
-              Home Visit Charges are blank (₹0). Are you sure you want to proceed without adding charges?
-            </p>
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setShowHvcConfirm(false)}>Go Back</Button>
-              <Button variant="destructive" onClick={() => { setShowHvcConfirm(false); saveMutation.mutate(); }}>
-                Yes, Save Without Charges
-              </Button>
+      <AlertDialog open={showHvcConfirm} onOpenChange={setShowHvcConfirm}>
+        <AlertDialogContent className="max-w-sm">
+          <AlertDialogHeader>
+            <div className="mx-auto mb-1 flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-600 dark:bg-amber-950 dark:text-amber-400">
+              <AlertTriangle className="h-6 w-6" />
             </div>
-          </div>
-        </div>
-      )}
+            <AlertDialogTitle className="text-center">Home Visit Charges Missing</AlertDialogTitle>
+            <AlertDialogDescription className="text-center">
+              Home Visit Charges are blank (₹0). Do you want to save without adding charges?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="sm:justify-center gap-2">
+            <AlertDialogCancel className="mt-0">Go Back</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { setShowHvcConfirm(false); saveMutation.mutate(); }}
+            >
+              Save Without Charges
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

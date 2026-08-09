@@ -26,6 +26,8 @@ import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import { signalSync } from "@/lib/limsSyncSignal";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
 import { fetchResultsEntryCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPendingCandidates";
+import { shortIdsKey } from "@/lib/queryKeys";
+import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import SyncingOverlay from "./SyncingOverlay";
 import NewBadge from "./NewBadge";
 import OutsourcedResults from "./OutsourcedResults";
@@ -130,10 +132,14 @@ const RE_PAGE_SIZE = 50;
 
 const ResultsEntry = () => {
   const qc = useQueryClient();
-  // Single channel for both tables — fewer realtime listeners per client.
-  // outsourced_test_snips and patient_results are NOT in the realtime publication.
-  // Subscribing to them is a wasted channel; local writes invalidate via propagateRegistrationChange.
-  // Cost optimization: no ambient realtime; same-user via propagateRegistrationChange, cross-user via refetchOnWindowFocus.
+  // Live machine updates via tiny lims_result_notify (not full patient_results publication)
+  useRealtimeSync("lims_result_notify", [
+    "results_accepted_count",
+    "results_accepted_regs",
+    "patient_results_existing",
+    "results_accepted_tubes",
+    "results_outsourced_snips",
+  ], 1500);
   const { data: masterMachines = [] } = useMasterLookup("machine_name");
   const [mode, setMode] = useState<"patient" | "machine" | "outsourced">("patient");
   const [search, setSearch] = useState("");
@@ -156,6 +162,12 @@ const ResultsEntry = () => {
   const autoSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   useEffect(() => { editedNotesRef.current = editedNotes; }, [editedNotes]);
   useEffect(() => { editedTestNotesRef.current = editedTestNotes; }, [editedTestNotes]);
+  useEffect(() => {
+    return () => {
+      Object.values(autoSaveTimers.current).forEach(clearTimeout);
+      autoSaveTimers.current = {};
+    };
+  }, []);
   const [rePage, setRePage] = useState(0);
   const [refreshingRegId, setRefreshingRegId] = useState<string | null>(null);
 
@@ -196,10 +208,11 @@ const ResultsEntry = () => {
   });
   const reCount = pendingIds.length;
   const pageIds: string[] = pendingIds.slice(rePage * RE_PAGE_SIZE, (rePage + 1) * RE_PAGE_SIZE);
+  const pageKey = shortIdsKey(pageIds, "re");
 
   // ─── Fetch accepted registrations ───
   const { data: acceptedRegs = [], isLoading: loadingRegs } = useQuery({
-    queryKey: ["results_accepted_regs", pageIds.join(",")],
+    queryKey: ["results_accepted_regs", pageKey],
     enabled: pageIds.length > 0,
     queryFn: async () => {
       const { data, error } = await supabase
@@ -210,7 +223,6 @@ const ResultsEntry = () => {
       const order = new Map(pageIds.map((id, i) => [id, i] as const));
       return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     },
-    refetchOnWindowFocus: true,
     staleTime: 30_000,
   });
 
@@ -227,6 +239,7 @@ const ResultsEntry = () => {
       (data || []).forEach((t: any) => { map[t.id] = t; });
       return map;
     },
+    staleTime: 600_000,
   });
 
   // ─── Fetch test_parameters with full param info ───
@@ -245,6 +258,7 @@ const ResultsEntry = () => {
       });
       return map;
     },
+    staleTime: 600_000,
   });
 
   // ─── Fetch parameter_normal_ranges for age/gender-specific reference ranges ───
@@ -262,12 +276,14 @@ const ResultsEntry = () => {
       });
       return map;
     },
+    staleTime: 600_000,
   });
 
   // ─── Fetch existing results for all accepted patients ───
   const regIds = acceptedRegs.map((r: any) => r.id);
+  const regKey = shortIdsKey(regIds, "re-r");
   const { data: existingResults = [] } = useQuery({
-    queryKey: ["patient_results_existing", regIds.join(",")],
+    queryKey: ["patient_results_existing", regKey],
     enabled: regIds.length > 0,
     queryFn: async () => {
       // Paginated to avoid Supabase's 1000-row cap silently dropping rows.
@@ -277,16 +293,16 @@ const ResultsEntry = () => {
 
   // ─── Fetch accepted sample_tubes to filter results by accepted tests only ───
   const { data: acceptedTubes = [] } = useQuery({
-    queryKey: ["results_accepted_tubes", regIds.join(",")],
+    queryKey: ["results_accepted_tubes", regKey],
     enabled: regIds.length > 0,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("sample_tubes" as any)
-        .select("registration_id, test_ids")
-        .in("registration_id", regIds)
-        .eq("status", "accepted");
-      if (error) throw error;
-      return (data || []) as any[];
+      return await fetchAllByIds<any>(
+        "sample_tubes",
+        "id, registration_id, test_ids",
+        "registration_id",
+        regIds,
+        { eq: { status: "accepted" } },
+      );
     },
   });
 
@@ -303,7 +319,7 @@ const ResultsEntry = () => {
 
   // ─── Fetch outsourced_test_snips to know which inhouse tests/params have been transferred ───
   const { data: outsourcedSnips = [] } = useQuery({
-    queryKey: ["results_outsourced_snips", regIds.join(",")],
+    queryKey: ["results_outsourced_snips", regKey],
     enabled: regIds.length > 0,
     queryFn: async () => {
       return await fetchAllByIds<any>("outsourced_test_snips", "registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, sent_at, result_mode, snip_image_urls", "registration_id", regIds);

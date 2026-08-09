@@ -33,8 +33,18 @@ SET param_code = 'PRM' || lpad(n.rn::text, 4, '0')
 FROM numbered n
 WHERE rtp.id = n.id;
 
--- Advance the sequence past the backfilled values
-SELECT setval('param_code_seq', COALESCE((SELECT COUNT(*) FROM public.report_test_parameters WHERE param_code IS NOT NULL), 0));
+-- Advance the sequence past the backfilled values (safe on empty table)
+DO $$
+DECLARE
+  m int;
+BEGIN
+  SELECT COALESCE(COUNT(*)::int, 0) INTO m FROM public.report_test_parameters WHERE param_code IS NOT NULL;
+  IF m < 1 THEN
+    PERFORM setval('param_code_seq', 1, false);
+  ELSE
+    PERFORM setval('param_code_seq', m, true);
+  END IF;
+END $$;
 
 -- Create trigger function for auto-assigning param_code
 CREATE OR REPLACE FUNCTION public.auto_assign_param_code()

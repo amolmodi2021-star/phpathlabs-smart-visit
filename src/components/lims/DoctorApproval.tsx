@@ -30,6 +30,8 @@ import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import { signalSync } from "@/lib/limsSyncSignal";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
 import { fetchDoctorApprovalCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPendingCandidates";
+import { fetchAllByIds } from "@/lib/fetchAllRows";
+import { shortIdsKey } from "@/lib/queryKeys";
 import SyncingOverlay from "./SyncingOverlay";
 import NewBadge from "./NewBadge";
 
@@ -184,23 +186,22 @@ const DoctorApproval = () => {
   const daTotalPages = Math.max(1, Math.ceil(daCount / DA_PAGE_SIZE));
 
   const regIds = registrations.map((r: any) => r.id);
+  const regKey = shortIdsKey(regIds, "da");
 
   const { data: existingResults = [] } = useQuery({
-    queryKey: ["doctor_approval_results", regIds.join(",")],
+    queryKey: ["doctor_approval_results", regKey],
     enabled: regIds.length > 0,
     queryFn: async () => {
-      const { data } = await supabase.from("patient_results").select("*").in("registration_id", regIds).eq("status", "verified");
-      return (data || []) as any[];
+      return await fetchAllByIds<any>("patient_results", "*", "registration_id", regIds, { eq: { status: "verified" } });
     },
   });
 
   // Fetch sample tubes to expand PRL/HLT container rows into leaf tests
   const { data: regTubes = [] } = useQuery({
-    queryKey: ["doctor_approval_tubes", regIds.join(",")],
+    queryKey: ["doctor_approval_tubes", regKey],
     enabled: regIds.length > 0,
     queryFn: async () => {
-      const { data } = await supabase.from("sample_tubes" as any).select("registration_id, test_ids").in("registration_id", regIds);
-      return (data || []) as any[];
+      return await fetchAllByIds<any>("sample_tubes", "id, registration_id, test_ids", "registration_id", regIds);
     },
   });
   const leafIdsByReg = useMemo(() => {
@@ -214,11 +215,16 @@ const DoctorApproval = () => {
   }, [regTubes]);
 
   const { data: outsourcedSnips = [] } = useQuery({
-    queryKey: ["doctor_approval_snips", regIds.join(",")],
+    queryKey: ["doctor_approval_snips", regKey],
     enabled: regIds.length > 0,
     queryFn: async () => {
-      const { data } = await supabase.from("outsourced_test_snips").select("registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, result_mode, snip_image_urls").in("registration_id", regIds).eq("outsource_status", "verified");
-      return (data || []) as any[];
+      return await fetchAllByIds<any>(
+        "outsourced_test_snips",
+        "id, registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, result_mode, snip_image_urls",
+        "registration_id",
+        regIds,
+        { eq: { outsource_status: "verified" } },
+      );
     },
   });
 
@@ -718,17 +724,16 @@ const DoctorApproval = () => {
     finally { setActionKey(null); }
   };
 
-  // Request repeat collection
+  // Request repeat collection — only the selected test (shared tubes are split)
   const requestRepeatCollection = async (regId: string, testId: string, testName: string) => {
     setActionKey(`${regId}||${testId}||repeat`);
     try {
-      await supabase.from("patient_results").delete().eq("registration_id", regId).eq("test_id", testId);
-      await supabase.from("outsourced_test_snips").delete().eq("registration_id", regId).eq("test_id", testId);
-      // Update registration status back to sample_collected for re-collection
-      await supabase.from("patient_registrations").update({ status: "repeat_collection" } as any).eq("id", regId);
+      const { applyRepeatCollectionForTests } = await import("@/lib/repeatCollection");
+      await applyRepeatCollectionForTests(regId, [{ test_id: testId, test_name: testName }]);
       toast.success(`Repeat sample collection requested for ${testName}`);
       invalidateAll();
       qc.invalidateQueries({ queryKey: ["sample_collection"] });
+      qc.invalidateQueries({ queryKey: ["sample_tubes_collection"] });
     } catch (err: any) { toast.error(err.message || "Failed"); }
     finally { setActionKey(null); }
   };

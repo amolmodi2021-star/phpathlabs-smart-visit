@@ -108,12 +108,12 @@ const HomeVisits = () => {
     queryFn: async () => {
       const { data } = await supabase
         .from("home_visits")
-        .select("*, estimates(*, estimate_tests(*)), phlebotomists(name, mobile)")
+        .select("id, estimate_id, visit_date, visit_time, address, status, phlebotomist_id, cancellation_reason, created_at, estimates(id, patient_name, whatsapp_number, total_amount, discount_amount, home_visit_charges, final_amount, status, estimate_tests(test_name, price, fasting_required)), phlebotomists(name, mobile)")
         .gte("visit_date", queryDateWindow.from)
         .lte("visit_date", queryDateWindow.to)
         .order("visit_date", { ascending: false })
         .order("created_at", { ascending: false })
-        .limit(2000);
+        .limit(500);
       return data || [];
     },
   });

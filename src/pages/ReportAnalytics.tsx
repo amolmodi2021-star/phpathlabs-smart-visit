@@ -41,11 +41,11 @@ const ReportAnalytics = () => {
     queryFn: async () => {
       const { data } = await supabase
         .from("report_share_links")
-        .select("*")
+        .select("id, token, registration_id, created_at, expires_at, created_by")
         .gte("created_at", dateFrom.toISOString())
         .lte("created_at", dateTo.toISOString())
         .order("created_at", { ascending: false })
-        .limit(2000);
+        .limit(1000);
       return (data || []) as any[];
     },
   });
@@ -54,16 +54,30 @@ const ReportAnalytics = () => {
   const regIds = useMemo(() => Array.from(new Set(links.map((l) => l.registration_id))), [links]);
 
   const { data: events = [] } = useQuery({
-    queryKey: ["report_link_events", tokens.join(",")],
+    queryKey: ["report_link_events", tokens.length, tokens[0] || "", tokens[tokens.length - 1] || ""],
     enabled: tokens.length > 0,
     queryFn: async () => {
-      const { data } = await supabase
-        .from("report_link_events")
-        .select("*")
-        .in("token", tokens)
-        .order("occurred_at", { ascending: false })
-        .limit(20000);
-      return (data || []) as any[];
+      const out: any[] = [];
+      const CHUNK = 100;
+      for (let i = 0; i < tokens.length; i += CHUNK) {
+        const chunk = tokens.slice(i, i + CHUNK);
+        let from = 0;
+        while (true) {
+          const { data } = await supabase
+            .from("report_link_events")
+            .select("id, token, event_type, occurred_at, meta")
+            .in("token", chunk)
+            .order("occurred_at", { ascending: false })
+            .range(from, from + 999);
+          const rows = data || [];
+          out.push(...rows);
+          if (rows.length < 1000) break;
+          from += 1000;
+          if (out.length >= 5000) break;
+        }
+        if (out.length >= 5000) break;
+      }
+      return out.slice(0, 5000);
     },
   });
 

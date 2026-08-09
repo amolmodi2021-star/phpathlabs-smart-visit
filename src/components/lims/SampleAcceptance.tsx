@@ -55,6 +55,8 @@ const SampleAcceptance = () => {
   const [activeTab, setActiveTab] = useState("pending");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  /** Off by default (30-day window). On = all collected tubes still awaiting acceptance. */
+  const [showOlderPending, setShowOlderPending] = useState(false);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [selectedTubes, setSelectedTubes] = useState<Set<string>>(new Set());
   const [rejectDialog, setRejectDialog] = useState<{ open: boolean; reg: any; tubeIds: string[] }>({ open: false, reg: null, tubeIds: [] });
@@ -72,32 +74,46 @@ const SampleAcceptance = () => {
   useEffect(() => { setAcceptedLimit(ACCEPTED_PAGE_SIZE); }, [debouncedSearch, activeTab]);
 
 
-  // Fetch collected tubes (pending acceptance)
+  // Fetch collected tubes (pending acceptance).
+  // Default: last 30 days. Optional: include older backlog still awaiting acceptance.
   const { data: collectedTubes = [], isLoading } = useQuery({
-    queryKey: ["sample_tubes_acceptance_pending"],
+    queryKey: ["sample_tubes_acceptance_pending", showOlderPending],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let q = supabase
         .from("sample_tubes" as any)
-        .select("*")
+        .select("id, sample_uid, registration_id, tube_type, tube_color, sample_type, suffix, test_ids, test_names, status, collected_at, accepted_at, created_at")
         .eq("status", "collected")
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .limit(showOlderPending ? 2000 : 500);
+      if (!showOlderPending) {
+        const since = new Date();
+        since.setDate(since.getDate() - 30);
+        q = q.gte("created_at", since.toISOString());
+      }
+      const { data, error } = await q;
       if (error) throw error;
       return (data || []) as unknown as SampleTubeRow[];
     },
+    staleTime: 30_000,
   });
 
-  // Fetch accepted tubes (for accepted tab) — show until registration dispatched
+  // Fetch accepted tubes (for accepted tab) — recent window + hard cap
   const { data: acceptedTubes = [], isLoading: isLoadingAccepted } = useQuery({
     queryKey: ["sample_tubes_acceptance_accepted"],
     queryFn: async () => {
+      const since = new Date();
+      since.setDate(since.getDate() - 30);
       const { data, error } = await supabase
         .from("sample_tubes" as any)
-        .select("*")
+        .select("id, sample_uid, registration_id, tube_type, tube_color, sample_type, suffix, test_ids, test_names, status, collected_at, accepted_at, created_at")
         .eq("status", "accepted")
-        .order("accepted_at", { ascending: false });
+        .gte("accepted_at", since.toISOString())
+        .order("accepted_at", { ascending: false })
+        .limit(1000);
       if (error) throw error;
       return (data || []) as unknown as SampleTubeRow[];
     },
+    staleTime: 30_000,
   });
 
   // Build ordered, deduped accepted registration IDs (newest acceptance first),
@@ -323,16 +339,26 @@ const SampleAcceptance = () => {
     onError: (err: any) => toast.error(err.message || "Failed to accept"),
   });
 
-  // Reject mutation — sends back for repeat collection
+  // Reject mutation — sends selected tubes' tests back for repeat collection only
   const rejectMutation = useMutation({
     mutationFn: async ({ reg, tubeIds, remarks }: { reg: any; tubeIds: string[]; remarks: string }) => {
-      // Set tubes back to pending
-      await supabase.from("sample_tubes" as any).update({ status: "pending", collected_at: null }).in("id", tubeIds);
-      // Update registration
-      await supabase.from("patient_registrations").update({ 
-        status: "repeat_collection", 
-        remarks: `Repeat Collection: ${remarks}` 
-      } as any).eq("id", reg.id);
+      const { data: tubes, error } = await supabase
+        .from("sample_tubes" as any)
+        .select("id, test_ids, test_names")
+        .in("id", tubeIds);
+      if (error) throw error;
+      const tests: Array<{ test_id: string; test_name: string }> = [];
+      for (const tube of (tubes || []) as any[]) {
+        const ids = Array.isArray(tube.test_ids) ? tube.test_ids : [];
+        const names = Array.isArray(tube.test_names) ? tube.test_names : [];
+        ids.forEach((id: string, i: number) => {
+          if (id) tests.push({ test_id: id, test_name: names[i] || "" });
+        });
+      }
+      const { applyRepeatCollectionForTests } = await import("@/lib/repeatCollection");
+      await applyRepeatCollectionForTests(reg.id, tests, {
+        remarks: `Repeat Collection: ${remarks}`,
+      });
     },
     onSuccess: () => {
       toast.success("Sample sent back for repeat collection");
@@ -620,13 +646,21 @@ const SampleAcceptance = () => {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-4">
-        <div className="relative flex-1 max-w-sm">
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="relative flex-1 max-w-sm min-w-[200px]">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input ref={searchRef} placeholder="Scan barcode or search by name, mobile, invoice…"
             value={search} onChange={(e) => handleSearch(e.target.value)} className="pl-9" />
           <ScanBarcode className="absolute right-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
         </div>
+        <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none whitespace-nowrap">
+          <Checkbox
+            checked={showOlderPending}
+            onCheckedChange={(v) => setShowOlderPending(v === true)}
+          />
+          Show older pending
+          <span className="text-xs hidden sm:inline">(beyond 30 days)</span>
+        </label>
         <RefreshButton
           queryKeys={["sample_tubes_acceptance_pending", "sample_tubes_acceptance_accepted", "sample_acceptance_regs", "tests_sample_tube_map", "test_param_interface_map", "patient_registrations"]}
           className="ml-auto"

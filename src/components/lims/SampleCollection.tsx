@@ -60,6 +60,8 @@ const SampleCollection = () => {
   const [activeTab, setActiveTab] = useState("pending");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  /** Off by default (14-day window). On = all pending/collected tubes still in pipeline. */
+  const [showOlderPending, setShowOlderPending] = useState(false);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [selectedTubes, setSelectedTubes] = useState<Record<string, Set<string>>>({});
   const printRef = useRef<HTMLDivElement>(null);
@@ -86,19 +88,23 @@ const SampleCollection = () => {
     (window as any).__scSearchTimeout = setTimeout(() => setDebouncedSearch(val), 400);
   };
 
-  // Fetch sample_tubes with pending or collected status - limited to last 14 days
+  // Fetch sample_tubes still in collection pipeline (pending / collected).
+  // Default: last 14 days. Optional: include older backlog still awaiting workflow.
   const { data: allTubes = [], isLoading } = useQuery({
-    queryKey: ["sample_tubes_collection", debouncedSearch],
+    queryKey: ["sample_tubes_collection", showOlderPending],
     queryFn: async () => {
-      const fourteenDaysAgo = new Date();
-      fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
-      const { data, error } = await supabase
+      let q = supabase
         .from("sample_tubes" as any)
         .select("*")
         .in("status", ["pending", "collected"])
-        .gte("created_at", fourteenDaysAgo.toISOString())
         .order("created_at", { ascending: false })
-        .limit(500);
+        .limit(showOlderPending ? 2000 : 500);
+      if (!showOlderPending) {
+        const fourteenDaysAgo = new Date();
+        fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+        q = q.gte("created_at", fourteenDaysAgo.toISOString());
+      }
+      const { data, error } = await q;
       if (error) throw error;
       return (data || []) as unknown as SampleTubeRow[];
     },
@@ -447,6 +453,11 @@ const SampleCollection = () => {
     const regSel = selectedTubes[reg.id] || new Set();
     const selectedPendingCount = pendingTubes.filter(t => regSel.has(t.id)).length;
     const allPendingSelected = pendingTubes.length > 0 && pendingTubes.every(t => regSel.has(t.id));
+    const repeatTestIds = new Set(
+      (Array.isArray(reg.repeat_tests) ? reg.repeat_tests : [])
+        .map((x: any) => x?.test_id)
+        .filter(Boolean),
+    );
 
     const displayTubes = isPending ? tubes : collectedTubes;
 
@@ -487,8 +498,10 @@ const SampleCollection = () => {
             const colorHex = getTubeColorHex(tube.tube_color);
             const isCollected = tube.status === "collected";
             const isSelected = regSel.has(tube.id);
+            const isRepeatTube =
+              Array.isArray(tube.test_ids) && tube.test_ids.some((id: string) => repeatTestIds.has(id));
             return (
-              <Card key={tube.id} className={`${isCollected && isPending ? "opacity-60" : ""} ${isPending && !isCollected && isSelected ? "ring-2 ring-primary" : ""}`}>
+              <Card key={tube.id} className={`${isCollected && isPending ? "opacity-60" : ""} ${isPending && !isCollected && isSelected ? "ring-2 ring-primary" : ""} ${isRepeatTube && !isCollected ? "border-destructive/50" : ""}`}>
                 <CardContent className="p-3 flex items-center gap-3">
                   {isPending && !isCollected && (
                     <Checkbox checked={isSelected} onCheckedChange={() => toggleTube(reg.id, tube.id)} />
@@ -503,6 +516,9 @@ const SampleCollection = () => {
                       <Badge variant="outline" className="text-xs">
                         {(tube.tube_type || "DEFAULT") === "DEFAULT" ? "No Tube" : tube.tube_type}
                       </Badge>
+                      {isRepeatTube && (
+                        <Badge variant="destructive" className="text-xs">REPEAT</Badge>
+                      )}
                       {tube.sample_type && <span className="text-xs text-muted-foreground">{tube.sample_type}</span>}
                       {isCollected && (
                         <>
@@ -602,7 +618,11 @@ const SampleCollection = () => {
                           <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive"></span>
                         </span>
                       )}
-                      {reg.status === "repeat_collection" && <Badge variant="destructive" className="ml-2 text-xs">REPEAT</Badge>}
+                      {(reg.status === "repeat_collection" || (Array.isArray(reg.repeat_tests) && reg.repeat_tests.length > 0)) && (
+                        <Badge variant="destructive" className="ml-2 text-xs" title={(reg.repeat_tests || []).map((t: any) => t.test_name || t.test_id).join(", ")}>
+                          REPEAT{Array.isArray(reg.repeat_tests) && reg.repeat_tests.length ? ` (${reg.repeat_tests.length})` : ""}
+                        </Badge>
+                      )}
                       {isPending && collectedTubes.length > 0 && pendingTubes.length > 0 && (
                         <Badge className="ml-2 text-xs bg-amber-500 text-white border-0">PARTIAL</Badge>
                       )}
@@ -651,12 +671,20 @@ const SampleCollection = () => {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-md">
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative flex-1 max-w-md min-w-[200px]">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input value={search} onChange={(e) => handleSearch(e.target.value)}
             placeholder="Search by name, mobile, invoice..." className="pl-8" />
         </div>
+        <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none whitespace-nowrap">
+          <Checkbox
+            checked={showOlderPending}
+            onCheckedChange={(v) => setShowOlderPending(v === true)}
+          />
+          Show older pending
+          <span className="text-xs hidden sm:inline">(beyond 14 days)</span>
+        </label>
         <RefreshButton
           queryKeys={["sample_tubes_collection", "sample_collection_regs", "pickup_points_lookup", "patient_registrations"]}
           className="ml-auto"

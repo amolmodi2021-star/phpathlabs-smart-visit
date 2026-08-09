@@ -28,32 +28,248 @@ async function fetchAll(buildQuery: (from: number, to: number) => any): Promise<
   return out;
 }
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-
-  const expected = Deno.env.get("DESKTOP_API_KEY");
+function requireApiKey(req: Request): Response | null {
+  // Local demo fallback when edge container wasn't recreated with secrets.
+  const expected =
+    Deno.env.get("DESKTOP_API_KEY")?.trim() ||
+    (Deno.env.get("SUPABASE_URL")?.includes("kong") || Deno.env.get("SUPABASE_URL")?.includes("127.0.0.1")
+      ? "phpathlabs-local-desktop-api"
+      : "");
   const provided = req.headers.get("x-api-key");
   if (!expected || provided !== expected) {
     return json({ error: "Unauthorized" }, 401);
   }
+  return null;
+}
 
-  const url = new URL(req.url);
-  const type = (url.searchParams.get("type") ?? "all").toLowerCase();
-  const from = url.searchParams.get("from");
-  const to = url.searchParams.get("to");
-
-  const supabase = createClient(
+function sb() {
+  return createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     { auth: { persistSession: false } },
   );
+}
 
-  const fromIso = from ? new Date(from + "T00:00:00Z").toISOString() : null;
-  const toIso = to ? new Date(to + "T23:59:59Z").toISOString() : null;
+function storagePathFromRow(row: any): string | null {
+  const fromPayload = row?.payload?.storage_path;
+  if (typeof fromPayload === "string" && fromPayload.startsWith("invoices/")) return fromPayload;
+  const url = String(row?.media_url || "");
+  const marker = "/chat-attachments/";
+  const idx = url.indexOf(marker);
+  if (idx >= 0) {
+    const path = decodeURIComponent(url.slice(idx + marker.length).split("?")[0] || "");
+    if (path.startsWith("invoices/")) return path;
+  }
+  return null;
+}
 
-  const results: { estimates?: any[]; home_visits?: any[] } = {};
+async function deleteInvoiceMedia(supabase: ReturnType<typeof sb>, row: any): Promise<void> {
+  const path = storagePathFromRow(row);
+  if (!path) return;
+  try {
+    await supabase.storage.from("chat-attachments").remove([path]);
+  } catch (e) {
+    console.warn("invoice media delete failed", path, e);
+  }
+}
+
+/** Drop outbox rows + storage objects older than 24 hours (cost control). */
+async function pruneInvoiceOutbox24h(): Promise<{ rows: number; files: number }> {
+  const supabase = sb();
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { data: oldRows, error } = await supabase
+    .from("whatsapp_console_outbox")
+    .select("id, media_url, payload")
+    .lt("created_at", cutoff)
+    .limit(500);
+  if (error) throw error;
+  const rows = oldRows || [];
+  let files = 0;
+  for (const row of rows) {
+    const path = storagePathFromRow(row);
+    if (path) {
+      const { error: rmErr } = await supabase.storage.from("chat-attachments").remove([path]);
+      if (!rmErr) files += 1;
+    }
+  }
+  if (rows.length) {
+    await supabase
+      .from("whatsapp_console_outbox")
+      .delete()
+      .in(
+        "id",
+        rows.map((r) => r.id),
+      );
+  }
+  // Also sweep orphan invoice files older than 24h
+  const { data: listed } = await supabase.storage.from("chat-attachments").list("invoices", {
+    limit: 200,
+    sortBy: { column: "created_at", order: "asc" },
+  });
+  const staleFiles: string[] = [];
+  const cutoffMs = Date.now() - 24 * 60 * 60 * 1000;
+  for (const item of listed || []) {
+    if (!item?.name || !item.id) continue;
+    const created = item.created_at ? Date.parse(item.created_at) : 0;
+    if (created && created < cutoffMs) staleFiles.push(`invoices/${item.name}`);
+  }
+  if (staleFiles.length) {
+    const { error: rmErr } = await supabase.storage.from("chat-attachments").remove(staleFiles);
+    if (!rmErr) files += staleFiles.length;
+  }
+  return { rows: rows.length, files };
+}
+
+/** Atomically claim pending outbox rows for WhatsApp Console. */
+async function claimOutbox(limit = 5, claimedBy = "whatsapp-console") {
+  const supabase = sb();
+  const lim = Math.min(Math.max(Number(limit) || 5, 1), 25);
+  const { data: pending, error } = await supabase
+    .from("whatsapp_console_outbox")
+    .select("*")
+    .eq("status", "pending")
+    .order("created_at", { ascending: true })
+    .limit(lim);
+  if (error) throw error;
+  const rows = pending || [];
+
+  // Only prune when idle — avoids extra storage work on every busy claim.
+  if (!rows.length) {
+    try {
+      await pruneInvoiceOutbox24h();
+    } catch (e) {
+      console.warn("pruneInvoiceOutbox24h", e);
+    }
+    return [];
+  }
+
+  const now = new Date().toISOString();
+  const claimed: any[] = [];
+  for (const row of rows) {
+    const { data, error: updErr } = await supabase
+      .from("whatsapp_console_outbox")
+      .update({
+        status: "claimed",
+        claimed_at: now,
+        claimed_by: claimedBy,
+        attempts: (row.attempts || 0) + 1,
+        updated_at: now,
+      })
+      .eq("id", row.id)
+      .eq("status", "pending")
+      .select("*")
+      .maybeSingle();
+    if (!updErr && data) claimed.push(data);
+  }
+  return claimed;
+}
+
+async function completeOutbox(
+  id: string,
+  status: "sent" | "failed" | "pending",
+  lastError?: string | null,
+) {
+  const supabase = sb();
+  const now = new Date().toISOString();
+  const { data: existing } = await supabase
+    .from("whatsapp_console_outbox")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+
+  const patch: Record<string, unknown> = {
+    status,
+    updated_at: now,
+    last_error: lastError ?? null,
+  };
+  if (status === "sent") {
+    patch.sent_at = now;
+    // Clear media URL after send — file deleted below (don't keep forever).
+    patch.media_url = null;
+  }
+  if (status === "pending") {
+    patch.claimed_at = null;
+    patch.claimed_by = null;
+  }
+  const { data, error } = await supabase
+    .from("whatsapp_console_outbox")
+    .update(patch)
+    .eq("id", id)
+    .select("*")
+    .maybeSingle();
+  if (error) throw error;
+
+  if (status === "sent" && existing) {
+    await deleteInvoiceMedia(supabase, existing);
+  }
+  return data;
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  const denied = requireApiKey(req);
+  if (denied) return denied;
+
+  const url = new URL(req.url);
 
   try {
+    // ── WhatsApp Console outbox bridge (POST) ──
+    if (req.method === "POST") {
+      const body = await req.json().catch(() => ({}));
+      const action = String(body?.action || "").toLowerCase();
+
+      if (action === "claim_outbox" || action === "claim") {
+        const jobs = await claimOutbox(body?.limit, body?.claimed_by || "whatsapp-console");
+        return json({ ok: true, count: jobs.length, data: jobs, idle: jobs.length === 0 });
+      }
+
+      if (action === "prune_outbox") {
+        const result = await pruneInvoiceOutbox24h();
+        return json({ ok: true, ...result });
+      }
+
+      if (action === "complete_outbox" || action === "complete") {
+        const id = String(body?.id || "");
+        const status = String(body?.status || "sent").toLowerCase();
+        if (!id) return json({ error: "id required" }, 400);
+        if (!["sent", "failed", "pending"].includes(status)) {
+          return json({ error: "status must be sent|failed|pending" }, 400);
+        }
+        const row = await completeOutbox(id, status as "sent" | "failed" | "pending", body?.error ?? body?.last_error);
+        return json({ ok: true, data: row });
+      }
+
+      return json({ error: `Unknown action: ${action}` }, 400);
+    }
+
+    if (req.method !== "GET") return json({ error: "Method not allowed" }, 405);
+
+    const type = (url.searchParams.get("type") ?? "all").toLowerCase();
+    const from = url.searchParams.get("from");
+    const to = url.searchParams.get("to");
+    const supabase = sb();
+
+    // Peek pending outbox (non-claiming) for Console UI / health
+    if (type === "outbox") {
+      const { data, error } = await supabase
+        .from("whatsapp_console_outbox")
+        .select("id, kind, phone, patient_name, invoice_number, status, caption, media_url, created_at, attempts, last_error")
+        .in("status", ["pending", "claimed"])
+        .order("created_at", { ascending: true })
+        .limit(100);
+      if (error) throw error;
+      return json({
+        count: { outbox: data?.length ?? 0, total: data?.length ?? 0 },
+        data: data || [],
+      });
+    }
+
+    const fromIso = from ? new Date(from + "T00:00:00Z").toISOString() : null;
+    const toIso = to ? new Date(to + "T23:59:59Z").toISOString() : null;
+
+    const results: { estimates?: any[]; home_visits?: any[] } = {};
+
     if (type === "all" || type === "estimates") {
       const rows = await fetchAll((f, t) => {
         let q = supabase
@@ -173,7 +389,6 @@ Deno.serve(async (req) => {
       },
       data: combined,
     });
-
   } catch (e) {
     console.error("desktop-api error", e);
     return json({ error: (e as Error).message }, 500);

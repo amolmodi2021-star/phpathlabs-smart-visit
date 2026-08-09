@@ -22,3 +22,19 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local trial / exports (contains production patient data)
+data-export/
+.env
+.env.production.backup
+supabase/.env
+
+# Cloud shift artifacts
+data-export-local-fresh/
+data-export-old-prod-*/
+supabase/.env.cloud-phpl-secrets
+.env.before-cloud-shift
+.env.cloud-phpl
+cloud-*-log.txt
+tmp-*.sql
+

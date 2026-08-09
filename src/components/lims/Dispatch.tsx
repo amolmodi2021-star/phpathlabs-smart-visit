@@ -26,6 +26,8 @@ import { format, startOfDay, endOfDay, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 import { fetchAllByIds } from "@/lib/fetchAllRows";
+import { fetchDispatchCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPendingCandidates";
+import { shortIdsKey } from "@/lib/queryKeys";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import NewBadge from "./NewBadge";
 
@@ -77,69 +79,65 @@ const Dispatch = () => {
   const [dispatchPage, setDispatchPage] = useState(0);
   useEffect(() => { const t = setTimeout(() => { setDebouncedSearch(search); setDispatchPage(0); }, 400); return () => clearTimeout(t); }, [search]);
 
-  const { data: dispatchCount = 0 } = useQuery({
-    queryKey: ["dispatch_regs_count", debouncedSearch, dateFrom.toISOString(), dateTo.toISOString()],
-    queryFn: async () => {
-      let query = supabase.from("patient_registrations").select("id", { count: "exact", head: true })
-        .eq("bill_cancelled", false)
-        .gte("created_at", dateFrom.toISOString())
-        .lte("created_at", dateTo.toISOString());
-      if (debouncedSearch) query = query.or(`patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%,umr_number.ilike.%${debouncedSearch}%`);
-      const { count } = await query;
-      return count || 0;
+  const { data: filteredDispatchIds = [] as string[] } = useQuery({
+    queryKey: ["dispatch_filtered_ids", debouncedSearch, dateFrom.toISOString(), dateTo.toISOString()],
+    queryFn: async (): Promise<string[]> => {
+      const candidates = await fetchDispatchCandidateIds();
+      return await fetchFilteredSortedIds(candidates, debouncedSearch, {
+        dateFromIso: dateFrom.toISOString(),
+        dateToIso: dateTo.toISOString(),
+      });
     },
   });
+  const dispatchCount = filteredDispatchIds.length;
+  const dispatchPageIds = filteredDispatchIds.slice(
+    dispatchPage * DISPATCH_PAGE_SIZE,
+    dispatchPage * DISPATCH_PAGE_SIZE + DISPATCH_PAGE_SIZE,
+  );
 
   const { data: registrations = [], isLoading: loadingRegs } = useQuery({
-    queryKey: ["dispatch_regs", debouncedSearch, dateFrom.toISOString(), dateTo.toISOString(), dispatchPage],
+    queryKey: ["dispatch_regs", shortIdsKey(dispatchPageIds, "dp"), dispatchPage],
+    enabled: dispatchPageIds.length > 0,
     queryFn: async () => {
-      let query = supabase.from("patient_registrations")
+      const { data } = await supabase.from("patient_registrations")
         .select("id, invoice_number, patient_name, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, gender, dob, created_at, updated_at, bill_cancelled, registered_by, due_amount, pickup_point_id")
-        .eq("bill_cancelled", false)
-        .gte("created_at", dateFrom.toISOString())
-        .lte("created_at", dateTo.toISOString())
-        .order("is_stat", { ascending: false })
-        .order("invoice_number", { ascending: false })
-        .range(dispatchPage * DISPATCH_PAGE_SIZE, dispatchPage * DISPATCH_PAGE_SIZE + DISPATCH_PAGE_SIZE - 1);
-      if (debouncedSearch) query = query.or(`patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%,umr_number.ilike.%${debouncedSearch}%`);
-      const { data } = await query;
-      return (data || []) as any[];
+        .in("id", dispatchPageIds);
+      const order = new Map(dispatchPageIds.map((id, i) => [id, i]));
+      return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     },
   });
 
   const dispatchTotalPages = Math.ceil(dispatchCount / DISPATCH_PAGE_SIZE);
 
   const regIds = registrations.map((r: any) => r.id);
+  const regKey = shortIdsKey(regIds, "d");
 
   const { data: allResults = [] } = useQuery({
-    queryKey: ["dispatch_all_results", regIds.join(",")],
+    queryKey: ["dispatch_all_results", regKey],
     enabled: regIds.length > 0,
     queryFn: async () => {
-      // Paginated — a page of 50 registrations can produce >1000 patient_results
-      // rows, and Supabase's default cap silently drops the overflow, making
-      // already-approved tests appear as "Registered" in Dispatch.
       return await fetchAllByIds<any>("patient_results", "*", "registration_id", regIds);
     },
   });
 
   const { data: allTubes = [] } = useQuery({
-    queryKey: ["dispatch_all_tubes", regIds.join(",")],
+    queryKey: ["dispatch_all_tubes", regKey],
     enabled: regIds.length > 0,
     queryFn: async () => {
-      return await fetchAllByIds<any>("sample_tubes", "registration_id, test_ids, collected_at, accepted_at, status, collected_by, accepted_by", "registration_id", regIds);
+      return await fetchAllByIds<any>("sample_tubes", "id, registration_id, test_ids, collected_at, accepted_at, status, collected_by, accepted_by", "registration_id", regIds);
     },
   });
 
   const { data: allSnips = [] } = useQuery({
-    queryKey: ["dispatch_all_snips", regIds.join(",")],
+    queryKey: ["dispatch_all_snips", regKey],
     enabled: regIds.length > 0,
     queryFn: async () => {
-      return await fetchAllByIds<any>("outsourced_test_snips", "registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, result_mode, snip_image_urls, updated_at, sent_at", "registration_id", regIds);
+      return await fetchAllByIds<any>("outsourced_test_snips", "id, registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, result_mode, snip_image_urls, updated_at, sent_at", "registration_id", regIds);
     },
   });
 
   const { data: heldRegIds = [] } = useQuery({
-    queryKey: ["dispatch_held_reports", regIds.join(",")],
+    queryKey: ["dispatch_held_reports", regKey],
     enabled: regIds.length > 0,
     queryFn: async () => {
       const { data } = await supabase.from("approved_reports").select("registration_id").eq("is_held", true).in("registration_id", regIds);
@@ -334,9 +332,18 @@ const Dispatch = () => {
     setActionKey(`${reg.id}||dispatch`);
     try {
       const approvedTests = entry.tests.filter(t => t.status === "approved");
-      for (const test of approvedTests) {
-        await supabase.from("patient_results").update({ status: "dispatched", dispatched_at: new Date().toISOString(), dispatched_by: getCurrentUserName() } as any).eq("registration_id", reg.id).eq("test_id", test.testId).eq("status", "approved");
-        await supabase.from("outsourced_test_snips").update({ outsource_status: "dispatched" } as any).eq("registration_id", reg.id).eq("test_id", test.testId).eq("outsource_status", "approved");
+      const testIds = approvedTests.map(t => t.testId);
+      const now = new Date().toISOString();
+      const dispatcher = getCurrentUserName();
+      if (testIds.length > 0) {
+        await supabase.from("patient_results").update({
+          status: "dispatched",
+          dispatched_at: now,
+          dispatched_by: dispatcher,
+        } as any).eq("registration_id", reg.id).eq("status", "approved").in("test_id", testIds);
+        await supabase.from("outsourced_test_snips").update({
+          outsource_status: "dispatched",
+        } as any).eq("registration_id", reg.id).eq("outsource_status", "approved").in("test_id", testIds);
       }
       const stillPending = entry.tests.some(t => t.status !== "approved" && t.status !== "dispatched");
       if (!stillPending) {

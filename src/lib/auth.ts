@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, setStoredAccessToken } from "@/integrations/supabase/client";
 
 const AUTH_KEY = "ph_pathlabs_auth";
 const USER_KEY = "ph_pathlabs_user";
@@ -39,7 +39,8 @@ export function getUserPermissions(): Record<string, any> {
 
 export function isTabAllowed(route: string): boolean {
   const tabs = getUserPermissions();
-  if (Object.keys(tabs).length === 0) return true; // no restrictions if no permissions set
+  // Default-deny: empty permissions means no tabs (roles must grant explicitly)
+  if (Object.keys(tabs).length === 0) return false;
   const perm = tabs[route];
   if (perm === undefined) return false;
   if (typeof perm === "boolean") return perm;
@@ -49,17 +50,20 @@ export function isTabAllowed(route: string): boolean {
 
 export function getAllowedSections(route: string): string[] | null {
   const tabs = getUserPermissions();
+  if (Object.keys(tabs).length === 0) return [];
+  if (!isTabAllowed(route)) return [];
   const perm = tabs[route];
   if (typeof perm === "object" && perm !== null && Array.isArray(perm.sections)) {
     return perm.sections;
   }
-  return null; // null means all sections allowed
+  return null; // null means all sections allowed for an enabled tab
 }
 
 export function isActionAllowed(actionKey: string): boolean {
   const user = getCurrentUser();
   const actions = user?.permissions?.actions || {};
-  if (Object.keys(actions).length === 0) return true; // no restrictions if no actions set
+  // Default-deny: empty actions means none allowed
+  if (Object.keys(actions).length === 0) return false;
   return actions[actionKey] === true;
 }
 
@@ -83,7 +87,11 @@ export async function login(userId: string, password: string): Promise<{ success
     if (error) return { success: false, error: "Login failed. Please try again." };
     if (data?.error) return { success: false, error: data.error };
     if (!data?.user) return { success: false, error: "Invalid credentials." };
+    if (!data?.access_token) {
+      return { success: false, error: "Login succeeded but no access token was issued. Contact admin." };
+    }
 
+    setStoredAccessToken(data.access_token);
     localStorage.setItem(AUTH_KEY, "true");
     localStorage.setItem(USER_KEY, JSON.stringify(data.user));
     // Stamp this session with the current global auth epoch so it survives global logouts issued before now.
@@ -98,6 +106,7 @@ export async function login(userId: string, password: string): Promise<{ success
 }
 
 export function logout() {
+  setStoredAccessToken(null);
   localStorage.removeItem(AUTH_KEY);
   localStorage.removeItem(USER_KEY);
   localStorage.removeItem(EPOCH_KEY);

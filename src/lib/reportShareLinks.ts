@@ -47,11 +47,16 @@ export async function createShareLink(
 }
 
 export async function lookupShareLink(token: string) {
-  const { data, error } = await supabase
-    .from("report_share_links")
-    .select("*")
-    .eq("token", token)
-    .maybeSingle();
+  const { data, error } = await (supabase as any).rpc("portal_lookup", { p_token: token });
+  if (error) throw error;
+  if (!data) return null;
+  if (data.expired) return { ...data.link, _expired: true };
+  return data;
+}
+
+/** Token-scoped portal payload (regs/results/tubes/snips) — no anon table SELECT on PHI. */
+export async function fetchPortalBundle(token: string) {
+  const { data, error } = await (supabase as any).rpc("portal_bundle", { p_token: token });
   if (error) throw error;
   return data;
 }

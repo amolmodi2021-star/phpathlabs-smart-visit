@@ -1,12 +1,12 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Printer, Send } from "lucide-react";
+import { Printer, Send, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import html2canvas from "html2canvas";
 import JsBarcode from "jsbarcode";
-import { shareOnWhatsApp } from "@/lib/whatsapp";
 import { logMessageSend } from "@/lib/messageLog";
+import { enqueueInvoiceForWhatsAppConsole } from "@/lib/whatsappConsoleBridge";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { getCurrentUserName } from "@/lib/auth";
@@ -28,6 +28,18 @@ const SETTING_KEYS = [
   "invoice_lab_name_visible",
   "invoice_tagline_align",
   "invoice_address_align",
+  "invoice_lab_name_size",
+  "invoice_lab_name_bold",
+  "invoice_lab_name_color",
+  "invoice_contact_size",
+  "invoice_contact_bold",
+  "invoice_contact_color",
+  "invoice_address_size",
+  "invoice_address_bold",
+  "invoice_address_color",
+  "invoice_tagline_size",
+  "invoice_tagline_bold",
+  "invoice_tagline_color",
 ];
 
 const DEFAULTS: Record<string, string> = {
@@ -41,7 +53,35 @@ const DEFAULTS: Record<string, string> = {
   invoice_lab_name_visible: "true",
   invoice_tagline_align: "center",
   invoice_address_align: "center",
+  invoice_lab_name_size: "16",
+  invoice_lab_name_bold: "true",
+  invoice_lab_name_color: "#0d9488",
+  invoice_contact_size: "10",
+  invoice_contact_bold: "false",
+  invoice_contact_color: "#666666",
+  invoice_address_size: "9",
+  invoice_address_bold: "false",
+  invoice_address_color: "#888888",
+  invoice_tagline_size: "9",
+  invoice_tagline_bold: "false",
+  invoice_tagline_color: "#888888",
 };
+
+function textStyle(brand: Record<string, string>, prefix: string, fallbackSize: string, fallbackColor: string) {
+  const size = Number(brand[`${prefix}_size`] || fallbackSize);
+  const bold = brand[`${prefix}_bold`] !== "false";
+  const color = brand[`${prefix}_color`] || fallbackColor;
+  return {
+    fontSize: size,
+    fontWeight: bold ? ("bold" as const) : ("normal" as const),
+    color,
+  };
+}
+
+function textStyleCss(brand: Record<string, string>, prefix: string, fallbackSize: string, fallbackColor: string) {
+  const s = textStyle(brand, prefix, fallbackSize, fallbackColor);
+  return `font-size:${s.fontSize}px;font-weight:${s.fontWeight};color:${s.color}`;
+}
 
 const formatVisitType = (vt: string | undefined) => {
   if (!vt) return "";
@@ -71,12 +111,21 @@ const numberToWords = (num: number): string => {
 
 const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
   const receiptRef = useRef<HTMLDivElement>(null);
-  const barcodeRef = useRef<SVGSVGElement>(null);
+  const barcodeRef = useRef<HTMLCanvasElement>(null);
+  const queuedInvoiceRef = useRef<string | null>(null);
   const [brand, setBrand] = useState<Record<string, string>>(DEFAULTS);
   const [channelName, setChannelName] = useState("");
+  const [consoleQueued, setConsoleQueued] = useState(false);
+  const [waSending, setWaSending] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setConsoleQueued(false);
+      setWaSending(false);
+      return;
+    }
+    // Viewing an invoice must not auto-send; only the WhatsApp button queues via WA API.
+    setConsoleQueued(queuedInvoiceRef.current === String(data?.invoice_number || ""));
     (async () => {
       const { data: rows } = await supabase
         .from("app_settings")
@@ -88,7 +137,8 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
         setBrand(merged);
       }
     })();
-  }, [open]);
+  }, [open, data?.invoice_number]);
+
 
   useEffect(() => {
     if (!open || !data?.channel_id) { setChannelName(""); return; }
@@ -98,23 +148,104 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
     })();
   }, [open, data?.channel_id]);
 
+  const renderBarcode = useCallback(() => {
+    if (!barcodeRef.current || !data?.umr_number) return false;
+    try {
+      JsBarcode(barcodeRef.current, data.umr_number, {
+        format: "CODE128",
+        height: 28,
+        width: 1.4,
+        displayValue: false,
+        margin: 0,
+        background: "#ffffff",
+        lineColor: "#000000",
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }, [data?.umr_number]);
+
   useEffect(() => {
     if (!open || !data?.umr_number) return;
     const timer = setTimeout(() => {
-      if (!barcodeRef.current) return;
-      try {
-        JsBarcode(barcodeRef.current, data.umr_number, {
-          format: "CODE128",
-          height: 24,
-          width: 1.2,
-          displayValue: false,
-          fontSize: 8,
-          margin: 0,
-        });
-      } catch { /* ignore invalid barcode */ }
+      renderBarcode();
     }, 200);
     return () => clearTimeout(timer);
-  }, [open, data?.umr_number]);
+  }, [open, data?.umr_number, renderBarcode]);
+
+  const queueInvoiceViaWaApi = useCallback(async () => {
+    const invoiceNo = String(data?.invoice_number || "");
+    if (!open || !invoiceNo || !data?.mobile_number) {
+      toast.error("Mobile number required to send on WhatsApp");
+      return;
+    }
+    if (!receiptRef.current) {
+      toast.error("Invoice not ready yet");
+      return;
+    }
+    setWaSending(true);
+    try {
+      // Canvas barcode captures reliably in html2canvas (SVG often blank).
+      renderBarcode();
+      await new Promise((r) => setTimeout(r, 50));
+      const canvas = await html2canvas(receiptRef.current, {
+        backgroundColor: "#ffffff",
+        scale: 2,
+        useCORS: true,
+        width: 560,
+        windowWidth: 560,
+        // Keep cloned layout metrics close to on-screen so summary spacing matches preview.
+        logging: false,
+        onclone: (_doc, cloned) => {
+          const root = cloned as HTMLElement;
+          root.style.lineHeight = "1.55";
+          root.querySelectorAll("div").forEach((el) => {
+            const style = (el as HTMLElement).style;
+            // Ensure tiny paddings aren't lost when borders sit between flex rows.
+            if (style.borderTop && style.borderTop !== "none" && style.borderTop !== "") {
+              if (!style.marginTop || style.marginTop === "0px") style.marginTop = "8px";
+            }
+          });
+        },
+      });
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob((b) => resolve(b), "image/jpeg", 0.95),
+      );
+      if (!blob) {
+        toast.error("Could not generate invoice image for WhatsApp");
+        return;
+      }
+      const lab = brand.invoice_lab_name || "PH PathLabs";
+      const caption =
+        `📋 *${lab} — Invoice*\n` +
+        `Invoice No: ${invoiceNo}\n` +
+        `Patient: ${data.title || ""} ${data.patient_name}\n` +
+        `Amount: ₹${data.final_amount}`;
+      const res = await enqueueInvoiceForWhatsAppConsole({
+        phone: data.mobile_number,
+        patient_name: data.patient_name,
+        registration_id: data.id || null,
+        invoice_number: invoiceNo,
+        caption,
+        blob,
+      });
+      if (!res.ok) {
+        toast.error(res.error || "Failed to queue invoice for WA API");
+        return;
+      }
+      queuedInvoiceRef.current = invoiceNo;
+      setConsoleQueued(true);
+      logMessageSend(data.mobile_number, data.patient_name, "Invoice", data.umr_number);
+      toast.success("Invoice queued for WhatsApp (WA API)", {
+        description: `Sending to ${String(data.mobile_number).replace(/\D/g, "").slice(-10)} via WhatsApp Console`,
+      });
+    } catch (e: any) {
+      toast.error(e?.message || "WhatsApp WA API queue failed");
+    } finally {
+      setWaSending(false);
+    }
+  }, [open, data, brand.invoice_lab_name, renderBarcode]);
 
   if (!data) return null;
 
@@ -208,15 +339,15 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
         h += `<div style="text-align:${brand.invoice_logo_align}"><img src="${brand.invoice_logo_url}" style="max-height:40px;display:inline-block;margin-bottom:4px" /></div>`;
       }
       if (labVisible) {
-        h += `<h2 style="margin:0;color:#0d9488;font-size:16px;text-align:${brand.invoice_lab_name_align}">${brand.invoice_lab_name}</h2>`;
+        h += `<h2 style="margin:0;${textStyleCss(brand, "invoice_lab_name", "16", "#0d9488")};text-align:${brand.invoice_lab_name_align}">${brand.invoice_lab_name}</h2>`;
       }
       if (brand.invoice_contact) {
-        h += `<p style="margin:2px 0;font-size:10px;color:#666;text-align:${brand.invoice_lab_name_align}">${brand.invoice_contact}</p>`;
+        h += `<p style="margin:2px 0;${textStyleCss(brand, "invoice_contact", "10", "#666666")};text-align:${brand.invoice_lab_name_align}">${brand.invoice_contact}</p>`;
       }
       if (brand.invoice_address) {
-        h += `<p style="margin:2px 0;font-size:9px;color:#888;white-space:pre-line;text-align:${brand.invoice_address_align}">${brand.invoice_address}</p>`;
+        h += `<p style="margin:2px 0;${textStyleCss(brand, "invoice_address", "9", "#888888")};white-space:pre-line;text-align:${brand.invoice_address_align}">${brand.invoice_address}</p>`;
       }
-      h += `<p style="margin:2px 0;font-size:9px;color:#888;text-align:${brand.invoice_tagline_align}">${brand.invoice_tagline}</p>`;
+      h += `<p style="margin:2px 0;${textStyleCss(brand, "invoice_tagline", "9", "#888888")};text-align:${brand.invoice_tagline_align}">${brand.invoice_tagline}</p>`;
       return h;
     };
 
@@ -241,7 +372,7 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
       h += `<th style="${thStyle};width:1%;white-space:nowrap">#</th>`;
       h += `<th style="${thStyle};text-align:left">Test</th>`;
       if (hasAnyDiscount) {
-        h += `<th style="${thStyle};text-align:right;width:1%;white-space:nowrap">MRP</th>`;
+        h += `<th style="${thStyle};text-align:right;width:1%;white-space:nowrap">Price</th>`;
         h += `<th style="${thStyle};text-align:right;width:1%;white-space:nowrap">Disc</th>`;
         h += `<th style="${thStyle};text-align:right;width:1%;white-space:nowrap">Net</th>`;
       } else {
@@ -290,21 +421,22 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
       // Payment summary only on last page
       let summaryHtml = '';
       if (isLast) {
-        summaryHtml = `<div style="font-size:11px;margin-top:6px">`;
+        summaryHtml = `<div style="font-size:11px;margin-top:6px;line-height:1.55">`;
         if (showGross) {
-          summaryHtml += `<div style="display:flex;justify-content:space-between"><span>Gross Amount:</span><span>₹${activeGross}</span></div>`;
-          if (activeDiscount > 0) summaryHtml += `<div style="display:flex;justify-content:space-between;color:green"><span>Discount:</span><span>-₹${activeDiscount}</span></div>`;
-          if (Number(data.home_visit_charges || 0) > 0) summaryHtml += `<div style="display:flex;justify-content:space-between"><span>Home Visit Charges:</span><span>+₹${data.home_visit_charges}</span></div>`;
+          summaryHtml += `<div style="display:flex;justify-content:space-between;padding:2px 0"><span>Gross Amount:</span><span>₹${activeGross}</span></div>`;
+          if (activeDiscount > 0) summaryHtml += `<div style="display:flex;justify-content:space-between;color:green;padding:2px 0"><span>Discount:</span><span>-₹${activeDiscount}</span></div>`;
+          if (Number(data.home_visit_charges || 0) > 0) summaryHtml += `<div style="display:flex;justify-content:space-between;padding:2px 0"><span>Home Visit Charges:</span><span>+₹${data.home_visit_charges}</span></div>`;
+          summaryHtml += `<div style="border-top:1px solid #ddd;margin:8px 0 0;height:0;overflow:hidden;font-size:0;line-height:0"></div>`;
         }
-        summaryHtml += `<div style="display:flex;justify-content:space-between;font-weight:bold;${showGross ? 'border-top:1px solid #ddd;padding-top:3px;margin-top:3px' : ''}"><span>Final Amount:</span><span>₹${activeFinal}</span></div>`;
+        summaryHtml += `<div style="display:flex;justify-content:space-between;font-weight:bold;padding:8px 0 2px"><span>Final Amount:</span><span>₹${activeFinal}</span></div>`;
         if (payments.length > 0) {
-          summaryHtml += `<div style="margin-top:3px">`;
+          summaryHtml += `<div style="margin-top:4px">`;
           payments.forEach((p: any) => {
-            summaryHtml += `<div style="display:flex;justify-content:space-between;font-size:10px"><span>${p.mode}${p.date ? ` (${format(new Date(p.date), "dd-MM-yyyy hh:mm a")})` : ""}:</span><span>₹${p.amount}</span></div>`;
+            summaryHtml += `<div style="display:flex;justify-content:space-between;font-size:10px;padding:2px 0"><span>${p.mode}${p.date ? ` (${format(new Date(p.date), "dd-MM-yyyy hh:mm a")})` : ""}:</span><span>₹${p.amount}</span></div>`;
           });
           summaryHtml += `</div>`;
         }
-        summaryHtml += `<div style="display:flex;justify-content:space-between;font-weight:bold;margin-top:3px"><span>Paid:</span><span>₹${data.paid_amount}</span></div>`;
+        summaryHtml += `<div style="display:flex;justify-content:space-between;font-weight:bold;margin-top:4px;padding:2px 0"><span>Paid:</span><span>₹${data.paid_amount}</span></div>`;
         if (Number(data.paid_amount || 0) > 0) {
           summaryHtml += `<div style="font-size:10px;margin-top:4px;font-style:italic;color:#444">Received with thanks from ${data.title ? data.title + " " : ""}${data.patient_name} a sum of Rs. ${Number(data.paid_amount).toFixed(2)}/- (${numberToWords(Number(data.paid_amount))} Rupees)</div>`;
         }
@@ -322,10 +454,10 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
         }
         summaryHtml += `</div>`;
 
-        // Barcode
-        const barcodeSvgHtml = barcodeRef.current ? barcodeRef.current.outerHTML : '';
-        if (barcodeSvgHtml) {
-          summaryHtml += `<div style="margin-top:6px;text-align:center">${barcodeSvgHtml}</div>`;
+        // Barcode as PNG for print reliability
+        const barcodePng = barcodeRef.current?.toDataURL?.("image/png");
+        if (barcodePng) {
+          summaryHtml += `<div style="margin-top:6px;text-align:center"><img src="${barcodePng}" style="height:28px;display:inline-block" /></div>`;
         }
 
         // Footer
@@ -371,39 +503,6 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
     printWindow.document.close();
   };
 
-  const handleWhatsApp = async () => {
-    if (!receiptRef.current) return;
-    try {
-      const canvas = await html2canvas(receiptRef.current, { backgroundColor: "#ffffff", scale: 2, useCORS: true, width: 560, windowWidth: 560 });
-      canvas.toBlob((blob) => {
-        if (!blob) return;
-        const file = new File([blob], `invoice-${data.invoice_number}.jpg`, { type: "image/jpeg" });
-        if (navigator.share && navigator.canShare?.({ files: [file] })) {
-          navigator.share({ files: [file], title: `Invoice ${data.invoice_number}` }).catch(() => {
-            downloadAndShare(canvas);
-          });
-        } else {
-          downloadAndShare(canvas);
-        }
-      }, "image/jpeg", 0.95);
-    } catch {
-      toast.error("Could not generate invoice image");
-    }
-  };
-
-  const downloadAndShare = (canvas: HTMLCanvasElement) => {
-    const link = document.createElement("a");
-    link.download = `invoice-${data.invoice_number}.jpg`;
-    link.href = canvas.toDataURL("image/jpeg", 0.95);
-    link.click();
-    toast.success("Invoice image downloaded — share it on WhatsApp");
-    if (data.mobile_number) {
-      const msg = `📋 *${brand.invoice_lab_name} — Invoice*\nInvoice No: ${data.invoice_number}\nPatient: ${data.title || ""} ${data.patient_name}\nAmount: ₹${data.final_amount}`;
-      shareOnWhatsApp(data.mobile_number, msg);
-      logMessageSend(data.mobile_number, data.patient_name, "Invoice", data.umr_number);
-    }
-  };
-
   const age = data.dob ? `${Math.floor((Date.now() - new Date(data.dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000))} Years` : "";
 
   return (
@@ -421,15 +520,15 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
               </div>
             )}
             {labVisible && (
-              <h2 style={{ margin: 0, color: "#0d9488", fontSize: 16, textAlign: brand.invoice_lab_name_align as any }}>{brand.invoice_lab_name}</h2>
+              <h2 style={{ margin: 0, textAlign: brand.invoice_lab_name_align as any, ...textStyle(brand, "invoice_lab_name", "16", "#0d9488") }}>{brand.invoice_lab_name}</h2>
             )}
             {brand.invoice_contact && (
-              <p style={{ margin: "2px 0", fontSize: 10, color: "#666", textAlign: brand.invoice_lab_name_align as any }}>{brand.invoice_contact}</p>
+              <p style={{ margin: "2px 0", textAlign: brand.invoice_lab_name_align as any, ...textStyle(brand, "invoice_contact", "10", "#666666") }}>{brand.invoice_contact}</p>
             )}
             {brand.invoice_address && (
-              <p style={{ margin: "2px 0", fontSize: 9, color: "#888", whiteSpace: "pre-line", textAlign: brand.invoice_address_align as any }}>{brand.invoice_address}</p>
+              <p style={{ margin: "2px 0", whiteSpace: "pre-line", textAlign: brand.invoice_address_align as any, ...textStyle(brand, "invoice_address", "9", "#888888") }}>{brand.invoice_address}</p>
             )}
-            <p style={{ margin: "2px 0", fontSize: 9, color: "#888", textAlign: brand.invoice_tagline_align as any }}>{brand.invoice_tagline}</p>
+            <p style={{ margin: "2px 0", textAlign: brand.invoice_tagline_align as any, ...textStyle(brand, "invoice_tagline", "9", "#888888") }}>{brand.invoice_tagline}</p>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 3, fontSize: 11, marginBottom: 8 }}>
@@ -451,7 +550,7 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
                 <th style={{ border: "1px solid #ddd", padding: 4, fontSize: 10, textAlign: "left" }}>Test</th>
                 {hasAnyDiscount ? (
                   <>
-                    <th style={{ border: "1px solid #ddd", padding: 4, fontSize: 10, textAlign: "right", width: "1%", whiteSpace: "nowrap" }}>MRP</th>
+                    <th style={{ border: "1px solid #ddd", padding: 4, fontSize: 10, textAlign: "right", width: "1%", whiteSpace: "nowrap" }}>Price</th>
                     <th style={{ border: "1px solid #ddd", padding: 4, fontSize: 10, textAlign: "right", width: "1%", whiteSpace: "nowrap" }}>Disc</th>
                     <th style={{ border: "1px solid #ddd", padding: 4, fontSize: 10, textAlign: "right", width: "1%", whiteSpace: "nowrap" }}>Net</th>
                   </>
@@ -479,27 +578,29 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
             </tbody>
           </table>
 
-          <div style={{ fontSize: 11, marginTop: 6 }}>
+          <div style={{ fontSize: 11, marginTop: 6, lineHeight: 1.55 }}>
             {showGross && (
               <>
-                <div style={{ display: "flex", justifyContent: "space-between" }}><span>Gross Amount:</span><span>₹{activeGross}</span></div>
-                {activeDiscount > 0 && <div style={{ display: "flex", justifyContent: "space-between", color: "green" }}><span>Discount:</span><span>-₹{activeDiscount}</span></div>}
-                {Number(data.home_visit_charges || 0) > 0 && <div style={{ display: "flex", justifyContent: "space-between" }}><span>Home Visit Charges:</span><span>+₹{data.home_visit_charges}</span></div>}
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "2px 0" }}><span>Gross Amount:</span><span>₹{activeGross}</span></div>
+                {activeDiscount > 0 && <div style={{ display: "flex", justifyContent: "space-between", color: "green", padding: "2px 0" }}><span>Discount:</span><span>-₹{activeDiscount}</span></div>}
+                {Number(data.home_visit_charges || 0) > 0 && <div style={{ display: "flex", justifyContent: "space-between", padding: "2px 0" }}><span>Home Visit Charges:</span><span>+₹{data.home_visit_charges}</span></div>}
+                {/* Separate border node — html2canvas collapses border-top on flex rows */}
+                <div style={{ borderTop: "1px solid #ddd", margin: "8px 0 0", height: 0, overflow: "hidden", fontSize: 0, lineHeight: 0 }} aria-hidden />
               </>
             )}
-            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", borderTop: showGross ? "1px solid #ddd" : "none", paddingTop: showGross ? 3 : 0, marginTop: showGross ? 3 : 0 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", padding: "8px 0 2px" }}>
               <span>Final Amount:</span><span>₹{activeFinal}</span>
             </div>
             {payments.length > 0 && (
-              <div style={{ marginTop: 3 }}>
+              <div style={{ marginTop: 4 }}>
                 {payments.map((p: any, i: number) => (
-                  <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 10 }}>
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 10, padding: "2px 0" }}>
                     <span>{p.mode}{p.date ? ` (${format(new Date(p.date), "dd-MM-yyyy hh:mm a")})` : ""}:</span><span>₹{p.amount}</span>
                   </div>
                 ))}
               </div>
             )}
-            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", marginTop: 3 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", marginTop: 4, padding: "2px 0" }}>
               <span>Paid:</span><span>₹{data.paid_amount}</span>
             </div>
             {Number(data.paid_amount || 0) > 0 && (
@@ -547,7 +648,7 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
             <p style={{ margin: "2px 0" }}>Thank you for choosing us</p>
             {data.umr_number && (
               <div style={{ marginTop: 6, textAlign: "center" }}>
-                <svg ref={barcodeRef} style={{ display: "block", margin: "0 auto" }} />
+                <canvas ref={barcodeRef} style={{ display: "block", margin: "0 auto", maxWidth: "100%" }} />
               </div>
             )}
             <p style={{ margin: "4px 0 0", fontSize: 8, color: "#888" }}>This is an Electronically Generated Receipt &amp; Does Not Require Signature</p>
@@ -558,8 +659,17 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
           <Button className="flex-1" variant="outline" onClick={handlePrint}>
             <Printer className="h-4 w-4 mr-2" />Print
           </Button>
-          <Button className="flex-1" onClick={handleWhatsApp}>
-            <Send className="h-4 w-4 mr-2" />WhatsApp
+          <Button
+            className="flex-1"
+            onClick={() => void queueInvoiceViaWaApi()}
+            disabled={waSending || !data?.mobile_number}
+          >
+            {waSending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4 mr-2" />
+            )}
+            {waSending ? "Queuing…" : consoleQueued ? "WhatsApp (resend)" : "WhatsApp"}
           </Button>
         </div>
       </DialogContent>

@@ -23,7 +23,8 @@ type TableName =
   | "lims_test_orders"
   | "lims_interface_logs"
   | "lims_unmapped_results"
-  | "lims_no_map_required";
+  | "lims_no_map_required"
+  | "lims_result_notify";
 
 /**
  * Cost-aware realtime subscription.

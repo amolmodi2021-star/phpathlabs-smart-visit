@@ -17,6 +17,8 @@ import TimeResultInput from "./TimeResultInput";
 import { parseTimeResultToSeconds, toCanonicalTimeResult } from "@/lib/timeRange";
 import { checkDifferentialSum } from "@/lib/differentialCount";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { fetchAllByIds } from "@/lib/fetchAllRows";
+import { shortIdsKey } from "@/lib/queryKeys";
 
 const PAGE_SIZE = 50;
 
@@ -61,24 +63,29 @@ const ModifiedApproval = () => {
   const totalReports = pagedReports?.total || 0;
 
   const regIds = approvedReports.map((r: any) => r.registration_id);
+  const regKey = shortIdsKey(regIds, "ma");
 
   // Fetch approved patient_results for editing
   const { data: approvedResults = [] } = useQuery({
-    queryKey: ["modified_approval_results", regIds.join(",")],
+    queryKey: ["modified_approval_results", regKey],
     enabled: regIds.length > 0,
     queryFn: async () => {
-      const { data } = await supabase.from("patient_results").select("*").in("registration_id", regIds).eq("status", "approved");
-      return (data || []) as any[];
+      return await fetchAllByIds<any>("patient_results", "*", "registration_id", regIds, { eq: { status: "approved" } });
     },
   });
 
   // Fetch outsourced snips
   const { data: approvedSnips = [] } = useQuery({
-    queryKey: ["modified_approval_snips", regIds.join(",")],
+    queryKey: ["modified_approval_snips", regKey],
     enabled: regIds.length > 0,
     queryFn: async () => {
-      const { data } = await supabase.from("outsourced_test_snips").select("registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, result_mode, snip_image_urls").in("registration_id", regIds).eq("outsource_status", "approved");
-      return (data || []) as any[];
+      return await fetchAllByIds<any>(
+        "outsourced_test_snips",
+        "id, registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, result_mode, snip_image_urls",
+        "registration_id",
+        regIds,
+        { eq: { outsource_status: "approved" } },
+      );
     },
   });
 

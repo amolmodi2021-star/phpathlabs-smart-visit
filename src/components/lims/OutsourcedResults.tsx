@@ -23,6 +23,10 @@ import { useMasterLookup } from "@/hooks/useMasterLookup";
 
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 import { formatAgeGender } from "@/lib/ageGender";
+import { fetchAllByIds } from "@/lib/fetchAllRows";
+import { fetchOutsourcedCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPendingCandidates";
+import { shortIdsKey } from "@/lib/queryKeys";
+import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 
@@ -40,18 +44,27 @@ interface OutsourcedPatient {
   outsourcedTests: OutsourcedTest[];
 }
 
+const OS_PAGE_SIZE = 50;
+
 const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   const qc = useQueryClient();
-  // outsourced_test_snips not in realtime publication — subscribe to patient_registrations only.
-  // Cost optimization: no ambient realtime; same-user via propagateRegistrationChange, cross-user via refetchOnWindowFocus.
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [osPage, setOsPage] = useState(0);
   const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
   const [expandedTest, setExpandedTest] = useState<string | null>(null);
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const { data: outsourceLabs = [] } = useMasterLookup("outsource_lab");
+
+  // Live machine / interface notify (tiny table only)
+  useRealtimeSync("lims_result_notify", [
+    "outsourced_pending_ids",
+    "outsourced_accepted_regs",
+    "outsourced_snips",
+    "outsourced_manual_results",
+  ], 1500);
 
   // Selection & mark-as-sent state
   const [selectedTests, setSelectedTests] = useState<Set<string>>(new Set());
@@ -77,6 +90,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
       qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] });
       qc.invalidateQueries({ queryKey: ["outsourced_accepted_regs"] });
+      qc.invalidateQueries({ queryKey: ["outsourced_pending_ids"] });
       qc.invalidateQueries({ queryKey: ["results_accepted_regs"] });
     } catch (err: any) {
       toast.error(err.message || "Return failed");
@@ -105,6 +119,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
       qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] });
       qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
+      qc.invalidateQueries({ queryKey: ["outsourced_pending_ids"] });
     } catch (err: any) {
       toast.error(err.message || "Return failed");
     } finally {
@@ -116,6 +131,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   useEffect(() => {
     if (externalSearch !== undefined) {
       setDebouncedSearch(externalSearch);
+      setOsPage(0);
     }
   }, [externalSearch]);
 
@@ -124,40 +140,41 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   const handleSearch = useCallback((val: string) => {
     setSearch(val);
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    searchTimerRef.current = setTimeout(() => setDebouncedSearch(val), 400);
+    searchTimerRef.current = setTimeout(() => { setDebouncedSearch(val); setOsPage(0); }, 400);
   }, []);
 
-  // Fetch accepted registrations
-  const { data: acceptedRegs = [], isLoading } = useQuery({
-    queryKey: ["outsourced_accepted_regs", debouncedSearch],
-    queryFn: async () => {
-      let query = supabase
-        .from("patient_registrations")
-        .select("*")
-        .in("status", [
-          "sample_accepted", "partially_accepted",
-          "processing", "partial_processing", "processed",
-          "partial_verified", "verified",
-          "partially_approved", "approved",
-          "partially_dispatched", "dispatched",
-        ])
-        .eq("bill_cancelled", false)
-        .order("is_stat", { ascending: false })
-        .order("invoice_number", { ascending: false });
-      if (debouncedSearch) {
-        query = query.or(
-          `patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%`
-        );
-      }
-      const { data, error } = await query;
-      if (error) throw error;
-      return (data || []) as any[];
+  // Candidate IDs (server-side) + search filter/sort
+  const { data: pendingIds = [] as string[], isLoading: loadingIds } = useQuery({
+    queryKey: ["outsourced_pending_ids", debouncedSearch],
+    queryFn: async (): Promise<string[]> => {
+      const candidates = await fetchOutsourcedCandidateIds();
+      return await fetchFilteredSortedIds(candidates, debouncedSearch);
     },
-    refetchOnWindowFocus: true,
     staleTime: 30_000,
   });
+  const osCount = pendingIds.length;
+  const pageIds = pendingIds.slice(osPage * OS_PAGE_SIZE, (osPage + 1) * OS_PAGE_SIZE);
+  const osTotalPages = Math.max(1, Math.ceil(osCount / OS_PAGE_SIZE));
+  const pageKey = shortIdsKey(pageIds, "os");
 
-  // Fetch tests master
+  // Fetch page of registrations (narrow columns)
+  const { data: acceptedRegs = [], isLoading: loadingRegs } = useQuery({
+    queryKey: ["outsourced_accepted_regs", pageKey],
+    enabled: pageIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("patient_registrations")
+        .select("id, invoice_number, patient_name, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, gender, dob, created_at, updated_at, bill_cancelled, doctor_name, title")
+        .in("id", pageIds);
+      if (error) throw error;
+      const order = new Map(pageIds.map((id, i) => [id, i] as const));
+      return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+    },
+    staleTime: 30_000,
+  });
+  const isLoading = loadingIds || (pageIds.length > 0 && loadingRegs);
+
+  // Fetch tests master (shared-ish)
   const { data: testsMap = {} } = useQuery({
     queryKey: ["outsourced_tests_map"],
     queryFn: async () => {
@@ -166,35 +183,39 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       (data || []).forEach((t: any) => { map[t.id] = t; });
       return map;
     },
+    staleTime: 600_000,
   });
 
-  // Fetch existing snips
-  const regIds = acceptedRegs.map((r: any) => r.id);
+  const regIds = useMemo(() => acceptedRegs.map((r: any) => r.id), [acceptedRegs]);
+
+  // Snips for this page only
   const { data: existingSnips = [] } = useQuery({
-    queryKey: ["outsourced_snips", regIds.join(",")],
+    queryKey: ["outsourced_snips", pageKey],
     enabled: regIds.length > 0,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("outsourced_test_snips")
-        .select("*")
-        .in("registration_id", regIds);
-      if (error) throw error;
-      return (data || []) as any[];
+      return await fetchAllByIds<any>(
+        "outsourced_test_snips",
+        "*",
+        "registration_id",
+        regIds,
+      );
     },
+    staleTime: 15_000,
   });
 
-  // Fetch sample_tubes to derive leaf test ids per registration (expands PRL/HLT containers)
+  // sample_tubes leaves for this page
   const { data: leafTestIdsByReg = {} } = useQuery({
-    queryKey: ["outsourced_sample_tubes_leaves", regIds.join(",")],
+    queryKey: ["outsourced_sample_tubes_leaves", pageKey],
     enabled: regIds.length > 0,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("sample_tubes" as any)
-        .select("registration_id, test_ids")
-        .in("registration_id", regIds);
-      if (error) throw error;
+      const rows = await fetchAllByIds<any>(
+        "sample_tubes",
+        "id, registration_id, test_ids",
+        "registration_id",
+        regIds,
+      );
       const map: Record<string, Set<string>> = {};
-      (data || []).forEach((tube: any) => {
+      rows.forEach((tube: any) => {
         const rid = tube.registration_id;
         if (!rid) return;
         if (!map[rid]) map[rid] = new Set<string>();
@@ -205,17 +226,17 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     },
   });
 
-  // Fetch existing manual results
+  // Manual results for this page
   const { data: existingResults = [] } = useQuery({
-    queryKey: ["outsourced_manual_results", regIds.join(",")],
+    queryKey: ["outsourced_manual_results", pageKey],
     enabled: regIds.length > 0,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("patient_results")
-        .select("*")
-        .in("registration_id", regIds);
-      if (error) throw error;
-      return (data || []) as any[];
+      return await fetchAllByIds<any>(
+        "patient_results",
+        "*",
+        "registration_id",
+        regIds,
+      );
     },
   });
 
@@ -235,6 +256,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       });
       return map;
     },
+    staleTime: 600_000,
   });
 
   // Fetch parameter_normal_ranges for age/gender-specific reference ranges
@@ -252,6 +274,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       });
       return map;
     },
+    staleTime: 600_000,
   });
 
   // Helper: resolve best normal range for a parameter given patient demographics
@@ -465,27 +488,53 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         return { regId, testId };
       });
 
+      let firstAwaitingKey: string | null = null;
+      let firstPatientId: string | null = null;
+
       for (const { regId, testId } of entries) {
-        await supabase
+        const existing = getSnip(regId, testId);
+        const params = testParamsMap[testId] || [];
+        const hasParams = params.some((tp: any) => !tp.is_subheader && tp.report_test_parameters);
+        // Preserve parameter-level outsource selection if this test was transferred that way
+        const existingParamIds = Array.isArray((existing as any)?.outsourced_parameter_ids)
+          ? (existing as any).outsourced_parameter_ids
+          : null;
+
+        const payload: Record<string, any> = {
+          registration_id: regId,
+          test_id: testId,
+          outsourced_lab_name: labName.trim(),
+          outsource_status: "sent",
+          // Snip-only tests (no report parameters) should open in snip mode after send
+          result_mode: hasParams ? (existing?.result_mode || "manual") : "snip",
+          sent_at: new Date().toISOString(),
+        };
+        if (existingParamIds && existingParamIds.length > 0) {
+          payload.outsourced_parameter_ids = existingParamIds;
+        }
+
+        const { error } = await supabase
           .from("outsourced_test_snips")
-          .upsert({
-            registration_id: regId,
-            test_id: testId,
-            outsourced_lab_name: labName.trim(),
-            outsource_status: "sent",
-            result_mode: "manual",
-            sent_at: new Date().toISOString(),
-          } as any, { onConflict: "registration_id,test_id" });
+          .upsert(payload as any, { onConflict: "registration_id,test_id" });
+        if (error) throw error;
+
+        if (!firstAwaitingKey) {
+          firstAwaitingKey = `${regId}||${testId}`;
+          firstPatientId = regId;
+        }
       }
 
       toast.success(`${entries.length} test(s) marked as sent to "${labName.trim()}"`);
       setSelectedTests(new Set());
       setShowLabDialog(false);
       setLabName("");
-      qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
-      qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] });
+      // Open the first sent test so results / snip entry is immediately available
+      if (firstPatientId) setExpandedPatient(firstPatientId);
+      if (firstAwaitingKey) setExpandedTest(firstAwaitingKey);
+      await qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+      await qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] });
     } catch (err: any) {
-      toast.error(err.message || "Failed to mark tests");
+      toast.error(err.message || "Failed to mark tests as sent");
     } finally {
       setMarkingSent(false);
     }
@@ -513,7 +562,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
           // Append to existing URLs array
           const existingUrls = getSnipImageUrls(regId, testId);
           const newUrls = [...existingUrls, urlData.publicUrl];
-          await supabase.from("outsourced_test_snips").upsert({
+          const { error: upsertErr } = await supabase.from("outsourced_test_snips").upsert({
             registration_id: regId,
             test_id: testId,
             snip_image_url: newUrls[0],
@@ -521,6 +570,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
             result_mode: "snip",
             outsource_status: "sent",
           } as any, { onConflict: "registration_id,test_id" });
+          if (upsertErr) throw upsertErr;
           toast.success(`Page ${newUrls.length} added successfully`);
           qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
         } catch (err: any) {
@@ -547,7 +597,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       // Append to existing URLs array
       const existingUrls = getSnipImageUrls(regId, testId);
       const newUrls = [...existingUrls, urlData.publicUrl];
-      await supabase.from("outsourced_test_snips").upsert({
+      const { error: upsertErr } = await supabase.from("outsourced_test_snips").upsert({
         registration_id: regId,
         test_id: testId,
         snip_image_url: newUrls[0],
@@ -555,6 +605,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         result_mode: "snip",
         outsource_status: "sent",
       } as any, { onConflict: "registration_id,test_id" });
+      if (upsertErr) throw upsertErr;
       toast.success(`Page ${newUrls.length} added successfully`);
       qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
     } catch (err: any) {
@@ -594,16 +645,17 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   // Set manual mode
   const setManualMode = useCallback(async (regId: string, testId: string) => {
     try {
-      await supabase.from("outsourced_test_snips").upsert({
+      const { error } = await supabase.from("outsourced_test_snips").upsert({
         registration_id: regId,
         test_id: testId,
         result_mode: "manual",
         snip_image_url: null,
         snip_image_urls: [],
       } as any, { onConflict: "registration_id,test_id" });
+      if (error) throw error;
       qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
     } catch (err: any) {
-      toast.error("Failed to set manual mode");
+      toast.error(err.message || "Failed to set manual mode");
     }
   }, [qc]);
 
@@ -656,10 +708,11 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         if (error) throw error;
       }
       // Update snip record status
-      await supabase.from("outsourced_test_snips").upsert({
+      const { error: snipErr } = await supabase.from("outsourced_test_snips").upsert({
         registration_id: regId, test_id: testId,
         result_mode: "manual", outsource_status: "results_saved",
       } as any, { onConflict: "registration_id,test_id" });
+      if (snipErr) throw snipErr;
 
       toast.success(`Results saved for ${testName}`);
       setEditedValues(prev => {
@@ -684,10 +737,11 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     const key = `${regId}||${testId}`;
     setSavingKey(key);
     try {
-      await supabase.from("outsourced_test_snips").upsert({
+      const { error } = await supabase.from("outsourced_test_snips").upsert({
         registration_id: regId, test_id: testId,
         result_mode: "snip", outsource_status: "results_saved",
       } as any, { onConflict: "registration_id,test_id" });
+      if (error) throw error;
 
       toast.success(`Snip saved for ${testName}`);
       qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
@@ -818,20 +872,26 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     const snip = getSnip(regId, test.testId);
     const status = getTestStatus(regId, test.testId);
     const params = testParamsMap[test.testId] || [];
-    const hasParams = params.some((tp: any) => !tp.is_subheader && tp.report_test_parameters);
+    const linkedParams = params.filter((tp: any) => !tp.is_subheader && tp.report_test_parameters);
+    // For parameter-level outsource, only linked outsourced params count as "enterable"
+    const enterableParams = test.isParameterLevel && test.outsourcedParameterIds?.length
+      ? linkedParams.filter((tp: any) => test.outsourcedParameterIds!.includes(tp.report_test_parameters.id))
+      : linkedParams;
+    const hasParams = enterableParams.length > 0;
     const isUploading = uploadingKey === testKey;
     const isSaving = savingKey === testKey;
+    // Prefer snip when there are no enterable parameters (snip-only / misconfigured tests)
     const currentMode = hasParams ? (snip?.result_mode || "manual") : "snip";
     const isSelected = selectedTests.has(testKey);
     const canSelect = status === "not_sent";
-    const canEnterResults = status === "awaiting_results";
+    const canEnterResults = status === "awaiting_results" || status === "results_saved";
 
     return (
       <div key={testKey} className="border rounded-lg overflow-hidden">
         <div
           className="flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/30 transition-colors"
           onClick={() => {
-            if (canEnterResults || status === "results_saved") {
+            if (canEnterResults) {
               setExpandedTest(isExpanded ? null : testKey);
             }
           }}
@@ -845,7 +905,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
               className="shrink-0"
             />
           )}
-          {(canEnterResults || status === "results_saved") && (
+          {canEnterResults && (
             isExpanded ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />
           )}
           <div className="flex-1">
@@ -853,6 +913,9 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
             <span className="text-xs text-muted-foreground ml-2">({test.outsourcedCaption})</span>
             {test.isParameterLevel && (
               <Badge variant="outline" className="ml-2 text-[10px]">Param Level</Badge>
+            )}
+            {!hasParams && status !== "not_sent" && (
+              <Badge variant="outline" className="ml-2 text-[10px] text-amber-700 border-amber-300">Snip only</Badge>
             )}
           </div>
           <div className="flex items-center gap-2">
@@ -913,12 +976,32 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
           </div>
         )}
 
-        {/* Expanded: only for sent tests (awaiting or results_entered) */}
-        {isExpanded && (canEnterResults || status === "results_saved") && (
+        {/* Expanded: result entry / snip for sent tests */}
+        {isExpanded && canEnterResults && (
           <div className="border-t p-3 space-y-3 bg-muted/10">
-            <Tabs defaultValue={currentMode} onValueChange={(v) => {
-              if (v === "manual") setManualMode(regId, test.testId);
-            }}>
+            {!hasParams && (
+              <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                No report parameters are linked for this test. Use <strong>Snip / Image</strong> to attach the outsourced report, then Save.
+              </div>
+            )}
+            <Tabs
+              value={currentMode === "snip" || !hasParams ? "snip" : "manual"}
+              onValueChange={(v) => {
+                if (v === "manual" && hasParams) setManualMode(regId, test.testId);
+                if (v === "snip") {
+                  // Flip mode to snip without wiping existing images
+                  supabase.from("outsourced_test_snips").upsert({
+                    registration_id: regId,
+                    test_id: test.testId,
+                    result_mode: "snip",
+                    outsource_status: (snip as any)?.outsource_status || "sent",
+                  } as any, { onConflict: "registration_id,test_id" }).then(({ error }) => {
+                    if (error) toast.error(error.message);
+                    else qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+                  });
+                }
+              }}
+            >
               <TabsList className="h-8">
                 {hasParams && (
                   <TabsTrigger value="manual" className="text-xs gap-1 h-6">
@@ -1169,6 +1252,14 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
               </Card>
             );
           })}
+        </div>
+      )}
+
+      {osTotalPages > 1 && (
+        <div className="flex items-center justify-center gap-3 pt-2">
+          <Button variant="outline" size="sm" disabled={osPage === 0} onClick={() => setOsPage(p => p - 1)}>Prev</Button>
+          <span className="text-sm text-muted-foreground">Page {osPage + 1} of {osTotalPages} ({osCount} total)</span>
+          <Button variant="outline" size="sm" disabled={osPage >= osTotalPages - 1} onClick={() => setOsPage(p => p + 1)}>Next</Button>
         </div>
       )}
 

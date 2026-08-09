@@ -35,6 +35,89 @@ function sanitizeInterfaceValue(rawValue: string | null | undefined, interfaceUn
   return cleaned;
 }
 
+/** Tiny Realtime notify so open LIMS tabs refresh without publishing patient_results. */
+async function notifyResultUpdate(supabase: any, registrationId: string, source = "interface") {
+  if (!registrationId) return;
+  try {
+    await supabase.from("lims_result_notify").insert({
+      registration_id: registrationId,
+      source,
+    });
+  } catch (e) {
+    console.error("lims_result_notify insert failed:", e);
+  }
+}
+
+function b64urlDecode(str: string): Uint8Array {
+  const pad = "=".repeat((4 - (str.length % 4)) % 4);
+  const b64 = (str + pad).replace(/-/g, "+").replace(/_/g, "/");
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function resolveJwtSecret(): string {
+  let secretRaw =
+    Deno.env.get("JWT_SECRET") ||
+    Deno.env.get("SUPABASE_JWT_SECRET") ||
+    Deno.env.get("SUPABASE_INTERNAL_JWT_SECRET") ||
+    "";
+  if (!secretRaw) {
+    const svc = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    const url = Deno.env.get("SUPABASE_URL") || "";
+    const isLocalDemo =
+      svc.includes('"iss":"supabase-demo"') ||
+      svc.includes("supabase-demo") ||
+      svc.startsWith("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1v") ||
+      /127\.0\.0\.1|localhost/i.test(url);
+    if (isLocalDemo) {
+      secretRaw = "super-secret-jwt-token-with-at-least-32-characters-long";
+    }
+  }
+  return secretRaw;
+}
+
+async function verifyStaffJwt(req: Request): Promise<boolean> {
+  const auth = req.headers.get("Authorization") || "";
+  const m = auth.match(/^Bearer\s+(.+)$/i);
+  if (!m) return false;
+  const token = m[1].trim();
+  const parts = token.split(".");
+  if (parts.length !== 3) return false;
+  const secretRaw = resolveJwtSecret();
+  if (!secretRaw) return false;
+  const body = `${parts[0]}.${parts[1]}`;
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secretRaw),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["verify"],
+  );
+  const sig = b64urlDecode(parts[2]);
+  const ok = await crypto.subtle.verify("HMAC", key, sig, new TextEncoder().encode(body));
+  if (!ok) return false;
+  try {
+    const payload = JSON.parse(new TextDecoder().decode(b64urlDecode(parts[1])));
+    if (payload.app_role && payload.app_role !== "staff") return false;
+    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return false;
+    return !!payload.sub;
+  } catch {
+    return false;
+  }
+}
+
+function checkIngestSecret(req: Request): boolean {
+  const expected = Deno.env.get("LIMS_INTERFACE_SECRET") || "";
+  // If not configured, allow (local/dev); when set, require header or query match.
+  if (!expected) return true;
+  const header = req.headers.get("x-lims-interface-secret") || "";
+  const url = new URL(req.url);
+  const q = url.searchParams.get("secret") || "";
+  return header === expected || q === expected;
+}
+
 // Apply per-parameter unit conversion (configured in Test Management).
 // Leaves non-numeric values (e.g. "POSITIVE") and disabled-conversion params untouched.
 // Always sanitizes the incoming value first so concatenated unit suffixes never leak through.
@@ -308,6 +391,13 @@ Deno.serve(async (req) => {
       let peekBody: any = null;
       try { peekBody = await cloned.json(); } catch { /* not json */ }
       if (peekBody && peekBody.action === "reprocess") {
+        const staffOk = await verifyStaffJwt(req);
+        if (!staffOk) {
+          return new Response(JSON.stringify({ error: "Unauthorized" }), {
+            status: 401,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
         const filterRegistrationId: string | null = peekBody.registration_id || null;
 
         // 1) Resolve which sample_ids to reprocess
@@ -523,6 +613,10 @@ Deno.serve(async (req) => {
           // Auto-evaluate calculated parameters now that fresh values landed
           await autoCalcDependentParams(supabase, registrationId);
 
+          if (totalPushed > 0) {
+            await notifyResultUpdate(supabase, registrationId, "reprocess");
+          }
+
           // Re-evaluate order completion
           const completedCodes = new Set(mappedItems.map((m) => m.test_code));
           for (const ord of orders || []) {
@@ -551,6 +645,12 @@ Deno.serve(async (req) => {
 
     // GET: Query tests for a sample_id, optionally filtered by machine_id
     if (req.method === "GET") {
+      if (!checkIngestSecret(req)) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       const action = url.searchParams.get("action");
       const sampleId = url.searchParams.get("sample_id");
       const machineId = url.searchParams.get("machine_id") || "";
@@ -706,6 +806,12 @@ Deno.serve(async (req) => {
 
     // POST: Submit results with code mapping
     if (req.method === "POST") {
+      if (!checkIngestSecret(req)) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       const body = await req.json();
       const { action, sample_id, order_id, results, machine_id: bodyMachineId } = body;
 
@@ -952,6 +1058,10 @@ Deno.serve(async (req) => {
           // Auto-evaluate calculated parameters now that fresh values landed
           const calcWritten = await autoCalcDependentParams(supabase, registrationId);
           patientResultsWritten += calcWritten;
+
+          if (patientResultsWritten > 0) {
+            await notifyResultUpdate(supabase, registrationId, "interface");
+          }
         }
       } catch (bridgeErr) {
         console.error("patient_results bridge error:", bridgeErr);

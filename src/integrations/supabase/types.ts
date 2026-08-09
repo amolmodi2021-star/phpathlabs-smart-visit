@@ -1081,6 +1081,27 @@ export type Database = {
         }
         Relationships: []
       }
+      lims_result_notify: {
+        Row: {
+          created_at: string
+          id: string
+          registration_id: string
+          source: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          registration_id: string
+          source?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          registration_id?: string
+          source?: string
+        }
+        Relationships: []
+      }
       lims_no_map_required: {
         Row: {
           created_at: string
@@ -1542,6 +1563,7 @@ export type Database = {
           registered_by: string | null
           remarks: string | null
           report_language: string | null
+          repeat_tests: Json
           status: string
           tests: Json
           title: string | null
@@ -1585,6 +1607,7 @@ export type Database = {
           registered_by?: string | null
           remarks?: string | null
           report_language?: string | null
+          repeat_tests?: Json
           status?: string
           tests?: Json
           title?: string | null
@@ -1628,6 +1651,7 @@ export type Database = {
           registered_by?: string | null
           remarks?: string | null
           report_language?: string | null
+          repeat_tests?: Json
           status?: string
           tests?: Json
           title?: string | null
@@ -2941,6 +2965,32 @@ export type Database = {
       generate_invoice_number: { Args: never; Returns: string }
       generate_sample_uid: { Args: never; Returns: string }
       generate_umr_number: { Args: never; Returns: string }
+      lims_dispatch_candidate_ids: { Args: never; Returns: string[] }
+      lims_doctor_approval_candidate_ids: { Args: never; Returns: string[] }
+      lims_filter_sort_registration_ids: {
+        Args: {
+          p_date_from?: string
+          p_date_to?: string
+          p_ids: string[]
+          p_search?: string
+        }
+        Returns: string[]
+      }
+      lims_outsourced_candidate_ids: { Args: never; Returns: string[] }
+      lims_results_entry_candidate_ids: { Args: never; Returns: string[] }
+      lims_verification_candidate_ids: { Args: never; Returns: string[] }
+      prune_lims_result_notify: { Args: never; Returns: undefined }
+      prune_messaging_logs_90d: { Args: never; Returns: undefined }
+      register_patient_atomic: {
+        Args: {
+          p_home_visit_id?: string
+          p_home_visit_patch?: Json
+          p_payment?: Json
+          p_registration: Json
+          p_tubes?: Json
+        }
+        Returns: Json
+      }
       get_all_patient_registrations: {
         Args: { p_search?: string }
         Returns: {

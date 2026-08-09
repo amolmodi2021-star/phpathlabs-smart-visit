@@ -1,5 +1,5 @@
 import RefreshButton from "@/components/lims/RefreshButton";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
@@ -16,10 +16,13 @@ import InvoicePreview from "./InvoicePreview";
 import { logPaymentTransaction } from "@/lib/paymentTransactions";
 
 const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card", "NEFT"];
+const PAGE_SIZE = 50;
 
 const DuePayments = () => {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(0);
   const [collectOpen, setCollectOpen] = useState(false);
   const [selected, setSelected] = useState<any>(null);
   const [selectedModes, setSelectedModes] = useState<Set<string>>(new Set());
@@ -28,27 +31,52 @@ const DuePayments = () => {
   const [badDebtConfirm, setBadDebtConfirm] = useState<any>(null);
   const [invoiceData, setInvoiceData] = useState<any>(null);
 
-  const { data: patients = [], isLoading } = useQuery({
-    queryKey: ["lims-due-payments", search],
+  useEffect(() => {
+    const t = setTimeout(() => { setDebouncedSearch(search); setPage(0); }, 400);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const buildBaseQuery = (countOnly = false) => {
+    let q = supabase
+      .from("patient_registrations")
+      .select(
+        countOnly
+          ? "id"
+          : "id, invoice_number, patient_name, mobile_number, doctor_name, created_at, net_amount, paid_amount, due_amount, payments, is_bad_debt, bill_cancelled, title, gender, dob, email, address, umr_number, visit_type, tests, gross_amount, discount_amount, home_visit_charges, final_amount, refund_amount, refund_mode, refund_date, cancelled_tests, global_discount_type, global_discount_value, remarks, registered_by",
+        countOnly ? { count: "exact", head: true } : undefined,
+      )
+      .gt("due_amount", 0)
+      .eq("is_bad_debt", false)
+      .eq("bill_cancelled", false)
+      .neq("visit_type", "pickup_point");
+
+    if (debouncedSearch.trim()) {
+      q = q.or(`patient_name.ilike.%${debouncedSearch.trim()}%,mobile_number.ilike.%${debouncedSearch.trim()}%,invoice_number.ilike.%${debouncedSearch.trim()}%`);
+    }
+    return q;
+  };
+
+  const { data: count = 0 } = useQuery({
+    queryKey: ["lims-due-payments-count", debouncedSearch],
     queryFn: async () => {
-      let q = supabase
-        .from("patient_registrations")
-        .select("id, invoice_number, patient_name, mobile_number, doctor_name, created_at, net_amount, paid_amount, due_amount, payments, is_bad_debt, bill_cancelled, title, gender, dob, email, address, umr_number, visit_type, tests, gross_amount, discount_amount, home_visit_charges, final_amount, refund_amount, refund_mode, refund_date, cancelled_tests, global_discount_type, global_discount_value, remarks, registered_by")
-        .gt("due_amount", 0)
-        .eq("is_bad_debt", false)
-        .eq("bill_cancelled", false)
-        .neq("visit_type", "pickup_point")
-        .order("created_at", { ascending: false });
+      const { count, error } = await buildBaseQuery(true);
+      if (error) throw error;
+      return count || 0;
+    },
+  });
 
-      if (search.trim()) {
-        q = q.or(`patient_name.ilike.%${search.trim()}%,mobile_number.ilike.%${search.trim()}%,invoice_number.ilike.%${search.trim()}%`);
-      }
-
-      const { data, error } = await q;
+  const { data: patients = [], isLoading } = useQuery({
+    queryKey: ["lims-due-payments", debouncedSearch, page],
+    queryFn: async () => {
+      const { data, error } = await buildBaseQuery(false)
+        .order("created_at", { ascending: false })
+        .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
       if (error) throw error;
       return data || [];
     },
   });
+
+  const totalPages = Math.max(1, Math.ceil(count / PAGE_SIZE));
 
   const openCollect = (p: any) => {
     setSelected(p);
@@ -246,6 +274,14 @@ const DuePayments = () => {
               ))}
             </TableBody>
           </Table>
+        </div>
+      )}
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-3">
+          <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(p => p - 1)}>Prev</Button>
+          <span className="text-sm text-muted-foreground">Page {page + 1} of {totalPages} ({count} total)</span>
+          <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>Next</Button>
         </div>
       )}
 

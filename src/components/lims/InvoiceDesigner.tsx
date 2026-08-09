@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Upload, Save, Trash2, AlignLeft, AlignCenter, AlignRight } from "lucide-react";
+import { Upload, Save, Trash2, AlignLeft, AlignCenter, AlignRight, Bold, Minus, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 const SETTING_KEYS = [
@@ -21,6 +21,18 @@ const SETTING_KEYS = [
   "invoice_lab_name_visible",
   "invoice_tagline_align",
   "invoice_address_align",
+  "invoice_lab_name_size",
+  "invoice_lab_name_bold",
+  "invoice_lab_name_color",
+  "invoice_contact_size",
+  "invoice_contact_bold",
+  "invoice_contact_color",
+  "invoice_address_size",
+  "invoice_address_bold",
+  "invoice_address_color",
+  "invoice_tagline_size",
+  "invoice_tagline_bold",
+  "invoice_tagline_color",
 ] as const;
 
 const DEFAULTS: Record<string, string> = {
@@ -34,6 +46,18 @@ const DEFAULTS: Record<string, string> = {
   invoice_lab_name_visible: "true",
   invoice_tagline_align: "center",
   invoice_address_align: "center",
+  invoice_lab_name_size: "16",
+  invoice_lab_name_bold: "true",
+  invoice_lab_name_color: "#0d9488",
+  invoice_contact_size: "10",
+  invoice_contact_bold: "false",
+  invoice_contact_color: "#666666",
+  invoice_address_size: "9",
+  invoice_address_bold: "false",
+  invoice_address_color: "#888888",
+  invoice_tagline_size: "9",
+  invoice_tagline_bold: "false",
+  invoice_tagline_color: "#888888",
 };
 
 const AlignToggle = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
@@ -55,8 +79,66 @@ const AlignToggle = ({ value, onChange }: { value: string; onChange: (v: string)
   </div>
 );
 
-const logoMargin = (align: string) =>
-  align === "left" ? "0" : align === "right" ? "0 0 0 auto" : "0 auto";
+const FontStyleControls = ({
+  size,
+  bold,
+  color,
+  onSize,
+  onBold,
+  onColor,
+  min = 8,
+  max = 36,
+}: {
+  size: string;
+  bold: string;
+  color: string;
+  onSize: (v: string) => void;
+  onBold: (v: string) => void;
+  onColor: (v: string) => void;
+  min?: number;
+  max?: number;
+}) => {
+  const n = Math.min(max, Math.max(min, Number(size) || min));
+  const isBold = bold !== "false";
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      <div className="flex border rounded overflow-hidden">
+        <button
+          type="button"
+          className="px-2 py-1 bg-muted text-muted-foreground hover:bg-accent"
+          onClick={() => onSize(String(Math.max(min, n - 1)))}
+          title="Decrease font size"
+        >
+          <Minus className="h-3.5 w-3.5" />
+        </button>
+        <span className="px-2 py-1 text-xs tabular-nums min-w-[2.5rem] text-center border-x bg-background">{n}px</span>
+        <button
+          type="button"
+          className="px-2 py-1 bg-muted text-muted-foreground hover:bg-accent"
+          onClick={() => onSize(String(Math.min(max, n + 1)))}
+          title="Increase font size"
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <button
+        type="button"
+        onClick={() => onBold(isBold ? "false" : "true")}
+        className={`px-2 py-1 border rounded ${isBold ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-accent"}`}
+        title="Bold"
+      >
+        <Bold className="h-3.5 w-3.5" />
+      </button>
+      <input
+        type="color"
+        value={/^#[0-9a-fA-F]{6}$/.test(color) ? color : "#000000"}
+        onChange={(e) => onColor(e.target.value)}
+        className="h-8 w-8 cursor-pointer rounded border bg-transparent p-0.5"
+        title="Font color"
+      />
+    </div>
+  );
+};
 
 const InvoiceDesigner = () => {
   const [settings, setSettings] = useState<Record<string, string>>({ ...DEFAULTS });
@@ -114,6 +196,11 @@ const InvoiceDesigner = () => {
   if (loading) return <p className="text-sm text-muted-foreground p-4">Loading…</p>;
 
   const labVisible = settings.invoice_lab_name_visible !== "false";
+  const styleOf = (prefix: string, fallbackSize: string, fallbackColor: string) => ({
+    fontSize: Number(settings[`${prefix}_size`] || fallbackSize),
+    fontWeight: (settings[`${prefix}_bold`] !== "false" ? "bold" : "normal") as "bold" | "normal",
+    color: settings[`${prefix}_color`] || fallbackColor,
+  });
 
   return (
     <div className="grid md:grid-cols-2 gap-6">
@@ -144,39 +231,71 @@ const InvoiceDesigner = () => {
           </div>
 
           {/* Lab Name */}
-          <div>
-            <div className="flex items-center justify-between">
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-2">
                 <Label>Lab Name</Label>
                 <Switch checked={labVisible} onCheckedChange={(c) => set("invoice_lab_name_visible", c ? "true" : "false")} />
               </div>
               <AlignToggle value={settings.invoice_lab_name_align} onChange={(v) => set("invoice_lab_name_align", v)} />
             </div>
-            <Input value={settings.invoice_lab_name} onChange={(e) => set("invoice_lab_name", e.target.value)} className="mt-1" />
+            <FontStyleControls
+              size={settings.invoice_lab_name_size}
+              bold={settings.invoice_lab_name_bold}
+              color={settings.invoice_lab_name_color}
+              onSize={(v) => set("invoice_lab_name_size", v)}
+              onBold={(v) => set("invoice_lab_name_bold", v)}
+              onColor={(v) => set("invoice_lab_name_color", v)}
+            />
+            <Input value={settings.invoice_lab_name} onChange={(e) => set("invoice_lab_name", e.target.value)} />
           </div>
 
           {/* Contact */}
-          <div>
+          <div className="space-y-1.5">
             <Label>Contact Info</Label>
+            <FontStyleControls
+              size={settings.invoice_contact_size}
+              bold={settings.invoice_contact_bold}
+              color={settings.invoice_contact_color}
+              onSize={(v) => set("invoice_contact_size", v)}
+              onBold={(v) => set("invoice_contact_bold", v)}
+              onColor={(v) => set("invoice_contact_color", v)}
+            />
             <Input value={settings.invoice_contact} onChange={(e) => set("invoice_contact", e.target.value)} placeholder="e.g. LabLine: 6356 55 66 99" />
           </div>
 
           {/* Tagline */}
-          <div>
-            <div className="flex items-center justify-between">
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
               <Label>Tagline</Label>
               <AlignToggle value={settings.invoice_tagline_align} onChange={(v) => set("invoice_tagline_align", v)} />
             </div>
-            <Input value={settings.invoice_tagline} onChange={(e) => set("invoice_tagline", e.target.value)} placeholder="e.g. Invoice / Sample Receipt" className="mt-1" />
+            <FontStyleControls
+              size={settings.invoice_tagline_size}
+              bold={settings.invoice_tagline_bold}
+              color={settings.invoice_tagline_color}
+              onSize={(v) => set("invoice_tagline_size", v)}
+              onBold={(v) => set("invoice_tagline_bold", v)}
+              onColor={(v) => set("invoice_tagline_color", v)}
+            />
+            <Input value={settings.invoice_tagline} onChange={(e) => set("invoice_tagline", e.target.value)} placeholder="e.g. Invoice / Sample Receipt" />
           </div>
 
           {/* Address */}
-          <div>
-            <div className="flex items-center justify-between">
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
               <Label>Address</Label>
               <AlignToggle value={settings.invoice_address_align} onChange={(v) => set("invoice_address_align", v)} />
             </div>
-            <Textarea value={settings.invoice_address} onChange={(e) => set("invoice_address", e.target.value)} placeholder="Lab address (optional)" rows={2} className="mt-1" />
+            <FontStyleControls
+              size={settings.invoice_address_size}
+              bold={settings.invoice_address_bold}
+              color={settings.invoice_address_color}
+              onSize={(v) => set("invoice_address_size", v)}
+              onBold={(v) => set("invoice_address_bold", v)}
+              onColor={(v) => set("invoice_address_color", v)}
+            />
+            <Textarea value={settings.invoice_address} onChange={(e) => set("invoice_address", e.target.value)} placeholder="Lab address (optional)" rows={2} />
           </div>
 
           <Separator />
@@ -198,17 +317,17 @@ const InvoiceDesigner = () => {
                 </div>
               )}
               {labVisible && (
-                <h2 style={{ margin: 0, color: "#0d9488", fontSize: 20, textAlign: settings.invoice_lab_name_align as any }}>
+                <h2 style={{ margin: 0, textAlign: settings.invoice_lab_name_align as any, ...styleOf("invoice_lab_name", "16", "#0d9488") }}>
                   {settings.invoice_lab_name || "Lab Name"}
                 </h2>
               )}
               {settings.invoice_contact && (
-                <p style={{ margin: "2px 0", fontSize: 12, color: "#666", textAlign: settings.invoice_lab_name_align as any }}>{settings.invoice_contact}</p>
+                <p style={{ margin: "2px 0", textAlign: settings.invoice_lab_name_align as any, ...styleOf("invoice_contact", "10", "#666666") }}>{settings.invoice_contact}</p>
               )}
               {settings.invoice_address && (
-                <p style={{ margin: "2px 0", fontSize: 11, color: "#888", whiteSpace: "pre-line", textAlign: settings.invoice_address_align as any }}>{settings.invoice_address}</p>
+                <p style={{ margin: "2px 0", whiteSpace: "pre-line", textAlign: settings.invoice_address_align as any, ...styleOf("invoice_address", "9", "#888888") }}>{settings.invoice_address}</p>
               )}
-              <p style={{ margin: "2px 0", fontSize: 11, color: "#888", textAlign: settings.invoice_tagline_align as any }}>
+              <p style={{ margin: "2px 0", textAlign: settings.invoice_tagline_align as any, ...styleOf("invoice_tagline", "9", "#888888") }}>
                 {settings.invoice_tagline || "Invoice / Sample Receipt"}
               </p>
             </div>

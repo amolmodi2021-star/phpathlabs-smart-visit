@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { X, Search, Send } from "lucide-react";
+import { X, Search, Send, AlertTriangle } from "lucide-react";
 import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import TimeSlotPicker from "@/components/TimeSlotPicker";
 import { useMessageTemplates } from "@/hooks/useMessageTemplates";
@@ -16,6 +16,10 @@ import { usePhlebotomistAvailability } from "@/hooks/usePhlebotomistAvailability
 import { buildVisitMessage, shareOnWhatsApp } from "@/lib/whatsapp";
 import { logMessageSend } from "@/lib/messageLog";
 import { format, addDays } from "date-fns";
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
+} from "@/components/ui/alert-dialog";
 
 interface SelectedTest {
   test_id: string;
@@ -48,6 +52,7 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
   const [globalDiscountType, setGlobalDiscountType] = useState<"percent" | "amount">("percent");
   const [globalDiscountValue, setGlobalDiscountValue] = useState(0);
   const [homeVisitCharges, setHomeVisitCharges] = useState(0);
+  const [showHvcConfirm, setShowHvcConfirm] = useState(false);
   const [testSearch, setTestSearch] = useState("");
   const [testHighlightIndex, setTestHighlightIndex] = useState(-1);
   const [phlebotomistId, setPhlebotomistId] = useState("");
@@ -74,6 +79,7 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
       setGlobalDiscountType("percent");
       setGlobalDiscountValue(0);
       setHomeVisitCharges(0);
+      setShowHvcConfirm(false);
       setTestSearch("");
       setPhlebotomistId("");
     }
@@ -409,7 +415,7 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
           {/* Home Visit Charges */}
           <div>
             <Label>Home Visit Charges (₹)</Label>
-            <Input type="number" value={homeVisitCharges || ""} onChange={(e) => setHomeVisitCharges(parseFloat(e.target.value) || 0)} />
+            <Input type="number" value={homeVisitCharges || ""} onChange={(e) => setHomeVisitCharges(parseFloat(e.target.value) || 0)} placeholder="0" />
           </div>
 
           {/* Summary */}
@@ -422,11 +428,44 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
             </div>
           )}
 
-          <Button className="w-full" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+          <Button
+            className="w-full"
+            onClick={() => {
+              if (!homeVisitCharges || homeVisitCharges === 0) {
+                setShowHvcConfirm(true);
+                return;
+              }
+              saveMutation.mutate();
+            }}
+            disabled={saveMutation.isPending}
+          >
             <Send className="h-4 w-4 mr-2" />Save & Send Visit Confirmation
           </Button>
         </div>
       </DialogContent>
+
+      <AlertDialog open={showHvcConfirm} onOpenChange={setShowHvcConfirm}>
+        <AlertDialogContent className="max-w-sm">
+          <AlertDialogHeader>
+            <div className="mx-auto mb-1 flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-600 dark:bg-amber-950 dark:text-amber-400">
+              <AlertTriangle className="h-6 w-6" />
+            </div>
+            <AlertDialogTitle className="text-center">Home Visit Charges Missing</AlertDialogTitle>
+            <AlertDialogDescription className="text-center">
+              Home Visit Charges are blank (₹0). Do you want to save without adding charges?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="sm:justify-center gap-2">
+            <AlertDialogCancel className="mt-0">Go Back</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { setShowHvcConfirm(false); saveMutation.mutate(); }}
+            >
+              Save Without Charges
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 };

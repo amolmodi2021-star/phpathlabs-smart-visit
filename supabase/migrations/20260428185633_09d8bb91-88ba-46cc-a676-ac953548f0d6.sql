@@ -1,5 +1,10 @@
-
-SELECT cron.unschedule('prune-lims-interface-logs-daily');
+DO $$
+BEGIN
+  PERFORM cron.unschedule('prune-lims-interface-logs-daily');
+EXCEPTION
+  WHEN OTHERS THEN
+    NULL; -- job may not exist on a fresh local DB
+END $$;
 
 SELECT cron.schedule(
   'prune-lims-interface-logs-daily',

@@ -1,5 +1,14 @@
--- Ensure required extensions for scheduled jobs
-CREATE EXTENSION IF NOT EXISTS pg_cron;
+-- pg_cron is already enabled by earlier migrations on local Supabase.
+-- Guard CREATE EXTENSION for environments where it may already exist / restricted.
+DO $$
+BEGIN
+  CREATE EXTENSION IF NOT EXISTS pg_cron;
+EXCEPTION
+  WHEN insufficient_privilege THEN
+    NULL;
+  WHEN OTHERS THEN
+    NULL;
+END $$;
 
 -- ============================================================
 -- One-time backlog purge (matches the rules below)

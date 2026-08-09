@@ -1,0 +1,13 @@
+const crypto = require("crypto");
+const fs = require("fs");
+const { spawnSync } = require("child_process");
+const password = process.argv[2] || "admin123";
+const salt = crypto.randomBytes(16).toString("hex");
+const hash = crypto.createHash("sha256").update(salt + password).digest("hex");
+const ph = "sha256:" + salt + ":" + hash;
+const sql = "UPDATE public.app_users SET password_hash = '" + ph + "', is_active = true WHERE username = 'PHPATHLABS'; SELECT username, is_active FROM public.app_users WHERE username = 'PHPATHLABS';";
+fs.writeFileSync("tmp-reset-admin.sql", sql);
+const r = spawnSync("npx.cmd", ["supabase", "db", "query", "--linked"], { input: sql, encoding: "utf8", shell: true });
+process.stdout.write(r.stdout || "");
+process.stderr.write(r.stderr || "");
+process.exit(r.status || 0);

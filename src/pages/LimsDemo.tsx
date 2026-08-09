@@ -114,38 +114,50 @@ const LimsDemo = () => {
   const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID || "rpbkilhzulaugzrlatts";
   const apiUrl = `https://${projectId}.supabase.co/functions/v1/lims-interface`;
 
-  // Realtime disabled to cut Cloud egress; replaced with 30s polling on each
-  // useQuery below. Background polling intentionally OFF so an idle tab
-  // doesn't drive cost.
+  // Bounded polling for ops UI — never pull full lims_* history
   const POLL_MS = 30_000;
 
   const { data: orders = [] } = useQuery({
     queryKey: ["lims-orders"],
     queryFn: async () => {
-      const { data } = await supabase.from("lims_test_orders").select("*").order("created_at", { ascending: false });
+      const { data } = await supabase
+        .from("lims_test_orders")
+        .select("id, sample_id, registration_id, status, machine_id, tests, created_at, updated_at")
+        .in("status", ["pending", "in_progress"])
+        .order("created_at", { ascending: false })
+        .limit(300);
       return data || [];
     },
-    refetchInterval: POLL_MS,
+    refetchInterval: (query) => (typeof document !== "undefined" && document.hidden ? false : POLL_MS),
     refetchIntervalInBackground: false,
   });
 
   const { data: logs = [] } = useQuery({
     queryKey: ["lims-logs"],
     queryFn: async () => {
-      const { data } = await supabase.from("lims_interface_logs").select("*").order("created_at", { ascending: false });
+      const { data } = await supabase
+        .from("lims_interface_logs")
+        .select("id, sample_id, direction, event_type, created_at, machine_id, request_body, response_body")
+        .order("created_at", { ascending: false })
+        .limit(500);
       return data || [];
     },
-    refetchInterval: POLL_MS,
+    refetchInterval: (query) => (typeof document !== "undefined" && document.hidden ? false : POLL_MS),
     refetchIntervalInBackground: false,
   });
 
   const { data: unmappedResults = [] } = useQuery({
     queryKey: ["lims-unmapped"],
     queryFn: async () => {
-      const { data } = await supabase.from("lims_unmapped_results").select("*").eq("is_resolved", false).order("received_at", { ascending: false });
+      const { data } = await supabase
+        .from("lims_unmapped_results")
+        .select("*")
+        .eq("is_resolved", false)
+        .order("received_at", { ascending: false })
+        .limit(300);
       return data || [];
     },
-    refetchInterval: POLL_MS,
+    refetchInterval: (query) => (typeof document !== "undefined" && document.hidden ? false : POLL_MS),
     refetchIntervalInBackground: false,
   });
 

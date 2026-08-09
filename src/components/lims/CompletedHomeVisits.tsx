@@ -11,8 +11,9 @@ import { Search, CheckCircle, Eye, ChevronDown, ChevronUp, Pencil } from "lucide
 import { format } from "date-fns";
 import { toast } from "sonner";
 import EditAndRegisterHomeVisitDialog from "@/components/lims/EditAndRegisterHomeVisitDialog";
-import { logPaymentTransaction } from "@/lib/paymentTransactions";
-import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
+import { getCurrentUserName } from "@/lib/auth";
+import { buildSampleTubeGroups } from "@/lib/sampleTubeGrouping";
+import { registerPatientAtomic } from "@/lib/registerPatientAtomic";
 import PaginatedTableFooter from "@/components/ui/PaginatedTableFooter";
 
 const PAGE_SIZE = 50;
@@ -91,11 +92,10 @@ const CompletedHomeVisits = () => {
     },
   });
 
-  // Register mutation
+  // Register mutation (atomic: registration + sample tubes + payment + HV status)
   const registerMutation = useMutation({
     mutationFn: async (visit: any) => {
       const e = visit.estimates;
-      // Get estimate tests
       const { data: tests } = await supabase
         .from("estimate_tests")
         .select("*")
@@ -117,7 +117,6 @@ const CompletedHomeVisits = () => {
       const paidAmount = Number(visit.paid_amount || 0);
       const dueAmount = Math.max(0, finalAmount - paidAmount);
 
-      // Parse payment modes from home visit
       const payments: any[] = [];
       if (visit.payment_mode) {
         const parts = visit.payment_mode.split(",").map((p: string) => p.trim());
@@ -132,57 +131,49 @@ const CompletedHomeVisits = () => {
         payments.push({ mode: "Cash", amount: paidAmount });
       }
 
-      // Generate invoice number
-      const { data: invNum } = await supabase.rpc("generate_invoice_number");
-
-      // Generate or reuse UMR
-      let umrNumber = e.umr_number;
-      if (!umrNumber) {
-        const { data: umr } = await supabase.rpc("generate_umr_number");
-        umrNumber = umr;
-      }
+      // Invoice + new-patient UMR allocated inside register_patient_atomic.
+      // Existing patients keep e.umr_number; blank → server assigns uniquely.
 
       const stampedBy = getCurrentUserName();
       if (!stampedBy) throw new Error("Please sign in again before saving the registration");
 
-      const { data: insertedReg, error } = await supabase.from("patient_registrations").insert({
-        invoice_number: invNum,
-        patient_name: e.patient_name || "",
-        mobile_number: e.whatsapp_number || "",
-        title: e.title || null,
-        gender: e.gender || null,
-        dob: e.dob || null,
-        email: e.email || null,
-        doctor_name: e.doctor_name || "SELF",
-        umr_number: umrNumber,
-        address: visit.address || "",
-        visit_type: "home_visit",
-        tests: testList,
-        gross_amount: grossAmount,
-        discount_amount: Number(e.discount_amount || 0),
-        net_amount: netAmount,
-        home_visit_charges: homeCharges,
-        final_amount: finalAmount,
-        paid_amount: paidAmount,
-        due_amount: dueAmount,
-        payments: payments,
-        status: "registered",
-        home_visit_id: visit.id,
-        global_discount_type: e.global_discount_type || null,
-        global_discount_value: Number(e.global_discount_value || 0),
-        registered_by: stampedBy,
-      } as any).select().single();
+      const tubeGroups = await buildSampleTubeGroups(
+        testList.map((t: any) => ({
+          test_id: t.test_id,
+          test_name: t.test_name,
+          item_type: t.item_type || "test",
+        })),
+      );
 
-      if (error) throw error;
-
-      // Log payment transaction (always, even when paid_amount = 0)
-      if (insertedReg) {
-        logPaymentTransaction({
-          registration_id: (insertedReg as any).id,
-          invoice_number: (insertedReg as any).invoice_number,
-          patient_name: (insertedReg as any).patient_name,
-          transaction_type: "registration_payment",
-          direction: "in",
+      await registerPatientAtomic({
+        registration: {
+          patient_name: e.patient_name || "",
+          mobile_number: e.whatsapp_number || "",
+          title: e.title || null,
+          gender: e.gender || null,
+          dob: e.dob || null,
+          email: e.email || null,
+          doctor_name: e.doctor_name || "SELF",
+          umr_number: e.umr_number || null,
+          address: visit.address || "",
+          visit_type: "home_visit",
+          tests: testList,
+          gross_amount: grossAmount,
+          discount_amount: Number(e.discount_amount || 0),
+          net_amount: netAmount,
+          home_visit_charges: homeCharges,
+          final_amount: finalAmount,
+          paid_amount: paidAmount,
+          due_amount: dueAmount,
+          payments,
+          status: "registered",
+          home_visit_id: visit.id,
+          global_discount_type: e.global_discount_type || null,
+          global_discount_value: Number(e.global_discount_value || 0),
+          registered_by: stampedBy,
+        },
+        tubes: tubeGroups,
+        payment: {
           payments,
           total_amount: paidAmount,
           gross_amount: grossAmount,
@@ -190,12 +181,10 @@ const CompletedHomeVisits = () => {
           final_amount: finalAmount,
           paid_amount: paidAmount,
           due_amount: dueAmount,
-        });
-      }
-
-      // Update home_visits status to "Registered"
-      const { error: statusError } = await supabase.from("home_visits").update({ status: "Registered" }).eq("id", visit.id);
-      if (statusError) console.error("Failed to update home visit status:", statusError);
+        },
+        homeVisitId: visit.id,
+        homeVisitPatch: { status: "Registered" },
+      });
     },
     onSuccess: () => {
       toast.success("Home visit registered successfully!");
