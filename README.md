@@ -359,9 +359,12 @@ Tracks full home visit lifecycle
 
 Works reliably on mobile & desktop
 
-**Live app**: https://lims.phpathlabs.com
+**Live app**: https://lims.phpathlabs.com  
+**Cloudflare Pages**: https://phpathlabs-smart-visit.pages.dev
 
 This app is independent. Do not connect it to Lovable (no editor sync, no `lovable.app` host, no Lovable AI gateway, no `lovable-tagger`).
+
+Hosting is Cloudflare Pages project `phpathlabs-smart-visit` with custom domain `lims.phpathlabs.com`. Production branch: `main`. Build: `npm ci && npm run build`. Output: `dist`.
 
 ## Development
 
