@@ -95,9 +95,15 @@ export async function enqueueReportForWhatsAppConsole(opts: {
   const phone = phone10(opts.phone);
   if (phone.length !== 10) return { ok: false, error: "Valid 10-digit mobile required" };
 
-  const safeInvoice = String(opts.invoice_number || "report").replace(/[^a-zA-Z0-9_-]/g, "_");
-  const rawName = opts.filename || `${safeInvoice}-report.pdf`;
-  const filename = String(rawName).replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/_+/g, "_");
+  const safeInvoice = String(opts.invoice_number || "report").replace(/[^a-zA-Z0-9_-]+/g, "_");
+  const rawName = opts.filename || `${opts.invoice_number || "report"} report.pdf`;
+  // Keep spaces for a clean WhatsApp document name; only strip path-illegal chars.
+  const filename =
+    String(rawName)
+      .replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/\.pdf$/i, "") + ".pdf";
   const path = `reports/${safeInvoice}-${Date.now()}.pdf`;
   const { error: upErr } = await supabase.storage
     .from("chat-attachments")
