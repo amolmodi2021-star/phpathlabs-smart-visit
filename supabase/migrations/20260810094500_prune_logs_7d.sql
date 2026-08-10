@@ -21,7 +21,7 @@ BEGIN
     DELETE FROM public.report_link_events WHERE created_at < now() - interval '7 days';
   END IF;
   IF to_regclass('public.report_link_sessions') IS NOT NULL THEN
-    DELETE FROM public.report_link_sessions WHERE created_at < now() - interval '7 days';
+    DELETE FROM public.report_link_sessions WHERE started_at < now() - interval '7 days';
   END IF;
 END;
 $fn$;
