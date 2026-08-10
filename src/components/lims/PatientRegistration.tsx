@@ -586,7 +586,6 @@ const PatientRegistration = () => {
           data={invoiceData}
           open={!!invoiceData}
           onClose={() => { setInvoiceData(null); resetForm({ silent: true }); }}
-          autoQueueWhatsApp
         />
       )}
 
