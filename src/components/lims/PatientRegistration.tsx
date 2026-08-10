@@ -1063,8 +1063,20 @@ const PatientRegistration = () => {
 
           {/* Remarks */}
           <div>
-            <Label>Remarks</Label>
-            <Input value={remarks} onChange={e => setRemarks(e.target.value.toUpperCase())} placeholder="Optional remarks" className="uppercase" />
+            <Label htmlFor="lims-reg-remarks">Remarks</Label>
+            <Input
+              id="lims-reg-remarks"
+              name="lims_registration_remarks"
+              value={remarks}
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
+              data-1p-ignore
+              data-lpignore="true"
+              onChange={e => setRemarks(e.target.value.toUpperCase())}
+              placeholder="Optional remarks"
+              className="uppercase"
+            />
           </div>
 
           {/* STAT Toggle */}
