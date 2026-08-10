@@ -29,10 +29,12 @@ export type LimsModule =
   | "completed_hv"
   | "billing"
   | "due"
-  | "bad_debt";
+  | "bad_debt"
+  | "modified_approval"
+  | "registered_patients";
 
 /** Single source of truth: which React-Query keys belong to each module. */
-const MODULE_KEYS: Record<LimsModule, string[]> = {
+export const MODULE_KEYS: Record<LimsModule, string[]> = {
   results: [
     "results_accepted_regs",
     "results_accepted_count",
@@ -40,6 +42,9 @@ const MODULE_KEYS: Record<LimsModule, string[]> = {
     "patient_results_existing",
     "outsourced_manual_results",
     "results_outsourced_snips",
+    "outsourced_snips",
+    "outsourced_accepted_regs",
+    "outsourced_pending_ids",
   ],
   verification: [
     "verification_regs_v2",
@@ -57,12 +62,14 @@ const MODULE_KEYS: Record<LimsModule, string[]> = {
     "doctor_approval_history",
   ],
   dispatch: [
+    "dispatch_filtered_ids",
     "dispatch_regs",
     "dispatch_regs_count",
     "dispatch_all_results",
     "dispatch_all_snips",
     "dispatch_all_tubes",
     "dispatch_held_reports",
+    "dispatch_failed_wa_outbox",
   ],
   sample_collection: [
     "sample_collection_regs",
@@ -75,9 +82,18 @@ const MODULE_KEYS: Record<LimsModule, string[]> = {
     "sample_tubes_acceptance_accepted",
   ],
   completed_hv: ["completed_home_visits"],
-  billing: ["billing_regs"],
+  billing: ["billing_regs", "pickup_invoices", "eligible_regs"],
   due: ["due_payments_regs"],
   bad_debt: ["bad_debts_regs"],
+  modified_approval: [
+    "modified_approval_reports",
+    "modified_approval_results",
+    "modified_approval_snips",
+  ],
+  registered_patients: [
+    "patient_registrations",
+    "patient_registrations_count",
+  ],
 };
 
 /** Modules that have a SyncingOverlay wired up. */

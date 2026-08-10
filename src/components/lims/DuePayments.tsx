@@ -1,6 +1,7 @@
 import RefreshButton from "@/components/lims/RefreshButton";
 import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLimsPipelineRealtime } from "@/hooks/useLimsPipelineRealtime";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ const PAGE_SIZE = 50;
 
 const DuePayments = () => {
   const queryClient = useQueryClient();
+  useLimsPipelineRealtime("due");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(0);

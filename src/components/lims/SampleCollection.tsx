@@ -16,6 +16,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
+import { propagateRegistrationChange } from "@/lib/limsPropagation";
+import { useLimsPipelineRealtime } from "@/hooks/useLimsPipelineRealtime";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { printBarcodes } from "@/lib/barcodePrint";
 import { patientDisplayName } from "@/lib/patientDisplayName";
@@ -54,10 +56,7 @@ interface GroupedRegistration {
 
 const SampleCollection = () => {
   const qc = useQueryClient();
-  // Single channel for both tables — fewer realtime listeners per client.
-  // Only patient_registrations is in the realtime publication; sample_tubes is not.
-  // Local writes use propagateRegistrationChange to invalidate immediately.
-  // Cost optimization: no ambient realtime; same-user via propagateRegistrationChange, cross-user via refetchOnWindowFocus.
+  useLimsPipelineRealtime("sample_collection");
   const [activeTab, setActiveTab] = useState("pending");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -338,11 +337,8 @@ const SampleCollection = () => {
       if (error) throw error;
       await recalculateRegistrationStatus(regId);
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["sample_tubes_collection"] });
-      qc.invalidateQueries({ queryKey: ["sample_collection_regs"] });
-      qc.invalidateQueries({ queryKey: ["patient_registrations"] });
-      qc.invalidateQueries({ queryKey: ["sample_tubes_acceptance"] });
+    onSuccess: async (_data, { regId }) => {
+      await propagateRegistrationChange(qc, regId, ["sample_collection", "sample_acceptance"], { skipRecalc: true });
       setSelectedTubes({});
       toast.success("Samples marked as collected");
     },
@@ -369,11 +365,8 @@ const SampleCollection = () => {
       if (error) throw error;
       await recalculateRegistrationStatus(regId);
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["sample_tubes_collection"] });
-      qc.invalidateQueries({ queryKey: ["sample_collection_regs"] });
-      qc.invalidateQueries({ queryKey: ["patient_registrations"] });
-      qc.invalidateQueries({ queryKey: ["sample_tubes_acceptance"] });
+    onSuccess: async (_data, { regId }) => {
+      await propagateRegistrationChange(qc, regId, ["sample_collection", "sample_acceptance"], { skipRecalc: true });
       setCancelCollectDialog({ open: false, reg: null, tube: null });
       toast.success("Collection cancelled — tube reverted to pending");
     },

@@ -1,6 +1,7 @@
 import RefreshButton from "@/components/lims/RefreshButton";
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import { useLimsPipelineRealtime } from "@/hooks/useLimsPipelineRealtime";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +15,7 @@ import EditAndRegisterHomeVisitDialog from "@/components/lims/EditAndRegisterHom
 import { getCurrentUserName } from "@/lib/auth";
 import { buildSampleTubeGroups } from "@/lib/sampleTubeGrouping";
 import { registerPatientAtomic } from "@/lib/registerPatientAtomic";
+import { homeVisitHasPatientChoice, umrForHomeVisitRegistration } from "@/lib/findPatientUmr";
 import PaginatedTableFooter from "@/components/ui/PaginatedTableFooter";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 
@@ -21,6 +23,7 @@ const PAGE_SIZE = 50;
 
 const CompletedHomeVisits = () => {
   const qc = useQueryClient();
+  useLimsPipelineRealtime("completed_hv");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(0);
@@ -53,7 +56,7 @@ const CompletedHomeVisits = () => {
       if (debouncedSearch) {
         const s = debouncedSearch.trim();
         query = query.or(
-          `patient_name.ilike.%${s}%,whatsapp_number.ilike.%${s}%,umr_number.ilike.%${s}%`,
+          `patient_name.ilike.%${s}%,whatsapp_number.ilike.%${s}%`,
           { foreignTable: "estimates" }
         );
       }
@@ -132,8 +135,11 @@ const CompletedHomeVisits = () => {
         payments.push({ mode: "Cash", amount: paidAmount });
       }
 
-      // Invoice + new-patient UMR allocated inside register_patient_atomic.
-      // Existing patients keep e.umr_number; blank → server assigns uniquely.
+      // Invoice + new-patient UMR allocated inside register_patient_atomic at save time.
+      if (!homeVisitHasPatientChoice(visit)) {
+        throw new Error("Open Edit and complete patient selection (existing UMR or new patient) first");
+      }
+      const existingUmr = umrForHomeVisitRegistration(visit);
 
       const stampedBy = getCurrentUserName();
       if (!stampedBy) throw new Error("Please sign in again before saving the registration");
@@ -155,7 +161,7 @@ const CompletedHomeVisits = () => {
           dob: e.dob || null,
           email: e.email || null,
           doctor_name: e.doctor_name || "SELF",
-          umr_number: e.umr_number || null,
+          umr_number: existingUmr,
           address: visit.address || "",
           visit_type: "home_visit",
           tests: testList,
@@ -255,7 +261,6 @@ const CompletedHomeVisits = () => {
                     </TableCell>
                     <TableCell>
                       <div className="text-sm font-medium">{patientDisplayName(e)}</div>
-                      {e?.umr_number && <div className="text-xs text-muted-foreground">{e.umr_number}</div>}
                     </TableCell>
                     <TableCell className="text-sm">{e?.whatsapp_number}</TableCell>
                     <TableCell className="text-xs">{v.visit_date ? format(new Date(v.visit_date), "dd-MM-yyyy") : "—"}</TableCell>

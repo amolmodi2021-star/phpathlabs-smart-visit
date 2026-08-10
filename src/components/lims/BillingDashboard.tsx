@@ -1,6 +1,7 @@
 import RefreshButton from "@/components/lims/RefreshButton";
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLimsPipelineRealtime } from "@/hooks/useLimsPipelineRealtime";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +29,7 @@ import PickupInvoicePDF from "./PickupInvoicePDF";
 
 const BillingDashboard = () => {
   const qc = useQueryClient();
+  useLimsPipelineRealtime("billing");
   const [statusFilter, setStatusFilter] = useState("all");
   const [pickupFilter, setPickupFilter] = useState("all");
   const [from, setFrom] = useState("");

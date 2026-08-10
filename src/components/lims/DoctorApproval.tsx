@@ -8,6 +8,7 @@ import TimeResultInput from "./TimeResultInput";
 import { parseTimeResultToSeconds, isCanonicalTimeValue, formatTimeResult } from "@/lib/timeRange";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import { useLimsPipelineRealtime } from "@/hooks/useLimsPipelineRealtime";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -73,6 +74,7 @@ const DA_PAGE_SIZE = 50;
 
 const DoctorApproval = () => {
   const qc = useQueryClient();
+  useLimsPipelineRealtime("doctor_approval");
   const { data: masterMachines = [] } = useMasterLookup("machine_name");
   const [activeSection, setActiveSection] = useState<"approval" | "modified">("approval");
   const [mode, setMode] = useState<"patient" | "machine">("patient");

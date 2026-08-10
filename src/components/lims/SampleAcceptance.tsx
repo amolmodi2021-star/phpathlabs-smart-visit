@@ -16,6 +16,8 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import { formatAgeGender } from "@/lib/ageGender";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
+import { propagateRegistrationChange } from "@/lib/limsPropagation";
+import { useLimsPipelineRealtime } from "@/hooks/useLimsPipelineRealtime";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { printBarcodes } from "@/lib/barcodePrint";
 import { patientDisplayName } from "@/lib/patientDisplayName";
@@ -53,6 +55,7 @@ const ACCEPTED_PAGE_SIZE = 50;
 
 const SampleAcceptance = () => {
   const qc = useQueryClient();
+  useLimsPipelineRealtime("sample_acceptance");
   const [activeTab, setActiveTab] = useState("pending");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -328,14 +331,10 @@ const SampleAcceptance = () => {
 
       await recalculateRegistrationStatus(reg.id);
     },
-    onSuccess: (_, { tubeIds }) => {
+    onSuccess: async (_data, { reg, tubeIds }) => {
       toast.success(`${tubeIds.length} sample(s) accepted & LIMS orders generated`);
       setSelectedTubes(new Set());
-      qc.invalidateQueries({ queryKey: ["sample_tubes_acceptance"] });
-      qc.invalidateQueries({ queryKey: ["sample_tubes_acceptance_pending"] });
-      qc.invalidateQueries({ queryKey: ["sample_tubes_acceptance_accepted"] });
-      qc.invalidateQueries({ queryKey: ["sample_acceptance_regs"] });
-      qc.invalidateQueries({ queryKey: ["patient_registrations"] });
+      await propagateRegistrationChange(qc, reg.id, ["sample_acceptance", "results", "sample_collection"], { skipRecalc: true });
     },
     onError: (err: any) => toast.error(err.message || "Failed to accept"),
   });
@@ -361,12 +360,10 @@ const SampleAcceptance = () => {
         remarks: `Repeat Collection: ${remarks}`,
       });
     },
-    onSuccess: () => {
+    onSuccess: async (_data, { reg }) => {
       toast.success("Sample sent back for repeat collection");
       setSelectedTubes(new Set());
-      qc.invalidateQueries({ queryKey: ["sample_tubes_acceptance_pending"] });
-      qc.invalidateQueries({ queryKey: ["sample_tubes_collection"] });
-      qc.invalidateQueries({ queryKey: ["patient_registrations"] });
+      await propagateRegistrationChange(qc, reg.id, ["sample_acceptance", "sample_collection", "results"], { skipRecalc: true });
       setRejectDialog({ open: false, reg: null, tubeIds: [] });
       setRejectRemarks("");
     },

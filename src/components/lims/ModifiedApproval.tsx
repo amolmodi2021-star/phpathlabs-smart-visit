@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLimsPipelineRealtime } from "@/hooks/useLimsPipelineRealtime";
+import { MODULE_KEYS } from "@/lib/limsPropagation";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -25,6 +27,7 @@ const PAGE_SIZE = 50;
 
 const ModifiedApproval = () => {
   const qc = useQueryClient();
+  useLimsPipelineRealtime("modified_approval");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(0);
@@ -307,8 +310,11 @@ const ModifiedApproval = () => {
     try {
       await supabase.from("approved_reports").update({ is_held: !currentHeld } as any).eq("id", reportId);
       toast.success(currentHeld ? "Report released for dispatch" : "Report held from dispatch");
-      qc.invalidateQueries({ queryKey: ["modified_approval_reports"] });
-      qc.invalidateQueries({ queryKey: ["dispatch_"] });
+      await Promise.all(
+        [...MODULE_KEYS.modified_approval, ...MODULE_KEYS.dispatch].map((k) =>
+          qc.invalidateQueries({ queryKey: [k], refetchType: "active" }),
+        ),
+      );
     } catch (err: any) { toast.error(err.message || "Failed"); }
     finally { setActionKey(null); }
   };
@@ -426,12 +432,11 @@ const ModifiedApproval = () => {
         approval_date: new Date().toISOString(),
       } as any).eq("id", report.id);
 
-      await Promise.all([
-        qc.invalidateQueries({ queryKey: ["modified_approval_reports"] }),
-        qc.invalidateQueries({ queryKey: ["modified_approval_results"] }),
-        qc.invalidateQueries({ queryKey: ["modified_approval_snips"] }),
-        qc.invalidateQueries({ queryKey: ["dispatch_"] }),
-      ]);
+      await Promise.all(
+        [...MODULE_KEYS.modified_approval, ...MODULE_KEYS.dispatch].map((k) =>
+          qc.invalidateQueries({ queryKey: [k], refetchType: "active" }),
+        ),
+      );
 
       setSavedOverrides(prev => ({ ...prev, ...nextSavedOverrides }));
       toast.success(`Changes saved for ${patientDisplayName(report)}`);

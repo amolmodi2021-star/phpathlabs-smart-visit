@@ -20,6 +20,8 @@ type TableName =
   | "patient_results"
   | "patient_registrations"
   | "sample_tubes"
+  | "approved_reports"
+  | "whatsapp_console_outbox"
   | "lims_test_orders"
   | "lims_interface_logs"
   | "lims_unmapped_results"
@@ -31,16 +33,12 @@ type TableName =
  *
  * - One channel per hook call, even when subscribing to multiple tables.
  * - Coalesces bursts into a single invalidation per key after `debounceMs`.
- * - Self-echo suppression: if the affected row was just touched locally via
- *   `propagateRegistrationChange`, the realtime echo is dropped — the actor
- *   has already refetched.
- * - Per-key dedupe (750 ms): the same key is never invalidated twice in
+ * - Self-echo suppression: if the affected row / registration was just touched
+ *   locally via `propagateRegistrationChange`, the realtime echo is dropped.
+ * - Per-key dedupe (2 s): the same key is never invalidated twice in
  *   quick succession by propagation + realtime.
  * - Hidden-tab gating: when `document.hidden`, only mark stale (no refetch).
- *   The visible tab will refetch on focus via React Query's default behaviour.
- * - Reconnect-only flush: the initial SUBSCRIBE no longer triggers a refetch
- *   (massive cost saving on tab switches). A reconnect still flushes once so
- *   no tab can be left on stale data after a WebSocket drop.
+ * - Reconnect-only flush: the initial SUBSCRIBE no longer triggers a refetch.
  */
 export function useRealtimeSync(
   tables: TableName | TableName[],
@@ -63,10 +61,10 @@ export function useRealtimeSync(
     const tableList = Array.isArray(tables) ? tables : [tables];
     const hasSubscribedOnce = { current: false };
 
-    const flush = (payloadId?: string) => {
-      // Skip echoes for rows we just propagated locally — the actor's tab
-      // already refetched via propagateRegistrationChange.
+    const flush = (payloadId?: string, registrationId?: string) => {
+      // Skip echoes for rows / regs we just propagated locally.
       if (payloadId && wasRecentlyPropagated(payloadId)) return;
+      if (registrationId && wasRecentlyPropagated(registrationId)) return;
 
       const hidden = typeof document !== "undefined" && document.hidden;
 
@@ -74,7 +72,6 @@ export function useRealtimeSync(
         if (wasRecentlyInvalidated(key)) return;
         queryClient.invalidateQueries({
           queryKey: [key],
-          // Hidden tabs: invalidate only (cheap). Visible tabs: refetch active.
           refetchType: hidden ? "none" : "active",
         });
         markInvalidated(key);
@@ -89,11 +86,16 @@ export function useRealtimeSync(
       channel.on(
         "postgres_changes" as never,
         config as never,
-        (payload: { new?: { id?: string }; old?: { id?: string } }) => {
+        (payload: {
+          new?: { id?: string; registration_id?: string };
+          old?: { id?: string; registration_id?: string };
+        }) => {
           const id = payload?.new?.id ?? payload?.old?.id;
+          const registrationId =
+            payload?.new?.registration_id ?? payload?.old?.registration_id;
           if (timerRef.current) clearTimeout(timerRef.current);
           timerRef.current = setTimeout(() => {
-            flush(id);
+            flush(id, registrationId);
             timerRef.current = null;
           }, debounceMs);
         },
@@ -102,8 +104,6 @@ export function useRealtimeSync(
 
     channel.subscribe((status) => {
       if (status !== "SUBSCRIBED") return;
-      // First subscribe = initial mount; do NOT refetch (cache is fresh enough,
-      // React Query's own staleness rules will handle it). Reconnect only.
       if (hasSubscribedOnce.current) flush();
       hasSubscribedOnce.current = true;
     });
