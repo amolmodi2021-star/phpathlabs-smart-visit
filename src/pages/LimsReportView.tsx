@@ -890,6 +890,10 @@ const LimsReportView = () => {
         }
         const invoiceNum = report?.invoice_number || registration?.invoice_number || "";
         const patientName = patientDisplayName(report || registration);
+        const pendingRaw = (searchParams.get("pendingReports") || "").trim();
+        const pendingLine = pendingRaw
+          ? `Pending Reports : ${pendingRaw}`
+          : "No Reports Pending";
         let portalLine = "";
         try {
           if (registrationId) {
@@ -903,7 +907,8 @@ const LimsReportView = () => {
           `*PH PathLabs — Lab Report*\n` +
           `Invoice No: ${invoiceNum}\n` +
           `Patient: ${patientName}\n` +
-          `Your lab reports are ready.` +
+          `Your lab reports are ready.\n` +
+          `${pendingLine}` +
           portalLine +
           `\n\nThank you for choosing PH PathLabs.\nLabLine: 6356 55 66 99`;
         const res = await enqueueReportForWhatsAppConsole({

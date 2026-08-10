@@ -2,6 +2,8 @@
 export function queueApprovedReportWhatsApp(opts: {
   registrationId: string;
   testIds: string[];
+  /** Test names still not approved/dispatched ? shown in caption. */
+  pendingReportNames?: string[];
   timeoutMs?: number;
 }): Promise<{ ok: boolean; error?: string }> {
   const tests = opts.testIds.filter(Boolean).join(",");
@@ -10,7 +12,10 @@ export function queueApprovedReportWhatsApp(opts: {
   }
 
   return new Promise((resolve) => {
-    const url = `/lims/report/${opts.registrationId}?tests=${encodeURIComponent(tests)}&queueWa=1`;
+    const pending = (opts.pendingReportNames || []).map((n) => String(n || "").trim()).filter(Boolean);
+    const pendingQ = `&pendingReports=${encodeURIComponent(pending.join(", "))}`;
+    const url =
+      `/lims/report/${opts.registrationId}?tests=${encodeURIComponent(tests)}&queueWa=1${pendingQ}`;
     const win = window.open(url, "lims-report-wa-queue", "width=960,height=720");
     if (!win) {
       resolve({

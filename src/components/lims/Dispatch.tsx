@@ -347,6 +347,9 @@ const Dispatch = () => {
       const queued = await queueApprovedReportWhatsApp({
         registrationId: reg.id,
         testIds,
+        pendingReportNames: entry.tests
+          .filter(t => t.status !== "approved" && t.status !== "dispatched")
+          .map(t => t.testName),
       });
       if (!queued.ok) {
         throw new Error(queued.error || "Failed to queue report WhatsApp");
@@ -403,6 +406,9 @@ const Dispatch = () => {
       const queued = await queueApprovedReportWhatsApp({
         registrationId: reg.id,
         testIds,
+        pendingReportNames: entry.tests
+          .filter(t => t.status !== "approved" && t.status !== "dispatched")
+          .map(t => t.testName),
       });
       if (!queued.ok) {
         throw new Error(queued.error || "Failed to queue report WhatsApp");
