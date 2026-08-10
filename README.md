@@ -368,7 +368,7 @@ Hosting is Cloudflare Pages project `phpathlabs-smart-visit` with custom domain 
 
 Do not attach this domain to Lovable. Deploys come from this GitHub repo only.
 
-To publish: Cloudflare Dashboard → Pages → `phpathlabs-smart-visit` → connect GitHub repo `phpathlabs-smart-visit`, production branch `main`, build `npm run build`, output `dist`. Custom domain must stay `lims.phpathlabs.com`. Or set GitHub Actions secrets `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`.
+Cloudflare Pages (already connected): Settings → Builds → Framework Vite, build command `npm run build`, output directory `dist`, Node `22`. Do not use a wrangler `pages_build_output_dir` without a build — `dist` is not in git.
 
 ## Development
 
