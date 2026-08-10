@@ -2,7 +2,10 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.97.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  // x-ph-access-token: staff JWT from LIMS browser client (Pull from LIMS / reprocess)
+  // x-lims-interface-secret: optional middleware ingest auth
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-ph-access-token, x-lims-interface-secret",
 };
 
 // Strip any trailing unit token the interface concatenated into the value field.
@@ -78,11 +81,22 @@ function resolveJwtSecret(): string {
   return secretRaw;
 }
 
-async function verifyStaffJwt(req: Request): Promise<boolean> {
+function extractStaffToken(req: Request): string | null {
+  // Preferred: custom staff JWT header (PostgREST Authorization stays as anon key).
+  const ph = req.headers.get("x-ph-access-token")?.trim();
+  if (ph && ph.split(".").length === 3) return ph;
   const auth = req.headers.get("Authorization") || "";
   const m = auth.match(/^Bearer\s+(.+)$/i);
-  if (!m) return false;
-  const token = m[1].trim();
+  if (!m) return null;
+  const bearer = m[1].trim();
+  // Ignore anon/publishable API keys — only treat JWT-shaped values as staff tokens.
+  if (bearer.split(".").length === 3) return bearer;
+  return null;
+}
+
+async function verifyStaffJwt(req: Request): Promise<boolean> {
+  const token = extractStaffToken(req);
+  if (!token) return false;
   const parts = token.split(".");
   if (parts.length !== 3) return false;
   const secretRaw = resolveJwtSecret();
