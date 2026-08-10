@@ -10,7 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { Search, X, Save, Printer, Send, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
+import { Search, X, Save, Printer, Send, ChevronDown, ChevronUp, AlertTriangle, RotateCcw } from "lucide-react";
 import { getTests, TestItem } from "@/lib/tests";
 import { getCurrentUserName } from "@/lib/auth";
 import { getAllSelectableTests } from "@/lib/allSelectableTests";
@@ -524,15 +524,20 @@ const PatientRegistration = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const resetForm = () => {
-    setMobileNumber(""); setPatientName(""); setTitle(""); setGender("");
+  const resetForm = (opts?: { silent?: boolean }) => {
+    setMobileNumber(""); setPatientMatches([]); setShowDropdown(false);
+    setPatientName(""); setTitle(""); setGender("");
     setDob(""); setEmail(""); setShowEmail(false); setDoctorName("SELF"); setUmrNumber("");
-    setAddress(""); setChannelId(""); setVisitType("lab_visit"); setPickupPointId("");
-    setSelectedTests([]); setGlobalDiscountValue(0); setHomeVisitCharges(0);
+    setAddress(""); setChannelId(""); setReportLanguage("English");
+    setVisitType("lab_visit"); setPickupPointId("");
+    setSelectedTests([]); setTestSearch(""); setTestHighlightIndex(-1);
+    setGlobalDiscountType("percent"); setGlobalDiscountValue(0); setHomeVisitCharges(0);
     setAllowIneligibleDiscount(false);
     setSelectedModes(new Set()); setModeAmounts({}); setInvoiceData(null); setTriedSave(false);
-    setManualAge(""); setRemarks(""); setIsStat(false);
+    setManualAge(""); setRemarks(""); setIsStat(false); setShowHvcConfirm(false);
     setPatientLocked(false); setShowPatientPicker(false); setPickerMobile("");
+    setDuplicateRegInfo(null);
+    if (!opts?.silent) toast.success("Form cleared");
   };
 
   const handlePatientPicked = (p: PatientPick) => {
@@ -565,7 +570,7 @@ const PatientRegistration = () => {
         <InvoicePreview
           data={invoiceData}
           open={!!invoiceData}
-          onClose={() => { setInvoiceData(null); resetForm(); }}
+          onClose={() => { setInvoiceData(null); resetForm({ silent: true }); }}
           autoQueueWhatsApp
         />
       )}
@@ -591,7 +596,7 @@ const PatientRegistration = () => {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => { setDuplicateRegInfo(null); resetForm(); }}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel onClick={() => { setDuplicateRegInfo(null); resetForm({ silent: true }); }}>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={() => setDuplicateRegInfo(null)}>Continue</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1059,16 +1064,27 @@ const PatientRegistration = () => {
             <Switch id="stat-toggle" checked={isStat} onCheckedChange={setIsStat} className="data-[state=checked]:bg-destructive" />
           </div>
 
-          <Button className="w-full" onClick={() => {
-            setTriedSave(true);
-            if (visitType === "home_visit" && (!homeVisitCharges || homeVisitCharges === 0)) {
-              setShowHvcConfirm(true);
-              return;
-            }
-            saveMutation.mutate();
-          }} disabled={saveMutation.isPending || selectedTests.length === 0}>
-            <Save className="h-4 w-4 mr-2" />Save & Generate Invoice
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="shrink-0"
+              onClick={resetForm}
+              disabled={saveMutation.isPending}
+            >
+              <RotateCcw className="h-4 w-4 mr-2" />Reset Form
+            </Button>
+            <Button className="flex-1" onClick={() => {
+              setTriedSave(true);
+              if (visitType === "home_visit" && (!homeVisitCharges || homeVisitCharges === 0)) {
+                setShowHvcConfirm(true);
+                return;
+              }
+              saveMutation.mutate();
+            }} disabled={saveMutation.isPending || selectedTests.length === 0}>
+              <Save className="h-4 w-4 mr-2" />Save & Generate Invoice
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
