@@ -3,6 +3,13 @@ description: PHPL cloud Supabase test project migration context
 alwaysApply: true
 ---
 
+# Independent LIMS (no Lovable)
+
+- This app is **PH PathLabs LIMS**, hosted at `https://lims.phpathlabs.com`.
+- Do **not** add Lovable: no `lovable-tagger`, no `lovable.dev` / `lovable.app` / `lovableproject.com` URLs, no `ai.gateway.lovable.dev`, no `LOVABLE_API_KEY`, no `.lovable/` project sync.
+- Do not send users to the Lovable editor. Deploy from this GitHub repo + Supabase cloud only.
+- Prescription scan uses `GEMINI_API_KEY` or `OPENAI_API_KEY` (Supabase Edge secrets), never Lovable AI.
+
 # Cloud Supabase (test) — PHPL
 
 - Organization: **PH PathLabs Database** (FREE)

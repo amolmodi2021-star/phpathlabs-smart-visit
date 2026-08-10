@@ -307,7 +307,7 @@ Footer Text
 
 Changes should reflect instantly in WhatsApp messages.
 
-Database Requirements (Lovable Cloud)
+Database Requirements (Supabase)
 
 Tables
 
@@ -359,25 +359,17 @@ Tracks full home visit lifecycle
 
 Works reliably on mobile & desktop
 
-This project was built with [Lovable](https://lovable.dev).
+**Live app**: https://lims.phpathlabs.com
 
-**Live app**: https://phpathlabs-smart-visit.lovable.app
-
-## Build with Lovable
-
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/d5e0f5a9-453a-413d-8f4e-55d9c12b9e6c).
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
+This app is independent. Do not connect it to Lovable (no editor sync, no `lovable.app` host, no Lovable AI gateway, no `lovable-tagger`).
 
 ## Development
 
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
-
 ```sh
-git clone <this-repository-url>
-cd <repository-name>
+git clone https://github.com/amolmodi2021-star/phpathlabs-smart-visit.git
+cd phpathlabs-smart-visit
 npm i
 npm run dev
 ```
+
+Production frontend: push to `main` (GitHub Action builds `dist`). Point `lims.phpathlabs.com` at that deploy — not at any Lovable URL.

@@ -226,8 +226,7 @@ export async function generateAndUploadCardEx(
 
     // Downscale to max 800px width + JPEG @ 0.72; throws "toblob_null" if the browser
     // returns null (memory pressure under concurrency) so the retry loop catches it.
-    // Upload to Cloudinary (free tier, 25 GB/mo) instead of Lovable Cloud Storage —
-    // eliminates ~$4–5/day egress cost since WhatsApp fetches the URL directly.
+    // Upload to Cloudinary so WhatsApp fetches the URL directly.
     const blobFn = async () => {
       try {
         return await exportCanvasAsCompressedJpeg(canvas);

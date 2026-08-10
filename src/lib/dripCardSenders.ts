@@ -7,8 +7,7 @@
  * uploads the result to Cloudinary. Returns the public secure_url, or null
  * on failure (the bulk sender surfaces this as "Card generation failed").
  *
- * Cost note: uses Cloudinary's free tier (25 GB/mo) instead of Lovable Cloud
- * Storage so WhatsApp's media-fetch egress doesn't bill us.
+ * Cost note: uses Cloudinary so WhatsApp media-fetch does not hit app storage egress.
  */
 import { exportCanvasAsCompressedJpeg } from "@/lib/cardRenderer";
 import { uploadJpegToCloudinaryWithRetry } from "@/lib/cardStorageCloudinary";

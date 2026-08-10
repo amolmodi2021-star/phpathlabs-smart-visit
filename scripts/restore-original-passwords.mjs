@@ -33,4 +33,4 @@ console.log(out);
 
 const ph = users.find((u) => u.username === "PHPATHLABS");
 console.log("PHPATHLABS original hash restored:", ph?.password_hash?.slice(0, 50) + "...");
-console.log("Use the same password you used on Lovable.");
+console.log("Use the same password as the live LIMS login.");

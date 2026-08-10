@@ -5,10 +5,9 @@
  * from the `cloudinary_accounts` table (the row where is_active = true).
  * Admins manage accounts via WhatsApp Settings → Cloudinary Accounts.
  *
- * Why Cloudinary instead of Lovable Cloud Storage:
- *  - Lovable Cloud egress was costing $4–5/day for ~1000 cards (each WhatsApp
- *    fetch counts as paid egress). Cloudinary's free tier (25 GB/month bandwidth,
- *    25 GB storage) easily covers our send volume at $0.
+ * Why Cloudinary:
+ *  - WhatsApp fetches the image URL directly; Cloudinary's free tier covers
+ *    typical send volume without extra app-hosting egress.
  *  - Cloudinary auto-assigns unguessable public IDs.
  *  - Browser-side unsigned upload means no edge function in the hot path.
  */

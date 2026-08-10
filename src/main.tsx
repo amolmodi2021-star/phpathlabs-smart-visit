@@ -12,7 +12,15 @@ document.addEventListener("wheel", (e) => {
 
 createRoot(document.getElementById("root")!).render(<App />);
 
-// --- PWA: unregister service workers in iframe / preview contexts ---
+// Drop any third-party "Edit with …" badge if an old host injects one.
+const stripForeignBadges = () => {
+  document.querySelectorAll(
+    'a[href*="lovable.dev"], a[href*="lovable.app"], a[href*="lovableproject.com"], iframe[src*="lovable"], [data-lovable], #lovable-badge',
+  ).forEach((el) => el.remove());
+};
+stripForeignBadges();
+new MutationObserver(stripForeignBadges).observe(document.documentElement, { childList: true, subtree: true });
+
 const isInIframe = (() => {
   try {
     return window.self !== window.top;
@@ -21,11 +29,7 @@ const isInIframe = (() => {
   }
 })();
 
-const isPreviewHost =
-  window.location.hostname.includes("id-preview--") ||
-  window.location.hostname.includes("lovableproject.com");
-
-if (isPreviewHost || isInIframe) {
+if (isInIframe) {
   navigator.serviceWorker?.getRegistrations().then((regs) => {
     regs.forEach((r) => r.unregister());
   });

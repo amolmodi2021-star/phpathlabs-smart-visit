@@ -36,7 +36,7 @@ import ReportAnalytics from "./pages/ReportAnalytics";
 import PatientReportPortal from "./pages/PatientReportPortal";
 import NotFound from "./pages/NotFound";
 
-// React Query global defaults — tuned for low Lovable Cloud egress.
+// React Query global defaults — keep egress and refetch storms low.
 // Most lab data (tests, profiles, templates) tolerates a 1-min stale window;
 // users get an explicit Refresh button on counters that need fresher data.
 // `refetchOnWindowFocus` and `refetchOnReconnect` were causing storm-refetches
