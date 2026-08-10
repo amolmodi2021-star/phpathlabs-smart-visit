@@ -21,16 +21,10 @@ const stripForeignBadges = () => {
 stripForeignBadges();
 new MutationObserver(stripForeignBadges).observe(document.documentElement, { childList: true, subtree: true });
 
-const isInIframe = (() => {
-  try {
-    return window.self !== window.top;
-  } catch {
-    return true;
-  }
-})();
-
-if (isInIframe) {
-  navigator.serviceWorker?.getRegistrations().then((regs) => {
-    regs.forEach((r) => r.unregister());
-  });
+// Drop leftover PWA workers from older hosts so they cannot serve HTML as JS.
+navigator.serviceWorker?.getRegistrations().then((regs) => {
+  regs.forEach((r) => r.unregister());
+});
+if ("caches" in window) {
+  caches.keys().then((keys) => keys.forEach((k) => caches.delete(k)));
 }
