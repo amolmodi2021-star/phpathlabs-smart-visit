@@ -6,8 +6,7 @@ import SyncingOverlay from "./SyncingOverlay";
 import { formatAgeGender } from "@/lib/ageGender";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -21,7 +20,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { Calendar as DatePickerCalendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Search, Loader2, CheckCircle2, Send, Eye, Truck, Circle, Phone, Calendar as CalendarIcon, FileText, User, Clock, ChevronRight, ArrowLeft, MessageSquare } from "lucide-react";
+import { Search, Loader2, CheckCircle2, Send, Eye, Truck, Circle, Phone, Calendar as CalendarIcon, FileText, User, Clock, ChevronRight, ArrowLeft, MessageSquare, Download } from "lucide-react";
 import { toast } from "sonner";
 import { format, startOfDay, endOfDay, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -31,7 +30,8 @@ import { fetchDispatchCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPen
 import { shortIdsKey } from "@/lib/queryKeys";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import NewBadge from "./NewBadge";
-import { queueApprovedReportWhatsApp } from "@/lib/dispatchReportWhatsApp";
+import { openReportForManualWhatsApp, queueApprovedReportWhatsApp } from "@/lib/dispatchReportWhatsApp";
+import { dismissFailedWhatsAppConsoleJobs } from "@/lib/whatsappConsoleBridge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -77,7 +77,6 @@ interface DispatchEntry {
 const Dispatch = () => {
   const isMobile = useIsMobile();
   const qc = useQueryClient();
-  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState<Date>(startOfDay(subDays(new Date(), 7)));
   const [dateTo, setDateTo] = useState<Date>(endOfDay(new Date()));
@@ -92,7 +91,7 @@ const Dispatch = () => {
   const [dueBlockEntry, setDueBlockEntry] = useState<DispatchEntry | null>(null);
   useEffect(() => { const t = setTimeout(() => { setDebouncedSearch(search); setDispatchPage(0); }, 400); return () => clearTimeout(t); }, [search]);
 
-  const { data: filteredDispatchIds = [] as string[] } = useQuery({
+  const { data: filteredDispatchIds = [] as string[], isLoading: loadingIds } = useQuery({
     queryKey: ["dispatch_filtered_ids", debouncedSearch, dateFrom.toISOString(), dateTo.toISOString()],
     queryFn: async (): Promise<string[]> => {
       const candidates = await fetchDispatchCandidateIds();
@@ -101,15 +100,18 @@ const Dispatch = () => {
         dateToIso: dateTo.toISOString(),
       });
     },
+    placeholderData: keepPreviousData,
+    staleTime: 15_000,
   });
   const dispatchCount = filteredDispatchIds.length;
   const dispatchPageIds = filteredDispatchIds.slice(
     dispatchPage * DISPATCH_PAGE_SIZE,
     dispatchPage * DISPATCH_PAGE_SIZE + DISPATCH_PAGE_SIZE,
   );
+  const pageKey = shortIdsKey(dispatchPageIds, "dp");
 
   const { data: registrations = [], isLoading: loadingRegs } = useQuery({
-    queryKey: ["dispatch_regs", shortIdsKey(dispatchPageIds, "dp"), dispatchPage],
+    queryKey: ["dispatch_regs", pageKey, dispatchPage],
     enabled: dispatchPageIds.length > 0,
     queryFn: async () => {
       const { data } = await supabase.from("patient_registrations")
@@ -118,6 +120,8 @@ const Dispatch = () => {
       const order = new Map(dispatchPageIds.map((id, i) => [id, i]));
       return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     },
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
   });
 
   const dispatchTotalPages = Math.ceil(dispatchCount / DISPATCH_PAGE_SIZE);
@@ -131,14 +135,16 @@ const Dispatch = () => {
     queryFn: async () => {
       return await fetchAllByIds<any>("patient_results", "*", "registration_id", regIds);
     },
+    placeholderData: keepPreviousData,
   });
 
-  const { data: allTubes = [] } = useQuery({
+  const { data: allTubes = [], isFetched: tubesFetched } = useQuery({
     queryKey: ["dispatch_all_tubes", regKey],
     enabled: regIds.length > 0,
     queryFn: async () => {
       return await fetchAllByIds<any>("sample_tubes", "id, registration_id, test_ids, collected_at, accepted_at, status, collected_by, accepted_by", "registration_id", regIds);
     },
+    placeholderData: keepPreviousData,
   });
 
   const { data: allSnips = [] } = useQuery({
@@ -147,6 +153,7 @@ const Dispatch = () => {
     queryFn: async () => {
       return await fetchAllByIds<any>("outsourced_test_snips", "id, registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, result_mode, snip_image_urls, updated_at, sent_at", "registration_id", regIds);
     },
+    placeholderData: keepPreviousData,
   });
 
   const { data: heldRegIds = [] } = useQuery({
@@ -156,7 +163,64 @@ const Dispatch = () => {
       const { data } = await supabase.from("approved_reports").select("registration_id").eq("is_held", true).in("registration_id", regIds);
       return (data || []).map((r: any) => r.registration_id) as string[];
     },
+    placeholderData: keepPreviousData,
   });
+
+  // Tubes are required to expand PRL/HLT into leaf tests — without them the list
+  // filters to empty (same remount flash as Results/Verification after View Report).
+  const tubesReady = regIds.length === 0 || tubesFetched;
+  const listLoading = loadingIds || loadingRegs || (registrations.length > 0 && !tubesReady);
+
+  const invoiceNumbers = useMemo(
+    () => registrations.map((r: any) => String(r.invoice_number || "").trim()).filter(Boolean),
+    [registrations],
+  );
+
+  const { data: failedWaJobs = [] } = useQuery({
+    queryKey: ["dispatch_failed_wa_outbox", regKey],
+    enabled: regIds.length > 0,
+    refetchInterval: 15_000,
+    queryFn: async () => {
+      const cols = "id, kind, registration_id, invoice_number, phone, last_error, attempts, status";
+      const [byReg, byInv] = await Promise.all([
+        supabase
+          .from("whatsapp_console_outbox" as any)
+          .select(cols)
+          .eq("status", "failed")
+          .in("registration_id", regIds),
+        invoiceNumbers.length
+          ? supabase
+              .from("whatsapp_console_outbox" as any)
+              .select(cols)
+              .eq("status", "failed")
+              .in("invoice_number", invoiceNumbers)
+          : Promise.resolve({ data: [] as any[] }),
+      ]);
+      const map = new Map<string, any>();
+      for (const row of [...((byReg.data as any[]) || []), ...((byInv.data as any[]) || [])]) {
+        if (row?.id) map.set(row.id, row);
+      }
+      return [...map.values()];
+    },
+  });
+
+  const failedWaByRegId = useMemo(() => {
+    const byReg = new Map<string, any[]>();
+    const invToReg = new Map<string, string>();
+    for (const reg of registrations as any[]) {
+      if (reg?.invoice_number) invToReg.set(String(reg.invoice_number), reg.id);
+    }
+    for (const job of failedWaJobs as any[]) {
+      const regId =
+        job.registration_id ||
+        (job.invoice_number ? invToReg.get(String(job.invoice_number)) : null);
+      if (!regId) continue;
+      const list = byReg.get(regId) || [];
+      list.push(job);
+      byReg.set(regId, list);
+    }
+    return byReg;
+  }, [failedWaJobs, registrations]);
 
   const { data: testsMap = {} } = useQuery({
     queryKey: ["results_tests_map"],
@@ -485,8 +549,48 @@ const Dispatch = () => {
     if (!reportSelectEntry || selectedTestIds.size === 0) return;
     const regId = reportSelectEntry.registration.id;
     const queryParam = Array.from(selectedTestIds).join(",");
-    navigate(`/lims/report/${regId}?tests=${queryParam}`);
+    // Open in a new tab so Dispatch stays mounted — navigating away + Back remounts
+    // the list before tubes reload and briefly drops every patient.
+    const win = window.open(
+      `/lims/report/${regId}?tests=${encodeURIComponent(queryParam)}`,
+      "_blank",
+      "noopener,noreferrer",
+    );
+    if (!win) {
+      toast.error("Popup blocked — allow popups to view the report");
+      return;
+    }
     setReportSelectEntry(null);
+  };
+
+  const downloadAndSendManually = async (entry: DispatchEntry) => {
+    const failed = failedWaByRegId.get(entry.registration.id) || [];
+    const reportable = entry.tests.filter((t) => t.status === "approved" || t.status === "dispatched");
+    const testIds = reportable.map((t) => t.testId);
+    if (testIds.length === 0) {
+      toast.error("No report PDF available to download");
+      return;
+    }
+    setActionKey(`${entry.registration.id}||manualWa`);
+    try {
+      const opened = openReportForManualWhatsApp({
+        registrationId: entry.registration.id,
+        testIds,
+        pendingReportNames: entry.tests
+          .filter((t) => t.status !== "approved" && t.status !== "dispatched")
+          .map((t) => t.testName),
+      });
+      if (!opened.ok) throw new Error(opened.error || "Could not open report download");
+      if (failed.length) {
+        await dismissFailedWhatsAppConsoleJobs(failed.map((j: any) => j.id));
+        await qc.invalidateQueries({ queryKey: ["dispatch_failed_wa_outbox"] });
+      }
+      toast.success("Downloading PDF");
+    } catch (err: any) {
+      toast.error(err.message || "Download failed");
+    } finally {
+      setActionKey(null);
+    }
   };
 
   const formatDate = (dateStr: string | null) => {
@@ -535,7 +639,7 @@ const Dispatch = () => {
         </Popover>
         <Button variant="ghost" size="sm" className="text-xs" onClick={() => { setDateFrom(startOfDay(new Date())); setDateTo(endOfDay(new Date())); }}>Today</Button>
         <RefreshButton
-          queryKeys={["dispatch_regs_count", "dispatch_regs", "dispatch_all_results", "dispatch_all_tubes", "dispatch_all_snips", "dispatch_held_reports", "results_tests_map", "dispatch_credit_pickup_points"]}
+          queryKeys={["dispatch_regs_count", "dispatch_regs", "dispatch_all_results", "dispatch_all_tubes", "dispatch_all_snips", "dispatch_held_reports", "results_tests_map", "dispatch_credit_pickup_points", "dispatch_failed_wa_outbox"]}
           className="ml-auto"
         />
         <span className="text-xs text-muted-foreground whitespace-nowrap">{dispatchCount} records{dispatchTotalPages > 1 ? ` (pg ${dispatchPage + 1}/${dispatchTotalPages})` : ""}</span>
@@ -553,7 +657,7 @@ const Dispatch = () => {
                 </div>
               </div>
               <ScrollArea className="flex-1">
-                {loadingRegs ? (
+                {listLoading ? (
                   <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
                 ) : sortedDispatchEntries.length === 0 ? (
                   <div className="text-center py-12 text-muted-foreground px-3">
@@ -595,6 +699,11 @@ const Dispatch = () => {
                             {reg.due_amount > 0 && (
                               <Badge variant={isPaymentBlocked(reg) ? "destructive" : "secondary"} className="mt-1 text-[10px] px-1.5 py-0">
                                 DUE ₹{reg.due_amount}{!isPaymentBlocked(reg) ? " · CREDIT" : ""}
+                              </Badge>
+                            )}
+                            {(failedWaByRegId.get(reg.id) || []).length > 0 && (
+                              <Badge variant="destructive" className="mt-1 text-[10px] px-1.5 py-0">
+                                WhatsApp Sending failed
                               </Badge>
                             )}
                           </div>
@@ -650,6 +759,30 @@ const Dispatch = () => {
                         </Badge>
                       )}
                     </div>
+                    {(failedWaByRegId.get(selectedEntry.registration.id) || []).length > 0 && (
+                      <div className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2.5 space-y-2">
+                        <p className="text-sm font-semibold text-destructive">WhatsApp Sending failed</p>
+                        <p className="text-xs text-muted-foreground">
+                          The number may not be registered on WhatsApp. Download the report PDF and send it manually.
+                        </p>
+                        {selectedEntry.tests.some((t) => t.status === "approved" || t.status === "dispatched") && (
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            className="gap-1 h-8"
+                            disabled={actionKey === `${selectedEntry.registration.id}||manualWa`}
+                            onClick={() => void downloadAndSendManually(selectedEntry)}
+                          >
+                            {actionKey === `${selectedEntry.registration.id}||manualWa` ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Download className="h-4 w-4" />
+                            )}
+                            Download PDF
+                          </Button>
+                        )}
+                      </div>
+                    )}
                     <div className="flex items-center gap-2 flex-wrap mt-3">
                       {selectedEntry.tests.some(t => t.status === "approved" || t.status === "dispatched") && (
                         <Button size="sm" variant="outline" className="gap-1" disabled={isPaymentBlocked(selectedEntry.registration)} onClick={() => openReportSelectDialog(selectedEntry)}>

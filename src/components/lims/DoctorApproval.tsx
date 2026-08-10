@@ -7,7 +7,7 @@ import { isSuspectNegativeResult, calculateResultFlag } from "@/lib/reportFlags"
 import TimeResultInput from "./TimeResultInput";
 import { parseTimeResultToSeconds, isCanonicalTimeValue, formatTimeResult } from "@/lib/timeRange";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -162,18 +162,21 @@ const DoctorApproval = () => {
   };
   useEffect(() => { const t = setTimeout(() => { setDebouncedSearch(search); setDaPage(0); }, 400); return () => clearTimeout(t); }, [search]);
 
-  const { data: pendingIds = [] as string[] } = useQuery({
+  const { data: pendingIds = [] as string[], isLoading: loadingIds } = useQuery({
     queryKey: ["doctor_approval_count", debouncedSearch],
     queryFn: async (): Promise<string[]> => {
       const candidates = await fetchDoctorApprovalCandidateIds();
       return await fetchFilteredSortedIds(candidates, debouncedSearch);
     },
+    placeholderData: keepPreviousData,
+    staleTime: 15_000,
   });
   const daCount = pendingIds.length;
   const pageIds: string[] = pendingIds.slice(daPage * DA_PAGE_SIZE, (daPage + 1) * DA_PAGE_SIZE);
+  const pageKey = shortIdsKey(pageIds, "da-p");
 
   const { data: registrations = [], isLoading: loadingRegs } = useQuery({
-    queryKey: ["doctor_approval_regs", pageIds.join(",")],
+    queryKey: ["doctor_approval_regs", pageKey],
     enabled: pageIds.length > 0,
     queryFn: async () => {
       const { data } = await supabase.from("patient_registrations")
@@ -182,6 +185,8 @@ const DoctorApproval = () => {
       const order = new Map(pageIds.map((id, i) => [id, i] as const));
       return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     },
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
   });
 
   const daTotalPages = Math.max(1, Math.ceil(daCount / DA_PAGE_SIZE));
@@ -189,21 +194,23 @@ const DoctorApproval = () => {
   const regIds = registrations.map((r: any) => r.id);
   const regKey = shortIdsKey(regIds, "da");
 
-  const { data: existingResults = [] } = useQuery({
+  const { data: existingResults = [], isFetched: resultsFetched } = useQuery({
     queryKey: ["doctor_approval_results", regKey],
     enabled: regIds.length > 0,
     queryFn: async () => {
       return await fetchAllByIds<any>("patient_results", "*", "registration_id", regIds, { eq: { status: "verified" } });
     },
+    placeholderData: keepPreviousData,
   });
 
   // Fetch sample tubes to expand PRL/HLT container rows into leaf tests
-  const { data: regTubes = [] } = useQuery({
+  const { data: regTubes = [], isFetched: tubesFetched } = useQuery({
     queryKey: ["doctor_approval_tubes", regKey],
     enabled: regIds.length > 0,
     queryFn: async () => {
       return await fetchAllByIds<any>("sample_tubes", "id, registration_id, test_ids", "registration_id", regIds);
     },
+    placeholderData: keepPreviousData,
   });
   const leafIdsByReg = useMemo(() => {
     const map: Record<string, Set<string>> = {};
@@ -214,6 +221,9 @@ const DoctorApproval = () => {
     }
     return map;
   }, [regTubes]);
+
+  const resultsReady = regIds.length === 0 || resultsFetched;
+  const listLoading = loadingIds || loadingRegs || (registrations.length > 0 && (!tubesFetched || !resultsReady));
 
   const { data: outsourcedSnips = [] } = useQuery({
     queryKey: ["doctor_approval_snips", regKey],
@@ -227,6 +237,7 @@ const DoctorApproval = () => {
         { eq: { outsource_status: "verified" } },
       );
     },
+    placeholderData: keepPreviousData,
   });
 
   const { transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails } = useMemo(() => {
@@ -1023,7 +1034,7 @@ const DoctorApproval = () => {
         <Card className="p-3"><div className="text-xs text-muted-foreground">Parameters to Review</div><div className="text-xl font-bold">{stats.totalParams}</div></Card>
       </div>
 
-      {loadingRegs ? (<Card><CardContent className="p-8 text-center text-muted-foreground">Loading…</CardContent></Card>) :
+      {listLoading ? (<Card><CardContent className="p-8 text-center text-muted-foreground">Loading…</CardContent></Card>) :
        filteredEntries.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <Stethoscope className="h-12 w-12 mx-auto mb-3 opacity-30" />

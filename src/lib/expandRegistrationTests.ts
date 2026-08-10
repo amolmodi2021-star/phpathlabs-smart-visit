@@ -36,6 +36,18 @@ export function expandRegistrationTests(
   testsMap: Record<string, { test_name?: string } | any> = {},
 ): ExpandedTestRow[] {
   const safeRegTests = Array.isArray(regTests) ? regTests : [];
+  // While tubes are still loading, callers may pass an empty leaf set. Returning
+  // [] would wipe Results / Verification / Dispatch patient lists. Fall back to
+  // the registration's billed rows until the authoritative leaf set arrives.
+  if (!leafTestIds || leafTestIds.size === 0) {
+    return safeRegTests
+      .filter((t: any) => t && t.test_id)
+      .map((t: any) => ({
+        ...t,
+        test_id: t.test_id,
+        test_name: t.test_name || testsMap[t.test_id]?.test_name || "",
+      }));
+  }
   const direct = safeRegTests.filter((t: any) => t && leafTestIds.has(t.test_id));
   const directIds = new Set(direct.map((t: any) => t.test_id));
   const extras: ExpandedTestRow[] = [];
