@@ -5,7 +5,7 @@ import { formatAgeGender } from "@/lib/ageGender";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 import { isSuspectNegativeResult } from "@/lib/reportFlags";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -133,12 +133,11 @@ const RE_PAGE_SIZE = 50;
 
 const ResultsEntry = () => {
   const qc = useQueryClient();
-  // Live machine updates via tiny lims_result_notify (not full patient_results publication)
+  // Live machine updates: only refresh result values — do NOT invalidate the
+  // candidate/reg/tube list (that remounts page queries and briefly filters
+  // every bill out while accepted tubes reload).
   useRealtimeSync("lims_result_notify", [
-    "results_accepted_count",
-    "results_accepted_regs",
     "patient_results_existing",
-    "results_accepted_tubes",
     "results_outsourced_snips",
   ], 1500);
   const { data: masterMachines = [] } = useMasterLookup("machine_name");
@@ -187,7 +186,6 @@ const ResultsEntry = () => {
         toast.info("No new results available");
       }
       qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
-      qc.invalidateQueries({ queryKey: ["results_accepted_regs"] });
     } catch (err: any) {
       toast.error(err?.message || "Failed to refresh from LIMS");
     } finally {
@@ -200,12 +198,14 @@ const ResultsEntry = () => {
     return () => clearTimeout(t);
   }, [search]);
 
-  const { data: pendingIds = [] as string[] } = useQuery({
+  const { data: pendingIds = [] as string[], isLoading: loadingIds } = useQuery({
     queryKey: ["results_accepted_count", debouncedSearch],
     queryFn: async (): Promise<string[]> => {
       const candidates = await fetchResultsEntryCandidateIds();
       return await fetchFilteredSortedIds(candidates, debouncedSearch);
     },
+    placeholderData: keepPreviousData,
+    staleTime: 15_000,
   });
   const reCount = pendingIds.length;
   const pageIds: string[] = pendingIds.slice(rePage * RE_PAGE_SIZE, (rePage + 1) * RE_PAGE_SIZE);
@@ -224,6 +224,7 @@ const ResultsEntry = () => {
       const order = new Map(pageIds.map((id, i) => [id, i] as const));
       return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     },
+    placeholderData: keepPreviousData,
     staleTime: 30_000,
   });
 
@@ -283,17 +284,18 @@ const ResultsEntry = () => {
   // ─── Fetch existing results for all accepted patients ───
   const regIds = acceptedRegs.map((r: any) => r.id);
   const regKey = shortIdsKey(regIds, "re-r");
-  const { data: existingResults = [] } = useQuery({
+  const { data: existingResults = [], isLoading: loadingResults } = useQuery({
     queryKey: ["patient_results_existing", regKey],
     enabled: regIds.length > 0,
     queryFn: async () => {
       // Paginated to avoid Supabase's 1000-row cap silently dropping rows.
       return await fetchAllByIds<any>("patient_results", "*", "registration_id", regIds);
     },
+    placeholderData: keepPreviousData,
   });
 
   // ─── Fetch accepted sample_tubes to filter results by accepted tests only ───
-  const { data: acceptedTubes = [] } = useQuery({
+  const { data: acceptedTubes = [], isFetching: fetchingTubes, isFetched: tubesFetched } = useQuery({
     queryKey: ["results_accepted_tubes", regKey],
     enabled: regIds.length > 0,
     queryFn: async () => {
@@ -305,6 +307,7 @@ const ResultsEntry = () => {
         { eq: { status: "accepted" } },
       );
     },
+    placeholderData: keepPreviousData,
   });
 
   // Build set of accepted test_ids per registration
@@ -317,6 +320,8 @@ const ResultsEntry = () => {
     }
     return map;
   }, [acceptedTubes]);
+  // Apply tube filter only after this page's tube query has completed once.
+  const tubesReady = regIds.length === 0 || tubesFetched;
 
   // ─── Fetch outsourced_test_snips to know which inhouse tests/params have been transferred ───
   const { data: outsourcedSnips = [] } = useQuery({
@@ -583,7 +588,14 @@ const ResultsEntry = () => {
       const acceptedTestIds = acceptedTestIdsByReg[reg.id];
       // Expand PRL/HLT container rows into their leaf tests using accepted-tube test_ids
       const expandedTests = expandRegistrationTests(tests, acceptedTestIds ?? new Set<string>(), testsMap);
-      const activeTests = expandedTests.filter((t: any) => !cancelledIds.has(t.test_id) && acceptedTestIds?.has(t.test_id));
+      // While tubes for this page are still loading, do NOT drop every test
+      // (acceptedTestIds undefined → .has() is falsy → entire Results list vanishes).
+      const activeTests = expandedTests.filter((t: any) => {
+        if (cancelledIds.has(t.test_id)) return false;
+        if (!tubesReady) return true;
+        if (!acceptedTestIds) return false;
+        return acceptedTestIds.has(t.test_id);
+      });
 
       const parameters: ParameterResult[] = [];
       const incompleteTests: IncompleteTest[] = [];
@@ -672,7 +684,7 @@ const ResultsEntry = () => {
       }
       return { registration: reg, parameters, incompleteTests, snipOnlyTests };
     }).filter(entry => entry.parameters.length > 0 || entry.incompleteTests.length > 0 || entry.snipOnlyTests.length > 0);
-  }, [acceptedRegs, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails, acceptedTestIdsByReg]);
+  }, [acceptedRegs, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails, acceptedTestIdsByReg, tubesReady]);
 
   // ─── Loaded test-level notes: first non-null test_note per (reg, test) ───
   const loadedTestNotes = useMemo(() => {
@@ -1800,7 +1812,7 @@ const ResultsEntry = () => {
       ) : (
         <>
           {/* Patient list */}
-          {loadingRegs ? (
+          {(loadingIds || loadingRegs || (acceptedRegs.length > 0 && !tubesReady && fetchingTubes)) ? (
             <Card><CardContent className="p-8 text-center text-muted-foreground">Loading…</CardContent></Card>
           ) : filteredEntries.length === 0 ? (
             <Card>
