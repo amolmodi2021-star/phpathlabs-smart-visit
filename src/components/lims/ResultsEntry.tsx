@@ -284,7 +284,7 @@ const ResultsEntry = () => {
   // ─── Fetch existing results for all accepted patients ───
   const regIds = acceptedRegs.map((r: any) => r.id);
   const regKey = shortIdsKey(regIds, "re-r");
-  const { data: existingResults = [], isLoading: loadingResults } = useQuery({
+  const { data: existingResults = [] } = useQuery({
     queryKey: ["patient_results_existing", regKey],
     enabled: regIds.length > 0,
     queryFn: async () => {
