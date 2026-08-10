@@ -37,16 +37,18 @@ import PatientReportPortal from "./pages/PatientReportPortal";
 import NotFound from "./pages/NotFound";
 
 // React Query global defaults — keep egress and refetch storms low.
-// Most lab data (tests, profiles, templates) tolerates a 1-min stale window;
-// users get an explicit Refresh button on counters that need fresher data.
-// `refetchOnWindowFocus` and `refetchOnReconnect` were causing storm-refetches
-// on tab switches and brief network blips, with zero user-visible benefit.
+// Cost-aware cache: keep list/RPC data for 5 minutes and never auto-refetch
+// on tab focus, reconnect, or remount. Workflow screens (Results / Verification /
+// Dispatch / etc.) expose an explicit Refresh button when fresher data is needed.
+// Mutations still invalidate after saves so the actor sees their own changes.
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 60_000,
+      staleTime: 5 * 60_000,
+      gcTime: 30 * 60_000,
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,
+      refetchOnMount: false,
     },
   },
 });

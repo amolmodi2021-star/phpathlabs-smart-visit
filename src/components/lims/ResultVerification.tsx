@@ -30,7 +30,6 @@ import { signalSync } from "@/lib/limsSyncSignal";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
 import { fetchAllByIds } from "@/lib/fetchAllRows";
 import { shortIdsKey } from "@/lib/queryKeys";
-import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { fetchVerificationCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPendingCandidates";
 import SyncingOverlay from "./SyncingOverlay";
 import NewBadge from "./NewBadge";
@@ -136,7 +135,7 @@ const ResultVerification = () => {
       return await fetchFilteredSortedIds(candidates, debouncedSearch);
     },
     placeholderData: keepPreviousData,
-    staleTime: 15_000,
+    staleTime: 5 * 60_000,
   });
   const rvCount = pendingIds.length;
   const pageIds: string[] = pendingIds.slice(rvPage * RV_PAGE_SIZE, (rvPage + 1) * RV_PAGE_SIZE);
@@ -154,7 +153,7 @@ const ResultVerification = () => {
       return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     },
     placeholderData: keepPreviousData,
-    staleTime: 30_000,
+    staleTime: 5 * 60_000,
   });
 
   const rvTotalPages = Math.max(1, Math.ceil(rvCount / RV_PAGE_SIZE));
@@ -162,9 +161,7 @@ const ResultVerification = () => {
   const regIds = registrations.map((r: any) => r.id);
   const regKey = shortIdsKey(regIds, "rv");
 
-  // Live machine updates: refresh entered values only — do not rebuild the candidate list
-  // (avoids empty flash when returning from provisional report / remount).
-  useRealtimeSync("lims_result_notify", ["verification_results_v2", "verification_outsourced_v2"], 1500);
+  // No ambient realtime — Refresh button pulls latest entered values.
 
   // Fetch entered results
   const { data: existingResults = [], isFetched: resultsFetched } = useQuery({

@@ -28,7 +28,6 @@ import { signalSync } from "@/lib/limsSyncSignal";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
 import { fetchResultsEntryCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPendingCandidates";
 import { shortIdsKey } from "@/lib/queryKeys";
-import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import SyncingOverlay from "./SyncingOverlay";
 import NewBadge from "./NewBadge";
 import OutsourcedResults from "./OutsourcedResults";
@@ -134,13 +133,8 @@ const RE_PAGE_SIZE = 50;
 
 const ResultsEntry = () => {
   const qc = useQueryClient();
-  // Live machine updates: only refresh result values — do NOT invalidate the
-  // candidate/reg/tube list (that remounts page queries and briefly filters
-  // every bill out while accepted tubes reload).
-  useRealtimeSync("lims_result_notify", [
-    "patient_results_existing",
-    "results_outsourced_snips",
-  ], 1500);
+  // No ambient realtime — use Refresh (and post-save invalidation) to cut
+  // Supabase Realtime + refetch cost. Machine/interface rows appear after Refresh.
   const { data: masterMachines = [] } = useMasterLookup("machine_name");
   const [mode, setMode] = useState<"patient" | "machine" | "outsourced">("patient");
   const [search, setSearch] = useState("");
@@ -206,7 +200,7 @@ const ResultsEntry = () => {
       return await fetchFilteredSortedIds(candidates, debouncedSearch);
     },
     placeholderData: keepPreviousData,
-    staleTime: 15_000,
+    staleTime: 5 * 60_000,
   });
   const reCount = pendingIds.length;
   const pageIds: string[] = pendingIds.slice(rePage * RE_PAGE_SIZE, (rePage + 1) * RE_PAGE_SIZE);
@@ -226,7 +220,7 @@ const ResultsEntry = () => {
       return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     },
     placeholderData: keepPreviousData,
-    staleTime: 30_000,
+    staleTime: 5 * 60_000,
   });
 
   const reTotalPages = Math.max(1, Math.ceil(reCount / RE_PAGE_SIZE));

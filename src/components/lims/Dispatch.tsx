@@ -101,7 +101,7 @@ const Dispatch = () => {
       });
     },
     placeholderData: keepPreviousData,
-    staleTime: 15_000,
+    staleTime: 5 * 60_000,
   });
   const dispatchCount = filteredDispatchIds.length;
   const dispatchPageIds = filteredDispatchIds.slice(
@@ -121,7 +121,7 @@ const Dispatch = () => {
       return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     },
     placeholderData: keepPreviousData,
-    staleTime: 30_000,
+    staleTime: 5 * 60_000,
   });
 
   const dispatchTotalPages = Math.ceil(dispatchCount / DISPATCH_PAGE_SIZE);
@@ -179,7 +179,7 @@ const Dispatch = () => {
   const { data: failedWaJobs = [] } = useQuery({
     queryKey: ["dispatch_failed_wa_outbox", regKey],
     enabled: regIds.length > 0,
-    refetchInterval: 15_000,
+    // No polling — Refresh button includes this key
     queryFn: async () => {
       const cols = "id, kind, registration_id, invoice_number, phone, last_error, attempts, status";
       const [byReg, byInv] = await Promise.all([

@@ -27,7 +27,6 @@ import { patientDisplayName } from "@/lib/patientDisplayName";
 import { fetchAllByIds } from "@/lib/fetchAllRows";
 import { fetchOutsourcedCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPendingCandidates";
 import { shortIdsKey } from "@/lib/queryKeys";
-import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 
@@ -59,13 +58,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const { data: outsourceLabs = [] } = useMasterLookup("outsource_lab");
 
-  // Live machine / interface notify (tiny table only)
-  useRealtimeSync("lims_result_notify", [
-    "outsourced_pending_ids",
-    "outsourced_accepted_regs",
-    "outsourced_snips",
-    "outsourced_manual_results",
-  ], 1500);
+  // No ambient realtime — parent Results Refresh covers outsourced query keys.
 
   // Selection & mark-as-sent state
   const [selectedTests, setSelectedTests] = useState<Set<string>>(new Set());
@@ -151,7 +144,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       const candidates = await fetchOutsourcedCandidateIds();
       return await fetchFilteredSortedIds(candidates, debouncedSearch);
     },
-    staleTime: 30_000,
+    staleTime: 5 * 60_000,
   });
   const osCount = pendingIds.length;
   const pageIds = pendingIds.slice(osPage * OS_PAGE_SIZE, (osPage + 1) * OS_PAGE_SIZE);
@@ -171,7 +164,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       const order = new Map(pageIds.map((id, i) => [id, i] as const));
       return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     },
-    staleTime: 30_000,
+    staleTime: 5 * 60_000,
   });
   const isLoading = loadingIds || (pageIds.length > 0 && loadingRegs);
 
@@ -201,7 +194,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         regIds,
       );
     },
-    staleTime: 15_000,
+    staleTime: 5 * 60_000,
   });
 
   // sample_tubes leaves for this page

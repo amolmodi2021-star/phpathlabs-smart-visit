@@ -109,8 +109,7 @@ const SampleCollection = () => {
       if (error) throw error;
       return (data || []) as unknown as SampleTubeRow[];
     },
-    refetchOnWindowFocus: true,
-    staleTime: 30_000,
+    staleTime: 5 * 60_000,
   });
 
   // Get unique registration IDs from tubes
