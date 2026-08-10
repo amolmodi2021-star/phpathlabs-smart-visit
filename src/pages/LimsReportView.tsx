@@ -776,7 +776,7 @@ const LimsReportView = () => {
     const patientNameRaw = patientDisplayName(approvedReports[0]);
     const patientName = !approvedReports[0] || patientNameRaw === "—" ? "Report" : patientNameRaw;
     const invoiceNum = approvedReports[0]?.invoice_number || "";
-    const filename = `${patientName}_${invoiceNum}.pdf`.replace(/[\\/:*?"<>|]+/g, "_");
+    const filename = [patientName, invoiceNum].filter(Boolean).join(" ").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim() + ".pdf";
     const blob = pdf.output("blob") as Blob;
     cachedPdfRef.current = { blob, filename };
     return { blob, filename };
