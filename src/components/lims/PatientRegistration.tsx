@@ -21,7 +21,7 @@ import InvoicePreview from "./InvoicePreview";
 import PatientSelectDialog, { type PatientPick } from "./PatientSelectDialog";
 import DoctorAutocomplete, { ensureDoctor } from "./DoctorAutocomplete";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { normalizeGender, normalizeTitle, PATIENT_TITLES, toDateInputValue } from "@/lib/normalizePatientFields";
+import { isoToDmy, maskDmyDob, normalizeGender, normalizeTitle, PATIENT_TITLES, toDateInputValue } from "@/lib/normalizePatientFields";
 
 const TITLES = [...PATIENT_TITLES];
 const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card", "NEFT"];
@@ -61,10 +61,14 @@ const PatientRegistration = () => {
   const [showPatientPicker, setShowPatientPicker] = useState(false);
   const [pickerMobile, setPickerMobile] = useState("");
   const [patientLocked, setPatientLocked] = useState(false);
+  const [filledOnLock, setFilledOnLock] = useState({
+    title: false, gender: false, dob: false, address: false,
+  });
   const [title, setTitle] = useState("");
   const [patientName, setPatientName] = useState("");
   const [gender, setGender] = useState("");
   const [dob, setDob] = useState("");
+  const [dobDisplay, setDobDisplay] = useState("");
   const [email, setEmail] = useState("");
   const [showEmail, setShowEmail] = useState(false);
   const [doctorName, setDoctorName] = useState("SELF");
@@ -260,7 +264,9 @@ const PatientRegistration = () => {
     if (p.patient_name) setPatientName(String(p.patient_name).toUpperCase());
     setTitle(normalizeTitle(p.title));
     setGender(normalizeGender(p.gender));
-    setDob(toDateInputValue(p.dob));
+    const nextDob = toDateInputValue(p.dob);
+    setDob(nextDob);
+    setDobDisplay(isoToDmy(nextDob));
     setAddress(String(p.address || "").replace(/\s+/g, " ").trim().toUpperCase());
     if (p.email) { setEmail(p.email); setShowEmail(true); }
     if (p.doctor_name) setDoctorName(p.doctor_name);
@@ -527,7 +533,7 @@ const PatientRegistration = () => {
   const resetForm = (opts?: { silent?: boolean }) => {
     setMobileNumber(""); setPatientMatches([]); setShowDropdown(false);
     setPatientName(""); setTitle(""); setGender("");
-    setDob(""); setEmail(""); setShowEmail(false); setDoctorName("SELF"); setUmrNumber("");
+    setDob(""); setDobDisplay(""); setEmail(""); setShowEmail(false); setDoctorName("SELF"); setUmrNumber("");
     setAddress(""); setChannelId(""); setReportLanguage("English");
     setVisitType("lab_visit"); setPickupPointId("");
     setSelectedTests([]); setTestSearch(""); setTestHighlightIndex(-1);
@@ -535,7 +541,9 @@ const PatientRegistration = () => {
     setAllowIneligibleDiscount(false);
     setSelectedModes(new Set()); setModeAmounts({}); setInvoiceData(null); setTriedSave(false);
     setManualAge(""); setRemarks(""); setIsStat(false); setShowHvcConfirm(false);
-    setPatientLocked(false); setShowPatientPicker(false); setPickerMobile("");
+    setPatientLocked(false);
+    setFilledOnLock({ title: false, gender: false, dob: false, address: false });
+    setShowPatientPicker(false); setPickerMobile("");
     setDuplicateRegInfo(null);
     if (!opts?.silent) toast.success("Form cleared");
   };
@@ -552,6 +560,12 @@ const PatientRegistration = () => {
       umr_number: p.umr_number,
       address: p.address,
     });
+    setFilledOnLock({
+      title: !!normalizeTitle(p.title),
+      gender: !!normalizeGender(p.gender),
+      dob: !!toDateInputValue(p.dob),
+      address: !!String(p.address || "").trim(),
+    });
     setPatientLocked(true);
     setShowPatientPicker(false);
     checkSameDayDuplicate(p.umr_number);
@@ -561,6 +575,7 @@ const PatientRegistration = () => {
     setMobileNumber(mobile10);
     setUmrNumber("");
     setPatientLocked(false);
+    setFilledOnLock({ title: false, gender: false, dob: false, address: false });
     setShowPatientPicker(false);
   };
 
@@ -708,14 +723,14 @@ const PatientRegistration = () => {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label className={triedSave && !title ? "text-destructive" : ""}>Title *</Label>
-              <Select value={title || undefined} onValueChange={setTitle} disabled={patientLocked && !!title}>
+              <Select value={title || undefined} onValueChange={setTitle} disabled={patientLocked && filledOnLock.title}>
                 <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>{TITLES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div>
               <Label className={triedSave && !gender ? "text-destructive" : ""}>Gender *</Label>
-              <Select key={gender || "empty"} value={gender || undefined} onValueChange={setGender} disabled={patientLocked && !!gender}>
+              <Select key={gender || "empty"} value={gender || undefined} onValueChange={setGender} disabled={patientLocked && filledOnLock.gender}>
                 <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Male">Male</SelectItem>
@@ -739,8 +754,21 @@ const PatientRegistration = () => {
               </div>
             ) : (
               <div>
-                <Label className={triedSave && !dob ? "text-destructive" : ""}>DOB *</Label>
-                <Input type="date" value={dob} onChange={e => setDob(e.target.value)} disabled={patientLocked && !!dob} />
+                <Label className={triedSave && !dob ? "text-destructive" : ""}>DOB * (dd-mm-yyyy)</Label>
+                <Input
+                  type="text"
+                  inputMode="numeric"
+                  value={dobDisplay}
+                  maxLength={10}
+                  placeholder="dd-mm-yyyy"
+                  autoComplete="off"
+                  disabled={patientLocked && filledOnLock.dob}
+                  onChange={(e) => {
+                    const next = maskDmyDob(e.target.value);
+                    setDobDisplay(next.display);
+                    setDob(next.iso);
+                  }}
+                />
                 {age && <p className="text-xs text-muted-foreground mt-1">Age: {age}</p>}
               </div>
             )}
@@ -767,7 +795,7 @@ const PatientRegistration = () => {
           {visitType !== "pickup_point" && (
             <div>
               <Label className={triedSave && !address.trim() ? "text-destructive" : ""}>Address *</Label>
-              <Input value={address} onChange={e => setAddress(e.target.value.toUpperCase())} placeholder="Patient address" className="uppercase" disabled={patientLocked && !!address.trim()} />
+              <Input value={address} onChange={e => setAddress(e.target.value.toUpperCase())} placeholder="Patient address" className="uppercase" disabled={patientLocked && filledOnLock.address} />
             </div>
           )}
 
@@ -1061,8 +1089,8 @@ const PatientRegistration = () => {
             </div>
           )}
 
-          {/* Remarks */}
-          <div>
+          {/* Remarks — isolated form so browser/site autofill cannot dump "PH PATHLABS" here */}
+          <form autoComplete="off" onSubmit={(e) => e.preventDefault()}>
             <Label htmlFor="lims-reg-remarks">Remarks</Label>
             <Input
               id="lims-reg-remarks"
@@ -1077,7 +1105,7 @@ const PatientRegistration = () => {
               placeholder="Optional remarks"
               className="uppercase"
             />
-          </div>
+          </form>
 
           {/* STAT Toggle */}
           <div className="flex items-center justify-between rounded-lg border border-destructive/30 p-3">

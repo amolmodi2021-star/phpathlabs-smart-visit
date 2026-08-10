@@ -48,3 +48,37 @@ export function toDateInputValue(raw: string | null | undefined): string {
   }
   return "";
 }
+
+/** yyyy-mm-dd → dd-mm-yyyy without timezone shifts. */
+export function isoToDmy(raw: string | null | undefined): string {
+  const iso = toDateInputValue(raw);
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-");
+  return `${d}-${m}-${y}`;
+}
+
+/** Type DOB as dd-mm-yyyy. `iso` is set only when the full date is valid. */
+export function maskDmyDob(raw: string): { display: string; iso: string } {
+  const digits = String(raw || "").replace(/\D/g, "").slice(0, 8);
+  let display = digits;
+  if (digits.length >= 4) display = `${digits.slice(0, 2)}-${digits.slice(2, 4)}-${digits.slice(4)}`;
+  else if (digits.length >= 2) display = `${digits.slice(0, 2)}-${digits.slice(2)}`;
+
+  let iso = "";
+  if (digits.length === 8) {
+    const dd = Number(digits.slice(0, 2));
+    const mm = Number(digits.slice(2, 4));
+    const yyyy = Number(digits.slice(4, 8));
+    const parsed = new Date(yyyy, mm - 1, dd);
+    if (
+      yyyy >= 1900 &&
+      parsed.getFullYear() === yyyy &&
+      parsed.getMonth() === mm - 1 &&
+      parsed.getDate() === dd &&
+      parsed.getTime() <= Date.now()
+    ) {
+      iso = `${digits.slice(4, 8)}-${digits.slice(2, 4)}-${digits.slice(0, 2)}`;
+    }
+  }
+  return { display, iso };
+}
