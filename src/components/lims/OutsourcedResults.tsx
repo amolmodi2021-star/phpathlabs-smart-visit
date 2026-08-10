@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -58,7 +59,13 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const { data: outsourceLabs = [] } = useMasterLookup("outsource_lab");
 
-  // No ambient realtime — parent Results Refresh covers outsourced query keys.
+  // Live machine / interface notify (tiny table only)
+  useRealtimeSync("lims_result_notify", [
+    "outsourced_pending_ids",
+    "outsourced_accepted_regs",
+    "outsourced_snips",
+    "outsourced_manual_results",
+  ], 1500);
 
   // Selection & mark-as-sent state
   const [selectedTests, setSelectedTests] = useState<Set<string>>(new Set());

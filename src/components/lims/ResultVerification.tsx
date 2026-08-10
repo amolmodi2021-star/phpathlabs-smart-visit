@@ -6,6 +6,7 @@ import { patientDisplayName } from "@/lib/patientDisplayName";
 import { isSuspectNegativeResult, calculateResultFlag } from "@/lib/reportFlags";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -161,7 +162,8 @@ const ResultVerification = () => {
   const regIds = registrations.map((r: any) => r.id);
   const regKey = shortIdsKey(regIds, "rv");
 
-  // No ambient realtime — Refresh button pulls latest entered values.
+  // Live machine updates: refresh entered values only — do not rebuild the candidate list.
+  useRealtimeSync("lims_result_notify", ["verification_results_v2", "verification_outsourced_v2"], 1500);
 
   // Fetch entered results
   const { data: existingResults = [], isFetched: resultsFetched } = useQuery({

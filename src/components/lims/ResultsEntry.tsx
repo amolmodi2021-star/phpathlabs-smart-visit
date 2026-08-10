@@ -6,6 +6,7 @@ import { patientDisplayName } from "@/lib/patientDisplayName";
 import { isSuspectNegativeResult, calculateResultFlag } from "@/lib/reportFlags";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -133,8 +134,13 @@ const RE_PAGE_SIZE = 50;
 
 const ResultsEntry = () => {
   const qc = useQueryClient();
-  // No ambient realtime — use Refresh (and post-save invalidation) to cut
-  // Supabase Realtime + refetch cost. Machine/interface rows appear after Refresh.
+  // Live machine updates: only refresh result values — do NOT invalidate the
+  // candidate/reg/tube list (that remounts page queries and briefly filters
+  // every bill out while accepted tubes reload).
+  useRealtimeSync("lims_result_notify", [
+    "patient_results_existing",
+    "results_outsourced_snips",
+  ], 1500);
   const { data: masterMachines = [] } = useMasterLookup("machine_name");
   const [mode, setMode] = useState<"patient" | "machine" | "outsourced">("patient");
   const [search, setSearch] = useState("");

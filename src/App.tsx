@@ -38,9 +38,9 @@ import NotFound from "./pages/NotFound";
 
 // React Query global defaults — keep egress and refetch storms low.
 // Cost-aware cache: keep list/RPC data for 5 minutes and never auto-refetch
-// on tab focus, reconnect, or remount. Workflow screens (Results / Verification /
-// Dispatch / etc.) expose an explicit Refresh button when fresher data is needed.
-// Mutations still invalidate after saves so the actor sees their own changes.
+// on tab focus, reconnect, or remount. Workflow screens still use Refresh for
+// full list reloads; Results/Verification/Outsourced use narrow lims_result_notify
+// realtime (result values only, not candidate lists). Mutations invalidate after saves.
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
