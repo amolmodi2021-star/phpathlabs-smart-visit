@@ -8,8 +8,9 @@ SECURITY DEFINER
 SET search_path = public
 AS $fn$
 BEGIN
+  -- message_send_log was dropped in later migrations; keep a safe guard if revived.
   IF to_regclass('public.message_send_log') IS NOT NULL THEN
-    DELETE FROM public.message_send_log WHERE created_at < now() - interval '7 days';
+    DELETE FROM public.message_send_log WHERE sent_at < now() - interval '7 days';
   END IF;
   IF to_regclass('public.drip_campaign_log') IS NOT NULL THEN
     DELETE FROM public.drip_campaign_log WHERE created_at < now() - interval '7 days';
@@ -18,7 +19,7 @@ BEGIN
     DELETE FROM public.webhook_messages WHERE created_at < now() - interval '7 days';
   END IF;
   IF to_regclass('public.report_link_events') IS NOT NULL THEN
-    DELETE FROM public.report_link_events WHERE created_at < now() - interval '7 days';
+    DELETE FROM public.report_link_events WHERE occurred_at < now() - interval '7 days';
   END IF;
   IF to_regclass('public.report_link_sessions') IS NOT NULL THEN
     DELETE FROM public.report_link_sessions WHERE started_at < now() - interval '7 days';
