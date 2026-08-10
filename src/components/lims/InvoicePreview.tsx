@@ -177,10 +177,21 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false }: Invo
     return () => clearTimeout(timer);
   }, [open, data?.umr_number, renderBarcode]);
 
+  const isPickupInvoice = useCallback((row: any) => {
+    if (!row) return false;
+    if (row.visit_type === "pickup_point") return true;
+    if (row.pickup_point_id) return true;
+    return false;
+  }, []);
+
   const queueInvoiceViaWaApi = useCallback(async () => {
     const invoiceNo = String(data?.invoice_number || "");
     if (!open || !invoiceNo || !data?.mobile_number) {
       toast.error("Mobile number required to send on WhatsApp");
+      return;
+    }
+    if (isPickupInvoice(data)) {
+      toast.error("Pickup point invoices are not sent on WhatsApp");
       return;
     }
     if (!receiptRef.current) {
@@ -248,11 +259,12 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false }: Invo
     } finally {
       setWaSending(false);
     }
-  }, [open, data, brand.invoice_lab_name, renderBarcode]);
+  }, [open, data, brand.invoice_lab_name, renderBarcode, isPickupInvoice]);
 
   // New registration: queue invoice to durable outbox once barcode/layout is ready.
   useEffect(() => {
     if (!autoQueueWhatsApp || !open || !data?.invoice_number || !data?.mobile_number) return;
+    if (isPickupInvoice(data)) return;
     const invoiceNo = String(data.invoice_number);
     if (autoQueuedRef.current === invoiceNo || queuedInvoiceRef.current === invoiceNo) return;
     const timer = setTimeout(() => {
@@ -261,7 +273,7 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false }: Invo
       void queueInvoiceViaWaApi();
     }, 900);
     return () => clearTimeout(timer);
-  }, [autoQueueWhatsApp, open, data?.invoice_number, data?.mobile_number, queueInvoiceViaWaApi]);
+  }, [autoQueueWhatsApp, open, data, data?.invoice_number, data?.mobile_number, queueInvoiceViaWaApi, isPickupInvoice]);
 
   if (!data) return null;
 
@@ -675,18 +687,20 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false }: Invo
           <Button className="flex-1" variant="outline" onClick={handlePrint}>
             <Printer className="h-4 w-4 mr-2" />Print
           </Button>
-          <Button
-            className="flex-1"
-            onClick={() => void queueInvoiceViaWaApi()}
-            disabled={waSending || !data?.mobile_number}
-          >
-            {waSending ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4 mr-2" />
-            )}
-            {waSending ? "Queuing…" : consoleQueued ? "WhatsApp (resend)" : "WhatsApp"}
-          </Button>
+          {!isPickupInvoice(data) && (
+            <Button
+              className="flex-1"
+              onClick={() => void queueInvoiceViaWaApi()}
+              disabled={waSending || !data?.mobile_number}
+            >
+              {waSending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4 mr-2" />
+              )}
+              {waSending ? "Queuing…" : consoleQueued ? "WhatsApp (resend)" : "WhatsApp"}
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>
