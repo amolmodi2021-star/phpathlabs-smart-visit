@@ -14,8 +14,9 @@ import {
 } from "@/lib/syncPatientDemographics";
 import { useQueryClient } from "@tanstack/react-query";
 import { patientDisplayName } from "@/lib/patientDisplayName";
+import { normalizeGender, normalizeTitle, PATIENT_TITLES, toDateInputValue } from "@/lib/normalizePatientFields";
 
-const TITLES = ["Mr.", "Mrs.", "Ms.", "Master", "Miss", "Baby Of", "Dr."];
+const TITLES = [...PATIENT_TITLES];
 
 export interface PatientPick {
   patient_name: string;
@@ -88,8 +89,11 @@ const PatientSelectDialog = ({ open, mobile10, onClose, onSelect, onNewPatient }
         if (seen.has(k)) return;
         seen.add(k);
         out.push({
-          patient_name: p.patient_name, title: p.title, gender: p.gender,
-          dob: p.date_of_birth, address: p.address, mobile_number: p.mobile_number,
+          patient_name: p.patient_name,
+          title: normalizeTitle(p.title) || p.title,
+          gender: normalizeGender(p.gender) || p.gender,
+          dob: toDateInputValue(p.date_of_birth) || p.date_of_birth,
+          address: p.address, mobile_number: p.mobile_number,
           umr_number: p.umr_id, email: p.email, doctor_name: null,
         });
       });
@@ -97,7 +101,12 @@ const PatientSelectDialog = ({ open, mobile10, onClose, onSelect, onNewPatient }
         const k = (r.umr_number || `name:${(r.patient_name || "").toUpperCase()}`).trim();
         if (seen.has(k)) return;
         seen.add(k);
-        out.push(r);
+        out.push({
+          ...r,
+          title: normalizeTitle(r.title) || r.title,
+          gender: normalizeGender(r.gender) || r.gender,
+          dob: toDateInputValue(r.dob) || r.dob,
+        });
       });
       setPatients(out);
       setLoading(false);
@@ -176,9 +185,9 @@ const PatientSelectDialog = ({ open, mobile10, onClose, onSelect, onNewPatient }
 
   const rowToPick = (r: RegRow): PatientPick => ({
     patient_name: r.patient_name || "",
-    title: r.title || "",
-    gender: r.gender || "",
-    dob: r.dob || null,
+    title: normalizeTitle(r.title),
+    gender: normalizeGender(r.gender),
+    dob: toDateInputValue(r.dob) || null,
     address: r.address || "",
     mobile_number: (r.mobile_number || "").replace(/\D/g, "").slice(-10),
     umr_number: r.umr_number || null,
@@ -230,14 +239,14 @@ const PatientSelectDialog = ({ open, mobile10, onClose, onSelect, onNewPatient }
                       <div className="grid grid-cols-2 gap-2">
                         <div>
                           <Label className="text-xs">Title *</Label>
-                          <Select value={draft.title || ""} onValueChange={(v) => setDraft({ ...draft, title: v })}>
+                          <Select value={normalizeTitle(draft.title) || undefined} onValueChange={(v) => setDraft({ ...draft, title: v })}>
                             <SelectTrigger className="h-8"><SelectValue placeholder="Select" /></SelectTrigger>
                             <SelectContent>{TITLES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
                           </Select>
                         </div>
                         <div>
                           <Label className="text-xs">Gender *</Label>
-                          <Select value={draft.gender || ""} onValueChange={(v) => setDraft({ ...draft, gender: v })}>
+                          <Select value={normalizeGender(draft.gender) || undefined} onValueChange={(v) => setDraft({ ...draft, gender: v })}>
                             <SelectTrigger className="h-8"><SelectValue placeholder="Select" /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="Male">Male</SelectItem>
@@ -255,7 +264,7 @@ const PatientSelectDialog = ({ open, mobile10, onClose, onSelect, onNewPatient }
                       <div className="grid grid-cols-2 gap-2">
                         <div>
                           <Label className="text-xs">DOB</Label>
-                          <Input type="date" className="h-8" value={draft.dob || ""}
+                          <Input type="date" className="h-8" value={toDateInputValue(draft.dob) || ""}
                             onChange={(e) => setDraft({ ...draft, dob: e.target.value })} />
                         </div>
                         <div>

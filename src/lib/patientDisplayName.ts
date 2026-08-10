@@ -4,18 +4,9 @@
  * Avoids double-prefix if the name already starts with a title.
  */
 
-const KNOWN_TITLES = [
-  "Mr.",
-  "Mrs.",
-  "Ms.",
-  "Master",
-  "Miss",
-  "Baby Of",
-  "Dr.",
-  "Master.",
-  "Miss.",
-  "Baby Of.",
-];
+import { normalizeGender, normalizeTitle, PATIENT_TITLES } from "@/lib/normalizePatientFields";
+
+const KNOWN_TITLES = [...PATIENT_TITLES, "Master.", "Miss.", "Baby Of."];
 
 export type PatientNameFields = {
   title?: string | null;
@@ -37,15 +28,14 @@ export function formatPatientDisplayName(
   });
   if (nameAlreadyTitled) return name;
 
-  let resolved = (title || "").trim();
+  let resolved = normalizeTitle(title);
   if (!resolved) {
-    const g = (gender || "").toLowerCase();
-    if (g.startsWith("m")) resolved = "Mr.";
-    else if (g.startsWith("f")) resolved = "Mrs.";
+    const g = normalizeGender(gender);
+    if (g === "Male") resolved = "Mr.";
+    else if (g === "Female") resolved = "Mrs.";
   }
   if (!resolved) return name;
 
-  if (/^(Mr|Mrs|Ms|Dr)$/i.test(resolved)) resolved = `${resolved}.`;
   return `${resolved} ${name}`.replace(/\s+/g, " ").trim();
 }
 

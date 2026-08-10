@@ -21,8 +21,9 @@ import InvoicePreview from "./InvoicePreview";
 import PatientSelectDialog, { type PatientPick } from "./PatientSelectDialog";
 import DoctorAutocomplete, { ensureDoctor } from "./DoctorAutocomplete";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { normalizeGender, normalizeTitle, PATIENT_TITLES, toDateInputValue } from "@/lib/normalizePatientFields";
 
-const TITLES = ["Mr.", "Mrs.", "Ms.", "Master", "Miss", "Baby Of", "Dr."];
+const TITLES = [...PATIENT_TITLES];
 const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card", "NEFT"];
 
 interface SelectedTest {
@@ -217,7 +218,7 @@ const PatientRegistration = () => {
         others.push({
           source: "Estimates", patient_name: e.patient_name || "", title: e.title,
           gender: e.gender, dob: e.dob, email: e.email, doctor_name: e.doctor_name,
-          umr_number: e.umr_number, mobile_number: e.whatsapp_number,
+          umr_number: undefined, mobile_number: e.whatsapp_number,
         });
       }
     });
@@ -244,16 +245,30 @@ const PatientRegistration = () => {
     }
   };
 
-  const selectPatient = (p: PatientMatch) => {
-    setMobileNumber(p.mobile_number);
-    if (p.patient_name) setPatientName(p.patient_name);
-    if (p.title) setTitle(p.title);
-    if (p.gender) setGender(p.gender);
-    if (p.dob) setDob(p.dob);
+  const applyPickedDemographics = (p: {
+    mobile_number?: string | null;
+    patient_name?: string | null;
+    title?: string | null;
+    gender?: string | null;
+    dob?: string | null;
+    email?: string | null;
+    doctor_name?: string | null;
+    umr_number?: string | null;
+    address?: string | null;
+  }) => {
+    if (p.mobile_number) setMobileNumber(p.mobile_number.replace(/\D/g, "").slice(-10) || p.mobile_number);
+    if (p.patient_name) setPatientName(String(p.patient_name).toUpperCase());
+    setTitle(normalizeTitle(p.title));
+    setGender(normalizeGender(p.gender));
+    setDob(toDateInputValue(p.dob));
+    setAddress(String(p.address || "").replace(/\s+/g, " ").trim().toUpperCase());
     if (p.email) { setEmail(p.email); setShowEmail(true); }
     if (p.doctor_name) setDoctorName(p.doctor_name);
-    if (p.umr_number) setUmrNumber(p.umr_number);
-    if (p.address) setAddress(p.address);
+    setUmrNumber(p.umr_number || "");
+  };
+
+  const selectPatient = (p: PatientMatch) => {
+    applyPickedDemographics(p);
     setShowDropdown(false);
     checkSameDayDuplicate(p.umr_number);
   };
@@ -498,6 +513,7 @@ const PatientRegistration = () => {
     },
     onSuccess: (reg: any) => {
       qc.invalidateQueries({ queryKey: ["patient_registrations"] });
+      qc.invalidateQueries({ queryKey: ["patient_master"] });
       toast.success(`Registration saved! Invoice: ${reg.invoice_number}`);
       setInvoiceData({
         ...reg,
@@ -520,15 +536,17 @@ const PatientRegistration = () => {
   };
 
   const handlePatientPicked = (p: PatientPick) => {
-    setMobileNumber(p.mobile_number);
-    setPatientName(p.patient_name || "");
-    setTitle(p.title || "");
-    setGender(p.gender || "");
-    setDob(p.dob || "");
-    setAddress(p.address || "");
-    setUmrNumber(p.umr_number || "");
-    if (p.email) { setEmail(p.email); setShowEmail(true); }
-    if (p.doctor_name) setDoctorName(p.doctor_name);
+    applyPickedDemographics({
+      mobile_number: p.mobile_number,
+      patient_name: p.patient_name,
+      title: p.title,
+      gender: p.gender,
+      dob: p.dob,
+      email: p.email,
+      doctor_name: p.doctor_name,
+      umr_number: p.umr_number,
+      address: p.address,
+    });
     setPatientLocked(true);
     setShowPatientPicker(false);
     checkSameDayDuplicate(p.umr_number);
@@ -669,18 +687,18 @@ const PatientRegistration = () => {
             </div>
           </div>
 
-          {/* Demographics */}
+          {/* Demographics — existing UMR locks filled fields; blanks stay editable and save back to master */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label className={triedSave && !title ? "text-destructive" : ""}>Title *</Label>
-              <Select value={title} onValueChange={setTitle} disabled={patientLocked}>
+              <Select value={title || undefined} onValueChange={setTitle} disabled={patientLocked && !!title}>
                 <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>{TITLES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div>
               <Label className={triedSave && !gender ? "text-destructive" : ""}>Gender *</Label>
-              <Select key={gender || "empty"} value={gender} onValueChange={setGender} disabled={patientLocked}>
+              <Select key={gender || "empty"} value={gender || undefined} onValueChange={setGender} disabled={patientLocked && !!gender}>
                 <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Male">Male</SelectItem>
@@ -705,7 +723,7 @@ const PatientRegistration = () => {
             ) : (
               <div>
                 <Label className={triedSave && !dob ? "text-destructive" : ""}>DOB *</Label>
-                <Input type="date" value={dob} onChange={e => setDob(e.target.value)} disabled={patientLocked} />
+                <Input type="date" value={dob} onChange={e => setDob(e.target.value)} disabled={patientLocked && !!dob} />
                 {age && <p className="text-xs text-muted-foreground mt-1">Age: {age}</p>}
               </div>
             )}
@@ -732,7 +750,7 @@ const PatientRegistration = () => {
           {visitType !== "pickup_point" && (
             <div>
               <Label className={triedSave && !address.trim() ? "text-destructive" : ""}>Address *</Label>
-              <Input value={address} onChange={e => setAddress(e.target.value.toUpperCase())} placeholder="Patient address" className="uppercase" disabled={patientLocked} />
+              <Input value={address} onChange={e => setAddress(e.target.value.toUpperCase())} placeholder="Patient address" className="uppercase" disabled={patientLocked && !!address.trim()} />
             </div>
           )}
 
