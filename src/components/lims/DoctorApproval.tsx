@@ -312,7 +312,9 @@ const DoctorApproval = () => {
           const resolved = resolveNormalRange(p.id, reg);
           const refText = resolved.text || p.normal_range_text || (p.normal_range_low != null && p.normal_range_high != null ? `${p.normal_range_low} - ${p.normal_range_high}` : "");
           const savedUnit = isParamOutsourced && existing?.unit ? existing.unit : (p.unit || "");
-          const savedRefRange = isParamOutsourced && existing?.reference_range ? existing.reference_range : refText;
+          const savedRefRange = resolved.rangeType === "descriptive"
+            ? (resolved.text || "")
+            : (isParamOutsourced && existing?.reference_range ? existing.reference_range : refText);
           parameters.push({
             parameterId: p.id, paramCode: p.param_code || "", parameterName: p.parameter_name,
             unit: savedUnit, referenceRange: savedRefRange, normalRangeLow: resolved.low ?? p.normal_range_low, normalRangeHigh: resolved.high ?? p.normal_range_high,
@@ -494,7 +496,9 @@ const DoctorApproval = () => {
         const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit, p.normalFindings);
         const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
         const unit = p.isOutsourced && editedUnits[k] !== undefined ? editedUnits[k] : p.unit;
-        const refRange = p.isOutsourced && editedRefRanges[k] !== undefined ? editedRefRanges[k] : p.referenceRange;
+        const refRange = p.rangeType === "descriptive"
+          ? (p.normalRangeText || "")
+          : (p.isOutsourced && editedRefRanges[k] !== undefined ? editedRefRanges[k] : p.referenceRange);
          const noteVal = editedNotes[k] !== undefined ? editedNotes[k] : p.note;
          const testNoteVal = editedTestNotes[`${reg.id}||${testId}`] !== undefined ? editedTestNotes[`${reg.id}||${testId}`] : (loadedTestNotes[`${reg.id}||${testId}`] || "");
          upserts.push({ registration_id: reg.id, test_id: p.testId, parameter_id: p.parameterId, param_code: p.paramCode, parameter_name: p.parameterName, result_value: applyUnitSuffix(value, unit, p.rangeType) || null, unit, reference_range: refRange, normal_range_low: p.normalRangeLow, normal_range_high: p.normalRangeHigh, flag: flag || null, status: "approved", is_calculated: p.isCalculated, is_from_interface: p.isFromInterface, approved_at: new Date().toISOString(), entered_at: p.enteredAt || null, entered_by: p.enteredBy || null, verified_at: p.verifiedAt || null, verified_by: p.verifiedBy || null, approved_by: approver.pathologistName, note: noteVal || null, test_note: testNoteVal || null });
@@ -666,7 +670,9 @@ const DoctorApproval = () => {
         const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit, p.normalFindings);
         const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
         const unit = p.isOutsourced && editedUnits[k] !== undefined ? editedUnits[k] : p.unit;
-        const refRange = p.isOutsourced && editedRefRanges[k] !== undefined ? editedRefRanges[k] : p.referenceRange;
+        const refRange = p.rangeType === "descriptive"
+          ? (p.normalRangeText || "")
+          : (p.isOutsourced && editedRefRanges[k] !== undefined ? editedRefRanges[k] : p.referenceRange);
         upserts.push({
           registration_id: regId, test_id: p.testId, parameter_id: p.parameterId,
           param_code: p.paramCode, parameter_name: p.parameterName,

@@ -244,11 +244,13 @@ const LimsReportView = () => {
   const isProvisional = searchParams.get("provisional") === "1";
   const autoShareRequested = searchParams.get("share") === "1";
   const queueWaRequested = searchParams.get("queueWa") === "1";
+  const manualWaRequested = searchParams.get("manualWa") === "1";
   const printRef = useRef<HTMLDivElement>(null);
   const previewWrapRef = useRef<HTMLDivElement>(null);
   const autoDownloadStartedRef = useRef(false);
   const autoShareStartedRef = useRef(false);
   const autoQueueWaStartedRef = useRef(false);
+  const autoManualWaStartedRef = useRef(false);
   const cachedPdfRef = useRef<{ blob: Blob; filename: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
@@ -390,6 +392,37 @@ const LimsReportView = () => {
         test_results: synthResults,
         outsourced_snip_urls: [],
       }];
+    }
+
+    // Descriptive params: report Reference Range = Display Text only (never Normal Findings).
+    // Stale patient_results.reference_range may still hold findings from before the split.
+    {
+      const allParamIds = Array.from(new Set(
+        reportsArr.flatMap((r: any) => ((r.test_results || []) as any[]).map((tr: any) => tr.parameter_id).filter(Boolean)),
+      ));
+      if (allParamIds.length > 0) {
+        const { data: descRanges } = await supabase
+          .from("parameter_normal_ranges")
+          .select("parameter_id, range_type, normal_range_text")
+          .in("parameter_id", allParamIds)
+          .eq("range_type", "descriptive");
+        const displayByParam: Record<string, string> = {};
+        for (const row of descRanges || []) {
+          // First row wins; Display Text may be blank intentionally
+          if (!(row.parameter_id in displayByParam)) {
+            displayByParam[row.parameter_id] = row.normal_range_text || "";
+          }
+        }
+        if (Object.keys(displayByParam).length > 0) {
+          reportsArr = reportsArr.map((r: any) => ({
+            ...r,
+            test_results: ((r.test_results || []) as any[]).map((tr: any) => {
+              if (!(tr.parameter_id in displayByParam)) return tr;
+              return { ...tr, reference_range: displayByParam[tr.parameter_id] || null };
+            }),
+          }));
+        }
+      }
     }
 
     // Prefer live registration demographics when approved snapshot is missing title
@@ -941,6 +974,39 @@ const LimsReportView = () => {
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queueWaRequested, loading, pages.length]);
+
+  // ── Failed Console send: download PDF only (staff send manually) ──
+  useEffect(() => {
+    if (!manualWaRequested) return;
+    if (loading) return;
+    if (pages.length === 0) return;
+    if (autoManualWaStartedRef.current) return;
+    autoManualWaStartedRef.current = true;
+    const t = setTimeout(async () => {
+      setDownloading(true);
+      try {
+        const built = await buildPdfBlob();
+        if (!built) throw new Error("No pages to export");
+        const url = URL.createObjectURL(built.blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = built.filename;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        if (registrationId && !isProvisional) {
+          await supabase.from("approved_reports").update({ print_date: new Date().toISOString() }).eq("registration_id", registrationId);
+        }
+        setHasDownloadedOnce(true);
+        toast.success("PDF downloaded");
+      } catch (err: any) {
+        toast.error(err?.message || "Download failed");
+      } finally {
+        setDownloading(false);
+      }
+    }, 800);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manualWaRequested, loading, pages.length]);
 
   // ── Share on WhatsApp ──
   const handleShareWhatsApp = async () => {

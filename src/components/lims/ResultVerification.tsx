@@ -394,7 +394,9 @@ const ResultVerification = () => {
           const resolved = resolveNormalRange(p.id, reg);
           const refText = resolved.text || p.normal_range_text || (p.normal_range_low != null && p.normal_range_high != null ? `${p.normal_range_low} - ${p.normal_range_high}` : "");
           const savedUnit = isParamOutsourced && existing?.unit ? existing.unit : (p.unit || "");
-          const savedRefRange = isParamOutsourced && existing?.reference_range ? existing.reference_range : refText;
+          const savedRefRange = resolved.rangeType === "descriptive"
+            ? (resolved.text || "")
+            : (isParamOutsourced && existing?.reference_range ? existing.reference_range : refText);
           parameters.push({
             parameterId: p.id, paramCode: p.param_code || "", parameterName: p.parameter_name,
             unit: savedUnit, referenceRange: savedRefRange,
@@ -764,9 +766,11 @@ const ResultVerification = () => {
       const unit = isOutsourced && editedUnits[k] !== undefined
         ? editedUnits[k]
         : (p?.unit ?? live?.unit ?? null);
-      const refRange = isOutsourced && editedRefRanges[k] !== undefined
-        ? editedRefRanges[k]
-        : (p?.referenceRange ?? live?.reference_range ?? null);
+      const refRange = rangeType === "descriptive"
+        ? (normalRangeText || "")
+        : (isOutsourced && editedRefRanges[k] !== undefined
+          ? editedRefRanges[k]
+          : (p?.referenceRange ?? live?.reference_range ?? null));
 
       const noteEdited = editedNotes[k];
       const note = noteEdited !== undefined
@@ -930,7 +934,9 @@ const ResultVerification = () => {
         const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit, p.normalFindings);
         const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
         const unit = p.isOutsourced && editedUnits[k] !== undefined ? editedUnits[k] : p.unit;
-        const refRange = p.isOutsourced && editedRefRanges[k] !== undefined ? editedRefRanges[k] : p.referenceRange;
+        const refRange = p.rangeType === "descriptive"
+          ? (p.normalRangeText || "")
+          : (p.isOutsourced && editedRefRanges[k] !== undefined ? editedRefRanges[k] : p.referenceRange);
         upserts.push({
           registration_id: regId, test_id: p.testId, parameter_id: p.parameterId,
           param_code: p.paramCode, parameter_name: p.parameterName,

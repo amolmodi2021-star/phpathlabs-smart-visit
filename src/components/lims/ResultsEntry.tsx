@@ -642,9 +642,12 @@ const ResultsEntry = () => {
           const rangeLow = resolved.low ?? p.normal_range_low;
           const rangeHigh = resolved.high ?? p.normal_range_high;
 
-          // For outsourced params, use saved values from patient_results if available
+          // For outsourced params, use saved values from patient_results if available.
+          // Descriptive: reference_range is Display Text only (never Normal Findings).
           const savedUnit = isParamOutsourced && existing?.unit ? existing.unit : (p.unit || "");
-          const savedRefRange = isParamOutsourced && existing?.reference_range ? existing.reference_range : refText;
+          const savedRefRange = resolved.rangeType === "descriptive"
+            ? (resolved.text || "")
+            : (isParamOutsourced && existing?.reference_range ? existing.reference_range : refText);
 
           parameters.push({
             parameterId: p.id,
@@ -817,7 +820,9 @@ const ResultsEntry = () => {
       const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit, p.normalFindings);
       const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : autoFlag;
       const unit = p.isOutsourced && editedUnits[key] !== undefined ? editedUnits[key] : p.unit;
-      const refRange = p.isOutsourced && editedRefRanges[key] !== undefined ? editedRefRanges[key] : p.referenceRange;
+      const refRange = p.rangeType === "descriptive"
+        ? (p.normalRangeText || "")
+        : (p.isOutsourced && editedRefRanges[key] !== undefined ? editedRefRanges[key] : p.referenceRange);
       upserts.push({
         registration_id: regId,
         test_id: p.testId,
@@ -964,7 +969,9 @@ const ResultsEntry = () => {
         const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit, p.normalFindings);
         const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : autoFlag;
         const unit = p.isOutsourced && editedUnits[key] !== undefined ? editedUnits[key] : p.unit;
-        const refRange = p.isOutsourced && editedRefRanges[key] !== undefined ? editedRefRanges[key] : p.referenceRange;
+        const refRange = p.rangeType === "descriptive"
+          ? (p.normalRangeText || "")
+          : (p.isOutsourced && editedRefRanges[key] !== undefined ? editedRefRanges[key] : p.referenceRange);
         upserts.push({
           registration_id: reg.id,
           test_id: p.testId,
