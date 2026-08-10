@@ -27,7 +27,7 @@ import { format, startOfDay, endOfDay, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 import { fetchAllByIds } from "@/lib/fetchAllRows";
-import { fetchDispatchCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPendingCandidates";
+import { fetchDispatchStatusIds } from "@/lib/limsPendingCandidates";
 import { shortIdsKey } from "@/lib/queryKeys";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import NewBadge from "./NewBadge";
@@ -43,7 +43,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-type TestStatus = "registered" | "sample_collected" | "sample_accepted" | "results_entered" | "verified" | "approved" | "dispatched";
+type TestStatus = "registered" | "sample_collected" | "sample_accepted" | "results_entered" | "verified" | "approved" | "dispatched" | "cancelled";
 
 interface DispatchTest {
   testId: string;
@@ -69,10 +69,11 @@ interface DispatchTest {
 interface DispatchEntry {
   registration: any;
   tests: DispatchTest[];
-  completionStatus: "all_done" | "partial" | "all_pending";
+  completionStatus: "all_done" | "partial" | "all_pending" | "cancelled";
   approvedCount: number;
   pendingCount: number;
   dispatchedCount: number;
+  cancelledCount: number;
 }
 
 const Dispatch = () => {
@@ -96,8 +97,7 @@ const Dispatch = () => {
   const { data: filteredDispatchIds = [] as string[], isLoading: loadingIds } = useQuery({
     queryKey: ["dispatch_filtered_ids", debouncedSearch, dateFrom.toISOString(), dateTo.toISOString()],
     queryFn: async (): Promise<string[]> => {
-      const candidates = await fetchDispatchCandidateIds();
-      return await fetchFilteredSortedIds(candidates, debouncedSearch, {
+      return await fetchDispatchStatusIds(debouncedSearch, {
         dateFromIso: dateFrom.toISOString(),
         dateToIso: dateTo.toISOString(),
       });
@@ -248,9 +248,10 @@ const Dispatch = () => {
   };
 
   const dispatchEntries = useMemo(() => {
-    return registrations.filter((reg: any) => !heldSet.has(reg.id)).map((reg: any) => {
+    return registrations.map((reg: any) => {
       const tests = (reg.tests || []) as any[];
-      const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
+      const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id || t.id).filter(Boolean));
+      const billCancelled = !!reg.bill_cancelled;
       // Build leaf-id set from this registration's tubes (handles PRL/HLT expansion)
       const leafIds = new Set<string>();
       for (const tb of allTubes) {
@@ -259,12 +260,12 @@ const Dispatch = () => {
         ids.forEach((id: string) => leafIds.add(id));
       }
       const expandedTests = expandRegistrationTests(tests, leafIds, testsMap);
-      const activeTests = expandedTests.filter((t: any) => !cancelledIds.has(t.test_id));
-      if (activeTests.length === 0) return null;
+      if (expandedTests.length === 0) return null;
 
       const dispatchTests: DispatchTest[] = [];
-      for (const t of activeTests) {
+      for (const t of expandedTests) {
         const testInfo = testsMap[t.test_id] || {};
+        const isCancelled = billCancelled || cancelledIds.has(t.test_id);
         const testResults = allResults.filter((r: any) => r.registration_id === reg.id && r.test_id === t.test_id);
         const snip = allSnips.find((s: any) => s.registration_id === reg.id && s.test_id === t.test_id);
 
@@ -278,16 +279,18 @@ const Dispatch = () => {
         const hasVerifiedResults = testResults.some((r: any) => r.status === "verified");
         const hasVerifiedSnip = snip && snip.outsource_status === "verified";
         const hasEnteredResults = testResults.some((r: any) => r.status === "entered" || r.status === "results_entered");
-        const hasEnteredSnip = snip && (snip.outsource_status === "results_entered" || snip.outsource_status === "results_saved");
+        const hasEnteredSnip = snip && (snip.outsource_status === "results_entered" || snip.outsource_status === "results_saved" || snip.outsource_status === "sent");
 
         let status: TestStatus = "registered";
-        const regStatus = reg.status as string;
-        if (hasDispatchedResults || hasDispatchedSnip) status = "dispatched";
+        if (isCancelled) {
+          status = "cancelled";
+        } else if (hasDispatchedResults || hasDispatchedSnip) status = "dispatched";
         else if (hasApprovedResults || hasApprovedSnip) status = "approved";
         else if (hasVerifiedResults || hasVerifiedSnip) status = "verified";
         else if (hasEnteredResults || hasEnteredSnip) status = "results_entered";
-        else if (regStatus === "sample_accepted" || testResults.length > 0) status = "sample_accepted";
-        else if (regStatus === "sample_collected") status = "sample_collected";
+        else if (tube?.status === "accepted" || tube?.accepted_at) status = "sample_accepted";
+        else if (tube?.status === "collected" || tube?.collected_at) status = "sample_collected";
+        else status = "registered";
 
         const snipUrls = snip && snip.result_mode === "snip" && Array.isArray(snip.snip_image_urls) ? snip.snip_image_urls : [];
         const approvedResults = testResults.filter((r: any) => r.status === "approved");
@@ -295,7 +298,6 @@ const Dispatch = () => {
         // Extract audit timestamps
         const collectedAt = tube?.collected_at || null;
         const acceptedAt = tube?.accepted_at || null;
-        // Get the earliest entered_at, verified_at, approved_at, dispatched_at from results
         const getEarliest = (field: string) => {
           const vals = testResults.map((r: any) => r[field]).filter(Boolean);
           return vals.length > 0 ? vals.sort()[0] : null;
@@ -305,7 +307,6 @@ const Dispatch = () => {
           return vals.length > 0 ? vals[0] : null;
         };
 
-        // For snip-only outsourced tests, derive timestamps + stamps from outsourced_test_snips
         let enteredAt = getEarliest("entered_at");
         let verifiedAt = getEarliest("verified_at");
         let approvedAtTs = getEarliest("approved_at");
@@ -314,10 +315,10 @@ const Dispatch = () => {
         let verifiedBy = getFirstBy("verified_by");
         let approvedBy = getFirstBy("approved_by");
         let dispatchedBy = getFirstBy("dispatched_by");
-        if (snip) {
+        if (snip && !isCancelled) {
           const snipStatus = snip.outsource_status;
           const snipTime = snip.updated_at || snip.sent_at || null;
-          if (["results_entered", "results_saved", "verified", "approved", "dispatched"].includes(snipStatus)) {
+          if (["results_entered", "results_saved", "sent", "verified", "approved", "dispatched"].includes(snipStatus)) {
             enteredAt = enteredAt || snip.entered_at || snipTime;
             enteredBy = enteredBy || snip.entered_by || null;
           }
@@ -357,25 +358,43 @@ const Dispatch = () => {
         });
       }
 
+      const cancelledCount = dispatchTests.filter(t => t.status === "cancelled").length;
       const approvedCount = dispatchTests.filter(t => t.status === "approved").length;
-      const pendingCount = dispatchTests.filter(t => t.status !== "approved" && t.status !== "dispatched").length;
       const dispatchedCount = dispatchTests.filter(t => t.status === "dispatched").length;
-      const nonDispatchedCount = approvedCount + pendingCount;
+      const pendingCount = dispatchTests.filter(t => t.status !== "approved" && t.status !== "dispatched" && t.status !== "cancelled").length;
+      const activeCount = dispatchTests.length - cancelledCount;
 
-      let completionStatus: "all_done" | "partial" | "all_pending" = "all_pending";
-      if (nonDispatchedCount === 0) completionStatus = "all_done";
-      else if (dispatchedCount > 0 || (approvedCount > 0 && pendingCount > 0)) completionStatus = "partial";
-      else if (approvedCount > 0) completionStatus = "all_done"; // all remaining approved — ready
+      let completionStatus: DispatchEntry["completionStatus"] = "all_pending";
+      if (billCancelled || (dispatchTests.length > 0 && cancelledCount === dispatchTests.length)) {
+        completionStatus = "cancelled";
+      } else if (activeCount > 0 && dispatchedCount === activeCount) {
+        completionStatus = "all_done";
+      } else if (dispatchedCount > 0 || (approvedCount > 0 && pendingCount > 0)) {
+        completionStatus = "partial";
+      } else if (approvedCount > 0 && pendingCount === 0) {
+        completionStatus = "all_done"; // all remaining approved — ready to dispatch
+      }
 
-      return { registration: reg, tests: dispatchTests, completionStatus, approvedCount, pendingCount, dispatchedCount } as DispatchEntry;
+      return {
+        registration: reg,
+        tests: dispatchTests,
+        completionStatus,
+        approvedCount,
+        pendingCount,
+        dispatchedCount,
+        cancelledCount,
+      } as DispatchEntry;
     }).filter(Boolean) as DispatchEntry[];
-  }, [registrations, allResults, allSnips, allTubes, testsMap, heldSet]);
+  }, [registrations, allResults, allSnips, allTubes, testsMap]);
 
-  // Re-sort: active STAT on top, completed STAT loses priority
+  // Re-sort: active STAT on top, cancelled last, then invoice
   const sortedDispatchEntries = useMemo(() => {
     return [...dispatchEntries].sort((a, b) => {
-      const aActivestat = a.registration.is_stat && a.completionStatus !== "all_done" ? 1 : 0;
-      const bActivestat = b.registration.is_stat && b.completionStatus !== "all_done" ? 1 : 0;
+      const aCancelled = a.completionStatus === "cancelled" ? 1 : 0;
+      const bCancelled = b.completionStatus === "cancelled" ? 1 : 0;
+      if (aCancelled !== bCancelled) return aCancelled - bCancelled;
+      const aActivestat = a.registration.is_stat && a.completionStatus !== "all_done" && a.completionStatus !== "cancelled" ? 1 : 0;
+      const bActivestat = b.registration.is_stat && b.completionStatus !== "all_done" && b.completionStatus !== "cancelled" ? 1 : 0;
       if (bActivestat !== aActivestat) return bActivestat - aActivestat;
       return String(b.registration.invoice_number || "").localeCompare(String(a.registration.invoice_number || ""));
     });
@@ -526,14 +545,16 @@ const Dispatch = () => {
       case "verified": return <Badge className="text-[10px] bg-purple-600">Verified</Badge>;
       case "approved": return <Badge className="text-[10px] bg-green-600">Approved</Badge>;
       case "dispatched": return <Badge className="text-[10px] bg-blue-600">Dispatched</Badge>;
+      case "cancelled": return <Badge variant="destructive" className="text-[10px]">Cancelled</Badge>;
     }
   };
 
-  const getCompletionDot = (status: "all_done" | "partial" | "all_pending") => {
+  const getCompletionDot = (status: DispatchEntry["completionStatus"]) => {
     switch (status) {
       case "all_done": return <Circle className="h-3 w-3 fill-green-500 text-green-500" />;
       case "partial": return <Circle className="h-3 w-3 fill-amber-500 text-amber-500" />;
       case "all_pending": return <Circle className="h-3 w-3 fill-red-500 text-red-500" />;
+      case "cancelled": return <Circle className="h-3 w-3 fill-slate-400 text-slate-400" />;
     }
   };
 
@@ -676,8 +697,8 @@ const Dispatch = () => {
                 ) : sortedDispatchEntries.length === 0 ? (
                   <div className="text-center py-12 text-muted-foreground px-3">
                     <Truck className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                    <p className="text-sm font-medium">No reports pending dispatch</p>
-                    <p className="text-xs">All approved reports have been dispatched</p>
+                    <p className="text-sm font-medium">No patients in this date range</p>
+                    <p className="text-xs">Adjust dates or search to check patient status</p>
                   </div>
                 ) : (
                 <div className="divide-y">
@@ -694,9 +715,11 @@ const Dispatch = () => {
                           <div className="mt-1 shrink-0">{getCompletionDot(entry.completionStatus)}</div>
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-1.5">
-                              {reg.is_stat && entry.completionStatus !== "all_done" && <span className="relative flex h-2 w-2 shrink-0"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-destructive" /></span>}
-                              <span className="font-medium text-sm truncate">{patientDisplayName(reg)}</span>
+                              {reg.is_stat && entry.completionStatus !== "all_done" && entry.completionStatus !== "cancelled" && <span className="relative flex h-2 w-2 shrink-0"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-destructive" /></span>}
+                              <span className={cn("font-medium text-sm truncate", entry.completionStatus === "cancelled" && "line-through text-muted-foreground")}>{patientDisplayName(reg)}</span>
                               <NewBadge show={isNewArrival(reg.id)} />
+                              {entry.completionStatus === "cancelled" && <Badge variant="destructive" className="text-[10px] px-1 py-0">Cancelled</Badge>}
+                              {heldSet.has(reg.id) && entry.completionStatus !== "cancelled" && <Badge variant="outline" className="text-[10px] px-1 py-0 border-amber-500 text-amber-700">Held</Badge>}
                               <Badge variant="outline" className="text-[10px] font-mono shrink-0 px-1 py-0">{formatAgeGender(reg.dob, reg.gender)}</Badge>
                             </div>
                             <div className="flex items-center gap-2 mt-0.5">
@@ -704,7 +727,11 @@ const Dispatch = () => {
                             </div>
                             <div className="flex items-center justify-between mt-0.5">
                               <span className="text-xs text-muted-foreground flex items-center gap-1"><FileText className="h-3 w-3" />{reg.invoice_number}</span>
-                              <span className="text-[10px] text-muted-foreground">{entry.approvedCount}A / {entry.pendingCount}P</span>
+                              <span className="text-[10px] text-muted-foreground">
+                                {entry.cancelledCount === entry.tests.length
+                                  ? `${entry.cancelledCount} cancelled`
+                                  : `${entry.approvedCount}A / ${entry.pendingCount}P${entry.cancelledCount ? ` / ${entry.cancelledCount}C` : ""}`}
+                              </span>
                             </div>
                             <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1">
                               <CalendarIcon className="h-3 w-3" />
@@ -755,9 +782,11 @@ const Dispatch = () => {
                             </Button>
                           )}
                           <User className="h-5 w-5 text-muted-foreground shrink-0" />
-                          <h3 className={cn("font-semibold", isMobile ? "text-base" : "text-lg")}>{patientDisplayName(selectedEntry.registration)}</h3>
+                          <h3 className={cn("font-semibold", isMobile ? "text-base" : "text-lg", selectedEntry.completionStatus === "cancelled" && "line-through text-muted-foreground")}>{patientDisplayName(selectedEntry.registration)}</h3>
                           <Badge variant="outline" className="text-xs font-mono">{formatAgeGender(selectedEntry.registration.dob, selectedEntry.registration.gender)}</Badge>
-                          {selectedEntry.registration.is_stat && selectedEntry.completionStatus !== "all_done" && <Badge variant="destructive" className="text-[10px]">STAT</Badge>}
+                          {selectedEntry.completionStatus === "cancelled" && <Badge variant="destructive" className="text-[10px]">Cancelled</Badge>}
+                          {heldSet.has(selectedEntry.registration.id) && selectedEntry.completionStatus !== "cancelled" && <Badge variant="outline" className="text-[10px] border-amber-500 text-amber-700">Held</Badge>}
+                          {selectedEntry.registration.is_stat && selectedEntry.completionStatus !== "all_done" && selectedEntry.completionStatus !== "cancelled" && <Badge variant="destructive" className="text-[10px]">STAT</Badge>}
                           {getCompletionDot(selectedEntry.completionStatus)}
                         </div>
                         <div className={cn("flex items-center gap-4 mt-1 text-sm text-muted-foreground flex-wrap", isMobile && "gap-2 text-xs")}>
@@ -854,7 +883,7 @@ const Dispatch = () => {
                               <div className="flex items-center gap-2 min-w-0">
                                 <CollapsibleTrigger className="flex items-center gap-2 group cursor-pointer text-left">
                                   <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-90" />
-                                  <span className="font-medium text-sm">{test.testName}</span>
+                                  <span className={cn("font-medium text-sm", test.status === "cancelled" && "line-through text-muted-foreground")}>{test.testName}</span>
                                 </CollapsibleTrigger>
                               </div>
                               <div className={cn("flex items-center gap-1.5 shrink-0", isMobile && "flex-wrap w-full justify-end")}>

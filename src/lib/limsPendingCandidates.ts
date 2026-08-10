@@ -28,6 +28,18 @@ export async function fetchDispatchCandidateIds(): Promise<string[]> {
   return rpcUuidArray("lims_dispatch_candidate_ids");
 }
 
+/** Full Dispatch status board (includes pending + cancelled bills in date range). */
+export async function fetchDispatchStatusIds(
+  search: string,
+  opts: { dateFromIso?: string; dateToIso?: string } = {},
+): Promise<string[]> {
+  return rpcUuidArray("lims_dispatch_status_ids", {
+    p_search: search || null,
+    p_date_from: opts.dateFromIso || null,
+    p_date_to: opts.dateToIso || null,
+  });
+}
+
 export async function fetchOutsourcedCandidateIds(): Promise<string[]> {
   return rpcUuidArray("lims_outsourced_candidate_ids");
 }
