@@ -21,7 +21,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { Calendar as DatePickerCalendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Search, Loader2, CheckCircle2, Send, Eye, Truck, Circle, Phone, Calendar as CalendarIcon, FileText, User, Clock, ChevronRight, ArrowLeft } from "lucide-react";
+import { Search, Loader2, CheckCircle2, Send, Eye, Truck, Circle, Phone, Calendar as CalendarIcon, FileText, User, Clock, ChevronRight, ArrowLeft, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 import { format, startOfDay, endOfDay, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -71,6 +71,7 @@ interface DispatchEntry {
   completionStatus: "all_done" | "partial" | "all_pending";
   approvedCount: number;
   pendingCount: number;
+  dispatchedCount: number;
 }
 
 const Dispatch = () => {
@@ -286,14 +287,15 @@ const Dispatch = () => {
 
       const approvedCount = dispatchTests.filter(t => t.status === "approved").length;
       const pendingCount = dispatchTests.filter(t => t.status !== "approved" && t.status !== "dispatched").length;
+      const dispatchedCount = dispatchTests.filter(t => t.status === "dispatched").length;
       const nonDispatchedCount = approvedCount + pendingCount;
 
       let completionStatus: "all_done" | "partial" | "all_pending" = "all_pending";
       if (nonDispatchedCount === 0) completionStatus = "all_done";
-      else if (pendingCount === 0) completionStatus = "all_done";
-      else if (approvedCount > 0) completionStatus = "partial";
+      else if (dispatchedCount > 0 || (approvedCount > 0 && pendingCount > 0)) completionStatus = "partial";
+      else if (approvedCount > 0) completionStatus = "all_done"; // all remaining approved — ready
 
-      return { registration: reg, tests: dispatchTests, completionStatus, approvedCount, pendingCount } as DispatchEntry;
+      return { registration: reg, tests: dispatchTests, completionStatus, approvedCount, pendingCount, dispatchedCount } as DispatchEntry;
     }).filter(Boolean) as DispatchEntry[];
   }, [registrations, allResults, allSnips, allTubes, testsMap, heldSet]);
 
@@ -370,6 +372,46 @@ const Dispatch = () => {
       });
     } catch (err: any) {
       toast.error(err.message || "Dispatch failed");
+    } finally {
+      setActionKey(null);
+    }
+  };
+
+  /** Re-queue report PDF for already dispatched (and any still-approved) tests — status unchanged. */
+  const sendReportsAgain = async (entry: DispatchEntry) => {
+    const reg = entry.registration;
+    if (isPaymentBlocked(reg)) {
+      setDueBlockEntry(entry);
+      return;
+    }
+    const phone = String(reg.mobile_number || "").replace(/\D/g, "").slice(-10);
+    if (phone.length !== 10) {
+      toast.error("No valid mobile number — cannot send report WhatsApp");
+      return;
+    }
+
+    const reportable = entry.tests.filter(t => t.status === "approved" || t.status === "dispatched");
+    const testIds = reportable.map(t => t.testId);
+    if (testIds.length === 0) {
+      toast.error("No reports available to send");
+      return;
+    }
+
+    setActionKey(`${reg.id}||send`);
+    try {
+      toast.message("Generating report PDF for WhatsApp…");
+      const queued = await queueApprovedReportWhatsApp({
+        registrationId: reg.id,
+        testIds,
+      });
+      if (!queued.ok) {
+        throw new Error(queued.error || "Failed to queue report WhatsApp");
+      }
+      toast.success(`Report queued for WhatsApp — ${patientDisplayName(reg)}`, {
+        description: `Sending to ${phone} via WhatsApp Console`,
+      });
+    } catch (err: any) {
+      toast.error(err.message || "Send reports failed");
     } finally {
       setActionKey(null);
     }
@@ -605,6 +647,22 @@ const Dispatch = () => {
                         {selectedEntry.tests.some(t => t.status === "approved" || t.status === "dispatched") && (
                           <Button size="sm" variant="outline" className="gap-1 shrink-0" disabled={isPaymentBlocked(selectedEntry.registration)} onClick={() => openReportSelectDialog(selectedEntry)}>
                             <Eye className="h-4 w-4" /> {!isMobile && "View"} Report
+                          </Button>
+                        )}
+                        {selectedEntry.dispatchedCount > 0 && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1 shrink-0"
+                            disabled={actionKey === `${selectedEntry.registration.id}||send`}
+                            onClick={() => sendReportsAgain(selectedEntry)}
+                          >
+                            {actionKey === `${selectedEntry.registration.id}||send` ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <MessageSquare className="h-4 w-4" />
+                            )}
+                            Send Reports
                           </Button>
                         )}
                         {selectedEntry.approvedCount > 0 && (
