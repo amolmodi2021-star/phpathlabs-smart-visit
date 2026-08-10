@@ -37,6 +37,7 @@ export async function enqueueWhatsAppConsoleMessage(
     media_url: input.media_url || null,
     media_mime: input.media_mime || (input.media_url ? "image/jpeg" : null),
     status: "pending",
+    max_attempts: 2,
     payload: input.payload || {},
   };
 
@@ -48,6 +49,30 @@ export async function enqueueWhatsAppConsoleMessage(
 
   if (error) return { ok: false, error: error.message };
   return { ok: true, id: (data as any)?.id };
+}
+
+/** Clear terminal failed queue rows after staff send the file manually. */
+export async function dismissFailedWhatsAppConsoleJobs(
+  ids: string[],
+): Promise<{ ok: boolean; error?: string }> {
+  const unique = [...new Set(ids.map((id) => String(id || "").trim()).filter(Boolean))];
+  if (!unique.length) return { ok: true };
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("whatsapp_console_outbox" as any)
+    .update({
+      status: "cancelled",
+      last_error: "manual_send",
+      media_url: null,
+      next_retry_at: null,
+      claimed_at: null,
+      claimed_by: null,
+      updated_at: now,
+    } as any)
+    .in("id", unique)
+    .eq("status", "failed");
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
 }
 
 /** Upload invoice JPEG and enqueue for Console delivery. */

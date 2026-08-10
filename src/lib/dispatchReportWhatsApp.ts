@@ -1,3 +1,21 @@
+/** Open report viewer and download the PDF (no WhatsApp). */
+export function openReportForManualWhatsApp(opts: {
+  registrationId: string;
+  testIds: string[];
+  pendingReportNames?: string[];
+}): { ok: boolean; error?: string } {
+  const tests = opts.testIds.filter(Boolean).join(",");
+  if (!opts.registrationId || !tests) {
+    return { ok: false, error: "No reports available to download" };
+  }
+  const url = `/lims/report/${opts.registrationId}?tests=${encodeURIComponent(tests)}&manualWa=1`;
+  const win = window.open(url, "lims-report-manual-wa", "width=960,height=720");
+  if (!win) {
+    return { ok: false, error: "Popup blocked — allow popups to download the report PDF" };
+  }
+  return { ok: true };
+}
+
 /** Open report viewer to generate PDF and queue WhatsApp Console delivery. */
 export function queueApprovedReportWhatsApp(opts: {
   registrationId: string;
