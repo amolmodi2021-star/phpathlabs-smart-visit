@@ -3,7 +3,7 @@ import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { formatAgeGender } from "@/lib/ageGender";
 import { patientDisplayName } from "@/lib/patientDisplayName";
-import { isSuspectNegativeResult } from "@/lib/reportFlags";
+import { isSuspectNegativeResult, calculateResultFlag } from "@/lib/reportFlags";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -79,6 +79,7 @@ interface ParameterResult {
   rangeType: string; // numeric | qualitative | descriptive
   descriptiveOptions: string[];
   expectedValue: string;
+  normalFindings: string;
   normalRangeText: string;
   isOutsourced: boolean; // true if this param is outsourced (test-level or param-level)
   outsourceLabName: string | null; // lab name if sent
@@ -538,46 +539,41 @@ const ResultsEntry = () => {
   // ─── Helper: resolve best normal range for a parameter given patient demographics ───
   const resolveNormalRange = useCallback((parameterId: string, reg: any) => {
     const ranges = normalRangesMap[parameterId];
-    if (!ranges || ranges.length === 0) return { text: "", low: null as number | null, high: null as number | null, rangeType: "numeric", descriptiveOptions: [] as string[], expectedValue: "" };
-
-    // Parse patient age (from dob or age text in registration)
-    let patientAge: number | null = null;
-    if (reg.dob) {
-      const birth = new Date(reg.dob);
+    if (!ranges || ranges.length === 0) return { text: "", low: null as number | null, high: null as number | null, rangeType: "numeric", descriptiveOptions: [] as string[], expectedValue: "", normalFindings: "" };
+    // Prefer gender-specific then all; within that, age-matching
+    const gender = (reg?.gender || "").toLowerCase();
+    const ageYears = (() => {
+      if (!reg?.dob) return null;
+      const d = new Date(reg.dob);
+      if (isNaN(d.getTime())) return null;
       const now = new Date();
-      patientAge = Math.floor((now.getTime() - birth.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
-    }
-    const patientGender = (reg.gender || "").toLowerCase().charAt(0); // 'm' or 'f'
+      let age = now.getFullYear() - d.getFullYear();
+      const m = now.getMonth() - d.getMonth();
+      if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
+      return age;
+    })();
 
-    // Filter by gender
-    let candidates = ranges.filter((r: any) => {
+    const matchesAge = (r: any) => {
+      if (r.age_min == null && r.age_max == null) return true;
+      if (ageYears == null) return true;
+      const min = r.age_min ?? 0;
+      const max = r.age_max ?? 200;
+      return ageYears >= min && ageYears <= max;
+    };
+
+    const genderPool = ranges.filter((r: any) => {
       const g = (r.gender || "all").toLowerCase();
-      if (g === "all") return true;
-      if (g === "male" && patientGender === "m") return true;
-      if (g === "female" && patientGender === "f") return true;
-      return false;
+      return g === "all" || g === gender || (gender === "m" && g === "male") || (gender === "f" && g === "female") || (gender.startsWith("male") && g === "male") || (gender.startsWith("female") && g === "female");
     });
-
-    // Filter by age if patient age is known
-    if (patientAge != null) {
-      const ageMatched = candidates.filter((r: any) => {
-        if (r.age_min == null && r.age_max == null) return true;
-        if (r.age_min != null && patientAge! < r.age_min) return false;
-        if (r.age_max != null && patientAge! > r.age_max) return false;
-        return true;
-      });
-      if (ageMatched.length > 0) candidates = ageMatched;
-    }
-
-    // Pick the most specific (prefer gender-specific over 'all')
-    const best = candidates.find((r: any) => (r.gender || "all").toLowerCase() !== "all") || candidates[0];
-    if (!best) return { text: "", low: null as number | null, high: null as number | null, rangeType: "numeric", descriptiveOptions: [] as string[], expectedValue: "" };
-
+    const pool = (genderPool.length ? genderPool : ranges).filter(matchesAge);
+    const best = pool[0] || ranges[0];
+    if (!best) return { text: "", low: null as number | null, high: null as number | null, rangeType: "numeric", descriptiveOptions: [] as string[], expectedValue: "", normalFindings: "" };
     const text = best.normal_range_text || (best.normal_range_low != null && best.normal_range_high != null ? `${best.normal_range_low} - ${best.normal_range_high}` : "");
     const rangeType = best.range_type || "numeric";
     const descriptiveOptions = Array.isArray(best.descriptive_options) ? best.descriptive_options : [];
     const expectedValue = best.expected_value || "";
-    return { text, low: best.normal_range_low as number | null, high: best.normal_range_high as number | null, rangeType, descriptiveOptions, expectedValue };
+    const normalFindings = best.normal_findings || "";
+    return { text, low: best.normal_range_low as number | null, high: best.normal_range_high as number | null, rangeType, descriptiveOptions, expectedValue, normalFindings };
   }, [normalRangesMap]);
 
   // ─── Build patient entries (includes outsourced tests/params with badges) ───
@@ -673,6 +669,7 @@ const ResultsEntry = () => {
             rangeType: resolved.rangeType,
             descriptiveOptions: resolved.descriptiveOptions,
             expectedValue: resolved.expectedValue,
+            normalFindings: resolved.normalFindings || "",
             normalRangeText: resolved.text || "",
             isOutsourced: !!isParamOutsourced,
             outsourceLabName: isParamOutsourced ? (snipDetail?.labName || null) : null,
@@ -702,9 +699,8 @@ const ResultsEntry = () => {
   }, [editedTestNotes, loadedTestNotes]);
 
   // ─── Calculate flag ───
-  const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string, descriptiveOptions?: string[], normalRangeText?: string, unit?: string | null): string => {
+  const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string, descriptiveOptions?: string[], normalRangeText?: string, unit?: string | null, normalFindings?: string): string => {
     if (!value || value.trim() === "") return "";
-    if (rangeType === "undefined") return "";
     if (rangeType === "time") {
       const total = parseTimeResultToSeconds(value);
       if (total == null) return "";
@@ -712,28 +708,17 @@ const ResultsEntry = () => {
       if (high != null && total > high) return "H";
       return "N";
     }
-    if (rangeType === "qualitative" || rangeType === "descriptive") {
-      const u = (unit || "").trim().toLowerCase();
-      const stripUnit = (s: string) => {
-        let t = s.trim().toLowerCase();
-        if (u && t.endsWith(u)) t = t.slice(0, -u.length).trim();
-        return t;
-      };
-      const ref = stripUnit(normalRangeText || "");
-      if (!ref) return "";
-      return stripUnit(value) === ref ? "N" : "X";
-    }
-    // Operator-prefixed values (">5", "> 5", "≥5", "<0.01", "≤ 2") indicate the
-    // analyzer/operator capped the reading. Treat as definitively H/L regardless
-    // of whitespace or whether the trailing number sits inside the normal range.
-    const trimmed = value.trim();
-    if (/^(?:>=|≥|>)\s*-?\d*\.?\d+/.test(trimmed)) return "H";
-    if (/^(?:<=|≤|<)\s*-?\d*\.?\d+/.test(trimmed)) return "L";
-    const num = parseFloat(trimmed);
-    if (isNaN(num)) return "";
-    if (low != null && num < low) return "L";
-    if (high != null && num > high) return "H";
-    return "N";
+    return calculateResultFlag({
+      value,
+      low,
+      high,
+      rangeType,
+      expectedValue,
+      descriptiveOptions,
+      normalRangeText,
+      normalFindings,
+      unit,
+    });
   };
 
   // ─── Apply unit suffix for "undefined" range type ───
@@ -829,7 +814,7 @@ const ResultsEntry = () => {
     for (const p of testParams) {
       const key = `${regId}||${p.parameterId}`;
       const value = currentEdits[key] !== undefined ? currentEdits[key] : p.resultValue;
-      const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit);
+      const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit, p.normalFindings);
       const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : autoFlag;
       const unit = p.isOutsourced && editedUnits[key] !== undefined ? editedUnits[key] : p.unit;
       const refRange = p.isOutsourced && editedRefRanges[key] !== undefined ? editedRefRanges[key] : p.referenceRange;
@@ -976,7 +961,7 @@ const ResultsEntry = () => {
       for (const p of testParams) {
         const key = `${reg.id}||${p.parameterId}`;
         const value = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
-        const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit);
+        const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit, p.normalFindings);
         const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : autoFlag;
         const unit = p.isOutsourced && editedUnits[key] !== undefined ? editedUnits[key] : p.unit;
         const refRange = p.isOutsourced && editedRefRanges[key] !== undefined ? editedRefRanges[key] : p.referenceRange;
@@ -1233,7 +1218,7 @@ const ResultsEntry = () => {
     const regId = entry.registration.id;
     const key = `${regId}||${p.parameterId}`;
     const currentValue = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
-    const autoFlag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit);
+    const autoFlag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit, p.normalFindings);
     const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : autoFlag;
     const isInterfaceParameter = p.sendForInterface && !p.isCalculated;
     const isAwaiting = isInterfaceParameter && !currentValue;
@@ -1959,7 +1944,7 @@ const ResultsEntry = () => {
                     {blankParams.map(p => {
                       const key = `${reg.id}||${p.parameterId}`;
                       const currentValue = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
-                      const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit);
+                      const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit, p.normalFindings);
                       const isInterfaceParameter = p.sendForInterface && !p.isCalculated;
                       const isAwaiting = isInterfaceParameter && !currentValue;
                       return (

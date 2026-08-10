@@ -8,6 +8,22 @@ export interface FlagEvaluationInput {
   flag?: string | null;
 }
 
+/** Inputs used by Results Entry / Verification / Approval for live flagging. */
+export interface ResultFlagInput {
+  value: string;
+  low?: number | null;
+  high?: number | null;
+  rangeType?: string;
+  /** Qualitative pair label / expected normal. */
+  expectedValue?: string;
+  descriptiveOptions?: string[];
+  /** Display Text — shown on report as reference range (NOT used for descriptive highlight). */
+  normalRangeText?: string;
+  /** Descriptive only: acceptable normal result(s); used for highlight, not shown on report. */
+  normalFindings?: string;
+  unit?: string | null;
+}
+
 const extractNumber = (value: string | number | null | undefined): number | null => {
   if (value === null || value === undefined) return null;
   const str = String(value).trim();
@@ -25,8 +41,7 @@ const extractNumber = (value: string | number | null | undefined): number | null
  * ">2000", "> 2000", ">=2000", "≥ 2000" (above measurable range) or
  * "<2", "< 2", "<=2", "≤ 2" (below detection limit). The whitespace
  * between operator and number is inconsistent across instruments and
- * typists. Returns the operator direction so the flagging logic can
- * treat the value as a saturating bound rather than an exact equality.
+ * typists.
  */
 type ResultOperator = "gt" | "lt" | null;
 const detectResultOperator = (value: string | number | null | undefined): ResultOperator => {
@@ -38,16 +53,42 @@ const detectResultOperator = (value: string | number | null | undefined): Result
   return null;
 };
 
+/**
+ * Compare an operator-prefixed result (`<15`, `> 60`) against numeric bounds.
+ * Spaces between operator and number are ignored.
+ *
+ * Examples:
+ *   result `<15` / `< 15`, high=15 (range `<15` or `0-15`) → N
+ *   result `<15`, high=10 → H
+ *   result `>60`, low=60, open high → N
+ *   result `>200`, high=15 → H
+ */
+export const flagOperatorAgainstBounds = (
+  op: "gt" | "lt",
+  value: number,
+  low: number | null,
+  high: number | null,
+): AbnormalFlag => {
+  if (op === "lt") {
+    // true_value ≤ value — normal when the stated ceiling is within the ref high
+    if (high != null && value <= high) return "N";
+    if (low != null && value <= low) return "L";
+    if (high != null && value > high) return "H";
+    return "L";
+  }
+  // true_value ≥ value
+  if (low != null && value >= low && (high == null || value <= high)) return "N";
+  if (high != null && value >= high) return "H";
+  if (low != null && value < low) return "L";
+  return "H";
+};
+
 const NORMAL_CATEGORY_KEYWORDS = [
   "normal", "non-diabetic", "nondiabetic", "non diabetic",
   "sufficient", "sufficiency", "desirable", "optimal",
   "no risk", "norisk", "acceptable", "negative", "reference",
 ];
 
-/**
- * For advisory-style ranges (e.g. HbA1c, Vitamin D, HDL), try to locate the
- * "normal" category by keyword and extract its numeric bounds.
- */
 const findNormalCategoryBounds = (text: string): { low: number | null; high: number | null } | null => {
   const lower = text.toLowerCase();
 
@@ -55,10 +96,8 @@ const findNormalCategoryBounds = (text: string): { low: number | null; high: num
     const idx = lower.indexOf(keyword);
     if (idx === -1) continue;
 
-    // Extract a segment around the keyword (generous window)
     const segment = text.substring(Math.max(0, idx - 10), idx + keyword.length + 80);
 
-    // Look for range pattern first (e.g. "30-100")
     const rangeMatch = segment.match(/(-?\d*\.?\d+)\s*(?:to|-|–|—)\s*(-?\d*\.?\d+)/i);
     if (rangeMatch) {
       const lo = Number.parseFloat(rangeMatch[1]);
@@ -66,14 +105,12 @@ const findNormalCategoryBounds = (text: string): { low: number | null; high: num
       if (Number.isFinite(lo) && Number.isFinite(hi)) return { low: lo, high: hi };
     }
 
-    // Look for <= or < pattern (e.g. "Non-Diabetic: <= 5.6")
     const upperMatch = segment.match(/(?:<=|≤|<)\s*(-?\d*\.?\d+)/);
     if (upperMatch) {
       const hi = Number.parseFloat(upperMatch[1]);
       if (Number.isFinite(hi)) return { low: null, high: hi };
     }
 
-    // Look for >= or > pattern (e.g. "No Risk: > 60")
     const lowerMatch = segment.match(/(?:>=|≥|>)\s*(-?\d*\.?\d+)/);
     if (lowerMatch) {
       const lo = Number.parseFloat(lowerMatch[1]);
@@ -111,15 +148,11 @@ const parseBoundsFromText = (rangeText?: string | null): { low: number | null; h
     }
   }
 
-  // Handle advisory ranges (e.g. HbA1c: <=5.6 and >=6.5, Vitamin D: <10 and >100)
-  // When < gives high and > gives low, they appear swapped → advisory range detected.
-  // Use keyword-based detection to find the "normal" category bounds.
   if (low !== null && high !== null && low > high) {
     const normalBounds = findNormalCategoryBounds(text);
     if (normalBounds && (normalBounds.low !== null || normalBounds.high !== null)) {
       return normalBounds;
     }
-    // Last resort: swap (legacy fallback)
     const temp = low;
     low = high;
     high = temp;
@@ -160,6 +193,77 @@ const computeQualitativeFlag = (row: FlagEvaluationInput): AbnormalFlag | null =
   return null;
 };
 
+const stripTrailingUnit = (raw: string, unit?: string | null): string => {
+  let t = raw.trim().toLowerCase().replace(/\s+/g, " ");
+  const u = (unit || "").trim().toLowerCase();
+  if (u && t.endsWith(u)) t = t.slice(0, -u.length).trim();
+  return t;
+};
+
+/** Split Normal Findings into acceptable values (`|` or newlines). */
+const splitNormalFindings = (raw?: string | null): string[] => {
+  if (!raw) return [];
+  return String(raw)
+    .split(/\r?\n|\|/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+};
+
+/**
+ * Live flag for Results / Verification / Approval / interface.
+ * - descriptive: compare against normalFindings only → N or X (highlight, no H/L)
+ * - qualitative: compare against display text / expected value → N or X
+ * - numeric: H/L/N, with `<15` / `> 60` compared to bounds (spaces trimmed)
+ */
+export const calculateResultFlag = (input: ResultFlagInput): string => {
+  const value = (input.value ?? "").toString();
+  if (!value.trim()) return "";
+  const rangeType = input.rangeType || "numeric";
+  if (rangeType === "undefined") return "";
+
+  if (rangeType === "time") {
+    const num = extractNumber(value);
+    if (num == null) return "";
+    if (input.low != null && num < input.low) return "L";
+    if (input.high != null && num > input.high) return "H";
+    return "N";
+  }
+
+  if (rangeType === "descriptive") {
+    const findings = splitNormalFindings(input.normalFindings);
+    if (findings.length === 0) return "";
+    const got = stripTrailingUnit(value, input.unit);
+    const ok = findings.some((f) => stripTrailingUnit(f, input.unit) === got);
+    return ok ? "N" : "X";
+  }
+
+  if (rangeType === "qualitative") {
+    const ref = stripTrailingUnit(input.normalRangeText || input.expectedValue || "", input.unit);
+    if (!ref) return "";
+    return stripTrailingUnit(value, input.unit) === ref ? "N" : "X";
+  }
+
+  const operator = detectResultOperator(value);
+  const num = extractNumber(value);
+  if (num == null) return "";
+
+  let low = input.low ?? null;
+  let high = input.high ?? null;
+  if (low == null && high == null) {
+    const textBounds = parseBoundsFromText(input.normalRangeText);
+    low = textBounds.low;
+    high = textBounds.high;
+  }
+
+  if (operator === "gt" || operator === "lt") {
+    return flagOperatorAgainstBounds(operator, num, low, high);
+  }
+
+  if (low != null && num < low) return "L";
+  if (high != null && num > high) return "H";
+  return "N";
+};
+
 export const computeAbnormalFlag = (row: FlagEvaluationInput): AbnormalFlag => {
   const existingFlag = String(row.flag ?? "").toUpperCase();
   const value = extractNumber(row.result_value);
@@ -167,7 +271,9 @@ export const computeAbnormalFlag = (row: FlagEvaluationInput): AbnormalFlag => {
   if (value === null) {
     const qualitativeFlag = computeQualitativeFlag(row);
     if (qualitativeFlag) return qualitativeFlag;
-    return existingFlag === "H" || existingFlag === "L" ? existingFlag : "N";
+    return existingFlag === "H" || existingFlag === "L" || existingFlag === "X"
+      ? (existingFlag as AbnormalFlag)
+      : "N";
   }
 
   const explicitLow = extractNumber(row.normal_range_low);
@@ -177,50 +283,19 @@ export const computeAbnormalFlag = (row: FlagEvaluationInput): AbnormalFlag => {
   let low = explicitLow ?? textBounds.low;
   let high = explicitHigh ?? textBounds.high;
 
-  // If explicit low/high are swapped (AI extraction error like low=2000, high=1000),
-  // prefer text-parsed bounds which are more reliable, then fall back to swap
   if (low !== null && high !== null && low > high) {
     if (textBounds.low !== null && textBounds.high !== null && textBounds.low <= textBounds.high) {
-      // Text parsing got it right (e.g. "200-1000" → low=200, high=1000), use those
       low = textBounds.low;
       high = textBounds.high;
     } else {
-      // Last resort: swap
       const temp = low;
       low = high;
       high = temp;
     }
   }
 
-  // Operator-prefixed results (">2000", "< 2", "≥ 100") indicate the analyzer
-  // saturated its measurable range. Treat as definitively High/Low when the
-  // operator places the true value outside the normal range.
-  //   >X  → true value ≥ X, possibly higher → flag H if X is at/above high,
-  //         or if no high is defined (still abnormal direction).
-  //   <X  → true value ≤ X, possibly lower → mirror with low.
-  if (operator === "gt") {
-    if (high !== null) {
-      if (value >= high) return "H";
-      // ">X" with X below the high bound is unusual but still indicates the
-      // reading saturated upward at the analyzer; flag H to be safe.
-      return "H";
-    }
-    if (low !== null) {
-      // No upper bound; only flag H if X is already at/above the lower bound,
-      // otherwise the value could still be within an open-ended normal range.
-      return value >= low ? "N" : "L";
-    }
-    return "H";
-  }
-  if (operator === "lt") {
-    if (low !== null) {
-      if (value <= low) return "L";
-      return "L";
-    }
-    if (high !== null) {
-      return value <= high ? "N" : "H";
-    }
-    return "L";
+  if (operator === "gt" || operator === "lt") {
+    return flagOperatorAgainstBounds(operator, value, low, high);
   }
 
   if (low === null && high === null) {
@@ -234,17 +309,12 @@ export const computeAbnormalFlag = (row: FlagEvaluationInput): AbnormalFlag => {
 
 /**
  * Detect a "suspect negative" numeric result — almost always an instrument
- * error or typing slip (e.g. "-1.02", "- 1.02", ">-1", "> -2"). The UI uses
- * this to highlight test names and parameter rows in red across the LIMS
- * workflow without blocking save/verify/approve. Pure text results
- * ("Negative", "Absent", etc.) are NOT flagged.
+ * error or typing slip (e.g. "-1.02", "- 1.02", ">-1", "> -2").
  */
 export const isSuspectNegativeResult = (value: string | number | null | undefined): boolean => {
   if (value === null || value === undefined) return false;
   const stripped = String(value).trim().replace(/^(?:>=|≥|>|<=|≤|<)\s*/, "").trim();
   if (!stripped) return false;
-  // Must look numeric (optionally signed, with digits and optional decimal),
-  // possibly with a space between sign and digits.
   if (!/^-\s*\d*\.?\d+\s*$/.test(stripped.replace(/,/g, ""))) return false;
   const num = Number.parseFloat(stripped.replace(/,/g, "").replace(/-\s+/, "-"));
   return Number.isFinite(num) && num < 0;

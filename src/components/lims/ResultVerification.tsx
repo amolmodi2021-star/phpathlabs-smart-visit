@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { formatAgeGender } from "@/lib/ageGender";
 import { patientDisplayName } from "@/lib/patientDisplayName";
-import { isSuspectNegativeResult } from "@/lib/reportFlags";
+import { isSuspectNegativeResult, calculateResultFlag } from "@/lib/reportFlags";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -71,6 +71,7 @@ interface ParameterResult {
   rangeType: string;
   descriptiveOptions: string[];
   expectedValue: string;
+  normalFindings: string;
   normalRangeText: string;
   isOutsourced: boolean;
   outsourceLabName: string | null;
@@ -327,7 +328,7 @@ const ResultVerification = () => {
   // Resolve normal range
   const resolveNormalRange = useCallback((parameterId: string, reg: any) => {
     const ranges = normalRangesMap[parameterId];
-    if (!ranges || ranges.length === 0) return { text: "", low: null as number | null, high: null as number | null, rangeType: "numeric", descriptiveOptions: [] as string[], expectedValue: "" };
+    if (!ranges || ranges.length === 0) return { text: "", low: null as number | null, high: null as number | null, rangeType: "numeric", descriptiveOptions: [] as string[], expectedValue: "", normalFindings: "" };
     let patientAge: number | null = null;
     if (reg.dob) {
       const birth = new Date(reg.dob);
@@ -348,9 +349,9 @@ const ResultVerification = () => {
       if (ageMatched.length > 0) candidates = ageMatched;
     }
     const best = candidates.find((r: any) => (r.gender || "all").toLowerCase() !== "all") || candidates[0];
-    if (!best) return { text: "", low: null as number | null, high: null as number | null, rangeType: "numeric", descriptiveOptions: [] as string[], expectedValue: "" };
+    if (!best) return { text: "", low: null as number | null, high: null as number | null, rangeType: "numeric", descriptiveOptions: [] as string[], expectedValue: "", normalFindings: "" };
     const text = best.normal_range_text || (best.normal_range_low != null && best.normal_range_high != null ? `${best.normal_range_low} - ${best.normal_range_high}` : "");
-    return { text, low: best.normal_range_low as number | null, high: best.normal_range_high as number | null, rangeType: best.range_type || "numeric", descriptiveOptions: Array.isArray(best.descriptive_options) ? best.descriptive_options : [], expectedValue: best.expected_value || "" };
+    return { text, low: best.normal_range_low as number | null, high: best.normal_range_high as number | null, rangeType: best.range_type || "numeric", descriptiveOptions: Array.isArray(best.descriptive_options) ? best.descriptive_options : [], expectedValue: best.expected_value || "", normalFindings: best.normal_findings || "" };
   }, [normalRangesMap]);
 
   // Build patient entries
@@ -404,7 +405,7 @@ const ResultVerification = () => {
             status: existing?.status || "pending", testId: t.test_id,
             testName: t.test_name || testInfo.test_name || "", departmentId: testInfo.department_id || "",
             machineName: testInfo.instrument_name || "", displayOrder: tp.display_order || 0,
-            rangeType: resolved.rangeType, descriptiveOptions: resolved.descriptiveOptions, expectedValue: resolved.expectedValue, normalRangeText: resolved.text || "",
+            rangeType: resolved.rangeType, descriptiveOptions: resolved.descriptiveOptions, expectedValue: resolved.expectedValue, normalFindings: resolved.normalFindings, normalRangeText: resolved.text || "",
             isOutsourced: !!isParamOutsourced, outsourceLabName: isParamOutsourced ? (snipDetail?.labName || null) : null,
             outsourceStatus: isParamOutsourced ? (snipDetail?.status || "pending") : "",
             isSnipMode: isParamOutsourced && snipDetail?.resultMode === "snip",
@@ -434,9 +435,8 @@ const ResultVerification = () => {
   }, [editedTestNotes, loadedTestNotes]);
 
   // Calculate flag
-  const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string, descriptiveOptions?: string[], normalRangeText?: string, unit?: string | null): string => {
+  const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string, descriptiveOptions?: string[], normalRangeText?: string, unit?: string | null, normalFindings?: string): string => {
     if (!value || value.trim() === "") return "";
-    if (rangeType === "undefined") return "";
     if (rangeType === "time") {
       const total = parseTimeResultToSeconds(value);
       if (total == null) return "";
@@ -444,26 +444,17 @@ const ResultVerification = () => {
       if (high != null && total > high) return "H";
       return "N";
     }
-    if (rangeType === "qualitative" || rangeType === "descriptive") {
-      const u = (unit || "").trim().toLowerCase();
-      const stripUnit = (s: string) => {
-        let t = s.trim().toLowerCase();
-        if (u && t.endsWith(u)) t = t.slice(0, -u.length).trim();
-        return t;
-      };
-      const ref = stripUnit(normalRangeText || "");
-      if (!ref) return "";
-      return stripUnit(value) === ref ? "N" : "X";
-    }
-    // Operator-prefixed values (">5", "> 5", "≥5", "<0.01", "≤ 2") → cap → H/L
-    const trimmed = value.trim();
-    if (/^(?:>=|≥|>)\s*-?\d*\.?\d+/.test(trimmed)) return "H";
-    if (/^(?:<=|≤|<)\s*-?\d*\.?\d+/.test(trimmed)) return "L";
-    const num = parseFloat(trimmed);
-    if (isNaN(num)) return "";
-    if (low != null && num < low) return "L";
-    if (high != null && num > high) return "H";
-    return "N";
+    return calculateResultFlag({
+      value,
+      low,
+      high,
+      rangeType,
+      expectedValue,
+      descriptiveOptions,
+      normalRangeText,
+      normalFindings,
+      unit,
+    });
   };
 
   // Apply unit suffix for "undefined" range type
@@ -763,8 +754,9 @@ const ResultVerification = () => {
       const expectedValue = p?.expectedValue;
       const descriptiveOptions = p?.descriptiveOptions;
       const normalRangeText = p?.normalRangeText;
+      const normalFindings = p?.normalFindings;
 
-      const autoFlag = calculateFlag(baseVal, rangeLow, rangeHigh, rangeType, expectedValue, descriptiveOptions, normalRangeText, p?.unit ?? live?.unit ?? null);
+      const autoFlag = calculateFlag(baseVal, rangeLow, rangeHigh, rangeType, expectedValue, descriptiveOptions, normalRangeText, p?.unit ?? live?.unit ?? null, normalFindings);
       const isOutsourced = !!p?.isOutsourced;
       const flag = isOutsourced && editedFlags[k] !== undefined
         ? editedFlags[k]
@@ -935,7 +927,7 @@ const ResultVerification = () => {
       for (const p of testParams) {
         const k = `${regId}||${p.parameterId}`;
         const value = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
-        const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit);
+        const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit, p.normalFindings);
         const flag = p.isOutsourced && editedFlags[k] !== undefined ? editedFlags[k] : autoFlag;
         const unit = p.isOutsourced && editedUnits[k] !== undefined ? editedUnits[k] : p.unit;
         const refRange = p.isOutsourced && editedRefRanges[k] !== undefined ? editedRefRanges[k] : p.referenceRange;
@@ -1025,7 +1017,7 @@ const ResultVerification = () => {
     const regId = entry.registration.id;
     const key = `${regId}||${p.parameterId}`;
     const currentValue = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
-    const autoFlag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit);
+    const autoFlag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit, p.normalFindings);
     const flag = p.isOutsourced && editedFlags[key] !== undefined ? editedFlags[key] : autoFlag;
     const isNegative = isSuspectNegativeResult(currentValue);
     const rowBg = isNegative ? "bg-red-50" : ((flag === "H" || flag === "L" || flag === "A" || flag === "X") ? "bg-destructive/5" : "");
@@ -1453,7 +1445,7 @@ const ResultVerification = () => {
                     {blankParams.map(p => {
                       const key = `${reg.id}||${p.parameterId}`;
                       const currentValue = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
-                      const flag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit);
+                      const flag = calculateFlag(currentValue, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit, p.normalFindings);
                       return (
                         <TableRow key={key} className="bg-yellow-50">
                           <TableCell className="py-2 text-xs font-mono text-muted-foreground">{p.paramCode}</TableCell>

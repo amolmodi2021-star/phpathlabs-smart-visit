@@ -36,6 +36,8 @@ interface NormalRange {
   normal_range_text: string;
   range_type: string;
   expected_value: string;
+  /** Descriptive: acceptable result text(s) for highlight only (not shown on report). */
+  normal_findings: string;
   descriptive_options: string[];
   advisory_range?: boolean;
 }
@@ -114,6 +116,7 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
           normal_range_text: existing?.normal_range_text ?? "",
           range_type: existing?.range_type ?? "numeric",
           expected_value: existing?.expected_value ?? "",
+          normal_findings: existing?.normal_findings ?? "",
           descriptive_options: existing?.descriptive_options ?? [],
         });
       }
@@ -127,7 +130,7 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
           newRanges.push(...existingForGender);
         } else {
           // Seed with one default range
-          newRanges.push({ gender, age_min: 0, age_max: 150, normal_range_low: null, normal_range_high: null, normal_range_text: "", range_type: "numeric", expected_value: "", descriptive_options: [] });
+          newRanges.push({ gender, age_min: 0, age_max: 150, normal_range_low: null, normal_range_high: null, normal_range_text: "", range_type: "numeric", expected_value: "", normal_findings: "", descriptive_options: [] });
         }
       }
       setNormalRanges(newRanges);
@@ -162,6 +165,7 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
           normal_range_text: text,
           range_type: rangeType,
           expected_value: r.expected_value || "",
+          normal_findings: r.normal_findings || "",
           descriptive_options: Array.isArray(r.descriptive_options) ? r.descriptive_options : [],
           advisory_range: isAdvisory,
         };
@@ -220,6 +224,7 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
               normal_range_text: r.normal_range_text || null,
               range_type: r.range_type || "numeric",
               expected_value: r.range_type === "qualitative" ? (r.expected_value || null) : null,
+              normal_findings: isDesc ? (r.normal_findings || null) : null,
               descriptive_options: (isDesc || isUndef) ? (r.descriptive_options?.filter(o => o.trim()) || []) : [],
             };
           });
@@ -389,7 +394,7 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
     setNormalRanges(prev => [...prev, {
       gender, age_min: 0, age_max: 150,
       normal_range_low: null, normal_range_high: null, normal_range_text: "",
-      range_type: "numeric", expected_value: "", descriptive_options: [],
+      range_type: "numeric", expected_value: "", normal_findings: "", descriptive_options: [],
     }]);
   };
 
@@ -959,7 +964,7 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
                               <Label className="text-xs">
                                 {r.range_type === "undefined"
                                   ? "Display Text for Reference Range (optional, leave blank to omit)"
-                                  : "Display Text"}
+                                  : "Display Text (report reference range, optional)"}
                               </Label>
                               <Input
                                 value={r.normal_range_text}
@@ -971,9 +976,22 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
                                   if (raw.toLowerCase().endsWith(u.toLowerCase())) return;
                                   updateRange(r._idx, "normal_range_text", `${raw} ${u}`.replace(/\s+/g, " ").trim());
                                 }}
-                                placeholder={r.range_type === "undefined" ? "e.g. 10 - 50 mL (leave blank for none)" : "e.g. Normal findings"}
+                                placeholder={r.range_type === "undefined" ? "e.g. 10 - 50 mL (leave blank for none)" : "Shown in report Reference Range (can be blank)"}
                               />
                             </div>
+                            {r.range_type === "descriptive" && (
+                              <div>
+                                <Label className="text-xs">Normal Findings (for highlight only — not shown on report)</Label>
+                                <Input
+                                  value={r.normal_findings || ""}
+                                  onChange={(e) => updateRange(r._idx, "normal_findings", e.target.value)}
+                                  placeholder="e.g. Clear | Absent (mismatch highlights row, no HIGH/LOW)"
+                                />
+                                <p className="text-[10px] text-muted-foreground mt-1">
+                                  If the result does not match Normal Findings, the row is highlighted. Use | or new lines for multiple acceptable values.
+                                </p>
+                              </div>
+                            )}
                           </div>
                         ) : r.range_type === "time" ? (
                           (() => {

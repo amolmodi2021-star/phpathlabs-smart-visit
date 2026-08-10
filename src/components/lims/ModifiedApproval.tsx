@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Search, ChevronDown, ChevronUp, Loader2, Save, Eye, FileCheck, Calculator, StickyNote, Trash2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import PaginatedTableFooter from "@/components/ui/PaginatedTableFooter";
-import { isSuspectNegativeResult } from "@/lib/reportFlags";
+import { isSuspectNegativeResult, calculateResultFlag } from "@/lib/reportFlags";
 import TimeResultInput from "./TimeResultInput";
 import { parseTimeResultToSeconds, toCanonicalTimeResult } from "@/lib/timeRange";
 import { checkDifferentialSum } from "@/lib/differentialCount";
@@ -226,7 +226,7 @@ const ModifiedApproval = () => {
   };
 
   // Resolve range_type + display "normal" text + descriptive options + unit
-  const resolveRangeMeta = (parameterId: string): { rangeType: string; normalRangeText: string; descriptiveOptions: string[] } => {
+  const resolveRangeMeta = (parameterId: string): { rangeType: string; normalRangeText: string; descriptiveOptions: string[]; normalFindings: string } => {
     const ranges = (normalRangesMap as any)[parameterId] || [];
     if (ranges.length > 0) {
       const r = ranges[0];
@@ -234,14 +234,14 @@ const ModifiedApproval = () => {
         rangeType: r.range_type || "numeric",
         normalRangeText: r.normal_range_text || "",
         descriptiveOptions: Array.isArray(r.descriptive_options) ? r.descriptive_options : [],
+        normalFindings: r.normal_findings || "",
       };
     }
-    return { rangeType: "numeric", normalRangeText: "", descriptiveOptions: [] };
+    return { rangeType: "numeric", normalRangeText: "", descriptiveOptions: [], normalFindings: "" };
   };
 
-  const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string, descriptiveOptions?: string[], normalRangeText?: string): string => {
+  const calculateFlag = (value: string, low: number | null, high: number | null, rangeType?: string, expectedValue?: string, descriptiveOptions?: string[], normalRangeText?: string, unit?: string | null, normalFindings?: string): string => {
     if (!value || !value.trim()) return "";
-    if (rangeType === "undefined") return "";
     if (rangeType === "time") {
       const total = parseTimeResultToSeconds(value);
       if (total == null) return "";
@@ -249,17 +249,17 @@ const ModifiedApproval = () => {
       if (high != null && total > high) return "H";
       return "N";
     }
-    if (rangeType === "qualitative" || rangeType === "descriptive") {
-      const ref = (normalRangeText || "").trim().toLowerCase();
-      if (!ref) return "";
-      return value.trim().toLowerCase() === ref ? "N" : "X";
-    }
-    // Operator-prefixed values (">5", "> 5", "≥5", "<0.01", "≤ 2") → cap → H/L
-    const trimmed = value.trim();
-    if (/^(?:>=|≥|>)\s*-?\d*\.?\d+/.test(trimmed)) return "H";
-    if (/^(?:<=|≤|<)\s*-?\d*\.?\d+/.test(trimmed)) return "L";
-    const num = parseFloat(trimmed); if (isNaN(num)) return "";
-    if (low != null && num < low) return "L"; if (high != null && num > high) return "H"; return "N";
+    return calculateResultFlag({
+      value,
+      low,
+      high,
+      rangeType,
+      expectedValue,
+      descriptiveOptions,
+      normalRangeText,
+      normalFindings,
+      unit,
+    });
   };
 
   const applyUnitSuffix = (value: string, unit: string | null | undefined, rangeType?: string): string => {
@@ -354,7 +354,7 @@ const ModifiedApproval = () => {
           const newRefRange = editedRefRanges[key] !== undefined ? editedRefRanges[key] : (saved?.ref ?? p.reference_range);
           const rangeMeta = resolveRangeMeta(p.parameter_id);
           const newValue = rangeMeta.rangeType === "time" ? toCanonicalTimeResult(rawValue) : rawValue;
-          const newFlag = editedFlags[key] !== undefined ? editedFlags[key] : (calculateFlag(newValue, p.normal_range_low, p.normal_range_high, rangeMeta.rangeType, undefined, undefined, rangeMeta.normalRangeText) || p.flag);
+          const newFlag = editedFlags[key] !== undefined ? editedFlags[key] : (calculateFlag(newValue, p.normal_range_low, p.normal_range_high, rangeMeta.rangeType, undefined, undefined, rangeMeta.normalRangeText, newUnit, rangeMeta.normalFindings) || p.flag);
           const noteKey = `${regId}||${p.parameter_id}`;
           const newNote = editedNotes[noteKey] !== undefined ? (editedNotes[noteKey] || null) : (saved?.note ?? p.note ?? null);
 
@@ -615,7 +615,7 @@ const ModifiedApproval = () => {
                                   const currentUnit = editedUnits[key] !== undefined ? editedUnits[key] : (saved?.unit ?? p.unit ?? "");
                                   const currentRef = editedRefRanges[key] !== undefined ? editedRefRanges[key] : (saved?.ref ?? p.reference_range ?? "");
                                   const rangeMeta = resolveRangeMeta(p.parameter_id);
-                                  const autoFlag = calculateFlag(currentValue, p.normal_range_low, p.normal_range_high, rangeMeta.rangeType, undefined, undefined, rangeMeta.normalRangeText);
+                                  const autoFlag = calculateFlag(currentValue, p.normal_range_low, p.normal_range_high, rangeMeta.rangeType, undefined, undefined, rangeMeta.normalRangeText, currentUnit, rangeMeta.normalFindings);
                                   const currentFlag = editedFlags[key] !== undefined ? editedFlags[key] : (saved?.flag || p.flag || autoFlag);
                                   const isNegative = isSuspectNegativeResult(currentValue);
                                   const rowBg = isNegative

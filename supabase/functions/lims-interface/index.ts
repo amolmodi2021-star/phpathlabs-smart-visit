@@ -147,25 +147,56 @@ function applyUnitConversion(rawValue: string | null | undefined, param: any, in
 }
 
 // Compute a flag value consistent with the UI rule:
-// - Numeric value with numeric bounds → H/L/N
-// - Otherwise (qualitative/descriptive), compare against normal_range_text
-//   → match = "N", mismatch = "X" (highlight only, no badge), empty ref = ""
+// - Numeric value with numeric bounds → H/L/N (incl. operator-prefixed vs low/high)
+// - Descriptive: prefer _normalFindings (from parameter_normal_ranges) → N/X
+// - Otherwise (qualitative), compare against normal_range_text → N/X
 function computeFlagFromInterface(rawValue: string, param: any): string {
   const value = (rawValue ?? "").toString().trim();
   if (!value) return "";
+  if (param?._isUndefinedRange || param?._rangeType === "undefined") return "";
 
-  // Operator-prefixed readings (">2000", "> 2000", "≥2000", "<0.01", "≤ 2")
-  // mean the analyzer saturated/floored its measurable range. Flag H/L
-  // regardless of whitespace or whether the trailing number lies inside the
-  // configured normal range — the true value is outside the measurable bound.
-  if (/^(?:>=|≥|>)\s*-?\d*\.?\d+/.test(value)) return "H";
-  if (/^(?:<=|≤|<)\s*-?\d*\.?\d+/.test(value)) return "L";
+  const lowRaw = param?.normal_range_low;
+  const highRaw = param?.normal_range_high;
+  const low = lowRaw != null && lowRaw !== "" && !isNaN(Number(lowRaw)) ? Number(lowRaw) : null;
+  const high = highRaw != null && highRaw !== "" && !isNaN(Number(highRaw)) ? Number(highRaw) : null;
+
+  const gtMatch = value.match(/^(?:>=|≥|>)\s*(-?\d*\.?\d+)/);
+  if (gtMatch) {
+    const num = parseFloat(gtMatch[1]);
+    if (!isNaN(num)) {
+      if (high != null && num >= high) return "H";
+      if (low != null && num >= low && (high == null || num <= high)) return "N";
+      return "H";
+    }
+  }
+  const ltMatch = value.match(/^(?:<=|≤|<)\s*(-?\d*\.?\d+)/);
+  if (ltMatch) {
+    const num = parseFloat(ltMatch[1]);
+    if (!isNaN(num)) {
+      if (high != null && num <= high) return "N";
+      if (low != null && num <= low) return "L";
+      if (high != null && num > high) return "H";
+      return "L";
+    }
+  }
 
   const num = parseFloat(value);
-  if (!isNaN(num) && param?.normal_range_low != null && param?.normal_range_high != null) {
-    if (num < Number(param.normal_range_low)) return "L";
-    if (num > Number(param.normal_range_high)) return "H";
+  if (!isNaN(num) && (low != null || high != null)) {
+    if (low != null && num < low) return "L";
+    if (high != null && num > high) return "H";
     return "N";
+  }
+
+  const rangeType = (param?._rangeType || "numeric") as string;
+  if (rangeType === "descriptive") {
+    const findingsRaw = (param?._normalFindings ?? "").toString();
+    const parts = findingsRaw
+      .split(/\r?\n|\|/)
+      .map((s: string) => s.trim().toLowerCase())
+      .filter(Boolean);
+    if (parts.length === 0) return "";
+    const got = value.toLowerCase();
+    return parts.some((f: string) => f === got) ? "N" : "X";
   }
 
   const ref = (param?.normal_range_text ?? "").toString().trim().toLowerCase();
@@ -187,25 +218,34 @@ function applyInterfaceUnitSuffix(value: string, param: any): string {
   return `${trimmed} ${u}`;
 }
 
-// Resolve per-parameter "is undefined range" flag from parameter_normal_ranges.
-// A parameter is treated as undefined-range only if it has at least one range row
-// AND every range row uses range_type='undefined'.
-async function attachUndefinedRangeFlag(supabase: any, paramRows: any[]) {
+// Attach range metadata from parameter_normal_ranges for interface flagging:
+// _isUndefinedRange, _rangeType, _normalFindings, and fill empty low/high from first row.
+async function attachRangeMeta(supabase: any, paramRows: any[]) {
   const ids = (paramRows || []).map((p) => p.id);
   if (ids.length === 0) return;
   const { data: rangeRows } = await supabase
     .from("parameter_normal_ranges")
-    .select("parameter_id, range_type")
+    .select("parameter_id, range_type, normal_findings, normal_range_text, normal_range_low, normal_range_high")
     .in("parameter_id", ids);
-  const byParam: Record<string, string[]> = {};
+  const byParam: Record<string, any[]> = {};
   for (const r of rangeRows || []) {
     const pid = r.parameter_id as string;
     if (!byParam[pid]) byParam[pid] = [];
-    byParam[pid].push((r.range_type || "numeric") as string);
+    byParam[pid].push(r);
   }
   for (const p of paramRows) {
-    const types = byParam[p.id] || [];
+    const rows = byParam[p.id] || [];
+    const types = rows.map((r) => (r.range_type || "numeric") as string);
     p._isUndefinedRange = types.length > 0 && types.every((t) => t === "undefined");
+    const first = rows[0];
+    p._rangeType = first?.range_type || "numeric";
+    p._normalFindings = first?.normal_findings || "";
+    if ((p.normal_range_low == null || p.normal_range_low === "") && first?.normal_range_low != null) {
+      p.normal_range_low = first.normal_range_low;
+    }
+    if ((p.normal_range_high == null || p.normal_range_high === "") && first?.normal_range_high != null) {
+      p.normal_range_high = first.normal_range_high;
+    }
   }
 }
 
@@ -535,7 +575,7 @@ Deno.serve(async (req) => {
             .from("report_test_parameters")
             .select("id, param_code, parameter_name, unit, normal_range_low, normal_range_high, normal_range_text, unit_conversion_enabled, unit_conversion_operator, unit_conversion_value")
             .in("param_code", paramCodes);
-          await attachUndefinedRangeFlag(supabase, paramRows || []);
+          await attachRangeMeta(supabase, paramRows || []);
           const paramByCode: Record<string, any> = {};
           for (const p of paramRows || []) paramByCode[p.param_code] = p;
 
@@ -975,7 +1015,7 @@ Deno.serve(async (req) => {
             .from("report_test_parameters")
             .select("id, param_code, parameter_name, unit, normal_range_low, normal_range_high, normal_range_text, unit_conversion_enabled, unit_conversion_operator, unit_conversion_value")
             .in("param_code", paramCodes);
-          await attachUndefinedRangeFlag(supabase, paramRows || []);
+          await attachRangeMeta(supabase, paramRows || []);
           const paramByCode: Record<string, any> = {};
           for (const p of paramRows || []) paramByCode[p.param_code] = p;
 
