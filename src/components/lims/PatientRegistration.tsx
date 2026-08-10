@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -603,6 +603,18 @@ const PatientRegistration = () => {
       </AlertDialog>
 
       <Card>
+        <CardHeader className="p-4 pb-0 flex flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-base font-semibold">Patient details</CardTitle>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={resetForm}
+            disabled={saveMutation.isPending}
+          >
+            <RotateCcw className="h-4 w-4 mr-2" />Reset Form
+          </Button>
+        </CardHeader>
         <CardContent className="p-4 space-y-4">
           {/* Mobile Number + Pickup Point (side-by-side) */}
           <div className="grid grid-cols-2 gap-3">
