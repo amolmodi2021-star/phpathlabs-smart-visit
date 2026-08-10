@@ -366,6 +366,10 @@ This app is independent. Do not connect it to Lovable (no editor sync, no `lovab
 
 Hosting is Cloudflare Pages project `phpathlabs-smart-visit` with custom domain `lims.phpathlabs.com`. Production branch: `main`. Build: `npm ci && npm run build`. Output: `dist`.
 
+Do not attach this domain to Lovable. Deploys come from this GitHub repo only.
+
+To publish: Cloudflare Dashboard → Pages → `phpathlabs-smart-visit` → connect GitHub repo `phpathlabs-smart-visit`, production branch `main`, build `npm run build`, output `dist`. Custom domain must stay `lims.phpathlabs.com`. Or set GitHub Actions secrets `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`.
+
 ## Development
 
 ```sh
@@ -374,5 +378,3 @@ cd phpathlabs-smart-visit
 npm i
 npm run dev
 ```
-
-Production frontend: push to `main` (GitHub Action builds `dist`). Point `lims.phpathlabs.com` at that deploy — not at any Lovable URL.

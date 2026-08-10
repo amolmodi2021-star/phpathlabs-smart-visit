@@ -1,4 +1,4 @@
-name: Build LIMS
+name: Build and deploy LIMS
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,9 +20,18 @@ jobs:
         with:
           name: lims-dist
           path: dist
-      - name: Deploy to Cloudflare Pages
-        if: ${{ env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != '' }}
+
+      - name: Deploy to Cloudflare Pages (lims.phpathlabs.com)
+        if: github.ref == 'refs/heads/main'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx wrangler pages deploy dist --project-name=phpathlabs-smart-visit --commit-dirty=true
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::warning::CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID not set — skipped wrangler upload."
+            echo "lims.phpathlabs.com is Cloudflare Pages project phpathlabs-smart-visit (not Lovable)."
+            echo "Connect this GitHub repo to that Pages project (build: npm run build, output: dist)"
+            echo "OR add the two secrets and re-run this workflow."
+            exit 0
+          fi
+          npx wrangler pages deploy dist --project-name=phpathlabs-smart-visit --branch=main --commit-dirty=true
