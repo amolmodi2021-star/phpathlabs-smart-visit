@@ -101,7 +101,7 @@ const Dispatch = () => {
       });
     },
     placeholderData: keepPreviousData,
-    staleTime: 5 * 60_000,
+    staleTime: 30_000,
   });
   const dispatchCount = filteredDispatchIds.length;
   const dispatchPageIds = filteredDispatchIds.slice(
@@ -121,7 +121,7 @@ const Dispatch = () => {
       return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     },
     placeholderData: keepPreviousData,
-    staleTime: 5 * 60_000,
+    staleTime: 30_000,
   });
 
   const dispatchTotalPages = Math.ceil(dispatchCount / DISPATCH_PAGE_SIZE);

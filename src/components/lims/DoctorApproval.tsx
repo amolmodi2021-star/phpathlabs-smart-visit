@@ -169,7 +169,7 @@ const DoctorApproval = () => {
       return await fetchFilteredSortedIds(candidates, debouncedSearch);
     },
     placeholderData: keepPreviousData,
-    staleTime: 5 * 60_000,
+    staleTime: 30_000,
   });
   const daCount = pendingIds.length;
   const pageIds: string[] = pendingIds.slice(daPage * DA_PAGE_SIZE, (daPage + 1) * DA_PAGE_SIZE);
@@ -186,7 +186,7 @@ const DoctorApproval = () => {
       return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     },
     placeholderData: keepPreviousData,
-    staleTime: 5 * 60_000,
+    staleTime: 30_000,
   });
 
   const daTotalPages = Math.max(1, Math.ceil(daCount / DA_PAGE_SIZE));

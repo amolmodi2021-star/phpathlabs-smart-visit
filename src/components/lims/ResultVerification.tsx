@@ -136,7 +136,7 @@ const ResultVerification = () => {
       return await fetchFilteredSortedIds(candidates, debouncedSearch);
     },
     placeholderData: keepPreviousData,
-    staleTime: 5 * 60_000,
+    staleTime: 30_000,
   });
   const rvCount = pendingIds.length;
   const pageIds: string[] = pendingIds.slice(rvPage * RV_PAGE_SIZE, (rvPage + 1) * RV_PAGE_SIZE);
@@ -154,7 +154,7 @@ const ResultVerification = () => {
       return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     },
     placeholderData: keepPreviousData,
-    staleTime: 5 * 60_000,
+    staleTime: 30_000,
   });
 
   const rvTotalPages = Math.max(1, Math.ceil(rvCount / RV_PAGE_SIZE));
@@ -1319,9 +1319,6 @@ const ResultVerification = () => {
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Search patient, invoice, mobile…" value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
         </div>
-        <RefreshButton
-          queryKeys={["verification_regs_count", "verification_regs_v2", "verification_results_v2", "verification_tubes", "verification_outsourced_v2", "results_tests_map", "results_test_params_full", "results_normal_ranges"]}
-        />
         <Tabs value={mode} onValueChange={v => setMode(v as any)} className="w-auto">
           <TabsList className="h-9">
             <TabsTrigger value="patient" className="text-xs gap-1 h-7"><User className="h-3.5 w-3.5" /> Patient Wise</TabsTrigger>
@@ -1343,6 +1340,10 @@ const ResultVerification = () => {
             </SelectContent>
           </Select>
         )}
+        <RefreshButton
+          queryKeys={["verification_regs_count", "verification_regs_v2", "verification_results_v2", "verification_tubes", "verification_outsourced_v2", "results_tests_map", "results_test_params_full", "results_normal_ranges"]}
+          className="ml-auto shrink-0"
+        />
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">

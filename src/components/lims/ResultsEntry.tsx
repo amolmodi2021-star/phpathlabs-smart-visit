@@ -206,7 +206,7 @@ const ResultsEntry = () => {
       return await fetchFilteredSortedIds(candidates, debouncedSearch);
     },
     placeholderData: keepPreviousData,
-    staleTime: 5 * 60_000,
+    staleTime: 30_000,
   });
   const reCount = pendingIds.length;
   const pageIds: string[] = pendingIds.slice(rePage * RE_PAGE_SIZE, (rePage + 1) * RE_PAGE_SIZE);
@@ -226,7 +226,7 @@ const ResultsEntry = () => {
       return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     },
     placeholderData: keepPreviousData,
-    staleTime: 5 * 60_000,
+    staleTime: 30_000,
   });
 
   const reTotalPages = Math.max(1, Math.ceil(reCount / RE_PAGE_SIZE));
@@ -1735,9 +1735,6 @@ const ResultsEntry = () => {
             className="pl-9"
           />
         </div>
-        <RefreshButton
-          queryKeys={["results_accepted_count", "results_accepted_regs", "results_accepted_tubes", "patient_results_existing", "results_outsourced_snips", "results_tests_map", "results_test_params_full", "results_normal_ranges", "outsourced_snips", "outsourced_accepted_regs", "outsourced_manual_results"]}
-        />
         <Tabs value={mode} onValueChange={v => setMode(v as any)} className="w-auto">
           <TabsList className="h-9">
             <TabsTrigger value="patient" className="text-xs gap-1 h-7">
@@ -1770,6 +1767,10 @@ const ResultsEntry = () => {
             </SelectContent>
           </Select>
         )}
+        <RefreshButton
+          queryKeys={["results_accepted_count", "results_accepted_regs", "results_accepted_tubes", "patient_results_existing", "results_outsourced_snips", "results_tests_map", "results_test_params_full", "results_normal_ranges", "outsourced_snips", "outsourced_accepted_regs", "outsourced_manual_results", "outsourced_pending_ids"]}
+          className="ml-auto shrink-0"
+        />
       </div>
 
       {/* Stats bar - only for in-house modes */}

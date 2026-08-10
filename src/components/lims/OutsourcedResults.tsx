@@ -151,7 +151,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       const candidates = await fetchOutsourcedCandidateIds();
       return await fetchFilteredSortedIds(candidates, debouncedSearch);
     },
-    staleTime: 5 * 60_000,
+    staleTime: 30_000,
   });
   const osCount = pendingIds.length;
   const pageIds = pendingIds.slice(osPage * OS_PAGE_SIZE, (osPage + 1) * OS_PAGE_SIZE);
@@ -171,7 +171,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       const order = new Map(pageIds.map((id, i) => [id, i] as const));
       return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     },
-    staleTime: 5 * 60_000,
+    staleTime: 30_000,
   });
   const isLoading = loadingIds || (pageIds.length > 0 && loadingRegs);
 
@@ -201,7 +201,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         regIds,
       );
     },
-    staleTime: 5 * 60_000,
+    staleTime: 30_000,
   });
 
   // sample_tubes leaves for this page

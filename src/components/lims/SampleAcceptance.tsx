@@ -95,7 +95,7 @@ const SampleAcceptance = () => {
       if (error) throw error;
       return (data || []) as unknown as SampleTubeRow[];
     },
-    staleTime: 5 * 60_000,
+    staleTime: 30_000,
   });
 
   // Fetch accepted tubes (for accepted tab) — recent window + hard cap
@@ -114,7 +114,7 @@ const SampleAcceptance = () => {
       if (error) throw error;
       return (data || []) as unknown as SampleTubeRow[];
     },
-    staleTime: 5 * 60_000,
+    staleTime: 30_000,
   });
 
   // Build ordered, deduped accepted registration IDs (newest acceptance first),

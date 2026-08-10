@@ -37,18 +37,14 @@ import PatientReportPortal from "./pages/PatientReportPortal";
 import NotFound from "./pages/NotFound";
 
 // React Query global defaults — keep egress and refetch storms low.
-// Cost-aware cache: keep list/RPC data for 5 minutes and never auto-refetch
-// on tab focus, reconnect, or remount. Workflow screens still use Refresh for
-// full list reloads; Results/Verification/Outsourced use narrow lims_result_notify
-// realtime (result values only, not candidate lists). Mutations invalidate after saves.
+// Default 1-min stale window. No focus/reconnect storms (Realtime + Refresh
+// cover live updates). Mutations still invalidate after saves.
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 5 * 60_000,
-      gcTime: 30 * 60_000,
+      staleTime: 60_000,
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,
-      refetchOnMount: false,
     },
   },
 });

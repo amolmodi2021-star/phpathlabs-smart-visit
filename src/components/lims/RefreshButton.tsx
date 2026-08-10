@@ -13,9 +13,9 @@ interface RefreshButtonProps {
 }
 
 /**
- * Explicit refresh for LIMS workflow stages (no ambient polling/realtime).
+ * Explicit refresh for LIMS workflow stages.
  * Invalidates and refetches the listed React Query caches so users
- * pull the latest data without a full page reload (filters/scroll preserved).
+ * pull the latest queue/list data without a full page reload.
  */
 const RefreshButton = ({ queryKeys, label = "Refresh", className }: RefreshButtonProps) => {
   const qc = useQueryClient();
@@ -45,7 +45,7 @@ const RefreshButton = ({ queryKeys, label = "Refresh", className }: RefreshButto
       size="sm"
       onClick={handleRefresh}
       disabled={busy}
-      title="Reload latest data from server (lists are cached until you refresh)"
+      title="Reload latest queue data from server"
       className={cn("gap-1.5", className)}
     >
       <RefreshCw className={cn("h-4 w-4", busy && "animate-spin")} />
