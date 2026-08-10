@@ -96,12 +96,10 @@ const isNumericResult = (value?: string): boolean => {
 };
 
 const isDescriptiveResult = (r: TestResult): boolean => {
-  // Only truly descriptive results (text values like "Yellow", "Clear", morphology notes)
-  // get the wide colSpan treatment. Numeric results without a reference range — e.g. ratios
-  // like BUN/Creatinine — must stay aligned with the Result column above.
   if (isNumericResult(r.result_value)) return false;
-  return !r.unit && !r.normal_range_text && !r.normal_range_low && !r.normal_range_high
-    && (!r.flag || r.flag === "N" || r.flag === "Normal");
+  const hasRefText = !!(r.normal_range_text && String(r.normal_range_text).trim());
+  const hasRefBounds = r.normal_range_low != null && r.normal_range_high != null;
+  return !hasRefText && !hasRefBounds;
 };
 
 const isAbnormalFlag = (flag?: string): boolean => {
@@ -126,7 +124,11 @@ interface ParamRowProps {
 
 const ParamRow = ({ r, rowKey, compact, isMorph, showFlagText, rowFontSize, colCount }: ParamRowProps) => {
   const isAbnormal = isAbnormalFlag(r.flag);
-  const isDescriptive = isDescriptiveResult(r) || isMorph;
+  const hasRefText = !!(r.normal_range_text && String(r.normal_range_text).trim());
+  const hasRefBounds = r.normal_range_low != null && r.normal_range_high != null;
+  const hasReference = hasRefText || hasRefBounds;
+  // Blank Display Text → Result uses Result+Reference (+Flag if no HIGH/LOW badge)
+  const widenResult = !hasReference && (isDescriptiveResult(r) || isMorph);
   const py = compact ? 'py-[2px]' : 'py-0.5';
 
   // Bold styling only for abnormal rows
@@ -134,8 +136,9 @@ const ParamRow = ({ r, rowKey, compact, isMorph, showFlagText, rowFontSize, colC
   const resultWeight = isAbnormal ? 'font-bold text-red-600' : 'font-normal';
   const rangeWeight = isAbnormal ? 'font-bold' : 'font-normal';
 
-  // Descriptive right span: Result + RefRange + Flag (if shown) = 2 or 3
-  const rightSpan = showFlagText ? 3 : 2;
+  const showBadge = showFlagText && showFlagBadge(r.flag);
+  // Result + Reference Range; include Flag column only when no HIGH/LOW badge to show
+  const rightSpan = showFlagText ? (showBadge ? 2 : 3) : 2;
 
   // Friendly display for "M:SS" time values
   const displayResult = isCanonicalTimeValue(r.result_value) ? formatTimeResult(r.result_value) : r.result_value;
@@ -155,10 +158,23 @@ const ParamRow = ({ r, rowKey, compact, isMorph, showFlagText, rowFontSize, colC
           {showFlagBadge(r.flag) && <span className="flag-badge inline-flex items-center justify-center min-w-[18px] h-[18px] rounded bg-red-600 text-white text-xs leading-none font-bold">{r.flag}</span>}
         </td>
       )}
-      {isDescriptive ? (
-        <td colSpan={rightSpan} className={`text-left px-2 text-gray-800 ${py}`} style={{ wordBreak: 'break-word', whiteSpace: 'normal' }}>
-          {displayResult}
-        </td>
+      {widenResult ? (
+        <>
+          <td
+            colSpan={rightSpan}
+            className={`text-left px-2 ${resultWeight || 'text-gray-800'} ${py}`}
+            style={{ wordBreak: 'normal', overflowWrap: 'anywhere', whiteSpace: 'normal' }}
+          >
+            {displayResult}
+          </td>
+          {showBadge && (
+            <td className={`text-center ${py}`}>
+              <span className={`font-bold ${r.flag === "H" || r.flag === "High" ? "text-red-600" : "text-blue-600"}`}>
+                {r.flag === "H" ? "HIGH" : r.flag === "L" ? "LOW" : r.flag}
+              </span>
+            </td>
+          )}
+        </>
       ) : (
         <>
           <td className={`text-center ${resultWeight} ${py}`}>
@@ -243,7 +259,7 @@ const ReportResultsSection = ({
                       <TableHeader showFlagText={showFlagText} fontSize={headerFontSize} />
                       <tbody>
                         {params.map((r, pIdx) => {
-                          const isMorphRow = isMorphologySection(r.test_name);
+                          const isMorphRow = isMorphologySection(r.test_name) || isMorphologySection(r.parameter_name);
                           const paramMeta = {
                             sample_type: r.sample_type,
                             analyzer: r.analyzer,
@@ -369,7 +385,7 @@ const ReportResultsSection = ({
                           );
                         }
 
-                        const isMorphRow = isMorphologySection(r.test_name);
+                        const isMorphRow = isMorphologySection(r.test_name) || isMorphologySection(r.parameter_name) || isMorphologySection(profName);
                         return (
                           <React.Fragment key={`p-${i}`}>
                             {hasMultipleTestNames && r.test_name && (i === 0 || r.test_name !== params[i - 1]?.test_name) && !params[i - 1]?.is_subheader && (

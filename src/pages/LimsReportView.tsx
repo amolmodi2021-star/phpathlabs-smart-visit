@@ -142,9 +142,9 @@ const rowHeightMm = (p: any, descriptionText?: string | null): number => {
     Math.ceil((refText.length || 1) / 38),
     refText ? refText.split(/\r?\n/).length : 1,
   );
-  // Result col ~20% width (~22 chars). Descriptive results (no unit/range) span ~50% (~62 chars).
-  const isDescriptive = !p?.unit && !refText;
-  const resultPerLine = isDescriptive ? 62 : 22;
+  // Result col ~20% width (~22 chars). Blank Display Text → Result spans Ref (~55 chars/line).
+  const isDescriptive = !refText;
+  const resultPerLine = isDescriptive ? 55 : 22;
   const resultLines = resultText
     ? Math.max(Math.ceil(resultText.length / resultPerLine), resultText.split(/\r?\n/).length)
     : 1;
