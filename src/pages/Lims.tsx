@@ -65,7 +65,12 @@ const Lims = () => {
         {visibleTabs.map((t) => {
           const Comp = t.component;
           return (
-            <TabsContent key={t.key} value={t.key}>
+            <TabsContent
+              key={t.key}
+              value={t.key}
+              forceMount={t.key === "settings" ? true : undefined}
+              className={t.key === "settings" ? "data-[state=inactive]:hidden" : undefined}
+            >
               <Comp />
             </TabsContent>
           );
