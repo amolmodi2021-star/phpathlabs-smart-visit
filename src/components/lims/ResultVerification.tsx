@@ -839,7 +839,11 @@ const ResultVerification = () => {
     // Always update outsourced snip status — works for snip-only tests too
     const snipUpdate = await supabase
       .from("outsourced_test_snips")
-      .update({ outsource_status: "verified" } as any)
+      .update({
+        outsource_status: "verified",
+        verified_at: new Date().toISOString(),
+        verified_by: getCurrentUserName(),
+      } as any)
       .eq("registration_id", reg.id)
       .eq("test_id", testId)
       .in("outsource_status", ["results_entered", "entered", "sent", "results_saved"]);

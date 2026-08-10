@@ -153,7 +153,7 @@ const Dispatch = () => {
     queryKey: ["dispatch_all_snips", regKey],
     enabled: regIds.length > 0,
     queryFn: async () => {
-      return await fetchAllByIds<any>("outsourced_test_snips", "id, registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, result_mode, snip_image_urls, updated_at, sent_at", "registration_id", regIds);
+      return await fetchAllByIds<any>("outsourced_test_snips", "id, registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, result_mode, snip_image_urls, updated_at, sent_at, entered_at, entered_by, verified_at, verified_by, approved_at, approved_by, dispatched_at, dispatched_by", "registration_id", regIds);
     },
     placeholderData: keepPreviousData,
   });
@@ -300,34 +300,40 @@ const Dispatch = () => {
           const vals = testResults.map((r: any) => r[field]).filter(Boolean);
           return vals.length > 0 ? vals.sort()[0] : null;
         };
-
-        // For snip-only outsourced tests, derive timestamps from outsourced_test_snips
-        let enteredAt = getEarliest("entered_at");
-        let verifiedAt = getEarliest("verified_at");
-        let approvedAtTs = getEarliest("approved_at");
-        let dispatchedAtTs = getEarliest("dispatched_at");
-        if (snip && testResults.length === 0) {
-          const snipStatus = snip.outsource_status;
-          const snipTime = snip.updated_at || snip.sent_at || null;
-          if (["results_entered", "results_saved", "verified", "approved", "dispatched"].includes(snipStatus) && !enteredAt) {
-            enteredAt = snipTime;
-          }
-          if (["verified", "approved", "dispatched"].includes(snipStatus) && !verifiedAt) {
-            verifiedAt = snipTime;
-          }
-          if (["approved", "dispatched"].includes(snipStatus) && !approvedAtTs) {
-            approvedAtTs = snipTime;
-          }
-          if (snipStatus === "dispatched" && !dispatchedAtTs) {
-            dispatchedAtTs = snipTime;
-          }
-        }
-
-        // Extract _by fields
         const getFirstBy = (field: string) => {
           const vals = testResults.map((r: any) => r[field]).filter(Boolean);
           return vals.length > 0 ? vals[0] : null;
         };
+
+        // For snip-only outsourced tests, derive timestamps + stamps from outsourced_test_snips
+        let enteredAt = getEarliest("entered_at");
+        let verifiedAt = getEarliest("verified_at");
+        let approvedAtTs = getEarliest("approved_at");
+        let dispatchedAtTs = getEarliest("dispatched_at");
+        let enteredBy = getFirstBy("entered_by");
+        let verifiedBy = getFirstBy("verified_by");
+        let approvedBy = getFirstBy("approved_by");
+        let dispatchedBy = getFirstBy("dispatched_by");
+        if (snip) {
+          const snipStatus = snip.outsource_status;
+          const snipTime = snip.updated_at || snip.sent_at || null;
+          if (["results_entered", "results_saved", "verified", "approved", "dispatched"].includes(snipStatus)) {
+            enteredAt = enteredAt || snip.entered_at || snipTime;
+            enteredBy = enteredBy || snip.entered_by || null;
+          }
+          if (["verified", "approved", "dispatched"].includes(snipStatus)) {
+            verifiedAt = verifiedAt || snip.verified_at || snipTime;
+            verifiedBy = verifiedBy || snip.verified_by || null;
+          }
+          if (["approved", "dispatched"].includes(snipStatus)) {
+            approvedAtTs = approvedAtTs || snip.approved_at || snipTime;
+            approvedBy = approvedBy || snip.approved_by || null;
+          }
+          if (snipStatus === "dispatched") {
+            dispatchedAtTs = dispatchedAtTs || snip.dispatched_at || snipTime;
+            dispatchedBy = dispatchedBy || snip.dispatched_by || null;
+          }
+        }
 
         dispatchTests.push({
           testId: t.test_id,
@@ -344,10 +350,10 @@ const Dispatch = () => {
           registeredBy: reg.registered_by || null,
           collectedBy: tube?.collected_by || null,
           acceptedBy: tube?.accepted_by || null,
-          enteredBy: getFirstBy("entered_by"),
-          verifiedBy: getFirstBy("verified_by"),
-          approvedBy: getFirstBy("approved_by"),
-          dispatchedBy: getFirstBy("dispatched_by"),
+          enteredBy,
+          verifiedBy,
+          approvedBy,
+          dispatchedBy,
         });
       }
 
@@ -430,6 +436,8 @@ const Dispatch = () => {
       } as any).eq("registration_id", reg.id).eq("status", "approved").in("test_id", testIds);
       await supabase.from("outsourced_test_snips").update({
         outsource_status: "dispatched",
+        dispatched_at: now,
+        dispatched_by: dispatcher,
       } as any).eq("registration_id", reg.id).eq("outsource_status", "approved").in("test_id", testIds);
       const stillPending = entry.tests.some(t => t.status !== "approved" && t.status !== "dispatched");
       if (!stillPending) {
@@ -498,7 +506,11 @@ const Dispatch = () => {
     setActionKey(`${regId}||${testId}||dispatch`);
     try {
       await supabase.from("patient_results").update({ status: "dispatched", dispatched_at: new Date().toISOString(), dispatched_by: getCurrentUserName() } as any).eq("registration_id", regId).eq("test_id", testId).eq("status", "approved");
-      await supabase.from("outsourced_test_snips").update({ outsource_status: "dispatched" } as any).eq("registration_id", regId).eq("test_id", testId).eq("outsource_status", "approved");
+      await supabase.from("outsourced_test_snips").update({
+        outsource_status: "dispatched",
+        dispatched_at: new Date().toISOString(),
+        dispatched_by: getCurrentUserName(),
+      } as any).eq("registration_id", regId).eq("test_id", testId).eq("outsource_status", "approved");
       await propagateRegistrationChange(qc, regId, ["dispatch"]);
       toast.success(`${testName} marked as dispatched`);
     } catch (err: any) { toast.error(err.message || "Dispatch failed"); }

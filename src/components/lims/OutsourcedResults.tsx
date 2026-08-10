@@ -25,6 +25,7 @@ import { useMasterLookup } from "@/hooks/useMasterLookup";
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 import { formatAgeGender } from "@/lib/ageGender";
 import { patientDisplayName } from "@/lib/patientDisplayName";
+import { getCurrentUserName } from "@/lib/auth";
 import { fetchAllByIds } from "@/lib/fetchAllRows";
 import { fetchOutsourcedCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPendingCandidates";
 import { shortIdsKey } from "@/lib/queryKeys";
@@ -704,6 +705,8 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       const { error: snipErr } = await supabase.from("outsourced_test_snips").upsert({
         registration_id: regId, test_id: testId,
         result_mode: "manual", outsource_status: "results_saved",
+        entered_at: new Date().toISOString(),
+        entered_by: getCurrentUserName(),
       } as any, { onConflict: "registration_id,test_id" });
       if (snipErr) throw snipErr;
 
@@ -733,6 +736,8 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
       const { error } = await supabase.from("outsourced_test_snips").upsert({
         registration_id: regId, test_id: testId,
         result_mode: "snip", outsource_status: "results_saved",
+        entered_at: new Date().toISOString(),
+        entered_by: getCurrentUserName(),
       } as any, { onConflict: "registration_id,test_id" });
       if (error) throw error;
 

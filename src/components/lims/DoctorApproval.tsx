@@ -520,7 +520,7 @@ const DoctorApproval = () => {
         await supabase.from("patient_results").delete().eq("registration_id", reg.id).eq("test_id", testId).eq("status", "verified");
         await supabase.from("patient_results").insert(upserts as any);
       }
-      await supabase.from("outsourced_test_snips").update({ outsource_status: "approved" } as any).eq("registration_id", reg.id).eq("test_id", testId).eq("outsource_status", "verified");
+      await supabase.from("outsourced_test_snips").update({ outsource_status: "approved", approved_at: new Date().toISOString(), approved_by: approver.pathologistName } as any).eq("registration_id", reg.id).eq("test_id", testId).eq("outsource_status", "verified");
 
       // Archive snapshot — merge with existing approved_reports data
       const snipKey = `${reg.id}||${testId}`;
@@ -615,7 +615,7 @@ const DoctorApproval = () => {
           await supabase.from("patient_results").delete().eq("registration_id", reg.id).eq("test_id", testId).eq("status", "verified");
           await supabase.from("patient_results").insert(upserts as any);
         }
-        await supabase.from("outsourced_test_snips").update({ outsource_status: "approved" } as any).eq("registration_id", reg.id).eq("test_id", testId).eq("outsource_status", "verified");
+        await supabase.from("outsourced_test_snips").update({ outsource_status: "approved", approved_at: new Date().toISOString(), approved_by: approver.pathologistName } as any).eq("registration_id", reg.id).eq("test_id", testId).eq("outsource_status", "verified");
 
         const snipKey = `${reg.id}||${testId}`;
         const snipDetail = outsourcedSnipDetails[snipKey];
@@ -884,7 +884,7 @@ const DoctorApproval = () => {
                   if (!snipApproverChoice) return;
                   setActionKey(`${testKey}||approve`);
                   try {
-                    await supabase.from("outsourced_test_snips").update({ outsource_status: "approved" } as any).eq("registration_id", reg.id).eq("test_id", st.testId).eq("outsource_status", "verified");
+                    await supabase.from("outsourced_test_snips").update({ outsource_status: "approved", approved_at: new Date().toISOString(), approved_by: snipApproverChoice.pathologistName } as any).eq("registration_id", reg.id).eq("test_id", st.testId).eq("outsource_status", "verified");
                     // Merge with existing approved_reports data
                     const { data: existSnipReport } = await supabase.from("approved_reports").select("test_results, outsourced_snip_urls").eq("registration_id", reg.id).maybeSingle();
                     const prevResults = Array.isArray((existSnipReport as any)?.test_results) ? (existSnipReport as any).test_results : [];
