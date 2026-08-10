@@ -66,6 +66,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   const [editTests, setEditTests] = useState<any[]>([]);
   const [globalDiscountType, setGlobalDiscountType] = useState<"percent" | "amount">("percent");
   const [globalDiscountValue, setGlobalDiscountValue] = useState(0);
+  const [allowIneligibleDiscount, setAllowIneligibleDiscount] = useState(false);
   const [showDiscountUnlockPwd, setShowDiscountUnlockPwd] = useState(false);
   const [discountUnlocked, setDiscountUnlocked] = useState(false);
 
@@ -112,6 +113,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       })));
       setGlobalDiscountType((reg.global_discount_type as any) || "percent");
       setGlobalDiscountValue(Number(reg.global_discount_value || 0));
+      setAllowIneligibleDiscount(false);
     }
   }, [reg, open]);
 
@@ -184,11 +186,12 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       const price = Number(t.price || 0);
       totalAmount += price;
       let discount = 0;
-      const hasIndividual = t.individual_discount_type && t.individual_discount_value > 0 && t.discount_applicable;
+      const discountOk = !!t.discount_applicable || allowIneligibleDiscount;
+      const hasIndividual = t.individual_discount_type && t.individual_discount_value > 0 && discountOk;
       if (hasIndividual) {
         discount = t.individual_discount_type === "percent"
           ? (price * t.individual_discount_value) / 100 : t.individual_discount_value;
-      } else if (t.discount_applicable && globalDiscountValue > 0) {
+      } else if (discountOk && globalDiscountValue > 0) {
         discount = globalDiscountType === "percent"
           ? (price * globalDiscountValue) / 100 : globalDiscountValue;
       }
@@ -199,7 +202,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
     const hvc = Number(reg?.home_visit_charges || 0);
     const finalAmount = totalAmount - totalDiscount + hvc;
     return { totalAmount, totalDiscount, finalAmount, hvc, updatedTests };
-  }, [editTests, globalDiscountType, globalDiscountValue, alreadyCancelled, reg]);
+  }, [editTests, globalDiscountType, globalDiscountValue, alreadyCancelled, reg, allowIneligibleDiscount]);
 
   const discountChanged = useMemo(() => {
     return Math.abs(discountCalc.finalAmount - Number(reg?.final_amount || 0)) > 0.01 ||
@@ -851,7 +854,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
               {editTests.map((t: any, i: number) => {
                 const isCancelled = alreadyCancelled.has(t.test_id);
                 const isNewCancel = cancelledTestIds.has(t.test_id) && !isCancelled;
-                const canEditDiscount = !isBillCancelled && !isCancelled && !isDiscountLocked && t.discount_applicable;
+                const canEditDiscount = !isBillCancelled && !isCancelled && !isDiscountLocked && (t.discount_applicable || allowIneligibleDiscount);
                 return (
                   <div key={t.test_id || i} className={`p-2 rounded border ${isCancelled ? "bg-destructive/10 line-through opacity-60" : isNewCancel ? "bg-yellow-50 border-yellow-300" : ""}`}>
                     <div className="flex items-center gap-3">
@@ -899,6 +902,21 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
             {/* Global Discount */}
             {!isBillCancelled && !isDiscountLocked && (
               <div className="p-3 rounded border bg-muted/30 space-y-2">
+                <div className="flex items-start gap-3">
+                  <Switch
+                    checked={allowIneligibleDiscount}
+                    onCheckedChange={setAllowIneligibleDiscount}
+                    id="edit-allow-ineligible-discount"
+                  />
+                  <div className="space-y-0.5">
+                    <Label htmlFor="edit-allow-ineligible-discount" className="cursor-pointer text-sm font-medium">
+                      Allow discount on non-eligible items
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Applies global and per-item discounts to tests/packages marked not discount-eligible.
+                    </p>
+                  </div>
+                </div>
                 <Label className="text-sm font-medium">Global Discount</Label>
                 <div className="flex gap-2 items-center">
                   <Select value={globalDiscountType} onValueChange={(v: any) => setGlobalDiscountType(v)}>

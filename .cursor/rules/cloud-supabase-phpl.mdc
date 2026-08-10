@@ -1,0 +1,25 @@
+---
+description: PHPL cloud Supabase test project migration context
+alwaysApply: true
+---
+
+# Cloud Supabase (test) — PHPL
+
+- Organization: **PH PathLabs Database** (FREE)
+- New test project name: **PHPL**
+- Project URL: `https://gqpqnfvihjjkmbcdzate.supabase.co`
+- Project ref: **`gqpqnfvihjjkmbcdzate`** (CLI linked; ACTIVE_HEALTHY; Postgres 17 Mumbai)
+- App `.env` now points at **PHPL cloud** (backup: `.env.before-cloud-shift`)
+- Edge functions deployed; secrets in `supabase/.env.cloud-phpl-secrets` (gitignored locally — do not commit)
+- Local data replica imported (`data-export-local-fresh`); cloud E2E audit passed with **no WhatsApp sends**
+- Login for testing: `PHPATHLABS` / `admin123`
+- Old/live cloud project ref (do not overwrite casually): `rpbkilhzulaugzrlatts`
+- Local Docker still available at `http://127.0.0.1:54421` via `.env.before-cloud-shift`
+- Region: **South Asia (Mumbai)**
+- Security at create: Data API ON · Automatically expose new tables OFF · Automatic RLS ON
+- Purpose: test first on this new empty project; do **not** wipe old production until user explicitly asks
+- Old/live cloud project ref (do not overwrite casually): `rpbkilhzulaugzrlatts`
+- Local Docker LIMS: `http://127.0.0.1:54421`
+- When user is ready: wipe patient data / start fresh only on the project they name
+- After create: `supabase link` → `db push` → deploy functions → set `DESKTOP_API_KEY` etc. → point `.env` at new project
+- Never commit DB password, service_role key, or `.env` secrets

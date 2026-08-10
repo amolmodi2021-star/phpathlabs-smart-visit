@@ -89,6 +89,8 @@ const PatientRegistration = () => {
   const [testHighlightIndex, setTestHighlightIndex] = useState(-1);
   const [globalDiscountType, setGlobalDiscountType] = useState<"percent" | "amount">("percent");
   const [globalDiscountValue, setGlobalDiscountValue] = useState(0);
+  /** When on, discount applies even to tests/packages marked not discount-eligible. */
+  const [allowIneligibleDiscount, setAllowIneligibleDiscount] = useState(false);
   const [homeVisitCharges, setHomeVisitCharges] = useState(0);
 
   // Payment
@@ -309,6 +311,8 @@ const PatientRegistration = () => {
   // Auto-apply channel discount when channel is selected
   const effectiveDiscountType = channelId && selectedChannel ? "percent" : globalDiscountType;
   const effectiveDiscountValue = channelId && selectedChannel ? Number(selectedChannel.default_discount_pct || 0) : globalDiscountValue;
+  const isDiscountAllowed = (t: { discount_applicable?: boolean }) =>
+    !!t.discount_applicable || allowIneligibleDiscount;
 
   // Calculations (same logic as CreateEstimate)
   const calculations = useMemo(() => {
@@ -317,11 +321,12 @@ const PatientRegistration = () => {
     const testDetails = selectedTests.map(t => {
       totalAmount += t.price;
       let discount = 0;
-      const hasIndividual = t.individual_discount_type && t.individual_discount_value > 0 && t.discount_applicable;
+      const discountOk = isDiscountAllowed(t);
+      const hasIndividual = t.individual_discount_type && t.individual_discount_value > 0 && discountOk;
       if (hasIndividual) {
         discount = t.individual_discount_type === "percent"
           ? (t.price * t.individual_discount_value) / 100 : t.individual_discount_value;
-      } else if (t.discount_applicable && effectiveDiscountValue > 0) {
+      } else if (discountOk && effectiveDiscountValue > 0) {
         discount = effectiveDiscountType === "percent"
           ? (t.price * effectiveDiscountValue) / 100 : effectiveDiscountValue;
       }
@@ -332,7 +337,7 @@ const PatientRegistration = () => {
     const hvc = visitType === "home_visit" ? homeVisitCharges : 0;
     const finalAmount = totalAmount - totalDiscount + hvc;
     return { totalAmount, totalDiscount, finalAmount, testDetails, homeVisitCharges: hvc };
-  }, [selectedTests, effectiveDiscountType, effectiveDiscountValue, homeVisitCharges, visitType]);
+  }, [selectedTests, effectiveDiscountType, effectiveDiscountValue, homeVisitCharges, visitType, allowIneligibleDiscount]);
 
   // Payment
   const toggleMode = (mode: string) => {
@@ -508,6 +513,7 @@ const PatientRegistration = () => {
     setDob(""); setEmail(""); setShowEmail(false); setDoctorName("SELF"); setUmrNumber("");
     setAddress(""); setChannelId(""); setVisitType("lab_visit"); setPickupPointId("");
     setSelectedTests([]); setGlobalDiscountValue(0); setHomeVisitCharges(0);
+    setAllowIneligibleDiscount(false);
     setSelectedModes(new Set()); setModeAmounts({}); setInvoiceData(null); setTriedSave(false);
     setManualAge(""); setRemarks(""); setIsStat(false);
     setPatientLocked(false); setShowPatientPicker(false); setPickerMobile("");
@@ -542,6 +548,7 @@ const PatientRegistration = () => {
           data={invoiceData}
           open={!!invoiceData}
           onClose={() => { setInvoiceData(null); resetForm(); }}
+          autoQueueWhatsApp
         />
       )}
 
@@ -867,7 +874,7 @@ const PatientRegistration = () => {
                     )}
                     {t.fasting_required && <span className="text-xs text-destructive">Fasting</span>}
                     <div className="ml-auto flex items-center gap-1.5">
-                      {t.discount_applicable && !isCreditPickup && !(channelId && selectedChannel) && (
+                      {isDiscountAllowed(t) && !isCreditPickup && !(channelId && selectedChannel) && (
                         <>
                           <Select value={t.individual_discount_type || ""} onValueChange={v => updateTestDiscount(t.test_id, "individual_discount_type", v || null)}>
                             <SelectTrigger className="w-16 h-7 text-xs"><SelectValue placeholder="—" /></SelectTrigger>
@@ -878,6 +885,9 @@ const PatientRegistration = () => {
                               onChange={e => updateTestDiscount(t.test_id, "individual_discount_value", parseFloat(e.target.value) || 0)} />
                           )}
                         </>
+                      )}
+                      {!t.discount_applicable && !allowIneligibleDiscount && (
+                        <span className="text-[10px] text-destructive whitespace-nowrap">No disc.</span>
                       )}
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => removeTest(t.test_id)}><X className="h-3.5 w-3.5" /></Button>
                     </div>
@@ -892,30 +902,59 @@ const PatientRegistration = () => {
             <div className="rounded-lg border border-muted bg-muted/30 p-3">
               <p className="text-xs text-muted-foreground">Credit pickup point — discount not applicable</p>
             </div>
-          ) : channelId && selectedChannel ? (
-            <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-1">
-              <Label className="text-sm font-semibold">Channel Discount Applied</Label>
-              <p className="text-xs text-muted-foreground">
-                {selectedChannel.name} — {selectedChannel.default_discount_pct}% discount auto-applied to eligible tests
-              </p>
-              {selectedTests.some(t => !t.discount_applicable) && (
-                <p className="text-xs text-destructive">
-                  * {selectedTests.filter(t => !t.discount_applicable).map(t => t.test_name).join(", ")} — discount not applicable
-                </p>
-              )}
-            </div>
           ) : (
-            <div className="flex items-end gap-3">
-              <div className="flex-1">
-                <Label>Global Discount</Label>
-                <div className="flex gap-2">
-                  <Select value={globalDiscountType} onValueChange={(v: any) => setGlobalDiscountType(v)}>
-                    <SelectTrigger className="w-20"><SelectValue /></SelectTrigger>
-                    <SelectContent><SelectItem value="percent">%</SelectItem><SelectItem value="amount">₹</SelectItem></SelectContent>
-                  </Select>
-                  <Input type="number" value={globalDiscountValue || ""} onChange={e => setGlobalDiscountValue(parseFloat(e.target.value) || 0)} />
+            <div className="space-y-3">
+              <div className="flex items-start gap-3 rounded-lg border p-3 bg-muted/20">
+                <Switch
+                  checked={allowIneligibleDiscount}
+                  onCheckedChange={setAllowIneligibleDiscount}
+                  id="allow-ineligible-discount"
+                />
+                <div className="space-y-0.5">
+                  <Label htmlFor="allow-ineligible-discount" className="cursor-pointer">
+                    Allow discount on non-eligible items
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    When on, global/channel and per-item discounts apply to tests, packages, combos, and profiles
+                    marked as not discount-eligible. Off by default for each new registration.
+                  </p>
                 </div>
               </div>
+
+              {channelId && selectedChannel ? (
+                <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-1">
+                  <Label className="text-sm font-semibold">Channel Discount Applied</Label>
+                  <p className="text-xs text-muted-foreground">
+                    {selectedChannel.name} — {selectedChannel.default_discount_pct}% discount auto-applied
+                    {allowIneligibleDiscount ? " to all selected items" : " to eligible tests"}
+                  </p>
+                  {!allowIneligibleDiscount && selectedTests.some(t => !t.discount_applicable) && (
+                    <p className="text-xs text-destructive">
+                      * {selectedTests.filter(t => !t.discount_applicable).map(t => t.test_name).join(", ")} — discount not applicable
+                      (turn on the toggle above to include them)
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-end gap-3">
+                  <div className="flex-1">
+                    <Label>Global Discount</Label>
+                    <div className="flex gap-2">
+                      <Select value={globalDiscountType} onValueChange={(v: any) => setGlobalDiscountType(v)}>
+                        <SelectTrigger className="w-20"><SelectValue /></SelectTrigger>
+                        <SelectContent><SelectItem value="percent">%</SelectItem><SelectItem value="amount">₹</SelectItem></SelectContent>
+                      </Select>
+                      <Input type="number" value={globalDiscountValue || ""} onChange={e => setGlobalDiscountValue(parseFloat(e.target.value) || 0)} />
+                    </div>
+                    {!allowIneligibleDiscount && selectedTests.some(t => !t.discount_applicable) && (
+                      <p className="text-xs text-destructive mt-1">
+                        * {selectedTests.filter(t => !t.discount_applicable).map(t => t.test_name).join(", ")} — discount not applicable
+                        (turn on the toggle above to include them)
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

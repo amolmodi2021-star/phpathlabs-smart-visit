@@ -101,33 +101,69 @@ async function pruneInvoiceOutbox24h(): Promise<{ rows: number; files: number }>
         rows.map((r) => r.id),
       );
   }
-  // Also sweep orphan invoice files older than 24h
-  const { data: listed } = await supabase.storage.from("chat-attachments").list("invoices", {
-    limit: 200,
-    sortBy: { column: "created_at", order: "asc" },
-  });
-  const staleFiles: string[] = [];
+  // Also sweep orphan invoice files older than 24h (paginate)
   const cutoffMs = Date.now() - 24 * 60 * 60 * 1000;
-  for (const item of listed || []) {
-    if (!item?.name || !item.id) continue;
-    const created = item.created_at ? Date.parse(item.created_at) : 0;
-    if (created && created < cutoffMs) staleFiles.push(`invoices/${item.name}`);
-  }
-  if (staleFiles.length) {
-    const { error: rmErr } = await supabase.storage.from("chat-attachments").remove(staleFiles);
-    if (!rmErr) files += staleFiles.length;
+  let offset = 0;
+  for (;;) {
+    const { data: listed } = await supabase.storage.from("chat-attachments").list("invoices", {
+      limit: 100,
+      offset,
+      sortBy: { column: "created_at", order: "asc" },
+    });
+    const batch = listed || [];
+    if (!batch.length) break;
+    const staleFiles: string[] = [];
+    for (const item of batch) {
+      if (!item?.name) continue;
+      const created = item.created_at ? Date.parse(item.created_at) : 0;
+      if (created && created < cutoffMs) staleFiles.push(`invoices/${item.name}`);
+    }
+    if (staleFiles.length) {
+      const { error: rmErr } = await supabase.storage.from("chat-attachments").remove(staleFiles);
+      if (!rmErr) files += staleFiles.length;
+    }
+    if (batch.length < 100) break;
+    offset += batch.length;
+    // Safety: avoid infinite loops on weird list APIs
+    if (offset > 5000) break;
   }
   return { rows: rows.length, files };
+}
+
+const STUCK_CLAIM_MS = 5 * 60 * 1000;
+const DEFAULT_MAX_ATTEMPTS = 8;
+
+/** Re-queue claims abandoned mid-send (Console crash / laptop sleep). */
+async function reclaimStuckClaims(supabase: ReturnType<typeof sb>) {
+  const cutoff = new Date(Date.now() - STUCK_CLAIM_MS).toISOString();
+  const now = new Date().toISOString();
+  await supabase
+    .from("whatsapp_console_outbox")
+    .update({
+      status: "pending",
+      claimed_at: null,
+      claimed_by: null,
+      next_retry_at: null,
+      updated_at: now,
+      last_error: "reclaimed_stuck_claim",
+    })
+    .eq("status", "claimed")
+    .lt("claimed_at", cutoff);
 }
 
 /** Atomically claim pending outbox rows for WhatsApp Console. */
 async function claimOutbox(limit = 5, claimedBy = "whatsapp-console") {
   const supabase = sb();
   const lim = Math.min(Math.max(Number(limit) || 5, 1), 25);
+  await reclaimStuckClaims(supabase);
+
+  const nowIso = new Date().toISOString();
+  // Due pending rows: never-scheduled OR retry time reached
   const { data: pending, error } = await supabase
     .from("whatsapp_console_outbox")
     .select("*")
     .eq("status", "pending")
+    .or(`next_retry_at.is.null,next_retry_at.lte."${nowIso}"`)
     .order("created_at", { ascending: true })
     .limit(lim);
   if (error) throw error;
@@ -153,6 +189,7 @@ async function claimOutbox(limit = 5, claimedBy = "whatsapp-console") {
         claimed_at: now,
         claimed_by: claimedBy,
         attempts: (row.attempts || 0) + 1,
+        next_retry_at: null,
         updated_at: now,
       })
       .eq("id", row.id)
@@ -162,6 +199,11 @@ async function claimOutbox(limit = 5, claimedBy = "whatsapp-console") {
     if (!updErr && data) claimed.push(data);
   }
   return claimed;
+}
+
+function retryDelaySeconds(attempts: number): number {
+  // 30s, 60s, 120s … capped at 15 min
+  return Math.min(30 * Math.pow(2, Math.max(0, attempts - 1)), 900);
 }
 
 async function completeOutbox(
@@ -177,20 +219,47 @@ async function completeOutbox(
     .eq("id", id)
     .maybeSingle();
 
+  const attempts = Number(existing?.attempts || 0);
+  const maxAttempts = Number(existing?.max_attempts || DEFAULT_MAX_ATTEMPTS);
+  const errText = lastError ?? null;
+  const terminalError =
+    !!errText &&
+    /invalid_phone|empty_job|empty_text|cancelled|unsupported_kind/i.test(String(errText));
+
+  // Transient / retryable failures stay in the durable queue as pending.
+  let finalStatus = status;
+  if (status === "failed" && !terminalError && attempts < maxAttempts) {
+    finalStatus = "pending";
+  }
+
   const patch: Record<string, unknown> = {
-    status,
+    status: finalStatus,
     updated_at: now,
-    last_error: lastError ?? null,
+    last_error: errText,
   };
-  if (status === "sent") {
+  if (finalStatus === "sent") {
     patch.sent_at = now;
     // Clear media URL after send — file deleted below (don't keep forever).
     patch.media_url = null;
-  }
-  if (status === "pending") {
+    patch.next_retry_at = null;
     patch.claimed_at = null;
     patch.claimed_by = null;
+  } else if (finalStatus === "pending") {
+    patch.claimed_at = null;
+    patch.claimed_by = null;
+    // Immediate retry when WA Web missing; otherwise exponential backoff.
+    const immediate =
+      !errText ||
+      /no_whatsapp_web|not.?connected|offline|network|timeout|temporar/i.test(String(errText));
+    patch.next_retry_at = immediate
+      ? null
+      : new Date(Date.now() + retryDelaySeconds(attempts) * 1000).toISOString();
+  } else if (finalStatus === "failed") {
+    patch.claimed_at = null;
+    patch.claimed_by = null;
+    patch.next_retry_at = null;
   }
+
   const { data, error } = await supabase
     .from("whatsapp_console_outbox")
     .update(patch)
@@ -199,7 +268,7 @@ async function completeOutbox(
     .maybeSingle();
   if (error) throw error;
 
-  if (status === "sent" && existing) {
+  if (finalStatus === "sent" && existing) {
     await deleteInvoiceMedia(supabase, existing);
   }
   return data;
@@ -250,18 +319,44 @@ Deno.serve(async (req) => {
     const to = url.searchParams.get("to");
     const supabase = sb();
 
+    // Idle prune (rows + invoice images older than 24h)
+    if (type === "prune_outbox") {
+      const result = await pruneInvoiceOutbox24h();
+      return json({ ok: true, ...result, retention_hours: 24 });
+    }
+
+    // Realtime credentials for WhatsApp Console (push wake on pending outbox)
+    if (type === "realtime_config") {
+      const supabaseUrl = (Deno.env.get("SUPABASE_URL") || "").replace(/\/+$/, "");
+      const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("ANON_KEY") || "";
+      if (!supabaseUrl || !anonKey) {
+        return json({ error: "Realtime config unavailable on this environment" }, 500);
+      }
+      return json({
+        ok: true,
+        supabaseUrl,
+        anonKey,
+        table: "whatsapp_console_outbox",
+        mode: "realtime",
+        media_retention_hours: 24,
+      });
+    }
+
     // Peek pending outbox (non-claiming) for Console UI / health
     if (type === "outbox") {
       const { data, error } = await supabase
         .from("whatsapp_console_outbox")
-        .select("id, kind, phone, patient_name, invoice_number, status, caption, media_url, created_at, attempts, last_error")
-        .in("status", ["pending", "claimed"])
-        .order("created_at", { ascending: true })
+        .select("id, kind, phone, patient_name, invoice_number, status, caption, media_url, created_at, attempts, last_error, next_retry_at, max_attempts")
+        .in("status", ["pending", "claimed", "failed"])
+        .order("created_at", { ascending: false })
         .limit(100);
       if (error) throw error;
+      const active = (data || []).filter((r: any) => r.status === "pending" || r.status === "claimed");
+      const failed = (data || []).filter((r: any) => r.status === "failed");
       return json({
-        count: { outbox: data?.length ?? 0, total: data?.length ?? 0 },
+        count: { outbox: active.length, failed: failed.length, total: (data || []).length },
         data: data || [],
+        mode: "realtime_queue",
       });
     }
 

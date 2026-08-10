@@ -16,6 +16,8 @@ interface InvoicePreviewProps {
   data: any;
   open: boolean;
   onClose: () => void;
+  /** After registration: auto-enqueue invoice to WhatsApp Console outbox once. */
+  autoQueueWhatsApp?: boolean;
 }
 
 const SETTING_KEYS = [
@@ -110,10 +112,11 @@ const numberToWords = (num: number): string => {
   return convert(Math.floor(Math.abs(num)));
 };
 
-const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
+const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false }: InvoicePreviewProps) => {
   const receiptRef = useRef<HTMLDivElement>(null);
   const barcodeRef = useRef<HTMLCanvasElement>(null);
   const queuedInvoiceRef = useRef<string | null>(null);
+  const autoQueuedRef = useRef<string | null>(null);
   const [brand, setBrand] = useState<Record<string, string>>(DEFAULTS);
   const [channelName, setChannelName] = useState("");
   const [consoleQueued, setConsoleQueued] = useState(false);
@@ -125,7 +128,6 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
       setWaSending(false);
       return;
     }
-    // Viewing an invoice must not auto-send; only the WhatsApp button queues via WA API.
     setConsoleQueued(queuedInvoiceRef.current === String(data?.invoice_number || ""));
     (async () => {
       const { data: rows } = await supabase
@@ -247,6 +249,19 @@ const InvoicePreview = ({ data, open, onClose }: InvoicePreviewProps) => {
       setWaSending(false);
     }
   }, [open, data, brand.invoice_lab_name, renderBarcode]);
+
+  // New registration: queue invoice to durable outbox once barcode/layout is ready.
+  useEffect(() => {
+    if (!autoQueueWhatsApp || !open || !data?.invoice_number || !data?.mobile_number) return;
+    const invoiceNo = String(data.invoice_number);
+    if (autoQueuedRef.current === invoiceNo || queuedInvoiceRef.current === invoiceNo) return;
+    const timer = setTimeout(() => {
+      if (autoQueuedRef.current === invoiceNo || queuedInvoiceRef.current === invoiceNo) return;
+      autoQueuedRef.current = invoiceNo;
+      void queueInvoiceViaWaApi();
+    }, 900);
+    return () => clearTimeout(timer);
+  }, [autoQueueWhatsApp, open, data?.invoice_number, data?.mobile_number, queueInvoiceViaWaApi]);
 
   if (!data) return null;
 
