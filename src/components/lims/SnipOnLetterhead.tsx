@@ -96,7 +96,7 @@ const SnipOnLetterhead = ({
     loadLetterhead();
   }, []);
 
-  const getScale = (idx: number) => pageScales[idx] ?? 80;
+  const getScale = (idx: number) => pageScales[idx] ?? 70;
 
   const handleResizeStart = useCallback((e: React.MouseEvent, pageIndex: number) => {
     e.preventDefault();
@@ -132,7 +132,7 @@ const SnipOnLetterhead = ({
   const renderPageOnLetterhead = (url: string, idx: number) => {
     const scale = getScale(idx);
     return (
-      <div key={idx} className="border rounded-lg overflow-hidden bg-white relative">
+      <div key={idx} className="border rounded-lg overflow-hidden bg-white relative mx-auto w-full max-w-[420px]">
         <div className="flex items-center justify-between px-3 py-1.5 bg-muted/30 border-b">
           <span className="text-xs font-medium">Page {idx + 1}</span>
           <div className="flex items-center gap-1">
@@ -147,7 +147,8 @@ const SnipOnLetterhead = ({
             </Button>
           </div>
         </div>
-        <div className="relative w-full" style={{ aspectRatio: "210/297" }}>
+        {/* Fixed A4 card — never expand to full panel width (that caused the "extra zoom"). */}
+        <div className="relative w-full bg-white" style={{ aspectRatio: "210 / 297" }}>
           {letterheadDataUrl ? (
             <img
               src={letterheadDataUrl}
@@ -160,16 +161,19 @@ const SnipOnLetterhead = ({
               <span className="text-xs text-muted-foreground">No letterhead uploaded</span>
             </div>
           )}
-          {/* Snipped image overlay - top aligned after header margin, centered horizontally */}
-          <div className="absolute left-0 right-0 top-0 flex justify-center pointer-events-none" style={{ paddingTop: `${topMarginPct}%` }}>
+          {/* Snip sits inside the letterhead page bounds */}
+          <div
+            className="absolute inset-x-0 bottom-0 top-0 flex justify-center overflow-hidden pointer-events-none"
+            style={{ paddingTop: `${topMarginPct}%`, paddingBottom: "6%", paddingLeft: "4%", paddingRight: "4%" }}
+          >
             <div
-              className="relative inline-block pointer-events-auto"
+              className="relative pointer-events-auto max-h-full"
               style={{ width: `${scale}%` }}
             >
               <img
                 src={url}
                 alt={`Snip page ${idx + 1}`}
-                className="w-full h-auto block"
+                className="w-full h-auto max-h-full object-contain object-top block"
                 draggable={false}
               />
               <div
@@ -232,39 +236,44 @@ const SnipOnLetterhead = ({
           </span>
         </div>
 
-        <div className="relative" style={{ aspectRatio: "210/297", maxHeight: "500px" }}>
-          {letterheadDataUrl ? (
-            <img
-              src={letterheadDataUrl}
-              alt="Letterhead preview"
-              className="absolute inset-0 w-full h-full object-contain opacity-40"
-              draggable={false}
-            />
-          ) : loadingLetterhead ? (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : null}
-
+        <div className="flex justify-center bg-muted/5 p-3">
           <div
-            ref={pasteRef}
-            onPaste={(e) => onPaste(regId, testId, e)}
-            tabIndex={0}
-            className={`absolute inset-0 flex items-center justify-center cursor-pointer hover:bg-primary/5 transition-colors focus:ring-2 focus:ring-primary/20 focus:outline-none z-10 ${isUploading ? "opacity-50 pointer-events-none" : ""}`}
-            onClick={() => pasteRef.current?.focus()}
+            className="relative w-full max-w-[420px] bg-white shadow-sm border rounded-sm overflow-hidden"
+            style={{ aspectRatio: "210 / 297" }}
           >
-            {isUploading ? (
-              <div className="flex flex-col items-center gap-2">
-                <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                <span className="text-sm text-muted-foreground">Uploading…</span>
+            {letterheadDataUrl ? (
+              <img
+                src={letterheadDataUrl}
+                alt="Letterhead preview"
+                className="absolute inset-0 w-full h-full object-contain opacity-40"
+                draggable={false}
+              />
+            ) : loadingLetterhead ? (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
-            ) : (
-              <div className="flex flex-col items-center gap-1.5 bg-background/80 rounded-lg p-4">
-                <Clipboard className="h-6 w-6 text-muted-foreground" />
-                <div className="text-sm font-medium">Click here and press Ctrl+V to paste snip</div>
-                <div className="text-xs text-muted-foreground">Win+Shift+S → capture → paste here</div>
-              </div>
-            )}
+            ) : null}
+
+            <div
+              ref={pasteRef}
+              onPaste={(e) => onPaste(regId, testId, e)}
+              tabIndex={0}
+              className={`absolute inset-0 flex items-center justify-center cursor-pointer hover:bg-primary/5 transition-colors focus:ring-2 focus:ring-primary/20 focus:outline-none z-10 ${isUploading ? "opacity-50 pointer-events-none" : ""}`}
+              onClick={() => pasteRef.current?.focus()}
+            >
+              {isUploading ? (
+                <div className="flex flex-col items-center gap-2">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                  <span className="text-sm text-muted-foreground">Uploading…</span>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-1.5 bg-background/80 rounded-lg p-4 mx-3 text-center">
+                  <Clipboard className="h-6 w-6 text-muted-foreground" />
+                  <div className="text-sm font-medium">Click here and press Ctrl+V to paste snip</div>
+                  <div className="text-xs text-muted-foreground">Win+Shift+S → capture → paste here</div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
