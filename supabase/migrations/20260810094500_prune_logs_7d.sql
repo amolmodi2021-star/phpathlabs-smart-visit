@@ -9,7 +9,7 @@ SET search_path = public
 AS $fn$
 BEGIN
   IF to_regclass('public.message_send_log') IS NOT NULL THEN
-    DELETE from public.message_send_log WHERE created_at < now() - interval '7 days';
+    DELETE FROM public.message_send_log WHERE created_at < now() - interval '7 days';
   END IF;
   IF to_regclass('public.drip_campaign_log') IS NOT NULL THEN
     DELETE FROM public.drip_campaign_log WHERE created_at < now() - interval '7 days';
@@ -24,12 +24,12 @@ BEGIN
     DELETE FROM public.report_link_sessions WHERE created_at < now() - interval '7 days';
   END IF;
 END;
-$fn4;
+$fn$;
 
 REVOKE ALL ON FUNCTION public.prune_messaging_logs_7d() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.prune_messaging_logs_7d() TO service_role;
 
-DO $do4
+DO $do$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
     BEGIN
@@ -47,23 +47,23 @@ BEGIN
     );
 
     BEGIN
-      PERFORL cron.unschedule('prune-lims-interface-logs-daily');
+      PERFORM cron.unschedule('prune-lims-interface-logs-daily');
     EXCEPTION WHEN OTHERS THEN NULL;
     END;
     PERFORM cron.schedule(
       'prune-lims-interface-logs-daily',
       '25 3 * * *',
-      'DELETE from public.lims_interface_logs WHERE created_at < now() - interval '7 days'
+      $q$DELETE FROM public.lims_interface_logs WHERE created_at < now() - interval '7 days'$q$
     );
 
     BEGIN
-      PERFORL cron.unschedule('prune-app-user-login-history-daily');
+      PERFORM cron.unschedule('prune-app-user-login-history-daily');
     EXCEPTION WHEN OTHERS THEN NULL;
     END;
     PERFORM cron.schedule(
       'prune-app-user-login-history-daily',
       '30 3 * * *',
-      'DELETE from public.app_user_login_history WHERE login_at < now() - interval '7 days'
+      $q$DELETE FROM public.app_user_login_history WHERE login_at < now() - interval '7 days'$q$
     );
   END IF;
 EXCEPTION
@@ -71,5 +71,5 @@ EXCEPTION
 END $do$;
 
 SELECT public.prune_messaging_logs_7d();
-DELETE from public.lims_interface_logs WHERE created_at < now() - interval '7 days';
-DELETE from public.app_user_login_history WHERE login_at < now() - interval '7 days';
+DELETE FROM public.lims_interface_logs WHERE created_at < now() - interval '7 days';
+DELETE FROM public.app_user_login_history WHERE login_at < now() - interval '7 days';
