@@ -617,60 +617,60 @@ const Dispatch = () => {
                 <>
                   {/* Patient header */}
                   <div className="p-4 border-b bg-muted/20">
-                    <div className={cn("flex items-start justify-between", isMobile && "flex-col gap-3")}>
-                      <div>
-                        <div className="flex items-center gap-2">
+                    <div className={cn("flex items-start justify-between gap-3", isMobile && "flex-col")}>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
                           {isMobile && (
                             <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => setMobileShowDetail(false)}>
                               <ArrowLeft className="h-4 w-4" />
                             </Button>
                           )}
-                          <User className="h-5 w-5 text-muted-foreground" />
+                          <User className="h-5 w-5 text-muted-foreground shrink-0" />
                           <h3 className={cn("font-semibold", isMobile ? "text-base" : "text-lg")}>{patientDisplayName(selectedEntry.registration)}</h3>
                           <Badge variant="outline" className="text-xs font-mono">{formatAgeGender(selectedEntry.registration.dob, selectedEntry.registration.gender)}</Badge>
                           {selectedEntry.registration.is_stat && selectedEntry.completionStatus !== "all_done" && <Badge variant="destructive" className="text-[10px]">STAT</Badge>}
                           {getCompletionDot(selectedEntry.completionStatus)}
                         </div>
-                        <div className={cn("flex items-center gap-4 mt-1 text-sm text-muted-foreground", isMobile && "flex-wrap gap-2 text-xs")}>
+                        <div className={cn("flex items-center gap-4 mt-1 text-sm text-muted-foreground flex-wrap", isMobile && "gap-2 text-xs")}>
                           <span className="flex items-center gap-1"><Phone className="h-3.5 w-3.5" />{selectedEntry.registration.mobile_number}</span>
                           <span className="flex items-center gap-1"><FileText className="h-3.5 w-3.5" />{selectedEntry.registration.invoice_number}</span>
                           {selectedEntry.registration.umr_number && <span>UMR: {selectedEntry.registration.umr_number}</span>}
                           {!isMobile && <span className="flex items-center gap-1"><CalendarIcon className="h-3.5 w-3.5" />{formatDate(selectedEntry.registration.created_at)}</span>}
                         </div>
                       </div>
-                      <div className={cn("flex items-center gap-2", isMobile && "w-full overflow-x-auto")}>
-                        {selectedEntry.registration.due_amount > 0 && (
-                          <Badge variant={isPaymentBlocked(selectedEntry.registration) ? "destructive" : "secondary"} className="text-xs px-2 py-1 shrink-0">
-                            DUE ₹{selectedEntry.registration.due_amount}{!isPaymentBlocked(selectedEntry.registration) ? " · CREDIT" : ""}
-                          </Badge>
-                        )}
-                        {selectedEntry.tests.some(t => t.status === "approved" || t.status === "dispatched") && (
-                          <Button size="sm" variant="outline" className="gap-1 shrink-0" disabled={isPaymentBlocked(selectedEntry.registration)} onClick={() => openReportSelectDialog(selectedEntry)}>
-                            <Eye className="h-4 w-4" /> {!isMobile && "View"} Report
-                          </Button>
-                        )}
-                        {selectedEntry.dispatchedCount > 0 && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="gap-1 shrink-0"
-                            disabled={actionKey === `${selectedEntry.registration.id}||send`}
-                            onClick={() => sendReportsAgain(selectedEntry)}
-                          >
-                            {actionKey === `${selectedEntry.registration.id}||send` ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <MessageSquare className="h-4 w-4" />
-                            )}
-                            Send Reports
-                          </Button>
-                        )}
-                        {selectedEntry.approvedCount > 0 && (
-                          <Button size="sm" className="gap-1 shrink-0" disabled={actionKey === `${selectedEntry.registration.id}||dispatch`} onClick={() => markAsDispatched(selectedEntry)}>
-                            {actionKey === `${selectedEntry.registration.id}||dispatch` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Dispatch All
-                          </Button>
-                        )}
-                      </div>
+                      {selectedEntry.registration.due_amount > 0 && (
+                        <Badge variant={isPaymentBlocked(selectedEntry.registration) ? "destructive" : "secondary"} className="text-xs px-2 py-1 shrink-0">
+                          DUE ₹{selectedEntry.registration.due_amount}{!isPaymentBlocked(selectedEntry.registration) ? " · CREDIT" : ""}
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap mt-3">
+                      {selectedEntry.tests.some(t => t.status === "approved" || t.status === "dispatched") && (
+                        <Button size="sm" variant="outline" className="gap-1" disabled={isPaymentBlocked(selectedEntry.registration)} onClick={() => openReportSelectDialog(selectedEntry)}>
+                          <Eye className="h-4 w-4" /> View Report
+                        </Button>
+                      )}
+                      {(selectedEntry.dispatchedCount > 0 || selectedEntry.tests.some(t => t.status === "dispatched")) && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="gap-1"
+                          disabled={actionKey === `${selectedEntry.registration.id}||send`}
+                          onClick={() => sendReportsAgain(selectedEntry)}
+                        >
+                          {actionKey === `${selectedEntry.registration.id}||send` ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <MessageSquare className="h-4 w-4" />
+                          )}
+                          Send Reports
+                        </Button>
+                      )}
+                      {selectedEntry.approvedCount > 0 && (
+                        <Button size="sm" className="gap-1" disabled={actionKey === `${selectedEntry.registration.id}||dispatch`} onClick={() => markAsDispatched(selectedEntry)}>
+                          {actionKey === `${selectedEntry.registration.id}||dispatch` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Dispatch All
+                        </Button>
+                      )}
                     </div>
                   </div>
 
