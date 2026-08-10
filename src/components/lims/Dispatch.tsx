@@ -21,7 +21,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { Calendar as DatePickerCalendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Search, Loader2, CheckCircle2, Send, Eye, Truck, MessageSquare, Circle, Phone, Calendar as CalendarIcon, FileText, User, Clock, ChevronRight, ArrowLeft } from "lucide-react";
+import { Search, Loader2, CheckCircle2, Send, Eye, Truck, Circle, Phone, Calendar as CalendarIcon, FileText, User, Clock, ChevronRight, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { format, startOfDay, endOfDay, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -31,6 +31,16 @@ import { fetchDispatchCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPen
 import { shortIdsKey } from "@/lib/queryKeys";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import NewBadge from "./NewBadge";
+import { queueApprovedReportWhatsApp } from "@/lib/dispatchReportWhatsApp";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type TestStatus = "registered" | "sample_collected" | "sample_accepted" | "results_entered" | "verified" | "approved" | "dispatched";
 
@@ -78,6 +88,7 @@ const Dispatch = () => {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [mobileShowDetail, setMobileShowDetail] = useState(false);
   const [dispatchPage, setDispatchPage] = useState(0);
+  const [dueBlockEntry, setDueBlockEntry] = useState<DispatchEntry | null>(null);
   useEffect(() => { const t = setTimeout(() => { setDebouncedSearch(search); setDispatchPage(0); }, 400); return () => clearTimeout(t); }, [search]);
 
   const { data: filteredDispatchIds = [] as string[] } = useQuery({
@@ -309,54 +320,67 @@ const Dispatch = () => {
 
   const selectedEntry = useMemo(() => sortedDispatchEntries.find(e => e.registration.id === selectedPatientId) || null, [sortedDispatchEntries, selectedPatientId]);
 
-  const dispatchViaWhatsApp = async (reg: any) => {
-    const phone = (reg.mobile_number || "").replace(/\D/g, "");
-    if (!phone) { toast.error("No mobile number available"); return; }
-    let portalUrl = "";
-    try {
-      const { createShareLink } = await import("@/lib/reportShareLinks");
-      const created = await createShareLink(reg.id, reg.invoice_number, getCurrentUserName());
-      portalUrl = created.url;
-    } catch (e: any) {
-      console.error("Failed to create share link", e);
-      toast.error("Couldn't generate report link, sending without it");
-    }
-    const linkLine = portalUrl
-      ? `\n\nView status & download:\n${portalUrl}\n(Link valid for 7 days)`
-      : "";
-    const message = `Dear ${patientDisplayName(reg)},\n\nYour lab reports for Invoice ${reg.invoice_number} are ready.${linkLine}\n\nThank you for choosing PH PathLabs.\nLabLine: 6356 55 66 99`;
-    window.open(`https://wa.me/91${phone}?text=${encodeURIComponent(message)}`, "_blank");
-  };
-
   const markAsDispatched = async (entry: DispatchEntry) => {
     const reg = entry.registration;
+    if (isPaymentBlocked(reg)) {
+      setDueBlockEntry(entry);
+      return;
+    }
+    const phone = String(reg.mobile_number || "").replace(/\D/g, "").slice(-10);
+    if (phone.length !== 10) {
+      toast.error("No valid mobile number — cannot dispatch via WhatsApp");
+      return;
+    }
+
+    const approvedTests = entry.tests.filter(t => t.status === "approved");
+    const testIds = approvedTests.map(t => t.testId);
+    if (testIds.length === 0) {
+      toast.error("No approved reports to dispatch");
+      return;
+    }
+
     setActionKey(`${reg.id}||dispatch`);
     try {
-      const approvedTests = entry.tests.filter(t => t.status === "approved");
-      const testIds = approvedTests.map(t => t.testId);
+      toast.message("Generating report PDF for WhatsApp…");
+      const queued = await queueApprovedReportWhatsApp({
+        registrationId: reg.id,
+        testIds,
+      });
+      if (!queued.ok) {
+        throw new Error(queued.error || "Failed to queue report WhatsApp");
+      }
+
       const now = new Date().toISOString();
       const dispatcher = getCurrentUserName();
-      if (testIds.length > 0) {
-        await supabase.from("patient_results").update({
-          status: "dispatched",
-          dispatched_at: now,
-          dispatched_by: dispatcher,
-        } as any).eq("registration_id", reg.id).eq("status", "approved").in("test_id", testIds);
-        await supabase.from("outsourced_test_snips").update({
-          outsource_status: "dispatched",
-        } as any).eq("registration_id", reg.id).eq("outsource_status", "approved").in("test_id", testIds);
-      }
+      await supabase.from("patient_results").update({
+        status: "dispatched",
+        dispatched_at: now,
+        dispatched_by: dispatcher,
+      } as any).eq("registration_id", reg.id).eq("status", "approved").in("test_id", testIds);
+      await supabase.from("outsourced_test_snips").update({
+        outsource_status: "dispatched",
+      } as any).eq("registration_id", reg.id).eq("outsource_status", "approved").in("test_id", testIds);
       const stillPending = entry.tests.some(t => t.status !== "approved" && t.status !== "dispatched");
       if (!stillPending) {
         await supabase.from("patient_registrations").update({ status: "dispatched" } as any).eq("id", reg.id);
       }
       await propagateRegistrationChange(qc, reg.id, ["dispatch", "doctor_approval"]);
-      toast.success(`Reports dispatched for ${patientDisplayName(reg)}`);
-    } catch (err: any) { toast.error(err.message || "Dispatch failed"); }
-    finally { setActionKey(null); }
+      toast.success(`Dispatched & queued WhatsApp for ${patientDisplayName(reg)}`, {
+        description: `Report PDF sending to ${phone} via WhatsApp Console`,
+      });
+    } catch (err: any) {
+      toast.error(err.message || "Dispatch failed");
+    } finally {
+      setActionKey(null);
+    }
   };
 
   const markTestDispatched = async (regId: string, testId: string, testName: string) => {
+    const entry = sortedDispatchEntries.find(e => e.registration.id === regId);
+    if (entry && isPaymentBlocked(entry.registration)) {
+      setDueBlockEntry(entry);
+      return;
+    }
     setActionKey(`${regId}||${testId}||dispatch`);
     try {
       await supabase.from("patient_results").update({ status: "dispatched", dispatched_at: new Date().toISOString(), dispatched_by: getCurrentUserName() } as any).eq("registration_id", regId).eq("test_id", testId).eq("status", "approved");
@@ -579,17 +603,12 @@ const Dispatch = () => {
                           </Badge>
                         )}
                         {selectedEntry.tests.some(t => t.status === "approved" || t.status === "dispatched") && (
-                          <>
-                            <Button size="sm" variant="outline" className="gap-1 shrink-0" disabled={isPaymentBlocked(selectedEntry.registration)} onClick={() => openReportSelectDialog(selectedEntry)}>
-                              <Eye className="h-4 w-4" /> {!isMobile && "View"} Report
-                            </Button>
-                            <Button size="sm" variant="outline" className="gap-1 shrink-0" disabled={isPaymentBlocked(selectedEntry.registration)} onClick={() => dispatchViaWhatsApp(selectedEntry.registration)}>
-                              <MessageSquare className="h-4 w-4" /> {!isMobile && "WhatsApp"}
-                            </Button>
-                          </>
+                          <Button size="sm" variant="outline" className="gap-1 shrink-0" disabled={isPaymentBlocked(selectedEntry.registration)} onClick={() => openReportSelectDialog(selectedEntry)}>
+                            <Eye className="h-4 w-4" /> {!isMobile && "View"} Report
+                          </Button>
                         )}
                         {selectedEntry.approvedCount > 0 && (
-                          <Button size="sm" className="gap-1 shrink-0" disabled={isPaymentBlocked(selectedEntry.registration) || actionKey === `${selectedEntry.registration.id}||dispatch`} onClick={() => markAsDispatched(selectedEntry)}>
+                          <Button size="sm" className="gap-1 shrink-0" disabled={actionKey === `${selectedEntry.registration.id}||dispatch`} onClick={() => markAsDispatched(selectedEntry)}>
                             {actionKey === `${selectedEntry.registration.id}||dispatch` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Dispatch All
                           </Button>
                         )}
@@ -656,16 +675,11 @@ const Dispatch = () => {
                                 })()}
                                 {/* Status badge */}
                                 {getStatusBadge(test.status)}
-                                {/* WhatsApp & Dispatch */}
+                                {/* Dispatch */}
                                 {test.status === "approved" && (
-                                  <>
-                                    <Button size="sm" variant="outline" className="h-8 text-xs gap-1" disabled={isPaymentBlocked(selectedEntry.registration)} onClick={() => dispatchViaWhatsApp(selectedEntry.registration)}>
-                                      <MessageSquare className="h-3.5 w-3.5" />
-                                    </Button>
-                                    <Button size="sm" className="h-8 text-xs gap-1" disabled={isPaymentBlocked(selectedEntry.registration) || isTestDispatching} onClick={() => markTestDispatched(selectedEntry.registration.id, test.testId, test.testName)}>
-                                      {isTestDispatching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />} Dispatch
-                                    </Button>
-                                  </>
+                                  <Button size="sm" className="h-8 text-xs gap-1" disabled={isTestDispatching} onClick={() => markTestDispatched(selectedEntry.registration.id, test.testId, test.testName)}>
+                                    {isTestDispatching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />} Dispatch
+                                  </Button>
                                 )}
                               </div>
                             </div>
@@ -750,6 +764,22 @@ const Dispatch = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!dueBlockEntry} onOpenChange={(open) => { if (!open) setDueBlockEntry(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Payment due — cannot dispatch</AlertDialogTitle>
+            <AlertDialogDescription>
+              {dueBlockEntry
+                ? `${patientDisplayName(dueBlockEntry.registration)} has a due amount of ₹${Number(dueBlockEntry.registration.due_amount || 0).toLocaleString("en-IN")}. Collect payment before dispatching reports.`
+                : "Collect payment before dispatching reports."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setDueBlockEntry(null)}>OK</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

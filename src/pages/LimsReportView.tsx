@@ -14,8 +14,9 @@ import ReportResultsSection from "@/components/report/ReportResultsSection";
 import AutoScaleContent from "@/components/report/AutoScaleContent";
 import type { TestResult, ProfileMeta } from "@/components/report/ReportResultsSection";
 import { toast } from "sonner";
-import { logEvent } from "@/lib/reportShareLinks";
+import { logEvent, createShareLink } from "@/lib/reportShareLinks";
 import { patientDisplayName } from "@/lib/patientDisplayName";
+import { enqueueReportForWhatsAppConsole } from "@/lib/whatsappConsoleBridge";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.mjs";
 
@@ -242,10 +243,12 @@ const LimsReportView = () => {
   const isPublic = !!publicToken;
   const isProvisional = searchParams.get("provisional") === "1";
   const autoShareRequested = searchParams.get("share") === "1";
+  const queueWaRequested = searchParams.get("queueWa") === "1";
   const printRef = useRef<HTMLDivElement>(null);
   const previewWrapRef = useRef<HTMLDivElement>(null);
   const autoDownloadStartedRef = useRef(false);
   const autoShareStartedRef = useRef(false);
+  const autoQueueWaStartedRef = useRef(false);
   const cachedPdfRef = useRef<{ blob: Blob; filename: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
@@ -747,48 +750,80 @@ const LimsReportView = () => {
   }, [approvedReports, departments, testsMap, testParamsMap, snipImages, layoutSettings, pickupFooterNote]);
 
   // ── PDF export ──
+  const buildPdfBlob = async (): Promise<{ blob: Blob; filename: string } | null> => {
+    if (!printRef.current) return null;
+    const pageElements = printRef.current.querySelectorAll("[data-page]");
+    if (pageElements.length === 0) return null;
+
+    await waitForCaptureReady(printRef.current);
+
+    const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const NATIVE_W = Math.round((PAGE_WIDTH_MM / 25.4) * 96);
+    const NATIVE_H = Math.round((PAGE_HEIGHT_MM / 25.4) * 96);
+    for (let i = 0; i < pageElements.length; i++) {
+      if (i > 0) pdf.addPage();
+      const el = pageElements[i] as HTMLElement;
+      const isSnipPage = !!el.querySelector('img[data-snip-image]');
+      if (isSnipPage) {
+        const png = await captureWithRetry(el, NATIVE_W, NATIVE_H, "png");
+        pdf.addImage(png, "PNG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM);
+      } else {
+        const jpeg = await captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg");
+        pdf.addImage(jpeg, "JPEG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, undefined, "FAST");
+      }
+    }
+
+    const patientNameRaw = patientDisplayName(approvedReports[0]);
+    const patientName = !approvedReports[0] || patientNameRaw === "—" ? "Report" : patientNameRaw;
+    const invoiceNum = approvedReports[0]?.invoice_number || "";
+    const filename = `${patientName}_${invoiceNum}.pdf`.replace(/[\\/:*?"<>|]+/g, "_");
+    const blob = pdf.output("blob") as Blob;
+    cachedPdfRef.current = { blob, filename };
+    return { blob, filename };
+  };
+
+  const notifyQueueWa = (ok: boolean, error?: string) => {
+    const payload = {
+      type: "lims-report-wa-queue",
+      registrationId,
+      ok,
+      error: error || null,
+    };
+    try {
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage(payload, window.location.origin);
+      }
+    } catch (e) {
+      console.warn("queueWa postMessage failed", e);
+    }
+    try {
+      window.postMessage(payload, window.location.origin);
+    } catch {
+      // ignore
+    }
+  };
+
   const handleDownloadPdf = async () => {
     if (!printRef.current) return;
     setDownloading(true);
     try {
-      const pageElements = printRef.current.querySelectorAll("[data-page]");
-      if (pageElements.length === 0) { toast.error("No pages to export"); setDownloading(false); return; }
+      const built = await buildPdfBlob();
+      if (!built) { toast.error("No pages to export"); setDownloading(false); return; }
 
-      // Make sure fonts and all images inside the print container are ready
-      // before capturing — prevents intermittent blank pages.
-      await waitForCaptureReady(printRef.current);
-
-      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-      const NATIVE_W = Math.round((PAGE_WIDTH_MM / 25.4) * 96);
-      const NATIVE_H = Math.round((PAGE_HEIGHT_MM / 25.4) * 96);
-      for (let i = 0; i < pageElements.length; i++) {
-        if (i > 0) pdf.addPage();
-        const el = pageElements[i] as HTMLElement;
-        const isSnipPage = !!el.querySelector('img[data-snip-image]');
-        if (isSnipPage) {
-          const png = await captureWithRetry(el, NATIVE_W, NATIVE_H, "png");
-          pdf.addImage(png, "PNG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM);
-        } else {
-          const jpeg = await captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg");
-          pdf.addImage(jpeg, "JPEG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, undefined, "FAST");
-        }
-      }
-
-      const patientNameRaw = patientDisplayName(approvedReports[0]);
-      const patientName = !approvedReports[0] || patientNameRaw === "—" ? "Report" : patientNameRaw;
+      const { blob, filename } = built;
       const invoiceNum = approvedReports[0]?.invoice_number || "";
-      const filename = `${patientName}_${invoiceNum}.pdf`;
-      pdf.save(filename);
-
-      // Cache blob for share + open-in-new-tab in public mode
-      const blob = pdf.output("blob") as Blob;
-      cachedPdfRef.current = { blob, filename };
+      // Trigger browser download
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
 
       if (isPublic) {
         try {
           const blobUrl = URL.createObjectURL(blob);
           window.open(blobUrl, "_blank");
-          // Revoke after a delay so the new tab can load it
           setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
         } catch (e) {
           console.warn("Could not open PDF in new tab:", e);
@@ -835,6 +870,72 @@ const LimsReportView = () => {
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoShareRequested, hasDownloadedOnce]);
+
+  // ── Auto-queue report PDF to WhatsApp Console (when queueWa=1) ──
+  useEffect(() => {
+    if (!queueWaRequested) return;
+    if (loading) return;
+    if (pages.length === 0) return;
+    if (autoQueueWaStartedRef.current) return;
+    autoQueueWaStartedRef.current = true;
+    const t = setTimeout(async () => {
+      setDownloading(true);
+      try {
+        const built = await buildPdfBlob();
+        if (!built) throw new Error("No pages to export");
+        const report = approvedReports[0];
+        const phone = report?.mobile_number || registration?.mobile_number || "";
+        if (!String(phone).replace(/\D/g, "").slice(-10)) {
+          throw new Error("No mobile number available");
+        }
+        const invoiceNum = report?.invoice_number || registration?.invoice_number || "";
+        const patientName = patientDisplayName(report || registration);
+        let portalLine = "";
+        try {
+          if (registrationId) {
+            const created = await createShareLink(registrationId, invoiceNum, "dispatch");
+            portalLine = `\nView online: ${created.url}`;
+          }
+        } catch (e) {
+          console.warn("share link for report caption failed", e);
+        }
+        const caption =
+          `*PH PathLabs — Lab Report*\n` +
+          `Invoice No: ${invoiceNum}\n` +
+          `Patient: ${patientName}\n` +
+          `Your lab reports are ready.` +
+          portalLine +
+          `\n\nThank you for choosing PH PathLabs.\nLabLine: 6356 55 66 99`;
+        const res = await enqueueReportForWhatsAppConsole({
+          phone,
+          patient_name: report?.patient_name || registration?.patient_name,
+          registration_id: registrationId || null,
+          invoice_number: String(invoiceNum || "report"),
+          caption,
+          blob: built.blob,
+          filename: built.filename,
+        });
+        if (!res.ok) throw new Error(res.error || "Failed to queue report WhatsApp");
+        if (registrationId && !isProvisional) {
+          await supabase.from("approved_reports").update({ print_date: new Date().toISOString() }).eq("registration_id", registrationId);
+        }
+        setHasDownloadedOnce(true);
+        toast.success("Report queued for WhatsApp (WA API)");
+        notifyQueueWa(true);
+        setTimeout(() => {
+          try { window.close(); } catch { /* ignore */ }
+        }, 600);
+      } catch (err: any) {
+        const msg = err?.message || "Failed to queue report WhatsApp";
+        toast.error(msg);
+        notifyQueueWa(false, msg);
+      } finally {
+        setDownloading(false);
+      }
+    }, 800);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queueWaRequested, loading, pages.length]);
 
   // ── Share on WhatsApp ──
   const handleShareWhatsApp = async () => {

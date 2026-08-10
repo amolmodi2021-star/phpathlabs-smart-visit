@@ -52,13 +52,15 @@ function sb() {
 
 function storagePathFromRow(row: any): string | null {
   const fromPayload = row?.payload?.storage_path;
-  if (typeof fromPayload === "string" && fromPayload.startsWith("invoices/")) return fromPayload;
+  if (typeof fromPayload === "string" && (fromPayload.startsWith("invoices/") || fromPayload.startsWith("reports/"))) {
+    return fromPayload;
+  }
   const url = String(row?.media_url || "");
   const marker = "/chat-attachments/";
   const idx = url.indexOf(marker);
   if (idx >= 0) {
     const path = decodeURIComponent(url.slice(idx + marker.length).split("?")[0] || "");
-    if (path.startsWith("invoices/")) return path;
+    if (path.startsWith("invoices/") || path.startsWith("reports/")) return path;
   }
   return null;
 }
@@ -101,31 +103,33 @@ async function pruneInvoiceOutbox24h(): Promise<{ rows: number; files: number }>
         rows.map((r) => r.id),
       );
   }
-  // Also sweep orphan invoice files older than 24h (paginate)
+  // Also sweep orphan invoice/report files older than 24h (paginate)
   const cutoffMs = Date.now() - 24 * 60 * 60 * 1000;
-  let offset = 0;
-  for (;;) {
-    const { data: listed } = await supabase.storage.from("chat-attachments").list("invoices", {
-      limit: 100,
-      offset,
-      sortBy: { column: "created_at", order: "asc" },
-    });
-    const batch = listed || [];
-    if (!batch.length) break;
-    const staleFiles: string[] = [];
-    for (const item of batch) {
-      if (!item?.name) continue;
-      const created = item.created_at ? Date.parse(item.created_at) : 0;
-      if (created && created < cutoffMs) staleFiles.push(`invoices/${item.name}`);
+  for (const folder of ["invoices", "reports"] as const) {
+    let offset = 0;
+    for (;;) {
+      const { data: listed } = await supabase.storage.from("chat-attachments").list(folder, {
+        limit: 100,
+        offset,
+        sortBy: { column: "created_at", order: "asc" },
+      });
+      const batch = listed || [];
+      if (!batch.length) break;
+      const staleFiles: string[] = [];
+      for (const item of batch) {
+        if (!item?.name) continue;
+        const created = item.created_at ? Date.parse(item.created_at) : 0;
+        if (created && created < cutoffMs) staleFiles.push(`${folder}/${item.name}`);
+      }
+      if (staleFiles.length) {
+        const { error: rmErr } = await supabase.storage.from("chat-attachments").remove(staleFiles);
+        if (!rmErr) files += staleFiles.length;
+      }
+      if (batch.length < 100) break;
+      offset += batch.length;
+      // Safety: avoid infinite loops on weird list APIs
+      if (offset > 5000) break;
     }
-    if (staleFiles.length) {
-      const { error: rmErr } = await supabase.storage.from("chat-attachments").remove(staleFiles);
-      if (!rmErr) files += staleFiles.length;
-    }
-    if (batch.length < 100) break;
-    offset += batch.length;
-    // Safety: avoid infinite loops on weird list APIs
-    if (offset > 5000) break;
   }
   return { rows: rows.length, files };
 }

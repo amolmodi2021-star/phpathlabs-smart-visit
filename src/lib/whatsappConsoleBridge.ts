@@ -1,6 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 
-export type WhatsAppConsoleOutboxKind = "invoice" | "text" | "image";
+export type WhatsAppConsoleOutboxKind = "invoice" | "report" | "text" | "image";
 
 export interface EnqueueWhatsAppConsolePayload {
   kind?: WhatsAppConsoleOutboxKind;
@@ -79,5 +79,40 @@ export async function enqueueInvoiceForWhatsAppConsole(opts: {
     media_url: pub.publicUrl,
     media_mime: "image/jpeg",
     payload: { storage_path: path },
+  });
+}
+
+/** Upload report PDF and enqueue for Console delivery (document + caption). */
+export async function enqueueReportForWhatsAppConsole(opts: {
+  phone: string;
+  patient_name?: string | null;
+  registration_id?: string | null;
+  invoice_number: string;
+  caption: string;
+  blob: Blob;
+  filename?: string;
+}): Promise<{ ok: boolean; id?: string; error?: string }> {
+  const phone = phone10(opts.phone);
+  if (phone.length !== 10) return { ok: false, error: "Valid 10-digit mobile required" };
+
+  const safeInvoice = String(opts.invoice_number || "report").replace(/[^a-zA-Z0-9_-]/g, "_");
+  const filename = opts.filename || `${safeInvoice}-report.pdf`;
+  const path = `reports/${safeInvoice}-${Date.now()}.pdf`;
+  const { error: upErr } = await supabase.storage
+    .from("chat-attachments")
+    .upload(path, opts.blob, { contentType: "application/pdf", upsert: true });
+  if (upErr) return { ok: false, error: upErr.message };
+
+  const { data: pub } = supabase.storage.from("chat-attachments").getPublicUrl(path);
+  return enqueueWhatsAppConsoleMessage({
+    kind: "report",
+    phone,
+    patient_name: opts.patient_name,
+    registration_id: opts.registration_id,
+    invoice_number: opts.invoice_number,
+    caption: opts.caption,
+    media_url: pub.publicUrl,
+    media_mime: "application/pdf",
+    payload: { storage_path: path, filename },
   });
 }
