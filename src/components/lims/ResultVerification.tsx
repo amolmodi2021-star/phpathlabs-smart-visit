@@ -1,12 +1,11 @@
 import RefreshButton from "@/components/lims/RefreshButton";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { useNavigate } from "react-router-dom";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { formatAgeGender } from "@/lib/ageGender";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 import { isSuspectNegativeResult, calculateResultFlag } from "@/lib/reportFlags";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -100,7 +99,6 @@ const RV_PAGE_SIZE = 50;
 
 const ResultVerification = () => {
   const qc = useQueryClient();
-  const navigate = useNavigate();
   const { data: masterMachines = [] } = useMasterLookup("machine_name");
   const [mode, setMode] = useState<"patient" | "machine">("patient");
   const [search, setSearch] = useState("");
@@ -131,18 +129,21 @@ const ResultVerification = () => {
 
   // Pending candidates (regs with at least one entered result/snip).
   // Pagination is computed from this set so the queue's "X total" matches reality.
-  const { data: pendingIds = [] as string[] } = useQuery({
+  const { data: pendingIds = [] as string[], isLoading: loadingIds } = useQuery({
     queryKey: ["verification_regs_count", debouncedSearch],
     queryFn: async (): Promise<string[]> => {
       const candidates = await fetchVerificationCandidateIds();
       return await fetchFilteredSortedIds(candidates, debouncedSearch);
     },
+    placeholderData: keepPreviousData,
+    staleTime: 15_000,
   });
   const rvCount = pendingIds.length;
   const pageIds: string[] = pendingIds.slice(rvPage * RV_PAGE_SIZE, (rvPage + 1) * RV_PAGE_SIZE);
+  const pageKey = shortIdsKey(pageIds, "rv-p");
 
   const { data: registrations = [], isLoading: loadingRegs } = useQuery({
-    queryKey: ["verification_regs_v2", pageIds.join(",")],
+    queryKey: ["verification_regs_v2", pageKey],
     enabled: pageIds.length > 0,
     queryFn: async () => {
       const { data } = await supabase
@@ -152,6 +153,8 @@ const ResultVerification = () => {
       const order = new Map(pageIds.map((id, i) => [id, i] as const));
       return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     },
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
   });
 
   const rvTotalPages = Math.max(1, Math.ceil(rvCount / RV_PAGE_SIZE));
@@ -159,15 +162,18 @@ const ResultVerification = () => {
   const regIds = registrations.map((r: any) => r.id);
   const regKey = shortIdsKey(regIds, "rv");
 
-  useRealtimeSync("lims_result_notify", ["verification_regs_count", "verification_results_v2", "verification_outsourced_v2"], 1500);
+  // Live machine updates: refresh entered values only — do not rebuild the candidate list
+  // (avoids empty flash when returning from provisional report / remount).
+  useRealtimeSync("lims_result_notify", ["verification_results_v2", "verification_outsourced_v2"], 1500);
 
   // Fetch entered results
-  const { data: existingResults = [] } = useQuery({
+  const { data: existingResults = [], isFetched: resultsFetched } = useQuery({
     queryKey: ["verification_results_v2", regKey],
     enabled: regIds.length > 0,
     queryFn: async () => {
       return await fetchAllByIds<any>("patient_results", "*", "registration_id", regIds, { eq: { status: "entered" } });
     },
+    placeholderData: keepPreviousData,
   });
 
   // Fetch sample tubes (used to expand PRL/HLT container test rows into leaf test ids)
@@ -177,6 +183,7 @@ const ResultVerification = () => {
     queryFn: async () => {
       return await fetchAllByIds<any>("sample_tubes", "id, registration_id, test_ids", "registration_id", regIds);
     },
+    placeholderData: keepPreviousData,
   });
 
   const leafIdsByReg = useMemo(() => {
@@ -202,7 +209,10 @@ const ResultVerification = () => {
         { in: { outsource_status: ["results_entered", "entered"] } },
       );
     },
+    placeholderData: keepPreviousData,
   });
+
+  const resultsReady = regIds.length === 0 || resultsFetched;
 
   const { transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails } = useMemo(() => {
     const testKeys = new Set<string>();
@@ -1347,7 +1357,7 @@ const ResultVerification = () => {
         </Card>
       </div>
 
-      {loadingRegs ? (
+      {(loadingIds || loadingRegs || (registrations.length > 0 && !resultsReady)) ? (
         <Card><CardContent className="p-8 text-center text-muted-foreground">Loading…</CardContent></Card>
       ) : filteredEntries.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
@@ -1393,7 +1403,9 @@ const ResultVerification = () => {
                       title="Preview provisional report"
                       onClick={(e) => {
                         e.stopPropagation();
-                        navigate(`/lims/report/${reg.id}?provisional=1`);
+                        // Open in a new tab so Verification stays mounted — navigating away
+                        // and Back remounts the list and briefly drops every patient.
+                        window.open(`/lims/report/${reg.id}?provisional=1`, "_blank", "noopener,noreferrer");
                       }}
                     >
                       <Eye className="h-3.5 w-3.5 mr-1" /> View Report
