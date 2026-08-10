@@ -1,4 +1,4 @@
-# SPA fallback for client routes ONLY.
+# SPA fallback for client routes ONLY (production deploy).
 # Do not use "/* /index.html 200" — Cloudflare then serves HTML for
 # <script type="module" crossorigin> requests (Sec-Fetch-Dest: script),
 # which blanks the whole app.
