@@ -2,7 +2,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-ph-access-token",
 };
 
 function b64url(bytes: ArrayBuffer | Uint8Array | string): string {
@@ -91,11 +92,27 @@ type StaffClaims = {
   exp?: number;
 };
 
-async function verifyStaffJwt(req: Request): Promise<StaffClaims | null> {
+function extractStaffToken(req: Request, bodyToken?: string | null): string | null {
+  // Preferred: custom staff JWT header (PostgREST Authorization stays as anon key).
+  const ph = req.headers.get("x-ph-access-token")?.trim();
+  if (ph) return ph;
   const auth = req.headers.get("Authorization") || "";
   const m = auth.match(/^Bearer\s+(.+)$/i);
-  if (!m) return null;
-  const token = m[1].trim();
+  if (m) {
+    const bearer = m[1].trim();
+    // Ignore anon/publishable API keys — only treat JWT-shaped values as staff tokens.
+    if (bearer.split(".").length === 3) return bearer;
+  }
+  if (typeof bodyToken === "string" && bodyToken.trim()) {
+    const t = bodyToken.trim();
+    if (t.split(".").length === 3) return t;
+  }
+  return null;
+}
+
+async function verifyStaffJwt(req: Request, bodyToken?: string | null): Promise<StaffClaims | null> {
+  const token = extractStaffToken(req, bodyToken);
+  if (!token) return null;
   const parts = token.split(".");
   if (parts.length !== 3) return null;
 
@@ -126,9 +143,48 @@ async function verifyStaffJwt(req: Request): Promise<StaffClaims | null> {
   return payload;
 }
 
-async function requireStaff(req: Request): Promise<StaffClaims | Response> {
-  const claims = await verifyStaffJwt(req);
-  if (!claims) return json({ error: "Unauthorized" }, 401);
+function isUsersTabAllowed(permissions: any): boolean {
+  const tabs = permissions?.tabs || {};
+  const perm = tabs["/users"];
+  if (perm === true) return true;
+  if (perm && typeof perm === "object" && perm.enabled === true) return true;
+  return false;
+}
+
+async function requireStaff(req: Request, bodyToken?: string | null): Promise<StaffClaims | Response> {
+  const claims = await verifyStaffJwt(req, bodyToken);
+  if (!claims) return json({ error: "Unauthorized — please log out and sign in again" }, 401);
+  return claims;
+}
+
+/** User-management actions require the /users tab on the caller's role (or super-admin username). */
+async function requireUsersAdmin(req: Request, bodyToken?: string | null): Promise<StaffClaims | Response> {
+  const claims = await requireStaff(req, bodyToken);
+  if (claims instanceof Response) return claims;
+
+  // Super-admin account always allowed to manage users.
+  if (String(claims.username || "").toUpperCase() === "PHPATHLABS") return claims;
+
+  const { data: user } = await supabase
+    .from("app_users")
+    .select("id, is_active, role_id, username")
+    .eq("id", claims.sub)
+    .maybeSingle();
+  if (!user || user.is_active === false) return json({ error: "Forbidden" }, 403);
+  if (String(user.username || "").toUpperCase() === "PHPATHLABS") return claims;
+
+  let permissions: any = {};
+  if (user.role_id) {
+    const { data: role } = await supabase
+      .from("app_roles")
+      .select("permissions")
+      .eq("id", user.role_id)
+      .maybeSingle();
+    permissions = role?.permissions || {};
+  }
+  if (!isUsersTabAllowed(permissions)) {
+    return json({ error: "Forbidden: Users management not allowed for this role" }, 403);
+  }
   return claims;
 }
 
@@ -171,6 +227,7 @@ Deno.serve(async (req) => {
     if (action === "reset_password") return await handleResetPassword(params, req);
     if (action === "create_user") return await handleCreateUser(params, req);
     if (action === "update_user") return await handleUpdateUser(params, req);
+    if (action === "list_users") return await handleListUsers(params, req);
     if (action === "init_admin_password") return await handleInitAdminPassword(params, req);
     return json({ error: "Unknown action" }, 400);
   } catch (err: any) {
@@ -234,11 +291,11 @@ async function handleLogin(
 }
 
 async function handleResetPassword(
-  { user_id, new_password }: { user_id: string; new_password: string },
+  { user_id, new_password, access_token }: { user_id: string; new_password: string; access_token?: string },
   req: Request,
 ) {
-  const auth = await requireStaff(req);
-  if (auth instanceof Response) return auth;
+  const auth = await requireUsersAdmin(req, access_token);
+  if (auth instanceof Response) return await asLegacyError(auth);
 
   if (!user_id || !new_password) return json({ error: "user_id and new_password required" }, 400);
   if (new_password.length < 4) return json({ error: "Password must be at least 4 characters" }, 400);
@@ -249,6 +306,21 @@ async function handleResetPassword(
   return json({ success: true });
 }
 
+async function handleListUsers(
+  params: { access_token?: string },
+  req: Request,
+) {
+  const auth = await requireUsersAdmin(req, params?.access_token);
+  if (auth instanceof Response) return await asLegacyError(auth);
+
+  const { data, error } = await supabase
+    .from("app_users")
+    .select("id, username, display_name, role_id, is_active, last_login_at, created_at, can_approve_as_doctor")
+    .order("created_at", { ascending: true });
+  if (error) return json({ error: error.message }, 500);
+  return json({ users: data || [] });
+}
+
 async function handleCreateUser(
   params: {
     username: string;
@@ -257,11 +329,12 @@ async function handleCreateUser(
     role_id?: string;
     is_active?: boolean;
     can_approve_as_doctor?: boolean;
+    access_token?: string;
   },
   req: Request,
 ) {
-  const auth = await requireStaff(req);
-  if (auth instanceof Response) return auth;
+  const auth = await requireUsersAdmin(req, params?.access_token);
+  if (auth instanceof Response) return await asLegacyError(auth);
 
   if (!params.username || !params.password) return json({ error: "Username and password required" }, 400);
 
@@ -276,7 +349,7 @@ async function handleCreateUser(
       is_active: params.is_active !== false,
       can_approve_as_doctor: params.can_approve_as_doctor === true,
     })
-    .select()
+    .select("id, username, display_name, role_id, is_active, last_login_at, created_at, can_approve_as_doctor")
     .single();
 
   if (error) {
@@ -293,11 +366,12 @@ async function handleUpdateUser(
     role_id?: string;
     is_active?: boolean;
     can_approve_as_doctor?: boolean;
+    access_token?: string;
   },
   req: Request,
 ) {
-  const auth = await requireStaff(req);
-  if (auth instanceof Response) return auth;
+  const auth = await requireUsersAdmin(req, params?.access_token);
+  if (auth instanceof Response) return await asLegacyError(auth);
 
   if (!params.user_id) return json({ error: "user_id required" }, 400);
 
@@ -313,10 +387,15 @@ async function handleUpdateUser(
 }
 
 async function handleChangePassword(
-  { user_id, current_password, new_password }: { user_id: string; current_password: string; new_password: string },
+  { user_id, current_password, new_password, access_token }: {
+    user_id: string;
+    current_password: string;
+    new_password: string;
+    access_token?: string;
+  },
   req: Request,
 ) {
-  const auth = await requireStaff(req);
+  const auth = await requireStaff(req, access_token);
   if (auth instanceof Response) return auth;
   if (auth.sub !== user_id) return json({ error: "Forbidden" }, 403);
 
@@ -366,4 +445,14 @@ function json(data: any, status = 200) {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+/** Legacy Users UI only checked `data.error`, not HTTP status — always surface auth failures in JSON body with 200. */
+async function asLegacyError(res: Response): Promise<Response> {
+  try {
+    const body = await res.json();
+    return json({ error: body?.error || "Unauthorized" }, 200);
+  } catch {
+    return json({ error: "Unauthorized" }, 200);
+  }
 }

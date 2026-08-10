@@ -16,8 +16,42 @@ import { toast } from "sonner";
 import { Plus, Edit2, Key, History, Copy, Trash2, Loader2, LogOut } from "lucide-react";
 import { format } from "date-fns";
 import { getCurrentUser, refreshCurrentUserPermissions, bumpAuthEpoch, logout } from "@/lib/auth";
+import { getStoredAccessToken } from "@/integrations/supabase/client";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useNavigate } from "react-router-dom";
+
+async function invokeUserAuth(body: Record<string, unknown>) {
+  const token = getStoredAccessToken();
+  if (!token) {
+    return { data: null as any, error: new Error("Session expired — please log out and sign in again") };
+  }
+  const res = await supabase.functions.invoke("user-auth", {
+    body: { ...body, access_token: token },
+    headers: {
+      "x-ph-access-token": token,
+    },
+  });
+  // Some Supabase clients report HTTP errors only on `error` while still parsing JSON into `data`.
+  if (res.error) {
+    let detail = res.error.message || "Request failed";
+    try {
+      const ctx = (res.error as any)?.context;
+      if (ctx && typeof ctx.json === "function") {
+        const payload = await ctx.json();
+        if (payload?.error) detail = payload.error;
+      } else if (res.data?.error) {
+        detail = String(res.data.error);
+      }
+    } catch {
+      if (res.data?.error) detail = String(res.data.error);
+    }
+    return { data: res.data, error: new Error(detail) };
+  }
+  if (res.data?.error) {
+    return { data: res.data, error: new Error(String(res.data.error)) };
+  }
+  return { data: res.data, error: null as Error | null };
+}
 
 // All available tabs and their sections
 const ALL_TABS = [
@@ -153,13 +187,30 @@ const UserManagement = () => {
 
   const fetchData = async () => {
     setLoading(true);
-    const [usersRes, rolesRes] = await Promise.all([
-      supabase.from("app_users").select("*").order("created_at"),
-      supabase.from("app_roles").select("*").order("created_at"),
-    ]);
-    setUsers((usersRes.data as any[]) || []);
-    setRoles((rolesRes.data as any[]) || []);
-    setLoading(false);
+    try {
+      const [usersRes, rolesRes] = await Promise.all([
+        invokeUserAuth({ action: "list_users" }),
+        supabase.from("app_roles").select("*").order("created_at"),
+      ]);
+      if (usersRes.error) {
+        // Fallback to direct table read if edge list fails (older deploy / offline).
+        const { data, error } = await supabase
+          .from("app_users")
+          .select("id, username, display_name, role_id, is_active, last_login_at, created_at, can_approve_as_doctor")
+          .order("created_at");
+        if (error) throw usersRes.error;
+        setUsers((data as any[]) || []);
+      } else {
+        setUsers((usersRes.data?.users as any[]) || []);
+      }
+      if (rolesRes.error) throw rolesRes.error;
+      setRoles((rolesRes.data as any[]) || []);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to load users");
+      setUsers([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { fetchData(); }, []);
@@ -182,21 +233,37 @@ const UserManagement = () => {
     setSaving(true);
     try {
       if (editingUser) {
-        const { error } = await supabase.functions.invoke("user-auth", {
-          body: { action: "update_user", user_id: editingUser.id, display_name: userForm.display_name, role_id: userForm.role_id || null, is_active: userForm.is_active, can_approve_as_doctor: userForm.can_approve_as_doctor },
+        const res = await invokeUserAuth({
+          action: "update_user",
+          user_id: editingUser.id,
+          display_name: userForm.display_name,
+          role_id: userForm.role_id || null,
+          is_active: userForm.is_active,
+          can_approve_as_doctor: userForm.can_approve_as_doctor,
         });
-        if (error) throw error;
+        if (res.error) throw res.error;
         toast.success("User updated");
       } else {
-        if (!userForm.username || !userForm.password) { toast.error("Username and password required"); setSaving(false); return; }
-        const res = await supabase.functions.invoke("user-auth", {
-          body: { action: "create_user", username: userForm.username, password: userForm.password, display_name: userForm.display_name, role_id: userForm.role_id || null, is_active: userForm.is_active, can_approve_as_doctor: userForm.can_approve_as_doctor },
+        if (!userForm.username || !userForm.password) {
+          toast.error("Username and password required");
+          setSaving(false);
+          return;
+        }
+        const res = await invokeUserAuth({
+          action: "create_user",
+          username: userForm.username,
+          password: userForm.password,
+          display_name: userForm.display_name,
+          role_id: userForm.role_id || null,
+          is_active: userForm.is_active,
+          can_approve_as_doctor: userForm.can_approve_as_doctor,
         });
-        if (res.data?.error) { toast.error(res.data.error); setSaving(false); return; }
-        toast.success("User created");
+        if (res.error) throw res.error;
+        if (!res.data?.user) throw new Error("User was not created");
+        toast.success(`User created: ${res.data.user.username}`);
       }
       setUserDialogOpen(false);
-      fetchData();
+      await fetchData();
     } catch (err: any) {
       toast.error(err.message || "Failed to save user");
     } finally {
@@ -206,10 +273,16 @@ const UserManagement = () => {
 
   const toggleUserActive = async (u: AppUserRow) => {
     if (u.username === "PHPATHLABS") { toast.error("Cannot deactivate admin user"); return; }
-    await supabase.functions.invoke("user-auth", {
-      body: { action: "update_user", user_id: u.id, is_active: !u.is_active },
+    const res = await invokeUserAuth({
+      action: "update_user",
+      user_id: u.id,
+      is_active: !u.is_active,
     });
-    fetchData();
+    if (res.error) {
+      toast.error(res.error.message);
+      return;
+    }
+    await fetchData();
   };
 
   const openResetPassword = (userId: string) => {
@@ -221,9 +294,13 @@ const UserManagement = () => {
   const resetPassword = async () => {
     if (!newPassword) { toast.error("Enter new password"); return; }
     setSaving(true);
-    const res = await supabase.functions.invoke("user-auth", { body: { action: "reset_password", user_id: resetUserId, new_password: newPassword } });
+    const res = await invokeUserAuth({
+      action: "reset_password",
+      user_id: resetUserId,
+      new_password: newPassword,
+    });
     setSaving(false);
-    if (res.data?.error) { toast.error(res.data.error); return; }
+    if (res.error) { toast.error(res.error.message); return; }
     toast.success("Password reset successfully");
     setResetDialogOpen(false);
   };
