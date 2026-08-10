@@ -224,7 +224,9 @@ async function completeOutbox(
   const errText = lastError ?? null;
   const terminalError =
     !!errText &&
-    /invalid_phone|empty_job|empty_text|cancelled|unsupported_kind/i.test(String(errText));
+    /invalid_phone|empty_job|empty_text|cancelled|unsupported_kind|dead_media|localhost_media|127\.0\.0\.1/i.test(
+      String(errText),
+    );
 
   // Transient / retryable failures stay in the durable queue as pending.
   let finalStatus = status;
@@ -307,6 +309,58 @@ Deno.serve(async (req) => {
         }
         const row = await completeOutbox(id, status as "sent" | "failed" | "pending", body?.error ?? body?.last_error);
         return json({ ok: true, data: row });
+      }
+
+      if (action === "dismiss_outbox" || action === "clear_failed") {
+        const supabase = sb();
+        const now = new Date().toISOString();
+        const id = String(body?.id || "").trim();
+        if (id) {
+          const { data: existing } = await supabase
+            .from("whatsapp_console_outbox")
+            .select("*")
+            .eq("id", id)
+            .maybeSingle();
+          if (existing) await deleteInvoiceMedia(supabase, existing);
+          const { error } = await supabase
+            .from("whatsapp_console_outbox")
+            .update({
+              status: "cancelled",
+              updated_at: now,
+              last_error: body?.error || "dismissed",
+              media_url: null,
+              claimed_at: null,
+              claimed_by: null,
+              next_retry_at: null,
+            })
+            .eq("id", id);
+          if (error) throw error;
+          return json({ ok: true, cleared: 1, id });
+        }
+        // Clear all terminal failed rows
+        const { data: failed } = await supabase
+          .from("whatsapp_console_outbox")
+          .select("id, media_url, payload")
+          .eq("status", "failed")
+          .limit(200);
+        let cleared = 0;
+        for (const row of failed || []) {
+          await deleteInvoiceMedia(supabase, row);
+          const { error } = await supabase
+            .from("whatsapp_console_outbox")
+            .update({
+              status: "cancelled",
+              updated_at: now,
+              last_error: "cleared_failed",
+              media_url: null,
+              claimed_at: null,
+              claimed_by: null,
+              next_retry_at: null,
+            })
+            .eq("id", row.id);
+          if (!error) cleared += 1;
+        }
+        return json({ ok: true, cleared });
       }
 
       return json({ error: `Unknown action: ${action}` }, 400);
