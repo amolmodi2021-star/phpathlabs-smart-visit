@@ -11,6 +11,7 @@ import { Search, Pencil, Download, Eye, ChevronDown, ChevronUp, Trash2, Calendar
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { exportToExcel } from "@/lib/excel";
+import RefreshButton from "@/components/lims/RefreshButton";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 import EditRegistrationDialog from "./EditRegistrationDialog";
 import InvoicePreview from "./InvoicePreview";
@@ -347,6 +348,7 @@ const RegisteredPatients = () => {
         {appliedSearch && (fromDate || toDate) && (
           <span className="text-xs text-muted-foreground italic">Date filter ignored while searching</span>
         )}
+        <RefreshButton queryKeys={["patient_registrations", "patient_registrations_count"]} />
         <Button variant="outline" size="sm" onClick={() => setShowExportPwd(true)}>
           <Download className="h-4 w-4 mr-1" />Export All
         </Button>
