@@ -20,6 +20,7 @@ import { parseTimeResultToSeconds, toCanonicalTimeResult } from "@/lib/timeRange
 import { checkDifferentialSum } from "@/lib/differentialCount";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { fetchAllByIds } from "@/lib/fetchAllRows";
+import { PATIENT_RESULTS_SELECT_MODIFIED } from "@/lib/patientResultsSelect";
 import { shortIdsKey } from "@/lib/queryKeys";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 
@@ -74,7 +75,7 @@ const ModifiedApproval = () => {
     queryKey: ["modified_approval_results", regKey],
     enabled: regIds.length > 0,
     queryFn: async () => {
-      return await fetchAllByIds<any>("patient_results", "*", "registration_id", regIds, { eq: { status: "approved" } });
+      return await fetchAllByIds<any>("patient_results", PATIENT_RESULTS_SELECT_MODIFIED, "registration_id", regIds, { eq: { status: "approved" } });
     },
   });
 

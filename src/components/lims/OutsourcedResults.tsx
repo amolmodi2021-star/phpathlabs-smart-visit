@@ -28,6 +28,7 @@ import { formatAgeGender } from "@/lib/ageGender";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 import { getCurrentUserName } from "@/lib/auth";
 import { fetchAllByIds } from "@/lib/fetchAllRows";
+import { PATIENT_RESULTS_SELECT_RESULTS } from "@/lib/patientResultsSelect";
 import { fetchOutsourcedCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPendingCandidates";
 import { shortIdsKey } from "@/lib/queryKeys";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -228,7 +229,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     queryFn: async () => {
       return await fetchAllByIds<any>(
         "patient_results",
-        "*",
+        PATIENT_RESULTS_SELECT_RESULTS,
         "registration_id",
         regIds,
       );

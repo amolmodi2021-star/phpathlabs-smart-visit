@@ -33,6 +33,7 @@ import { signalSync } from "@/lib/limsSyncSignal";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
 import { fetchDoctorApprovalCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPendingCandidates";
 import { fetchAllByIds } from "@/lib/fetchAllRows";
+import { PATIENT_RESULTS_SELECT_DOCTOR } from "@/lib/patientResultsSelect";
 import { shortIdsKey } from "@/lib/queryKeys";
 import SyncingOverlay from "./SyncingOverlay";
 import NewBadge from "./NewBadge";
@@ -200,7 +201,7 @@ const DoctorApproval = () => {
     queryKey: ["doctor_approval_results", regKey],
     enabled: regIds.length > 0,
     queryFn: async () => {
-      return await fetchAllByIds<any>("patient_results", "*", "registration_id", regIds, { eq: { status: "verified" } });
+      return await fetchAllByIds<any>("patient_results", PATIENT_RESULTS_SELECT_DOCTOR, "registration_id", regIds, { eq: { status: "verified" } });
     },
     placeholderData: keepPreviousData,
   });

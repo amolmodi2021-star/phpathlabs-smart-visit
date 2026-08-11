@@ -38,6 +38,7 @@ import { toast } from "sonner";
 import { formatDateDDMMYYYY } from "@/lib/utils";
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 import { fetchAllByIds } from "@/lib/fetchAllRows";
+import { PATIENT_RESULTS_SELECT_RESULTS } from "@/lib/patientResultsSelect";
 
 const QUALITATIVE_PAIRS = [
   { label: "Absent / Present", values: ["Absent", "Present"] },
@@ -286,7 +287,7 @@ const ResultsEntry = () => {
     enabled: regIds.length > 0,
     queryFn: async () => {
       // Paginated to avoid Supabase's 1000-row cap silently dropping rows.
-      const rows = await fetchAllByIds<any>("patient_results", "*", "registration_id", regIds);
+      const rows = await fetchAllByIds<any>("patient_results", PATIENT_RESULTS_SELECT_RESULTS, "registration_id", regIds);
 
       // Heal orphan interface rows (written under wrong/non-tube test_ids) onto
       // the accepted-tube tests that actually own those parameters. Fixes cases

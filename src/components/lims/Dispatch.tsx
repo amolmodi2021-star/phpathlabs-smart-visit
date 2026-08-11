@@ -27,6 +27,7 @@ import { format, startOfDay, endOfDay, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 import { fetchAllByIds } from "@/lib/fetchAllRows";
+import { PATIENT_RESULTS_SELECT_DISPATCH } from "@/lib/patientResultsSelect";
 import { fetchDispatchStatusIds } from "@/lib/limsPendingCandidates";
 import { shortIdsKey } from "@/lib/queryKeys";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
@@ -135,7 +136,7 @@ const Dispatch = () => {
     queryKey: ["dispatch_all_results", regKey],
     enabled: regIds.length > 0,
     queryFn: async () => {
-      return await fetchAllByIds<any>("patient_results", "*", "registration_id", regIds);
+      return await fetchAllByIds<any>("patient_results", PATIENT_RESULTS_SELECT_DISPATCH, "registration_id", regIds);
     },
     placeholderData: keepPreviousData,
   });

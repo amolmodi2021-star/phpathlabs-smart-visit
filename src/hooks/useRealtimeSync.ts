@@ -60,11 +60,12 @@ export function useRealtimeSync(
 
     const tableList = Array.isArray(tables) ? tables : [tables];
     const hasSubscribedOnce = { current: false };
+    /** Trailing debounce: only skip flush if EVERY event in the window was a self-echo */
+    const burstHadExternalChange = { current: false };
 
-    const flush = (payloadId?: string, registrationId?: string) => {
-      // Skip echoes for rows / regs we just propagated locally.
-      if (payloadId && wasRecentlyPropagated(payloadId)) return;
-      if (registrationId && wasRecentlyPropagated(registrationId)) return;
+    const flush = () => {
+      if (!burstHadExternalChange.current) return;
+      burstHadExternalChange.current = false;
 
       const hidden = typeof document !== "undefined" && document.hidden;
 
@@ -93,9 +94,14 @@ export function useRealtimeSync(
           const id = payload?.new?.id ?? payload?.old?.id;
           const registrationId =
             payload?.new?.registration_id ?? payload?.old?.registration_id;
+          const isEcho =
+            (!!id && wasRecentlyPropagated(id)) ||
+            (!!registrationId && wasRecentlyPropagated(registrationId));
+          if (!isEcho) burstHadExternalChange.current = true;
+
           if (timerRef.current) clearTimeout(timerRef.current);
           timerRef.current = setTimeout(() => {
-            flush(id, registrationId);
+            flush();
             timerRef.current = null;
           }, debounceMs);
         },
@@ -104,7 +110,11 @@ export function useRealtimeSync(
 
     channel.subscribe((status) => {
       if (status !== "SUBSCRIBED") return;
-      if (hasSubscribedOnce.current) flush();
+      // Reconnect only: force a refresh so missed events while offline are picked up
+      if (hasSubscribedOnce.current) {
+        burstHadExternalChange.current = true;
+        flush();
+      }
       hasSubscribedOnce.current = true;
     });
 

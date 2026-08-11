@@ -56,7 +56,16 @@ const MODULE_TABLES: Record<LimsModule, RealtimeTable[]> = {
   bad_debt: ["patient_registrations"],
 };
 
-/** Live sync for one LIMS workflow module (active tab only — Tabs unmount others). */
-export function useLimsPipelineRealtime(module: LimsModule, debounceMs = 1200) {
-  useRealtimeSync(MODULE_TABLES[module], MODULE_KEYS[module], debounceMs);
+/** Live sync for one LIMS workflow module (active tab only — Tabs unmount others).
+ *  Debounce is slightly higher on result-heavy modules so analyzer bursts
+ *  (many patient_results inserts) coalesce into one refetch — less egress,
+ *  same eventual queue correctness. */
+export function useLimsPipelineRealtime(module: LimsModule, debounceMs?: number) {
+  const defaultMs =
+    module === "results" || module === "verification"
+      ? 2800
+      : module === "doctor_approval" || module === "dispatch"
+        ? 2500
+        : 1200;
+  useRealtimeSync(MODULE_TABLES[module], MODULE_KEYS[module], debounceMs ?? defaultMs);
 }

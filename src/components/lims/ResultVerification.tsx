@@ -30,6 +30,7 @@ import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import { signalSync } from "@/lib/limsSyncSignal";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
 import { fetchAllByIds } from "@/lib/fetchAllRows";
+import { PATIENT_RESULTS_SELECT_VERIFICATION } from "@/lib/patientResultsSelect";
 import { shortIdsKey } from "@/lib/queryKeys";
 import { fetchVerificationCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPendingCandidates";
 import SyncingOverlay from "./SyncingOverlay";
@@ -170,7 +171,7 @@ const ResultVerification = () => {
     queryKey: ["verification_results_v2", regKey],
     enabled: regIds.length > 0,
     queryFn: async () => {
-      return await fetchAllByIds<any>("patient_results", "*", "registration_id", regIds, { eq: { status: "entered" } });
+      return await fetchAllByIds<any>("patient_results", PATIENT_RESULTS_SELECT_VERIFICATION, "registration_id", regIds, { eq: { status: "entered" } });
     },
     placeholderData: keepPreviousData,
   });
