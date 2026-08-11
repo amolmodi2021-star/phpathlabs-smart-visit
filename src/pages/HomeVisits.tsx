@@ -109,7 +109,7 @@ const HomeVisits = () => {
     queryFn: async () => {
       const { data } = await supabase
         .from("home_visits")
-        .select("id, estimate_id, visit_date, visit_time, address, status, phlebotomist_id, cancellation_reason, created_at, estimates(id, title, patient_name, gender, email, doctor_name, umr_number, dob, whatsapp_number, total_amount, discount_amount, home_visit_charges, final_amount, global_discount_type, global_discount_value, status, estimate_tests(id, test_id, test_name, price, fasting_required, discount_applicable, individual_discount_type, individual_discount_value, item_type)), phlebotomists(name, mobile)")
+        .select("id, estimate_id, visit_date, visit_time, address, status, phlebotomist_id, cancellation_reason, created_at, estimates(id, title, patient_name, gender, email, doctor_name, dob, whatsapp_number, total_amount, discount_amount, home_visit_charges, final_amount, global_discount_type, global_discount_value, status, estimate_tests(id, test_id, test_name, price, fasting_required, discount_applicable, individual_discount_type, individual_discount_value, item_type)), phlebotomists(name, mobile)")
         .gte("visit_date", queryDateWindow.from)
         .lte("visit_date", queryDateWindow.to)
         .order("visit_date", { ascending: false })

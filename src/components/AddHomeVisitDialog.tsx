@@ -91,7 +91,11 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
     (testSearch === "" || t.test_name.toLowerCase().includes(testSearch.toLowerCase()))
   );
 
-  const paramConflictSet = useParamConflictHighlight(selectedTests, "home-visit-param-conflicts");
+  // Only evaluate while dialog is open so close/reopen always recomputes highlights
+  const paramConflictSet = useParamConflictHighlight(
+    open ? selectedTests : [],
+    "home-visit-param-conflicts",
+  );
 
   const addTest = (testId: string) => {
     const t = allTests.find((x: any) => x.id === testId);
@@ -390,16 +394,18 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
                 return (
                   <div
                     key={t.test_id}
-                    className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 ${
-                      conflicted ? "border-destructive bg-destructive/10" : ""
+                    className={`flex flex-wrap items-center gap-2 rounded-lg border px-3 py-1.5 ${
+                      conflicted
+                        ? "border-destructive bg-destructive/10 ring-1 ring-destructive/40"
+                        : ""
                     }`}
                   >
-                    <span className={`text-sm font-medium whitespace-nowrap ${conflicted ? "text-destructive" : ""}`}>
+                    <span className={`text-sm font-medium ${conflicted ? "text-destructive" : ""}`}>
                       {t.test_name}
                     </span>
                     <span className={`text-sm ${conflicted ? "text-destructive/80" : "text-muted-foreground"}`}>₹{t.price}</span>
                     {conflicted && (
-                      <span className="text-[10px] font-semibold uppercase tracking-wide text-destructive">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-destructive shrink-0">
                         Duplicate params
                       </span>
                     )}
