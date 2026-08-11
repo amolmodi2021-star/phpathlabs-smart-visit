@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getAllowedSections } from "@/lib/auth";
@@ -52,10 +52,17 @@ const Lims = () => {
     ? activeTab
     : (visibleTabs[0]?.key ?? "register");
 
-  const ActiveComp = useMemo(
-    () => visibleTabs.find((t) => t.key === safeTab)?.component ?? null,
-    [visibleTabs, safeTab],
-  );
+  // First click mounts + loads; later visits reuse the same mounted panel (cached UI + RQ data).
+  const [mountedTabs, setMountedTabs] = useState<Set<string>>(() => new Set([safeTab]));
+
+  useEffect(() => {
+    setMountedTabs((prev) => {
+      if (prev.has(safeTab)) return prev;
+      const next = new Set(prev);
+      next.add(safeTab);
+      return next;
+    });
+  }, [safeTab]);
 
   if (visibleTabs.length === 0) {
     return (
@@ -77,12 +84,22 @@ const Lims = () => {
             </TabsTrigger>
           ))}
         </TabsList>
-        {/* Mount only the active tab — no background loads for other LIMS tabs. */}
-        <TabsContent value={safeTab} className="mt-3">
-          <Suspense fallback={<TabFallback />}>
-            {ActiveComp ? <ActiveComp /> : null}
-          </Suspense>
-        </TabsContent>
+        {visibleTabs.map((t) => {
+          if (!mountedTabs.has(t.key)) return null;
+          const Comp = t.component;
+          return (
+            <TabsContent
+              key={t.key}
+              value={t.key}
+              forceMount
+              className="data-[state=inactive]:hidden mt-3"
+            >
+              <Suspense fallback={<TabFallback />}>
+                <Comp />
+              </Suspense>
+            </TabsContent>
+          );
+        })}
       </Tabs>
     </div>
   );

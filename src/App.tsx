@@ -37,14 +37,13 @@ import ReportAnalytics from "./pages/ReportAnalytics";
 import PatientReportPortal from "./pages/PatientReportPortal";
 import NotFound from "./pages/NotFound";
 
-// React Query global defaults — keep egress and refetch storms low.
-// Lists are Refresh-button driven (LIMS realtime disabled). Cached data
-// is reused across tab remounts; Refresh / mutations still invalidate.
+// React Query global defaults — cache aggressively; Refresh / mutations refresh.
+// Unopened modules never fetch; revisiting a tab reuses cache (no remount refetch).
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 120_000,
-      gcTime: 30 * 60_000,
+      staleTime: 10 * 60_000, // 10 min — treat data as fresh
+      gcTime: 2 * 60 * 60_000, // 2 hr — keep cache after leaving a tab/module
       refetchOnMount: false,
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,
