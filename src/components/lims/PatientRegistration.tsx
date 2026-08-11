@@ -90,6 +90,8 @@ const PatientRegistration = () => {
 
   // Tests
   const [testSearch, setTestSearch] = useState("");
+  /** Applied filter — delayed so typing is not interrupted by instant result flicker. */
+  const [debouncedTestSearch, setDebouncedTestSearch] = useState("");
   const [selectedTests, setSelectedTests] = useState<SelectedTest[]>([]);
   const [testHighlightIndex, setTestHighlightIndex] = useState(-1);
   const [globalDiscountType, setGlobalDiscountType] = useState<"percent" | "amount">("percent");
@@ -107,6 +109,17 @@ const PatientRegistration = () => {
 
   // Invoice preview
   const [invoiceData, setInvoiceData] = useState<any>(null);
+
+  // Delay test filter so the user can finish typing before the list updates.
+  useEffect(() => {
+    const term = testSearch.trim();
+    if (!term) {
+      setDebouncedTestSearch("");
+      return;
+    }
+    const t = window.setTimeout(() => setDebouncedTestSearch(term), 600);
+    return () => window.clearTimeout(t);
+  }, [testSearch]);
 
   // Queries
   const { data: tests = [] } = useQuery({ queryKey: ["all_selectable_tests"], queryFn: getAllSelectableTests });
@@ -302,6 +315,7 @@ const PatientRegistration = () => {
       item_type: (t as any).item_type || "test",
     }]);
     setTestSearch("");
+    setDebouncedTestSearch("");
     setTimeout(() => searchRef.current?.focus(), 50);
   };
 
@@ -321,7 +335,7 @@ const PatientRegistration = () => {
 
   const availableTests = tests.filter((t) =>
     !selectedTests.find(s => s.test_id === t.id) &&
-    (testSearch === "" || t.test_name.toLowerCase().includes(testSearch.toLowerCase())) &&
+    (debouncedTestSearch === "" || t.test_name.toLowerCase().includes(debouncedTestSearch.toLowerCase())) &&
     (!eligiblePickupTestIds || eligiblePickupTestIds.has(t.id))
   );
 
@@ -536,7 +550,7 @@ const PatientRegistration = () => {
     setDob(""); setDobDisplay(""); setEmail(""); setShowEmail(false); setDoctorName("SELF"); setUmrNumber("");
     setAddress(""); setChannelId(""); setReportLanguage("English");
     setVisitType("lab_visit"); setPickupPointId("");
-    setSelectedTests([]); setTestSearch(""); setTestHighlightIndex(-1);
+    setSelectedTests([]); setTestSearch(""); setDebouncedTestSearch(""); setTestHighlightIndex(-1);
     setGlobalDiscountType("percent"); setGlobalDiscountValue(0); setHomeVisitCharges(0);
     setAllowIneligibleDiscount(false);
     setSelectedModes(new Set()); setModeAmounts({}); setInvoiceData(null); setTriedSave(false);
@@ -864,7 +878,7 @@ const PatientRegistration = () => {
                 placeholder="Search tests... (↑↓ to navigate, Enter to select)"
                 className="pl-8"
                 onKeyDown={(e) => {
-                  const visible = testSearch ? availableTests.slice(0, 20) : [];
+                  const visible = debouncedTestSearch ? availableTests.slice(0, 20) : [];
                   if (visible.length === 0) return;
                   if (e.key === "ArrowDown") {
                     e.preventDefault();
@@ -891,7 +905,7 @@ const PatientRegistration = () => {
                 Showing only tests configured for this pickup point ({pickupPrices.length} eligible).
               </p>
             )}
-            {testSearch && availableTests.length > 0 && (
+            {debouncedTestSearch && availableTests.length > 0 && (
               <div className="border rounded-md mt-1 max-h-48 overflow-y-auto">
                 {availableTests.slice(0, 20).map((t, i) => (
                   <button
