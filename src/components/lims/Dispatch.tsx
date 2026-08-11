@@ -23,7 +23,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { Calendar as DatePickerCalendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Search, Loader2, CheckCircle2, Send, Eye, Truck, Circle, Phone, Calendar as CalendarIcon, FileText, User, Clock, ChevronRight, ArrowLeft, MessageSquare, Download } from "lucide-react";
+import { Search, Loader2, Send, Eye, Truck, Circle, Phone, Calendar as CalendarIcon, FileText, User, Clock, ChevronRight, ArrowLeft, MessageSquare, Download } from "lucide-react";
 import { toast } from "sonner";
 import { format, startOfDay, endOfDay, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -72,7 +72,8 @@ interface DispatchTest {
 interface DispatchEntry {
   registration: any;
   tests: DispatchTest[];
-  completionStatus: "all_done" | "partial" | "all_pending" | "cancelled";
+  /** all_dispatched = every active test dispatched (blue dot); all_done = all approved ready (green) */
+  completionStatus: "all_done" | "all_dispatched" | "partial" | "all_pending" | "cancelled";
   approvedCount: number;
   pendingCount: number;
   dispatchedCount: number;
@@ -398,7 +399,7 @@ const Dispatch = () => {
       if (billCancelled || (dispatchTests.length > 0 && cancelledCount === dispatchTests.length)) {
         completionStatus = "cancelled";
       } else if (activeCount > 0 && dispatchedCount === activeCount) {
-        completionStatus = "all_done";
+        completionStatus = "all_dispatched";
       } else if (dispatchedCount > 0 || (approvedCount > 0 && pendingCount > 0)) {
         completionStatus = "partial";
       } else if (approvedCount > 0 && pendingCount === 0) {
@@ -423,8 +424,8 @@ const Dispatch = () => {
       const aCancelled = a.completionStatus === "cancelled" ? 1 : 0;
       const bCancelled = b.completionStatus === "cancelled" ? 1 : 0;
       if (aCancelled !== bCancelled) return aCancelled - bCancelled;
-      const aActivestat = a.registration.is_stat && a.completionStatus !== "all_done" && a.completionStatus !== "cancelled" ? 1 : 0;
-      const bActivestat = b.registration.is_stat && b.completionStatus !== "all_done" && b.completionStatus !== "cancelled" ? 1 : 0;
+      const aActivestat = a.registration.is_stat && a.completionStatus !== "all_done" && a.completionStatus !== "all_dispatched" && a.completionStatus !== "cancelled" ? 1 : 0;
+      const bActivestat = b.registration.is_stat && b.completionStatus !== "all_done" && b.completionStatus !== "all_dispatched" && b.completionStatus !== "cancelled" ? 1 : 0;
       if (bActivestat !== aActivestat) return bActivestat - aActivestat;
       return String(b.registration.invoice_number || "").localeCompare(String(a.registration.invoice_number || ""));
     });
@@ -455,10 +456,11 @@ const Dispatch = () => {
       return;
     }
 
-    const approvedTests = entry.tests.filter(t => t.status === "approved");
-    const testIds = approvedTests.map(t => t.testId);
+    // Always include approved + already-dispatched so patient gets one combined PDF.
+    const reportable = entry.tests.filter(t => t.status === "approved" || t.status === "dispatched");
+    const testIds = reportable.map(t => t.testId);
     if (testIds.length === 0) {
-      toast.error("No approved reports to dispatch");
+      toast.error("No reports available to dispatch");
       return;
     }
 
@@ -478,16 +480,17 @@ const Dispatch = () => {
 
       const now = new Date().toISOString();
       const dispatcher = getCurrentUserName();
+      // Mark newly approved as dispatched; refresh timestamp on already-dispatched too.
       await supabase.from("patient_results").update({
         status: "dispatched",
         dispatched_at: now,
         dispatched_by: dispatcher,
-      } as any).eq("registration_id", reg.id).eq("status", "approved").in("test_id", testIds);
+      } as any).eq("registration_id", reg.id).in("status", ["approved", "dispatched"]).in("test_id", testIds);
       await supabase.from("outsourced_test_snips").update({
         outsource_status: "dispatched",
         dispatched_at: now,
         dispatched_by: dispatcher,
-      } as any).eq("registration_id", reg.id).eq("outsource_status", "approved").in("test_id", testIds);
+      } as any).eq("registration_id", reg.id).in("outsource_status", ["approved", "dispatched"]).in("test_id", testIds);
       const stillPending = entry.tests.some(t => t.status !== "approved" && t.status !== "dispatched");
       if (!stillPending) {
         await supabase.from("patient_registrations").update({ status: "dispatched" } as any).eq("id", reg.id);
@@ -546,26 +549,6 @@ const Dispatch = () => {
     }
   };
 
-  const markTestDispatched = async (regId: string, testId: string, testName: string) => {
-    const entry = sortedDispatchEntries.find(e => e.registration.id === regId);
-    if (entry && isPaymentBlocked(entry.registration)) {
-      setDueBlockEntry(entry);
-      return;
-    }
-    setActionKey(`${regId}||${testId}||dispatch`);
-    try {
-      await supabase.from("patient_results").update({ status: "dispatched", dispatched_at: new Date().toISOString(), dispatched_by: getCurrentUserName() } as any).eq("registration_id", regId).eq("test_id", testId).eq("status", "approved");
-      await supabase.from("outsourced_test_snips").update({
-        outsource_status: "dispatched",
-        dispatched_at: new Date().toISOString(),
-        dispatched_by: getCurrentUserName(),
-      } as any).eq("registration_id", regId).eq("test_id", testId).eq("outsource_status", "approved");
-      await propagateRegistrationChange(qc, regId, ["dispatch"]);
-      toast.success(`${testName} marked as dispatched`);
-    } catch (err: any) { toast.error(err.message || "Dispatch failed"); }
-    finally { setActionKey(null); }
-  };
-
   const getStatusBadge = (status: TestStatus) => {
     switch (status) {
       case "registered": return <Badge variant="outline" className="text-[10px]">Registered</Badge>;
@@ -581,6 +564,7 @@ const Dispatch = () => {
 
   const getCompletionDot = (status: DispatchEntry["completionStatus"]) => {
     switch (status) {
+      case "all_dispatched": return <Circle className="h-3 w-3 fill-blue-600 text-blue-600" />;
       case "all_done": return <Circle className="h-3 w-3 fill-green-500 text-green-500" />;
       case "partial": return <Circle className="h-3 w-3 fill-amber-500 text-amber-500" />;
       case "all_pending": return <Circle className="h-3 w-3 fill-red-500 text-red-500" />;
@@ -749,7 +733,7 @@ const Dispatch = () => {
                           <div className="mt-1 shrink-0">{getCompletionDot(entry.completionStatus)}</div>
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-1.5">
-                              {reg.is_stat && entry.completionStatus !== "all_done" && entry.completionStatus !== "cancelled" && <span className="relative flex h-2 w-2 shrink-0"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-destructive" /></span>}
+                              {reg.is_stat && entry.completionStatus !== "all_done" && entry.completionStatus !== "all_dispatched" && entry.completionStatus !== "cancelled" && <span className="relative flex h-2 w-2 shrink-0"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-destructive" /></span>}
                               <span className={cn("font-semibold text-sm truncate tracking-wide", entry.completionStatus === "cancelled" && "line-through text-muted-foreground")}>{reg.invoice_number}</span>
                               <NewBadge show={isNewArrival(reg.id)} />
                               {entry.completionStatus === "cancelled" && <Badge variant="destructive" className="text-[10px] px-1 py-0">Cancelled</Badge>}
@@ -823,7 +807,7 @@ const Dispatch = () => {
                           <h3 className={cn("font-semibold", isMobile ? "text-base" : "text-lg", selectedEntry.completionStatus === "cancelled" && "line-through text-muted-foreground")}>{selectedEntry.registration.invoice_number}</h3>
                           {selectedEntry.completionStatus === "cancelled" && <Badge variant="destructive" className="text-[10px]">Cancelled</Badge>}
                           {heldSet.has(selectedEntry.registration.id) && selectedEntry.completionStatus !== "cancelled" && <Badge variant="outline" className="text-[10px] border-amber-500 text-amber-700">Held</Badge>}
-                          {selectedEntry.registration.is_stat && selectedEntry.completionStatus !== "all_done" && selectedEntry.completionStatus !== "cancelled" && <Badge variant="destructive" className="text-[10px]">STAT</Badge>}
+                          {selectedEntry.registration.is_stat && selectedEntry.completionStatus !== "all_done" && selectedEntry.completionStatus !== "all_dispatched" && selectedEntry.completionStatus !== "cancelled" && <Badge variant="destructive" className="text-[10px]">STAT</Badge>}
                           {getCompletionDot(selectedEntry.completionStatus)}
                         </div>
                         <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -889,7 +873,7 @@ const Dispatch = () => {
                           Send Reports
                         </Button>
                       )}
-                      {selectedEntry.approvedCount > 0 && (
+                      {(selectedEntry.approvedCount > 0 || selectedEntry.dispatchedCount > 0) && (
                         <Button size="sm" className="gap-1" disabled={actionKey === `${selectedEntry.registration.id}||dispatch`} onClick={() => markAsDispatched(selectedEntry)}>
                           {actionKey === `${selectedEntry.registration.id}||dispatch` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Dispatch All
                         </Button>
@@ -905,7 +889,6 @@ const Dispatch = () => {
                       </div>
                       {selectedEntry.tests.map((test) => {
                         const testKey = `${selectedEntry.registration.id}||${test.testId}`;
-                        const isTestDispatching = actionKey === `${testKey}||dispatch`;
 
                         const auditSteps = [
                           { label: "Registered", timestamp: selectedEntry.registration.created_at, by: test.registeredBy || "—" },
@@ -956,12 +939,6 @@ const Dispatch = () => {
                                 })()}
                                 {/* Status badge */}
                                 {getStatusBadge(test.status)}
-                                {/* Dispatch */}
-                                {test.status === "approved" && (
-                                  <Button size="sm" className="h-8 text-xs gap-1" disabled={isTestDispatching} onClick={() => markTestDispatched(selectedEntry.registration.id, test.testId, test.testName)}>
-                                    {isTestDispatching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />} Dispatch
-                                  </Button>
-                                )}
                               </div>
                             </div>
                             {/* Collapsible audit trail */}
