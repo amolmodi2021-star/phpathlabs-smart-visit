@@ -1,5 +1,5 @@
 import RefreshButton from "@/components/lims/RefreshButton";
-import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { Fragment, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Search, ShieldCheck, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, ScanBarcode, Printer } from "lucide-react";
+import { Search, ShieldCheck, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, ScanBarcode, Printer, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { formatAgeGender } from "@/lib/ageGender";
@@ -23,6 +23,7 @@ import { printBarcodes } from "@/lib/barcodePrint";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import { createLimsOrdersForAcceptedTubes } from "@/lib/limsOrderGeneration";
+import { shortIdsKey } from "@/lib/queryKeys";
 import NewBadge from "./NewBadge";
 
 const TUBE_COLOR_MAP: Record<string, string> = {
@@ -30,6 +31,17 @@ const TUBE_COLOR_MAP: Record<string, string> = {
   green: "#48bb78", blue: "#4299e1", grey: "#a0aec0", gray: "#a0aec0",
   white: "#ffffff", orange: "#ed8936", pink: "#ed64a6", black: "#1a202c",
 };
+
+/** List / scan — no test_ids / test_names JSON (egress). */
+const TUBE_LIST_SELECT =
+  "id, sample_uid, registration_id, tube_type, tube_color, sample_type, suffix, status, collected_at, accepted_at, created_at";
+
+/** Expand / accept orders — includes test payloads. */
+const TUBE_DETAIL_SELECT =
+  "id, sample_uid, registration_id, tube_type, tube_color, sample_type, suffix, test_ids, test_names, status, collected_at, accepted_at, created_at";
+
+const REG_LIST_SELECT =
+  "id, invoice_number, patient_name, title, mobile_number, umr_number, dob, gender, visit_type, pickup_point_id, is_stat, status, created_at, updated_at, bill_cancelled, cancelled_tests, remarks";
 
 interface SampleTubeRow {
   id: string;
@@ -39,8 +51,8 @@ interface SampleTubeRow {
   tube_color: string | null;
   sample_type: string | null;
   suffix: string | null;
-  test_ids: string[];
-  test_names: string[];
+  test_ids?: string[];
+  test_names?: string[];
   status: string;
   collected_at: string | null;
   accepted_at: string | null;
@@ -49,7 +61,9 @@ interface SampleTubeRow {
 
 interface GroupedRegistration {
   registration: any;
+  /** Lean tubes for list badges (pending). Accepted list may be empty until expand. */
   tubes: SampleTubeRow[];
+  tubeCount: number;
 }
 
 const ACCEPTED_PAGE_SIZE = 10;
@@ -76,17 +90,15 @@ const SampleAcceptance = () => {
   };
 
   // Reset accepted lazy-load window whenever search or tab changes
-  useEffect(() => { setAcceptedLimit(ACCEPTED_PAGE_SIZE); }, [debouncedSearch, activeTab]);
+  useEffect(() => { setAcceptedLimit(ACCEPTED_PAGE_SIZE); setExpandedRow(null); }, [debouncedSearch, activeTab]);
 
-
-  // Fetch collected tubes (pending acceptance).
-  // Default: last 30 days. Optional: include older backlog still awaiting acceptance.
+  // Pending: lean tubes for list + barcode scan (no test JSON).
   const { data: collectedTubes = [], isLoading } = useQuery({
     queryKey: ["sample_tubes_acceptance_pending", showOlderPending],
     queryFn: async () => {
       let q = supabase
         .from("sample_tubes" as any)
-        .select("id, sample_uid, registration_id, tube_type, tube_color, sample_type, suffix, test_ids, test_names, status, collected_at, accepted_at, created_at")
+        .select(TUBE_LIST_SELECT)
         .eq("status", "collected")
         .order("created_at", { ascending: false })
         .limit(showOlderPending ? 2000 : 500);
@@ -102,39 +114,44 @@ const SampleAcceptance = () => {
     staleTime: 120_000,
   });
 
-  // Fetch accepted tubes (for accepted tab) — recent window + hard cap
-  const { data: acceptedTubes = [], isLoading: isLoadingAccepted } = useQuery({
+  // Accepted: tiny index only (membership + order) — details on expand.
+  const { data: acceptedIndex = [], isLoading: isLoadingAccepted } = useQuery({
     queryKey: ["sample_tubes_acceptance_accepted"],
     queryFn: async () => {
       const since = new Date();
       since.setDate(since.getDate() - 30);
       const { data, error } = await supabase
         .from("sample_tubes" as any)
-        .select("id, sample_uid, registration_id, tube_type, tube_color, sample_type, suffix, test_ids, test_names, status, collected_at, accepted_at, created_at")
+        .select("registration_id, accepted_at")
         .eq("status", "accepted")
         .gte("accepted_at", since.toISOString())
         .order("accepted_at", { ascending: false })
         .limit(1000);
       if (error) throw error;
-      return (data || []) as unknown as SampleTubeRow[];
+      return (data || []) as unknown as { registration_id: string; accepted_at: string }[];
     },
     staleTime: 120_000,
   });
 
-  // Build ordered, deduped accepted registration IDs (newest acceptance first),
-  // then slice to the lazy-loaded window. This is what we'll request from the
-  // (heavier) registrations table — keeps cloud cost proportional to what's shown.
   const acceptedRegIdsOrdered = useMemo(() => {
     const seen = new Set<string>();
     const out: string[] = [];
-    for (const t of acceptedTubes) {
+    for (const t of acceptedIndex) {
       if (!seen.has(t.registration_id)) {
         seen.add(t.registration_id);
         out.push(t.registration_id);
       }
     }
     return out;
-  }, [acceptedTubes]);
+  }, [acceptedIndex]);
+
+  const acceptedTubeCountByReg = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const t of acceptedIndex) {
+      m.set(t.registration_id, (m.get(t.registration_id) || 0) + 1);
+    }
+    return m;
+  }, [acceptedIndex]);
 
   const visibleAcceptedRegIds = useMemo(
     () => acceptedRegIdsOrdered.slice(0, acceptedLimit),
@@ -143,30 +160,27 @@ const SampleAcceptance = () => {
   const totalAcceptedCount = acceptedRegIdsOrdered.length;
   const hasMoreAccepted = totalAcceptedCount > acceptedLimit;
 
-  // Pending always loads in full (it's already a small working queue).
   const pendingRegIds = useMemo(
     () => [...new Set(collectedTubes.map(t => t.registration_id))],
     [collectedTubes]
   );
 
-  // Registrations we actually need to fetch = pending + visible accepted slice.
-  const regIds = useMemo(
-    () => [...new Set([...pendingRegIds, ...visibleAcceptedRegIds])],
-    [pendingRegIds, visibleAcceptedRegIds]
-  );
+  const listRegIds = useMemo(() => {
+    if (activeTab === "accepted") return visibleAcceptedRegIds;
+    return pendingRegIds;
+  }, [activeTab, visibleAcceptedRegIds, pendingRegIds]);
 
-  // Fetch registrations (only for IDs we need to display).
-  // Never hide collected tubes awaiting acceptance just because sibling tests
-  // already reached "dispatched" (Collect Later / multi-visit bills).
-  // Only exclude cancelled bills from this queue.
+  const listRegKey = shortIdsKey(listRegIds, "sa-regs");
+
+  // Lean registration headers for the active list only.
   const { data: registrations = [] } = useQuery({
-    queryKey: ["sample_acceptance_regs", regIds.join(","), debouncedSearch],
-    enabled: regIds.length > 0,
+    queryKey: ["sample_acceptance_regs", activeTab, listRegKey, debouncedSearch],
+    enabled: listRegIds.length > 0,
     queryFn: async () => {
       let query = supabase
         .from("patient_registrations")
-        .select("*")
-        .in("id", regIds)
+        .select(REG_LIST_SELECT)
+        .in("id", listRegIds)
         .eq("bill_cancelled", false)
         .not("status", "eq", "cancelled")
         .order("is_stat", { ascending: false })
@@ -178,30 +192,61 @@ const SampleAcceptance = () => {
       }
       const { data, error } = await query;
       if (error) throw error;
-      return (data || []) as any[];
+      const order = new Map(listRegIds.map((id, i) => [id, i] as const));
+      return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     },
+    staleTime: 120_000,
   });
 
-  // Group by registration. Cancelled regs are already filtered out server-side.
+  // Full tube details only for the expanded row.
+  const detailStatus = activeTab === "accepted" ? "accepted" : "collected";
+  const { data: detailTubes = [], isLoading: loadingDetail } = useQuery({
+    queryKey: ["sample_acceptance_detail_tubes", expandedRow, detailStatus],
+    enabled: !!expandedRow,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("sample_tubes" as any)
+        .select(TUBE_DETAIL_SELECT)
+        .eq("registration_id", expandedRow!)
+        .eq("status", detailStatus)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data || []) as unknown as SampleTubeRow[];
+    },
+    staleTime: 60_000,
+  });
+
+  const fetchDetailTubesForReg = useCallback(async (regId: string, status: "collected" | "accepted") => {
+    const { data, error } = await supabase
+      .from("sample_tubes" as any)
+      .select(TUBE_DETAIL_SELECT)
+      .eq("registration_id", regId)
+      .eq("status", status);
+    if (error) throw error;
+    return (data || []) as unknown as SampleTubeRow[];
+  }, []);
+
   const pendingGroups = useMemo((): GroupedRegistration[] => {
-    return registrations.filter(reg => collectedTubes.some(t => t.registration_id === reg.id)).map(reg => ({
-      registration: reg,
-      tubes: collectedTubes.filter(t => t.registration_id === reg.id),
-    }));
+    return registrations
+      .filter((reg) => collectedTubes.some((t) => t.registration_id === reg.id))
+      .map((reg) => {
+        const tubes = collectedTubes.filter((t) => t.registration_id === reg.id);
+        return { registration: reg, tubes, tubeCount: tubes.length };
+      });
   }, [registrations, collectedTubes]);
 
   const acceptedGroups = useMemo((): GroupedRegistration[] => {
     const visibleSet = new Set(visibleAcceptedRegIds);
     return registrations
-      .filter(reg => visibleSet.has(reg.id) && acceptedTubes.some(t => t.registration_id === reg.id))
-      .map(reg => ({
+      .filter((reg) => visibleSet.has(reg.id))
+      .map((reg) => ({
         registration: reg,
-        tubes: acceptedTubes.filter(t => t.registration_id === reg.id),
+        tubes: [],
+        tubeCount: acceptedTubeCountByReg.get(reg.id) || 0,
       }));
-  }, [registrations, acceptedTubes, visibleAcceptedRegIds]);
+  }, [registrations, visibleAcceptedRegIds, acceptedTubeCountByReg]);
 
-
-  // Build sample ID map for barcode scanning
+  // Build sample ID map for barcode scanning (lean pending tubes)
   const sampleIdToTubeMap = useMemo(() => {
     const map: Record<string, { reg: any; tube: SampleTubeRow }> = {};
     for (const group of pendingGroups) {
@@ -227,7 +272,7 @@ const SampleAcceptance = () => {
   const toggleAllForReg = (tubes: SampleTubeRow[]) => {
     setSelectedTubes(prev => {
       const next = new Set(prev);
-      const allSelected = tubes.every(t => next.has(t.id));
+      const allSelected = tubes.length > 0 && tubes.every(t => next.has(t.id));
       if (allSelected) { tubes.forEach(t => next.delete(t.id)); }
       else { tubes.forEach(t => next.add(t.id)); }
       return next;
@@ -250,13 +295,10 @@ const SampleAcceptance = () => {
       // Prefer live tube rows (barcode accept / stale cache), fall back to pending list
       const { data: freshTubes, error: tubeFetchErr } = await supabase
         .from("sample_tubes" as any)
-        .select("id, suffix, test_ids")
+        .select(TUBE_DETAIL_SELECT)
         .in("id", tubeIds);
       if (tubeFetchErr) throw tubeFetchErr;
-      const acceptedTubesData =
-        ((freshTubes || []) as unknown as SampleTubeRow[]).length > 0
-          ? ((freshTubes || []) as unknown as SampleTubeRow[])
-          : collectedTubes.filter((t) => tubeIds.includes(t.id));
+      const acceptedTubesData = (freshTubes || []) as unknown as SampleTubeRow[];
 
       // Generate analyzer orders immediately (fresh master fetch — not UI query cache)
       const orderResult = await createLimsOrdersForAcceptedTubes({
@@ -318,12 +360,42 @@ const SampleAcceptance = () => {
     rejectMutation.mutate({ reg: rejectDialog.reg, tubeIds: rejectDialog.tubeIds, remarks: rejectRemarks.trim() });
   };
 
+  const acceptAllForReg = async (reg: any) => {
+    try {
+      const tubes = await fetchDetailTubesForReg(reg.id, "collected");
+      if (tubes.length === 0) {
+        toast.error("No collected tubes to accept");
+        return;
+      }
+      acceptMutation.mutate({ reg, tubeIds: tubes.map((t) => t.id) });
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to load tubes");
+    }
+  };
+
+  const printAllForReg = async (reg: any, status: "collected" | "accepted") => {
+    try {
+      const tubes = expandedRow === reg.id && detailTubes.length > 0
+        ? detailTubes
+        : await fetchDetailTubesForReg(reg.id, status);
+      if (tubes.length === 0) {
+        toast.error("No tubes to print");
+        return;
+      }
+      await printBarcodes(reg, tubes);
+      toast.success(`Reprinting ${tubes.length} barcode(s)`);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to print");
+    }
+  };
+
   const handleAcceptSelected = () => {
     if (selectedTubes.size === 0) { toast.error("Select at least one sample tube"); return; }
     // Group by registration
     const regMap: Record<string, string[]> = {};
     selectedTubes.forEach(tubeId => {
-      const tube = collectedTubes.find(t => t.id === tubeId);
+      const tube = collectedTubes.find(t => t.id === tubeId)
+        || detailTubes.find(t => t.id === tubeId);
       if (tube) {
         if (!regMap[tube.registration_id]) regMap[tube.registration_id] = [];
         regMap[tube.registration_id].push(tubeId);
@@ -411,14 +483,16 @@ const SampleAcceptance = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {groups.map(({ registration: reg, tubes }) => {
+                {groups.map(({ registration: reg, tubes, tubeCount = tubes.length }) => {
                   const isExpanded = expandedRow === reg.id;
-                  const allSelected = tubes.every(t => selectedTubes.has(t.id));
-                  const someSelected = tubes.some(t => selectedTubes.has(t.id));
+                  const expandTubes = isExpanded ? detailTubes : [];
+                  const listTubes = tubes;
+                  const allSelected = listTubes.length > 0 && listTubes.every(t => selectedTubes.has(t.id));
+                  const someSelected = listTubes.some(t => selectedTubes.has(t.id));
 
                   return (
-                    <>
-                      <TableRow key={reg.id} className="cursor-pointer hover:bg-muted/50"
+                    <Fragment key={reg.id}>
+                      <TableRow className="cursor-pointer hover:bg-muted/50"
                         onClick={() => { markArrivalSeen(reg.id); setExpandedRow(isExpanded ? null : reg.id); }}>
                         <TableCell>
                           {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -426,7 +500,7 @@ const SampleAcceptance = () => {
                         {!isAccepted && (
                           <TableCell onClick={e => e.stopPropagation()}>
                             <Checkbox checked={allSelected}
-                              onCheckedChange={() => toggleAllForReg(tubes)}
+                              onCheckedChange={() => toggleAllForReg(listTubes)}
                               className={someSelected && !allSelected ? "data-[state=unchecked]:bg-primary/30" : ""} />
                           </TableCell>
                         )}
@@ -447,37 +521,43 @@ const SampleAcceptance = () => {
                         <TableCell className="text-sm font-mono">{formatAgeGender(reg.dob, reg.gender)}</TableCell>
                         <TableCell>{reg.mobile_number}</TableCell>
                         <TableCell>
-                          <div className="flex gap-1 flex-wrap">
-                            {tubes.map((t, i) => {
-                              const hex = getTubeColorHex(t.tube_color);
-                              return (
-                                <Badge key={i} variant="outline" className="text-xs gap-1">
-                                  {hex && <span className="inline-block w-2.5 h-2.5 rounded-full border"
-                                    style={{ backgroundColor: hex, borderColor: hex === "#ffffff" ? "#ccc" : hex }} />}
-                                  {t.tube_type || "DEFAULT"}{t.suffix ? ` (${t.suffix})` : ""}
-                                </Badge>
-                              );
-                            })}
-                          </div>
+                          {isAccepted || listTubes.length === 0 ? (
+                            <span className="text-sm text-muted-foreground">{tubeCount} tube(s)</span>
+                          ) : (
+                            <div className="flex gap-1 flex-wrap">
+                              {listTubes.map((t, i) => {
+                                const hex = getTubeColorHex(t.tube_color);
+                                return (
+                                  <Badge key={i} variant="outline" className="text-xs gap-1">
+                                    {hex && <span className="inline-block w-2.5 h-2.5 rounded-full border"
+                                      style={{ backgroundColor: hex, borderColor: hex === "#ffffff" ? "#ccc" : hex }} />}
+                                    {t.tube_type || "DEFAULT"}{t.suffix ? ` (${t.suffix})` : ""}
+                                  </Badge>
+                                );
+                              })}
+                            </div>
+                          )}
                         </TableCell>
-                        <TableCell className="text-sm">{format(new Date(reg.updated_at), "dd-MM-yyyy hh:mm a")}</TableCell>
+                        <TableCell className="text-sm">{format(new Date(reg.updated_at || reg.created_at), "dd-MM-yyyy hh:mm a")}</TableCell>
                         {!isAccepted && (
                           <TableCell className="text-right" onClick={e => e.stopPropagation()}>
                             <div className="flex gap-2 justify-end">
                               <Button size="sm" variant="outline" title="Reprint all barcodes"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  printBarcodes(reg, tubes);
-                                  toast.success(`Reprinting ${tubes.length} barcode(s)`);
+                                  void printAllForReg(reg, "collected");
                                 }}>
                                 <Printer className="h-4 w-4 mr-1" /> Print All
                               </Button>
-                              <Button size="sm" onClick={() => acceptMutation.mutate({ reg, tubeIds: tubes.map(t => t.id) })}
+                              <Button size="sm" onClick={() => void acceptAllForReg(reg)}
                                 disabled={acceptMutation.isPending}>
                                 <ShieldCheck className="h-4 w-4 mr-1" /> Accept All
                               </Button>
                               <Button size="sm" variant="destructive"
-                                onClick={() => setRejectDialog({ open: true, reg, tubeIds: tubes.map(t => t.id) })}>
+                                onClick={async () => {
+                                  const full = await fetchDetailTubesForReg(reg.id, "collected");
+                                  setRejectDialog({ open: true, reg, tubeIds: full.map((t) => t.id) });
+                                }}>
                                 <RotateCcw className="h-4 w-4 mr-1" /> Repeat
                               </Button>
                             </div>
@@ -490,8 +570,7 @@ const SampleAcceptance = () => {
                               <Button size="sm" variant="outline" title="Reprint all barcodes"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  printBarcodes(reg, tubes);
-                                  toast.success(`Reprinting ${tubes.length} barcode(s)`);
+                                  void printAllForReg(reg, "accepted");
                                 }}>
                                 <Printer className="h-4 w-4 mr-1" /> Print All
                               </Button>
@@ -502,9 +581,14 @@ const SampleAcceptance = () => {
                       {isExpanded && (
                         <TableRow key={`${reg.id}-detail`}>
                           <TableCell colSpan={isAccepted ? 8 : 9} className="bg-muted/30 p-4">
+                            {loadingDetail ? (
+                              <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
+                                <Loader2 className="h-4 w-4 animate-spin" /> Loading sample details…
+                              </div>
+                            ) : (
                             <div className="space-y-2">
                               <div className="text-sm font-medium">Sample Details</div>
-                              {tubes.map((tube) => {
+                              {expandTubes.map((tube) => {
                                 const isChecked = selectedTubes.has(tube.id);
                                 return (
                                   <div key={tube.id} className="flex items-start gap-3 p-2 bg-background rounded border">
@@ -565,16 +649,20 @@ const SampleAcceptance = () => {
                                   </div>
                                 );
                               })}
+                              {expandTubes.length === 0 && (
+                                <p className="text-sm text-muted-foreground">No tubes found</p>
+                              )}
                               {reg.remarks && (
                                 <div className="text-sm text-muted-foreground mt-1">
                                   <span className="font-medium">Remarks:</span> {reg.remarks}
                                 </div>
                               )}
                             </div>
+                            )}
                           </TableCell>
                         </TableRow>
                       )}
-                    </>
+                    </Fragment>
                   );
                 })}
               </TableBody>
@@ -603,7 +691,7 @@ const SampleAcceptance = () => {
           <span className="text-xs hidden sm:inline">(beyond 30 days)</span>
         </label>
         <RefreshButton
-          queryKeys={["sample_tubes_acceptance_pending", "sample_tubes_acceptance_accepted", "sample_acceptance_regs"]}
+          queryKeys={["sample_tubes_acceptance_pending", "sample_tubes_acceptance_accepted", "sample_acceptance_regs", "sample_acceptance_detail_tubes"]}
           className="ml-auto"
         />
       </div>

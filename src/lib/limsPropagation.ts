@@ -82,6 +82,7 @@ export const MODULE_KEYS: Record<LimsModule, string[]> = {
     "sample_tubes_acceptance",
     "sample_tubes_acceptance_pending",
     "sample_tubes_acceptance_accepted",
+    "sample_acceptance_detail_tubes",
   ],
   completed_hv: ["completed_home_visits"],
   billing: ["billing_regs", "pickup_invoices", "eligible_regs"],
