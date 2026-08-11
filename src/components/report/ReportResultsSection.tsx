@@ -182,9 +182,15 @@ const ParamRow = ({ r, rowKey, compact, isMorph, showFlagText, rowFontSize, colC
           </td>
           <td className={`text-center text-gray-600 ${rangeWeight} ${py}`} style={{ whiteSpace: 'pre-line' }}>
             {(r.normal_range_text && r.normal_range_text.trim())
-              || (r.normal_range_low != null && r.normal_range_high != null
-                  ? `${r.normal_range_low} - ${r.normal_range_high}${r.unit ? ` ${r.unit}` : ''}`
-                  : '')}
+              || (() => {
+                const low = r.normal_range_low;
+                const high = r.normal_range_high;
+                const u = r.unit ? ` ${r.unit}` : '';
+                if (low != null && high != null) return `${low} - ${high}${u}`;
+                if (high != null && low == null) return `< ${high}${u}`;
+                if (low != null && high == null) return `> ${low}${u}`;
+                return '';
+              })()}
           </td>
           {showFlagText && (
             <td className={`text-center ${py}`}>

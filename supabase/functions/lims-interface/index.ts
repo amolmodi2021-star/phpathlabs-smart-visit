@@ -219,13 +219,18 @@ function applyInterfaceUnitSuffix(value: string, param: any): string {
 }
 
 // Attach range metadata from parameter_normal_ranges for interface flagging:
-// _isUndefinedRange, _rangeType, _normalFindings, and fill empty low/high from first row.
-async function attachRangeMeta(supabase: any, paramRows: any[]) {
+// _isUndefinedRange, _rangeType, _normalFindings, and fill empty text/low/high.
+// Optional patientGender/dob picks the age/gender row (same rules as Results UI).
+async function attachRangeMeta(
+  supabase: any,
+  paramRows: any[],
+  patient?: { gender?: string | null; dob?: string | null } | null,
+) {
   const ids = (paramRows || []).map((p) => p.id);
   if (ids.length === 0) return;
   const { data: rangeRows } = await supabase
     .from("parameter_normal_ranges")
-    .select("parameter_id, range_type, normal_findings, normal_range_text, normal_range_low, normal_range_high")
+    .select("parameter_id, gender, age_min, age_max, range_type, normal_findings, normal_range_text, normal_range_low, normal_range_high")
     .in("parameter_id", ids);
   const byParam: Record<string, any[]> = {};
   for (const r of rangeRows || []) {
@@ -233,18 +238,53 @@ async function attachRangeMeta(supabase: any, paramRows: any[]) {
     if (!byParam[pid]) byParam[pid] = [];
     byParam[pid].push(r);
   }
+  const patientGender = String(patient?.gender || "").toLowerCase().charAt(0);
+  let patientAge: number | null = null;
+  if (patient?.dob) {
+    const birth = new Date(patient.dob);
+    if (!Number.isNaN(birth.getTime())) {
+      patientAge = Math.floor((Date.now() - birth.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+    }
+  }
   for (const p of paramRows) {
     const rows = byParam[p.id] || [];
     const types = rows.map((r) => (r.range_type || "numeric") as string);
     p._isUndefinedRange = types.length > 0 && types.every((t) => t === "undefined");
-    const first = rows[0];
-    p._rangeType = first?.range_type || "numeric";
-    p._normalFindings = first?.normal_findings || "";
-    if ((p.normal_range_low == null || p.normal_range_low === "") && first?.normal_range_low != null) {
-      p.normal_range_low = first.normal_range_low;
+
+    let candidates = rows.filter((r) => {
+      const g = String(r.gender || "all").toLowerCase();
+      return g === "all" || (g === "male" && patientGender === "m") || (g === "female" && patientGender === "f");
+    });
+    if (patientAge != null) {
+      const ageMatched = candidates.filter((r) => {
+        if (r.age_min == null && r.age_max == null) return true;
+        if (r.age_min != null && patientAge! < r.age_min) return false;
+        if (r.age_max != null && patientAge! > r.age_max) return false;
+        return true;
+      });
+      if (ageMatched.length > 0) candidates = ageMatched;
     }
-    if ((p.normal_range_high == null || p.normal_range_high === "") && first?.normal_range_high != null) {
-      p.normal_range_high = first.normal_range_high;
+    const best = candidates.find((r) => String(r.gender || "all").toLowerCase() !== "all") || candidates[0] || rows[0];
+    p._rangeType = best?.range_type || "numeric";
+    p._normalFindings = best?.normal_findings || "";
+    if (!String(p.normal_range_text || "").trim() && best?.normal_range_text) {
+      p.normal_range_text = best.normal_range_text;
+    }
+    if ((p.normal_range_low == null || p.normal_range_low === "") && best?.normal_range_low != null) {
+      p.normal_range_low = best.normal_range_low;
+    }
+    if ((p.normal_range_high == null || p.normal_range_high === "") && best?.normal_range_high != null) {
+      p.normal_range_high = best.normal_range_high;
+    }
+    // One-sided numeric ranges: still produce reportable reference text
+    if (!String(p.normal_range_text || "").trim()) {
+      const low = p.normal_range_low;
+      const high = p.normal_range_high;
+      const u = String(p.unit || "").trim();
+      const suffix = u ? ` ${u}` : "";
+      if (low != null && high != null) p.normal_range_text = `${low} - ${high}${suffix}`;
+      else if (high != null && low == null) p.normal_range_text = `< ${high}${suffix}`;
+      else if (low != null && high == null) p.normal_range_text = `> ${low}${suffix}`;
     }
   }
 }
@@ -941,7 +981,7 @@ Deno.serve(async (req) => {
           const invoiceNumber = sampleId.replace(/-[A-Za-z0-9]+$/, "");
           const { data: regRows } = await supabase
             .from("patient_registrations")
-            .select("id, tests")
+            .select("id, tests, gender, dob")
             .eq("invoice_number", invoiceNumber)
             .limit(1);
           const registration = regRows?.[0];
@@ -1005,7 +1045,7 @@ Deno.serve(async (req) => {
             .from("report_test_parameters")
             .select("id, param_code, parameter_name, unit, normal_range_low, normal_range_high, normal_range_text, unit_conversion_enabled, unit_conversion_operator, unit_conversion_value")
             .in("param_code", paramCodes);
-          await attachRangeMeta(supabase, paramRows || []);
+          await attachRangeMeta(supabase, paramRows || [], { gender: registration.gender, dob: registration.dob });
           const paramByCode: Record<string, any> = {};
           for (const p of paramRows || []) paramByCode[p.param_code] = p;
 
@@ -1452,7 +1492,7 @@ Deno.serve(async (req) => {
         const invoiceNumber = sample_id.replace(/-[A-Za-z0-9]+$/, "");
         const { data: regRows } = await supabase
           .from("patient_registrations")
-          .select("id, tests")
+          .select("id, tests, gender, dob")
           .eq("invoice_number", invoiceNumber)
           .limit(1);
         const registration = regRows?.[0];
@@ -1468,7 +1508,7 @@ Deno.serve(async (req) => {
             .from("report_test_parameters")
             .select("id, param_code, parameter_name, unit, normal_range_low, normal_range_high, normal_range_text, unit_conversion_enabled, unit_conversion_operator, unit_conversion_value")
             .in("param_code", paramCodes);
-          await attachRangeMeta(supabase, paramRows || []);
+          await attachRangeMeta(supabase, paramRows || [], { gender: registration.gender, dob: registration.dob });
           const paramByCode: Record<string, any> = {};
           for (const p of paramRows || []) paramByCode[p.param_code] = p;
 

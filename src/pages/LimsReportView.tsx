@@ -18,6 +18,7 @@ import { format } from "date-fns";
 import { logEvent, createShareLink } from "@/lib/reportShareLinks";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 import { enqueueReportForWhatsAppConsole } from "@/lib/whatsappConsoleBridge";
+import { resolveNormalRangeDisplay } from "@/lib/parameterNormalRange";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.mjs";
 
@@ -402,33 +403,51 @@ const LimsReportView = () => {
       }];
     }
 
-    // Descriptive params: report Reference Range = Display Text only (never Normal Findings).
-    // Stale patient_results.reference_range may still hold findings from before the split.
+    // Reference Range patch from parameter_normal_ranges:
+    // - Descriptive: always use Display Text (never Normal Findings / stale findings text).
+    // - Numeric (etc.): fill blank patient_results.reference_range by age/gender
+    //   (interface often stores empty text when master param.normal_range_text is null).
     {
       const allParamIds = Array.from(new Set(
         reportsArr.flatMap((r: any) => ((r.test_results || []) as any[]).map((tr: any) => tr.parameter_id).filter(Boolean)),
       ));
       if (allParamIds.length > 0) {
-        const { data: descRanges } = await supabase
+        const { data: allRanges } = await supabase
           .from("parameter_normal_ranges")
-          .select("parameter_id, range_type, normal_range_text")
-          .in("parameter_id", allParamIds)
-          .eq("range_type", "descriptive");
-        const displayByParam: Record<string, string> = {};
-        for (const row of descRanges || []) {
-          // First row wins; Display Text may be blank intentionally
-          if (!(row.parameter_id in displayByParam)) {
-            displayByParam[row.parameter_id] = row.normal_range_text || "";
-          }
+          .select("parameter_id, gender, age_min, age_max, range_type, normal_range_text, normal_range_low, normal_range_high")
+          .in("parameter_id", allParamIds);
+        const rangesByParam: Record<string, any[]> = {};
+        for (const row of allRanges || []) {
+          if (!rangesByParam[row.parameter_id]) rangesByParam[row.parameter_id] = [];
+          rangesByParam[row.parameter_id].push(row);
         }
-        if (Object.keys(displayByParam).length > 0) {
-          reportsArr = reportsArr.map((r: any) => ({
-            ...r,
-            test_results: ((r.test_results || []) as any[]).map((tr: any) => {
-              if (!(tr.parameter_id in displayByParam)) return tr;
-              return { ...tr, reference_range: displayByParam[tr.parameter_id] || null };
-            }),
-          }));
+        if (Object.keys(rangesByParam).length > 0) {
+          reportsArr = reportsArr.map((r: any) => {
+            const gender = r.gender || regData?.gender || null;
+            const dob = r.dob || regData?.dob || null;
+            return {
+              ...r,
+              test_results: ((r.test_results || []) as any[]).map((tr: any) => {
+                const rows = rangesByParam[tr.parameter_id];
+                if (!rows || rows.length === 0) return tr;
+                const isDescriptive = rows.some((row: any) => (row.range_type || "numeric") === "descriptive");
+                if (isDescriptive) {
+                  const desc = rows.find((row: any) => (row.range_type || "") === "descriptive") || rows[0];
+                  return { ...tr, reference_range: desc?.normal_range_text || null };
+                }
+                const existing = String(tr.reference_range ?? "").trim();
+                if (existing) return tr;
+                const resolved = resolveNormalRangeDisplay(rows, { gender, dob, unit: tr.unit });
+                if (!resolved.text) return tr;
+                return {
+                  ...tr,
+                  reference_range: resolved.text,
+                  normal_range_low: tr.normal_range_low ?? resolved.low,
+                  normal_range_high: tr.normal_range_high ?? resolved.high,
+                };
+              }),
+            };
+          });
         }
       }
     }
