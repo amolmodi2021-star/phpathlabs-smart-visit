@@ -119,7 +119,7 @@ const SampleCollection = () => {
       if (error) throw error;
       return (data || []) as unknown as SampleTubeRow[];
     },
-    staleTime: 30_000,
+    staleTime: 120_000,
   });
 
   // Get unique registration IDs from tubes

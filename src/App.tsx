@@ -38,12 +38,14 @@ import PatientReportPortal from "./pages/PatientReportPortal";
 import NotFound from "./pages/NotFound";
 
 // React Query global defaults — keep egress and refetch storms low.
-// Lists are Refresh-button driven (LIMS realtime disabled). Longer stale
-// avoids accidental refetches; mutations still invalidate after saves.
+// Lists are Refresh-button driven (LIMS realtime disabled). Cached data
+// is reused across tab remounts; Refresh / mutations still invalidate.
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 120_000,
+      gcTime: 30 * 60_000,
+      refetchOnMount: false,
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,
     },

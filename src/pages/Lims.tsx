@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getAllowedSections } from "@/lib/auth";
@@ -42,6 +43,19 @@ const Lims = () => {
     ? activeTab
     : (visibleTabs[0]?.key ?? "register");
 
+  // Keep each visited tab mounted (hidden when inactive) so lists/UI state
+  // are not torn down and re-fetched on every tab switch.
+  const [mountedTabs, setMountedTabs] = useState<Set<string>>(() => new Set([safeTab]));
+
+  useEffect(() => {
+    setMountedTabs((prev) => {
+      if (prev.has(safeTab)) return prev;
+      const next = new Set(prev);
+      next.add(safeTab);
+      return next;
+    });
+  }, [safeTab]);
+
   if (visibleTabs.length === 0) {
     return (
       <div className="space-y-4 animate-fade-in">
@@ -63,13 +77,14 @@ const Lims = () => {
           ))}
         </TabsList>
         {visibleTabs.map((t) => {
+          if (!mountedTabs.has(t.key)) return null;
           const Comp = t.component;
           return (
             <TabsContent
               key={t.key}
               value={t.key}
-              forceMount={t.key === "settings" ? true : undefined}
-              className={t.key === "settings" ? "data-[state=inactive]:hidden" : undefined}
+              forceMount
+              className="data-[state=inactive]:hidden"
             >
               <Comp />
             </TabsContent>
