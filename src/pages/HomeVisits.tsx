@@ -20,6 +20,7 @@ import { Separator } from "@/components/ui/separator";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import EditHomeVisitDialog from "@/components/EditHomeVisitDialog";
+import CompleteHomeVisitDetailsDialog from "@/components/CompleteHomeVisitDetailsDialog";
 import AddHomeVisitDialog from "@/components/AddHomeVisitDialog";
 import AddPatientToVisitDialog from "@/components/AddPatientToVisitDialog";
 import PaymentDetailsDialog from "@/components/PaymentDetailsDialog";
@@ -916,28 +917,30 @@ const HomeVisits = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Completion-mode edit dialog (when mandatory fields missing) */}
-      <EditHomeVisitDialog
-        visit={completionEditVisit}
-        open={!!completionEditVisit}
-        onClose={() => setCompletionEditVisit(null)}
-        completionMode
-        onCompletionSave={async () => {
-          const visit = completionEditVisit;
-          const visitId = visit?.id;
-          setCompletionEditVisit(null);
-          // Start multi-patient session
-          await qc.refetchQueries({ queryKey: ["home_visits"] });
-          setMultiPatientSession({
-            primaryVisitId: visitId,
-            visitDate: visit?.visit_date || "",
-            visitTime: visit?.visit_time || "",
-            address: visit?.address || "",
-            phlebotomistId: visit?.phlebotomist_id || null,
-            allVisitIds: [visitId],
-          });
-        }}
-      />
+      {/* Completion form — registration-style; marks Completed + invoice (no LIMS register yet) */}
+      {(completionEditVisit || false) && (
+        <CompleteHomeVisitDetailsDialog
+          visit={completionEditVisit}
+          open={!!completionEditVisit}
+          onClose={() => setCompletionEditVisit(null)}
+          onCompleted={async () => {
+            const visit = completionEditVisit;
+            const visitId = visit?.id;
+            setCompletionEditVisit(null);
+            await qc.refetchQueries({ queryKey: ["home_visits"] });
+            if (!visitId) return;
+            setMultiPatientSession({
+              primaryVisitId: visitId,
+              visitDate: visit?.visit_date || "",
+              visitTime: visit?.visit_time || "",
+              address: visit?.address || "",
+              phlebotomistId: visit?.phlebotomist_id || null,
+              allVisitIds: [visitId],
+              primaryAlreadyCompleted: true,
+            } as any);
+          }}
+        />
+      )}
 
       {/* Multi-patient intermediate dialog */}
       <Dialog open={!!multiPatientSession && !addPatientDialogOpen} onOpenChange={(o) => { if (!o) { /* Don't allow closing without action */ } }}>
@@ -990,14 +993,22 @@ const HomeVisits = () => {
                 <UserPlus className="h-4 w-4" />Add Patient
               </Button>
               <Button className="flex-1" onClick={async () => {
-                // Proceed to payment for primary visit (consolidated)
                 await qc.refetchQueries({ queryKey: ["home_visits"] });
                 const allIds = multiPatientSession?.allVisitIds || [];
                 const primaryId = multiPatientSession?.primaryVisitId;
+                const primaryAlreadyCompleted = !!(multiPatientSession as any)?.primaryAlreadyCompleted;
+
+                // Primary was already completed + invoiced in Complete Missing Details.
+                // Extra patients stay Pending until each is marked Completed separately.
+                if (primaryAlreadyCompleted) {
+                  setMultiPatientSession(null);
+                  toast.success("Visit completed — pending patients can be completed from the list");
+                  return;
+                }
+
                 let primaryVisit: any = visits.find((v: any) => v.id === primaryId);
                 let allVisits: any[] = allIds.map(id => visits.find((v: any) => v.id === id)).filter(Boolean);
 
-                // Fallback: fetch directly from Supabase if not in cache (e.g., visit outside current date window)
                 if (!primaryVisit && primaryId) {
                   const { data } = await supabase.from("home_visits").select("*, estimates(*), phlebotomists(name)").eq("id", primaryId).maybeSingle();
                   if (data) primaryVisit = data;
@@ -1018,7 +1029,7 @@ const HomeVisits = () => {
                   toast.error("Could not load visit — please refresh and try again.");
                 }
               }}>
-                Proceed to Payment →
+                {(multiPatientSession as any)?.primaryAlreadyCompleted ? "Done" : "Proceed to Payment →"}
               </Button>
             </div>
           </div>

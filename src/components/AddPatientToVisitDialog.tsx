@@ -16,6 +16,9 @@ import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
 } from "@/components/ui/alert-dialog";
+import { findPatientMasterByMobile, type MasterPatientMatch } from "@/lib/findPatientUmr";
+import { PatientOnMobileDialog } from "@/components/lims/PatientOnMobileDialog";
+import { patientDisplayName } from "@/lib/patientDisplayName";
 
 interface EditTest {
   test_id: string;
@@ -49,7 +52,6 @@ const AddPatientToVisitDialog = ({ open, onClose, visitDate, visitTime, address,
   const [gender, setGender] = useState("");
   const [email, setEmail] = useState("");
   const [doctorName, setDoctorName] = useState("SELF");
-  const [umrInput, setUmrInput] = useState("");
   const [dob, setDob] = useState("");
   const [dobDisplay, setDobDisplay] = useState("");
   const [whatsappNumber, setWhatsappNumber] = useState("");
@@ -61,16 +63,59 @@ const AddPatientToVisitDialog = ({ open, onClose, visitDate, visitTime, address,
   const [genderConfirmOpen, setGenderConfirmOpen] = useState(false);
   const [pendingGender, setPendingGender] = useState<"Male" | "Female" | "">("");
   const [attempted, setAttempted] = useState(false);
+  type PatientChoice = { type: "existing"; umr: string; label: string } | { type: "new" } | null;
+  const [patientChoice, setPatientChoice] = useState<PatientChoice>(null);
+  const [masterMatches, setMasterMatches] = useState<MasterPatientMatch[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const choiceForMobileRef = useRef<{ mobile: string; choice: PatientChoice }>({ mobile: "", choice: null });
 
   // Reset form when dialog opens
   useEffect(() => {
     if (open) {
       setTitle(""); setPatientName(""); setGender(""); setEmail(""); setDoctorName("SELF");
-      setUmrInput(""); setDob(""); setDobDisplay(""); setWhatsappNumber("");
+      setDob(""); setDobDisplay(""); setWhatsappNumber("");
       setSelectedTests([]); setGlobalDiscountType("percent"); setGlobalDiscountValue(0);
       setTestSearch(""); setAttempted(false);
+      setPatientChoice(null);
+      setMasterMatches([]);
+      setPickerOpen(false);
+      choiceForMobileRef.current = { mobile: "", choice: null };
     }
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const digits = String(whatsappNumber || "").replace(/\D/g, "").slice(-10);
+    if (digits.length !== 10) {
+      setMasterMatches([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      try {
+        const rows = await findPatientMasterByMobile(digits);
+        if (cancelled) return;
+        setMasterMatches(rows);
+        const saved = choiceForMobileRef.current;
+        if (saved.mobile === digits && saved.choice) return;
+        if (rows.length === 0) {
+          const choice = { type: "new" as const };
+          setPatientChoice(choice);
+          choiceForMobileRef.current = { mobile: digits, choice };
+          return;
+        }
+        setPatientChoice(null);
+        choiceForMobileRef.current = { mobile: digits, choice: null };
+        setPickerOpen(true);
+      } catch (e: any) {
+        if (!cancelled) toast.error(e?.message || "Could not look up patients on this mobile");
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [open, whatsappNumber]);
 
   const handleTitleChange = (val: string) => {
     setTitle(val);
@@ -159,7 +204,10 @@ const AddPatientToVisitDialog = ({ open, onClose, visitDate, visitTime, address,
       if (!dob) throw new Error("Date of birth is required");
 
       const cleanNumber = whatsappNumber.replace(/\D/g, "").slice(-10);
-      const formattedUmr = umrInput ? `UMR${String(parseInt(umrInput) || 0).padStart(7, "0")}` : null;
+      if (masterMatches.length > 0 && !patientChoice) {
+        setPickerOpen(true);
+        throw new Error("Select which patient this visit is for");
+      }
 
       // Create estimate
       const { data: estData, error: estError } = await supabase.from("estimates").insert({
@@ -168,7 +216,7 @@ const AddPatientToVisitDialog = ({ open, onClose, visitDate, visitTime, address,
         gender: gender || null,
         email: email || null,
         doctor_name: doctorName ? doctorName.toUpperCase() : "SELF",
-        umr_number: formattedUmr,
+        umr_number: null,
         dob: dob || null,
         whatsapp_number: cleanNumber,
         total_amount: calculations.totalAmount,
@@ -204,7 +252,9 @@ const AddPatientToVisitDialog = ({ open, onClose, visitDate, visitTime, address,
         visit_time: visitTime,
         address: address,
         phlebotomist_id: phlebotomistId || null,
-      }).select("id").single();
+        linked_umr_number: patientChoice?.type === "existing" ? patientChoice.umr : null,
+        register_as_new_patient: patientChoice?.type === "new" || (!patientChoice && masterMatches.length === 0),
+      } as any).select("id").single();
       if (hvError) throw hvError;
 
       return hvData.id;
@@ -264,22 +314,33 @@ const AddPatientToVisitDialog = ({ open, onClose, visitDate, visitTime, address,
               </div>
               <div>
                 <Label className={attempted && (!whatsappNumber || whatsappNumber.replace(/\D/g, "").length < 10) ? "text-destructive" : ""}>WhatsApp Number *</Label>
-                <Input type="tel" value={whatsappNumber} onChange={(e) => setWhatsappNumber(e.target.value)} />
+                <Input
+                  type="tel"
+                  value={whatsappNumber}
+                  onChange={(e) => {
+                    choiceForMobileRef.current = { mobile: "", choice: null };
+                    setPatientChoice(null);
+                    setWhatsappNumber(e.target.value);
+                  }}
+                />
               </div>
             </div>
+            {patientChoice && (
+              <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs">
+                {patientChoice.type === "existing" ? (
+                  <>Existing patient · {patientChoice.label} · <span className="font-mono">{patientChoice.umr}</span></>
+                ) : (
+                  <>New patient on this mobile — UMR assigned when registered in LIMS</>
+                )}
+              </div>
+            )}
             <div>
               <Label>Email ID</Label>
               <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="patient@example.com" />
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label>Doctor's Name</Label>
-                <Input value={doctorName} onChange={(e) => setDoctorName(e.target.value.toUpperCase())} />
-              </div>
-              <div>
-                <Label>UMR Number</Label>
-                <Input value={umrInput} onChange={(e) => setUmrInput(e.target.value.replace(/\D/g, ""))} placeholder="e.g. 123 → UMR0000123" />
-              </div>
+            <div>
+              <Label>Doctor's Name</Label>
+              <Input value={doctorName} onChange={(e) => setDoctorName(e.target.value.toUpperCase())} />
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
@@ -394,6 +455,39 @@ const AddPatientToVisitDialog = ({ open, onClose, visitDate, visitTime, address,
           </div>
         </DialogContent>
       </Dialog>
+
+      <PatientOnMobileDialog
+        open={pickerOpen}
+        mobile={String(whatsappNumber || "").replace(/\D/g, "").slice(-10)}
+        matches={masterMatches}
+        onSelectExisting={(p) => {
+          const choice = { type: "existing" as const, umr: p.umr_id, label: patientDisplayName(p) };
+          setPatientChoice(choice);
+          choiceForMobileRef.current = {
+            mobile: String(whatsappNumber || "").replace(/\D/g, "").slice(-10),
+            choice,
+          };
+          if (p.title) setTitle(p.title);
+          if (p.patient_name) setPatientName(p.patient_name);
+          if (p.gender) setGender(p.gender);
+          if (p.date_of_birth) {
+            setDob(p.date_of_birth);
+            const d = new Date(p.date_of_birth);
+            setDobDisplay(isValid(d) ? format(d, "dd-MM-yyyy") : "");
+          }
+          if (p.email) setEmail(p.email);
+          setPickerOpen(false);
+        }}
+        onSelectNew={() => {
+          const choice = { type: "new" as const };
+          setPatientChoice(choice);
+          choiceForMobileRef.current = {
+            mobile: String(whatsappNumber || "").replace(/\D/g, "").slice(-10),
+            choice,
+          };
+          setPickerOpen(false);
+        }}
+      />
 
       <AlertDialog open={genderConfirmOpen} onOpenChange={setGenderConfirmOpen}>
         <AlertDialogContent>

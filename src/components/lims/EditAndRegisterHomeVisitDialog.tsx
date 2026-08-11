@@ -16,6 +16,7 @@ import { buildSampleTubeGroups } from "@/lib/sampleTubeGrouping";
 import { format, parse, isValid, differenceInYears } from "date-fns";
 import { getCurrentUserName } from "@/lib/auth";
 import { registerPatientAtomic } from "@/lib/registerPatientAtomic";
+import { homeVisitHasPatientChoice, umrForHomeVisitRegistration } from "@/lib/findPatientUmr";
 
 interface EditTest {
   test_id: string;
@@ -46,7 +47,6 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
   const [gender, setGender] = useState("");
   const [email, setEmail] = useState("");
   const [doctorName, setDoctorName] = useState("SELF");
-  const [umrInput, setUmrInput] = useState("");
   const [dob, setDob] = useState("");
   const [dobDisplay, setDobDisplay] = useState("");
   const [whatsappNumber, setWhatsappNumber] = useState("");
@@ -110,8 +110,6 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
     setGender(est.gender || "");
     setEmail(est.email || "");
     setDoctorName(est.doctor_name || "SELF");
-    const rawUmr = est.umr_number || "";
-    setUmrInput(rawUmr.startsWith("UMR") ? String(parseInt(rawUmr.slice(3)) || "") : rawUmr);
     setDob(est.dob || "");
     setDobDisplay(dobToDisplay(est.dob || ""));
     setWhatsappNumber(est.whatsapp_number || "");
@@ -241,7 +239,6 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
       if (!address.trim()) throw new Error("Address is required");
 
       const cleanNumber = whatsappNumber.replace(/\D/g, "").slice(-10);
-      const formattedUmr = umrInput ? `UMR${String(parseInt(umrInput) || 0).padStart(7, "0")}` : null;
 
       // Update estimate
       await supabase.from("estimates").update({
@@ -250,7 +247,7 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
         gender: gender || null,
         email: email || null,
         doctor_name: doctorName ? doctorName.toUpperCase() : "SELF",
-        umr_number: formattedUmr,
+        umr_number: null,
         dob: dob || null,
         whatsapp_number: cleanNumber,
         total_amount: calculations.totalAmount,
@@ -289,9 +286,11 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
       // Payment mode string for home_visits table
       const paymentModeStr = payments.map(p => `${p.mode}: ₹${p.amount}`).join(", ");
 
-      // Invoice + new-patient UMR allocated inside register_patient_atomic.
-      // Manual/existing UMR (formattedUmr) is kept; blank → server assigns.
-      const umrNumber = formattedUmr || null;
+      // Invoice + new-patient UMR allocated inside register_patient_atomic at save time.
+      if (!homeVisitHasPatientChoice(visit)) {
+        throw new Error("Select the patient (or Add new patient) from Complete Missing Details first");
+      }
+      const umrNumber = umrForHomeVisitRegistration(visit);
 
       const stampedBy = getCurrentUserName();
       if (!stampedBy) throw new Error("Please sign in again before saving the registration");
@@ -330,6 +329,8 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
           global_discount_type: globalDiscountValue > 0 ? globalDiscountType : null,
           global_discount_value: globalDiscountValue,
           registered_by: stampedBy,
+          is_stat: !!visit.is_stat,
+          report_language: visit.report_language || "English",
         },
         tubes: tubeGroups,
         payment: {
@@ -427,15 +428,9 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <Label>Doctor</Label>
-              <Input value={doctorName} onChange={e => setDoctorName(e.target.value.toUpperCase())} />
-            </div>
-            <div>
-              <Label>UMR Number</Label>
-              <Input value={umrInput} onChange={e => setUmrInput(e.target.value.replace(/\D/g, ""))} placeholder="e.g. 123 → UMR0000123" />
-            </div>
+          <div>
+            <Label>Doctor</Label>
+            <Input value={doctorName} onChange={e => setDoctorName(e.target.value.toUpperCase())} />
           </div>
 
           <div>

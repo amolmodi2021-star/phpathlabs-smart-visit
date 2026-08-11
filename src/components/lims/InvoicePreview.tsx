@@ -18,6 +18,8 @@ interface InvoicePreviewProps {
   onClose: () => void;
   /** After registration: auto-enqueue invoice to WhatsApp Console outbox once. */
   autoQueueWhatsApp?: boolean;
+  /** Hide Print (e.g. home-visit completion receipt — WhatsApp only). */
+  hidePrint?: boolean;
 }
 
 const SETTING_KEYS = [
@@ -112,7 +114,7 @@ const numberToWords = (num: number): string => {
   return convert(Math.floor(Math.abs(num)));
 };
 
-const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false }: InvoicePreviewProps) => {
+const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePrint = false }: InvoicePreviewProps) => {
   const receiptRef = useRef<HTMLDivElement>(null);
   const barcodeRef = useRef<HTMLCanvasElement>(null);
   const queuedInvoiceRef = useRef<string | null>(null);
@@ -684,9 +686,11 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false }: Invo
         </div>
 
         <div className="flex gap-2 mt-2">
-          <Button className="flex-1" variant="outline" onClick={handlePrint}>
-            <Printer className="h-4 w-4 mr-2" />Print
-          </Button>
+          {!hidePrint && (
+            <Button className="flex-1" variant="outline" onClick={handlePrint}>
+              <Printer className="h-4 w-4 mr-2" />Print
+            </Button>
+          )}
           {!isPickupInvoice(data) && (
             <Button
               className="flex-1"

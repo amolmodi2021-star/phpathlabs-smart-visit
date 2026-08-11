@@ -48,7 +48,7 @@ const CompletedHomeVisits = () => {
       const to = from + PAGE_SIZE - 1;
       let query = supabase
         .from("home_visits")
-        .select("*, estimates!inner(*)", { count: "exact" })
+        .select("*, estimates!inner(*), phlebotomists(name)", { count: "exact" })
         .in("status", ["Completed", "Registered"])
         .order("visit_date", { ascending: false })
         .range(from, to);
@@ -178,6 +178,8 @@ const CompletedHomeVisits = () => {
           global_discount_type: e.global_discount_type || null,
           global_discount_value: Number(e.global_discount_value || 0),
           registered_by: stampedBy,
+          is_stat: !!visit.is_stat,
+          report_language: visit.report_language || "English",
         },
         tubes: tubeGroups,
         payment: {
@@ -233,6 +235,7 @@ const CompletedHomeVisits = () => {
               <TableHead>Patient</TableHead>
               <TableHead>Mobile</TableHead>
               <TableHead>Visit Date</TableHead>
+              <TableHead>Phlebo</TableHead>
               <TableHead>Address</TableHead>
               <TableHead className="text-right">Amount</TableHead>
               <TableHead>Status</TableHead>
@@ -241,9 +244,9 @@ const CompletedHomeVisits = () => {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
             ) : completedVisits.length === 0 ? (
-              <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No completed home visits found</TableCell></TableRow>
+              <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No completed home visits found</TableCell></TableRow>
             ) : completedVisits.map((v: any) => {
               const e = v.estimates;
               const isRegistered = (registeredIds as Set<string>).has(v.id) || v.status === "Registered";
@@ -264,6 +267,7 @@ const CompletedHomeVisits = () => {
                     </TableCell>
                     <TableCell className="text-sm">{e?.whatsapp_number}</TableCell>
                     <TableCell className="text-xs">{v.visit_date ? format(new Date(v.visit_date), "dd-MM-yyyy") : "—"}</TableCell>
+                    <TableCell className="text-xs font-medium">{v.phlebotomists?.name || "—"}</TableCell>
                     <TableCell className="text-xs max-w-[200px] truncate">{v.address || "—"}</TableCell>
                     <TableCell className="text-right">
                       <div className="text-sm font-medium">₹{e?.final_amount}</div>
