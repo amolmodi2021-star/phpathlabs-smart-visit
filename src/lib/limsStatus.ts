@@ -88,9 +88,20 @@ export async function recalculateRegistrationStatus(registrationId: string): Pro
     if (!trackedTestIds.has(id)) hasUntrackedAcceptedTest = true;
   });
 
-  // Downstream statuses (results + relevant snip statuses) — ignore cancelled tests
+  // Downstream statuses — only rows whose test_id is on a sample tube for this
+  // registration. Orphan pending rows under leftover/standalone test_ids (e.g.
+  // S.ALBUMIN while the tube carries LFT) must not keep the visit stuck in
+  // partial_processing after Save & Verify.
+  const tubeTestIds = new Set<string>();
+  t.forEach((tube: any) => {
+    (Array.isArray(tube.test_ids) ? tube.test_ids : []).forEach((id: string) => {
+      if (id && !cancelledTestIds.has(id)) tubeTestIds.add(id);
+    });
+  });
   const downstream = [
-    ...r.filter((x: any) => x.test_id && !cancelledTestIds.has(x.test_id)).map((x: any) => x.status),
+    ...r
+      .filter((x: any) => x.test_id && tubeTestIds.has(x.test_id) && !cancelledTestIds.has(x.test_id))
+      .map((x: any) => x.status),
     ...s
       .filter((x: any) => x.test_id && !cancelledTestIds.has(x.test_id))
       .map((x: any) => x.outsource_status)
@@ -131,7 +142,7 @@ export async function recalculateRegistrationStatus(registrationId: string): Pro
     newStatus = "processed";
   } else if (downstream.some((st: string) => ["entered", "results_entered"].includes(st))) {
     newStatus = "partial_processing";
-  } else if (r.some((x: any) => x.test_id && !cancelledTestIds.has(x.test_id) && x.result_value && x.result_value.trim() !== "")) {
+  } else if (r.some((x: any) => x.test_id && tubeTestIds.has(x.test_id) && !cancelledTestIds.has(x.test_id) && x.result_value && x.result_value.trim() !== "")) {
     newStatus = "processing";
   } else {
     // Check tube statuses only

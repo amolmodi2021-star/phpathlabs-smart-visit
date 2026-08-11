@@ -27,6 +27,7 @@ import { checkDifferentialSum } from "@/lib/differentialCount";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import { signalSync } from "@/lib/limsSyncSignal";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
+import { findPatientResultRow, isResultPastPending } from "@/lib/patientResultLookup";
 import { fetchResultsEntryCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPendingCandidates";
 import { shortIdsKey } from "@/lib/queryKeys";
 import SyncingOverlay from "./SyncingOverlay";
@@ -620,14 +621,12 @@ const ResultsEntry = () => {
           const p = tp.report_test_parameters;
           if (!p) continue;
           const isParamOutsourced = isFullTestOutsourced || (paramOutsourcedSet && paramOutsourcedSet.has(p.id));
-          const existing = existingResults.find(
-            (r: any) => r.registration_id === reg.id && r.parameter_id === p.id
-          );
+          const existing = findPatientResultRow(existingResults, reg.id, t.test_id, p.id);
           testParamResults.push({ param: p, tp, isParamOutsourced, existing });
         }
         
-        // Skip this test entirely if ALL its parameters have status 'entered' (already sent to verification)
-        if (testParamResults.length > 0 && testParamResults.every(({ existing }) => existing?.status === "entered")) {
+        // Skip this test entirely if ALL its parameters have already left Results Entry
+        if (testParamResults.length > 0 && testParamResults.every(({ existing }) => isResultPastPending(existing?.status))) {
           continue;
         }
 
@@ -805,11 +804,30 @@ const ResultsEntry = () => {
     }
   };
 
+  // Tracks tests currently being Save & Verified so a debounced auto-save cannot
+  // overwrite their freshly-written `entered` rows back to `pending`.
+  const saveInFlightRef = useRef<Set<string>>(new Set());
+
+  const clearAutoSaveTimer = (regId: string, testId: string) => {
+    const key = `${regId}||${testId}`;
+    if (autoSaveTimers.current[key]) {
+      clearTimeout(autoSaveTimers.current[key]);
+      delete autoSaveTimers.current[key];
+    }
+  };
+
   // ─── Auto-save (saves with status "pending", does NOT transfer) ───
   const autoSaveTest = async (regId: string, testId: string, entry: PatientEntry, currentEdits: Record<string, string>) => {
+    const saveKey = `${regId}||${testId}`;
+    if (saveInFlightRef.current.has(saveKey)) return;
+
     const testParams = entry.parameters.filter(p => p.testId === testId);
+    // Never downgrade parameters that already left Results Entry
+    const unlockedParams = testParams.filter((p) => !isResultPastPending(p.status));
+    if (unlockedParams.length === 0) return;
+
     const upserts: any[] = [];
-    for (const p of testParams) {
+    for (const p of unlockedParams) {
       const key = `${regId}||${p.parameterId}`;
       const value = currentEdits[key] !== undefined ? currentEdits[key] : p.resultValue;
       const autoFlag = calculateFlag(value, p.normalRangeLow, p.normalRangeHigh, p.rangeType, p.expectedValue, p.descriptiveOptions, p.normalRangeText, p.unit, p.normalFindings);
@@ -840,19 +858,33 @@ const ResultsEntry = () => {
     }
     if (upserts.length === 0) return;
     try {
-      // PARTIAL-SAFE: only replace the exact parameter rows we are about to write.
-      // Never wipe the whole test — sibling parameters (e.g. T3/T4 when saving TSH)
-      // could be in `entered`/`verified` state and must be preserved.
+      // Re-check in-flight / DB status right before write (race with Save & Verify)
+      if (saveInFlightRef.current.has(saveKey)) return;
       const paramIdsToReplace = upserts.map((u) => u.parameter_id);
-      if (paramIdsToReplace.length > 0) {
-        await supabase
-          .from("patient_results")
-          .delete()
-          .eq("registration_id", regId)
-          .eq("test_id", testId)
-          .in("parameter_id", paramIdsToReplace);
-      }
-      await supabase.from("patient_results").insert(upserts as any);
+      const { data: liveRows } = await supabase
+        .from("patient_results")
+        .select("parameter_id, status")
+        .eq("registration_id", regId)
+        .eq("test_id", testId)
+        .in("parameter_id", paramIdsToReplace);
+      const lockedIds = new Set(
+        (liveRows || [])
+          .filter((r: any) => isResultPastPending(r.status))
+          .map((r: any) => r.parameter_id),
+      );
+      const safeUpserts = upserts.filter((u) => !lockedIds.has(u.parameter_id));
+      if (safeUpserts.length === 0) return;
+      const safeIds = safeUpserts.map((u) => u.parameter_id);
+      // PARTIAL-SAFE: only replace still-pending parameter rows for THIS test_id.
+      await supabase
+        .from("patient_results")
+        .delete()
+        .eq("registration_id", regId)
+        .eq("test_id", testId)
+        .in("parameter_id", safeIds)
+        .eq("status", "pending");
+      if (saveInFlightRef.current.has(saveKey)) return;
+      await supabase.from("patient_results").insert(safeUpserts as any);
     } catch {
       // silent auto-save failure
     }
@@ -1011,6 +1043,20 @@ const ResultsEntry = () => {
       const { error } = await supabase.from("patient_results").insert(upserts as any);
       if (error) throw error;
 
+      // Drop leftover pending rows for the same parameters under OTHER test_ids
+      // (e.g. standalone S.ALBUMIN pending while LFT Albumin was just entered).
+      // Those orphans make Results Entry look up the wrong status when matching
+      // by parameter_id alone, and pollute registration status recalc.
+      if (paramIdsToReplace.length > 0) {
+        await supabase
+          .from("patient_results")
+          .delete()
+          .eq("registration_id", reg.id)
+          .in("parameter_id", paramIdsToReplace)
+          .eq("status", "pending")
+          .neq("test_id", testId);
+      }
+
       // Post-condition self-check: confirm every param we just saved persisted
       // with status='entered', and confirm no sibling rows for this test were
       // inadvertently lost. If anything looks wrong, surface a real error
@@ -1033,6 +1079,7 @@ const ResultsEntry = () => {
     onSuccess: async (_, { entry, testId }) => {
       const testName = entry.parameters.find(p => p.testId === testId)?.testName || entry.snipOnlyTests.find(s => s.testId === testId)?.testName || "Test";
       const regId = entry.registration.id;
+      saveInFlightRef.current.delete(`${regId}||${testId}`);
       setEditedValues(prev => {
         const next = { ...prev };
         entry.parameters.filter(p => p.testId === testId).forEach(p => {
@@ -1047,8 +1094,9 @@ const ResultsEntry = () => {
       await propagateRegistrationChange(qc, regId, ["results", "verification"]);
       toast.success(`${testName} saved & sent to verification`);
     },
-    onError: (err: any) => {
+    onError: (err: any, vars) => {
       toast.error(err.message || "Failed to save results");
+      if (vars) saveInFlightRef.current.delete(`${vars.entry.registration.id}||${vars.testId}`);
       setSavingTestKey(null);
     },
   });
@@ -1058,11 +1106,17 @@ const ResultsEntry = () => {
     const reg = entry.registration;
     const testParams = entry.parameters.filter(p => p.testId === testId);
 
+    const startSave = () => {
+      clearAutoSaveTimer(reg.id, testId);
+      saveInFlightRef.current.add(`${reg.id}||${testId}`);
+      setSavingTestKey(`${reg.id}||${testId}`);
+      saveMutation.mutate({ entry, testId });
+    };
+
     // Snip-only test — no params to check for blanks, just save directly
     const isSnipOnly = entry.snipOnlyTests.some(s => s.testId === testId);
     if (isSnipOnly || testParams.length === 0) {
-      setSavingTestKey(`${reg.id}||${testId}`);
-      saveMutation.mutate({ entry, testId });
+      startSave();
       return;
     }
 
@@ -1092,8 +1146,7 @@ const ResultsEntry = () => {
         setDiffConfirm({ entry, testId, testName, sum: issue.sum, diff: issue.diff });
         return;
       }
-      setSavingTestKey(`${reg.id}||${testId}`);
-      saveMutation.mutate({ entry, testId });
+      startSave();
     }
   };
 
@@ -2085,6 +2138,8 @@ const ResultsEntry = () => {
                   setDiffConfirm({ entry, testId, testName, sum: issue.sum, diff: issue.diff });
                   return;
                 }
+                clearAutoSaveTimer(entry.registration.id, testId);
+                saveInFlightRef.current.add(`${entry.registration.id}||${testId}`);
                 setSavingTestKey(`${entry.registration.id}||${testId}`);
                 saveMutation.mutate({ entry, testId });
               }
@@ -2123,6 +2178,8 @@ const ResultsEntry = () => {
               if (diffConfirm) {
                 const { entry, testId } = diffConfirm;
                 setDiffConfirm(null);
+                clearAutoSaveTimer(entry.registration.id, testId);
+                saveInFlightRef.current.add(`${entry.registration.id}||${testId}`);
                 setSavingTestKey(`${entry.registration.id}||${testId}`);
                 saveMutation.mutate({ entry, testId });
               }

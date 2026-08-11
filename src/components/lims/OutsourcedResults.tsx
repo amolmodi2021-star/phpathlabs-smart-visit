@@ -23,6 +23,7 @@ import SnipOnLetterhead from "./SnipOnLetterhead";
 import { useMasterLookup } from "@/hooks/useMasterLookup";
 
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
+import { findPatientResultRow } from "@/lib/patientResultLookup";
 import { formatAgeGender } from "@/lib/ageGender";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 import { getCurrentUserName } from "@/lib/auth";
@@ -404,7 +405,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     if (relevantParams.length === 0) return false;
     return relevantParams.every((tp: any) => {
       const p = tp.report_test_parameters;
-      const existing = existingResults.find((r: any) => r.registration_id === regId && r.parameter_id === p.id);
+      const existing = findPatientResultRow(existingResults, regId, testId, p.id);
       return existing?.result_value && existing.result_value.trim() !== "";
     });
   };
@@ -1043,9 +1044,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                           return null;
                         }
                         const valKey = `${regId}||${p.id}`;
-                        const existing = existingResults.find(
-                          (r: any) => r.registration_id === regId && r.parameter_id === p.id
-                        );
+                        const existing = findPatientResultRow(existingResults, regId, testId, p.id);
                         // Hide ONLY when this row is already finalised downstream
                         // (verified / approved / dispatched). For pending/entered rows
                         // — including those pushed back from Verification — keep the
