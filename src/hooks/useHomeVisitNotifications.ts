@@ -2,8 +2,10 @@ import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-export function useHomeVisitNotifications() {
+export function useHomeVisitNotifications(enabled = true) {
   useEffect(() => {
+    if (!enabled) return;
+
     // Request notification permission on mount
     if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission();
@@ -45,5 +47,5 @@ export function useHomeVisitNotifications() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [enabled]);
 }

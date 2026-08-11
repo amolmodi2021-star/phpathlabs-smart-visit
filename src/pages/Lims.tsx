@@ -1,21 +1,23 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getAllowedSections } from "@/lib/auth";
-import PatientRegistration from "@/components/lims/PatientRegistration";
-import RegisteredPatients from "@/components/lims/RegisteredPatients";
-import CompletedHomeVisits from "@/components/lims/CompletedHomeVisits";
-import DuePayments from "@/components/lims/DuePayments";
-import BadDebts from "@/components/lims/BadDebts";
-import SampleCollection from "@/components/lims/SampleCollection";
-import SampleAcceptance from "@/components/lims/SampleAcceptance";
-import ResultsEntry from "@/components/lims/ResultsEntry";
-import ResultVerification from "@/components/lims/ResultVerification";
-import DoctorApproval from "@/components/lims/DoctorApproval";
-import Dispatch from "@/components/lims/Dispatch";
-import LimsSettings from "@/components/lims/LimsSettings";
-import DailyReport from "@/components/lims/DailyReport";
-import Billing from "@/components/lims/Billing";
+import { Loader2 } from "lucide-react";
+
+const PatientRegistration = lazy(() => import("@/components/lims/PatientRegistration"));
+const RegisteredPatients = lazy(() => import("@/components/lims/RegisteredPatients"));
+const CompletedHomeVisits = lazy(() => import("@/components/lims/CompletedHomeVisits"));
+const DuePayments = lazy(() => import("@/components/lims/DuePayments"));
+const BadDebts = lazy(() => import("@/components/lims/BadDebts"));
+const SampleCollection = lazy(() => import("@/components/lims/SampleCollection"));
+const SampleAcceptance = lazy(() => import("@/components/lims/SampleAcceptance"));
+const ResultsEntry = lazy(() => import("@/components/lims/ResultsEntry"));
+const ResultVerification = lazy(() => import("@/components/lims/ResultVerification"));
+const DoctorApproval = lazy(() => import("@/components/lims/DoctorApproval"));
+const Dispatch = lazy(() => import("@/components/lims/Dispatch"));
+const LimsSettings = lazy(() => import("@/components/lims/LimsSettings"));
+const DailyReport = lazy(() => import("@/components/lims/DailyReport"));
+const Billing = lazy(() => import("@/components/lims/Billing"));
 
 const allLimsTabs = [
   { key: "register", label: "New Registration", component: PatientRegistration },
@@ -34,6 +36,13 @@ const allLimsTabs = [
   { key: "settings", label: "Settings", component: LimsSettings },
 ];
 
+const TabFallback = () => (
+  <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
+    <Loader2 className="h-4 w-4 animate-spin" />
+    Loading…
+  </div>
+);
+
 const Lims = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const allowed = getAllowedSections("/lims");
@@ -43,18 +52,10 @@ const Lims = () => {
     ? activeTab
     : (visibleTabs[0]?.key ?? "register");
 
-  // Keep each visited tab mounted (hidden when inactive) so lists/UI state
-  // are not torn down and re-fetched on every tab switch.
-  const [mountedTabs, setMountedTabs] = useState<Set<string>>(() => new Set([safeTab]));
-
-  useEffect(() => {
-    setMountedTabs((prev) => {
-      if (prev.has(safeTab)) return prev;
-      const next = new Set(prev);
-      next.add(safeTab);
-      return next;
-    });
-  }, [safeTab]);
+  const ActiveComp = useMemo(
+    () => visibleTabs.find((t) => t.key === safeTab)?.component ?? null,
+    [visibleTabs, safeTab],
+  );
 
   if (visibleTabs.length === 0) {
     return (
@@ -76,20 +77,12 @@ const Lims = () => {
             </TabsTrigger>
           ))}
         </TabsList>
-        {visibleTabs.map((t) => {
-          if (!mountedTabs.has(t.key)) return null;
-          const Comp = t.component;
-          return (
-            <TabsContent
-              key={t.key}
-              value={t.key}
-              forceMount
-              className="data-[state=inactive]:hidden"
-            >
-              <Comp />
-            </TabsContent>
-          );
-        })}
+        {/* Mount only the active tab — no background loads for other LIMS tabs. */}
+        <TabsContent value={safeTab} className="mt-3">
+          <Suspense fallback={<TabFallback />}>
+            {ActiveComp ? <ActiveComp /> : null}
+          </Suspense>
+        </TabsContent>
       </Tabs>
     </div>
   );

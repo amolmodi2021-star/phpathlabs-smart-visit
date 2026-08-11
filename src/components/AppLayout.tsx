@@ -106,8 +106,9 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const isMobile = useIsMobile();
-  useHomeVisitNotifications();
-
+  const onHomeVisits = location.pathname === "/home-visits";
+  // Only subscribe when Home Visits is open — not on every login / other modules.
+  useHomeVisitNotifications(onHomeVisits);
   // Refresh permissions on mount, route change, and window focus
   useEffect(() => {
     refreshCurrentUserPermissions();

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -59,39 +59,16 @@ function TabGate({ route, children }: { route: string; children?: React.ReactNod
 }
 
 /**
- * Single authenticated layout so navigating between sidebar modules does not
- * remount AppLayout. LIMS stays mounted (hidden) after first visit so its
- * inner tabs and form drafts are not torn down.
+ * Single authenticated layout so the chrome (nav) is shared.
+ * Page modules mount only via <Outlet /> when their route is opened —
+ * nothing is kept alive / fetched in the background for unopened tabs.
  */
 function AuthenticatedShell() {
   if (!isAuthenticated()) return <Navigate to="/login" replace />;
   return (
     <AppLayout>
-      <KeepAliveOutlet />
+      <Outlet />
     </AppLayout>
-  );
-}
-
-function KeepAliveOutlet() {
-  const location = useLocation();
-  const onLims = location.pathname === "/lims";
-  const [limsMounted, setLimsMounted] = useState(
-    () => typeof window !== "undefined" && window.location.pathname === "/lims" && isTabAllowed("/lims"),
-  );
-
-  useEffect(() => {
-    if (onLims && isTabAllowed("/lims")) setLimsMounted(true);
-  }, [onLims]);
-
-  return (
-    <>
-      {limsMounted && (
-        <div className={onLims ? undefined : "hidden"} aria-hidden={!onLims}>
-          <Lims />
-        </div>
-      )}
-      {!onLims && <Outlet />}
-    </>
   );
 }
 
@@ -180,8 +157,7 @@ const App = () => (
             <Route path="/phlebo-dashboard" element={<TabGate route="/phlebo-dashboard"><PhleboDashboard /></TabGate>} />
             <Route path="/loyalty-cards" element={<TabGate route="/loyalty-cards"><LoyaltyCards /></TabGate>} />
             <Route path="/marketing" element={<TabGate route="/marketing"><Marketing /></TabGate>} />
-            {/* LIMS is keep-alive hosted by KeepAliveOutlet — route only gates permission. */}
-            <Route path="/lims" element={<TabGate route="/lims" />} />
+            <Route path="/lims" element={<TabGate route="/lims"><Lims /></TabGate>} />
             <Route path="/lims-demo" element={<TabGate route="/lims-demo"><LimsDemo /></TabGate>} />
             <Route path="/whatsapp-webhook" element={<TabGate route="/whatsapp-webhook"><WhatsAppWebhook /></TabGate>} />
             <Route path="/whatsapp-settings" element={<TabGate route="/whatsapp-settings"><WhatsAppSettingsPage /></TabGate>} />
