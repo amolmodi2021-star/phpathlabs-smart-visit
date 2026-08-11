@@ -37,7 +37,7 @@ import { shortIdsKey } from "@/lib/queryKeys";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import NewBadge from "./NewBadge";
 import { openReportForManualWhatsApp, queueApprovedReportWhatsApp } from "@/lib/dispatchReportWhatsApp";
-import { dismissFailedWhatsAppConsoleJobs } from "@/lib/whatsappConsoleBridge";
+import { dismissFailedWhatsAppConsoleJobs, dismissAllFailedWhatsAppConsoleJobs } from "@/lib/whatsappConsoleBridge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -525,6 +525,11 @@ const Dispatch = () => {
         await supabase.from("patient_registrations").update({ status: "dispatched" } as any).eq("id", reg.id);
       }
       await propagateRegistrationChange(qc, reg.id, ["dispatch", "doctor_approval"]);
+      const failed = failedWaByRegId.get(reg.id) || [];
+      if (failed.length) {
+        await dismissFailedWhatsAppConsoleJobs(failed.map((j: any) => j.id));
+        await qc.invalidateQueries({ queryKey: ["dispatch_failed_wa_outbox"] });
+      }
       toast.success(`Dispatched & queued WhatsApp for ${patientDisplayName(reg)}`, {
         description: `Report PDF sending to ${phone} via WhatsApp Console`,
       });
@@ -567,6 +572,12 @@ const Dispatch = () => {
       });
       if (!queued.ok) {
         throw new Error(queued.error || "Failed to queue report WhatsApp");
+      }
+      // Re-send queued successfully — drop prior failure badges for this bill
+      const failed = failedWaByRegId.get(reg.id) || [];
+      if (failed.length) {
+        await dismissFailedWhatsAppConsoleJobs(failed.map((j: any) => j.id));
+        await qc.invalidateQueries({ queryKey: ["dispatch_failed_wa_outbox"] });
       }
       toast.success(`Report queued for WhatsApp — ${patientDisplayName(reg)}`, {
         description: `Sending to ${phone} via WhatsApp Console`,
@@ -671,6 +682,20 @@ const Dispatch = () => {
     }
   };
 
+  const clearAllFailedWaBadges = async () => {
+    setActionKey("clear_failed_wa");
+    try {
+      const res = await dismissAllFailedWhatsAppConsoleJobs("cleared_all_failed_badges");
+      if (!res.ok) throw new Error(res.error || "Clear failed");
+      await qc.invalidateQueries({ queryKey: ["dispatch_failed_wa_outbox"] });
+      toast.success(res.cleared ? `Cleared ${res.cleared} failed WhatsApp badge${res.cleared === 1 ? "" : "s"}` : "No failed WhatsApp badges to clear");
+    } catch (err: any) {
+      toast.error(err.message || "Could not clear failed badges");
+    } finally {
+      setActionKey(null);
+    }
+  };
+
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return "—";
     try { return format(new Date(dateStr), "dd MMM yyyy, hh:mm a"); } catch { return dateStr; }
@@ -747,6 +772,19 @@ const Dispatch = () => {
               Show older than date range
             </Label>
           </div>
+        )}
+        {failedWaJobs.length > 0 && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs text-destructive border-destructive/40"
+            disabled={actionKey === "clear_failed_wa"}
+            onClick={() => void clearAllFailedWaBadges()}
+          >
+            {actionKey === "clear_failed_wa" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            Clear failed badges
+          </Button>
         )}
         <RefreshButton
           queryKeys={["dispatch_filtered_ids", "dispatch_regs", "dispatch_regs_count", "dispatch_all_results", "dispatch_all_tubes", "dispatch_all_snips", "dispatch_held_reports", "results_tests_map", "dispatch_credit_pickup_points", "dispatch_failed_wa_outbox"]}

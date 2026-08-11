@@ -75,6 +75,28 @@ export async function dismissFailedWhatsAppConsoleJobs(
   return { ok: true };
 }
 
+/** Clear every failed WhatsApp Console outbox row (removes Dispatch failure badges). */
+export async function dismissAllFailedWhatsAppConsoleJobs(
+  reason = "cleared_by_staff",
+): Promise<{ ok: boolean; cleared: number; error?: string }> {
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("whatsapp_console_outbox" as any)
+    .update({
+      status: "cancelled",
+      last_error: reason,
+      media_url: null,
+      next_retry_at: null,
+      claimed_at: null,
+      claimed_by: null,
+      updated_at: now,
+    } as any)
+    .eq("status", "failed")
+    .select("id");
+  if (error) return { ok: false, cleared: 0, error: error.message };
+  return { ok: true, cleared: (data || []).length };
+}
+
 /** Upload invoice JPEG and enqueue for Console delivery. */
 export async function enqueueInvoiceForWhatsAppConsole(opts: {
   phone: string;
