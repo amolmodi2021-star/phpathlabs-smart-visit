@@ -32,7 +32,7 @@ import { cn } from "@/lib/utils";
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 import { fetchAllByIds } from "@/lib/fetchAllRows";
 import { PATIENT_RESULTS_SELECT_DISPATCH } from "@/lib/patientResultsSelect";
-import { fetchDispatchPendingDispatchIds } from "@/lib/limsPendingCandidates";
+import { fetchDispatchStatusIds, fetchDispatchPendingDispatchIds } from "@/lib/limsPendingCandidates";
 import { shortIdsKey } from "@/lib/queryKeys";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import NewBadge from "./NewBadge";
@@ -87,6 +87,8 @@ const Dispatch = () => {
   const qc = useQueryClient();
   useLimsPipelineRealtime("dispatch");
   const [search, setSearch] = useState("");
+  /** Current = full status board (includes blue). Pending = approved undispached only (no blue). */
+  const [listMode, setListMode] = useState<"current" | "pending_dispatch">("current");
   const [includeOlderPending, setIncludeOlderPending] = useState(false);
   const [dateFrom, setDateFrom] = useState<Date>(startOfDay(subDays(new Date(), 7)));
   const [dateTo, setDateTo] = useState<Date>(endOfDay(new Date()));
@@ -107,22 +109,28 @@ const Dispatch = () => {
   useEffect(() => {
     setVisibleLimit(DISPATCH_INITIAL);
     setSelectedPatientId(null);
-  }, [debouncedSearch, dateFrom, dateTo, includeOlderPending]);
+  }, [debouncedSearch, dateFrom, dateTo, includeOlderPending, listMode]);
 
   const { data: filteredDispatchIds = [] as string[], isLoading: loadingIds } = useQuery({
     queryKey: [
       "dispatch_filtered_ids",
-      "pending",
+      listMode,
       debouncedSearch,
       dateFrom.toISOString(),
       dateTo.toISOString(),
-      includeOlderPending,
+      listMode === "pending_dispatch" ? includeOlderPending : false,
     ],
     queryFn: async (): Promise<string[]> => {
-      return await fetchDispatchPendingDispatchIds(debouncedSearch, {
+      if (listMode === "pending_dispatch") {
+        return await fetchDispatchPendingDispatchIds(debouncedSearch, {
+          dateFromIso: dateFrom.toISOString(),
+          dateToIso: dateTo.toISOString(),
+          includeOlder: includeOlderPending,
+        });
+      }
+      return await fetchDispatchStatusIds(debouncedSearch, {
         dateFromIso: dateFrom.toISOString(),
         dateToIso: dateTo.toISOString(),
-        includeOlder: includeOlderPending,
       });
     },
     placeholderData: keepPreviousData,
@@ -434,11 +442,14 @@ const Dispatch = () => {
     }).filter(Boolean) as DispatchEntry[];
   }, [registrations, allResults, allSnips, allTubes, testsMap]);
 
-  // Pending Dispatch queue: never show fully dispatched (blue-dot) patients
+  // Current: show everyone including fully dispatched (blue).
+  // Pending Dispatch filter: hide blue-dot patients; only approved-undispatched work.
   const sortedDispatchEntries = useMemo(() => {
-    return [...dispatchEntries]
-      .filter((e) => e.completionStatus !== "all_dispatched" && e.approvedCount > 0)
-      .sort((a, b) => {
+    const rows =
+      listMode === "pending_dispatch"
+        ? dispatchEntries.filter((e) => e.completionStatus !== "all_dispatched" && e.approvedCount > 0)
+        : dispatchEntries;
+    return [...rows].sort((a, b) => {
       const aCancelled = a.completionStatus === "cancelled" ? 1 : 0;
       const bCancelled = b.completionStatus === "cancelled" ? 1 : 0;
       if (aCancelled !== bCancelled) return aCancelled - bCancelled;
@@ -447,7 +458,7 @@ const Dispatch = () => {
       if (bActivestat !== aActivestat) return bActivestat - aActivestat;
       return String(b.registration.invoice_number || "").localeCompare(String(a.registration.invoice_number || ""));
     });
-  }, [dispatchEntries]);
+  }, [dispatchEntries, listMode]);
 
   // ─── NEW arrivals badge tracker ───
   const dispatchRegIds = useMemo(() => sortedDispatchEntries.map(e => e.registration.id), [sortedDispatchEntries]);
@@ -705,30 +716,53 @@ const Dispatch = () => {
           </PopoverContent>
         </Popover>
         <Button variant="ghost" size="sm" className="text-xs" onClick={() => { setDateFrom(startOfDay(new Date())); setDateTo(endOfDay(new Date())); }}>Today</Button>
-        <div className="flex items-center gap-2 rounded-md border px-2.5 py-1.5">
-          <Switch
-            id="dispatch-include-older"
-            checked={includeOlderPending}
-            onCheckedChange={setIncludeOlderPending}
-          />
-          <Label htmlFor="dispatch-include-older" className="text-xs font-normal cursor-pointer">
-            Show older than date range
-          </Label>
+        <div className="flex items-center rounded-md border p-0.5 gap-0.5">
+          <Button
+            type="button"
+            size="sm"
+            variant={listMode === "current" ? "default" : "ghost"}
+            className="h-7 text-xs px-2.5"
+            onClick={() => setListMode("current")}
+          >
+            Current
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={listMode === "pending_dispatch" ? "default" : "ghost"}
+            className="h-7 text-xs px-2.5"
+            onClick={() => setListMode("pending_dispatch")}
+          >
+            Pending Dispatch
+          </Button>
         </div>
+        {listMode === "pending_dispatch" && (
+          <div className="flex items-center gap-2 rounded-md border px-2.5 py-1.5">
+            <Switch
+              id="dispatch-include-older"
+              checked={includeOlderPending}
+              onCheckedChange={setIncludeOlderPending}
+            />
+            <Label htmlFor="dispatch-include-older" className="text-xs font-normal cursor-pointer">
+              Show older than date range
+            </Label>
+          </div>
+        )}
         <RefreshButton
           queryKeys={["dispatch_filtered_ids", "dispatch_regs", "dispatch_regs_count", "dispatch_all_results", "dispatch_all_tubes", "dispatch_all_snips", "dispatch_held_reports", "results_tests_map", "dispatch_credit_pickup_points", "dispatch_failed_wa_outbox"]}
           className="ml-auto"
         />
         <span className="text-xs text-muted-foreground whitespace-nowrap">
           {dispatchCount === 0
-            ? "0 pending"
+            ? "0 records"
             : `Showing ${Math.min(visibleLimit, dispatchCount)} of ${dispatchCount}`}
         </span>
       </div>
 
       <p className="text-[11px] text-muted-foreground -mt-1">
-        Pending Dispatch — bills with at least one approved report not yet dispatched
-        {includeOlderPending ? " (includes older than the selected range)" : ""}.
+        {listMode === "current"
+          ? "Current — all bills in the date range (includes blue / fully dispatched)."
+          : `Pending Dispatch — approved reports not yet dispatched (blue patients hidden)${includeOlderPending ? "; includes older than range" : ""}.`}
       </p>
 
       {(
@@ -752,11 +786,15 @@ const Dispatch = () => {
                 ) : sortedDispatchEntries.length === 0 ? (
                   <div className="text-center py-12 text-muted-foreground px-3">
                     <Truck className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                    <p className="text-sm font-medium">No pending dispatch</p>
+                    <p className="text-sm font-medium">
+                      {listMode === "pending_dispatch" ? "No pending dispatch" : "No patients in this date range"}
+                    </p>
                     <p className="text-xs">
-                      {includeOlderPending
-                        ? "No bills with approved reports waiting to dispatch"
-                        : "No pending bills in this date range — try widening dates or enable older"}
+                      {listMode === "pending_dispatch"
+                        ? (includeOlderPending
+                          ? "No bills with approved reports waiting to dispatch"
+                          : "No pending bills in this date range — try widening dates or enable older")
+                        : "Adjust dates or search to check patient status"}
                     </p>
                   </div>
                 ) : (
