@@ -10,6 +10,7 @@ import AppLayout from "@/components/AppLayout";
 import Login from "./pages/Login";
 import CreateEstimate from "./pages/CreateEstimate";
 import EstimateDashboard from "./pages/EstimateDashboard";
+import Dashboard from "./pages/Dashboard";
 import HomeVisits from "./pages/HomeVisits";
 import PhlebotomistManagement from "./pages/PhlebotomistManagement";
 import TestManagement from "./pages/TestManagement";
@@ -122,6 +123,7 @@ const App = () => (
           <Route path="/login" element={<Login />} />
           <Route path="/r/:token" element={<PatientReportPortal />} />
           <Route path="/" element={<ProtectedRoute route="/"><CreateEstimate /></ProtectedRoute>} />
+          <Route path="/business-dashboard" element={<ProtectedRoute route="/business-dashboard"><Dashboard /></ProtectedRoute>} />
           <Route path="/dashboard" element={<ProtectedRoute route="/dashboard"><EstimateDashboard /></ProtectedRoute>} />
           <Route path="/home-visits" element={<ProtectedRoute route="/home-visits"><HomeVisits /></ProtectedRoute>} />
           <Route path="/phlebotomists" element={<ProtectedRoute route="/phlebotomists"><PhlebotomistManagement /></ProtectedRoute>} />

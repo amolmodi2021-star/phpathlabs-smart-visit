@@ -56,6 +56,7 @@ async function invokeUserAuth(body: Record<string, unknown>) {
 // All available tabs and their sections
 const ALL_TABS = [
   { route: "/", label: "Create Estimate" },
+  { route: "/business-dashboard", label: "Dashboard" },
   { route: "/dashboard", label: "Estimate Dashboard" },
   { route: "/home-visits", label: "Home Visits" },
   { route: "/phlebotomists", label: "Phlebotomists" },

@@ -4,7 +4,7 @@ import { logout, getCurrentUser, isTabAllowed, isActionAllowed, refreshCurrentUs
 import {
   FileText, LayoutDashboard, Home, Users, TestTubes, MessageSquare,
   Menu, X, LogOut, FlaskConical, AlertTriangle, BarChart3, CreditCard,
-  Layers, PenTool, Zap, Webhook, Megaphone, Contact, Activity, Settings, Trash2, Loader2, UserCog, MessageCircle, KeyRound, Cloud, BarChart2,
+  Layers, PenTool, Zap, Webhook, Megaphone, Contact, Activity, Settings, Trash2, Loader2, UserCog, MessageCircle, KeyRound, Cloud, BarChart2, PieChart,
 } from "lucide-react";
 import ChangePasswordDialog from "@/components/ChangePasswordDialog";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import { toast } from "sonner";
 
 const allNavItems = [
   { to: "/", label: "Create Estimate", icon: FileText },
+  { to: "/business-dashboard", label: "Dashboard", icon: PieChart },
   { to: "/dashboard", label: "Estimate Dashboard", icon: LayoutDashboard },
   { to: "/home-visits", label: "Home Visits", icon: Home },
   { to: "/phlebotomists", label: "Phlebotomists", icon: Users },
