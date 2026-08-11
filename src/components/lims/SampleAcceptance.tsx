@@ -52,7 +52,7 @@ interface GroupedRegistration {
   tubes: SampleTubeRow[];
 }
 
-const ACCEPTED_PAGE_SIZE = 50;
+const ACCEPTED_PAGE_SIZE = 10;
 
 const SampleAcceptance = () => {
   const qc = useQueryClient();
