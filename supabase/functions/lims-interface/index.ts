@@ -424,6 +424,231 @@ async function autoCalcDependentParams(supabase: any, registrationId: string): P
   return totalWritten;
 }
 
+async function loadAcceptedTestIds(supabase: any, registrationId: string): Promise<Set<string>> {
+  const ids = new Set<string>();
+  const { data: tubes } = await supabase
+    .from("sample_tubes")
+    .select("test_ids, status")
+    .eq("registration_id", registrationId)
+    .eq("status", "accepted");
+  for (const tube of tubes || []) {
+    for (const id of (Array.isArray(tube.test_ids) ? tube.test_ids : [])) {
+      if (id) ids.add(String(id));
+    }
+  }
+  return ids;
+}
+
+/** Prefer accepted-tube leaf tests over package/standalone collisions. */
+function resolveBridgeTestId(
+  candidateTestIds: string[],
+  acceptedTestIds: Set<string>,
+  regTestIds: Set<string>,
+): string | null {
+  if (!candidateTestIds.length) return null;
+  return (
+    candidateTestIds.find((tid) => acceptedTestIds.has(tid)) ||
+    candidateTestIds.find((tid) => regTestIds.has(tid)) ||
+    candidateTestIds[0] ||
+    null
+  );
+}
+
+/**
+ * Auto "Save & Verify" for fully-complete interfaced tests.
+ *
+ * After the analyzer bridges values into patient_results (status=pending),
+ * promote a test to status=entered when:
+ *   - the test is on an accepted sample tube
+ *   - at least one parameter is is_from_interface
+ *   - every configured (non-subheader) parameter has a non-empty value
+ *   - no parameter has already progressed past entered (verified/approved/…)
+ *
+ * This moves the test into Result Verification without a manual click.
+ */
+async function autoEnterCompleteInterfaceTests(
+  supabase: any,
+  registrationId: string,
+): Promise<number> {
+  if (!registrationId) return 0;
+  let promotedTests = 0;
+  try {
+    const acceptedTestIds = await loadAcceptedTestIds(supabase, registrationId);
+    if (acceptedTestIds.size === 0) return 0;
+
+    const { data: snips } = await supabase
+      .from("outsourced_test_snips")
+      .select("test_id")
+      .eq("registration_id", registrationId);
+    const outsourcedTestIds = new Set(
+      (snips || []).map((s: any) => s.test_id).filter(Boolean),
+    );
+
+    const { data: resultRows } = await supabase
+      .from("patient_results")
+      .select("id, test_id, parameter_id, result_value, status, is_from_interface")
+      .eq("registration_id", registrationId);
+    const results = (resultRows || []) as any[];
+    if (results.length === 0) return 0;
+
+    const resultsByTest: Record<string, any[]> = {};
+    for (const r of results) {
+      if (!r.test_id || !acceptedTestIds.has(r.test_id)) continue;
+      if (outsourcedTestIds.has(r.test_id)) continue;
+      if (!resultsByTest[r.test_id]) resultsByTest[r.test_id] = [];
+      resultsByTest[r.test_id].push(r);
+    }
+
+    const candidateTestIds = Object.keys(resultsByTest).filter((tid) =>
+      resultsByTest[tid].some((r) => r.is_from_interface),
+    );
+    if (candidateTestIds.length === 0) return 0;
+
+    const { data: tpRows } = await supabase
+      .from("test_parameters")
+      .select("test_id, parameter_id, is_subheader, report_test_parameters(id, is_calculated)")
+      .in("test_id", candidateTestIds);
+
+    const requiredParamIdsByTest: Record<string, string[]> = {};
+    for (const tp of (tpRows || []) as any[]) {
+      if (tp.is_subheader) continue;
+      const p = tp.report_test_parameters;
+      if (!p?.id) continue;
+      if (!requiredParamIdsByTest[tp.test_id]) requiredParamIdsByTest[tp.test_id] = [];
+      requiredParamIdsByTest[tp.test_id].push(p.id);
+    }
+
+    const nowIso = new Date().toISOString();
+    const PAST_ENTRY = new Set(["verified", "approved", "dispatched"]);
+
+    for (const testId of candidateTestIds) {
+      const required = requiredParamIdsByTest[testId] || [];
+      if (required.length === 0) continue;
+
+      const rows = resultsByTest[testId] || [];
+      const byParam: Record<string, any> = {};
+      for (const r of rows) byParam[r.parameter_id] = r;
+
+      let complete = true;
+      let hasInterface = false;
+      let anyPending = false;
+      for (const pid of required) {
+        const row = byParam[pid];
+        if (!row || row.result_value == null || String(row.result_value).trim() === "") {
+          complete = false;
+          break;
+        }
+        if (PAST_ENTRY.has(row.status)) {
+          complete = false;
+          break;
+        }
+        if (row.is_from_interface) hasInterface = true;
+        if (!row.status || row.status === "pending") anyPending = true;
+      }
+      if (!complete || !hasInterface || !anyPending) continue;
+
+      const pendingIds = rows
+        .filter((r) => required.includes(r.parameter_id) && (!r.status || r.status === "pending"))
+        .map((r) => r.id);
+      if (pendingIds.length === 0) continue;
+
+      const { error } = await supabase
+        .from("patient_results")
+        .update({
+          status: "entered",
+          entered_at: nowIso,
+          entered_by: "INTERFACE",
+          updated_at: nowIso,
+        })
+        .in("id", pendingIds)
+        .eq("status", "pending");
+      if (error) {
+        console.error("autoEnterCompleteInterfaceTests update error:", error);
+        continue;
+      }
+      promotedTests++;
+    }
+
+    if (promotedTests > 0) {
+      await bumpRegistrationStatusAfterInterfaceEnter(supabase, registrationId, acceptedTestIds);
+    }
+  } catch (err) {
+    console.error("autoEnterCompleteInterfaceTests error:", err);
+  }
+  return promotedTests;
+}
+
+/** Lightweight status bump so Verification / Results queues refresh correctly. */
+async function bumpRegistrationStatusAfterInterfaceEnter(
+  supabase: any,
+  registrationId: string,
+  acceptedTestIds: Set<string>,
+): Promise<void> {
+  try {
+    const { data: results } = await supabase
+      .from("patient_results")
+      .select("test_id, status")
+      .eq("registration_id", registrationId);
+    const tracked = new Set<string>();
+    const statuses: string[] = [];
+    for (const r of results || []) {
+      if (!r.test_id || !acceptedTestIds.has(r.test_id)) continue;
+      statuses.push(r.status);
+      if (["entered", "results_entered", "verified", "approved", "dispatched"].includes(r.status)) {
+        tracked.add(r.test_id);
+      }
+    }
+    const hasUntracked = Array.from(acceptedTestIds).some((id) => !tracked.has(id));
+    const enteredish = statuses.filter((s) => ["entered", "results_entered"].includes(s));
+    const hasVerified = statuses.some((s) => s === "verified");
+    const hasApproved = statuses.some((s) => s === "approved");
+    const hasDispatched = statuses.some((s) => s === "dispatched");
+
+    let newStatus = "partial_processing";
+    if (hasDispatched) newStatus = hasUntracked ? "partially_dispatched" : "dispatched";
+    else if (hasApproved) newStatus = hasUntracked ? "partially_approved" : "approved";
+    else if (hasVerified) newStatus = hasUntracked ? "partial_verified" : "verified";
+    else if (enteredish.length > 0 && !hasUntracked && enteredish.length === statuses.length) {
+      newStatus = "processed";
+    } else if (enteredish.length > 0) {
+      newStatus = "partial_processing";
+    }
+
+    const { data: reg } = await supabase
+      .from("patient_registrations")
+      .select("status")
+      .eq("id", registrationId)
+      .maybeSingle();
+    const current = String(reg?.status || "");
+    // Never downgrade past verification/approval from an interface bump
+    const rank: Record<string, number> = {
+      registered: 0,
+      sample_collected: 1,
+      partially_collected: 1,
+      sample_accepted: 2,
+      partially_accepted: 2,
+      processing: 3,
+      partial_processing: 3,
+      processed: 4,
+      partial_verified: 5,
+      verified: 6,
+      partially_approved: 7,
+      approved: 8,
+      partially_dispatched: 9,
+      dispatched: 10,
+      repeat_collection: 2,
+    };
+    if ((rank[newStatus] ?? 0) >= (rank[current] ?? 0) || current === "sample_accepted" || current === "partially_accepted" || current === "processing") {
+      await supabase
+        .from("patient_registrations")
+        .update({ status: newStatus, updated_at: new Date().toISOString() })
+        .eq("id", registrationId);
+    }
+  } catch (err) {
+    console.error("bumpRegistrationStatusAfterInterfaceEnter error:", err);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -521,6 +746,7 @@ Deno.serve(async (req) => {
           processedOrders++;
           const registrationId = registration.id;
           const regTestIds = new Set(((registration.tests as any[]) || []).map((t: any) => t.test_id || t.id).filter(Boolean));
+          const acceptedTestIds = await loadAcceptedTestIds(supabase, registrationId);
 
           // Re-map machine_codes → internal param/test codes
           const incomingCodes = reprocessResults.map((r: any) => r.code).filter(Boolean);
@@ -596,17 +822,20 @@ Deno.serve(async (req) => {
 
           const { data: existingRows } = await supabase
             .from("patient_results")
-            .select("id, parameter_id, status")
+            .select("id, parameter_id, test_id, status")
             .eq("registration_id", registrationId);
-          const existingByParam: Record<string, any> = {};
-          for (const er of existingRows || []) existingByParam[er.parameter_id] = er;
+          const existingByKey: Record<string, any> = {};
+          for (const er of existingRows || []) {
+            existingByKey[`${er.test_id}||${er.parameter_id}`] = er;
+          }
 
           const insertPayload: any[] = [];
+          const keepTestByParam: Record<string, string> = {};
           for (const sr of mappedItems) {
             const param = paramByCode[sr.test_code];
             if (!param) continue;
             const candidateTestIds = testIdsByParam[param.id] || [];
-            const testId = candidateTestIds.find((tid) => regTestIds.has(tid)) || candidateTestIds[0];
+            const testId = resolveBridgeTestId(candidateTestIds, acceptedTestIds, regTestIds);
             if (!testId) continue;
 
             const convertedValue = applyUnitConversion(sr.result_value, param, sr.unit);
@@ -617,8 +846,9 @@ Deno.serve(async (req) => {
                   ? `${param.normal_range_low} - ${param.normal_range_high}`
                   : "");
 
-            const existing = existingByParam[param.id];
+            const existing = existingByKey[`${testId}||${param.id}`];
             const nowIso = new Date().toISOString();
+            keepTestByParam[param.id] = testId;
             if (existing) {
               if (existing.status && existing.status !== "pending") continue;
               const { error: updErr } = await supabase
@@ -664,10 +894,21 @@ Deno.serve(async (req) => {
             if (!insErr) totalPushed += insertPayload.length;
           }
 
+          for (const [paramId, keepTestId] of Object.entries(keepTestByParam)) {
+            await supabase
+              .from("patient_results")
+              .delete()
+              .eq("registration_id", registrationId)
+              .eq("parameter_id", paramId)
+              .eq("status", "pending")
+              .neq("test_id", keepTestId);
+          }
+
           // Auto-evaluate calculated parameters now that fresh values landed
           await autoCalcDependentParams(supabase, registrationId);
+          const autoEntered = await autoEnterCompleteInterfaceTests(supabase, registrationId);
 
-          if (totalPushed > 0) {
+          if (totalPushed > 0 || autoEntered > 0) {
             await notifyResultUpdate(supabase, registrationId, "reprocess");
           }
 
@@ -1008,6 +1249,7 @@ Deno.serve(async (req) => {
           registrationResolved = true;
           const registrationId = registration.id;
           const regTestIds = new Set(((registration.tests as any[]) || []).map((t: any) => t.test_id || t.id).filter(Boolean));
+          const acceptedTestIds = await loadAcceptedTestIds(supabase, registrationId);
 
           // 2) Resolve parameters by param_code
           const paramCodes = Array.from(new Set(mappedRows.map((r) => r.test_code).filter(Boolean)));
@@ -1038,17 +1280,20 @@ Deno.serve(async (req) => {
           // 3) Fetch existing patient_results for this registration to decide insert vs update vs skip
           const { data: existingRows } = await supabase
             .from("patient_results")
-            .select("id, parameter_id, status, result_value")
+            .select("id, parameter_id, test_id, status, result_value")
             .eq("registration_id", registrationId);
-          const existingByParam: Record<string, any> = {};
-          for (const er of existingRows || []) existingByParam[er.parameter_id] = er;
+          const existingByKey: Record<string, any> = {};
+          for (const er of existingRows || []) {
+            existingByKey[`${er.test_id}||${er.parameter_id}`] = er;
+          }
 
           const insertPayload: any[] = [];
+          const keepTestByParam: Record<string, string> = {};
           for (const mr of mappedRows) {
             const param = paramByCode[mr.test_code];
             if (!param) continue;
             const candidateTestIds = testIdsByParam[param.id] || [];
-            const testId = candidateTestIds.find((tid) => regTestIds.has(tid)) || candidateTestIds[0];
+            const testId = resolveBridgeTestId(candidateTestIds, acceptedTestIds, regTestIds);
             if (!testId) continue;
 
             // Compute flag (numeric → H/L/N; qualitative/descriptive → N or X)
@@ -1060,8 +1305,9 @@ Deno.serve(async (req) => {
                   ? `${param.normal_range_low} - ${param.normal_range_high}`
                   : "");
 
-            const existing = existingByParam[param.id];
+            const existing = existingByKey[`${testId}||${param.id}`];
             const nowIso = new Date().toISOString();
+            keepTestByParam[param.id] = testId;
             if (existing) {
               // Skip if technician/verifier/approver already worked on it
               if (existing.status && existing.status !== "pending") continue;
@@ -1109,11 +1355,25 @@ Deno.serve(async (req) => {
             else console.error("patient_results insert error:", insErr);
           }
 
+          // Drop orphan pending rows for the same parameters under other test_ids
+          for (const [paramId, keepTestId] of Object.entries(keepTestByParam)) {
+            await supabase
+              .from("patient_results")
+              .delete()
+              .eq("registration_id", registrationId)
+              .eq("parameter_id", paramId)
+              .eq("status", "pending")
+              .neq("test_id", keepTestId);
+          }
+
           // Auto-evaluate calculated parameters now that fresh values landed
           const calcWritten = await autoCalcDependentParams(supabase, registrationId);
           patientResultsWritten += calcWritten;
 
-          if (patientResultsWritten > 0) {
+          // Fully-complete interfaced tests → Save & Verify (status=entered)
+          const autoEntered = await autoEnterCompleteInterfaceTests(supabase, registrationId);
+
+          if (patientResultsWritten > 0 || autoEntered > 0) {
             await notifyResultUpdate(supabase, registrationId, "interface");
           }
         }
