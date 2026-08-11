@@ -455,16 +455,16 @@ function resolveBridgeTestId(
 }
 
 /**
- * Auto "Save & Verify" for fully-complete interfaced tests.
+ * Auto "Save & Verify" once all interfaced values for a test have arrived.
  *
- * After the analyzer bridges values into patient_results (status=pending),
- * promote a test to status=entered when:
- *   - the test is on an accepted sample tube
- *   - at least one parameter is is_from_interface
- *   - every configured (non-subheader) parameter has a non-empty value
- *   - no parameter has already progressed past entered (verified/approved/…)
+ * Completeness rule (per user):
+ *   - Only parameters with send_for_interface=true AND is_calculated=false
+ *     must have non-empty interface values.
+ *   - Calculated and manual-entry parameters are IGNORED for the gate —
+ *     stubs are created so the whole test moves to Result Verification,
+ *     where the technician fills them.
  *
- * This moves the test into Result Verification without a manual click.
+ * Stamp: entered_by = "Administrator" (shown on Dispatch "Results Entered").
  */
 async function autoEnterCompleteInterfaceTests(
   supabase: any,
@@ -486,7 +486,7 @@ async function autoEnterCompleteInterfaceTests(
 
     const { data: resultRows } = await supabase
       .from("patient_results")
-      .select("id, test_id, parameter_id, result_value, status, is_from_interface")
+      .select("id, test_id, parameter_id, param_code, parameter_name, result_value, status, is_from_interface, unit, reference_range, normal_range_low, normal_range_high, flag, is_calculated")
       .eq("registration_id", registrationId);
     const results = (resultRows || []) as any[];
     if (results.length === 0) return 0;
@@ -506,33 +506,51 @@ async function autoEnterCompleteInterfaceTests(
 
     const { data: tpRows } = await supabase
       .from("test_parameters")
-      .select("test_id, parameter_id, is_subheader, report_test_parameters(id, is_calculated)")
+      .select("test_id, parameter_id, is_subheader, report_test_parameters(id, param_code, parameter_name, unit, normal_range_low, normal_range_high, normal_range_text, is_calculated, send_for_interface)")
       .in("test_id", candidateTestIds);
 
-    const requiredParamIdsByTest: Record<string, string[]> = {};
+    type ParamMeta = {
+      id: string;
+      param_code: string;
+      parameter_name: string;
+      unit: string;
+      normal_range_low: number | null;
+      normal_range_high: number | null;
+      normal_range_text: string | null;
+      is_calculated: boolean;
+      send_for_interface: boolean;
+    };
+    const allParamsByTest: Record<string, ParamMeta[]> = {};
+    const interfaceParamIdsByTest: Record<string, string[]> = {};
     for (const tp of (tpRows || []) as any[]) {
       if (tp.is_subheader) continue;
       const p = tp.report_test_parameters;
       if (!p?.id) continue;
-      if (!requiredParamIdsByTest[tp.test_id]) requiredParamIdsByTest[tp.test_id] = [];
-      requiredParamIdsByTest[tp.test_id].push(p.id);
+      if (!allParamsByTest[tp.test_id]) allParamsByTest[tp.test_id] = [];
+      allParamsByTest[tp.test_id].push(p);
+      // Gate: only non-calculated interfaced parameters must be filled
+      if (p.send_for_interface && !p.is_calculated) {
+        if (!interfaceParamIdsByTest[tp.test_id]) interfaceParamIdsByTest[tp.test_id] = [];
+        interfaceParamIdsByTest[tp.test_id].push(p.id);
+      }
     }
 
     const nowIso = new Date().toISOString();
     const PAST_ENTRY = new Set(["verified", "approved", "dispatched"]);
+    const ENTERED_BY = "Administrator";
 
     for (const testId of candidateTestIds) {
-      const required = requiredParamIdsByTest[testId] || [];
-      if (required.length === 0) continue;
+      const interfaceParamIds = interfaceParamIdsByTest[testId] || [];
+      // No interfaced params configured → never auto-promote this test
+      if (interfaceParamIds.length === 0) continue;
 
       const rows = resultsByTest[testId] || [];
       const byParam: Record<string, any> = {};
       for (const r of rows) byParam[r.parameter_id] = r;
 
       let complete = true;
-      let hasInterface = false;
       let anyPending = false;
-      for (const pid of required) {
+      for (const pid of interfaceParamIds) {
         const row = byParam[pid];
         if (!row || row.result_value == null || String(row.result_value).trim() === "") {
           complete = false;
@@ -542,30 +560,68 @@ async function autoEnterCompleteInterfaceTests(
           complete = false;
           break;
         }
-        if (row.is_from_interface) hasInterface = true;
         if (!row.status || row.status === "pending") anyPending = true;
       }
-      if (!complete || !hasInterface || !anyPending) continue;
+      if (!complete || !anyPending) continue;
 
+      // Promote every existing pending row on this test (interface + any calc already written)
       const pendingIds = rows
-        .filter((r) => required.includes(r.parameter_id) && (!r.status || r.status === "pending"))
+        .filter((r) => !r.status || r.status === "pending")
         .map((r) => r.id);
-      if (pendingIds.length === 0) continue;
 
-      const { error } = await supabase
-        .from("patient_results")
-        .update({
-          status: "entered",
-          entered_at: nowIso,
-          entered_by: "INTERFACE",
-          updated_at: nowIso,
-        })
-        .in("id", pendingIds)
-        .eq("status", "pending");
-      if (error) {
-        console.error("autoEnterCompleteInterfaceTests update error:", error);
-        continue;
+      if (pendingIds.length > 0) {
+        const { error } = await supabase
+          .from("patient_results")
+          .update({
+            status: "entered",
+            entered_at: nowIso,
+            entered_by: ENTERED_BY,
+            updated_at: nowIso,
+          })
+          .in("id", pendingIds)
+          .eq("status", "pending");
+        if (error) {
+          console.error("autoEnterCompleteInterfaceTests update error:", error);
+          continue;
+        }
       }
+
+      // Stub blank entered rows for calculated + manual params so the WHOLE test
+      // leaves Results and appears in Verification for the technician to finish.
+      const stubInserts: any[] = [];
+      for (const p of (allParamsByTest[testId] || [])) {
+        if (byParam[p.id]) continue; // already have a row (now entered)
+        const refRange = p.normal_range_text
+          || (p.normal_range_low != null && p.normal_range_high != null
+              ? `${p.normal_range_low} - ${p.normal_range_high}`
+              : "");
+        stubInserts.push({
+          registration_id: registrationId,
+          test_id: testId,
+          parameter_id: p.id,
+          param_code: p.param_code || null,
+          parameter_name: p.parameter_name || null,
+          result_value: null,
+          unit: p.unit || "",
+          reference_range: refRange,
+          normal_range_low: p.normal_range_low,
+          normal_range_high: p.normal_range_high,
+          flag: null,
+          status: "entered",
+          is_calculated: !!p.is_calculated,
+          is_from_interface: false,
+          entered_at: nowIso,
+          entered_by: ENTERED_BY,
+        });
+      }
+      if (stubInserts.length > 0) {
+        const { error: stubErr } = await supabase.from("patient_results").insert(stubInserts);
+        if (stubErr) {
+          console.error("autoEnterCompleteInterfaceTests stub insert error:", stubErr);
+          // Still count as promoted — interface rows are entered; stubs are best-effort
+        }
+      }
+
       promotedTests++;
     }
 
