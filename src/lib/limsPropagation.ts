@@ -74,6 +74,8 @@ export const MODULE_KEYS: Record<LimsModule, string[]> = {
   sample_collection: [
     "sample_collection_regs",
     "sample_tubes_collection",
+    "sample_collection_page_tubes",
+    "sample_collection_search",
   ],
   sample_acceptance: [
     "sample_acceptance_regs",

@@ -1,5 +1,5 @@
 import RefreshButton from "@/components/lims/RefreshButton";
-import { useState, useRef, useCallback, useMemo, useEffect } from "react";
+import { useState, useRef, useCallback, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
@@ -11,22 +11,36 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Search, Printer, ChevronDown, ChevronUp, CheckCircle2, RotateCcw, Undo2, Clock } from "lucide-react";
+import { Search, Printer, ChevronDown, ChevronUp, CheckCircle2, RotateCcw, Undo2, Clock, Loader2, X } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
 import { useLimsPipelineRealtime } from "@/hooks/useLimsPipelineRealtime";
-import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
+import { getCurrentUserName } from "@/lib/auth";
 import { printBarcodes } from "@/lib/barcodePrint";
 import { patientDisplayName } from "@/lib/patientDisplayName";
+import { shortIdsKey } from "@/lib/queryKeys";
 
 import { buildSampleTubeGroups, TubeGroupingItem } from "@/lib/sampleTubeGrouping";
 import { prepareTubesForCollectionVisit } from "@/lib/sampleTubeSplit";
 import { formatAgeGender } from "@/lib/ageGender";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import NewBadge from "./NewBadge";
+
+const LIST_BATCH = 10;
+
+/** Tiny index for queue membership — no tube JSON / names. */
+const TUBE_INDEX_SELECT = "registration_id, status, created_at";
+
+/** Tubes for the visible page / expand actions. */
+const TUBE_DETAIL_SELECT =
+  "id, sample_uid, registration_id, tube_type, tube_color, sample_type, suffix, test_ids, test_names, status, collected_at, created_at";
+
+/** List headers — no tests/payments JSON (egress). */
+const REG_LIST_SELECT =
+  "id, invoice_number, patient_name, title, mobile_number, umr_number, dob, gender, visit_type, is_stat, status, created_at, bill_cancelled, cancelled_tests, repeat_tests";
 
 const TUBE_COLOR_MAP: Record<string, string> = {
   red: "#e53e3e", lavender: "#b794f4", purple: "#9f7aea", yellow: "#ecc94b",
@@ -46,7 +60,7 @@ interface SampleTubeRow {
   test_names: string[];
   status: string;
   collected_at: string | null;
-  accepted_at: string | null;
+  accepted_at?: string | null;
   created_at: string;
 }
 
@@ -55,12 +69,15 @@ interface GroupedRegistration {
   tubes: SampleTubeRow[];
 }
 
+type CollectionTab = "pending" | "deferred" | "collected";
+
 const SampleCollection = () => {
   const qc = useQueryClient();
   useLimsPipelineRealtime("sample_collection");
-  const [activeTab, setActiveTab] = useState("pending");
+  const [activeTab, setActiveTab] = useState<CollectionTab>("pending");
   const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const [visibleLimit, setVisibleLimit] = useState(LIST_BATCH);
   /** Off by default (14-day window). On = all pending/collected tubes still in pipeline. */
   const [showOlderPending, setShowOlderPending] = useState(false);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
@@ -93,20 +110,26 @@ const SampleCollection = () => {
     return suffix ? `${reg.invoice_number}${suffix}` : String(reg.invoice_number);
   };
 
-  const handleSearch = (val: string) => {
-    setSearch(val);
-    clearTimeout((window as any).__scSearchTimeout);
-    (window as any).__scSearchTimeout = setTimeout(() => setDebouncedSearch(val), 400);
+  const runSearch = () => {
+    setAppliedSearch(search.trim());
+    setVisibleLimit(LIST_BATCH);
+    setExpandedRow(null);
   };
 
-  // Fetch sample_tubes still in collection pipeline (pending / collected).
-  // Default: last 14 days. Optional: include older backlog still awaiting workflow.
-  const { data: allTubes = [], isLoading } = useQuery({
+  const clearSearch = () => {
+    setSearch("");
+    setAppliedSearch("");
+    setVisibleLimit(LIST_BATCH);
+    setExpandedRow(null);
+  };
+
+  // Lean tube index for queue membership (tiny payload vs select("*")).
+  const { data: tubeIndex = [], isLoading: loadingIndex } = useQuery({
     queryKey: ["sample_tubes_collection", showOlderPending],
     queryFn: async () => {
       let q = supabase
         .from("sample_tubes" as any)
-        .select("*")
+        .select(TUBE_INDEX_SELECT)
         .in("status", ["pending", "deferred", "collected"])
         .order("created_at", { ascending: false })
         .limit(showOlderPending ? 2000 : 500);
@@ -117,46 +140,103 @@ const SampleCollection = () => {
       }
       const { data, error } = await q;
       if (error) throw error;
-      return (data || []) as unknown as SampleTubeRow[];
+      return (data || []) as unknown as { registration_id: string; status: string; created_at: string }[];
     },
     staleTime: 120_000,
   });
 
-  // Get unique registration IDs from tubes
-  const regIds = useMemo(() => [...new Set(allTubes.map(t => t.registration_id))], [allTubes]);
-
-  // Fetch registrations for those IDs
-  const { data: registrations = [] } = useQuery({
-    queryKey: ["sample_collection_regs", regIds.join(",")],
-    enabled: regIds.length > 0,
-    queryFn: async () => {
-      let query = supabase
-        .from("patient_registrations")
-        .select("*")
-        .in("id", regIds)
-        .eq("bill_cancelled", false)
-        .order("is_stat", { ascending: false })
-        .order("invoice_number", { ascending: false });
-      if (debouncedSearch) {
-        query = query.or(
-          `patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%`
-        );
+  const idsByStatus = useMemo(() => {
+    const pending: string[] = [];
+    const deferred: string[] = [];
+    const collected: string[] = [];
+    const seenP = new Set<string>();
+    const seenD = new Set<string>();
+    const seenC = new Set<string>();
+    // tubeIndex is newest-first — preserve first-seen order
+    for (const t of tubeIndex) {
+      if (t.status === "pending" && !seenP.has(t.registration_id)) {
+        seenP.add(t.registration_id);
+        pending.push(t.registration_id);
+      } else if (t.status === "deferred" && !seenD.has(t.registration_id)) {
+        seenD.add(t.registration_id);
+        deferred.push(t.registration_id);
+      } else if (t.status === "collected" && !seenC.has(t.registration_id)) {
+        seenC.add(t.registration_id);
+        collected.push(t.registration_id);
       }
-      const { data, error } = await query;
-      if (error) throw error;
-      return (data || []) as any[];
+    }
+    return { pending, deferred, collected };
+  }, [tubeIndex]);
+
+  const activeCandidateIds = idsByStatus[activeTab];
+
+  const { data: searchMatchedIds, isFetching: searchingIds } = useQuery({
+    queryKey: ["sample_collection_search", activeTab, appliedSearch, shortIdsKey(activeCandidateIds, "sc")],
+    enabled: !!appliedSearch && activeCandidateIds.length > 0,
+    queryFn: async () => {
+      const matched = new Set<string>();
+      const chunkSize = 100;
+      for (let i = 0; i < activeCandidateIds.length; i += chunkSize) {
+        const chunk = activeCandidateIds.slice(i, i + chunkSize);
+        const { data, error } = await supabase
+          .from("patient_registrations")
+          .select("id")
+          .in("id", chunk)
+          .eq("bill_cancelled", false)
+          .or(
+            `patient_name.ilike.%${appliedSearch}%,mobile_number.ilike.%${appliedSearch}%,invoice_number.ilike.%${appliedSearch}%`
+          );
+        if (error) throw error;
+        (data || []).forEach((r: any) => matched.add(r.id as string));
+      }
+      return activeCandidateIds.filter((id) => matched.has(id));
     },
+    staleTime: 120_000,
   });
 
-  // Fetch pickup points for location display
-  const { data: pickupPoints = [] } = useQuery({
-    queryKey: ["pickup_points_lookup"],
+  const orderedIds = appliedSearch ? (searchMatchedIds || []) : activeCandidateIds;
+  const pageIds = orderedIds.slice(0, visibleLimit);
+  const pageKey = shortIdsKey(pageIds, "sc-p");
+  const hasMore = pageIds.length < orderedIds.length;
+
+  const { data: registrations = [], isLoading: loadingRegs, isFetching: fetchingRegs } = useQuery({
+    queryKey: ["sample_collection_regs", pageKey],
+    enabled: pageIds.length > 0,
     queryFn: async () => {
-      const { data } = await supabase.from("pickup_points").select("id, name");
-      return (data || []) as { id: string; name: string }[];
+      const { data, error } = await supabase
+        .from("patient_registrations")
+        .select(REG_LIST_SELECT)
+        .in("id", pageIds)
+        .eq("bill_cancelled", false);
+      if (error) throw error;
+      const order = new Map(pageIds.map((id, i) => [id, i] as const));
+      const rows = ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+      rows.sort((a: any, b: any) => {
+        const aUrgent = a.is_stat ? 1 : 0;
+        const bUrgent = b.is_stat ? 1 : 0;
+        if (bUrgent !== aUrgent) return bUrgent - aUrgent;
+        return (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0);
+      });
+      return rows;
     },
+    staleTime: 120_000,
   });
-  const ppMap = Object.fromEntries(pickupPoints.map(p => [p.id, p.name]));
+
+  const { data: pageTubes = [], isLoading: loadingTubes, isFetching: fetchingTubes } = useQuery({
+    queryKey: ["sample_collection_page_tubes", pageKey],
+    enabled: pageIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("sample_tubes" as any)
+        .select(TUBE_DETAIL_SELECT)
+        .in("registration_id", pageIds)
+        .in("status", ["pending", "deferred", "collected"])
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data || []) as unknown as SampleTubeRow[];
+    },
+    staleTime: 120_000,
+  });
 
   // Extract cancelled test IDs set from a registration
   const getCancelledIds = (reg: any): Set<string> => {
@@ -190,8 +270,15 @@ const SampleCollection = () => {
 
   // Recalculate tubes for a registration based on the latest test/profile/checkup definitions.
   // Only touches PENDING tubes — collected/accepted/deferred tubes are preserved (same barcodes).
+  // Fetches `tests` on demand (not in list select).
   const recalcTubesForRegistration = useCallback(async (regId: string) => {
-    const reg = registrations.find((r: any) => r.id === regId);
+    const { data: regRow, error: regErr } = await supabase
+      .from("patient_registrations")
+      .select("id, tests, cancelled_tests")
+      .eq("id", regId)
+      .maybeSingle();
+    if (regErr) throw regErr;
+    const reg = regRow as any;
     if (!reg) return;
     const tests = Array.isArray(reg.tests) ? reg.tests : [];
     if (tests.length === 0) return;
@@ -221,7 +308,7 @@ const SampleCollection = () => {
 
     const { data: existingTubes } = await supabase
       .from("sample_tubes" as any)
-      .select("*")
+      .select(TUBE_DETAIL_SELECT)
       .eq("registration_id", regId)
       .eq("status", "pending");
     const pendingExisting = (existingTubes || []) as any[];
@@ -273,44 +360,60 @@ const SampleCollection = () => {
         status: "pending",
       });
     }
-    qc.invalidateQueries({ queryKey: ["sample_tubes_collection"] });
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: ["sample_tubes_collection"] }),
+      qc.invalidateQueries({ queryKey: ["sample_collection_page_tubes"] }),
+      qc.invalidateQueries({ queryKey: ["sample_collection_regs"] }),
+    ]);
     toast.success("Sample tubes recalculated from latest test setup");
-  }, [registrations, qc]);
+  }, [qc]);
 
-  const pendingGroups = useMemo((): GroupedRegistration[] => {
-    return registrations.filter(reg => {
-      const tubes = allTubes.filter(t => t.registration_id === reg.id && !isTubeFullyCancelled(t, reg));
-      return tubes.some(t => t.status === "pending");
-    }).map(reg => ({
-      registration: reg,
-      tubes: allTubes.filter(t => t.registration_id === reg.id && !isTubeFullyCancelled(t, reg)),
-    }));
-  }, [registrations, allTubes]);
+  const buildGroups = useCallback((mode: CollectionTab): GroupedRegistration[] => {
+    return registrations
+      .map((reg: any) => ({
+        registration: reg,
+        tubes: pageTubes.filter((t) => t.registration_id === reg.id && !isTubeFullyCancelled(t, reg)),
+      }))
+      .filter((g) => {
+        if (mode === "pending") return g.tubes.some((t) => t.status === "pending");
+        if (mode === "deferred") return g.tubes.some((t) => t.status === "deferred");
+        return g.tubes.some((t) => t.status === "collected");
+      })
+      .map((g) => {
+        if (mode === "deferred") {
+          return {
+            ...g,
+            tubes: g.tubes.filter((t) => t.status === "deferred"),
+          };
+        }
+        if (mode === "collected") {
+          return {
+            ...g,
+            tubes: g.tubes.filter((t) => t.status === "collected"),
+          };
+        }
+        // pending view keeps pending+collected siblings for PARTIAL UI
+        return g;
+      });
+  }, [registrations, pageTubes]);
 
-  const deferredGroups = useMemo((): GroupedRegistration[] => {
-    return registrations.filter(reg => {
-      const tubes = allTubes.filter(t => t.registration_id === reg.id && !isTubeFullyCancelled(t, reg));
-      return tubes.some(t => t.status === "deferred");
-    }).map(reg => ({
-      registration: reg,
-      tubes: allTubes.filter(
-        t => t.registration_id === reg.id && t.status === "deferred" && !isTubeFullyCancelled(t, reg),
-      ),
-    }));
-  }, [registrations, allTubes]);
+  const pendingGroups = useMemo(() => buildGroups("pending"), [buildGroups]);
+  const deferredGroups = useMemo(() => buildGroups("deferred"), [buildGroups]);
+  const collectedGroups = useMemo(() => buildGroups("collected"), [buildGroups]);
 
-  const collectedGroups = useMemo((): GroupedRegistration[] => {
-    return registrations.filter(reg => {
-      const tubes = allTubes.filter(t => t.registration_id === reg.id && !isTubeFullyCancelled(t, reg));
-      return tubes.some(t => t.status === "collected");
-    }).map(reg => ({
-      registration: reg,
-      tubes: allTubes.filter(t => t.registration_id === reg.id && t.status === "collected" && !isTubeFullyCancelled(t, reg)),
-    }));
-  }, [registrations, allTubes]);
+  const activeGroups =
+    activeTab === "pending" ? pendingGroups
+    : activeTab === "deferred" ? deferredGroups
+    : collectedGroups;
+
+  const isLoading =
+    loadingIndex
+    || (!!appliedSearch && searchingIds && searchMatchedIds === undefined)
+    || (pageIds.length > 0 && (loadingRegs || loadingTubes));
+  const isFetching = searchingIds || fetchingRegs || fetchingTubes;
 
   // ─── NEW arrivals badge tracker (only pending list) ───
-  const pendingRegIds = useMemo(() => pendingGroups.map(g => g.registration.id), [pendingGroups]);
+  const pendingRegIds = useMemo(() => idsByStatus.pending, [idsByStatus.pending]);
   const { isNew: isNewArrival, markSeen: markArrivalSeen } = useNewArrivalsBadge("sample_collection", pendingRegIds);
 
   const toggleTube = (regId: string, tube: SampleTubeRow) => {
@@ -628,7 +731,7 @@ const SampleCollection = () => {
 
   // Reprint
   const openReprintDialog = (group: GroupedRegistration) => {
-    const allTubesForReg = allTubes.filter(t => t.registration_id === group.registration.id);
+    const allTubesForReg = pageTubes.filter(t => t.registration_id === group.registration.id);
     setReprintSelectedTubes(new Set(allTubesForReg.map(t => t.id)));
     setReprintReason("");
     setReprintDialog({ open: true, reg: group.registration, tubes: allTubesForReg });
@@ -908,7 +1011,7 @@ const SampleCollection = () => {
           {groups.map(({ registration: reg, tubes }) => {
             const isExpanded = expandedRow === reg.id;
             const pendingTubes = tubes.filter(t => t.status === "pending");
-            const deferredCount = allTubes.filter(t => t.registration_id === reg.id && t.status === "deferred").length;
+            const deferredCount = pageTubes.filter(t => t.registration_id === reg.id && t.status === "deferred").length;
             const collectedTubes = tubes.filter(t => t.status === "collected");
 
             return (
@@ -1002,35 +1105,69 @@ const SampleCollection = () => {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative flex-1 max-w-md min-w-[200px]">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input value={search} onChange={(e) => handleSearch(e.target.value)}
-            placeholder="Search by name, mobile, invoice..." className="pl-8" />
+        <div className="flex items-center gap-2 flex-1 max-w-xl min-w-[220px]">
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  runSearch();
+                }
+              }}
+              placeholder="Search by name, mobile, invoice..."
+              className="pl-8"
+            />
+          </div>
+          <Button size="sm" onClick={runSearch}>Search</Button>
+          {appliedSearch && (
+            <Button variant="ghost" size="sm" onClick={clearSearch}>
+              <X className="h-4 w-4 mr-1" />Clear
+            </Button>
+          )}
         </div>
         <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none whitespace-nowrap">
           <Checkbox
             checked={showOlderPending}
-            onCheckedChange={(v) => setShowOlderPending(v === true)}
+            onCheckedChange={(v) => {
+              setShowOlderPending(v === true);
+              setVisibleLimit(LIST_BATCH);
+              setExpandedRow(null);
+            }}
           />
           Show older pending
           <span className="text-xs hidden sm:inline">(beyond 14 days)</span>
         </label>
         <RefreshButton
-          queryKeys={["sample_tubes_collection", "sample_collection_regs", "pickup_points_lookup"]}
+          queryKeys={[
+            "sample_tubes_collection",
+            "sample_collection_regs",
+            "sample_collection_page_tubes",
+            "sample_collection_search",
+          ]}
           className="ml-auto"
         />
       </div>
 
-      <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setExpandedRow(null); }}>
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => {
+          setActiveTab(v as CollectionTab);
+          setVisibleLimit(LIST_BATCH);
+          setExpandedRow(null);
+        }}
+      >
         <TabsList>
           <TabsTrigger value="pending" className="gap-1.5">
-            Pending <Badge variant="secondary" className="text-xs ml-1">{pendingGroups.length}</Badge>
+            Pending <Badge variant="secondary" className="text-xs ml-1">{idsByStatus.pending.length}</Badge>
           </TabsTrigger>
           <TabsTrigger value="deferred" className="gap-1.5">
-            Collect Later <Badge variant="secondary" className="text-xs ml-1">{deferredGroups.length}</Badge>
+            Collect Later <Badge variant="secondary" className="text-xs ml-1">{idsByStatus.deferred.length}</Badge>
           </TabsTrigger>
           <TabsTrigger value="collected" className="gap-1.5">
-            Collected <Badge variant="secondary" className="text-xs ml-1">{collectedGroups.length}</Badge>
+            Collected <Badge variant="secondary" className="text-xs ml-1">{idsByStatus.collected.length}</Badge>
           </TabsTrigger>
         </TabsList>
         <TabsContent value="pending" className="mt-3">
@@ -1043,6 +1180,24 @@ const SampleCollection = () => {
           {renderTable(collectedGroups, "collected", isLoading)}
         </TabsContent>
       </Tabs>
+
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <span className="text-sm text-muted-foreground">
+          Showing {activeGroups.length} of {orderedIds.length}
+          {isFetching && !isLoading ? " · Updating…" : ""}
+        </span>
+        {hasMore && (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={isFetching}
+            onClick={() => setVisibleLimit((n) => n + LIST_BATCH)}
+          >
+            {isFetching ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
+            Load more
+          </Button>
+        )}
+      </div>
 
       {/* Reprint Dialog */}
       <Dialog open={reprintDialog.open} onOpenChange={(open) => { if (!open) setReprintDialog({ open: false, reg: null, tubes: [] }); }}>
