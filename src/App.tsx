@@ -1,9 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { isAuthenticated, isTabAllowed, getFirstAllowedRoute, checkAuthEpochAndLogoutIfStale } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import AppLayout from "@/components/AppLayout";
@@ -52,10 +52,47 @@ const queryClient = new QueryClient({
   },
 });
 
-function ProtectedRoute({ children, route }: { children: React.ReactNode; route?: string }) {
+/** Gate a page by tab permission (auth already checked by AuthenticatedShell). */
+function TabGate({ route, children }: { route: string; children?: React.ReactNode }) {
+  if (!isTabAllowed(route)) return <Navigate to={getFirstAllowedRoute()} replace />;
+  return <>{children ?? null}</>;
+}
+
+/**
+ * Single authenticated layout so navigating between sidebar modules does not
+ * remount AppLayout. LIMS stays mounted (hidden) after first visit so its
+ * inner tabs and form drafts are not torn down.
+ */
+function AuthenticatedShell() {
   if (!isAuthenticated()) return <Navigate to="/login" replace />;
-  if (route && !isTabAllowed(route)) return <Navigate to={getFirstAllowedRoute()} replace />;
-  return <AppLayout>{children}</AppLayout>;
+  return (
+    <AppLayout>
+      <KeepAliveOutlet />
+    </AppLayout>
+  );
+}
+
+function KeepAliveOutlet() {
+  const location = useLocation();
+  const onLims = location.pathname === "/lims";
+  const [limsMounted, setLimsMounted] = useState(
+    () => typeof window !== "undefined" && window.location.pathname === "/lims" && isTabAllowed("/lims"),
+  );
+
+  useEffect(() => {
+    if (onLims && isTabAllowed("/lims")) setLimsMounted(true);
+  }, [onLims]);
+
+  return (
+    <>
+      {limsMounted && (
+        <div className={onLims ? undefined : "hidden"} aria-hidden={!onLims}>
+          <Lims />
+        </div>
+      )}
+      {!onLims && <Outlet />}
+    </>
+  );
 }
 
 function LimsReportRouteGuard() {
@@ -64,7 +101,11 @@ function LimsReportRouteGuard() {
   if (hasPublicToken) return <LimsReportView />;
   if (!isAuthenticated()) return <Navigate to="/login" replace />;
   if (!isTabAllowed("/lims")) return <Navigate to={getFirstAllowedRoute()} replace />;
-  return <AppLayout><LimsReportView /></AppLayout>;
+  return (
+    <AppLayout>
+      <LimsReportView />
+    </AppLayout>
+  );
 }
 
 function GlobalAuthEpochGuard() {
@@ -124,32 +165,36 @@ const App = () => (
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/r/:token" element={<PatientReportPortal />} />
-          <Route path="/" element={<ProtectedRoute route="/"><CreateEstimate /></ProtectedRoute>} />
-          <Route path="/business-dashboard" element={<ProtectedRoute route="/business-dashboard"><Dashboard /></ProtectedRoute>} />
-          <Route path="/dashboard" element={<ProtectedRoute route="/dashboard"><EstimateDashboard /></ProtectedRoute>} />
-          <Route path="/home-visits" element={<ProtectedRoute route="/home-visits"><HomeVisits /></ProtectedRoute>} />
-          <Route path="/phlebotomists" element={<ProtectedRoute route="/phlebotomists"><PhlebotomistManagement /></ProtectedRoute>} />
-          <Route path="/tests" element={<ProtectedRoute route="/tests"><TestManagement /></ProtectedRoute>} />
-          <Route path="/parameters" element={<ProtectedRoute route="/tests"><ReportParameters /></ProtectedRoute>} />
-          <Route path="/departments" element={<ProtectedRoute route="/tests"><ReportDepartments /></ProtectedRoute>} />
-          <Route path="/templates" element={<ProtectedRoute route="/templates"><MessageTemplates /></ProtectedRoute>} />
-          <Route path="/abnormal-history" element={<ProtectedRoute route="/abnormal-history"><AbnormalHistory /></ProtectedRoute>} />
-          <Route path="/phlebo-dashboard" element={<ProtectedRoute route="/phlebo-dashboard"><PhleboDashboard /></ProtectedRoute>} />
-          <Route path="/loyalty-cards" element={<ProtectedRoute route="/loyalty-cards"><LoyaltyCards /></ProtectedRoute>} />
-          <Route path="/marketing" element={<ProtectedRoute route="/marketing"><Marketing /></ProtectedRoute>} />
-          {/* /crm route removed (cost optimization 2026-04-28) */}
-          <Route path="/lims" element={<ProtectedRoute route="/lims"><Lims /></ProtectedRoute>} />
-          <Route path="/lims-demo" element={<ProtectedRoute route="/lims-demo"><LimsDemo /></ProtectedRoute>} />
-          <Route path="/whatsapp-webhook" element={<ProtectedRoute route="/whatsapp-webhook"><WhatsAppWebhook /></ProtectedRoute>} />
-          <Route path="/whatsapp-settings" element={<ProtectedRoute route="/whatsapp-settings"><WhatsAppSettingsPage /></ProtectedRoute>} />
-          <Route path="/whatsapp-chat" element={<ProtectedRoute route="/whatsapp-chat"><WhatsAppChat /></ProtectedRoute>} />
-          <Route path="/report-layout" element={<ProtectedRoute route="/report-layout"><ReportLayoutSettings /></ProtectedRoute>} />
-          <Route path="/signature-management" element={<ProtectedRoute route="/signature-management"><SignatureManagement /></ProtectedRoute>} />
-          <Route path="/users" element={<ProtectedRoute route="/users"><UserManagement /></ProtectedRoute>} />
-          <Route path="/cloud-usage" element={<ProtectedRoute route="/cloud-usage"><CloudUsage /></ProtectedRoute>} />
-          <Route path="/report-analytics" element={<ProtectedRoute route="/report-analytics"><ReportAnalytics /></ProtectedRoute>} />
+
+          <Route element={<AuthenticatedShell />}>
+            <Route path="/" element={<TabGate route="/"><CreateEstimate /></TabGate>} />
+            <Route path="/business-dashboard" element={<TabGate route="/business-dashboard"><Dashboard /></TabGate>} />
+            <Route path="/dashboard" element={<TabGate route="/dashboard"><EstimateDashboard /></TabGate>} />
+            <Route path="/home-visits" element={<TabGate route="/home-visits"><HomeVisits /></TabGate>} />
+            <Route path="/phlebotomists" element={<TabGate route="/phlebotomists"><PhlebotomistManagement /></TabGate>} />
+            <Route path="/tests" element={<TabGate route="/tests"><TestManagement /></TabGate>} />
+            <Route path="/parameters" element={<TabGate route="/tests"><ReportParameters /></TabGate>} />
+            <Route path="/departments" element={<TabGate route="/tests"><ReportDepartments /></TabGate>} />
+            <Route path="/templates" element={<TabGate route="/templates"><MessageTemplates /></TabGate>} />
+            <Route path="/abnormal-history" element={<TabGate route="/abnormal-history"><AbnormalHistory /></TabGate>} />
+            <Route path="/phlebo-dashboard" element={<TabGate route="/phlebo-dashboard"><PhleboDashboard /></TabGate>} />
+            <Route path="/loyalty-cards" element={<TabGate route="/loyalty-cards"><LoyaltyCards /></TabGate>} />
+            <Route path="/marketing" element={<TabGate route="/marketing"><Marketing /></TabGate>} />
+            {/* LIMS is keep-alive hosted by KeepAliveOutlet — route only gates permission. */}
+            <Route path="/lims" element={<TabGate route="/lims" />} />
+            <Route path="/lims-demo" element={<TabGate route="/lims-demo"><LimsDemo /></TabGate>} />
+            <Route path="/whatsapp-webhook" element={<TabGate route="/whatsapp-webhook"><WhatsAppWebhook /></TabGate>} />
+            <Route path="/whatsapp-settings" element={<TabGate route="/whatsapp-settings"><WhatsAppSettingsPage /></TabGate>} />
+            <Route path="/whatsapp-chat" element={<TabGate route="/whatsapp-chat"><WhatsAppChat /></TabGate>} />
+            <Route path="/report-layout" element={<TabGate route="/report-layout"><ReportLayoutSettings /></TabGate>} />
+            <Route path="/signature-management" element={<TabGate route="/signature-management"><SignatureManagement /></TabGate>} />
+            <Route path="/users" element={<TabGate route="/users"><UserManagement /></TabGate>} />
+            <Route path="/cloud-usage" element={<TabGate route="/cloud-usage"><CloudUsage /></TabGate>} />
+            <Route path="/report-analytics" element={<TabGate route="/report-analytics"><ReportAnalytics /></TabGate>} />
+            <Route path="*" element={<NotFound />} />
+          </Route>
+
           <Route path="/lims/report/:registrationId" element={<LimsReportRouteGuard />} />
-          <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
     </TooltipProvider>
