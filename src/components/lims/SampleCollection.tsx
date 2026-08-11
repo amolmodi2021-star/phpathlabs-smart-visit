@@ -687,7 +687,7 @@ const SampleCollection = () => {
             )}
             {mode === "deferred" && (
               <span className="text-xs text-muted-foreground font-normal ml-2">
-                Same barcodes when patient returns — not in Acceptance / Results / LIMS until collected
+                Return visit — print same or L-split barcodes; not in Acceptance / Results / LIMS until collected
               </span>
             )}
           </h4>
@@ -1016,7 +1016,7 @@ const SampleCollection = () => {
           <span className="text-xs hidden sm:inline">(beyond 14 days)</span>
         </label>
         <RefreshButton
-          queryKeys={["sample_tubes_collection", "sample_collection_regs", "pickup_points_lookup", "patient_registrations"]}
+          queryKeys={["sample_tubes_collection", "sample_collection_regs", "pickup_points_lookup"]}
           className="ml-auto"
         />
       </div>

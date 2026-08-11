@@ -1,4 +1,5 @@
 import RefreshButton from "@/components/lims/RefreshButton";
+import PageSizeSelect from "@/components/lims/PageSizeSelect";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { formatAgeGender } from "@/lib/ageGender";
@@ -32,6 +33,7 @@ import { propagateRegistrationChange } from "@/lib/limsPropagation";
 import { fetchAllByIds } from "@/lib/fetchAllRows";
 import { PATIENT_RESULTS_SELECT_VERIFICATION } from "@/lib/patientResultsSelect";
 import { shortIdsKey } from "@/lib/queryKeys";
+import { readLimsPageSize, type LimsPageSize } from "@/lib/limsListPrefs";
 import { fetchVerificationCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPendingCandidates";
 import SyncingOverlay from "./SyncingOverlay";
 import NewBadge from "./NewBadge";
@@ -96,8 +98,6 @@ interface PatientEntry {
   snipOnlyTests: SnipOnlyTest[];
 }
 
-const RV_PAGE_SIZE = 50;
-
 const ResultVerification = () => {
   const qc = useQueryClient();
   const { data: masterMachines = [] } = useMasterLookup("machine_name");
@@ -105,6 +105,7 @@ const ResultVerification = () => {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedMachine, setSelectedMachine] = useState<string>("all");
+  const [pageSize, setPageSize] = useState<LimsPageSize>(() => readLimsPageSize());
   const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
   const [editedUnits, setEditedUnits] = useState<Record<string, string>>({});
@@ -137,10 +138,10 @@ const ResultVerification = () => {
       return await fetchFilteredSortedIds(candidates, debouncedSearch);
     },
     placeholderData: keepPreviousData,
-    staleTime: 30_000,
+    staleTime: 120_000,
   });
   const rvCount = pendingIds.length;
-  const pageIds: string[] = pendingIds.slice(rvPage * RV_PAGE_SIZE, (rvPage + 1) * RV_PAGE_SIZE);
+  const pageIds: string[] = pendingIds.slice(rvPage * pageSize, (rvPage + 1) * pageSize);
   const pageKey = shortIdsKey(pageIds, "rv-p");
 
   const { data: registrations = [], isLoading: loadingRegs } = useQuery({
@@ -155,35 +156,37 @@ const ResultVerification = () => {
       return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     },
     placeholderData: keepPreviousData,
-    staleTime: 30_000,
+    staleTime: 120_000,
   });
 
-  const rvTotalPages = Math.max(1, Math.ceil(rvCount / RV_PAGE_SIZE));
+  const rvTotalPages = Math.max(1, Math.ceil(rvCount / pageSize));
 
   const regIds = registrations.map((r: any) => r.id);
-  const regKey = shortIdsKey(regIds, "rv");
 
   // Full pipeline realtime (queue membership + entered values).
   useLimsPipelineRealtime("verification");
 
+  // Detail fetches ONLY for expanded patient
+  const detailRegIds = expandedPatient ? [expandedPatient] : [];
+  const detailKey = shortIdsKey(detailRegIds, "rv");
+  const detailEnabled = !!expandedPatient;
+
   // Fetch entered results
   const { data: existingResults = [], isFetched: resultsFetched } = useQuery({
-    queryKey: ["verification_results_v2", regKey],
-    enabled: regIds.length > 0,
+    queryKey: ["verification_results_v2", detailKey],
+    enabled: detailEnabled,
     queryFn: async () => {
-      return await fetchAllByIds<any>("patient_results", PATIENT_RESULTS_SELECT_VERIFICATION, "registration_id", regIds, { eq: { status: "entered" } });
+      return await fetchAllByIds<any>("patient_results", PATIENT_RESULTS_SELECT_VERIFICATION, "registration_id", detailRegIds, { eq: { status: "entered" } });
     },
-    placeholderData: keepPreviousData,
   });
 
   // Fetch sample tubes (used to expand PRL/HLT container test rows into leaf test ids)
-  const { data: regTubes = [] } = useQuery({
-    queryKey: ["verification_tubes", regKey],
-    enabled: regIds.length > 0,
+  const { data: regTubes = [], isFetched: tubesFetched } = useQuery({
+    queryKey: ["verification_tubes", detailKey],
+    enabled: detailEnabled,
     queryFn: async () => {
-      return await fetchAllByIds<any>("sample_tubes", "id, registration_id, test_ids", "registration_id", regIds);
+      return await fetchAllByIds<any>("sample_tubes", "id, registration_id, test_ids", "registration_id", detailRegIds);
     },
-    placeholderData: keepPreviousData,
   });
 
   const leafIdsByReg = useMemo(() => {
@@ -198,21 +201,20 @@ const ResultVerification = () => {
 
   // Fetch outsourced snips with results_entered status
   const { data: outsourcedSnips = [] } = useQuery({
-    queryKey: ["verification_outsourced_v2", regKey],
-    enabled: regIds.length > 0,
+    queryKey: ["verification_outsourced_v2", detailKey],
+    enabled: detailEnabled,
     queryFn: async () => {
       return await fetchAllByIds<any>(
         "outsourced_test_snips",
         "id, registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, sent_at, result_mode, snip_image_urls",
         "registration_id",
-        regIds,
+        detailRegIds,
         { in: { outsource_status: ["results_entered", "entered"] } },
       );
     },
-    placeholderData: keepPreviousData,
   });
 
-  const resultsReady = regIds.length === 0 || resultsFetched;
+  const detailReady = !detailEnabled || (resultsFetched && tubesFetched);
 
   const { transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails } = useMemo(() => {
     const testKeys = new Set<string>();
@@ -364,9 +366,12 @@ const ResultVerification = () => {
     return { text, low: best.normal_range_low as number | null, high: best.normal_range_high as number | null, rangeType: best.range_type || "numeric", descriptiveOptions: Array.isArray(best.descriptive_options) ? best.descriptive_options : [], expectedValue: best.expected_value || "", normalFindings: best.normal_findings || "" };
   }, [normalRangesMap]);
 
-  // Build patient entries
+  // Build patient entries: full params only for expanded patient
   const patientEntries: PatientEntry[] = useMemo(() => {
     return registrations.map((reg: any) => {
+      if (reg.id !== expandedPatient || !detailReady) {
+        return { registration: reg, parameters: [], snipOnlyTests: [] };
+      }
       const tests = (reg.tests || []) as any[];
       const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
       const expandedTests = expandRegistrationTests(tests, leafIdsByReg[reg.id] ?? new Set<string>(), testsMap);
@@ -428,8 +433,8 @@ const ResultVerification = () => {
         }
       }
       return { registration: reg, parameters, snipOnlyTests };
-    }).filter(e => e.parameters.length > 0 || e.snipOnlyTests.length > 0);
-  }, [registrations, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails, leafIdsByReg]);
+    });
+  }, [registrations, expandedPatient, detailReady, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails, leafIdsByReg]);
 
   // ─── Loaded test-level notes: first non-null test_note per (reg, test) ───
   const loadedTestNotes = useMemo(() => {
@@ -577,9 +582,11 @@ const ResultVerification = () => {
     if (selectedMachine === "all") return patientEntries;
     const filterMachine = selectedMachine === "others" ? "" : selectedMachine;
     return patientEntries
-      .map(e => ({ ...e, parameters: e.parameters.filter(p => (p.machineName || "") === filterMachine) }))
-      .filter(e => e.parameters.length > 0 || e.snipOnlyTests.length > 0);
-  }, [patientEntries, mode, selectedMachine]);
+      .map(e => {
+        if (e.registration.id !== expandedPatient) return e;
+        return { ...e, parameters: e.parameters.filter(p => (p.machineName || "") === filterMachine) };
+      });
+  }, [patientEntries, mode, selectedMachine, expandedPatient]);
 
   const stats = useMemo(() => {
     let totalParams = 0;
@@ -1353,8 +1360,18 @@ const ResultVerification = () => {
           </Select>
         )}
         <RefreshButton
-          queryKeys={["verification_regs_count", "verification_regs_v2", "verification_results_v2", "verification_tubes", "verification_outsourced_v2", "results_tests_map", "results_test_params_full", "results_normal_ranges"]}
+          queryKeys={[
+            "verification_regs_count",
+            "verification_regs_v2",
+            ...(expandedPatient
+              ? ["verification_results_v2", "verification_tubes", "verification_outsourced_v2"]
+              : []),
+          ]}
           className="ml-auto shrink-0"
+        />
+        <PageSizeSelect
+          value={pageSize}
+          onChange={(n) => { setPageSize(n); setRvPage(0); }}
         />
       </div>
 
@@ -1369,7 +1386,7 @@ const ResultVerification = () => {
         </Card>
       </div>
 
-      {(loadingIds || loadingRegs || (registrations.length > 0 && !resultsReady)) ? (
+      {(loadingIds || loadingRegs) ? (
         <Card><CardContent className="p-8 text-center text-muted-foreground">Loading…</CardContent></Card>
       ) : filteredEntries.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
@@ -1382,6 +1399,8 @@ const ResultVerification = () => {
           {filteredEntries.map(entry => {
             const reg = entry.registration;
             const isExpanded = expandedPatient === reg.id;
+            const detailLoading = isExpanded && !detailReady;
+            const canVerify = isExpanded && detailReady && (entry.parameters.length > 0 || entry.snipOnlyTests.length > 0);
             const isVerifying = verifyingKey === reg.id;
             return (
               <Card key={reg.id} className={isExpanded ? "ring-1 ring-primary/30" : ""}>
@@ -1404,7 +1423,8 @@ const ResultVerification = () => {
                         <Badge variant="outline" className="text-[10px] font-mono">{formatAgeGender(reg.dob, reg.gender)}</Badge>
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      {reg.mobile_number} • {entry.parameters.length} parameters to verify
+                      {reg.mobile_number}
+                      {isExpanded && detailReady ? ` • ${entry.parameters.length} parameters to verify` : ""}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
@@ -1422,7 +1442,14 @@ const ResultVerification = () => {
                     >
                       <Eye className="h-3.5 w-3.5 mr-1" /> View Report
                     </Button>
-                    <Button size="sm" variant="default" className="h-7 text-xs" disabled={isVerifying} onClick={(e) => { e.stopPropagation(); handleVerifyAll(entry); }}>
+                    <Button
+                      size="sm"
+                      variant="default"
+                      className="h-7 text-xs"
+                      disabled={isVerifying || !canVerify}
+                      title={!canVerify ? "Expand patient to load results first" : undefined}
+                      onClick={(e) => { e.stopPropagation(); handleVerifyAll(entry); }}
+                    >
                       {isVerifying ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <CheckCircle2 className="h-3.5 w-3.5 mr-1" />}
                       Verify All
                     </Button>
@@ -1430,7 +1457,13 @@ const ResultVerification = () => {
                 </div>
                 {isExpanded && (
                   <CardContent className="pt-0 pb-3 px-3">
-                    {renderPatientExpanded(entry)}
+                    {detailLoading ? (
+                      <div className="py-6 text-center text-sm text-muted-foreground flex items-center justify-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Loading results…
+                      </div>
+                    ) : (
+                      renderPatientExpanded(entry)
+                    )}
                   </CardContent>
                 )}
               </Card>

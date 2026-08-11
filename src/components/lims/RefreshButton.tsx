@@ -30,7 +30,7 @@ const RefreshButton = ({ queryKeys, label = "Refresh", className }: RefreshButto
           qc.invalidateQueries({ queryKey: [k], refetchType: "active" })
         )
       );
-      toast.success("Refreshed");
+      toast.success("List refreshed");
     } catch (e: any) {
       toast.error(e?.message || "Refresh failed");
     } finally {

@@ -1,11 +1,11 @@
 import RefreshButton from "@/components/lims/RefreshButton";
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { recalculateRegistrationStatus } from "@/lib/limsStatus";
+import PageSizeSelect from "@/components/lims/PageSizeSelect";
+import { useState, useEffect, useMemo } from "react";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
 import SyncingOverlay from "./SyncingOverlay";
 import { formatAgeGender } from "@/lib/ageGender";
 import { patientDisplayName } from "@/lib/patientDisplayName";
-import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
+import { getCurrentUserName } from "@/lib/auth";
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { useLimsPipelineRealtime } from "@/hooks/useLimsPipelineRealtime";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,10 +13,6 @@ import { Input } from "@/components/ui/input";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-
-/** Initial list size; more rows load as the user scrolls down. */
-const DISPATCH_INITIAL = 10;
-const DISPATCH_BATCH = 10;
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -30,7 +26,6 @@ import { toast } from "sonner";
 import { format, startOfDay, endOfDay, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
-import { fetchAllByIds } from "@/lib/fetchAllRows";
 import { PATIENT_RESULTS_SELECT_DISPATCH } from "@/lib/patientResultsSelect";
 import { fetchDispatchStatusIds, fetchDispatchPendingDispatchIds } from "@/lib/limsPendingCandidates";
 import { shortIdsKey } from "@/lib/queryKeys";
@@ -38,6 +33,11 @@ import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import NewBadge from "./NewBadge";
 import { openReportForManualWhatsApp, queueApprovedReportWhatsApp } from "@/lib/dispatchReportWhatsApp";
 import { dismissFailedWhatsAppConsoleJobs, dismissAllFailedWhatsAppConsoleJobs } from "@/lib/whatsappConsoleBridge";
+import {
+  dispatchDotFromRegStatus,
+  readLimsPageSize,
+  type LimsPageSize,
+} from "@/lib/limsListPrefs";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -82,6 +82,146 @@ interface DispatchEntry {
   cancelledCount: number;
 }
 
+/** Full DispatchEntry for one registration from detail arrays (results/tubes/snips). */
+function buildFullDispatchEntry(
+  reg: any,
+  allResults: any[],
+  allTubes: any[],
+  allSnips: any[],
+  testsMap: Record<string, any>,
+): DispatchEntry {
+  const tests = (reg.tests || []) as any[];
+  const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id || t.id).filter(Boolean));
+  const billCancelled = !!reg.bill_cancelled;
+  const leafIds = new Set<string>();
+  for (const tb of allTubes) {
+    if (tb.registration_id !== reg.id) continue;
+    const ids = Array.isArray(tb.test_ids) ? tb.test_ids : [];
+    ids.forEach((id: string) => leafIds.add(id));
+  }
+  const expandedTests = expandRegistrationTests(tests, leafIds, testsMap);
+
+  const dispatchTests: DispatchTest[] = [];
+  for (const t of expandedTests) {
+    const testInfo = testsMap[t.test_id] || {};
+    const isCancelled = billCancelled || cancelledIds.has(t.test_id);
+    const testResults = allResults.filter((r: any) => r.registration_id === reg.id && r.test_id === t.test_id);
+    const snip = allSnips.find((s: any) => s.registration_id === reg.id && s.test_id === t.test_id);
+    const tube = allTubes.find((tb: any) => tb.registration_id === reg.id && Array.isArray(tb.test_ids) && tb.test_ids.includes(t.test_id));
+
+    const hasDispatchedResults = testResults.some((r: any) => r.status === "dispatched");
+    const hasDispatchedSnip = snip && snip.outsource_status === "dispatched";
+    const hasApprovedResults = testResults.some((r: any) => r.status === "approved");
+    const hasApprovedSnip = snip && snip.outsource_status === "approved";
+    const hasVerifiedResults = testResults.some((r: any) => r.status === "verified");
+    const hasVerifiedSnip = snip && snip.outsource_status === "verified";
+    const hasEnteredResults = testResults.some((r: any) => r.status === "entered" || r.status === "results_entered");
+    const hasEnteredSnip = snip && (snip.outsource_status === "results_entered" || snip.outsource_status === "results_saved" || snip.outsource_status === "sent");
+
+    let status: TestStatus = "registered";
+    if (isCancelled) {
+      status = "cancelled";
+    } else if (hasDispatchedResults || hasDispatchedSnip) status = "dispatched";
+    else if (hasApprovedResults || hasApprovedSnip) status = "approved";
+    else if (hasVerifiedResults || hasVerifiedSnip) status = "verified";
+    else if (hasEnteredResults || hasEnteredSnip) status = "results_entered";
+    else if (tube?.status === "accepted" || tube?.accepted_at) status = "sample_accepted";
+    else if (tube?.status === "collected" || tube?.collected_at) status = "sample_collected";
+    else status = "registered";
+
+    const snipUrls = snip && snip.result_mode === "snip" && Array.isArray(snip.snip_image_urls) ? snip.snip_image_urls : [];
+    const approvedResults = testResults.filter((r: any) => r.status === "approved");
+
+    const collectedAt = tube?.collected_at || null;
+    const acceptedAt = tube?.accepted_at || null;
+    const getEarliest = (field: string) => {
+      const vals = testResults.map((r: any) => r[field]).filter(Boolean);
+      return vals.length > 0 ? vals.sort()[0] : null;
+    };
+    const getFirstBy = (field: string) => {
+      const vals = testResults.map((r: any) => r[field]).filter(Boolean);
+      return vals.length > 0 ? vals[0] : null;
+    };
+
+    let enteredAt = getEarliest("entered_at");
+    let verifiedAt = getEarliest("verified_at");
+    let approvedAtTs = getEarliest("approved_at");
+    let dispatchedAtTs = getEarliest("dispatched_at");
+    let enteredBy = getFirstBy("entered_by");
+    let verifiedBy = getFirstBy("verified_by");
+    let approvedBy = getFirstBy("approved_by");
+    let dispatchedBy = getFirstBy("dispatched_by");
+    if (snip && !isCancelled) {
+      const snipStatus = snip.outsource_status;
+      const snipTime = snip.updated_at || snip.sent_at || null;
+      if (["results_entered", "results_saved", "sent", "verified", "approved", "dispatched"].includes(snipStatus)) {
+        enteredAt = enteredAt || snip.entered_at || snipTime;
+        enteredBy = enteredBy || snip.entered_by || null;
+      }
+      if (["verified", "approved", "dispatched"].includes(snipStatus)) {
+        verifiedAt = verifiedAt || snip.verified_at || snipTime;
+        verifiedBy = verifiedBy || snip.verified_by || null;
+      }
+      if (["approved", "dispatched"].includes(snipStatus)) {
+        approvedAtTs = approvedAtTs || snip.approved_at || snipTime;
+        approvedBy = approvedBy || snip.approved_by || null;
+      }
+      if (snipStatus === "dispatched") {
+        dispatchedAtTs = dispatchedAtTs || snip.dispatched_at || snipTime;
+        dispatchedBy = dispatchedBy || snip.dispatched_by || null;
+      }
+    }
+
+    dispatchTests.push({
+      testId: t.test_id,
+      testName: t.test_name || testInfo.test_name || "Unknown",
+      status,
+      results: approvedResults,
+      snipUrls: status === "approved" ? snipUrls : [],
+      collectedAt,
+      acceptedAt,
+      enteredAt,
+      verifiedAt,
+      approvedAt: approvedAtTs,
+      dispatchedAt: dispatchedAtTs,
+      registeredBy: reg.registered_by || null,
+      collectedBy: tube?.collected_by || null,
+      acceptedBy: tube?.accepted_by || null,
+      enteredBy,
+      verifiedBy,
+      approvedBy,
+      dispatchedBy,
+    });
+  }
+
+  const cancelledCount = dispatchTests.filter((t) => t.status === "cancelled").length;
+  const approvedCount = dispatchTests.filter((t) => t.status === "approved").length;
+  const dispatchedCount = dispatchTests.filter((t) => t.status === "dispatched").length;
+  const pendingCount = dispatchTests.filter((t) => t.status !== "approved" && t.status !== "dispatched" && t.status !== "cancelled").length;
+  const activeCount = dispatchTests.length - cancelledCount;
+
+  let completionStatus: DispatchEntry["completionStatus"] = "all_pending";
+  if (billCancelled || (dispatchTests.length > 0 && cancelledCount === dispatchTests.length)) {
+    completionStatus = "cancelled";
+  } else if (activeCount > 0 && dispatchedCount === activeCount) {
+    completionStatus = "all_dispatched";
+  } else if (activeCount > 0 && approvedCount + dispatchedCount === activeCount) {
+    completionStatus = "all_done";
+  } else if (dispatchedCount > 0 || approvedCount > 0) {
+    completionStatus = "partial";
+  }
+
+  return {
+    registration: reg,
+    tests: dispatchTests,
+    completionStatus,
+    approvedCount,
+    pendingCount,
+    dispatchedCount,
+    cancelledCount,
+  };
+}
+
 const Dispatch = () => {
   const isMobile = useIsMobile();
   const qc = useQueryClient();
@@ -99,17 +239,19 @@ const Dispatch = () => {
   const [selectedTestIds, setSelectedTestIds] = useState<Set<string>>(new Set());
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [mobileShowDetail, setMobileShowDetail] = useState(false);
-  const [visibleLimit, setVisibleLimit] = useState(DISPATCH_INITIAL);
+  const [pageSize, setPageSize] = useState<LimsPageSize>(() => readLimsPageSize(10));
+  const [dispatchPage, setDispatchPage] = useState(0);
   const [dueBlockEntry, setDueBlockEntry] = useState<DispatchEntry | null>(null);
-  const listScrollRef = useRef<HTMLDivElement | null>(null);
+
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 400);
     return () => clearTimeout(t);
   }, [search]);
+
   useEffect(() => {
-    setVisibleLimit(DISPATCH_INITIAL);
+    setDispatchPage(0);
     setSelectedPatientId(null);
-  }, [debouncedSearch, dateFrom, dateTo, includeOlderPending, listMode]);
+  }, [debouncedSearch, dateFrom, dateTo, includeOlderPending, listMode, pageSize]);
 
   const { data: filteredDispatchIds = [] as string[], isLoading: loadingIds } = useQuery({
     queryKey: [
@@ -134,99 +276,35 @@ const Dispatch = () => {
       });
     },
     placeholderData: keepPreviousData,
-    staleTime: 30_000,
+    staleTime: 120_000,
   });
-  const dispatchCount = filteredDispatchIds.length;
-  const visibleIds = useMemo(
-    () => filteredDispatchIds.slice(0, visibleLimit),
-    [filteredDispatchIds, visibleLimit],
-  );
-  const hasMoreDispatch = visibleLimit < dispatchCount;
-  const pageKey = shortIdsKey(visibleIds, "dp");
 
-  const { data: registrations = [], isLoading: loadingRegs, isFetching: fetchingRegs } = useQuery({
-    queryKey: ["dispatch_regs", pageKey, visibleLimit],
-    enabled: visibleIds.length > 0,
+  const dispatchCount = filteredDispatchIds.length;
+  const totalPages = Math.max(1, Math.ceil(dispatchCount / pageSize) || 1);
+  const safePage = Math.min(dispatchPage, totalPages - 1);
+  const pageIds = useMemo(
+    () => filteredDispatchIds.slice(safePage * pageSize, safePage * pageSize + pageSize),
+    [filteredDispatchIds, safePage, pageSize],
+  );
+  const pageKey = shortIdsKey(pageIds, "dp");
+
+  const { data: registrations = [], isLoading: loadingRegs } = useQuery({
+    queryKey: ["dispatch_regs", pageKey, pageSize, safePage],
+    enabled: pageIds.length > 0,
     queryFn: async () => {
       const { data } = await supabase.from("patient_registrations")
         .select("id, invoice_number, patient_name, title, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, gender, dob, created_at, updated_at, bill_cancelled, registered_by, due_amount, pickup_point_id")
-        .in("id", visibleIds);
-      const order = new Map(visibleIds.map((id, i) => [id, i]));
+        .in("id", pageIds);
+      const order = new Map(pageIds.map((id, i) => [id, i]));
       return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     },
     placeholderData: keepPreviousData,
-    staleTime: 30_000,
+    staleTime: 120_000,
   });
 
-  const loadMoreDispatch = useCallback(() => {
-    if (!hasMoreDispatch) return;
-    setVisibleLimit((v) => {
-      if (v >= dispatchCount) return v;
-      return Math.min(v + DISPATCH_BATCH, dispatchCount);
-    });
-  }, [hasMoreDispatch, dispatchCount]);
-
-  const handleListScroll = useCallback(() => {
-    const el = listScrollRef.current;
-    if (!el || !hasMoreDispatch || fetchingRegs) return;
-    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 100) {
-      loadMoreDispatch();
-    }
-  }, [hasMoreDispatch, fetchingRegs, loadMoreDispatch]);
-
+  const listLoading = loadingIds || (pageIds.length > 0 && loadingRegs);
   const regIds = registrations.map((r: any) => r.id);
   const regKey = shortIdsKey(regIds, "d");
-
-  const { data: allResults = [] } = useQuery({
-    queryKey: ["dispatch_all_results", regKey],
-    enabled: regIds.length > 0,
-    queryFn: async () => {
-      return await fetchAllByIds<any>("patient_results", PATIENT_RESULTS_SELECT_DISPATCH, "registration_id", regIds);
-    },
-    placeholderData: keepPreviousData,
-  });
-
-  const { data: allTubes = [], isFetched: tubesFetched } = useQuery({
-    queryKey: ["dispatch_all_tubes", regKey],
-    enabled: regIds.length > 0,
-    queryFn: async () => {
-      return await fetchAllByIds<any>("sample_tubes", "id, registration_id, test_ids, collected_at, accepted_at, status, collected_by, accepted_by", "registration_id", regIds);
-    },
-    placeholderData: keepPreviousData,
-  });
-
-  const { data: allSnips = [] } = useQuery({
-    queryKey: ["dispatch_all_snips", regKey],
-    enabled: regIds.length > 0,
-    queryFn: async () => {
-      return await fetchAllByIds<any>("outsourced_test_snips", "id, registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, result_mode, snip_image_urls, updated_at, sent_at, entered_at, entered_by, verified_at, verified_by, approved_at, approved_by, dispatched_at, dispatched_by", "registration_id", regIds);
-    },
-    placeholderData: keepPreviousData,
-  });
-
-  const { data: heldRegIds = [] } = useQuery({
-    queryKey: ["dispatch_held_reports", regKey],
-    enabled: regIds.length > 0,
-    queryFn: async () => {
-      const { data } = await supabase.from("approved_reports").select("registration_id").eq("is_held", true).in("registration_id", regIds);
-      return (data || []).map((r: any) => r.registration_id) as string[];
-    },
-    placeholderData: keepPreviousData,
-  });
-
-  // Tubes are required to expand PRL/HLT into leaf tests — without them the list
-  // filters to empty (same remount flash as Results/Verification after View Report).
-  const tubesReady = regIds.length === 0 || tubesFetched;
-  const listLoading = loadingIds || loadingRegs || (registrations.length > 0 && !tubesReady);
-
-  // If the first page doesn't fill the viewport, keep loading until it does or list ends.
-  useEffect(() => {
-    const el = listScrollRef.current;
-    if (!el || !hasMoreDispatch || listLoading || fetchingRegs) return;
-    if (el.scrollHeight <= el.clientHeight + 40) {
-      loadMoreDispatch();
-    }
-  }, [hasMoreDispatch, listLoading, fetchingRegs, registrations.length, loadMoreDispatch]);
 
   const invoiceNumbers = useMemo(
     () => registrations.map((r: any) => String(r.invoice_number || "").trim()).filter(Boolean),
@@ -236,7 +314,6 @@ const Dispatch = () => {
   const { data: failedWaJobs = [] } = useQuery({
     queryKey: ["dispatch_failed_wa_outbox", regKey],
     enabled: regIds.length > 0,
-    // No polling — Refresh button includes this key
     queryFn: async () => {
       const cols = "id, kind, registration_id, invoice_number, phone, last_error, attempts, status";
       const [byReg, byInv] = await Promise.all([
@@ -259,6 +336,7 @@ const Dispatch = () => {
       }
       return [...map.values()];
     },
+    staleTime: 120_000,
   });
 
   const failedWaByRegId = useMemo(() => {
@@ -281,10 +359,14 @@ const Dispatch = () => {
 
   const { data: testsMap = {} } = useQuery({
     queryKey: ["results_tests_map"],
-    queryFn: async () => { const { data } = await supabase.from("tests").select("id, test_name"); const map: Record<string, any> = {}; (data || []).forEach((t: any) => { map[t.id] = t; }); return map; },
+    queryFn: async () => {
+      const { data } = await supabase.from("tests").select("id, test_name");
+      const map: Record<string, any> = {};
+      (data || []).forEach((t: any) => { map[t.id] = t; });
+      return map;
+    },
+    staleTime: 600_000,
   });
-
-  const heldSet = useMemo(() => new Set(heldRegIds), [heldRegIds]);
 
   const { data: creditPickupIds = [] } = useQuery({
     queryKey: ["dispatch_credit_pickup_points"],
@@ -292,163 +374,94 @@ const Dispatch = () => {
       const { data } = await supabase.from("pickup_points").select("id, billing_type").eq("billing_type", "credit");
       return (data || []).map((p: any) => p.id) as string[];
     },
+    staleTime: 600_000,
   });
   const creditPickupSet = useMemo(() => new Set(creditPickupIds), [creditPickupIds]);
   const isPaymentBlocked = (reg: any) => {
     if (!reg) return false;
     if ((reg.due_amount ?? 0) <= 0) return false;
-    // Credit pickup-point patients are billed monthly — bypass the DUE block
     if (reg.pickup_point_id && creditPickupSet.has(reg.pickup_point_id)) return false;
     return true;
   };
 
-  const dispatchEntries = useMemo(() => {
-    return registrations.map((reg: any) => {
-      const tests = (reg.tests || []) as any[];
-      const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id || t.id).filter(Boolean));
-      const billCancelled = !!reg.bill_cancelled;
-      // Build leaf-id set from this registration's tubes (handles PRL/HLT expansion)
-      const leafIds = new Set<string>();
-      for (const tb of allTubes) {
-        if (tb.registration_id !== reg.id) continue;
-        const ids = Array.isArray(tb.test_ids) ? tb.test_ids : [];
-        ids.forEach((id: string) => leafIds.add(id));
-      }
-      const expandedTests = expandRegistrationTests(tests, leafIds, testsMap);
-      if (expandedTests.length === 0) return null;
+  // ─── Detail queries: only for the selected registration ───
+  const detailEnabled = !!selectedPatientId;
 
-      const dispatchTests: DispatchTest[] = [];
-      for (const t of expandedTests) {
-        const testInfo = testsMap[t.test_id] || {};
-        const isCancelled = billCancelled || cancelledIds.has(t.test_id);
-        const testResults = allResults.filter((r: any) => r.registration_id === reg.id && r.test_id === t.test_id);
-        const snip = allSnips.find((s: any) => s.registration_id === reg.id && s.test_id === t.test_id);
+  const { data: detailResults = [], isFetched: detailResultsFetched, isLoading: loadingDetailResults } = useQuery({
+    queryKey: ["dispatch_detail_results", selectedPatientId],
+    enabled: detailEnabled,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("patient_results")
+        .select(PATIENT_RESULTS_SELECT_DISPATCH)
+        .eq("registration_id", selectedPatientId!);
+      return (data || []) as any[];
+    },
+    staleTime: 60_000,
+  });
 
-        // Find tube for this test
-        const tube = allTubes.find((tb: any) => tb.registration_id === reg.id && Array.isArray(tb.test_ids) && tb.test_ids.includes(t.test_id));
+  const { data: detailTubes = [], isFetched: detailTubesFetched, isLoading: loadingDetailTubes } = useQuery({
+    queryKey: ["dispatch_detail_tubes", selectedPatientId],
+    enabled: detailEnabled,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("sample_tubes")
+        .select("id, registration_id, test_ids, collected_at, accepted_at, status, collected_by, accepted_by")
+        .eq("registration_id", selectedPatientId!);
+      return (data || []) as any[];
+    },
+    staleTime: 60_000,
+  });
 
-        const hasDispatchedResults = testResults.some((r: any) => r.status === "dispatched");
-        const hasDispatchedSnip = snip && snip.outsource_status === "dispatched";
-        const hasApprovedResults = testResults.some((r: any) => r.status === "approved");
-        const hasApprovedSnip = snip && snip.outsource_status === "approved";
-        const hasVerifiedResults = testResults.some((r: any) => r.status === "verified");
-        const hasVerifiedSnip = snip && snip.outsource_status === "verified";
-        const hasEnteredResults = testResults.some((r: any) => r.status === "entered" || r.status === "results_entered");
-        const hasEnteredSnip = snip && (snip.outsource_status === "results_entered" || snip.outsource_status === "results_saved" || snip.outsource_status === "sent");
+  const { data: detailSnips = [], isFetched: detailSnipsFetched, isLoading: loadingDetailSnips } = useQuery({
+    queryKey: ["dispatch_detail_snips", selectedPatientId],
+    enabled: detailEnabled,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("outsourced_test_snips")
+        .select("id, registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, result_mode, snip_image_urls, updated_at, sent_at, entered_at, entered_by, verified_at, verified_by, approved_at, approved_by, dispatched_at, dispatched_by")
+        .eq("registration_id", selectedPatientId!);
+      return (data || []) as any[];
+    },
+    staleTime: 60_000,
+  });
 
-        let status: TestStatus = "registered";
-        if (isCancelled) {
-          status = "cancelled";
-        } else if (hasDispatchedResults || hasDispatchedSnip) status = "dispatched";
-        else if (hasApprovedResults || hasApprovedSnip) status = "approved";
-        else if (hasVerifiedResults || hasVerifiedSnip) status = "verified";
-        else if (hasEnteredResults || hasEnteredSnip) status = "results_entered";
-        else if (tube?.status === "accepted" || tube?.accepted_at) status = "sample_accepted";
-        else if (tube?.status === "collected" || tube?.collected_at) status = "sample_collected";
-        else status = "registered";
+  const { data: detailHeld = false, isFetched: detailHeldFetched, isLoading: loadingDetailHeld } = useQuery({
+    queryKey: ["dispatch_detail_held", selectedPatientId],
+    enabled: detailEnabled,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("approved_reports")
+        .select("registration_id")
+        .eq("is_held", true)
+        .eq("registration_id", selectedPatientId!)
+        .limit(1);
+      return (data || []).length > 0;
+    },
+    staleTime: 60_000,
+  });
 
-        const snipUrls = snip && snip.result_mode === "snip" && Array.isArray(snip.snip_image_urls) ? snip.snip_image_urls : [];
-        const approvedResults = testResults.filter((r: any) => r.status === "approved");
+  const detailLoading =
+    detailEnabled &&
+    (loadingDetailResults || loadingDetailTubes || loadingDetailSnips || loadingDetailHeld ||
+      !detailResultsFetched || !detailTubesFetched || !detailSnipsFetched || !detailHeldFetched);
 
-        // Extract audit timestamps
-        const collectedAt = tube?.collected_at || null;
-        const acceptedAt = tube?.accepted_at || null;
-        const getEarliest = (field: string) => {
-          const vals = testResults.map((r: any) => r[field]).filter(Boolean);
-          return vals.length > 0 ? vals.sort()[0] : null;
-        };
-        const getFirstBy = (field: string) => {
-          const vals = testResults.map((r: any) => r[field]).filter(Boolean);
-          return vals.length > 0 ? vals[0] : null;
-        };
-
-        let enteredAt = getEarliest("entered_at");
-        let verifiedAt = getEarliest("verified_at");
-        let approvedAtTs = getEarliest("approved_at");
-        let dispatchedAtTs = getEarliest("dispatched_at");
-        let enteredBy = getFirstBy("entered_by");
-        let verifiedBy = getFirstBy("verified_by");
-        let approvedBy = getFirstBy("approved_by");
-        let dispatchedBy = getFirstBy("dispatched_by");
-        if (snip && !isCancelled) {
-          const snipStatus = snip.outsource_status;
-          const snipTime = snip.updated_at || snip.sent_at || null;
-          if (["results_entered", "results_saved", "sent", "verified", "approved", "dispatched"].includes(snipStatus)) {
-            enteredAt = enteredAt || snip.entered_at || snipTime;
-            enteredBy = enteredBy || snip.entered_by || null;
-          }
-          if (["verified", "approved", "dispatched"].includes(snipStatus)) {
-            verifiedAt = verifiedAt || snip.verified_at || snipTime;
-            verifiedBy = verifiedBy || snip.verified_by || null;
-          }
-          if (["approved", "dispatched"].includes(snipStatus)) {
-            approvedAtTs = approvedAtTs || snip.approved_at || snipTime;
-            approvedBy = approvedBy || snip.approved_by || null;
-          }
-          if (snipStatus === "dispatched") {
-            dispatchedAtTs = dispatchedAtTs || snip.dispatched_at || snipTime;
-            dispatchedBy = dispatchedBy || snip.dispatched_by || null;
-          }
-        }
-
-        dispatchTests.push({
-          testId: t.test_id,
-          testName: t.test_name || testInfo.test_name || "Unknown",
-          status,
-          results: approvedResults,
-          snipUrls: status === "approved" ? snipUrls : [],
-          collectedAt,
-          acceptedAt,
-          enteredAt,
-          verifiedAt,
-          approvedAt: approvedAtTs,
-          dispatchedAt: dispatchedAtTs,
-          registeredBy: reg.registered_by || null,
-          collectedBy: tube?.collected_by || null,
-          acceptedBy: tube?.accepted_by || null,
-          enteredBy,
-          verifiedBy,
-          approvedBy,
-          dispatchedBy,
-        });
-      }
-
-      const cancelledCount = dispatchTests.filter(t => t.status === "cancelled").length;
-      const approvedCount = dispatchTests.filter(t => t.status === "approved").length;
-      const dispatchedCount = dispatchTests.filter(t => t.status === "dispatched").length;
-      const pendingCount = dispatchTests.filter(t => t.status !== "approved" && t.status !== "dispatched" && t.status !== "cancelled").length;
-      const activeCount = dispatchTests.length - cancelledCount;
-
-      let completionStatus: DispatchEntry["completionStatus"] = "all_pending";
-      if (billCancelled || (dispatchTests.length > 0 && cancelledCount === dispatchTests.length)) {
-        completionStatus = "cancelled";
-      } else if (activeCount > 0 && dispatchedCount === activeCount) {
-        completionStatus = "all_dispatched"; // blue — every report dispatched
-      } else if (activeCount > 0 && (approvedCount + dispatchedCount) === activeCount) {
-        completionStatus = "all_done"; // green — every report approved (may still need Dispatch All)
-      } else if (dispatchedCount > 0 || approvedCount > 0) {
-        completionStatus = "partial";
-      }
-
+  /** Lightweight list cards — registrations only (no results/tubes/snips). */
+  const listEntries = useMemo(() => {
+    const rows: DispatchEntry[] = registrations.map((reg: any) => {
+      const completionStatus = reg.bill_cancelled
+        ? "cancelled"
+        : dispatchDotFromRegStatus(reg.status);
       return {
         registration: reg,
-        tests: dispatchTests,
+        tests: [],
         completionStatus,
-        approvedCount,
-        pendingCount,
-        dispatchedCount,
-        cancelledCount,
+        approvedCount: 0,
+        pendingCount: 0,
+        dispatchedCount: 0,
+        cancelledCount: 0,
       } as DispatchEntry;
-    }).filter(Boolean) as DispatchEntry[];
-  }, [registrations, allResults, allSnips, allTubes, testsMap]);
-
-  // Current: show everyone including fully dispatched (blue).
-  // Pending Dispatch filter: hide blue-dot patients; only approved-undispatched work.
-  const sortedDispatchEntries = useMemo(() => {
-    const rows =
-      listMode === "pending_dispatch"
-        ? dispatchEntries.filter((e) => e.completionStatus !== "all_dispatched" && e.approvedCount > 0)
-        : dispatchEntries;
+    });
     return [...rows].sort((a, b) => {
       const aCancelled = a.completionStatus === "cancelled" ? 1 : 0;
       const bCancelled = b.completionStatus === "cancelled" ? 1 : 0;
@@ -458,20 +471,44 @@ const Dispatch = () => {
       if (bActivestat !== aActivestat) return bActivestat - aActivestat;
       return String(b.registration.invoice_number || "").localeCompare(String(a.registration.invoice_number || ""));
     });
-  }, [dispatchEntries, listMode]);
+  }, [registrations]);
 
-  // ─── NEW arrivals badge tracker ───
-  const dispatchRegIds = useMemo(() => sortedDispatchEntries.map(e => e.registration.id), [sortedDispatchEntries]);
+  const selectedReg = useMemo(
+    () => registrations.find((r: any) => r.id === selectedPatientId) || null,
+    [registrations, selectedPatientId],
+  );
+
+  /** Full entry for detail panel — only when detail data is ready. */
+  const selectedEntry = useMemo(() => {
+    if (!selectedPatientId || !selectedReg) return null;
+    if (detailLoading) return null;
+    return buildFullDispatchEntry(selectedReg, detailResults, detailTubes, detailSnips, testsMap);
+  }, [selectedPatientId, selectedReg, detailLoading, detailResults, detailTubes, detailSnips, testsMap]);
+
+  const dispatchRegIds = useMemo(() => listEntries.map((e) => e.registration.id), [listEntries]);
   const { isNew: isNewArrival, markSeen: markArrivalSeen } = useNewArrivalsBadge("dispatch", dispatchRegIds);
 
-  // Auto-select first patient when entries change
+  // Do not auto-open a patient — detail fetch only on user click (egress).
   useEffect(() => {
-    if (sortedDispatchEntries.length > 0 && (!selectedPatientId || !sortedDispatchEntries.find(e => e.registration.id === selectedPatientId))) {
-      setSelectedPatientId(sortedDispatchEntries[0].registration.id);
+    if (selectedPatientId && !listEntries.find((e) => e.registration.id === selectedPatientId)) {
+      setSelectedPatientId(null);
+      if (isMobile) setMobileShowDetail(false);
     }
-  }, [sortedDispatchEntries, selectedPatientId]);
+  }, [listEntries, selectedPatientId, isMobile]);
 
-  const selectedEntry = useMemo(() => sortedDispatchEntries.find(e => e.registration.id === selectedPatientId) || null, [sortedDispatchEntries, selectedPatientId]);
+  const refreshKeys = useMemo(() => {
+    const keys = ["dispatch_filtered_ids", "dispatch_regs"];
+    if (selectedPatientId) {
+      keys.push(
+        "dispatch_detail_results",
+        "dispatch_detail_tubes",
+        "dispatch_detail_snips",
+        "dispatch_detail_held",
+        "dispatch_failed_wa_outbox",
+      );
+    }
+    return keys;
+  }, [selectedPatientId]);
 
   const markAsDispatched = async (entry: DispatchEntry) => {
     const reg = entry.registration;
@@ -485,9 +522,8 @@ const Dispatch = () => {
       return;
     }
 
-    // Always include approved + already-dispatched so patient gets one combined PDF.
-    const reportable = entry.tests.filter(t => t.status === "approved" || t.status === "dispatched");
-    const testIds = reportable.map(t => t.testId);
+    const reportable = entry.tests.filter((t) => t.status === "approved" || t.status === "dispatched");
+    const testIds = reportable.map((t) => t.testId);
     if (testIds.length === 0) {
       toast.error("No reports available to dispatch");
       return;
@@ -500,8 +536,8 @@ const Dispatch = () => {
         registrationId: reg.id,
         testIds,
         pendingReportNames: entry.tests
-          .filter(t => t.status !== "approved" && t.status !== "dispatched")
-          .map(t => t.testName),
+          .filter((t) => t.status !== "approved" && t.status !== "dispatched")
+          .map((t) => t.testName),
       });
       if (!queued.ok) {
         throw new Error(queued.error || "Failed to queue report WhatsApp");
@@ -509,7 +545,6 @@ const Dispatch = () => {
 
       const now = new Date().toISOString();
       const dispatcher = getCurrentUserName();
-      // Mark newly approved as dispatched; refresh timestamp on already-dispatched too.
       await supabase.from("patient_results").update({
         status: "dispatched",
         dispatched_at: now,
@@ -520,7 +555,7 @@ const Dispatch = () => {
         dispatched_at: now,
         dispatched_by: dispatcher,
       } as any).eq("registration_id", reg.id).in("outsource_status", ["approved", "dispatched"]).in("test_id", testIds);
-      const stillPending = entry.tests.some(t => t.status !== "approved" && t.status !== "dispatched");
+      const stillPending = entry.tests.some((t) => t.status !== "approved" && t.status !== "dispatched");
       if (!stillPending) {
         await supabase.from("patient_registrations").update({ status: "dispatched" } as any).eq("id", reg.id);
       }
@@ -553,8 +588,8 @@ const Dispatch = () => {
       return;
     }
 
-    const reportable = entry.tests.filter(t => t.status === "approved" || t.status === "dispatched");
-    const testIds = reportable.map(t => t.testId);
+    const reportable = entry.tests.filter((t) => t.status === "approved" || t.status === "dispatched");
+    const testIds = reportable.map((t) => t.testId);
     if (testIds.length === 0) {
       toast.error("No reports available to send");
       return;
@@ -567,13 +602,12 @@ const Dispatch = () => {
         registrationId: reg.id,
         testIds,
         pendingReportNames: entry.tests
-          .filter(t => t.status !== "approved" && t.status !== "dispatched")
-          .map(t => t.testName),
+          .filter((t) => t.status !== "approved" && t.status !== "dispatched")
+          .map((t) => t.testName),
       });
       if (!queued.ok) {
         throw new Error(queued.error || "Failed to queue report WhatsApp");
       }
-      // Re-send queued successfully — drop prior failure badges for this bill
       const failed = failedWaByRegId.get(reg.id) || [];
       if (failed.length) {
         await dismissFailedWhatsAppConsoleJobs(failed.map((j: any) => j.id));
@@ -613,16 +647,16 @@ const Dispatch = () => {
   };
 
   const openReportSelectDialog = (entry: DispatchEntry) => {
-    const reportableTests = entry.tests.filter(t => t.status === "approved" || t.status === "dispatched");
-    setSelectedTestIds(new Set(reportableTests.map(t => t.testId)));
+    const reportableTests = entry.tests.filter((t) => t.status === "approved" || t.status === "dispatched");
+    setSelectedTestIds(new Set(reportableTests.map((t) => t.testId)));
     setReportSelectEntry(entry);
   };
 
-  const reportableTests = reportSelectEntry?.tests.filter(t => t.status === "approved" || t.status === "dispatched") || [];
-  const allReportableSelected = reportableTests.length > 0 && reportableTests.every(t => selectedTestIds.has(t.testId));
+  const reportableTests = reportSelectEntry?.tests.filter((t) => t.status === "approved" || t.status === "dispatched") || [];
+  const allReportableSelected = reportableTests.length > 0 && reportableTests.every((t) => selectedTestIds.has(t.testId));
 
   const toggleTestSelection = (testId: string) => {
-    setSelectedTestIds(prev => {
+    setSelectedTestIds((prev) => {
       const next = new Set(prev);
       if (next.has(testId)) next.delete(testId); else next.add(testId);
       return next;
@@ -631,15 +665,13 @@ const Dispatch = () => {
 
   const toggleSelectAll = () => {
     if (allReportableSelected) setSelectedTestIds(new Set());
-    else setSelectedTestIds(new Set(reportableTests.map(t => t.testId)));
+    else setSelectedTestIds(new Set(reportableTests.map((t) => t.testId)));
   };
 
   const handleGenerateReport = () => {
     if (!reportSelectEntry || selectedTestIds.size === 0) return;
     const regId = reportSelectEntry.registration.id;
     const queryParam = Array.from(selectedTestIds).join(",");
-    // Open in a new tab so Dispatch stays mounted — navigating away + Back remounts
-    // the list before tubes reload and briefly drops every patient.
     const win = window.open(
       `/lims/report/${regId}?tests=${encodeURIComponent(queryParam)}`,
       "_blank",
@@ -700,6 +732,9 @@ const Dispatch = () => {
     if (!dateStr) return "—";
     try { return format(new Date(dateStr), "dd MMM yyyy, hh:mm a"); } catch { return dateStr; }
   };
+
+  const showingFrom = dispatchCount === 0 ? 0 : safePage * pageSize + 1;
+  const showingTo = Math.min((safePage + 1) * pageSize, dispatchCount);
 
   return (
     <div className="space-y-3">
@@ -786,15 +821,22 @@ const Dispatch = () => {
             Clear failed badges
           </Button>
         )}
-        <RefreshButton
-          queryKeys={["dispatch_filtered_ids", "dispatch_regs", "dispatch_regs_count", "dispatch_all_results", "dispatch_all_tubes", "dispatch_all_snips", "dispatch_held_reports", "results_tests_map", "dispatch_credit_pickup_points", "dispatch_failed_wa_outbox"]}
-          className="ml-auto"
-        />
+        <RefreshButton queryKeys={refreshKeys} className="ml-auto" />
+        <PageSizeSelect value={pageSize} onChange={(n) => { setPageSize(n); setDispatchPage(0); }} />
         <span className="text-xs text-muted-foreground whitespace-nowrap">
           {dispatchCount === 0
             ? "0 records"
-            : `Showing ${Math.min(visibleLimit, dispatchCount)} of ${dispatchCount}`}
+            : `Showing ${showingFrom}–${showingTo} of ${dispatchCount}`}
         </span>
+        <Button variant="outline" size="sm" disabled={safePage <= 0} onClick={() => setDispatchPage((p) => Math.max(0, p - 1))}>
+          Prev
+        </Button>
+        <span className="text-xs text-muted-foreground whitespace-nowrap">
+          Page {safePage + 1} / {totalPages}
+        </span>
+        <Button variant="outline" size="sm" disabled={safePage >= totalPages - 1 || dispatchCount === 0} onClick={() => setDispatchPage((p) => p + 1)}>
+          Next
+        </Button>
       </div>
 
       <p className="text-[11px] text-muted-foreground -mt-1">
@@ -814,14 +856,10 @@ const Dispatch = () => {
                   <Input placeholder="Search name, mobile, invoice..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8 h-9 text-sm" />
                 </div>
               </div>
-              <div
-                ref={listScrollRef}
-                className="flex-1 min-h-0 overflow-y-auto"
-                onScroll={handleListScroll}
-              >
+              <div className="flex-1 min-h-0 overflow-y-auto">
                 {listLoading ? (
                   <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
-                ) : sortedDispatchEntries.length === 0 ? (
+                ) : listEntries.length === 0 ? (
                   <div className="text-center py-12 text-muted-foreground px-3">
                     <Truck className="h-10 w-10 mx-auto mb-3 opacity-30" />
                     <p className="text-sm font-medium">
@@ -837,9 +875,10 @@ const Dispatch = () => {
                   </div>
                 ) : (
                 <div className="divide-y">
-                  {sortedDispatchEntries.map((entry) => {
+                  {listEntries.map((entry) => {
                     const reg = entry.registration;
                     const isSelected = selectedPatientId === reg.id;
+                    const showHeld = isSelected && detailHeld && entry.completionStatus !== "cancelled";
                     return (
                       <div
                         key={reg.id}
@@ -854,7 +893,7 @@ const Dispatch = () => {
                               <span className={cn("font-semibold text-sm truncate tracking-wide", entry.completionStatus === "cancelled" && "line-through text-muted-foreground")}>{reg.invoice_number}</span>
                               <NewBadge show={isNewArrival(reg.id)} />
                               {entry.completionStatus === "cancelled" && <Badge variant="destructive" className="text-[10px] px-1 py-0">Cancelled</Badge>}
-                              {heldSet.has(reg.id) && entry.completionStatus !== "cancelled" && <Badge variant="outline" className="text-[10px] px-1 py-0 border-amber-500 text-amber-700">Held</Badge>}
+                              {showHeld && <Badge variant="outline" className="text-[10px] px-1 py-0 border-amber-500 text-amber-700">Held</Badge>}
                             </div>
                             <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
                               <span className={cn("text-xs text-muted-foreground truncate", entry.completionStatus === "cancelled" && "line-through")}>{patientDisplayName(reg)}</span>
@@ -867,11 +906,6 @@ const Dispatch = () => {
                               <span className="text-[10px] text-muted-foreground flex items-center gap-1">
                                 <CalendarIcon className="h-3 w-3" />
                                 {formatDate(reg.created_at)}
-                              </span>
-                              <span className="text-[10px] text-muted-foreground">
-                                {entry.cancelledCount === entry.tests.length
-                                  ? `${entry.cancelledCount} cancelled`
-                                  : `${entry.approvedCount}A / ${entry.pendingCount}P${entry.cancelledCount ? ` / ${entry.cancelledCount}C` : ""}`}
                               </span>
                             </div>
                             {reg.due_amount > 0 && (
@@ -890,21 +924,6 @@ const Dispatch = () => {
                       </div>
                     );
                   })}
-                  {hasMoreDispatch && (
-                    <div className="flex justify-center py-3">
-                      {fetchingRegs ? (
-                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                      ) : (
-                        <button
-                          type="button"
-                          className="text-[10px] text-muted-foreground underline-offset-2 hover:underline"
-                          onClick={loadMoreDispatch}
-                        >
-                          Load more
-                        </button>
-                      )}
-                    </div>
-                  )}
                 </div>
                 )}
               </div>
@@ -914,7 +933,11 @@ const Dispatch = () => {
           {/* RIGHT PANEL — Selected Patient Details */}
           {(!isMobile || mobileShowDetail) && (
             <Card className={cn("flex flex-col overflow-hidden", isMobile ? "w-full flex-1" : "flex-1")}>
-              {selectedEntry ? (
+              {detailLoading ? (
+                <div className="flex-1 flex items-center justify-center text-muted-foreground">
+                  <Loader2 className="h-8 w-8 animate-spin" />
+                </div>
+              ) : selectedEntry ? (
                 <>
                   {/* Patient header */}
                   <div className="p-4 border-b bg-muted/20">
@@ -929,7 +952,7 @@ const Dispatch = () => {
                           <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
                           <h3 className={cn("font-semibold", isMobile ? "text-base" : "text-lg", selectedEntry.completionStatus === "cancelled" && "line-through text-muted-foreground")}>{selectedEntry.registration.invoice_number}</h3>
                           {selectedEntry.completionStatus === "cancelled" && <Badge variant="destructive" className="text-[10px]">Cancelled</Badge>}
-                          {heldSet.has(selectedEntry.registration.id) && selectedEntry.completionStatus !== "cancelled" && <Badge variant="outline" className="text-[10px] border-amber-500 text-amber-700">Held</Badge>}
+                          {detailHeld && selectedEntry.completionStatus !== "cancelled" && <Badge variant="outline" className="text-[10px] border-amber-500 text-amber-700">Held</Badge>}
                           {selectedEntry.registration.is_stat && selectedEntry.completionStatus !== "all_done" && selectedEntry.completionStatus !== "all_dispatched" && selectedEntry.completionStatus !== "cancelled" && <Badge variant="destructive" className="text-[10px]">STAT</Badge>}
                           {getCompletionDot(selectedEntry.completionStatus)}
                         </div>
@@ -975,12 +998,12 @@ const Dispatch = () => {
                       </div>
                     )}
                     <div className="flex items-center gap-2 flex-wrap mt-3">
-                      {selectedEntry.tests.some(t => t.status === "approved" || t.status === "dispatched") && (
+                      {selectedEntry.tests.some((t) => t.status === "approved" || t.status === "dispatched") && (
                         <Button size="sm" variant="outline" className="gap-1" disabled={isPaymentBlocked(selectedEntry.registration)} onClick={() => openReportSelectDialog(selectedEntry)}>
                           <Eye className="h-4 w-4" /> View Report
                         </Button>
                       )}
-                      {(selectedEntry.dispatchedCount > 0 || selectedEntry.tests.some(t => t.status === "dispatched")) && (
+                      {(selectedEntry.dispatchedCount > 0 || selectedEntry.tests.some((t) => t.status === "dispatched")) && (
                         <Button
                           size="sm"
                           variant="secondary"
@@ -1025,7 +1048,6 @@ const Dispatch = () => {
 
                         return (
                           <Collapsible key={testKey} className="border rounded-lg bg-background">
-                            {/* Test header */}
                             <div className={cn("flex items-center justify-between px-4 py-3", isMobile && "flex-wrap gap-2 px-3 py-2")}>
                               <div className="flex items-center gap-2 min-w-0">
                                 <CollapsibleTrigger className="flex items-center gap-2 group cursor-pointer text-left">
@@ -1034,13 +1056,11 @@ const Dispatch = () => {
                                 </CollapsibleTrigger>
                               </div>
                               <div className={cn("flex items-center gap-1.5 shrink-0", isMobile && "flex-wrap w-full justify-end")}>
-                                {/* View Snip */}
                                 {test.status === "approved" && test.snipUrls.length > 0 && (
                                   <Button size="sm" variant="ghost" className="h-8 text-xs gap-1" disabled={isPaymentBlocked(selectedEntry.registration)} onClick={() => setViewSnipImages(test.snipUrls)}>
                                     <Eye className="h-3.5 w-3.5" /> Snip
                                   </Button>
                                 )}
-                                {/* TAT badge */}
                                 {(() => {
                                   const startTime = test.collectedAt;
                                   const endTime = test.dispatchedAt;
@@ -1060,11 +1080,9 @@ const Dispatch = () => {
                                   }
                                   return null;
                                 })()}
-                                {/* Status badge */}
                                 {getStatusBadge(test.status)}
                               </div>
                             </div>
-                            {/* Collapsible audit trail */}
                             <CollapsibleContent>
                               <div className="px-4 py-2.5 border-t">
                                 <div className="space-y-1">
@@ -1114,7 +1132,7 @@ const Dispatch = () => {
       )}
 
       {/* Snip viewer dialog */}
-      <Dialog open={!!viewSnipImages} onOpenChange={open => { if (!open) setViewSnipImages(null); }}>
+      <Dialog open={!!viewSnipImages} onOpenChange={(open) => { if (!open) setViewSnipImages(null); }}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Outsourced Result — Snipped Images</DialogTitle></DialogHeader>
           <div className="space-y-4">{viewSnipImages?.map((url, idx) => (<div key={idx} className="border rounded-lg overflow-hidden"><img src={url} alt={`Snip page ${idx + 1}`} className="w-full object-contain" /></div>))}</div>
@@ -1122,7 +1140,7 @@ const Dispatch = () => {
       </Dialog>
 
       {/* Report select dialog */}
-      <Dialog open={!!reportSelectEntry} onOpenChange={open => { if (!open) setReportSelectEntry(null); }}>
+      <Dialog open={!!reportSelectEntry} onOpenChange={(open) => { if (!open) setReportSelectEntry(null); }}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Select Tests for Report</DialogTitle></DialogHeader>
           <div className="space-y-3">
@@ -1131,7 +1149,7 @@ const Dispatch = () => {
               <span className="font-medium text-sm">Select All ({reportableTests.length} tests)</span>
             </label>
             <div className="space-y-1 max-h-60 overflow-y-auto">
-              {reportableTests.map(test => (
+              {reportableTests.map((test) => (
                 <label key={test.testId} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 cursor-pointer">
                   <input type="checkbox" checked={selectedTestIds.has(test.testId)} onChange={() => toggleTestSelection(test.testId)} className="h-4 w-4 rounded border-input" />
                   <span className="text-sm">{test.testName}</span>

@@ -1,4 +1,5 @@
 import RefreshButton from "@/components/lims/RefreshButton";
+import PageSizeSelect from "@/components/lims/PageSizeSelect";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { formatAgeGender } from "@/lib/ageGender";
@@ -35,6 +36,7 @@ import { fetchDoctorApprovalCandidateIds, fetchFilteredSortedIds } from "@/lib/l
 import { fetchAllByIds } from "@/lib/fetchAllRows";
 import { PATIENT_RESULTS_SELECT_DOCTOR } from "@/lib/patientResultsSelect";
 import { shortIdsKey } from "@/lib/queryKeys";
+import { readLimsPageSize, type LimsPageSize } from "@/lib/limsListPrefs";
 import SyncingOverlay from "./SyncingOverlay";
 import NewBadge from "./NewBadge";
 
@@ -71,8 +73,6 @@ interface SnipOnlyTest {
 
 interface PatientEntry { registration: any; parameters: ParameterResult[]; snipOnlyTests: SnipOnlyTest[]; }
 
-const DA_PAGE_SIZE = 50;
-
 const DoctorApproval = () => {
   const qc = useQueryClient();
   useLimsPipelineRealtime("doctor_approval");
@@ -82,6 +82,7 @@ const DoctorApproval = () => {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedMachine, setSelectedMachine] = useState<string>("all");
+  const [pageSize, setPageSize] = useState<LimsPageSize>(() => readLimsPageSize());
   const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
   const [editedUnits, setEditedUnits] = useState<Record<string, string>>({});
@@ -172,10 +173,10 @@ const DoctorApproval = () => {
       return await fetchFilteredSortedIds(candidates, debouncedSearch);
     },
     placeholderData: keepPreviousData,
-    staleTime: 30_000,
+    staleTime: 120_000,
   });
   const daCount = pendingIds.length;
-  const pageIds: string[] = pendingIds.slice(daPage * DA_PAGE_SIZE, (daPage + 1) * DA_PAGE_SIZE);
+  const pageIds: string[] = pendingIds.slice(daPage * pageSize, (daPage + 1) * pageSize);
   const pageKey = shortIdsKey(pageIds, "da-p");
 
   const { data: registrations = [], isLoading: loadingRegs } = useQuery({
@@ -189,31 +190,33 @@ const DoctorApproval = () => {
       return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     },
     placeholderData: keepPreviousData,
-    staleTime: 30_000,
+    staleTime: 120_000,
   });
 
-  const daTotalPages = Math.max(1, Math.ceil(daCount / DA_PAGE_SIZE));
+  const daTotalPages = Math.max(1, Math.ceil(daCount / pageSize));
 
   const regIds = registrations.map((r: any) => r.id);
-  const regKey = shortIdsKey(regIds, "da");
+
+  // Detail fetches ONLY for expanded patient
+  const detailRegIds = expandedPatient ? [expandedPatient] : [];
+  const detailKey = shortIdsKey(detailRegIds, "da");
+  const detailEnabled = !!expandedPatient;
 
   const { data: existingResults = [], isFetched: resultsFetched } = useQuery({
-    queryKey: ["doctor_approval_results", regKey],
-    enabled: regIds.length > 0,
+    queryKey: ["doctor_approval_results", detailKey],
+    enabled: detailEnabled,
     queryFn: async () => {
-      return await fetchAllByIds<any>("patient_results", PATIENT_RESULTS_SELECT_DOCTOR, "registration_id", regIds, { eq: { status: "verified" } });
+      return await fetchAllByIds<any>("patient_results", PATIENT_RESULTS_SELECT_DOCTOR, "registration_id", detailRegIds, { eq: { status: "verified" } });
     },
-    placeholderData: keepPreviousData,
   });
 
   // Fetch sample tubes to expand PRL/HLT container rows into leaf tests
   const { data: regTubes = [], isFetched: tubesFetched } = useQuery({
-    queryKey: ["doctor_approval_tubes", regKey],
-    enabled: regIds.length > 0,
+    queryKey: ["doctor_approval_tubes", detailKey],
+    enabled: detailEnabled,
     queryFn: async () => {
-      return await fetchAllByIds<any>("sample_tubes", "id, registration_id, test_ids", "registration_id", regIds);
+      return await fetchAllByIds<any>("sample_tubes", "id, registration_id, test_ids", "registration_id", detailRegIds);
     },
-    placeholderData: keepPreviousData,
   });
   const leafIdsByReg = useMemo(() => {
     const map: Record<string, Set<string>> = {};
@@ -225,22 +228,21 @@ const DoctorApproval = () => {
     return map;
   }, [regTubes]);
 
-  const resultsReady = regIds.length === 0 || resultsFetched;
-  const listLoading = loadingIds || loadingRegs || (registrations.length > 0 && (!tubesFetched || !resultsReady));
+  const detailReady = !detailEnabled || (resultsFetched && tubesFetched);
+  const listLoading = loadingIds || loadingRegs;
 
   const { data: outsourcedSnips = [] } = useQuery({
-    queryKey: ["doctor_approval_snips", regKey],
-    enabled: regIds.length > 0,
+    queryKey: ["doctor_approval_snips", detailKey],
+    enabled: detailEnabled,
     queryFn: async () => {
       return await fetchAllByIds<any>(
         "outsourced_test_snips",
         "id, registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, result_mode, snip_image_urls",
         "registration_id",
-        regIds,
+        detailRegIds,
         { eq: { outsource_status: "verified" } },
       );
     },
-    placeholderData: keepPreviousData,
   });
 
   const { transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails } = useMemo(() => {
@@ -293,6 +295,9 @@ const DoctorApproval = () => {
 
   const patientEntries: PatientEntry[] = useMemo(() => {
     return registrations.map((reg: any) => {
+      if (reg.id !== expandedPatient || !detailReady) {
+        return { registration: reg, parameters: [], snipOnlyTests: [] };
+      }
       const tests = (reg.tests || []) as any[];
       const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
       const expandedTests = expandRegistrationTests(tests, leafIdsByReg[reg.id] ?? new Set<string>(), testsMap);
@@ -347,8 +352,8 @@ const DoctorApproval = () => {
         }
       }
       return { registration: reg, parameters, snipOnlyTests };
-    }).filter(e => e.parameters.length > 0 || e.snipOnlyTests.length > 0);
-  }, [registrations, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails, leafIdsByReg]);
+    });
+  }, [registrations, expandedPatient, detailReady, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails, leafIdsByReg]);
 
   const loadedTestNotes = useMemo(() => {
     const map: Record<string, string> = {};
@@ -451,8 +456,11 @@ const DoctorApproval = () => {
     if (mode === "patient") return patientEntries;
     if (selectedMachine === "all") return patientEntries;
     const fm = selectedMachine === "others" ? "" : selectedMachine;
-    return patientEntries.map(e => ({ ...e, parameters: e.parameters.filter(p => (p.machineName || "") === fm) })).filter(e => e.parameters.length > 0 || e.snipOnlyTests.length > 0);
-  }, [patientEntries, mode, selectedMachine]);
+    return patientEntries.map(e => {
+      if (e.registration.id !== expandedPatient) return e;
+      return { ...e, parameters: e.parameters.filter(p => (p.machineName || "") === fm) };
+    });
+  }, [patientEntries, mode, selectedMachine, expandedPatient]);
 
   const stats = useMemo(() => ({ totalPatients: filteredEntries.length, totalParams: filteredEntries.reduce((s, e) => s + e.parameters.length, 0) }), [filteredEntries]);
 
@@ -1033,8 +1041,18 @@ const DoctorApproval = () => {
           </TabsList>
         </Tabs>
         <RefreshButton
-          queryKeys={["doctor_approval_count", "doctor_approval_regs", "doctor_approval_results", "doctor_approval_tubes", "doctor_approval_snips", "results_tests_map", "results_test_params_full", "results_normal_ranges"]}
+          queryKeys={[
+            "doctor_approval_count",
+            "doctor_approval_regs",
+            ...(expandedPatient
+              ? ["doctor_approval_results", "doctor_approval_tubes", "doctor_approval_snips"]
+              : []),
+          ]}
           className="ml-auto"
+        />
+        <PageSizeSelect
+          value={pageSize}
+          onChange={(n) => { setPageSize(n); setDaPage(0); }}
         />
       </div>
 
@@ -1081,6 +1099,8 @@ const DoctorApproval = () => {
           {filteredEntries.map(entry => {
             const reg = entry.registration;
             const isExpanded = expandedPatient === reg.id;
+            const detailLoading = isExpanded && !detailReady;
+            const canApprove = isExpanded && detailReady && (entry.parameters.length > 0 || entry.snipOnlyTests.length > 0);
             const isApproving = actionKey === `${reg.id}||all||approve`;
             return (
               <Card key={reg.id} className={isExpanded ? "ring-1 ring-primary/30" : ""}>
@@ -1097,15 +1117,35 @@ const DoctorApproval = () => {
                       <span className="text-sm text-muted-foreground">{patientDisplayName(reg)}</span>
                       <Badge variant="outline" className="text-[10px] font-mono">{formatAgeGender(reg.dob, reg.gender)}</Badge>
                     </div>
-                    <div className="text-xs text-muted-foreground">{reg.mobile_number} • {entry.parameters.length} parameters</div>
+                    <div className="text-xs text-muted-foreground">
+                      {reg.mobile_number}
+                      {isExpanded && detailReady ? ` • ${entry.parameters.length} parameters` : ""}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <Button size="sm" variant="default" className="h-7 text-xs" disabled={isApproving} onClick={(e) => { e.stopPropagation(); approveAllForPatient(entry); }}>
+                    <Button
+                      size="sm"
+                      variant="default"
+                      className="h-7 text-xs"
+                      disabled={isApproving || !canApprove}
+                      title={!canApprove ? "Expand patient to load results first" : undefined}
+                      onClick={(e) => { e.stopPropagation(); approveAllForPatient(entry); }}
+                    >
                       {isApproving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <CheckCircle2 className="h-3.5 w-3.5 mr-1" />} Approve All
                     </Button>
                   </div>
                 </div>
-                {isExpanded && (<CardContent className="pt-0 pb-3 px-3">{renderPatientExpanded(entry)}</CardContent>)}
+                {isExpanded && (
+                  <CardContent className="pt-0 pb-3 px-3">
+                    {detailLoading ? (
+                      <div className="py-6 text-center text-sm text-muted-foreground flex items-center justify-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Loading results…
+                      </div>
+                    ) : (
+                      renderPatientExpanded(entry)
+                    )}
+                  </CardContent>
+                )}
               </Card>
             );
           })}

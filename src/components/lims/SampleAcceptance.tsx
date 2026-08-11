@@ -603,7 +603,7 @@ const SampleAcceptance = () => {
           <span className="text-xs hidden sm:inline">(beyond 30 days)</span>
         </label>
         <RefreshButton
-          queryKeys={["sample_tubes_acceptance_pending", "sample_tubes_acceptance_accepted", "sample_acceptance_regs", "patient_registrations"]}
+          queryKeys={["sample_tubes_acceptance_pending", "sample_tubes_acceptance_accepted", "sample_acceptance_regs"]}
           className="ml-auto"
         />
       </div>

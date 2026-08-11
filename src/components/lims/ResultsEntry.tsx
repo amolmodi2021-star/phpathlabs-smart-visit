@@ -1,4 +1,5 @@
 import RefreshButton from "@/components/lims/RefreshButton";
+import PageSizeSelect from "@/components/lims/PageSizeSelect";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { formatAgeGender } from "@/lib/ageGender";
@@ -30,6 +31,7 @@ import { propagateRegistrationChange } from "@/lib/limsPropagation";
 import { isResultPastPending, resolveResultForResultsEntry, healOrphanPatientResults, restoreMissingApprovedFromReports } from "@/lib/patientResultLookup";
 import { fetchResultsEntryCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPendingCandidates";
 import { shortIdsKey } from "@/lib/queryKeys";
+import { readLimsPageSize, type LimsPageSize } from "@/lib/limsListPrefs";
 import SyncingOverlay from "./SyncingOverlay";
 import NewBadge from "./NewBadge";
 import OutsourcedResults from "./OutsourcedResults";
@@ -132,8 +134,6 @@ const handleResultTabKey = (e: React.KeyboardEvent) => {
   allInputs[nextIdx]?.focus();
 };
 
-const RE_PAGE_SIZE = 50;
-
 const ResultsEntry = () => {
   const qc = useQueryClient();
   // Full pipeline realtime: new accepts, cancellations, and machine values.
@@ -143,6 +143,7 @@ const ResultsEntry = () => {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedMachine, setSelectedMachine] = useState<string>("all");
+  const [pageSize, setPageSize] = useState<LimsPageSize>(() => readLimsPageSize());
   const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
   const [expandedTests, setExpandedTests] = useState<Set<string>>(new Set());
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
@@ -203,13 +204,13 @@ const ResultsEntry = () => {
       return await fetchFilteredSortedIds(candidates, debouncedSearch);
     },
     placeholderData: keepPreviousData,
-    staleTime: 30_000,
+    staleTime: 120_000,
   });
   const reCount = pendingIds.length;
-  const pageIds: string[] = pendingIds.slice(rePage * RE_PAGE_SIZE, (rePage + 1) * RE_PAGE_SIZE);
+  const pageIds: string[] = pendingIds.slice(rePage * pageSize, (rePage + 1) * pageSize);
   const pageKey = shortIdsKey(pageIds, "re");
 
-  // ─── Fetch accepted registrations ───
+  // ─── Fetch accepted registrations (list headers — page only) ───
   const { data: acceptedRegs = [], isLoading: loadingRegs } = useQuery({
     queryKey: ["results_accepted_regs", pageKey],
     enabled: pageIds.length > 0,
@@ -223,10 +224,11 @@ const ResultsEntry = () => {
       return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     },
     placeholderData: keepPreviousData,
-    staleTime: 30_000,
+    staleTime: 120_000,
   });
 
-  const reTotalPages = Math.max(1, Math.ceil(reCount / RE_PAGE_SIZE));
+  const reTotalPages = Math.max(1, Math.ceil(reCount / pageSize));
+  const regIds = acceptedRegs.map((r: any) => r.id);
 
   // (departments query removed – now using machine-wise grouping)
 
@@ -279,13 +281,16 @@ const ResultsEntry = () => {
     staleTime: 600_000,
   });
 
-  // ─── Fetch existing results for all accepted patients ───
-  const regIds = acceptedRegs.map((r: any) => r.id);
-  const regKey = shortIdsKey(regIds, "re-r");
-  const { data: existingResults = [] } = useQuery({
-    queryKey: ["patient_results_existing", regKey],
-    enabled: regIds.length > 0,
+  // ─── Detail fetches ONLY for expanded patient (egress) ───
+  const detailRegIds = expandedPatient ? [expandedPatient] : [];
+  const detailKey = shortIdsKey(detailRegIds, "re-d");
+  const detailEnabled = !!expandedPatient;
+
+  const { data: existingResults = [], isFetched: resultsFetched } = useQuery({
+    queryKey: ["patient_results_existing", detailKey],
+    enabled: detailEnabled,
     queryFn: async () => {
+      const regIds = detailRegIds;
       // Paginated to avoid Supabase's 1000-row cap silently dropping rows.
       const rows = await fetchAllByIds<any>("patient_results", PATIENT_RESULTS_SELECT_RESULTS, "registration_id", regIds);
 
@@ -323,23 +328,21 @@ const ResultsEntry = () => {
 
       return rows;
     },
-    placeholderData: keepPreviousData,
   });
 
-  // ─── Fetch accepted sample_tubes to filter results by accepted tests only ───
-  const { data: acceptedTubes = [], isFetching: fetchingTubes, isFetched: tubesFetched } = useQuery({
-    queryKey: ["results_accepted_tubes", regKey],
-    enabled: regIds.length > 0,
+  // ─── Fetch accepted sample_tubes for expanded patient only ───
+  const { data: acceptedTubes = [], isFetched: tubesFetched } = useQuery({
+    queryKey: ["results_accepted_tubes", detailKey],
+    enabled: detailEnabled,
     queryFn: async () => {
       return await fetchAllByIds<any>(
         "sample_tubes",
         "id, registration_id, test_ids",
         "registration_id",
-        regIds,
+        detailRegIds,
         { eq: { status: "accepted" } },
       );
     },
-    placeholderData: keepPreviousData,
   });
 
   // Build set of accepted test_ids per registration
@@ -352,15 +355,16 @@ const ResultsEntry = () => {
     }
     return map;
   }, [acceptedTubes]);
-  // Apply tube filter only after this page's tube query has completed once.
-  const tubesReady = regIds.length === 0 || tubesFetched;
+  // Apply tube filter only after expanded patient's tube query has completed once.
+  const tubesReady = !detailEnabled || tubesFetched;
+  const detailReady = !detailEnabled || (resultsFetched && tubesFetched);
 
-  // ─── Fetch outsourced_test_snips to know which inhouse tests/params have been transferred ───
+  // ─── Fetch outsourced_test_snips for expanded patient only ───
   const { data: outsourcedSnips = [] } = useQuery({
-    queryKey: ["results_outsourced_snips", regKey],
-    enabled: regIds.length > 0,
+    queryKey: ["results_outsourced_snips", detailKey],
+    enabled: detailEnabled,
     queryFn: async () => {
-      return await fetchAllByIds<any>("outsourced_test_snips", "registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, sent_at, result_mode, snip_image_urls", "registration_id", regIds);
+      return await fetchAllByIds<any>("outsourced_test_snips", "registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, sent_at, result_mode, snip_image_urls", "registration_id", detailRegIds);
     },
   });
 
@@ -607,9 +611,17 @@ const ResultsEntry = () => {
     return { text, low: best.normal_range_low as number | null, high: best.normal_range_high as number | null, rangeType, descriptiveOptions, expectedValue, normalFindings };
   }, [normalRangesMap]);
 
-  // ─── Build patient entries (includes outsourced tests/params with badges) ───
+  // ─── Build patient entries: full params only for expanded patient ───
   const patientEntries: PatientEntry[] = useMemo(() => {
     return acceptedRegs.map((reg: any) => {
+      // Collapsed cards: header only — no parameter grid until expand
+      if (reg.id !== expandedPatient) {
+        return { registration: reg, parameters: [], incompleteTests: [], snipOnlyTests: [] };
+      }
+      if (!detailReady) {
+        return { registration: reg, parameters: [], incompleteTests: [], snipOnlyTests: [] };
+      }
+
       const tests = (reg.tests || []) as any[];
       const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
       const acceptedTestIds = acceptedTestIdsByReg[reg.id];
@@ -715,8 +727,8 @@ const ResultsEntry = () => {
         }
       }
       return { registration: reg, parameters, incompleteTests, snipOnlyTests };
-    }).filter(entry => entry.parameters.length > 0 || entry.incompleteTests.length > 0 || entry.snipOnlyTests.length > 0);
-  }, [acceptedRegs, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails, acceptedTestIdsByReg, tubesReady]);
+    });
+  }, [acceptedRegs, expandedPatient, detailReady, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails, acceptedTestIdsByReg, tubesReady]);
 
   // ─── Loaded test-level notes: first non-null test_note per (reg, test) ───
   const loadedTestNotes = useMemo(() => {
@@ -1191,9 +1203,10 @@ const ResultsEntry = () => {
     }
   };
 
-  // ─── Filter entries: hide patients whose all results are already "entered" ───
+  // ─── Filter entries: keep all page patients as headers; filter params only when expanded ───
   const filteredEntries = useMemo(() => {
     const activeEntries = patientEntries.map(e => {
+      if (e.registration.id !== expandedPatient) return e;
       const activeParams = e.parameters.filter((p) => {
         if (p.isOutsourced) {
           return !["results_entered", "verified", "approved", "dispatched"].includes(p.outsourceStatus || "")
@@ -1204,18 +1217,20 @@ const ResultsEntry = () => {
       });
 
       return { ...e, parameters: activeParams };
-    }).filter(e => e.parameters.length > 0 || e.incompleteTests.length > 0 || e.snipOnlyTests.length > 0);
+    });
 
     if (mode === "patient") return activeEntries;
     if (selectedMachine === "all") return activeEntries;
     const filterMachine = selectedMachine === "others" ? "" : selectedMachine;
     return activeEntries
-      .map(e => ({
-        ...e,
-        parameters: e.parameters.filter(p => (p.machineName || "") === filterMachine),
-      }))
-      .filter(e => e.parameters.length > 0 || e.incompleteTests.length > 0 || e.snipOnlyTests.length > 0);
-  }, [patientEntries, mode, selectedMachine]);
+      .map(e => {
+        if (e.registration.id !== expandedPatient) return e;
+        return {
+          ...e,
+          parameters: e.parameters.filter(p => (p.machineName || "") === filterMachine),
+        };
+      });
+  }, [patientEntries, mode, selectedMachine, expandedPatient]);
 
   // ─── NEW arrivals badge tracker ───
   const filteredRegIds = useMemo(() => filteredEntries.map(e => e.registration.id), [filteredEntries]);
@@ -1857,8 +1872,18 @@ const ResultsEntry = () => {
           </Select>
         )}
         <RefreshButton
-          queryKeys={["results_accepted_count", "results_accepted_regs", "results_accepted_tubes", "patient_results_existing", "results_outsourced_snips", "results_tests_map", "results_test_params_full", "results_normal_ranges", "outsourced_snips", "outsourced_accepted_regs", "outsourced_manual_results", "outsourced_pending_ids"]}
+          queryKeys={[
+            "results_accepted_count",
+            "results_accepted_regs",
+            ...(expandedPatient
+              ? ["patient_results_existing", "results_accepted_tubes", "results_outsourced_snips"]
+              : []),
+          ]}
           className="ml-auto shrink-0"
+        />
+        <PageSizeSelect
+          value={pageSize}
+          onChange={(n) => { setPageSize(n); setRePage(0); }}
         />
       </div>
 
@@ -1894,7 +1919,7 @@ const ResultsEntry = () => {
       ) : (
         <>
           {/* Patient list */}
-          {(loadingIds || loadingRegs || (acceptedRegs.length > 0 && !tubesReady && fetchingTubes)) ? (
+          {(loadingIds || loadingRegs) ? (
             <Card><CardContent className="p-8 text-center text-muted-foreground">Loading…</CardContent></Card>
           ) : filteredEntries.length === 0 ? (
             <Card>
@@ -1908,17 +1933,18 @@ const ResultsEntry = () => {
               {filteredEntries.map(entry => {
                 const reg = entry.registration;
                 const isExpanded = expandedPatient === reg.id;
-                const completion = getCompletionPct(entry);
-                const pendingCount = entry.parameters.filter(p => {
+                const detailLoading = isExpanded && !detailReady;
+                const completion = isExpanded && detailReady ? getCompletionPct(entry) : 0;
+                const pendingCount = isExpanded && detailReady ? entry.parameters.filter(p => {
                   const key = `${reg.id}||${p.parameterId}`;
                   const val = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
                   return !val;
-                }).length;
-                const awaitingCount = entry.parameters.filter(p => {
+                }).length : 0;
+                const awaitingCount = isExpanded && detailReady ? entry.parameters.filter(p => {
                   const key = `${reg.id}||${p.parameterId}`;
                   const val = editedValues[key] !== undefined ? editedValues[key] : p.resultValue;
                   return p.sendForInterface && !p.isCalculated && !val;
-                }).length;
+                }).length : 0;
 
                 return (
                   <Card key={reg.id} className={isExpanded ? "ring-1 ring-primary/30" : ""}>
@@ -1944,30 +1970,35 @@ const ResultsEntry = () => {
                           <Badge variant="outline" className="text-[10px] font-mono">{formatAgeGender(reg.dob, reg.gender)}</Badge>
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {reg.mobile_number} • {entry.parameters.length} parameters
+                          {reg.mobile_number}
+                          {isExpanded && detailReady ? ` • ${entry.parameters.length} parameters` : ""}
                         </div>
                       </div>
-                      {entry.incompleteTests.length > 0 && (
+                      {isExpanded && detailReady && entry.incompleteTests.length > 0 && (
                         <Badge variant="outline" className="text-xs text-amber-600 border-amber-300 gap-0.5">
                           <FlaskConical className="h-3 w-3" /> {entry.incompleteTests.length} test{entry.incompleteTests.length > 1 ? "s" : ""} need setup
                         </Badge>
                       )}
                       <div className="flex items-center gap-2 shrink-0 flex-wrap">
-                        {awaitingCount > 0 && (
+                        {isExpanded && detailReady && awaitingCount > 0 && (
                           <Badge variant="outline" className="text-xs text-orange-600 border-orange-300 gap-0.5">
                             <Wifi className="h-3 w-3" /> {awaitingCount}
                           </Badge>
                         )}
-                        {pendingCount > 0 && (
+                        {isExpanded && detailReady && pendingCount > 0 && (
                           <Badge variant="outline" className="text-xs">{pendingCount} pending</Badge>
                         )}
-                        <div className="w-16 h-2 bg-muted rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all ${completion === 100 ? "bg-green-500" : "bg-primary"}`}
-                            style={{ width: `${completion}%` }}
-                          />
-                        </div>
-                        <span className="text-xs text-muted-foreground w-8 text-right">{completion}%</span>
+                        {isExpanded && detailReady && (
+                          <>
+                            <div className="w-16 h-2 bg-muted rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all ${completion === 100 ? "bg-green-500" : "bg-primary"}`}
+                                style={{ width: `${completion}%` }}
+                              />
+                            </div>
+                            <span className="text-xs text-muted-foreground w-8 text-right">{completion}%</span>
+                          </>
+                        )}
                         {hasUnsavedChanges(reg.id) && (
                           <div className="w-2 h-2 rounded-full bg-orange-500" title="Unsaved" />
                         )}
@@ -1990,7 +2021,13 @@ const ResultsEntry = () => {
                     </div>
                     {isExpanded && (
                       <CardContent className="pt-0 pb-3 px-3">
-                        {renderPatientExpanded(entry)}
+                        {detailLoading ? (
+                          <div className="py-6 text-center text-sm text-muted-foreground flex items-center justify-center gap-2">
+                            <Loader2 className="h-4 w-4 animate-spin" /> Loading results…
+                          </div>
+                        ) : (
+                          renderPatientExpanded(entry)
+                        )}
                       </CardContent>
                     )}
                   </Card>
