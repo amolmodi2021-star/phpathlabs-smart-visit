@@ -748,9 +748,19 @@ const LimsReportView = () => {
         ? format(new Date(collectionDateIso), "yyyy-MM-dd")
         : "unknown";
 
+      const explicitDisplay = String(testInfo?.display_name || "").trim();
+      // Single-param tests: prefer parameter name (e.g. "SGOT (AST)") over short test_name ("SGOT")
+      // unless an explicit report display_name is configured on the test.
+      let reportTestName = explicitDisplay || params[0]?.test_name || testInfo?.test_name || "Unknown Test";
+      if (!explicitDisplay && testInfo?.is_single_parameter) {
+        const leaf = sortedParams.find((p: any) => !p.is_subheader);
+        const paramLabel = String(leaf?.parameter_name || "").trim();
+        if (paramLabel) reportTestName = paramLabel;
+      }
+
       testBlocks.push({
         testId,
-        testName: testInfo?.display_name || params[0]?.test_name || testInfo?.test_name || "Unknown Test",
+        testName: reportTestName,
         departmentId: deptId,
         departmentName: deptName,
         departmentOrder: deptOrder,
@@ -1571,9 +1581,12 @@ function transformBlocksToGrouped(
       });
     }
 
-    // Single parameter test: override parameter name with test display name and drop description
+    // Single parameter test: Parameter column uses report test label (display_name
+    // or parameter name like "SGOT (AST)"), and drops italic description.
     if (block.isSingleParameter && results.length === 1 && !results[0].is_subheader) {
-      results[0] = { ...results[0], parameter_name: block.testName, parameter_description: undefined };
+      const keptParamName = String(results[0].parameter_name || "").trim();
+      const chosen = block.testName || keptParamName;
+      results[0] = { ...results[0], parameter_name: chosen, parameter_description: undefined };
     }
 
     profiles[profName] = results;
