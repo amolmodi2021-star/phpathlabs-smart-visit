@@ -120,12 +120,15 @@ const LimsDemo = () => {
   const { data: orders = [] } = useQuery({
     queryKey: ["lims-orders"],
     queryFn: async () => {
-      const { data } = await supabase
+      // Columns must match lims_test_orders schema (no registration_id / top-level machine_id).
+      // Selecting missing columns 400s and left Active Orders empty after cloud-ready refactor.
+      const { data, error } = await supabase
         .from("lims_test_orders")
-        .select("id, sample_id, registration_id, status, machine_id, tests, created_at, updated_at")
+        .select("id, sample_id, patient_name, status, tests, created_at, updated_at")
         .in("status", ["pending", "in_progress"])
         .order("created_at", { ascending: false })
         .limit(300);
+      if (error) throw error;
       return data || [];
     },
     refetchInterval: (query) => (typeof document !== "undefined" && document.hidden ? false : POLL_MS),
