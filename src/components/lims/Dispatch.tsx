@@ -717,26 +717,28 @@ const Dispatch = () => {
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-1.5">
                               {reg.is_stat && entry.completionStatus !== "all_done" && entry.completionStatus !== "cancelled" && <span className="relative flex h-2 w-2 shrink-0"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-destructive" /></span>}
-                              <span className={cn("font-medium text-sm truncate", entry.completionStatus === "cancelled" && "line-through text-muted-foreground")}>{patientDisplayName(reg)}</span>
+                              <span className={cn("font-semibold text-sm truncate tracking-wide", entry.completionStatus === "cancelled" && "line-through text-muted-foreground")}>{reg.invoice_number}</span>
                               <NewBadge show={isNewArrival(reg.id)} />
                               {entry.completionStatus === "cancelled" && <Badge variant="destructive" className="text-[10px] px-1 py-0">Cancelled</Badge>}
                               {heldSet.has(reg.id) && entry.completionStatus !== "cancelled" && <Badge variant="outline" className="text-[10px] px-1 py-0 border-amber-500 text-amber-700">Held</Badge>}
+                            </div>
+                            <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+                              <span className={cn("text-xs text-muted-foreground truncate", entry.completionStatus === "cancelled" && "line-through")}>{patientDisplayName(reg)}</span>
                               <Badge variant="outline" className="text-[10px] font-mono shrink-0 px-1 py-0">{formatAgeGender(reg.dob, reg.gender)}</Badge>
                             </div>
                             <div className="flex items-center gap-2 mt-0.5">
                               <span className="text-xs text-muted-foreground flex items-center gap-1"><Phone className="h-3 w-3" />{reg.mobile_number}</span>
                             </div>
                             <div className="flex items-center justify-between mt-0.5">
-                              <span className="text-xs text-muted-foreground flex items-center gap-1"><FileText className="h-3 w-3" />{reg.invoice_number}</span>
+                              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                                <CalendarIcon className="h-3 w-3" />
+                                {formatDate(reg.created_at)}
+                              </span>
                               <span className="text-[10px] text-muted-foreground">
                                 {entry.cancelledCount === entry.tests.length
                                   ? `${entry.cancelledCount} cancelled`
                                   : `${entry.approvedCount}A / ${entry.pendingCount}P${entry.cancelledCount ? ` / ${entry.cancelledCount}C` : ""}`}
                               </span>
-                            </div>
-                            <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1">
-                              <CalendarIcon className="h-3 w-3" />
-                              {formatDate(reg.created_at)}
                             </div>
                             {reg.due_amount > 0 && (
                               <Badge variant={isPaymentBlocked(reg) ? "destructive" : "secondary"} className="mt-1 text-[10px] px-1.5 py-0">
@@ -782,17 +784,20 @@ const Dispatch = () => {
                               <ArrowLeft className="h-4 w-4" />
                             </Button>
                           )}
-                          <User className="h-5 w-5 text-muted-foreground shrink-0" />
-                          <h3 className={cn("font-semibold", isMobile ? "text-base" : "text-lg", selectedEntry.completionStatus === "cancelled" && "line-through text-muted-foreground")}>{patientDisplayName(selectedEntry.registration)}</h3>
-                          <Badge variant="outline" className="text-xs font-mono">{formatAgeGender(selectedEntry.registration.dob, selectedEntry.registration.gender)}</Badge>
+                          <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
+                          <h3 className={cn("font-semibold", isMobile ? "text-base" : "text-lg", selectedEntry.completionStatus === "cancelled" && "line-through text-muted-foreground")}>{selectedEntry.registration.invoice_number}</h3>
                           {selectedEntry.completionStatus === "cancelled" && <Badge variant="destructive" className="text-[10px]">Cancelled</Badge>}
                           {heldSet.has(selectedEntry.registration.id) && selectedEntry.completionStatus !== "cancelled" && <Badge variant="outline" className="text-[10px] border-amber-500 text-amber-700">Held</Badge>}
                           {selectedEntry.registration.is_stat && selectedEntry.completionStatus !== "all_done" && selectedEntry.completionStatus !== "cancelled" && <Badge variant="destructive" className="text-[10px]">STAT</Badge>}
                           {getCompletionDot(selectedEntry.completionStatus)}
                         </div>
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                          <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          <span className={cn("text-sm text-muted-foreground", selectedEntry.completionStatus === "cancelled" && "line-through")}>{patientDisplayName(selectedEntry.registration)}</span>
+                          <Badge variant="outline" className="text-xs font-mono">{formatAgeGender(selectedEntry.registration.dob, selectedEntry.registration.gender)}</Badge>
+                        </div>
                         <div className={cn("flex items-center gap-4 mt-1 text-sm text-muted-foreground flex-wrap", isMobile && "gap-2 text-xs")}>
                           <span className="flex items-center gap-1"><Phone className="h-3.5 w-3.5" />{selectedEntry.registration.mobile_number}</span>
-                          <span className="flex items-center gap-1"><FileText className="h-3.5 w-3.5" />{selectedEntry.registration.invoice_number}</span>
                           {selectedEntry.registration.umr_number && <span>UMR: {selectedEntry.registration.umr_number}</span>}
                           {!isMobile && <span className="flex items-center gap-1"><CalendarIcon className="h-3.5 w-3.5" />{formatDate(selectedEntry.registration.created_at)}</span>}
                         </div>
