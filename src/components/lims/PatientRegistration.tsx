@@ -22,6 +22,12 @@ import PatientSelectDialog, { type PatientPick } from "./PatientSelectDialog";
 import DoctorAutocomplete, { ensureDoctor } from "./DoctorAutocomplete";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { isoToDmy, maskDmyDob, normalizeGender, normalizeTitle, PATIENT_TITLES, toDateInputValue } from "@/lib/normalizePatientFields";
+import {
+  clearRegistrationDraft,
+  loadRegistrationDraft,
+  saveRegistrationDraft,
+  type RegistrationDraft,
+} from "@/lib/registrationDraft";
 
 const TITLES = [...PATIENT_TITLES];
 const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card", "NEFT"];
@@ -53,56 +59,61 @@ interface PatientMatch {
 const PatientRegistration = () => {
   const qc = useQueryClient();
   const searchRef = useRef<HTMLInputElement>(null);
+  const draftBoot = useRef<RegistrationDraft | null | undefined>(undefined);
+  if (draftBoot.current === undefined) draftBoot.current = loadRegistrationDraft();
+  const d = draftBoot.current;
 
   // Patient fields
-  const [mobileNumber, setMobileNumber] = useState("");
+  const [mobileNumber, setMobileNumber] = useState(d?.mobileNumber ?? "");
   const [patientMatches, setPatientMatches] = useState<PatientMatch[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [showPatientPicker, setShowPatientPicker] = useState(false);
   const [pickerMobile, setPickerMobile] = useState("");
-  const [patientLocked, setPatientLocked] = useState(false);
-  const [filledOnLock, setFilledOnLock] = useState({
-    title: false, gender: false, dob: false, address: false,
-  });
-  const [title, setTitle] = useState("");
-  const [patientName, setPatientName] = useState("");
-  const [gender, setGender] = useState("");
-  const [dob, setDob] = useState("");
-  const [dobDisplay, setDobDisplay] = useState("");
-  const [email, setEmail] = useState("");
-  const [showEmail, setShowEmail] = useState(false);
-  const [doctorName, setDoctorName] = useState("SELF");
-  const [umrNumber, setUmrNumber] = useState("");
-  const [address, setAddress] = useState("");
-  const [manualAge, setManualAge] = useState("");
-  const [remarks, setRemarks] = useState("");
-  const [isStat, setIsStat] = useState(false);
+  const [patientLocked, setPatientLocked] = useState(d?.patientLocked ?? false);
+  const [filledOnLock, setFilledOnLock] = useState(
+    d?.filledOnLock ?? { title: false, gender: false, dob: false, address: false },
+  );
+  const [title, setTitle] = useState(d?.title ?? "");
+  const [patientName, setPatientName] = useState(d?.patientName ?? "");
+  const [gender, setGender] = useState(d?.gender ?? "");
+  const [dob, setDob] = useState(d?.dob ?? "");
+  const [dobDisplay, setDobDisplay] = useState(d?.dobDisplay ?? "");
+  const [email, setEmail] = useState(d?.email ?? "");
+  const [showEmail, setShowEmail] = useState(d?.showEmail ?? false);
+  const [doctorName, setDoctorName] = useState(d?.doctorName ?? "SELF");
+  const [umrNumber, setUmrNumber] = useState(d?.umrNumber ?? "");
+  const [address, setAddress] = useState(d?.address ?? "");
+  const [manualAge, setManualAge] = useState(d?.manualAge ?? "");
+  const [remarks, setRemarks] = useState(d?.remarks ?? "");
+  const [isStat, setIsStat] = useState(d?.isStat ?? false);
   const [showHvcConfirm, setShowHvcConfirm] = useState(false);
   const [duplicateRegInfo, setDuplicateRegInfo] = useState<{ umr: string; invoices: string[] } | null>(null);
 
   // Channel
-  const [channelId, setChannelId] = useState("");
-  const [reportLanguage, setReportLanguage] = useState("English");
+  const [channelId, setChannelId] = useState(d?.channelId ?? "");
+  const [reportLanguage, setReportLanguage] = useState(d?.reportLanguage ?? "English");
 
   // Visit type
-  const [visitType, setVisitType] = useState("lab_visit");
-  const [pickupPointId, setPickupPointId] = useState("");
+  const [visitType, setVisitType] = useState(d?.visitType ?? "lab_visit");
+  const [pickupPointId, setPickupPointId] = useState(d?.pickupPointId ?? "");
 
   // Tests
   const [testSearch, setTestSearch] = useState("");
   /** Applied filter — delayed so typing is not interrupted by instant result flicker. */
   const [debouncedTestSearch, setDebouncedTestSearch] = useState("");
-  const [selectedTests, setSelectedTests] = useState<SelectedTest[]>([]);
+  const [selectedTests, setSelectedTests] = useState<SelectedTest[]>(d?.selectedTests ?? []);
   const [testHighlightIndex, setTestHighlightIndex] = useState(-1);
-  const [globalDiscountType, setGlobalDiscountType] = useState<"percent" | "amount">("percent");
-  const [globalDiscountValue, setGlobalDiscountValue] = useState(0);
+  const [globalDiscountType, setGlobalDiscountType] = useState<"percent" | "amount">(d?.globalDiscountType ?? "percent");
+  const [globalDiscountValue, setGlobalDiscountValue] = useState(d?.globalDiscountValue ?? 0);
   /** When on, discount applies even to tests/packages marked not discount-eligible. */
-  const [allowIneligibleDiscount, setAllowIneligibleDiscount] = useState(false);
-  const [homeVisitCharges, setHomeVisitCharges] = useState(0);
+  const [allowIneligibleDiscount, setAllowIneligibleDiscount] = useState(d?.allowIneligibleDiscount ?? false);
+  const [homeVisitCharges, setHomeVisitCharges] = useState(d?.homeVisitCharges ?? 0);
 
   // Payment
-  const [selectedModes, setSelectedModes] = useState<Set<string>>(new Set());
-  const [modeAmounts, setModeAmounts] = useState<Record<string, number>>({});
+  const [selectedModes, setSelectedModes] = useState<Set<string>>(
+    () => new Set(d?.selectedModes ?? []),
+  );
+  const [modeAmounts, setModeAmounts] = useState<Record<string, number>>(d?.modeAmounts ?? {});
 
   // Validation
   const [triedSave, setTriedSave] = useState(false);
@@ -120,6 +131,48 @@ const PatientRegistration = () => {
     const t = window.setTimeout(() => setDebouncedTestSearch(term), 600);
     return () => window.clearTimeout(t);
   }, [testSearch]);
+
+  // Persist incomplete form across LIMS tab switches / remounts.
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      saveRegistrationDraft({
+        mobileNumber,
+        title,
+        patientName,
+        gender,
+        dob,
+        dobDisplay,
+        email,
+        showEmail,
+        doctorName,
+        umrNumber,
+        address,
+        manualAge,
+        remarks,
+        isStat,
+        channelId,
+        reportLanguage,
+        visitType,
+        pickupPointId,
+        selectedTests,
+        globalDiscountType,
+        globalDiscountValue,
+        allowIneligibleDiscount,
+        homeVisitCharges,
+        selectedModes: Array.from(selectedModes),
+        modeAmounts,
+        patientLocked,
+        filledOnLock,
+      });
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [
+    mobileNumber, title, patientName, gender, dob, dobDisplay, email, showEmail,
+    doctorName, umrNumber, address, manualAge, remarks, isStat, channelId,
+    reportLanguage, visitType, pickupPointId, selectedTests, globalDiscountType,
+    globalDiscountValue, allowIneligibleDiscount, homeVisitCharges, selectedModes,
+    modeAmounts, patientLocked, filledOnLock,
+  ]);
 
   // Queries
   const { data: tests = [] } = useQuery({ queryKey: ["all_selectable_tests"], queryFn: getAllSelectableTests });
@@ -532,6 +585,8 @@ const PatientRegistration = () => {
       return reg;
     },
     onSuccess: (reg: any) => {
+      clearRegistrationDraft();
+      draftBoot.current = null;
       qc.invalidateQueries({ queryKey: ["patient_registrations"] });
       qc.invalidateQueries({ queryKey: ["patient_master"] });
       toast.success(`Registration saved! Invoice: ${reg.invoice_number}`);
@@ -545,6 +600,8 @@ const PatientRegistration = () => {
   });
 
   const resetForm = (opts?: { silent?: boolean }) => {
+    clearRegistrationDraft();
+    draftBoot.current = null;
     setMobileNumber(""); setPatientMatches([]); setShowDropdown(false);
     setPatientName(""); setTitle(""); setGender("");
     setDob(""); setDobDisplay(""); setEmail(""); setShowEmail(false); setDoctorName("SELF"); setUmrNumber("");
