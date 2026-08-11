@@ -30,7 +30,8 @@ const RegisteredPatients = () => {
   const qc = useQueryClient();
   useLimsPipelineRealtime("registered_patients");
   const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  /** Applied only when user clicks Search / presses Enter — not on keystrokes. */
+  const [appliedSearch, setAppliedSearch] = useState("");
   const [visibleLimit, setVisibleLimit] = useState(LIST_BATCH);
   const [editReg, setEditReg] = useState<any>(null);
   const [viewBillReg, setViewBillReg] = useState<any>(null);
@@ -42,12 +43,12 @@ const RegisteredPatients = () => {
   const [fromDate, setFromDate] = useState<Date | undefined>(() => new Date());
   const [toDate, setToDate] = useState<Date | undefined>(() => new Date());
 
-  const registrationSearchFilter = debouncedSearch
-    ? `patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%,umr_number.ilike.%${debouncedSearch}%`
+  const registrationSearchFilter = appliedSearch
+    ? `patient_name.ilike.%${appliedSearch}%,mobile_number.ilike.%${appliedSearch}%,invoice_number.ilike.%${appliedSearch}%,umr_number.ilike.%${appliedSearch}%`
     : "";
 
   // When user is searching, ignore date filter so older records are findable
-  const applyDateFilter = !debouncedSearch;
+  const applyDateFilter = !appliedSearch;
   let fromIso = applyDateFilter && fromDate ? new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate(), 0, 0, 0).toISOString() : null;
   const toIso = applyDateFilter && toDate ? new Date(toDate.getFullYear(), toDate.getMonth(), toDate.getDate(), 23, 59, 59, 999).toISOString() : null;
   // Cost-saving safety cap: when no date filter AND no search, cap to last 90 days
@@ -56,12 +57,18 @@ const RegisteredPatients = () => {
     fromIso = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
   }
 
-  const handleSearch = (val: string) => {
-    setSearch(val);
+  const runSearch = () => {
+    const term = search.trim();
+    setAppliedSearch(term);
     setVisibleLimit(LIST_BATCH);
     setExpandedRow(null);
-    clearTimeout((window as any).__regSearchTimeout);
-    (window as any).__regSearchTimeout = setTimeout(() => setDebouncedSearch(val), 400);
+  };
+
+  const clearSearch = () => {
+    setSearch("");
+    setAppliedSearch("");
+    setVisibleLimit(LIST_BATCH);
+    setExpandedRow(null);
   };
 
   const handleFromDate = (d: Date | undefined) => { setFromDate(d); setVisibleLimit(LIST_BATCH); setExpandedRow(null); };
@@ -115,7 +122,7 @@ const RegisteredPatients = () => {
   };
 
   const { data: count = 0 } = useQuery({
-    queryKey: ["patient_registrations_count", debouncedSearch, fromIso, toIso],
+    queryKey: ["patient_registrations_count", appliedSearch, fromIso, toIso],
     queryFn: async () => {
       let query = supabase.from("patient_registrations").select("id", { count: "exact", head: true });
       if (registrationSearchFilter) query = query.or(registrationSearchFilter);
@@ -129,7 +136,7 @@ const RegisteredPatients = () => {
   });
 
   const { data: registrations = [], isLoading, isFetching } = useQuery({
-    queryKey: ["patient_registrations", visibleLimit, debouncedSearch, fromIso, toIso],
+    queryKey: ["patient_registrations", visibleLimit, appliedSearch, fromIso, toIso],
     queryFn: async () => {
       let query = supabase
         .from("patient_registrations")
@@ -285,9 +292,30 @@ const RegisteredPatients = () => {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative max-w-sm flex-1">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input value={search} onChange={e => handleSearch(e.target.value)} placeholder="Search by name, mobile, invoice, UMR..." className="pl-8" />
+        <div className="flex items-center gap-2 max-w-xl flex-1 min-w-[220px]">
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  runSearch();
+                }
+              }}
+              placeholder="Search by name, mobile, invoice, UMR..."
+              className="pl-8"
+            />
+          </div>
+          <Button size="sm" onClick={runSearch}>
+            Search
+          </Button>
+          {appliedSearch && (
+            <Button variant="ghost" size="sm" onClick={clearSearch} title="Clear search">
+              <X className="h-4 w-4 mr-1" />Clear
+            </Button>
+          )}
         </div>
         <Popover>
           <PopoverTrigger asChild>
@@ -316,7 +344,7 @@ const RegisteredPatients = () => {
             <X className="h-4 w-4 mr-1" />Clear dates
           </Button>
         )}
-        {debouncedSearch && (fromDate || toDate) && (
+        {appliedSearch && (fromDate || toDate) && (
           <span className="text-xs text-muted-foreground italic">Date filter ignored while searching</span>
         )}
         <Button variant="outline" size="sm" onClick={() => setShowExportPwd(true)}>
