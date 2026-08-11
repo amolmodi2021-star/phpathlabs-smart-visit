@@ -27,7 +27,7 @@ import { checkDifferentialSum } from "@/lib/differentialCount";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import { signalSync } from "@/lib/limsSyncSignal";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
-import { findPatientResultRow, isResultPastPending } from "@/lib/patientResultLookup";
+import { isResultPastPending, resolveResultForResultsEntry, healOrphanPatientResults } from "@/lib/patientResultLookup";
 import { fetchResultsEntryCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPendingCandidates";
 import { shortIdsKey } from "@/lib/queryKeys";
 import SyncingOverlay from "./SyncingOverlay";
@@ -286,7 +286,37 @@ const ResultsEntry = () => {
     enabled: regIds.length > 0,
     queryFn: async () => {
       // Paginated to avoid Supabase's 1000-row cap silently dropping rows.
-      return await fetchAllByIds<any>("patient_results", "*", "registration_id", regIds);
+      const rows = await fetchAllByIds<any>("patient_results", "*", "registration_id", regIds);
+
+      // Heal orphan interface rows (written under wrong/non-tube test_ids) onto
+      // the accepted-tube tests that actually own those parameters. Fixes cases
+      // like TFT approved but TSH stuck under PCOD PROFILE → still in Results.
+      try {
+        const tubes = await fetchAllByIds<any>(
+          "sample_tubes",
+          "registration_id, test_ids",
+          "registration_id",
+          regIds,
+          { eq: { status: "accepted" } },
+        );
+        const acceptedByReg: Record<string, Set<string>> = {};
+        for (const tube of tubes) {
+          if (!acceptedByReg[tube.registration_id]) acceptedByReg[tube.registration_id] = new Set();
+          for (const id of (Array.isArray(tube.test_ids) ? tube.test_ids : [])) {
+            if (id) acceptedByReg[tube.registration_id].add(id);
+          }
+        }
+        for (const regId of regIds) {
+          const accepted = acceptedByReg[regId];
+          if (!accepted || accepted.size === 0) continue;
+          await healOrphanPatientResults(supabase, regId, accepted, rows);
+        }
+      } catch (e) {
+        // Non-fatal — Results Entry still works with sibling-coverage lookup
+        console.error("[results] orphan heal failed", e);
+      }
+
+      return rows;
     },
     placeholderData: keepPreviousData,
   });
@@ -615,22 +645,25 @@ const ResultsEntry = () => {
         }
         
         // Collect params for this test first to check if ALL are already entered
-        const testParamResults: { param: any; tp: any; isParamOutsourced: boolean; existing: any }[] = [];
+        const testParamResults: { param: any; tp: any; isParamOutsourced: boolean; existing: any; covered: boolean }[] = [];
         for (const tp of params) {
           if (tp.is_subheader) continue;
           const p = tp.report_test_parameters;
           if (!p) continue;
           const isParamOutsourced = isFullTestOutsourced || (paramOutsourcedSet && paramOutsourcedSet.has(p.id));
-          const existing = findPatientResultRow(existingResults, reg.id, t.test_id, p.id);
-          testParamResults.push({ param: p, tp, isParamOutsourced, existing });
+          const resolved = resolveResultForResultsEntry(existingResults, reg.id, t.test_id, p.id);
+          testParamResults.push({ param: p, tp, isParamOutsourced, existing: resolved.row, covered: resolved.covered });
         }
         
-        // Skip this test entirely if ALL its parameters have already left Results Entry
-        if (testParamResults.length > 0 && testParamResults.every(({ existing }) => isResultPastPending(existing?.status))) {
+        // Skip this test entirely if EVERY parameter is already past Results Entry
+        // (on this test OR completed under a sibling test for the same parameter).
+        if (testParamResults.length > 0 && testParamResults.every(({ existing, covered }) => covered || isResultPastPending(existing?.status))) {
           continue;
         }
 
-        for (const { param: p, tp, isParamOutsourced, existing } of testParamResults) {
+        for (const { param: p, tp, isParamOutsourced, existing, covered } of testParamResults) {
+          // Sibling already completed this parameter — don't re-ask in Results
+          if (covered || isResultPastPending(existing?.status)) continue;
           const resolved = resolveNormalRange(p.id, reg);
           const refText = resolved.text || p.normal_range_text || (p.normal_range_low != null && p.normal_range_high != null ? `${p.normal_range_low} - ${p.normal_range_high}` : "");
           const rangeLow = resolved.low ?? p.normal_range_low;

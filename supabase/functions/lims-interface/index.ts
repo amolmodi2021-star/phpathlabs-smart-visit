@@ -634,6 +634,125 @@ async function autoEnterCompleteInterfaceTests(
   return promotedTests;
 }
 
+/**
+ * Move pending results written under non-accepted-tube test_ids onto the
+ * accepted-tube test that owns the parameter (e.g. PCOD TSH → TFT).
+ */
+async function healOrphanResultsForRegistration(
+  supabase: any,
+  registrationId: string,
+): Promise<number> {
+  try {
+    const acceptedTestIds = await loadAcceptedTestIds(supabase, registrationId);
+    if (acceptedTestIds.size === 0) return 0;
+
+    const { data: existingRows } = await supabase
+      .from("patient_results")
+      .select("*")
+      .eq("registration_id", registrationId);
+    const rows = (existingRows || []) as any[];
+    const orphans = rows.filter(
+      (r) => r.test_id && !acceptedTestIds.has(r.test_id) && (!r.status || r.status === "pending"),
+    );
+    if (orphans.length === 0) return 0;
+
+    const paramIds = Array.from(new Set(orphans.map((r) => r.parameter_id).filter(Boolean)));
+    const { data: tpRows } = await supabase
+      .from("test_parameters")
+      .select("test_id, parameter_id")
+      .in("parameter_id", paramIds);
+
+    const targetsByParam: Record<string, string[]> = {};
+    for (const tp of tpRows || []) {
+      if (!acceptedTestIds.has(tp.test_id)) continue;
+      if (!targetsByParam[tp.parameter_id]) targetsByParam[tp.parameter_id] = [];
+      targetsByParam[tp.parameter_id].push(tp.test_id);
+    }
+
+    const pickTarget = (parameterId: string): string | null => {
+      const candidates = targetsByParam[parameterId] || [];
+      if (!candidates.length) return null;
+      if (candidates.length === 1) return candidates[0];
+      const scored = candidates.map((tid) => ({
+        tid,
+        past: rows.filter((r) => r.test_id === tid && ["entered", "results_entered", "verified", "approved", "dispatched"].includes(r.status)).length,
+        count: rows.filter((r) => r.test_id === tid).length,
+      }));
+      scored.sort((a, b) => b.past - a.past || b.count - a.count);
+      return scored[0].tid;
+    };
+
+    let healed = 0;
+    for (const orphan of orphans) {
+      const targetTestId = pickTarget(orphan.parameter_id);
+      if (!targetTestId) {
+        if (orphan.result_value == null || String(orphan.result_value).trim() === "") {
+          await supabase.from("patient_results").delete().eq("id", orphan.id);
+        }
+        continue;
+      }
+      const target = rows.find(
+        (r) => r.test_id === targetTestId && r.parameter_id === orphan.parameter_id,
+      );
+      if (target && ["entered", "results_entered", "verified", "approved", "dispatched"].includes(target.status)) {
+        await supabase.from("patient_results").delete().eq("id", orphan.id);
+        continue;
+      }
+
+      const orphanHasVal = orphan.result_value != null && String(orphan.result_value).trim() !== "";
+      const targetHasDownstream = rows.some(
+        (r) =>
+          r.test_id === targetTestId &&
+          ["entered", "results_entered", "verified", "approved", "dispatched"].includes(r.status),
+      );
+      const payload: any = {
+        result_value: orphan.result_value,
+        flag: orphan.flag,
+        unit: orphan.unit,
+        reference_range: orphan.reference_range,
+        normal_range_low: orphan.normal_range_low,
+        normal_range_high: orphan.normal_range_high,
+        is_from_interface: orphan.is_from_interface ?? true,
+        is_calculated: orphan.is_calculated ?? false,
+        entered_at: orphan.entered_at || new Date().toISOString(),
+        entered_by: orphan.entered_by || "INTERFACE",
+        status: "pending",
+        updated_at: new Date().toISOString(),
+        param_code: orphan.param_code,
+        parameter_name: orphan.parameter_name,
+      };
+      if (targetHasDownstream && orphanHasVal) {
+        payload.status = "entered";
+        payload.entered_by = "Administrator";
+      }
+
+      if (target) {
+        const targetEmpty = target.result_value == null || String(target.result_value).trim() === "";
+        if (!targetEmpty && !orphanHasVal) {
+          await supabase.from("patient_results").delete().eq("id", orphan.id);
+          continue;
+        }
+        const { error } = await supabase.from("patient_results").update(payload).eq("id", target.id);
+        if (error) continue;
+      } else {
+        const { error } = await supabase.from("patient_results").insert({
+          registration_id: registrationId,
+          test_id: targetTestId,
+          parameter_id: orphan.parameter_id,
+          ...payload,
+        });
+        if (error) continue;
+      }
+      await supabase.from("patient_results").delete().eq("id", orphan.id);
+      healed++;
+    }
+    return healed;
+  } catch (err) {
+    console.error("healOrphanResultsForRegistration error:", err);
+    return 0;
+  }
+}
+
 /** Lightweight status bump so Verification / Results queues refresh correctly. */
 async function bumpRegistrationStatusAfterInterfaceEnter(
   supabase: any,
@@ -962,6 +1081,7 @@ Deno.serve(async (req) => {
 
           // Auto-evaluate calculated parameters now that fresh values landed
           await autoCalcDependentParams(supabase, registrationId);
+          await healOrphanResultsForRegistration(supabase, registrationId);
           const autoEntered = await autoEnterCompleteInterfaceTests(supabase, registrationId);
 
           if (totalPushed > 0 || autoEntered > 0) {
@@ -1425,6 +1545,9 @@ Deno.serve(async (req) => {
           // Auto-evaluate calculated parameters now that fresh values landed
           const calcWritten = await autoCalcDependentParams(supabase, registrationId);
           patientResultsWritten += calcWritten;
+
+          // Move orphan writes (wrong test_id) onto accepted-tube tests
+          await healOrphanResultsForRegistration(supabase, registrationId);
 
           // Fully-complete interfaced tests → Save & Verify (status=entered)
           const autoEntered = await autoEnterCompleteInterfaceTests(supabase, registrationId);
