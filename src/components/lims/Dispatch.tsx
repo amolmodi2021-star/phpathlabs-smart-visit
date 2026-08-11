@@ -30,7 +30,7 @@ import { cn } from "@/lib/utils";
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 import { fetchAllByIds } from "@/lib/fetchAllRows";
 import { PATIENT_RESULTS_SELECT_DISPATCH } from "@/lib/patientResultsSelect";
-import { fetchDispatchStatusIds } from "@/lib/limsPendingCandidates";
+import { fetchDispatchStatusIds, fetchDispatchPendingDispatchIds } from "@/lib/limsPendingCandidates";
 import { shortIdsKey } from "@/lib/queryKeys";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import NewBadge from "./NewBadge";
@@ -72,7 +72,7 @@ interface DispatchTest {
 interface DispatchEntry {
   registration: any;
   tests: DispatchTest[];
-  /** all_dispatched = every active test dispatched (blue dot); all_done = all approved ready (green) */
+  /** all_dispatched = every active test dispatched (blue); all_done = every report approved (green) */
   completionStatus: "all_done" | "all_dispatched" | "partial" | "all_pending" | "cancelled";
   approvedCount: number;
   pendingCount: number;
@@ -80,11 +80,14 @@ interface DispatchEntry {
   cancelledCount: number;
 }
 
+type DispatchListMode = "current" | "pending_dispatch";
+
 const Dispatch = () => {
   const isMobile = useIsMobile();
   const qc = useQueryClient();
   useLimsPipelineRealtime("dispatch");
   const [search, setSearch] = useState("");
+  const [listMode, setListMode] = useState<DispatchListMode>("current");
   const [dateFrom, setDateFrom] = useState<Date>(startOfDay(subDays(new Date(), 7)));
   const [dateTo, setDateTo] = useState<Date>(endOfDay(new Date()));
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
@@ -96,18 +99,31 @@ const Dispatch = () => {
   const [mobileShowDetail, setMobileShowDetail] = useState(false);
   const [visibleLimit, setVisibleLimit] = useState(DISPATCH_INITIAL);
   const [dueBlockEntry, setDueBlockEntry] = useState<DispatchEntry | null>(null);
-  const listSentinelRef = useRef<HTMLDivElement | null>(null);
+  const listScrollRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 400);
     return () => clearTimeout(t);
   }, [search]);
   useEffect(() => {
     setVisibleLimit(DISPATCH_INITIAL);
-  }, [debouncedSearch, dateFrom, dateTo]);
+    setSelectedPatientId(null);
+  }, [debouncedSearch, dateFrom, dateTo, listMode]);
 
   const { data: filteredDispatchIds = [] as string[], isLoading: loadingIds } = useQuery({
-    queryKey: ["dispatch_filtered_ids", debouncedSearch, dateFrom.toISOString(), dateTo.toISOString()],
+    queryKey: [
+      "dispatch_filtered_ids",
+      listMode,
+      debouncedSearch,
+      listMode === "current" ? dateFrom.toISOString() : "pending",
+      listMode === "current" ? dateTo.toISOString() : startOfDay(new Date()).toISOString(),
+    ],
     queryFn: async (): Promise<string[]> => {
+      if (listMode === "pending_dispatch") {
+        // Old backlog: created before today, with ≥1 approved undispached report
+        return await fetchDispatchPendingDispatchIds(debouncedSearch, {
+          beforeIso: startOfDay(new Date()).toISOString(),
+        });
+      }
       return await fetchDispatchStatusIds(debouncedSearch, {
         dateFromIso: dateFrom.toISOString(),
         dateToIso: dateTo.toISOString(),
@@ -139,25 +155,20 @@ const Dispatch = () => {
   });
 
   const loadMoreDispatch = useCallback(() => {
-    if (!hasMoreDispatch || loadingRegs || fetchingRegs) return;
-    setVisibleLimit((v) => Math.min(v + DISPATCH_BATCH, dispatchCount));
-  }, [hasMoreDispatch, loadingRegs, fetchingRegs, dispatchCount]);
+    if (!hasMoreDispatch) return;
+    setVisibleLimit((v) => {
+      if (v >= dispatchCount) return v;
+      return Math.min(v + DISPATCH_BATCH, dispatchCount);
+    });
+  }, [hasMoreDispatch, dispatchCount]);
 
-  useEffect(() => {
-    const sentinel = listSentinelRef.current;
-    if (!sentinel || !hasMoreDispatch) return;
-    const root =
-      (sentinel.closest("[data-radix-scroll-area-viewport]") as Element | null) ||
-      null;
-    const io = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((e) => e.isIntersecting)) loadMoreDispatch();
-      },
-      { root, rootMargin: "120px", threshold: 0 },
-    );
-    io.observe(sentinel);
-    return () => io.disconnect();
-  }, [hasMoreDispatch, loadMoreDispatch, registrations.length]);
+  const handleListScroll = useCallback(() => {
+    const el = listScrollRef.current;
+    if (!el || !hasMoreDispatch || fetchingRegs) return;
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 100) {
+      loadMoreDispatch();
+    }
+  }, [hasMoreDispatch, fetchingRegs, loadMoreDispatch]);
 
   const regIds = registrations.map((r: any) => r.id);
   const regKey = shortIdsKey(regIds, "d");
@@ -203,6 +214,15 @@ const Dispatch = () => {
   // filters to empty (same remount flash as Results/Verification after View Report).
   const tubesReady = regIds.length === 0 || tubesFetched;
   const listLoading = loadingIds || loadingRegs || (registrations.length > 0 && !tubesReady);
+
+  // If the first page doesn't fill the viewport, keep loading until it does or list ends.
+  useEffect(() => {
+    const el = listScrollRef.current;
+    if (!el || !hasMoreDispatch || listLoading || fetchingRegs) return;
+    if (el.scrollHeight <= el.clientHeight + 40) {
+      loadMoreDispatch();
+    }
+  }, [hasMoreDispatch, listLoading, fetchingRegs, registrations.length, loadMoreDispatch]);
 
   const invoiceNumbers = useMemo(
     () => registrations.map((r: any) => String(r.invoice_number || "").trim()).filter(Boolean),
@@ -399,11 +419,11 @@ const Dispatch = () => {
       if (billCancelled || (dispatchTests.length > 0 && cancelledCount === dispatchTests.length)) {
         completionStatus = "cancelled";
       } else if (activeCount > 0 && dispatchedCount === activeCount) {
-        completionStatus = "all_dispatched";
-      } else if (dispatchedCount > 0 || (approvedCount > 0 && pendingCount > 0)) {
+        completionStatus = "all_dispatched"; // blue — every report dispatched
+      } else if (activeCount > 0 && (approvedCount + dispatchedCount) === activeCount) {
+        completionStatus = "all_done"; // green — every report approved (may still need Dispatch All)
+      } else if (dispatchedCount > 0 || approvedCount > 0) {
         completionStatus = "partial";
-      } else if (approvedCount > 0 && pendingCount === 0) {
-        completionStatus = "all_done"; // all remaining approved — ready to dispatch
       }
 
       return {
@@ -651,42 +671,66 @@ const Dispatch = () => {
     <div className="space-y-3">
       <SyncingOverlay target="dispatch" visibleIds={regIds} />
       <div className="flex flex-wrap items-center gap-2">
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="h-9 gap-1.5 text-sm font-normal">
-              <CalendarIcon className="h-3.5 w-3.5" />
-              {format(dateFrom, "dd MMM yyyy")}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0 z-50" align="start">
-            <DatePickerCalendar
-              mode="single"
-              selected={dateFrom}
-              onSelect={(d) => d && setDateFrom(startOfDay(d))}
-              initialFocus
-              className={cn("p-3 pointer-events-auto")}
-            />
-          </PopoverContent>
-        </Popover>
-        <span className="text-sm text-muted-foreground">To</span>
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="h-9 gap-1.5 text-sm font-normal">
-              <CalendarIcon className="h-3.5 w-3.5" />
-              {format(dateTo, "dd MMM yyyy")}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0 z-50" align="start">
-            <DatePickerCalendar
-              mode="single"
-              selected={dateTo}
-              onSelect={(d) => d && setDateTo(endOfDay(d))}
-              initialFocus
-              className={cn("p-3 pointer-events-auto")}
-            />
-          </PopoverContent>
-        </Popover>
-        <Button variant="ghost" size="sm" className="text-xs" onClick={() => { setDateFrom(startOfDay(new Date())); setDateTo(endOfDay(new Date())); }}>Today</Button>
+        {listMode === "current" && (
+          <>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 gap-1.5 text-sm font-normal">
+                  <CalendarIcon className="h-3.5 w-3.5" />
+                  {format(dateFrom, "dd MMM yyyy")}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0 z-50" align="start">
+                <DatePickerCalendar
+                  mode="single"
+                  selected={dateFrom}
+                  onSelect={(d) => d && setDateFrom(startOfDay(d))}
+                  initialFocus
+                  className={cn("p-3 pointer-events-auto")}
+                />
+              </PopoverContent>
+            </Popover>
+            <span className="text-sm text-muted-foreground">To</span>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 gap-1.5 text-sm font-normal">
+                  <CalendarIcon className="h-3.5 w-3.5" />
+                  {format(dateTo, "dd MMM yyyy")}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0 z-50" align="start">
+                <DatePickerCalendar
+                  mode="single"
+                  selected={dateTo}
+                  onSelect={(d) => d && setDateTo(endOfDay(d))}
+                  initialFocus
+                  className={cn("p-3 pointer-events-auto")}
+                />
+              </PopoverContent>
+            </Popover>
+            <Button variant="ghost" size="sm" className="text-xs" onClick={() => { setDateFrom(startOfDay(new Date())); setDateTo(endOfDay(new Date())); }}>Today</Button>
+          </>
+        )}
+        <div className="flex items-center rounded-md border p-0.5 gap-0.5">
+          <Button
+            type="button"
+            size="sm"
+            variant={listMode === "current" ? "default" : "ghost"}
+            className="h-7 text-xs px-2.5"
+            onClick={() => setListMode("current")}
+          >
+            Current
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={listMode === "pending_dispatch" ? "default" : "ghost"}
+            className="h-7 text-xs px-2.5"
+            onClick={() => setListMode("pending_dispatch")}
+          >
+            Pending Dispatch
+          </Button>
+        </div>
         <RefreshButton
           queryKeys={["dispatch_filtered_ids", "dispatch_regs", "dispatch_regs_count", "dispatch_all_results", "dispatch_all_tubes", "dispatch_all_snips", "dispatch_held_reports", "results_tests_map", "dispatch_credit_pickup_points", "dispatch_failed_wa_outbox"]}
           className="ml-auto"
@@ -697,6 +741,13 @@ const Dispatch = () => {
             : `Showing ${Math.min(visibleLimit, dispatchCount)} of ${dispatchCount}`}
         </span>
       </div>
+
+      {listMode === "current" && (
+        <p className="text-[11px] text-muted-foreground -mt-1">Date range status board for selected days.</p>
+      )}
+      {listMode === "pending_dispatch" && (
+        <p className="text-[11px] text-muted-foreground -mt-1">Older bills (before today) with at least one approved report still not dispatched.</p>
+      )}
 
       {(
         <div className={cn("flex gap-3", isMobile && "flex-col")} style={{ height: "calc(100vh - 180px)" }}>
@@ -709,14 +760,24 @@ const Dispatch = () => {
                   <Input placeholder="Search name, mobile, invoice..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8 h-9 text-sm" />
                 </div>
               </div>
-              <ScrollArea className="flex-1">
+              <div
+                ref={listScrollRef}
+                className="flex-1 min-h-0 overflow-y-auto"
+                onScroll={handleListScroll}
+              >
                 {listLoading ? (
                   <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
                 ) : sortedDispatchEntries.length === 0 ? (
                   <div className="text-center py-12 text-muted-foreground px-3">
                     <Truck className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                    <p className="text-sm font-medium">No patients in this date range</p>
-                    <p className="text-xs">Adjust dates or search to check patient status</p>
+                    <p className="text-sm font-medium">
+                      {listMode === "pending_dispatch" ? "No pending dispatch backlog" : "No patients in this date range"}
+                    </p>
+                    <p className="text-xs">
+                      {listMode === "pending_dispatch"
+                        ? "No older bills with approved reports waiting to dispatch"
+                        : "Adjust dates or search to check patient status"}
+                    </p>
                   </div>
                 ) : (
                 <div className="divide-y">
@@ -774,17 +835,23 @@ const Dispatch = () => {
                     );
                   })}
                   {hasMoreDispatch && (
-                    <div ref={listSentinelRef} className="flex justify-center py-3">
-                      {(loadingRegs || fetchingRegs) ? (
+                    <div className="flex justify-center py-3">
+                      {fetchingRegs ? (
                         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                       ) : (
-                        <span className="text-[10px] text-muted-foreground">Scroll for more</span>
+                        <button
+                          type="button"
+                          className="text-[10px] text-muted-foreground underline-offset-2 hover:underline"
+                          onClick={loadMoreDispatch}
+                        >
+                          Load more
+                        </button>
                       )}
                     </div>
                   )}
                 </div>
                 )}
-              </ScrollArea>
+              </div>
             </Card>
           )}
 

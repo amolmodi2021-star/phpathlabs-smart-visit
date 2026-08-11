@@ -40,6 +40,17 @@ export async function fetchDispatchStatusIds(
   });
 }
 
+/** Old/backlog bills with ≥1 approved report still not dispatched. */
+export async function fetchDispatchPendingDispatchIds(
+  search: string,
+  opts: { beforeIso?: string } = {},
+): Promise<string[]> {
+  return rpcUuidArray("lims_dispatch_pending_dispatch_ids", {
+    p_search: search || null,
+    p_before: opts.beforeIso || null,
+  });
+}
+
 export async function fetchOutsourcedCandidateIds(): Promise<string[]> {
   return rpcUuidArray("lims_outsourced_candidate_ids");
 }
