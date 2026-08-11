@@ -40,14 +40,20 @@ export async function fetchDispatchStatusIds(
   });
 }
 
-/** Old/backlog bills with ≥1 approved report still not dispatched. */
+/** Bills with ≥1 approved report still not dispatched (date range; optional older). */
 export async function fetchDispatchPendingDispatchIds(
   search: string,
-  opts: { beforeIso?: string } = {},
+  opts: {
+    dateFromIso?: string;
+    dateToIso?: string;
+    includeOlder?: boolean;
+  } = {},
 ): Promise<string[]> {
   return rpcUuidArray("lims_dispatch_pending_dispatch_ids", {
     p_search: search || null,
-    p_before: opts.beforeIso || null,
+    p_date_from: opts.dateFromIso || null,
+    p_date_to: opts.dateToIso || null,
+    p_include_older: !!opts.includeOlder,
   });
 }
 

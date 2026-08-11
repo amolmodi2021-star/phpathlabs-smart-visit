@@ -11,6 +11,8 @@ import { useLimsPipelineRealtime } from "@/hooks/useLimsPipelineRealtime";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 /** Initial list size; more rows load as the user scrolls down. */
 const DISPATCH_INITIAL = 10;
@@ -30,7 +32,7 @@ import { cn } from "@/lib/utils";
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 import { fetchAllByIds } from "@/lib/fetchAllRows";
 import { PATIENT_RESULTS_SELECT_DISPATCH } from "@/lib/patientResultsSelect";
-import { fetchDispatchStatusIds, fetchDispatchPendingDispatchIds } from "@/lib/limsPendingCandidates";
+import { fetchDispatchPendingDispatchIds } from "@/lib/limsPendingCandidates";
 import { shortIdsKey } from "@/lib/queryKeys";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import NewBadge from "./NewBadge";
@@ -80,14 +82,12 @@ interface DispatchEntry {
   cancelledCount: number;
 }
 
-type DispatchListMode = "current" | "pending_dispatch";
-
 const Dispatch = () => {
   const isMobile = useIsMobile();
   const qc = useQueryClient();
   useLimsPipelineRealtime("dispatch");
   const [search, setSearch] = useState("");
-  const [listMode, setListMode] = useState<DispatchListMode>("current");
+  const [includeOlderPending, setIncludeOlderPending] = useState(false);
   const [dateFrom, setDateFrom] = useState<Date>(startOfDay(subDays(new Date(), 7)));
   const [dateTo, setDateTo] = useState<Date>(endOfDay(new Date()));
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
@@ -107,26 +107,22 @@ const Dispatch = () => {
   useEffect(() => {
     setVisibleLimit(DISPATCH_INITIAL);
     setSelectedPatientId(null);
-  }, [debouncedSearch, dateFrom, dateTo, listMode]);
+  }, [debouncedSearch, dateFrom, dateTo, includeOlderPending]);
 
   const { data: filteredDispatchIds = [] as string[], isLoading: loadingIds } = useQuery({
     queryKey: [
       "dispatch_filtered_ids",
-      listMode,
+      "pending",
       debouncedSearch,
-      listMode === "current" ? dateFrom.toISOString() : "pending",
-      listMode === "current" ? dateTo.toISOString() : startOfDay(new Date()).toISOString(),
+      dateFrom.toISOString(),
+      dateTo.toISOString(),
+      includeOlderPending,
     ],
     queryFn: async (): Promise<string[]> => {
-      if (listMode === "pending_dispatch") {
-        // Old backlog: created before today, with ≥1 approved undispached report
-        return await fetchDispatchPendingDispatchIds(debouncedSearch, {
-          beforeIso: startOfDay(new Date()).toISOString(),
-        });
-      }
-      return await fetchDispatchStatusIds(debouncedSearch, {
+      return await fetchDispatchPendingDispatchIds(debouncedSearch, {
         dateFromIso: dateFrom.toISOString(),
         dateToIso: dateTo.toISOString(),
+        includeOlder: includeOlderPending,
       });
     },
     placeholderData: keepPreviousData,
@@ -438,9 +434,11 @@ const Dispatch = () => {
     }).filter(Boolean) as DispatchEntry[];
   }, [registrations, allResults, allSnips, allTubes, testsMap]);
 
-  // Re-sort: active STAT on top, cancelled last, then invoice
+  // Pending Dispatch queue: never show fully dispatched (blue-dot) patients
   const sortedDispatchEntries = useMemo(() => {
-    return [...dispatchEntries].sort((a, b) => {
+    return [...dispatchEntries]
+      .filter((e) => e.completionStatus !== "all_dispatched" && e.approvedCount > 0)
+      .sort((a, b) => {
       const aCancelled = a.completionStatus === "cancelled" ? 1 : 0;
       const bCancelled = b.completionStatus === "cancelled" ? 1 : 0;
       if (aCancelled !== bCancelled) return aCancelled - bCancelled;
@@ -671,65 +669,51 @@ const Dispatch = () => {
     <div className="space-y-3">
       <SyncingOverlay target="dispatch" visibleIds={regIds} />
       <div className="flex flex-wrap items-center gap-2">
-        {listMode === "current" && (
-          <>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 gap-1.5 text-sm font-normal">
-                  <CalendarIcon className="h-3.5 w-3.5" />
-                  {format(dateFrom, "dd MMM yyyy")}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0 z-50" align="start">
-                <DatePickerCalendar
-                  mode="single"
-                  selected={dateFrom}
-                  onSelect={(d) => d && setDateFrom(startOfDay(d))}
-                  initialFocus
-                  className={cn("p-3 pointer-events-auto")}
-                />
-              </PopoverContent>
-            </Popover>
-            <span className="text-sm text-muted-foreground">To</span>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 gap-1.5 text-sm font-normal">
-                  <CalendarIcon className="h-3.5 w-3.5" />
-                  {format(dateTo, "dd MMM yyyy")}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0 z-50" align="start">
-                <DatePickerCalendar
-                  mode="single"
-                  selected={dateTo}
-                  onSelect={(d) => d && setDateTo(endOfDay(d))}
-                  initialFocus
-                  className={cn("p-3 pointer-events-auto")}
-                />
-              </PopoverContent>
-            </Popover>
-            <Button variant="ghost" size="sm" className="text-xs" onClick={() => { setDateFrom(startOfDay(new Date())); setDateTo(endOfDay(new Date())); }}>Today</Button>
-          </>
-        )}
-        <div className="flex items-center rounded-md border p-0.5 gap-0.5">
-          <Button
-            type="button"
-            size="sm"
-            variant={listMode === "current" ? "default" : "ghost"}
-            className="h-7 text-xs px-2.5"
-            onClick={() => setListMode("current")}
-          >
-            Current
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant={listMode === "pending_dispatch" ? "default" : "ghost"}
-            className="h-7 text-xs px-2.5"
-            onClick={() => setListMode("pending_dispatch")}
-          >
-            Pending Dispatch
-          </Button>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className="h-9 gap-1.5 text-sm font-normal">
+              <CalendarIcon className="h-3.5 w-3.5" />
+              {format(dateFrom, "dd MMM yyyy")}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0 z-50" align="start">
+            <DatePickerCalendar
+              mode="single"
+              selected={dateFrom}
+              onSelect={(d) => d && setDateFrom(startOfDay(d))}
+              initialFocus
+              className={cn("p-3 pointer-events-auto")}
+            />
+          </PopoverContent>
+        </Popover>
+        <span className="text-sm text-muted-foreground">To</span>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className="h-9 gap-1.5 text-sm font-normal">
+              <CalendarIcon className="h-3.5 w-3.5" />
+              {format(dateTo, "dd MMM yyyy")}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0 z-50" align="start">
+            <DatePickerCalendar
+              mode="single"
+              selected={dateTo}
+              onSelect={(d) => d && setDateTo(endOfDay(d))}
+              initialFocus
+              className={cn("p-3 pointer-events-auto")}
+            />
+          </PopoverContent>
+        </Popover>
+        <Button variant="ghost" size="sm" className="text-xs" onClick={() => { setDateFrom(startOfDay(new Date())); setDateTo(endOfDay(new Date())); }}>Today</Button>
+        <div className="flex items-center gap-2 rounded-md border px-2.5 py-1.5">
+          <Switch
+            id="dispatch-include-older"
+            checked={includeOlderPending}
+            onCheckedChange={setIncludeOlderPending}
+          />
+          <Label htmlFor="dispatch-include-older" className="text-xs font-normal cursor-pointer">
+            Show older than date range
+          </Label>
         </div>
         <RefreshButton
           queryKeys={["dispatch_filtered_ids", "dispatch_regs", "dispatch_regs_count", "dispatch_all_results", "dispatch_all_tubes", "dispatch_all_snips", "dispatch_held_reports", "results_tests_map", "dispatch_credit_pickup_points", "dispatch_failed_wa_outbox"]}
@@ -737,17 +721,15 @@ const Dispatch = () => {
         />
         <span className="text-xs text-muted-foreground whitespace-nowrap">
           {dispatchCount === 0
-            ? "0 records"
+            ? "0 pending"
             : `Showing ${Math.min(visibleLimit, dispatchCount)} of ${dispatchCount}`}
         </span>
       </div>
 
-      {listMode === "current" && (
-        <p className="text-[11px] text-muted-foreground -mt-1">Date range status board for selected days.</p>
-      )}
-      {listMode === "pending_dispatch" && (
-        <p className="text-[11px] text-muted-foreground -mt-1">Older bills (before today) with at least one approved report still not dispatched.</p>
-      )}
+      <p className="text-[11px] text-muted-foreground -mt-1">
+        Pending Dispatch — bills with at least one approved report not yet dispatched
+        {includeOlderPending ? " (includes older than the selected range)" : ""}.
+      </p>
 
       {(
         <div className={cn("flex gap-3", isMobile && "flex-col")} style={{ height: "calc(100vh - 180px)" }}>
@@ -770,13 +752,11 @@ const Dispatch = () => {
                 ) : sortedDispatchEntries.length === 0 ? (
                   <div className="text-center py-12 text-muted-foreground px-3">
                     <Truck className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                    <p className="text-sm font-medium">
-                      {listMode === "pending_dispatch" ? "No pending dispatch backlog" : "No patients in this date range"}
-                    </p>
+                    <p className="text-sm font-medium">No pending dispatch</p>
                     <p className="text-xs">
-                      {listMode === "pending_dispatch"
-                        ? "No older bills with approved reports waiting to dispatch"
-                        : "Adjust dates or search to check patient status"}
+                      {includeOlderPending
+                        ? "No bills with approved reports waiting to dispatch"
+                        : "No pending bills in this date range — try widening dates or enable older"}
                     </p>
                   </div>
                 ) : (
