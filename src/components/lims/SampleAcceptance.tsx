@@ -155,8 +155,10 @@ const SampleAcceptance = () => {
     [pendingRegIds, visibleAcceptedRegIds]
   );
 
-  // Fetch registrations (only for IDs we need to display). Exclude fully
-  // dispatched / cancelled records — they should never appear in this stage.
+  // Fetch registrations (only for IDs we need to display).
+  // Never hide collected tubes awaiting acceptance just because sibling tests
+  // already reached "dispatched" (Collect Later / multi-visit bills).
+  // Only exclude cancelled bills from this queue.
   const { data: registrations = [] } = useQuery({
     queryKey: ["sample_acceptance_regs", regIds.join(","), debouncedSearch],
     enabled: regIds.length > 0,
@@ -166,7 +168,7 @@ const SampleAcceptance = () => {
         .select("*")
         .in("id", regIds)
         .eq("bill_cancelled", false)
-        .not("status", "in", '("dispatched","cancelled")')
+        .not("status", "eq", "cancelled")
         .order("is_stat", { ascending: false })
         .order("invoice_number", { ascending: false });
       if (debouncedSearch) {
@@ -180,8 +182,7 @@ const SampleAcceptance = () => {
     },
   });
 
-  // Group by registration. Dispatched/cancelled regs are already filtered out
-  // server-side by the registrations query above.
+  // Group by registration. Cancelled regs are already filtered out server-side.
   const pendingGroups = useMemo((): GroupedRegistration[] => {
     return registrations.filter(reg => collectedTubes.some(t => t.registration_id === reg.id)).map(reg => ({
       registration: reg,

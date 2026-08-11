@@ -190,6 +190,18 @@ export async function recalculateRegistrationStatus(registrationId: string): Pro
     else if (newStatus === "registered" && hasCollectedTube) newStatus = "partially_collected";
   }
 
+  // GUARD: collected tubes still awaiting Sample Acceptance must not keep a
+  // terminal registration status. Classic case: FBS/TFT already dispatched, then
+  // Collect Later PPBS is collected — without this, status stays "dispatched"
+  // and Sample Acceptance hides the bill (filters out dispatched).
+  if (hasCollectedTube) {
+    if (newStatus === "dispatched") newStatus = "partially_dispatched";
+    else if (newStatus === "approved") newStatus = "partially_approved";
+    else if (newStatus === "verified") newStatus = "partial_verified";
+    else if (newStatus === "processed") newStatus = "partial_processing";
+    else if (newStatus === "sample_accepted") newStatus = "partially_accepted";
+  }
+
   // Clear stale repeat_collection / empty repeat_tests once no active repeat work remains
   const patch: Record<string, any> = { status: newStatus };
   if (repeatTestsChanged || (currentStatus === "repeat_collection" && !hasActiveRepeat)) {
