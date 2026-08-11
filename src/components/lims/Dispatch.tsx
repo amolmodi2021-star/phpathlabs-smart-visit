@@ -1,5 +1,5 @@
 import RefreshButton from "@/components/lims/RefreshButton";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
 import SyncingOverlay from "./SyncingOverlay";
@@ -12,7 +12,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { useIsMobile } from "@/hooks/use-mobile";
 
-const DISPATCH_PAGE_SIZE = 50;
+/** Initial list size; more rows load as the user scrolls down. */
+const DISPATCH_INITIAL = 10;
+const DISPATCH_BATCH = 10;
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -91,9 +93,16 @@ const Dispatch = () => {
   const [selectedTestIds, setSelectedTestIds] = useState<Set<string>>(new Set());
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [mobileShowDetail, setMobileShowDetail] = useState(false);
-  const [dispatchPage, setDispatchPage] = useState(0);
+  const [visibleLimit, setVisibleLimit] = useState(DISPATCH_INITIAL);
   const [dueBlockEntry, setDueBlockEntry] = useState<DispatchEntry | null>(null);
-  useEffect(() => { const t = setTimeout(() => { setDebouncedSearch(search); setDispatchPage(0); }, 400); return () => clearTimeout(t); }, [search]);
+  const listSentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 400);
+    return () => clearTimeout(t);
+  }, [search]);
+  useEffect(() => {
+    setVisibleLimit(DISPATCH_INITIAL);
+  }, [debouncedSearch, dateFrom, dateTo]);
 
   const { data: filteredDispatchIds = [] as string[], isLoading: loadingIds } = useQuery({
     queryKey: ["dispatch_filtered_ids", debouncedSearch, dateFrom.toISOString(), dateTo.toISOString()],
@@ -107,27 +116,47 @@ const Dispatch = () => {
     staleTime: 30_000,
   });
   const dispatchCount = filteredDispatchIds.length;
-  const dispatchPageIds = filteredDispatchIds.slice(
-    dispatchPage * DISPATCH_PAGE_SIZE,
-    dispatchPage * DISPATCH_PAGE_SIZE + DISPATCH_PAGE_SIZE,
+  const visibleIds = useMemo(
+    () => filteredDispatchIds.slice(0, visibleLimit),
+    [filteredDispatchIds, visibleLimit],
   );
-  const pageKey = shortIdsKey(dispatchPageIds, "dp");
+  const hasMoreDispatch = visibleLimit < dispatchCount;
+  const pageKey = shortIdsKey(visibleIds, "dp");
 
-  const { data: registrations = [], isLoading: loadingRegs } = useQuery({
-    queryKey: ["dispatch_regs", pageKey, dispatchPage],
-    enabled: dispatchPageIds.length > 0,
+  const { data: registrations = [], isLoading: loadingRegs, isFetching: fetchingRegs } = useQuery({
+    queryKey: ["dispatch_regs", pageKey, visibleLimit],
+    enabled: visibleIds.length > 0,
     queryFn: async () => {
       const { data } = await supabase.from("patient_registrations")
         .select("id, invoice_number, patient_name, title, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, gender, dob, created_at, updated_at, bill_cancelled, registered_by, due_amount, pickup_point_id")
-        .in("id", dispatchPageIds);
-      const order = new Map(dispatchPageIds.map((id, i) => [id, i]));
+        .in("id", visibleIds);
+      const order = new Map(visibleIds.map((id, i) => [id, i]));
       return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     },
     placeholderData: keepPreviousData,
     staleTime: 30_000,
   });
 
-  const dispatchTotalPages = Math.ceil(dispatchCount / DISPATCH_PAGE_SIZE);
+  const loadMoreDispatch = useCallback(() => {
+    if (!hasMoreDispatch || loadingRegs || fetchingRegs) return;
+    setVisibleLimit((v) => Math.min(v + DISPATCH_BATCH, dispatchCount));
+  }, [hasMoreDispatch, loadingRegs, fetchingRegs, dispatchCount]);
+
+  useEffect(() => {
+    const sentinel = listSentinelRef.current;
+    if (!sentinel || !hasMoreDispatch) return;
+    const root =
+      (sentinel.closest("[data-radix-scroll-area-viewport]") as Element | null) ||
+      null;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) loadMoreDispatch();
+      },
+      { root, rootMargin: "120px", threshold: 0 },
+    );
+    io.observe(sentinel);
+    return () => io.disconnect();
+  }, [hasMoreDispatch, loadMoreDispatch, registrations.length]);
 
   const regIds = registrations.map((r: any) => r.id);
   const regKey = shortIdsKey(regIds, "d");
@@ -678,7 +707,11 @@ const Dispatch = () => {
           queryKeys={["dispatch_filtered_ids", "dispatch_regs", "dispatch_regs_count", "dispatch_all_results", "dispatch_all_tubes", "dispatch_all_snips", "dispatch_held_reports", "results_tests_map", "dispatch_credit_pickup_points", "dispatch_failed_wa_outbox"]}
           className="ml-auto"
         />
-        <span className="text-xs text-muted-foreground whitespace-nowrap">{dispatchCount} records{dispatchTotalPages > 1 ? ` (pg ${dispatchPage + 1}/${dispatchTotalPages})` : ""}</span>
+        <span className="text-xs text-muted-foreground whitespace-nowrap">
+          {dispatchCount === 0
+            ? "0 records"
+            : `Showing ${Math.min(visibleLimit, dispatchCount)} of ${dispatchCount}`}
+        </span>
       </div>
 
       {(
@@ -756,16 +789,18 @@ const Dispatch = () => {
                       </div>
                     );
                   })}
+                  {hasMoreDispatch && (
+                    <div ref={listSentinelRef} className="flex justify-center py-3">
+                      {(loadingRegs || fetchingRegs) ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                      ) : (
+                        <span className="text-[10px] text-muted-foreground">Scroll for more</span>
+                      )}
+                    </div>
+                  )}
                 </div>
                 )}
               </ScrollArea>
-              {dispatchTotalPages > 1 && (
-                <div className="p-2 border-t flex items-center justify-between">
-                  <Button variant="ghost" size="sm" className="text-xs h-7" disabled={dispatchPage === 0} onClick={() => setDispatchPage(p => p - 1)}>Prev</Button>
-                  <span className="text-xs text-muted-foreground">{dispatchPage + 1} / {dispatchTotalPages}</span>
-                  <Button variant="ghost" size="sm" className="text-xs h-7" disabled={dispatchPage >= dispatchTotalPages - 1} onClick={() => setDispatchPage(p => p + 1)}>Next</Button>
-                </div>
-              )}
             </Card>
           )}
 
