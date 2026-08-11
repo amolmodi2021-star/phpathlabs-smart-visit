@@ -110,7 +110,8 @@ export async function recalculateRegistrationStatus(registrationId: string): Pro
       ),
   ];
 
-  const hasPendingTube = t.some((tube: any) => tube.status === "pending");
+  // deferred = collect-later visit; still incomplete collection work (same barcode).
+  const hasPendingTube = t.some((tube: any) => tube.status === "pending" || tube.status === "deferred");
   const hasCollectedTube = t.some((tube: any) => tube.status === "collected");
 
   // Explicit repeat only: keep badge while listed repeat tests still have pending tubes.
@@ -154,6 +155,9 @@ export async function recalculateRegistrationStatus(registrationId: string): Pro
     } else if (tubeStatuses.every((st) => st === "collected" || st === "accepted")) {
       newStatus = "sample_collected";
     } else if (tubeStatuses.some((st) => st === "collected")) {
+      newStatus = "partially_collected";
+    } else if (tubeStatuses.some((st) => st === "deferred")) {
+      // All remaining tubes deferred (or deferred + pending) — visit incomplete
       newStatus = "partially_collected";
     } else {
       newStatus = "registered";

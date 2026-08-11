@@ -14,6 +14,7 @@ import ReportResultsSection from "@/components/report/ReportResultsSection";
 import AutoScaleContent from "@/components/report/AutoScaleContent";
 import type { TestResult, ProfileMeta } from "@/components/report/ReportResultsSection";
 import { toast } from "sonner";
+import { format } from "date-fns";
 import { logEvent, createShareLink } from "@/lib/reportShareLinks";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 import { enqueueReportForWhatsAppConsole } from "@/lib/whatsappConsoleBridge";
@@ -201,6 +202,9 @@ interface TestBlock {
   departmentName: string;
   departmentOrder: number;
   testOrder: number;
+  /** YYYY-MM-DD of sample_tubes.collected_at for this test; drives page breaks */
+  collectionDateKey: string;
+  collectionDateIso: string | null;
   params: TestResultEntry[];
   instrument?: string | null;
   method?: string | null;
@@ -224,6 +228,8 @@ interface PageContent {
   testBlocks?: TestBlock[];
   snipImage?: string;
   approvers?: string[];
+  /** Per-page sample collection date (ISO) — different dates never share a page */
+  sampleCollectionDate?: string | null;
 }
 
 interface SignatureInfo {
@@ -285,6 +291,8 @@ const LimsReportView = () => {
   // Data
   const [approvedReports, setApprovedReports] = useState<any[]>([]);
   const [registration, setRegistration] = useState<any>(null);
+  /** test_id → earliest collected_at ISO for that leaf test's tube */
+  const [collectionDateByTestId, setCollectionDateByTestId] = useState<Record<string, string>>({});
   const [layoutSettings, setLayoutSettings] = useState({ top_margin_cm: 2.5, bottom_margin_cm: 1.5, letterhead_pdf_path: null as string | null });
   const [letterheadImageUrl, setLetterheadImageUrl] = useState<string | null>(null);
   const [signatureMap, setSignatureMap] = useState<Record<string, SignatureInfo>>({});
@@ -438,17 +446,28 @@ const LimsReportView = () => {
 
     // Fallback: if any report is missing sample_collection_date (legacy approvals before
     // collection-date capture), derive it from MIN(sample_tubes.collected_at) for this registration.
+    // Also build per-test collection dates so multi-visit samples page-break correctly.
+    const { data: tubesForDates } = await supabase
+      .from("sample_tubes")
+      .select("test_ids, collected_at")
+      .eq("registration_id", registrationId)
+      .not("collected_at", "is", null);
+    const byTest: Record<string, string> = {};
+    for (const tube of tubesForDates || []) {
+      const at = tube.collected_at as string;
+      if (!at) continue;
+      for (const tid of (Array.isArray(tube.test_ids) ? tube.test_ids : [])) {
+        if (!tid) continue;
+        if (!byTest[tid] || at < byTest[tid]) byTest[tid] = at;
+      }
+    }
+    setCollectionDateByTestId(byTest);
+
     const needsCollectionFallback = reportsArr.some((r: any) => !r.sample_collection_date);
     let fallbackCollectionDate: string | null = null;
     if (needsCollectionFallback) {
-      const { data: tubes } = await supabase
-        .from("sample_tubes")
-        .select("collected_at")
-        .eq("registration_id", registrationId)
-        .not("collected_at", "is", null);
-      if (tubes && tubes.length > 0) {
-        fallbackCollectionDate = tubes.map((t: any) => t.collected_at).sort()[0];
-      }
+      const times = Object.values(byTest).sort();
+      fallbackCollectionDate = times[0] || null;
     }
 
     // Filter approved reports test_results by selected test IDs if provided
@@ -703,6 +722,13 @@ const LimsReportView = () => {
       // Collect unique approvers for this test block
       const blockApprovers = [...new Set(sortedParams.map(p => p.approved_by).filter(Boolean))] as string[];
 
+      const collectionDateIso = collectionDateByTestId[testId]
+        || approvedReports[0]?.sample_collection_date
+        || null;
+      const collectionDateKey = collectionDateIso
+        ? format(new Date(collectionDateIso), "yyyy-MM-dd")
+        : "unknown";
+
       testBlocks.push({
         testId,
         testName: testInfo?.display_name || params[0]?.test_name || testInfo?.test_name || "Unknown Test",
@@ -710,6 +736,8 @@ const LimsReportView = () => {
         departmentName: deptName,
         departmentOrder: deptOrder,
         testOrder: (testInfo?.report_display_order ?? 9999),
+        collectionDateKey,
+        collectionDateIso,
         params: sortedParams,
         instrument: testInfo?.instrument_name,
         method: testInfo?.method,
@@ -724,55 +752,74 @@ const LimsReportView = () => {
       });
     });
 
-    // Sort by department order, then test name
+    // Sort by collection date, then department order, then test order (keeps hierarchy within a visit day)
     testBlocks.sort((a, b) => {
+      if (a.collectionDateKey !== b.collectionDateKey) return a.collectionDateKey.localeCompare(b.collectionDateKey);
       if (a.departmentOrder !== b.departmentOrder) return a.departmentOrder - b.departmentOrder;
       if (a.testOrder !== b.testOrder) return a.testOrder - b.testOrder;
       return a.testName.localeCompare(b.testName);
     });
 
-    // Group by department
-    const deptGroups: Record<string, TestBlock[]> = {};
-    testBlocks.forEach(tb => {
-      if (!deptGroups[tb.departmentName]) deptGroups[tb.departmentName] = [];
-      deptGroups[tb.departmentName].push(tb);
-    });
-
-    // Build pages - each department starts a new page
+    // Build pages — new page when collection date changes OR department changes (existing rules)
     const allPages: PageContent[] = [];
+    let currentPageBlocks: TestBlock[] = [];
+    let usedHeight = DEPT_HEADER_MM;
+    let currentDeptName: string | null = null;
+    let currentDateKey: string | null = null;
 
-    Object.entries(deptGroups).forEach(([deptName, blocks]) => {
-      let currentPageBlocks: TestBlock[] = [];
-      let usedHeight = DEPT_HEADER_MM;
-
-      const collectApprovers = (blocks: TestBlock[]) => [...new Set(blocks.flatMap(b => b.approvers || []))];
-
-      blocks.forEach(block => {
-        // Dedicated page: flush current, put this block alone on its own page
-        if (block.dedicatedPage) {
-          if (currentPageBlocks.length > 0) {
-            allPages.push({ type: "structured", departmentName: deptName, testBlocks: currentPageBlocks, approvers: collectApprovers(currentPageBlocks) });
-            currentPageBlocks = [];
-            usedHeight = DEPT_HEADER_MM;
-          }
-          allPages.push({ type: "structured", departmentName: deptName, testBlocks: [block], approvers: collectApprovers([block]) });
-          return;
-        }
-
-        if (currentPageBlocks.length > 0 && (usedHeight + block.estimatedHeightMm) > (usableHeight - FIT_TOLERANCE_MM)) {
-          // Flush current page
-          allPages.push({ type: "structured", departmentName: deptName, testBlocks: currentPageBlocks, approvers: collectApprovers(currentPageBlocks) });
-          currentPageBlocks = [];
-          usedHeight = DEPT_HEADER_MM;
-        }
-        currentPageBlocks.push(block);
-        usedHeight += block.estimatedHeightMm;
+    const collectApprovers = (blocks: TestBlock[]) => [...new Set(blocks.flatMap(b => b.approvers || []))];
+    const flushPage = () => {
+      if (currentPageBlocks.length === 0) return;
+      allPages.push({
+        type: "structured",
+        departmentName: currentDeptName || "Results",
+        testBlocks: currentPageBlocks,
+        approvers: collectApprovers(currentPageBlocks),
+        sampleCollectionDate: currentPageBlocks[0]?.collectionDateIso || null,
       });
+      currentPageBlocks = [];
+      usedHeight = DEPT_HEADER_MM;
+    };
 
-      if (currentPageBlocks.length > 0) {
-        allPages.push({ type: "structured", departmentName: deptName, testBlocks: currentPageBlocks, approvers: collectApprovers(currentPageBlocks) });
+    testBlocks.forEach(block => {
+      const dateChanged = currentDateKey != null && block.collectionDateKey !== currentDateKey;
+      const deptChanged = currentDeptName != null && block.departmentName !== currentDeptName;
+
+      if (block.dedicatedPage) {
+        flushPage();
+        currentDeptName = block.departmentName;
+        currentDateKey = block.collectionDateKey;
+        allPages.push({
+          type: "structured",
+          departmentName: block.departmentName,
+          testBlocks: [block],
+          approvers: collectApprovers([block]),
+          sampleCollectionDate: block.collectionDateIso,
+        });
+        currentDeptName = null;
+        currentDateKey = null;
+        usedHeight = DEPT_HEADER_MM;
+        return;
       }
+
+      if (dateChanged || deptChanged) {
+        flushPage();
+      }
+
+      if (currentPageBlocks.length > 0 && (usedHeight + block.estimatedHeightMm) > (usableHeight - FIT_TOLERANCE_MM)) {
+        flushPage();
+      }
+
+      if (currentPageBlocks.length === 0) {
+        currentDeptName = block.departmentName;
+        currentDateKey = block.collectionDateKey;
+        usedHeight = DEPT_HEADER_MM;
+      }
+
+      currentPageBlocks.push(block);
+      usedHeight += block.estimatedHeightMm;
     });
+    flushPage();
 
     // Add snip pages
     snipImages.forEach(snip => {
@@ -780,7 +827,7 @@ const LimsReportView = () => {
     });
 
     return { pages: allPages, totalPages: allPages.length };
-  }, [approvedReports, departments, testsMap, testParamsMap, snipImages, layoutSettings, pickupFooterNote]);
+  }, [approvedReports, departments, testsMap, testParamsMap, snipImages, layoutSettings, pickupFooterNote, collectionDateByTestId]);
 
   // ── PDF export ──
   const buildPdfBlob = async (): Promise<{ blob: Blob; filename: string } | null> => {
@@ -1306,7 +1353,7 @@ const LimsReportView = () => {
                 address={report.address}
                 invoiceNumber={report.invoice_number}
                 registrationDate={report.registration_date}
-                sampleCollectionDate={report.sample_collection_date}
+                sampleCollectionDate={page.sampleCollectionDate || report.sample_collection_date}
                 approvalDate={report.approval_date}
                 printDate={report.print_date}
                 visitType={report.visit_type}

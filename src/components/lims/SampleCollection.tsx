@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Search, Printer, ChevronDown, ChevronUp, CheckCircle2, RotateCcw, Undo2 } from "lucide-react";
+import { Search, Printer, ChevronDown, ChevronUp, CheckCircle2, RotateCcw, Undo2, Clock } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -77,6 +77,14 @@ const SampleCollection = () => {
   // Print confirmation dialog state — shown before any print action
   const [printConfirmDialog, setPrintConfirmDialog] = useState<{ open: boolean; reg: any; tubes: SampleTubeRow[]; action: (() => void) | null }>({ open: false, reg: null, tubes: [], action: null });
 
+  // After selecting tubes to print/collect: optionally defer the rest for a later visit
+  const [deferRemainderDialog, setDeferRemainderDialog] = useState<{
+    open: boolean;
+    reg: any;
+    selected: SampleTubeRow[];
+    remainder: SampleTubeRow[];
+  }>({ open: false, reg: null, selected: [], remainder: [] });
+
   const getBarcodeLabel = (reg: any, tube: SampleTubeRow) => {
     const suffix = tube.suffix?.trim();
     return suffix ? `${reg.invoice_number}${suffix}` : String(reg.invoice_number);
@@ -96,7 +104,7 @@ const SampleCollection = () => {
       let q = supabase
         .from("sample_tubes" as any)
         .select("*")
-        .in("status", ["pending", "collected"])
+        .in("status", ["pending", "deferred", "collected"])
         .order("created_at", { ascending: false })
         .limit(showOlderPending ? 2000 : 500);
       if (!showOlderPending) {
@@ -178,7 +186,7 @@ const SampleCollection = () => {
   };
 
   // Recalculate tubes for a registration based on the latest test/profile/checkup definitions.
-  // Only touches PENDING tubes — already-collected/accepted tubes are preserved untouched.
+  // Only touches PENDING tubes — collected/accepted/deferred tubes are preserved (same barcodes).
   const recalcTubesForRegistration = useCallback(async (regId: string) => {
     const reg = registrations.find((r: any) => r.id === regId);
     if (!reg) return;
@@ -215,6 +223,7 @@ const SampleCollection = () => {
       .eq("status", "pending");
     const pendingExisting = (existingTubes || []) as any[];
 
+    // Lock collected / accepted / deferred so collect-later barcodes stay stable
     const { data: lockedTubes } = await supabase
       .from("sample_tubes" as any)
       .select("test_ids, status")
@@ -272,6 +281,18 @@ const SampleCollection = () => {
     }).map(reg => ({
       registration: reg,
       tubes: allTubes.filter(t => t.registration_id === reg.id && !isTubeFullyCancelled(t, reg)),
+    }));
+  }, [registrations, allTubes]);
+
+  const deferredGroups = useMemo((): GroupedRegistration[] => {
+    return registrations.filter(reg => {
+      const tubes = allTubes.filter(t => t.registration_id === reg.id && !isTubeFullyCancelled(t, reg));
+      return tubes.some(t => t.status === "deferred");
+    }).map(reg => ({
+      registration: reg,
+      tubes: allTubes.filter(
+        t => t.registration_id === reg.id && t.status === "deferred" && !isTubeFullyCancelled(t, reg),
+      ),
     }));
   }, [registrations, allTubes]);
 
@@ -333,7 +354,7 @@ const SampleCollection = () => {
         .from("sample_tubes" as any)
         .update({ status: "collected", collected_at: now, collected_by: getCurrentUserName() })
         .in("id", tubeIds)
-        .eq("status", "pending"); // CRITICAL: only collect tubes still pending; never revert accepted/processed tubes
+        .in("status", ["pending", "deferred"]); // Collect now or return-visit deferred tubes
       if (error) throw error;
       await recalculateRegistrationStatus(regId);
     },
@@ -341,6 +362,43 @@ const SampleCollection = () => {
       await propagateRegistrationChange(qc, regId, ["sample_collection", "sample_acceptance"], { skipRecalc: true });
       setSelectedTubes({});
       toast.success("Samples marked as collected");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  // Defer tubes for a later visit — same barcode (invoice+suffix) kept; hidden from Accept/Results/LIMS until collected+accepted
+  const deferMutation = useMutation({
+    mutationFn: async ({ regId, tubeIds }: { regId: string; tubeIds: string[] }) => {
+      const { error } = await supabase
+        .from("sample_tubes" as any)
+        .update({ status: "deferred", collected_at: null, collected_by: null })
+        .in("id", tubeIds)
+        .eq("status", "pending");
+      if (error) throw error;
+      await recalculateRegistrationStatus(regId);
+    },
+    onSuccess: async (_data, { regId }) => {
+      await propagateRegistrationChange(qc, regId, ["sample_collection", "sample_acceptance"], { skipRecalc: true });
+      setSelectedTubes({});
+      toast.success("Tubes marked Collect Later — same barcodes when patient returns");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const undeferMutation = useMutation({
+    mutationFn: async ({ regId, tubeIds }: { regId: string; tubeIds: string[] }) => {
+      const { error } = await supabase
+        .from("sample_tubes" as any)
+        .update({ status: "pending" })
+        .in("id", tubeIds)
+        .eq("status", "deferred");
+      if (error) throw error;
+      await recalculateRegistrationStatus(regId);
+    },
+    onSuccess: async (_data, { regId }) => {
+      await propagateRegistrationChange(qc, regId, ["sample_collection"], { skipRecalc: true });
+      setSelectedTubes({});
+      toast.success("Tubes moved back to Pending collection");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -378,30 +436,48 @@ const SampleCollection = () => {
     setPrintConfirmDialog({ open: true, reg, tubes, action });
   };
 
-  const doPrintAndCollect = (reg: any, tubes: SampleTubeRow[]) => {
+  const doPrintAndCollect = (
+    reg: any,
+    tubes: SampleTubeRow[],
+    alsoDeferRemainder = false,
+    explicitSelected?: SampleTubeRow[],
+  ) => {
     const regSel = selectedTubes[reg.id] || new Set();
-    const selected = tubes.filter(t => regSel.has(t.id));
+    const selected = explicitSelected
+      || tubes.filter(t => regSel.has(t.id) && (t.status === "pending" || t.status === "deferred"));
     if (selected.length === 0) { toast.error("Please select at least one barcode"); return; }
     void doPrintBarcodes(reg, selected);
-    const toCollect = selected.filter(t => t.status === "pending");
+    const toCollect = selected.filter(t => t.status === "pending" || t.status === "deferred");
     if (toCollect.length === 0) {
       toast.info("Tubes already collected/accepted — barcode reprinted only");
       setSelectedTubes(prev => ({ ...prev, [reg.id]: new Set() }));
       return;
     }
     collectMutation.mutate({ regId: reg.id, tubeIds: toCollect.map(t => t.id) });
+    if (alsoDeferRemainder) {
+      const selectedIds = new Set(selected.map(t => t.id));
+      const remainder = tubes.filter(t => t.status === "pending" && !selectedIds.has(t.id));
+      if (remainder.length > 0) {
+        deferMutation.mutate({ regId: reg.id, tubeIds: remainder.map(t => t.id) });
+      }
+    }
   };
 
   const handlePrintAndCollect = (reg: any, tubes: SampleTubeRow[]) => {
     const regSel = selectedTubes[reg.id] || new Set();
-    const selected = tubes.filter(t => regSel.has(t.id));
+    const selected = tubes.filter(t => regSel.has(t.id) && (t.status === "pending" || t.status === "deferred"));
     if (selected.length === 0) { toast.error("Please select at least one barcode"); return; }
-    requestPrintConfirm(reg, selected, () => doPrintAndCollect(reg, tubes));
+    const remainder = tubes.filter(t => t.status === "pending" && !regSel.has(t.id));
+    if (remainder.length > 0) {
+      setDeferRemainderDialog({ open: true, reg, selected, remainder });
+      return;
+    }
+    requestPrintConfirm(reg, selected, () => doPrintAndCollect(reg, tubes, false));
   };
 
   const doSinglePrintAndCollect = (reg: any, tube: SampleTubeRow) => {
     void doPrintBarcodes(reg, [tube]);
-    if (tube.status !== "pending") {
+    if (tube.status !== "pending" && tube.status !== "deferred") {
       toast.info("Tube already collected/accepted — barcode reprinted only");
       return;
     }
@@ -438,46 +514,102 @@ const SampleCollection = () => {
     }
   };
 
-  const renderTubeExpansion = (group: GroupedRegistration, isPending: boolean) => {
+  const renderTubeExpansion = (group: GroupedRegistration, mode: "pending" | "deferred" | "collected") => {
     const reg = group.registration;
     const tubes = group.tubes;
     const pendingTubes = tubes.filter(t => t.status === "pending");
+    const deferredTubes = tubes.filter(t => t.status === "deferred");
     const collectedTubes = tubes.filter(t => t.status === "collected");
+    const selectable = mode === "deferred" ? deferredTubes : pendingTubes;
     const regSel = selectedTubes[reg.id] || new Set();
-    const selectedPendingCount = pendingTubes.filter(t => regSel.has(t.id)).length;
-    const allPendingSelected = pendingTubes.length > 0 && pendingTubes.every(t => regSel.has(t.id));
+    const selectedCount = selectable.filter(t => regSel.has(t.id)).length;
+    const allSelectableSelected = selectable.length > 0 && selectable.every(t => regSel.has(t.id));
     const repeatTestIds = new Set(
       (Array.isArray(reg.repeat_tests) ? reg.repeat_tests : [])
         .map((x: any) => x?.test_id)
         .filter(Boolean),
     );
 
-    const displayTubes = isPending ? tubes : collectedTubes;
+    const displayTubes =
+      mode === "collected" ? collectedTubes
+      : mode === "deferred" ? deferredTubes
+      : tubes.filter(t => t.status === "pending" || t.status === "collected");
 
     return (
       <div className="bg-muted/30 p-4 space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <h4 className="text-sm font-semibold">
             Sample Tubes
-            {isPending && collectedTubes.length > 0 && (
+            {mode === "pending" && collectedTubes.length > 0 && (
               <span className="text-xs text-muted-foreground font-normal ml-2">
-                ({collectedTubes.length} collected, {pendingTubes.length} remaining)
+                ({collectedTubes.length} collected, {pendingTubes.length} remaining
+                {deferredTubes.length > 0 ? `, ${deferredTubes.length} later` : ""})
+              </span>
+            )}
+            {mode === "deferred" && (
+              <span className="text-xs text-muted-foreground font-normal ml-2">
+                Same barcodes when patient returns — not in Acceptance / Results / LIMS until collected
               </span>
             )}
           </h4>
-          <div className="flex gap-2">
-            {isPending && pendingTubes.length > 0 && (
+          <div className="flex gap-2 flex-wrap">
+            {mode === "pending" && pendingTubes.length > 0 && (
               <>
-                <Button size="sm" variant="outline" onClick={() => toggleAllPendingTubes(reg.id, tubes, !allPendingSelected)}>
-                  {allPendingSelected ? "Deselect All" : "Select All"}
+                <Button size="sm" variant="outline" onClick={() => toggleAllPendingTubes(reg.id, tubes, !allSelectableSelected)}>
+                  {allSelectableSelected ? "Deselect All" : "Select All"}
                 </Button>
-                <Button size="sm" variant="default" className="gap-1" disabled={selectedPendingCount === 0}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1"
+                  disabled={selectedCount === 0}
+                  onClick={() => {
+                    const ids = pendingTubes.filter(t => regSel.has(t.id)).map(t => t.id);
+                    if (ids.length === 0) return;
+                    deferMutation.mutate({ regId: reg.id, tubeIds: ids });
+                  }}
+                >
+                  <Clock className="h-3.5 w-3.5" /> Collect Later ({selectedCount})
+                </Button>
+                <Button size="sm" variant="default" className="gap-1" disabled={selectedCount === 0}
                   onClick={() => handlePrintAndCollect(reg, tubes)}>
-                  <Printer className="h-3.5 w-3.5" /> Print & Collect ({selectedPendingCount})
+                  <Printer className="h-3.5 w-3.5" /> Print & Collect ({selectedCount})
                 </Button>
               </>
             )}
-            {!isPending && collectedTubes.length > 0 && (
+            {mode === "deferred" && deferredTubes.length > 0 && (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setSelectedTubes(prev => {
+                      const regSet = new Set<string>();
+                      if (!allSelectableSelected) deferredTubes.forEach(t => regSet.add(t.id));
+                      return { ...prev, [reg.id]: regSet };
+                    });
+                  }}
+                >
+                  {allSelectableSelected ? "Deselect All" : "Select All"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={selectedCount === 0}
+                  onClick={() => {
+                    const ids = deferredTubes.filter(t => regSel.has(t.id)).map(t => t.id);
+                    if (ids.length) undeferMutation.mutate({ regId: reg.id, tubeIds: ids });
+                  }}
+                >
+                  Move to Pending
+                </Button>
+                <Button size="sm" variant="default" className="gap-1" disabled={selectedCount === 0}
+                  onClick={() => handlePrintAndCollect(reg, deferredTubes)}>
+                  <Printer className="h-3.5 w-3.5" /> Print & Collect ({selectedCount})
+                </Button>
+              </>
+            )}
+            {mode === "collected" && collectedTubes.length > 0 && (
               <Button size="sm" variant="outline" className="gap-1"
                 onClick={() => requestPrintConfirm(reg, collectedTubes, () => { doPrintBarcodes(reg, collectedTubes); toast.success(`Reprinted all ${collectedTubes.length} barcode(s)`); })}>
                 <Printer className="h-3.5 w-3.5" /> Print All ({collectedTubes.length})
@@ -490,13 +622,15 @@ const SampleCollection = () => {
           {displayTubes.map((tube) => {
             const colorHex = getTubeColorHex(tube.tube_color);
             const isCollected = tube.status === "collected";
+            const isDeferred = tube.status === "deferred";
             const isSelected = regSel.has(tube.id);
+            const canSelect = (mode === "pending" && tube.status === "pending") || (mode === "deferred" && isDeferred);
             const isRepeatTube =
               Array.isArray(tube.test_ids) && tube.test_ids.some((id: string) => repeatTestIds.has(id));
             return (
-              <Card key={tube.id} className={`${isCollected && isPending ? "opacity-60" : ""} ${isPending && !isCollected && isSelected ? "ring-2 ring-primary" : ""} ${isRepeatTube && !isCollected ? "border-destructive/50" : ""}`}>
+              <Card key={tube.id} className={`${isCollected && mode === "pending" ? "opacity-60" : ""} ${canSelect && isSelected ? "ring-2 ring-primary" : ""} ${isRepeatTube && !isCollected ? "border-destructive/50" : ""} ${isDeferred ? "border-amber-300" : ""}`}>
                 <CardContent className="p-3 flex items-center gap-3">
-                  {isPending && !isCollected && (
+                  {canSelect && (
                     <Checkbox checked={isSelected} onCheckedChange={() => toggleTube(reg.id, tube.id)} />
                   )}
                   {colorHex && (
@@ -513,6 +647,11 @@ const SampleCollection = () => {
                         <Badge variant="destructive" className="text-xs">REPEAT</Badge>
                       )}
                       {tube.sample_type && <span className="text-xs text-muted-foreground">{tube.sample_type}</span>}
+                      {isDeferred && (
+                        <Badge className="text-xs bg-amber-100 text-amber-900 border-amber-300">
+                          <Clock className="h-3 w-3 mr-1" /> Collect Later
+                        </Badge>
+                      )}
                       {isCollected && (
                         <>
                           <Badge className="text-xs bg-green-100 text-green-800 border-green-300">
@@ -530,13 +669,13 @@ const SampleCollection = () => {
                       {getActiveTestNames(tube, reg).join(", ")}
                     </p>
                   </div>
-                  {isPending && !isCollected && (
+                  {canSelect && (
                     <Button size="sm" variant="ghost" className="shrink-0"
                       onClick={(e) => { e.stopPropagation(); handleSinglePrintAndCollect(reg, tube); }}>
                       <Printer className="h-3.5 w-3.5" />
                     </Button>
                   )}
-                  {!isPending && isCollected && (
+                  {mode === "collected" && isCollected && (
                     <div className="flex items-center gap-1 shrink-0">
                       <Button size="sm" variant="ghost" title="Reprint this barcode"
                         onClick={(e) => { e.stopPropagation(); requestPrintConfirm(reg, [tube], () => { doPrintBarcodes(reg, [tube]); toast.success(`Reprinted barcode for ${getBarcodeLabel(reg, tube)}`); }); }}>
@@ -558,11 +697,15 @@ const SampleCollection = () => {
     );
   };
 
-  const renderTable = (groups: GroupedRegistration[], isPending: boolean, loading: boolean) => {
+  const renderTable = (groups: GroupedRegistration[], mode: "pending" | "deferred" | "collected", loading: boolean) => {
     if (loading) return <p className="text-sm text-muted-foreground">Loading...</p>;
     if (groups.length === 0) return (
       <p className="text-sm text-muted-foreground">
-        {isPending ? "No registered patients pending sample collection" : "No collected samples found"}
+        {mode === "pending"
+          ? "No registered patients pending sample collection"
+          : mode === "deferred"
+            ? "No tubes marked Collect Later"
+            : "No collected samples found"}
       </p>
     );
 
@@ -585,6 +728,7 @@ const SampleCollection = () => {
           {groups.map(({ registration: reg, tubes }) => {
             const isExpanded = expandedRow === reg.id;
             const pendingTubes = tubes.filter(t => t.status === "pending");
+            const deferredCount = allTubes.filter(t => t.registration_id === reg.id && t.status === "deferred").length;
             const collectedTubes = tubes.filter(t => t.status === "collected");
 
             return (
@@ -595,7 +739,7 @@ const SampleCollection = () => {
                     const next = isExpanded ? null : reg.id;
                     markArrivalSeen(reg.id);
                     setExpandedRow(next);
-                    if (next) void recalcTubesForRegistration(reg.id);
+                    if (next && mode === "pending") void recalcTubesForRegistration(reg.id);
                   }}>
                   <TableCell>
                     {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -604,7 +748,7 @@ const SampleCollection = () => {
                   <TableCell>
                     <div className="font-medium">
                       {patientDisplayName(reg)}
-                      {isPending && <NewBadge show={isNewArrival(reg.id)} className="ml-1.5 align-middle" />}
+                      {mode === "pending" && <NewBadge show={isNewArrival(reg.id)} className="ml-1.5 align-middle" />}
                       {reg.is_stat && (
                         <span className="relative inline-flex h-2.5 w-2.5 ml-1.5 align-middle">
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75"></span>
@@ -616,8 +760,11 @@ const SampleCollection = () => {
                           REPEAT{Array.isArray(reg.repeat_tests) && reg.repeat_tests.length ? ` (${reg.repeat_tests.length})` : ""}
                         </Badge>
                       )}
-                      {isPending && collectedTubes.length > 0 && pendingTubes.length > 0 && (
+                      {mode === "pending" && collectedTubes.length > 0 && pendingTubes.length > 0 && (
                         <Badge className="ml-2 text-xs bg-amber-500 text-white border-0">PARTIAL</Badge>
+                      )}
+                      {mode === "pending" && deferredCount > 0 && (
+                        <Badge className="ml-2 text-xs bg-amber-100 text-amber-900 border-amber-300">{deferredCount} later</Badge>
                       )}
                     </div>
                   </TableCell>
@@ -626,7 +773,7 @@ const SampleCollection = () => {
                   <TableCell><Badge variant="outline" className="text-xs">{getVisitLabel(reg.visit_type)}</Badge></TableCell>
                   <TableCell className="text-sm">
                     {tubes.length} tube(s)
-                    {isPending && collectedTubes.length > 0 && (
+                    {mode === "pending" && collectedTubes.length > 0 && (
                       <span className="text-xs text-green-600 ml-1">({collectedTubes.length} done)</span>
                     )}
                   </TableCell>
@@ -634,10 +781,19 @@ const SampleCollection = () => {
                     {format(new Date(reg.created_at), "dd/MM/yy HH:mm")}
                   </TableCell>
                   <TableCell className="text-right">
-                    {isPending ? (
+                    {mode === "pending" ? (
                       <Button size="sm" variant="default" className="gap-1"
                         onClick={(e) => { e.stopPropagation(); toggleAllPendingTubes(reg.id, tubes, true); setExpandedRow(reg.id); }}>
                         <Printer className="h-3.5 w-3.5" /> Print All
+                      </Button>
+                    ) : mode === "deferred" ? (
+                      <Button size="sm" variant="default" className="gap-1"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedTubes(prev => ({ ...prev, [reg.id]: new Set(tubes.map(t => t.id)) }));
+                          setExpandedRow(reg.id);
+                        }}>
+                        <Printer className="h-3.5 w-3.5" /> Collect
                       </Button>
                     ) : (
                       <Button size="sm" variant="outline" className="gap-1"
@@ -650,7 +806,7 @@ const SampleCollection = () => {
                 {isExpanded && (
                   <TableRow key={`${reg.id}-expand`}>
                     <TableCell colSpan={9} className="p-0">
-                      {renderTubeExpansion({ registration: reg, tubes }, isPending)}
+                      {renderTubeExpansion({ registration: reg, tubes }, mode)}
                     </TableCell>
                   </TableRow>
                 )}
@@ -661,6 +817,7 @@ const SampleCollection = () => {
       </Table>
     );
   };
+
 
   return (
     <div className="space-y-4">
@@ -689,15 +846,21 @@ const SampleCollection = () => {
           <TabsTrigger value="pending" className="gap-1.5">
             Pending <Badge variant="secondary" className="text-xs ml-1">{pendingGroups.length}</Badge>
           </TabsTrigger>
+          <TabsTrigger value="deferred" className="gap-1.5">
+            Collect Later <Badge variant="secondary" className="text-xs ml-1">{deferredGroups.length}</Badge>
+          </TabsTrigger>
           <TabsTrigger value="collected" className="gap-1.5">
             Collected <Badge variant="secondary" className="text-xs ml-1">{collectedGroups.length}</Badge>
           </TabsTrigger>
         </TabsList>
         <TabsContent value="pending" className="mt-3">
-          {renderTable(pendingGroups, true, isLoading)}
+          {renderTable(pendingGroups, "pending", isLoading)}
+        </TabsContent>
+        <TabsContent value="deferred" className="mt-3">
+          {renderTable(deferredGroups, "deferred", isLoading)}
         </TabsContent>
         <TabsContent value="collected" className="mt-3">
-          {renderTable(collectedGroups, false, isLoading)}
+          {renderTable(collectedGroups, "collected", isLoading)}
         </TabsContent>
       </Tabs>
 
@@ -817,6 +980,63 @@ const SampleCollection = () => {
                 if (fn) fn();
               }}>
               <Printer className="h-3.5 w-3.5 mr-1" /> Print
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Partial collect: defer unselected tubes for a later visit */}
+      <AlertDialog
+        open={deferRemainderDialog.open}
+        onOpenChange={(open) => {
+          if (!open) setDeferRemainderDialog({ open: false, reg: null, selected: [], remainder: [] });
+        }}
+      >
+        <AlertDialogContent className="max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Collect remaining tests later?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm">
+                <p>
+                  You selected <strong>{deferRemainderDialog.selected.length}</strong> tube(s) to print & collect now.
+                  <strong> {deferRemainderDialog.remainder.length}</strong> tube(s) were not selected.
+                </p>
+                <p>
+                  Mark unselected tubes as <strong>Collect Later</strong>? They keep the <strong>same barcodes</strong>,
+                  stay out of Sample Acceptance / Results / LIMS orders until collected, and appear under the Collect Later tab.
+                </p>
+                <ul className="max-h-32 overflow-auto space-y-1 border rounded p-2 bg-muted/30 text-xs">
+                  {deferRemainderDialog.remainder.map((t) => (
+                    <li key={t.id} className="font-mono">
+                      {deferRemainderDialog.reg ? getBarcodeLabel(deferRemainderDialog.reg, t) : ""} — {getActiveTestNames(t, deferRemainderDialog.reg).join(", ")}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <Button
+              variant="outline"
+              onClick={() => {
+                const { reg, selected, remainder } = deferRemainderDialog;
+                setDeferRemainderDialog({ open: false, reg: null, selected: [], remainder: [] });
+                if (!reg) return;
+                requestPrintConfirm(reg, selected, () => doPrintAndCollect(reg, [...selected, ...remainder], false, selected));
+              }}
+            >
+              Collect selected only
+            </Button>
+            <AlertDialogAction
+              onClick={() => {
+                const { reg, selected, remainder } = deferRemainderDialog;
+                setDeferRemainderDialog({ open: false, reg: null, selected: [], remainder: [] });
+                if (!reg) return;
+                requestPrintConfirm(reg, selected, () => doPrintAndCollect(reg, [...selected, ...remainder], true, selected));
+              }}
+            >
+              <Clock className="h-3.5 w-3.5 mr-1" /> Collect now + defer rest
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
