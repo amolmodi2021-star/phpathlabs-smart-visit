@@ -1092,7 +1092,9 @@ const HomeVisits = () => {
       />
 
       <ExportPasswordDialog open={exportDialog} onOpenChange={setExportDialog} onSuccess={handleExport} />
-      <AddHomeVisitDialog open={addVisitOpen} onClose={() => setAddVisitOpen(false)} />
+      {addVisitOpen && (
+        <AddHomeVisitDialog open={addVisitOpen} onClose={() => setAddVisitOpen(false)} />
+      )}
 
       {/* Payment details dialog for marking as Completed */}
       {paymentVisit && (

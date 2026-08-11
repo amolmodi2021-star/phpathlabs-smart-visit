@@ -18,9 +18,6 @@ import { useMessageTemplates } from "@/hooks/useMessageTemplates";
 import { buildVisitMessage, shareOnWhatsApp } from "@/lib/whatsapp";
 import { logMessageSend } from "@/lib/messageLog";
 import { format, addDays, parse, isValid, differenceInYears } from "date-fns";
-import { findPatientMasterByMobile, type MasterPatientMatch } from "@/lib/findPatientUmr";
-import { PatientOnMobileDialog } from "@/components/lims/PatientOnMobileDialog";
-import { patientDisplayName } from "@/lib/patientDisplayName";
 import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
@@ -74,7 +71,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
     queryFn: async () => {
       const { data, error } = await supabase
         .from("estimates")
-        .select("id, title, patient_name, gender, email, doctor_name, dob, whatsapp_number, total_amount, discount_amount, home_visit_charges, final_amount, global_discount_type, global_discount_value, status")
+        .select("id, title, patient_name, gender, email, doctor_name, umr_number, dob, whatsapp_number, total_amount, discount_amount, home_visit_charges, final_amount, global_discount_type, global_discount_value, status")
         .eq("id", est.id)
         .maybeSingle();
       if (error) throw error;
@@ -89,6 +86,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
   const [gender, setGender] = useState("");
   const [email, setEmail] = useState("");
   const [doctorName, setDoctorName] = useState("SELF");
+  const [umrInput, setUmrInput] = useState("");
   const [dob, setDob] = useState("");
   const [dobDisplay, setDobDisplay] = useState("");
   const [whatsappNumber, setWhatsappNumber] = useState("");
@@ -190,11 +188,6 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
   };
 
   const lastPopulatedVisitId = useRef<string | null>(null);
-  type PatientChoice = { type: "existing"; umr: string; label: string } | { type: "new" } | null;
-  const [patientChoice, setPatientChoice] = useState<PatientChoice>(null);
-  const [masterMatches, setMasterMatches] = useState<MasterPatientMatch[]>([]);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const choiceForMobileRef = useRef<{ mobile: string; choice: PatientChoice }>({ mobile: "", choice: null });
 
   // Populate form once per open visit after full estimate rows load
   useEffect(() => {
@@ -214,26 +207,11 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
     setGender(meta.gender || "");
     setEmail(meta.email || "");
     setDoctorName(meta.doctor_name || "SELF");
+    const rawUmr = meta.umr_number || "";
+    setUmrInput(rawUmr.startsWith("UMR") ? String(parseInt(rawUmr.slice(3)) || "") : rawUmr);
     setDob(meta.dob || "");
     setDobDisplay(dobToDisplay(meta.dob || ""));
     setWhatsappNumber(meta.whatsapp_number || "");
-    const mob = String(meta.whatsapp_number || "").replace(/\D/g, "").slice(-10);
-    if (visit.register_as_new_patient) {
-      const choice = { type: "new" as const };
-      setPatientChoice(choice);
-      choiceForMobileRef.current = { mobile: mob, choice };
-    } else if (visit.linked_umr_number) {
-      const choice = {
-        type: "existing" as const,
-        umr: String(visit.linked_umr_number),
-        label: String(visit.linked_umr_number),
-      };
-      setPatientChoice(choice);
-      choiceForMobileRef.current = { mobile: mob, choice };
-    } else {
-      setPatientChoice(null);
-      choiceForMobileRef.current = { mobile: "", choice: null };
-    }
     setVisitDate(visit.visit_date || "");
     setVisitTime(visit.visit_time || "");
     setAddress(visit.address || "");
@@ -260,51 +238,6 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
     setSelectedTests(existingTests);
     setTestSearch("");
   }, [open, visit, est, estimateMeta, estimateTestsFresh]);
-
-  useEffect(() => {
-    if (!open || !completionMode) return;
-    const digits = String(whatsappNumber || "").replace(/\D/g, "").slice(-10);
-    if (digits.length !== 10) {
-      setMasterMatches([]);
-      return;
-    }
-    let cancelled = false;
-    const timer = window.setTimeout(async () => {
-      try {
-        const rows = await findPatientMasterByMobile(digits);
-        if (cancelled) return;
-        setMasterMatches(rows);
-        const saved = choiceForMobileRef.current;
-        if (saved.mobile === digits && saved.choice) {
-          if (saved.choice.type === "new") return;
-          const match = rows.find((r) => r.umr_id === saved.choice!.umr);
-          if (match) {
-            setPatientChoice({
-              type: "existing",
-              umr: match.umr_id,
-              label: patientDisplayName(match),
-            });
-            return;
-          }
-        }
-        if (rows.length === 0) {
-          const choice = { type: "new" as const };
-          setPatientChoice(choice);
-          choiceForMobileRef.current = { mobile: digits, choice };
-          return;
-        }
-        setPatientChoice(null);
-        choiceForMobileRef.current = { mobile: digits, choice: null };
-        setPickerOpen(true);
-      } catch (e: any) {
-        if (!cancelled) toast.error(e?.message || "Could not look up patients on this mobile");
-      }
-    }, 400);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [open, completionMode, whatsappNumber]);
 
   const availableTests = allTests.filter((t: any) =>
     !selectedTests.find(s => s.test_id === t.id) &&
@@ -378,15 +311,9 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
       if (!visitDate || !visitTime || !address.trim()) throw new Error("Visit date, time, and address are required");
 
       const cleanNumber = whatsappNumber.replace(/\D/g, "").slice(-10);
+      const formattedUmr = umrInput ? `UMR${String(parseInt(umrInput) || 0).padStart(7, "0")}` : null;
       const cleanName = patientName.replace(/\s+/g, ' ').trim().toUpperCase();
       const cleanAddress = address.replace(/\s+/g, ' ').trim().toUpperCase();
-
-      if (completionMode) {
-        if (masterMatches.length > 0 && !patientChoice) {
-          setPickerOpen(true);
-          throw new Error("Select which patient this visit is for");
-        }
-      }
 
       // Update estimate
       const { error: estError } = await supabase.from("estimates").update({
@@ -395,7 +322,7 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
         gender: gender || null,
         email: email || null,
         doctor_name: doctorName ? doctorName.toUpperCase() : "SELF",
-        umr_number: null,
+        umr_number: formattedUmr,
         dob: dob || null,
         whatsapp_number: cleanNumber,
         total_amount: calculations.totalAmount,
@@ -428,17 +355,12 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
       if (insertError) throw insertError;
 
       // Update home visit
-      const visitPatch: Record<string, unknown> = {
+      const { error: visitError } = await supabase.from("home_visits").update({
         visit_date: visitDate,
         visit_time: visitTime,
         address: cleanAddress,
         phlebotomist_id: phlebotomistId || null,
-      };
-      if (completionMode) {
-        visitPatch.linked_umr_number = patientChoice?.type === "existing" ? patientChoice.umr : null;
-        visitPatch.register_as_new_patient = patientChoice?.type === "new" || (!patientChoice && masterMatches.length === 0);
-      }
-      const { error: visitError } = await supabase.from("home_visits").update(visitPatch as any).eq("id", visit.id);
+      }).eq("id", visit.id);
       if (visitError) throw visitError;
 
       return cleanNumber;
@@ -538,52 +460,22 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
                 </div>
                 <div>
                   <Label className={attempted && (!whatsappNumber || whatsappNumber.replace(/\D/g, "").length < 10) ? "text-destructive" : ""}>WhatsApp Number *</Label>
-                  <Input
-                    type="tel"
-                    value={whatsappNumber}
-                    onChange={(e) => {
-                      choiceForMobileRef.current = { mobile: "", choice: null };
-                      setPatientChoice(null);
-                      setWhatsappNumber(e.target.value);
-                    }}
-                  />
+                  <Input type="tel" value={whatsappNumber} onChange={(e) => setWhatsappNumber(e.target.value)} />
                 </div>
               </div>
-              {patientChoice && (
-                <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs flex items-start justify-between gap-2">
-                  <div>
-                    {patientChoice.type === "existing" ? (
-                      <>
-                        <span className="font-medium">Existing patient</span>
-                        <span className="text-muted-foreground"> · {patientChoice.label} · </span>
-                        <span className="font-mono">{patientChoice.umr}</span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="font-medium">New patient</span>
-                        <span className="text-muted-foreground"> on this mobile — UMR assigned when registered in LIMS</span>
-                      </>
-                    )}
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 shrink-0"
-                    onClick={() => setPickerOpen(true)}
-                    disabled={masterMatches.length === 0 && patientChoice.type === "new"}
-                  >
-                    Change
-                  </Button>
-                </div>
-              )}
               <div>
                 <Label>Email ID</Label>
                 <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="patient@example.com" />
               </div>
-              <div>
-                <Label>Doctor's Name</Label>
-                <Input value={doctorName} onChange={(e) => setDoctorName(e.target.value.toUpperCase())} />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label>Doctor's Name</Label>
+                  <Input value={doctorName} onChange={(e) => setDoctorName(e.target.value.toUpperCase())} />
+                </div>
+                <div>
+                  <Label>UMR Number</Label>
+                  <Input value={umrInput} onChange={(e) => setUmrInput(e.target.value.replace(/\D/g, ""))} placeholder="e.g. 123 → UMR0000123" />
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
@@ -869,37 +761,6 @@ const EditHomeVisitDialog = ({ visit, open, onClose, completionMode, onCompletio
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-        <PatientOnMobileDialog
-          open={pickerOpen && completionMode}
-          mobile={String(whatsappNumber || "").replace(/\D/g, "").slice(-10)}
-          matches={masterMatches}
-          onSelectExisting={(p) => {
-            const choice = { type: "existing" as const, umr: p.umr_id, label: patientDisplayName(p) };
-            setPatientChoice(choice);
-            choiceForMobileRef.current = {
-              mobile: String(whatsappNumber || "").replace(/\D/g, "").slice(-10),
-              choice,
-            };
-            if (p.title) setTitle(p.title);
-            if (p.patient_name) setPatientName(p.patient_name);
-            if (p.gender) setGender(p.gender);
-            if (p.date_of_birth) {
-              setDob(p.date_of_birth);
-              setDobDisplay(dobToDisplay(p.date_of_birth));
-            }
-            if (p.email) setEmail(p.email);
-            setPickerOpen(false);
-          }}
-          onSelectNew={() => {
-            const choice = { type: "new" as const };
-            setPatientChoice(choice);
-            choiceForMobileRef.current = {
-              mobile: String(whatsappNumber || "").replace(/\D/g, "").slice(-10),
-              choice,
-            };
-            setPickerOpen(false);
-          }}
-        />
         <DeletePasswordDialog
           open={phleboPasswordOpen}
           onOpenChange={setPhleboPasswordOpen}
