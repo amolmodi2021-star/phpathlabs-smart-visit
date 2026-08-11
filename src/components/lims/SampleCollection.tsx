@@ -23,6 +23,7 @@ import { printBarcodes } from "@/lib/barcodePrint";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 
 import { buildSampleTubeGroups, TubeGroupingItem } from "@/lib/sampleTubeGrouping";
+import { prepareTubesForCollectionVisit } from "@/lib/sampleTubeSplit";
 import { formatAgeGender } from "@/lib/ageGender";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import NewBadge from "./NewBadge";
@@ -64,6 +65,8 @@ const SampleCollection = () => {
   const [showOlderPending, setShowOlderPending] = useState(false);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [selectedTubes, setSelectedTubes] = useState<Record<string, Set<string>>>({});
+  /** Per-tube: which leaf tests to collect on this visit (missing = all tests on that tube) */
+  const [collectNowTests, setCollectNowTests] = useState<Record<string, Set<string>>>({});
   const printRef = useRef<HTMLDivElement>(null);
 
   // Reprint dialog state
@@ -310,12 +313,38 @@ const SampleCollection = () => {
   const pendingRegIds = useMemo(() => pendingGroups.map(g => g.registration.id), [pendingGroups]);
   const { isNew: isNewArrival, markSeen: markArrivalSeen } = useNewArrivalsBadge("sample_collection", pendingRegIds);
 
-  const toggleTube = (regId: string, tubeId: string) => {
+  const toggleTube = (regId: string, tube: SampleTubeRow) => {
     setSelectedTubes(prev => {
       const regSet = new Set(prev[regId] || []);
-      if (regSet.has(tubeId)) regSet.delete(tubeId);
-      else regSet.add(tubeId);
+      if (regSet.has(tube.id)) {
+        regSet.delete(tube.id);
+        setCollectNowTests(cn => {
+          const next = { ...cn };
+          delete next[tube.id];
+          return next;
+        });
+      } else {
+        regSet.add(tube.id);
+        const ids = Array.isArray(tube.test_ids) ? tube.test_ids.filter(Boolean) : [];
+        setCollectNowTests(cn => ({ ...cn, [tube.id]: new Set(ids) }));
+      }
       return { ...prev, [regId]: regSet };
+    });
+  };
+
+  const toggleCollectNowTest = (tube: SampleTubeRow, testId: string) => {
+    setCollectNowTests(prev => {
+      const allIds = Array.isArray(tube.test_ids) ? tube.test_ids.filter(Boolean) : [];
+      const cur = new Set(prev[tube.id] ?? allIds);
+      if (cur.has(testId)) cur.delete(testId);
+      else cur.add(testId);
+      return { ...prev, [tube.id]: cur };
+    });
+    // Ensure parent tube is selected when adjusting tests
+    setSelectedTubes(prev => {
+      const regSet = new Set(prev[tube.registration_id] || []);
+      regSet.add(tube.id);
+      return { ...prev, [tube.registration_id]: regSet };
     });
   };
 
@@ -323,9 +352,20 @@ const SampleCollection = () => {
     setSelectedTubes(prev => {
       const regSet = new Set<string>();
       if (selectAll) {
-        tubes.filter(t => t.status === "pending").forEach(t => regSet.add(t.id));
+        tubes.filter(t => t.status === "pending" || t.status === "deferred").forEach(t => regSet.add(t.id));
       }
       return { ...prev, [regId]: regSet };
+    });
+    setCollectNowTests(prev => {
+      const next = { ...prev };
+      tubes.filter(t => t.status === "pending" || t.status === "deferred").forEach(t => {
+        if (selectAll) {
+          next[t.id] = new Set(Array.isArray(t.test_ids) ? t.test_ids.filter(Boolean) : []);
+        } else {
+          delete next[t.id];
+        }
+      });
+      return next;
     });
   };
 
@@ -346,7 +386,7 @@ const SampleCollection = () => {
     return printBarcodes(reg, tubes);
   };
 
-  // Mark tubes as collected — guarded so already accepted/processed tubes are NEVER demoted
+  // Mark tubes as collected — after optional per-test tube splits
   const collectMutation = useMutation({
     mutationFn: async ({ regId, tubeIds }: { regId: string; tubeIds: string[] }) => {
       const now = new Date().toISOString();
@@ -354,33 +394,132 @@ const SampleCollection = () => {
         .from("sample_tubes" as any)
         .update({ status: "collected", collected_at: now, collected_by: getCurrentUserName() })
         .in("id", tubeIds)
-        .in("status", ["pending", "deferred"]); // Collect now or return-visit deferred tubes
+        .in("status", ["pending", "deferred"]);
       if (error) throw error;
       await recalculateRegistrationStatus(regId);
     },
     onSuccess: async (_data, { regId }) => {
       await propagateRegistrationChange(qc, regId, ["sample_collection", "sample_acceptance"], { skipRecalc: true });
       setSelectedTubes({});
+      setCollectNowTests({});
       toast.success("Samples marked as collected");
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
-  // Defer tubes for a later visit — same barcode (invoice+suffix) kept; hidden from Accept/Results/LIMS until collected+accepted
-  const deferMutation = useMutation({
-    mutationFn: async ({ regId, tubeIds }: { regId: string; tubeIds: string[] }) => {
+  /** Split shared tubes by test selection, then print & collect this visit's remnants */
+  const visitCollectMutation = useMutation({
+    mutationFn: async ({
+      reg,
+      tubes,
+      selectedTubeIds,
+      alsoDeferUnselectedTubes,
+    }: {
+      reg: any;
+      tubes: SampleTubeRow[];
+      selectedTubeIds: string[];
+      alsoDeferUnselectedTubes: boolean;
+    }) => {
+      const collectNowByTubeId: Record<string, string[]> = {};
+      for (const tid of selectedTubeIds) {
+        const tube = tubes.find(t => t.id === tid);
+        if (!tube) continue;
+        const allIds = Array.isArray(tube.test_ids) ? tube.test_ids.filter(Boolean) : [];
+        collectNowByTubeId[tid] = collectNowTests[tid]
+          ? Array.from(collectNowTests[tid])
+          : allIds;
+      }
+
+      const prepared = await prepareTubesForCollectionVisit({
+        registrationId: reg.id,
+        tubes,
+        collectNowByTubeId,
+        selectedTubeIds,
+      });
+
+      if (alsoDeferUnselectedTubes) {
+        const selectedSet = new Set(selectedTubeIds);
+        const remainder = tubes.filter(t => t.status === "pending" && !selectedSet.has(t.id));
+        if (remainder.length > 0) {
+          const { error } = await supabase
+            .from("sample_tubes" as any)
+            .update({ status: "deferred", collected_at: null, collected_by: null })
+            .in("id", remainder.map(t => t.id))
+            .eq("status", "pending");
+          if (error) throw error;
+        }
+      }
+
+      if (prepared.toCollect.length === 0) {
+        await recalculateRegistrationStatus(reg.id);
+        return { printed: 0, deferredCreated: prepared.deferredCreated, fullyDeferred: prepared.fullyDeferred };
+      }
+
+      await printBarcodes(reg, prepared.toCollect as any);
+      const now = new Date().toISOString();
       const { error } = await supabase
         .from("sample_tubes" as any)
-        .update({ status: "deferred", collected_at: null, collected_by: null })
-        .in("id", tubeIds)
-        .eq("status", "pending");
+        .update({ status: "collected", collected_at: now, collected_by: getCurrentUserName() })
+        .in("id", prepared.toCollect.map(t => t.id!))
+        .in("status", ["pending", "deferred"]);
       if (error) throw error;
+      await recalculateRegistrationStatus(reg.id);
+      return {
+        printed: prepared.toCollect.length,
+        deferredCreated: prepared.deferredCreated,
+        fullyDeferred: prepared.fullyDeferred,
+      };
+    },
+    onSuccess: async (result, { reg }) => {
+      await propagateRegistrationChange(qc, reg.id, ["sample_collection", "sample_acceptance"], { skipRecalc: true });
+      setSelectedTubes({});
+      setCollectNowTests({});
+      const bits: string[] = [];
+      if (result.printed) bits.push(`${result.printed} tube(s) collected`);
+      if (result.deferredCreated) bits.push(`${result.deferredCreated} tube(s) split for later (new L barcode)`);
+      if (result.fullyDeferred) bits.push(`${result.fullyDeferred} tube(s) deferred`);
+      toast.success(bits.join(" · ") || "Updated");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  // Defer tubes for a later visit — same barcode when whole tube deferred; splits when only some tests deferred
+  const deferMutation = useMutation({
+    mutationFn: async ({ regId, tubes }: { regId: string; tubes: SampleTubeRow[] }) => {
+      const selectedTubeIds = tubes.map(t => t.id);
+      const collectNowByTubeId: Record<string, string[]> = {};
+      for (const tube of tubes) {
+        const allIds = Array.isArray(tube.test_ids) ? tube.test_ids.filter(Boolean) : [];
+        const nowSet = collectNowTests[tube.id];
+        // Collect Later on selected tests = defer those NOT in collectNow (unchecked = later).
+        // If all checked, defer the whole tube (nowIds empty for prepare by inverting).
+        if (!nowSet || nowSet.size === allIds.length) {
+          collectNowByTubeId[tube.id] = []; // defer all
+        } else {
+          // Defer unchecked: keep checked as collect-now remnant (pending), split unchecked to deferred
+          collectNowByTubeId[tube.id] = Array.from(nowSet);
+        }
+      }
+      // For "Collect Later" button: user wants selected tubes' unchecked tests later.
+      // If all tests still checked, treat as defer entire tube.
+      await prepareTubesForCollectionVisit({
+        registrationId: regId,
+        tubes,
+        collectNowByTubeId,
+        selectedTubeIds,
+      });
+      // Any remnant that still has tests and is pending with empty collect-now was fully deferred inside prepare.
+      // Remnants with collect-now tests stay pending for later print — but Collect Later button intent
+      // when ALL tests checked is full defer. When PARTIAL unchecked, keep now-tests pending.
+      // If all checked → collectNowByTubeId[id]=[] → fully deferred. Good.
+      // If partial → split, now remnant stays pending. User may still want to collect those — OK.
       await recalculateRegistrationStatus(regId);
     },
     onSuccess: async (_data, { regId }) => {
       await propagateRegistrationChange(qc, regId, ["sample_collection", "sample_acceptance"], { skipRecalc: true });
       setSelectedTubes({});
-      toast.success("Tubes marked Collect Later — same barcodes when patient returns");
+      setCollectNowTests({});
+      toast.success("Later tests deferred — shared tubes split with new L barcodes when needed");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -398,6 +537,7 @@ const SampleCollection = () => {
     onSuccess: async (_data, { regId }) => {
       await propagateRegistrationChange(qc, regId, ["sample_collection"], { skipRecalc: true });
       setSelectedTubes({});
+      setCollectNowTests({});
       toast.success("Tubes moved back to Pending collection");
     },
     onError: (e: Error) => toast.error(e.message),
@@ -446,42 +586,40 @@ const SampleCollection = () => {
     const selected = explicitSelected
       || tubes.filter(t => regSel.has(t.id) && (t.status === "pending" || t.status === "deferred"));
     if (selected.length === 0) { toast.error("Please select at least one barcode"); return; }
-    void doPrintBarcodes(reg, selected);
-    const toCollect = selected.filter(t => t.status === "pending" || t.status === "deferred");
-    if (toCollect.length === 0) {
-      toast.info("Tubes already collected/accepted — barcode reprinted only");
-      setSelectedTubes(prev => ({ ...prev, [reg.id]: new Set() }));
-      return;
-    }
-    collectMutation.mutate({ regId: reg.id, tubeIds: toCollect.map(t => t.id) });
-    if (alsoDeferRemainder) {
-      const selectedIds = new Set(selected.map(t => t.id));
-      const remainder = tubes.filter(t => t.status === "pending" && !selectedIds.has(t.id));
-      if (remainder.length > 0) {
-        deferMutation.mutate({ regId: reg.id, tubeIds: remainder.map(t => t.id) });
-      }
-    }
+    visitCollectMutation.mutate({
+      reg,
+      tubes,
+      selectedTubeIds: selected.map(t => t.id),
+      alsoDeferUnselectedTubes: alsoDeferRemainder,
+    });
   };
 
   const handlePrintAndCollect = (reg: any, tubes: SampleTubeRow[]) => {
     const regSel = selectedTubes[reg.id] || new Set();
     const selected = tubes.filter(t => regSel.has(t.id) && (t.status === "pending" || t.status === "deferred"));
     if (selected.length === 0) { toast.error("Please select at least one barcode"); return; }
+    // Any unchecked tests on selected tubes, or wholly unselected pending tubes?
+    const hasPartialTests = selected.some(t => {
+      const allIds = Array.isArray(t.test_ids) ? t.test_ids.filter(Boolean) : [];
+      const now = collectNowTests[t.id];
+      return !!now && now.size < allIds.length;
+    });
     const remainder = tubes.filter(t => t.status === "pending" && !regSel.has(t.id));
-    if (remainder.length > 0) {
+    if (remainder.length > 0 && !hasPartialTests) {
       setDeferRemainderDialog({ open: true, reg, selected, remainder });
       return;
     }
-    requestPrintConfirm(reg, selected, () => doPrintAndCollect(reg, tubes, false));
+    // Partial test selection → always split unchecked tests to deferred L barcodes
+    requestPrintConfirm(reg, selected, () => doPrintAndCollect(reg, tubes, remainder.length > 0));
   };
 
   const doSinglePrintAndCollect = (reg: any, tube: SampleTubeRow) => {
-    void doPrintBarcodes(reg, [tube]);
-    if (tube.status !== "pending" && tube.status !== "deferred") {
-      toast.info("Tube already collected/accepted — barcode reprinted only");
-      return;
-    }
-    collectMutation.mutate({ regId: reg.id, tubeIds: [tube.id] });
+    visitCollectMutation.mutate({
+      reg,
+      tubes: [tube],
+      selectedTubeIds: [tube.id],
+      alsoDeferUnselectedTubes: false,
+    });
   };
 
   const handleSinglePrintAndCollect = (reg: any, tube: SampleTubeRow) => {
@@ -524,6 +662,7 @@ const SampleCollection = () => {
     const regSel = selectedTubes[reg.id] || new Set();
     const selectedCount = selectable.filter(t => regSel.has(t.id)).length;
     const allSelectableSelected = selectable.length > 0 && selectable.every(t => regSel.has(t.id));
+    const cancelledIds = getCancelledIds(reg);
     const repeatTestIds = new Set(
       (Array.isArray(reg.repeat_tests) ? reg.repeat_tests : [])
         .map((x: any) => x?.test_id)
@@ -564,9 +703,9 @@ const SampleCollection = () => {
                   className="gap-1"
                   disabled={selectedCount === 0}
                   onClick={() => {
-                    const ids = pendingTubes.filter(t => regSel.has(t.id)).map(t => t.id);
-                    if (ids.length === 0) return;
-                    deferMutation.mutate({ regId: reg.id, tubeIds: ids });
+                    const picked = pendingTubes.filter(t => regSel.has(t.id));
+                    if (picked.length === 0) return;
+                    deferMutation.mutate({ regId: reg.id, tubes: picked });
                   }}
                 >
                   <Clock className="h-3.5 w-3.5" /> Collect Later ({selectedCount})
@@ -587,6 +726,17 @@ const SampleCollection = () => {
                       const regSet = new Set<string>();
                       if (!allSelectableSelected) deferredTubes.forEach(t => regSet.add(t.id));
                       return { ...prev, [reg.id]: regSet };
+                    });
+                    setCollectNowTests(prev => {
+                      const next = { ...prev };
+                      deferredTubes.forEach(t => {
+                        if (!allSelectableSelected) {
+                          next[t.id] = new Set(Array.isArray(t.test_ids) ? t.test_ids.filter(Boolean) : []);
+                        } else {
+                          delete next[t.id];
+                        }
+                      });
+                      return next;
                     });
                   }}
                 >
@@ -631,7 +781,7 @@ const SampleCollection = () => {
               <Card key={tube.id} className={`${isCollected && mode === "pending" ? "opacity-60" : ""} ${canSelect && isSelected ? "ring-2 ring-primary" : ""} ${isRepeatTube && !isCollected ? "border-destructive/50" : ""} ${isDeferred ? "border-amber-300" : ""}`}>
                 <CardContent className="p-3 flex items-center gap-3">
                   {canSelect && (
-                    <Checkbox checked={isSelected} onCheckedChange={() => toggleTube(reg.id, tube.id)} />
+                    <Checkbox checked={isSelected} onCheckedChange={() => toggleTube(reg.id, tube)} />
                   )}
                   {colorHex && (
                     <span className="inline-block w-5 h-5 rounded-full border-2 border-muted-foreground/30 shrink-0"
@@ -665,9 +815,39 @@ const SampleCollection = () => {
                         </>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                      {getActiveTestNames(tube, reg).join(", ")}
-                    </p>
+                    {/* Per-test collect-now toggles — enables splitting shared tubes (e.g. CBC now, ESR later) */}
+                    {canSelect && Array.isArray(tube.test_ids) && tube.test_ids.length > 0 ? (
+                      <div className="mt-2 space-y-1 pl-1 border-l-2 border-muted">
+                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                          Tests on this tube — uncheck to collect later (splits barcode with L suffix)
+                        </p>
+                        {tube.test_ids.map((tid, i) => {
+                          if (!tid || cancelledIds.has(tid)) return null;
+                          const allIds = tube.test_ids.filter(Boolean);
+                          const nowSet = collectNowTests[tube.id] ?? new Set(allIds);
+                          const checked = nowSet.has(tid);
+                          const name = (tube.test_names && tube.test_names[i]) || tid;
+                          return (
+                            <label key={tid} className="flex items-center gap-2 text-xs cursor-pointer py-0.5">
+                              <Checkbox
+                                checked={checked}
+                                onCheckedChange={() => toggleCollectNowTest(tube, tid)}
+                              />
+                              <span className={checked ? "" : "text-muted-foreground line-through"}>
+                                {name}
+                              </span>
+                              {!checked && (
+                                <Badge variant="outline" className="text-[10px] h-4 px-1 text-amber-800 border-amber-300">later</Badge>
+                              )}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                        {getActiveTestNames(tube, reg).join(", ")}
+                      </p>
+                    )}
                   </div>
                   {canSelect && (
                     <Button size="sm" variant="ghost" className="shrink-0"
@@ -1002,8 +1182,12 @@ const SampleCollection = () => {
                   <strong> {deferRemainderDialog.remainder.length}</strong> tube(s) were not selected.
                 </p>
                 <p>
-                  Mark unselected tubes as <strong>Collect Later</strong>? They keep the <strong>same barcodes</strong>,
-                  stay out of Sample Acceptance / Results / LIMS orders until collected, and appear under the Collect Later tab.
+                  Mark unselected tubes as <strong>Collect Later</strong>? They keep the <strong>same barcodes</strong>
+                  (or get a new <strong>L</strong> barcode if only some tests on a shared tube are deferred),
+                  stay out of Sample Acceptance / Results / LIMS orders until collected, and appear under Collect Later.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Tip: under each tube you can uncheck individual tests (e.g. CBC now, ESR later on the same EDTA) — the system splits the tube automatically.
                 </p>
                 <ul className="max-h-32 overflow-auto space-y-1 border rounded p-2 bg-muted/30 text-xs">
                   {deferRemainderDialog.remainder.map((t) => (
