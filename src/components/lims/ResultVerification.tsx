@@ -821,15 +821,10 @@ const ResultVerification = () => {
   /**
    * Persist a verification for ONE test atomically and verify post-condition.
    *
-   * Bug-fix surface vs the previous implementation:
-   *   - Broadened delete filter (.in([pending, entered, results_entered])) so
-   *     no source-state row is left behind to create duplicate keys (Bug B).
-   *   - Captures every {error} returned by supabase-js and throws — no more
-   *     silent success toasts (Bug C).
-   *   - Re-reads patient_results after insert and asserts at least one row is
-   *     status='verified'; throws otherwise (Bug D defence-in-depth).
-   *   - Unique index patient_results_reg_test_param_uniq (added by migration)
-   *     means the insert is now guaranteed to be a true upsert at DB level.
+   * Deletes only the parameter_ids being verified (pending/entered/results_entered).
+   * Incomplete siblings on the same test (still pending / not in this verify batch)
+   * must stay — wiping them made empty params reappear in Results, and the
+   * analyzer interface then re-wrote those holes as fresh pending rows.
    */
   const persistVerifyTest = async (
     reg: { id: string },
@@ -850,11 +845,13 @@ const ResultVerification = () => {
     if (snipUpdate.error) throw snipUpdate.error;
 
     if (upserts && upserts.length > 0) {
+      const paramIds = [...new Set(upserts.map((u) => u.parameter_id).filter(Boolean))];
       const del = await supabase
         .from("patient_results")
         .delete()
         .eq("registration_id", reg.id)
         .eq("test_id", testId)
+        .in("parameter_id", paramIds)
         .in("status", ["pending", "entered", "results_entered"]);
       if (del.error) throw del.error;
 
@@ -867,6 +864,7 @@ const ResultVerification = () => {
         .select("id, status")
         .eq("registration_id", reg.id)
         .eq("test_id", testId)
+        .in("parameter_id", paramIds)
         .eq("status", "verified");
       if (confirmErr) throw confirmErr;
       if (!confirmRows || confirmRows.length === 0) {
@@ -965,7 +963,16 @@ const ResultVerification = () => {
       }
 
       if (upserts.length > 0) {
-        await supabase.from("patient_results").delete().eq("registration_id", regId).eq("test_id", testId).in("status", ["entered", "pending"]);
+        const paramIds = [...new Set(upserts.map((u) => u.parameter_id).filter(Boolean))];
+        // Only replace the params being sent back — leave approved/verified siblings
+        // and other pending params on this test untouched.
+        await supabase
+          .from("patient_results")
+          .delete()
+          .eq("registration_id", regId)
+          .eq("test_id", testId)
+          .in("parameter_id", paramIds)
+          .in("status", ["entered", "pending"]);
         await supabase.from("patient_results").insert(upserts as any);
       } else {
         // Fallback (e.g. snip-only tests with no params) — keep prior behavior
