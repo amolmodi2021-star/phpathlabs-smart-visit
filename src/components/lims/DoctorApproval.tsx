@@ -552,8 +552,15 @@ const DoctorApproval = () => {
       const { data: existingReport } = await supabase.from("approved_reports").select("test_results, outsourced_snip_urls").eq("registration_id", reg.id).maybeSingle();
       const existingResults = Array.isArray((existingReport as any)?.test_results) ? (existingReport as any).test_results : [];
       const existingSnipUrls = Array.isArray((existingReport as any)?.outsourced_snip_urls) ? (existingReport as any).outsourced_snip_urls : [];
-      // Remove old entries for this test, then add new ones
-      const mergedResults = existingResults.filter((r: any) => r.test_id !== testId).concat(testResultsSnapshot);
+      // Parameter-scoped merge: keep already-approved siblings on the same test
+      // (e.g. T3/T4 stay when TSH is approved later). Replacing by test_id alone
+      // wiped partial TFT profiles from the printed report.
+      const incomingKeys = new Set(
+        testResultsSnapshot.map((r: any) => `${r.test_id}||${r.parameter_id}`),
+      );
+      const mergedResults = existingResults
+        .filter((r: any) => !incomingKeys.has(`${r.test_id}||${r.parameter_id}`))
+        .concat(testResultsSnapshot);
       const mergedSnipUrls = [...new Set([...existingSnipUrls.filter((u: string) => !u.includes(testId)), ...snipUrls])];
       // First barcode print timestamp = MIN(sample_tubes.collected_at) — reprint-safe
       const { data: tubesForCol } = await supabase.from("sample_tubes").select("collected_at").eq("registration_id", reg.id).not("collected_at", "is", null);
@@ -655,8 +662,12 @@ const DoctorApproval = () => {
       const { data: existingReportAll } = await supabase.from("approved_reports").select("test_results, outsourced_snip_urls").eq("registration_id", reg.id).maybeSingle();
       const existingResultsAll = Array.isArray((existingReportAll as any)?.test_results) ? (existingReportAll as any).test_results : [];
       const existingSnipUrlsAll = Array.isArray((existingReportAll as any)?.outsourced_snip_urls) ? (existingReportAll as any).outsourced_snip_urls : [];
-      const approvedTestIds = new Set(testIds);
-      const mergedResultsAll = existingResultsAll.filter((r: any) => !approvedTestIds.has(r.test_id)).concat(allTestResults);
+      const incomingKeysAll = new Set(
+        allTestResults.map((r: any) => `${r.test_id}||${r.parameter_id}`),
+      );
+      const mergedResultsAll = existingResultsAll
+        .filter((r: any) => !incomingKeysAll.has(`${r.test_id}||${r.parameter_id}`))
+        .concat(allTestResults);
       const mergedSnipUrlsAll = [...new Set([...existingSnipUrlsAll, ...allSnipUrls])];
       // First barcode print timestamp = MIN(sample_tubes.collected_at) — reprint-safe
       const { data: tubesForColAll } = await supabase.from("sample_tubes").select("collected_at").eq("registration_id", reg.id).not("collected_at", "is", null);
