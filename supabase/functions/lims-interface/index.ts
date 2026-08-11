@@ -439,19 +439,49 @@ async function loadAcceptedTestIds(supabase: any, registrationId: string): Promi
   return ids;
 }
 
-/** Prefer accepted-tube leaf tests over package/standalone collisions. */
-function resolveBridgeTestId(
+/**
+ * Interface writes are allowed ONLY onto accepted-tube leaf tests that own the
+ * parameter. No fallback to registration container / unbooked tests (e.g. PCOD).
+ *
+ * If several accepted tests share the same parameter, ALL of them are returned
+ * so the same analyzer value is written to each.
+ */
+function resolveAcceptedBridgeTestIds(
   candidateTestIds: string[],
   acceptedTestIds: Set<string>,
-  regTestIds: Set<string>,
-): string | null {
-  if (!candidateTestIds.length) return null;
-  return (
-    candidateTestIds.find((tid) => acceptedTestIds.has(tid)) ||
-    candidateTestIds.find((tid) => regTestIds.has(tid)) ||
-    candidateTestIds[0] ||
-    null
-  );
+): string[] {
+  if (!candidateTestIds.length || acceptedTestIds.size === 0) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const tid of candidateTestIds) {
+    if (!tid || !acceptedTestIds.has(tid) || seen.has(tid)) continue;
+    seen.add(tid);
+    out.push(tid);
+  }
+  return out;
+}
+
+/** Delete pending rows for a parameter whose test_id is outside the keep set. */
+async function deletePendingOutsideKeepTests(
+  supabase: any,
+  registrationId: string,
+  keepTestsByParam: Record<string, string[]>,
+): Promise<void> {
+  for (const [paramId, keepIds] of Object.entries(keepTestsByParam)) {
+    if (!keepIds.length) continue;
+    const keep = new Set(keepIds);
+    const { data: pending } = await supabase
+      .from("patient_results")
+      .select("id, test_id")
+      .eq("registration_id", registrationId)
+      .eq("parameter_id", paramId)
+      .eq("status", "pending");
+    const toDelete = (pending || [])
+      .filter((r: any) => r.test_id && !keep.has(r.test_id))
+      .map((r: any) => r.id);
+    if (toDelete.length === 0) continue;
+    await supabase.from("patient_results").delete().in("id", toDelete);
+  }
 }
 
 /**
@@ -920,7 +950,6 @@ Deno.serve(async (req) => {
 
           processedOrders++;
           const registrationId = registration.id;
-          const regTestIds = new Set(((registration.tests as any[]) || []).map((t: any) => t.test_id || t.id).filter(Boolean));
           const acceptedTestIds = await loadAcceptedTestIds(supabase, registrationId);
 
           // Re-map machine_codes → internal param/test codes
@@ -1005,13 +1034,17 @@ Deno.serve(async (req) => {
           }
 
           const insertPayload: any[] = [];
-          const keepTestByParam: Record<string, string> = {};
+          const keepTestsByParam: Record<string, string[]> = {};
+          let skippedNoAcceptedOwner = 0;
           for (const sr of mappedItems) {
             const param = paramByCode[sr.test_code];
             if (!param) continue;
             const candidateTestIds = testIdsByParam[param.id] || [];
-            const testId = resolveBridgeTestId(candidateTestIds, acceptedTestIds, regTestIds);
-            if (!testId) continue;
+            const targetTestIds = resolveAcceptedBridgeTestIds(candidateTestIds, acceptedTestIds);
+            if (targetTestIds.length === 0) {
+              skippedNoAcceptedOwner++;
+              continue;
+            }
 
             const convertedValue = applyUnitConversion(sr.result_value, param, sr.unit);
             const flag = computeFlagFromInterface(convertedValue, param);
@@ -1021,46 +1054,51 @@ Deno.serve(async (req) => {
                   ? `${param.normal_range_low} - ${param.normal_range_high}`
                   : "");
 
-            const existing = existingByKey[`${testId}||${param.id}`];
             const nowIso = new Date().toISOString();
-            keepTestByParam[param.id] = testId;
-            if (existing) {
-              if (existing.status && existing.status !== "pending") continue;
-              const { error: updErr } = await supabase
-                .from("patient_results")
-                .update({
+            keepTestsByParam[param.id] = targetTestIds;
+
+            for (const testId of targetTestIds) {
+              const existing = existingByKey[`${testId}||${param.id}`];
+              if (existing) {
+                if (existing.status && existing.status !== "pending") continue;
+                const { error: updErr } = await supabase
+                  .from("patient_results")
+                  .update({
+                    result_value: applyInterfaceUnitSuffix(convertedValue, param),
+                    flag,
+                    unit: param.unit || "",
+                    reference_range: referenceRange,
+                    normal_range_low: param.normal_range_low,
+                    normal_range_high: param.normal_range_high,
+                    is_from_interface: true,
+                    entered_at: nowIso,
+                    entered_by: "INTERFACE",
+                    status: "pending",
+                    updated_at: nowIso,
+                  })
+                  .eq("id", existing.id);
+                if (!updErr) totalPushed++;
+              } else {
+                insertPayload.push({
+                  registration_id: registrationId,
+                  test_id: testId,
+                  parameter_id: param.id,
+                  param_code: param.param_code,
+                  parameter_name: param.parameter_name,
                   result_value: applyInterfaceUnitSuffix(convertedValue, param),
-                  flag,
                   unit: param.unit || "",
                   reference_range: referenceRange,
                   normal_range_low: param.normal_range_low,
                   normal_range_high: param.normal_range_high,
+                  flag,
+                  status: "pending",
                   is_from_interface: true,
                   entered_at: nowIso,
                   entered_by: "INTERFACE",
-                  status: "pending",
-                  updated_at: nowIso,
-                })
-                .eq("id", existing.id);
-              if (!updErr) totalPushed++;
-            } else {
-              insertPayload.push({
-                registration_id: registrationId,
-                test_id: testId,
-                parameter_id: param.id,
-                param_code: param.param_code,
-                parameter_name: param.parameter_name,
-                result_value: applyInterfaceUnitSuffix(convertedValue, param),
-                unit: param.unit || "",
-                reference_range: referenceRange,
-                normal_range_low: param.normal_range_low,
-                normal_range_high: param.normal_range_high,
-                flag,
-                status: "pending",
-                is_from_interface: true,
-                entered_at: nowIso,
-                entered_by: "INTERFACE",
-              });
+                });
+                // Prevent duplicate inserts if the same param appears twice in this batch
+                existingByKey[`${testId}||${param.id}`] = { status: "pending" };
+              }
             }
           }
 
@@ -1069,14 +1107,11 @@ Deno.serve(async (req) => {
             if (!insErr) totalPushed += insertPayload.length;
           }
 
-          for (const [paramId, keepTestId] of Object.entries(keepTestByParam)) {
-            await supabase
-              .from("patient_results")
-              .delete()
-              .eq("registration_id", registrationId)
-              .eq("parameter_id", paramId)
-              .eq("status", "pending")
-              .neq("test_id", keepTestId);
+          await deletePendingOutsideKeepTests(supabase, registrationId, keepTestsByParam);
+          if (skippedNoAcceptedOwner > 0) {
+            console.warn(
+              `reprocess: skipped ${skippedNoAcceptedOwner} mapped result(s) — no accepted-tube owner for registration ${registrationId}`,
+            );
           }
 
           // Auto-evaluate calculated parameters now that fresh values landed
@@ -1410,6 +1445,7 @@ Deno.serve(async (req) => {
 
       // ===== Bridge mapped results into patient_results (Results Entry UI) =====
       let patientResultsWritten = 0;
+      let skippedNoAcceptedOwner = 0;
       let registrationResolved = false;
       try {
         // 1) Resolve registration_id from sample_id (strip trailing letter suffix)
@@ -1424,7 +1460,6 @@ Deno.serve(async (req) => {
         if (registration && mappedRows.length > 0) {
           registrationResolved = true;
           const registrationId = registration.id;
-          const regTestIds = new Set(((registration.tests as any[]) || []).map((t: any) => t.test_id || t.id).filter(Boolean));
           const acceptedTestIds = await loadAcceptedTestIds(supabase, registrationId);
 
           // 2) Resolve parameters by param_code
@@ -1464,13 +1499,16 @@ Deno.serve(async (req) => {
           }
 
           const insertPayload: any[] = [];
-          const keepTestByParam: Record<string, string> = {};
+          const keepTestsByParam: Record<string, string[]> = {};
           for (const mr of mappedRows) {
             const param = paramByCode[mr.test_code];
             if (!param) continue;
             const candidateTestIds = testIdsByParam[param.id] || [];
-            const testId = resolveBridgeTestId(candidateTestIds, acceptedTestIds, regTestIds);
-            if (!testId) continue;
+            const targetTestIds = resolveAcceptedBridgeTestIds(candidateTestIds, acceptedTestIds);
+            if (targetTestIds.length === 0) {
+              skippedNoAcceptedOwner++;
+              continue;
+            }
 
             // Compute flag (numeric → H/L/N; qualitative/descriptive → N or X)
             const convertedValue = applyUnitConversion(mr.result_value, param, mr.unit);
@@ -1481,47 +1519,51 @@ Deno.serve(async (req) => {
                   ? `${param.normal_range_low} - ${param.normal_range_high}`
                   : "");
 
-            const existing = existingByKey[`${testId}||${param.id}`];
             const nowIso = new Date().toISOString();
-            keepTestByParam[param.id] = testId;
-            if (existing) {
-              // Skip if technician/verifier/approver already worked on it
-              if (existing.status && existing.status !== "pending") continue;
-              const { error: updErr } = await supabase
-                .from("patient_results")
-                .update({
+            keepTestsByParam[param.id] = targetTestIds;
+
+            for (const testId of targetTestIds) {
+              const existing = existingByKey[`${testId}||${param.id}`];
+              if (existing) {
+                // Skip if technician/verifier/approver already worked on it
+                if (existing.status && existing.status !== "pending") continue;
+                const { error: updErr } = await supabase
+                  .from("patient_results")
+                  .update({
+                    result_value: applyInterfaceUnitSuffix(convertedValue, param),
+                    flag,
+                    unit: param.unit || "",
+                    reference_range: referenceRange,
+                    normal_range_low: param.normal_range_low,
+                    normal_range_high: param.normal_range_high,
+                    is_from_interface: true,
+                    entered_at: nowIso,
+                    entered_by: "INTERFACE",
+                    status: "pending",
+                    updated_at: nowIso,
+                  })
+                  .eq("id", existing.id);
+                if (!updErr) patientResultsWritten++;
+              } else {
+                insertPayload.push({
+                  registration_id: registrationId,
+                  test_id: testId,
+                  parameter_id: param.id,
+                  param_code: param.param_code,
+                  parameter_name: param.parameter_name,
                   result_value: applyInterfaceUnitSuffix(convertedValue, param),
-                  flag,
                   unit: param.unit || "",
                   reference_range: referenceRange,
                   normal_range_low: param.normal_range_low,
                   normal_range_high: param.normal_range_high,
+                  flag,
+                  status: "pending",
                   is_from_interface: true,
                   entered_at: nowIso,
                   entered_by: "INTERFACE",
-                  status: "pending",
-                  updated_at: nowIso,
-                })
-                .eq("id", existing.id);
-              if (!updErr) patientResultsWritten++;
-            } else {
-              insertPayload.push({
-                registration_id: registrationId,
-                test_id: testId,
-                parameter_id: param.id,
-                param_code: param.param_code,
-                parameter_name: param.parameter_name,
-                result_value: applyInterfaceUnitSuffix(convertedValue, param),
-                unit: param.unit || "",
-                reference_range: referenceRange,
-                normal_range_low: param.normal_range_low,
-                normal_range_high: param.normal_range_high,
-                flag,
-                status: "pending",
-                is_from_interface: true,
-                entered_at: nowIso,
-                entered_by: "INTERFACE",
-              });
+                });
+                existingByKey[`${testId}||${param.id}`] = { status: "pending" };
+              }
             }
           }
 
@@ -1531,15 +1573,12 @@ Deno.serve(async (req) => {
             else console.error("patient_results insert error:", insErr);
           }
 
-          // Drop orphan pending rows for the same parameters under other test_ids
-          for (const [paramId, keepTestId] of Object.entries(keepTestByParam)) {
-            await supabase
-              .from("patient_results")
-              .delete()
-              .eq("registration_id", registrationId)
-              .eq("parameter_id", paramId)
-              .eq("status", "pending")
-              .neq("test_id", keepTestId);
+          // Drop orphan pending rows for the same parameters under non-accepted / non-kept test_ids
+          await deletePendingOutsideKeepTests(supabase, registrationId, keepTestsByParam);
+          if (skippedNoAcceptedOwner > 0) {
+            console.warn(
+              `submit_results: skipped ${skippedNoAcceptedOwner} mapped result(s) — no accepted-tube owner for registration ${registrationId}`,
+            );
           }
 
           // Auto-evaluate calculated parameters now that fresh values landed
@@ -1598,6 +1637,7 @@ Deno.serve(async (req) => {
         order_id: orderId,
         registration_resolved: registrationResolved,
         patient_results_written: patientResultsWritten,
+        skipped_no_accepted_owner: skippedNoAcceptedOwner,
       };
 
       await supabase.from("lims_interface_logs").insert({
