@@ -253,3 +253,86 @@ export async function healOrphanPatientResults(
 
   return { healed, deletedOrphans };
 }
+export type RestoreApprovedResult = {
+  restored: number;
+};
+
+/**
+ * If approved_reports still lists a parameter but patient_results lost that row
+ * (e.g. a Results save wiped it), recreate the approved row from the snapshot
+ * so Results Entry does not keep inventing empty pending fields.
+ */
+export async function restoreMissingApprovedFromReports(
+  supabase: { from: (table: string) => any },
+  registrationIds: string[],
+  existingRows: any[],
+): Promise<RestoreApprovedResult> {
+  let restored = 0;
+  if (!registrationIds.length) return { restored };
+
+  const { data: reports, error } = await supabase
+    .from("approved_reports")
+    .select("registration_id, test_results")
+    .in("registration_id", registrationIds);
+  if (error || !reports?.length) return { restored };
+
+  for (const report of reports) {
+    const regId = report.registration_id;
+    const snapshot = Array.isArray(report.test_results) ? report.test_results : [];
+    for (const s of snapshot) {
+      const testId = s?.test_id;
+      const parameterId = s?.parameter_id;
+      if (!testId || !parameterId) continue;
+
+      const live = existingRows.find(
+        (r) =>
+          r.registration_id === regId &&
+          r.test_id === testId &&
+          r.parameter_id === parameterId,
+      );
+      if (live && isResultPastPending(live.status)) continue;
+      if (live && !isResultPastPending(live.status)) {
+        const { error: delErr } = await supabase.from("patient_results").delete().eq("id", live.id);
+        if (delErr) continue;
+        const idx = existingRows.findIndex((r) => r.id === live.id);
+        if (idx >= 0) existingRows.splice(idx, 1);
+      }
+
+      const nowIso = new Date().toISOString();
+      const insertRow = {
+        registration_id: regId,
+        test_id: testId,
+        parameter_id: parameterId,
+        param_code: s.param_code ?? null,
+        parameter_name: s.parameter_name ?? null,
+        result_value: s.result_value ?? null,
+        unit: s.unit ?? null,
+        reference_range: s.reference_range ?? null,
+        normal_range_low: s.normal_range_low ?? null,
+        normal_range_high: s.normal_range_high ?? null,
+        flag: s.flag ?? null,
+        status: "approved",
+        is_calculated: !!s.is_calculated,
+        is_from_interface: false,
+        approved_at: nowIso,
+        approved_by: s.approved_by ?? null,
+        entered_at: nowIso,
+        entered_by: "Administrator",
+        note: s.note ?? null,
+        test_note: s.test_note ?? null,
+        updated_at: nowIso,
+      };
+      const { data: inserted, error: insErr } = await supabase
+        .from("patient_results")
+        .insert(insertRow)
+        .select("*")
+        .maybeSingle();
+      if (insErr) continue;
+      if (inserted) existingRows.push(inserted);
+      else existingRows.push(insertRow);
+      restored++;
+    }
+  }
+
+  return { restored };
+}

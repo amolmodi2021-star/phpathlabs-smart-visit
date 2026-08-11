@@ -27,7 +27,7 @@ import { checkDifferentialSum } from "@/lib/differentialCount";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import { signalSync } from "@/lib/limsSyncSignal";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
-import { isResultPastPending, resolveResultForResultsEntry, healOrphanPatientResults } from "@/lib/patientResultLookup";
+import { isResultPastPending, resolveResultForResultsEntry, healOrphanPatientResults, restoreMissingApprovedFromReports } from "@/lib/patientResultLookup";
 import { fetchResultsEntryCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPendingCandidates";
 import { shortIdsKey } from "@/lib/queryKeys";
 import SyncingOverlay from "./SyncingOverlay";
@@ -311,6 +311,10 @@ const ResultsEntry = () => {
           if (!accepted || accepted.size === 0) continue;
           await healOrphanPatientResults(supabase, regId, accepted, rows);
         }
+        // If a param was already approved into approved_reports but its live
+        // patient_results row was wiped, recreate it so Results stops looping
+        // empty Iron / Triglycerides / etc.
+        await restoreMissingApprovedFromReports(supabase, regIds, rows);
       } catch (e) {
         // Non-fatal — Results Entry still works with sibling-coverage lookup
         console.error("[results] orphan heal failed", e);
@@ -1065,12 +1069,15 @@ const ResultsEntry = () => {
       // must be preserved — never delete by (registration_id, test_id) alone.
       const paramIdsToReplace = upserts.map((u) => u.parameter_id);
       if (paramIdsToReplace.length > 0) {
+        // Never wipe verified/approved/dispatched rows — that made already-approved
+        // Iron/TG disappear from patient_results and reappear empty in Results.
         const { error: delErr } = await supabase
           .from("patient_results")
           .delete()
           .eq("registration_id", reg.id)
           .eq("test_id", testId)
-          .in("parameter_id", paramIdsToReplace);
+          .in("parameter_id", paramIdsToReplace)
+          .in("status", ["pending", "entered", "results_entered"]);
         if (delErr) throw delErr;
       }
       const { error } = await supabase.from("patient_results").insert(upserts as any);
