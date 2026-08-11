@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, ChevronLeft, ChevronRight, Pencil, Download, Eye, ChevronDown, ChevronUp, Trash2, CalendarIcon, X } from "lucide-react";
+import { Search, Pencil, Download, Eye, ChevronDown, ChevronUp, Trash2, CalendarIcon, X, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { exportToExcel } from "@/lib/excel";
@@ -19,16 +19,22 @@ import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 
-const PAGE_SIZE = 50;
+/** List page size — cumulative Load more (+10). */
+const LIST_BATCH = 10;
+
+/** Lean columns for the table only — no tests/payments JSON (egress). */
+const LIST_SELECT =
+  "id, invoice_number, created_at, patient_name, title, umr_number, mobile_number, visit_type, pickup_point_id, channel_id, remarks, registered_by, gross_amount, discount_amount, net_amount, home_visit_charges, paid_amount, refund_amount, due_amount, status, bill_cancelled, is_stat";
 
 const RegisteredPatients = () => {
   const qc = useQueryClient();
   useLimsPipelineRealtime("registered_patients");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [page, setPage] = useState(0);
+  const [visibleLimit, setVisibleLimit] = useState(LIST_BATCH);
   const [editReg, setEditReg] = useState<any>(null);
   const [viewBillReg, setViewBillReg] = useState<any>(null);
+  const [loadingActionId, setLoadingActionId] = useState<string | null>(null);
   const [showExportPwd, setShowExportPwd] = useState(false);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [showClearPwd, setShowClearPwd] = useState(false);
@@ -52,14 +58,15 @@ const RegisteredPatients = () => {
 
   const handleSearch = (val: string) => {
     setSearch(val);
-    setPage(0);
+    setVisibleLimit(LIST_BATCH);
+    setExpandedRow(null);
     clearTimeout((window as any).__regSearchTimeout);
     (window as any).__regSearchTimeout = setTimeout(() => setDebouncedSearch(val), 400);
   };
 
-  const handleFromDate = (d: Date | undefined) => { setFromDate(d); setPage(0); };
-  const handleToDate = (d: Date | undefined) => { setToDate(d); setPage(0); };
-  const clearDates = () => { setFromDate(undefined); setToDate(undefined); setPage(0); };
+  const handleFromDate = (d: Date | undefined) => { setFromDate(d); setVisibleLimit(LIST_BATCH); setExpandedRow(null); };
+  const handleToDate = (d: Date | undefined) => { setToDate(d); setVisibleLimit(LIST_BATCH); setExpandedRow(null); };
+  const clearDates = () => { setFromDate(undefined); setToDate(undefined); setVisibleLimit(LIST_BATCH); setExpandedRow(null); };
 
   const { data: channels = [] } = useQuery({
     queryKey: ["channels_lookup"],
@@ -67,6 +74,7 @@ const RegisteredPatients = () => {
       const { data } = await supabase.from("channels").select("id, name, billing_type");
       return (data || []) as { id: string; name: string; billing_type: string }[];
     },
+    staleTime: 600_000,
   });
 
   const { data: pickupPoints = [] } = useQuery({
@@ -75,6 +83,7 @@ const RegisteredPatients = () => {
       const { data } = await supabase.from("pickup_points").select("id, name, billing_type");
       return (data || []) as { id: string; name: string; billing_type: string }[];
     },
+    staleTime: 600_000,
   });
 
   const channelMap = Object.fromEntries(channels.map(c => [c.id, c.name]));
@@ -116,16 +125,17 @@ const RegisteredPatients = () => {
       if (error) throw error;
       return count || 0;
     },
+    staleTime: 120_000,
   });
 
-  const { data: registrations = [], isLoading } = useQuery({
-    queryKey: ["patient_registrations", page, debouncedSearch, fromIso, toIso],
+  const { data: registrations = [], isLoading, isFetching } = useQuery({
+    queryKey: ["patient_registrations", visibleLimit, debouncedSearch, fromIso, toIso],
     queryFn: async () => {
       let query = supabase
         .from("patient_registrations")
-        .select("*")
+        .select(LIST_SELECT)
         .order("created_at", { ascending: false })
-        .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
+        .range(0, visibleLimit - 1);
       if (registrationSearchFilter) query = query.or(registrationSearchFilter);
       if (fromIso) query = query.gte("created_at", fromIso);
       if (toIso) query = query.lte("created_at", toIso);
@@ -139,9 +149,46 @@ const RegisteredPatients = () => {
       });
       return rows;
     },
+    staleTime: 120_000,
   });
 
-  const totalPages = Math.ceil(count / PAGE_SIZE);
+  const hasMore = registrations.length < count;
+
+  /** Full row only when Edit / View Bill is clicked — not on expand. */
+  const fetchFullRegistration = async (id: string) => {
+    const { data, error } = await supabase
+      .from("patient_registrations")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error("Registration not found");
+    return data;
+  };
+
+  const openViewBill = async (id: string) => {
+    setLoadingActionId(`view:${id}`);
+    try {
+      const full = await fetchFullRegistration(id);
+      setViewBillReg(full);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to load bill");
+    } finally {
+      setLoadingActionId(null);
+    }
+  };
+
+  const openEdit = async (id: string) => {
+    setLoadingActionId(`edit:${id}`);
+    try {
+      const full = await fetchFullRegistration(id);
+      setEditReg(full);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to load registration");
+    } finally {
+      setLoadingActionId(null);
+    }
+  };
 
   const statusColor = (s: string): "default" | "secondary" | "destructive" | "outline" => {
     switch (s) {
@@ -317,10 +364,6 @@ const RegisteredPatients = () => {
             ) : registrations.length === 0 ? (
               <TableRow><TableCell colSpan={colCount + 1} className="text-center py-8 text-muted-foreground">No registrations found</TableCell></TableRow>
             ) : registrations.map((r: any) => {
-              const testList = Array.isArray(r.tests) ? r.tests : [];
-              const cancelledTests = Array.isArray(r.cancelled_tests) ? r.cancelled_tests : [];
-              const cancelledIds = new Set(cancelledTests.map((ct: any) => ct.test_id));
-              const activeTests = testList.filter((t: any) => !cancelledIds.has(t.test_id));
               const isExpanded = expandedRow === r.id;
 
               return (
@@ -367,11 +410,25 @@ const RegisteredPatients = () => {
                     <TableCell><Badge variant={statusColor(r.status)}>{r.bill_cancelled ? "cancelled" : statusLabel(r.status)}</Badge></TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                        <Button variant="ghost" size="icon" className="h-8 w-8" title="View Bill" onClick={() => setViewBillReg(r)}>
-                          <Eye className="h-4 w-4" />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          title="View Bill"
+                          disabled={!!loadingActionId}
+                          onClick={() => openViewBill(r.id)}
+                        >
+                          {loadingActionId === `view:${r.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8" title="Edit" onClick={() => setEditReg(r)}>
-                          <Pencil className="h-4 w-4" />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          title="Edit"
+                          disabled={!!loadingActionId}
+                          onClick={() => openEdit(r.id)}
+                        >
+                          {loadingActionId === `edit:${r.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pencil className="h-4 w-4" />}
                         </Button>
                       </div>
                     </TableCell>
@@ -379,24 +436,19 @@ const RegisteredPatients = () => {
                   {isExpanded && (
                     <TableRow key={`${r.id}-details`} className="bg-muted/30 hover:bg-muted/30">
                       <TableCell colSpan={colCount + 1} className="py-3 px-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                          <div>
-                            <span className="font-medium text-muted-foreground">Tests: </span>
-                            <div className="mt-1 space-y-0.5">
-                              {activeTests.map((t: any, i: number) => (
-                                <div key={i} className="text-xs">• {t.test_name} — ₹{t.discounted_price ?? t.price}</div>
-                              ))}
-                              {cancelledTests.length > 0 && cancelledTests.map((ct: any, i: number) => (
-                                <div key={`c-${i}`} className="text-xs text-destructive">• {ct.test_name || ct.test_id} (Cancelled)</div>
-                              ))}
-                            </div>
-                          </div>
-                          <div className="space-y-1 text-xs">
-                            <div><span className="font-medium text-muted-foreground">Doctor:</span> {r.doctor_name || "—"}</div>
-                            <div><span className="font-medium text-muted-foreground">Report Language:</span> {r.report_language || "ENGLISH"}</div>
-                            <div><span className="font-medium text-muted-foreground">Address:</span> {r.address || "—"}</div>
-                          </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                          <div><span className="font-medium text-muted-foreground">Invoice:</span> {r.invoice_number}</div>
+                          <div><span className="font-medium text-muted-foreground">UMR:</span> {r.umr_number || "—"}</div>
+                          <div><span className="font-medium text-muted-foreground">Visit:</span> {visitTypeLabel(r.visit_type)}</div>
+                          <div><span className="font-medium text-muted-foreground">Source:</span> {getSourceLabel(r)}</div>
+                          <div><span className="font-medium text-muted-foreground">Gross:</span> ₹{Number(r.gross_amount || 0).toFixed(2)}</div>
+                          <div><span className="font-medium text-muted-foreground">Paid:</span> ₹{Number(r.paid_amount || 0).toFixed(2)}</div>
+                          <div><span className="font-medium text-muted-foreground">Due:</span> ₹{Number(r.due_amount || 0).toFixed(2)}</div>
+                          <div><span className="font-medium text-muted-foreground">Status:</span> {r.bill_cancelled ? "cancelled" : statusLabel(r.status)}</div>
                         </div>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Test list and bill details load only when you open View Bill or Edit.
+                        </p>
                       </TableCell>
                     </TableRow>
                   )}
@@ -407,17 +459,23 @@ const RegisteredPatients = () => {
         </Table>
       </div>
 
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
-            <ChevronLeft className="h-4 w-4 mr-1" />Prev
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <span className="text-sm text-muted-foreground">
+          Showing {registrations.length} of {count}
+          {isFetching && !isLoading ? " · Updating…" : ""}
+        </span>
+        {hasMore && (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={isFetching}
+            onClick={() => setVisibleLimit((n) => n + LIST_BATCH)}
+          >
+            {isFetching ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
+            Load more
           </Button>
-          <span className="text-sm text-muted-foreground">Page {page + 1} of {totalPages}</span>
-          <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>
-            Next<ChevronRight className="h-4 w-4 ml-1" />
-          </Button>
-        </div>
-      )}
+        )}
+      </div>
 
       <EditRegistrationDialog
         open={!!editReg}
