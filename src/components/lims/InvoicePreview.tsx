@@ -325,18 +325,19 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
     const totalPages = 1;
 
     const headerHtml = () => {
-      let h = `<div style="border-top:4px solid ${PALETTE.blue};border-bottom:2px solid ${PALETTE.red};padding:10px 0 12px;margin-bottom:14px">`;
+      // No top blue line; minimal top padding so logo sits near page edge.
+      let h = `<div style="border-bottom:2px solid ${PALETTE.red};padding:0 0 4px;margin:0 0 6px">`;
       if (brand.invoice_logo_url) {
-        h += `<div style="text-align:${brand.invoice_logo_align}"><img src="${brand.invoice_logo_url}" style="max-height:52px;display:inline-block" /></div>`;
+        h += `<div style="text-align:${brand.invoice_logo_align};line-height:0"><img src="${brand.invoice_logo_url}" style="max-height:40px;display:inline-block" /></div>`;
       }
       if (labVisible) {
-        h += `<h2 style="margin:6px 0 0;${textStyleCss(brand, "invoice_lab_name", "18", PALETTE.blue)};text-align:${brand.invoice_lab_name_align};letter-spacing:-0.02em">${brand.invoice_lab_name}</h2>`;
+        h += `<h2 style="margin:2px 0 0;${textStyleCss(brand, "invoice_lab_name", "15", PALETTE.blue)};text-align:${brand.invoice_lab_name_align};letter-spacing:-0.02em;line-height:1.15">${brand.invoice_lab_name}</h2>`;
       }
       if (brand.invoice_contact) {
-        h += `<p style="margin:4px 0 0;${textStyleCss(brand, "invoice_contact", "10", PALETTE.muted)};text-align:${brand.invoice_lab_name_align}">${brand.invoice_contact}</p>`;
+        h += `<p style="margin:1px 0 0;${textStyleCss(brand, "invoice_contact", "9", PALETTE.muted)};text-align:${brand.invoice_lab_name_align};line-height:1.2">${brand.invoice_contact}</p>`;
       }
       if (brand.invoice_address) {
-        h += `<p style="margin:2px 0 0;${textStyleCss(brand, "invoice_address", "9", PALETTE.muted)};white-space:pre-line;text-align:${brand.invoice_address_align}">${brand.invoice_address}</p>`;
+        h += `<p style="margin:0;${textStyleCss(brand, "invoice_address", "8", PALETTE.muted)};white-space:pre-line;text-align:${brand.invoice_address_align};line-height:1.2">${brand.invoice_address}</p>`;
       }
       h += `</div>`;
       return h;
@@ -344,35 +345,27 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
 
     const demographicsHtml = () => {
       const tag = brand.invoice_tagline || "Receipt Memo";
-      let d = `<table style="width:100%;border-collapse:collapse;margin-bottom:12px"><tr>`;
-      d += `<td style="border:none;vertical-align:top;text-align:left;padding:0">`;
-      d += `<div style="font-size:9px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:${PALETTE.blue};margin-bottom:4px">${tag}</div>`;
-      d += `<div style="font-size:18px;font-weight:800;color:${PALETTE.ink};letter-spacing:-0.02em">#${data.invoice_number}</div>`;
-      d += `<div style="font-size:10px;color:${PALETTE.muted};margin-top:2px">${format(createdAt, "dd MMM yyyy · hh:mm a")}</div>`;
+      let d = `<table style="width:100%;border-collapse:collapse;margin:0 0 4px"><tr>`;
+      d += `<td style="border:none;vertical-align:middle;text-align:left;padding:0">`;
+      d += `<div style="font-size:8px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:${PALETTE.blue};line-height:1">${tag}</div>`;
+      d += `<div style="font-size:15px;font-weight:800;color:${PALETTE.ink};letter-spacing:-0.02em;line-height:1.15">#${data.invoice_number} <span style="font-size:9px;font-weight:500;color:${PALETTE.muted}">${format(createdAt, "dd MMM yyyy · hh:mm a")}</span></div>`;
       d += `</td>`;
-      d += `<td style="border:none;vertical-align:top;text-align:right;padding:0">`;
-      d += `<div style="display:inline-block;background:${PALETTE.blueSoft};color:${PALETTE.blue};font-weight:700;font-size:9px;letter-spacing:0.06em;text-transform:uppercase;padding:4px 10px;border-radius:999px">${visitLabel || "Visit"}</div>`;
-      if (data.umr_number) d += `<div style="margin-top:6px;font-size:10px"><span style="color:${PALETTE.muted}">UMR</span> <strong style="color:${PALETTE.ink}">${data.umr_number}</strong></div>`;
+      d += `<td style="border:none;vertical-align:middle;text-align:right;padding:0;white-space:nowrap">`;
+      d += `<div style="display:inline-block;background:${PALETTE.blueSoft};color:${PALETTE.blue};font-weight:700;font-size:8px;letter-spacing:0.05em;text-transform:uppercase;padding:2px 7px;border-radius:999px">${visitLabel || "Visit"}</div>`;
+      if (data.umr_number) d += `<div style="margin-top:2px;font-size:9px"><span style="color:${PALETTE.muted}">UMR</span> <strong style="color:${PALETTE.ink}">${data.umr_number}</strong></div>`;
       d += `</td></tr></table>`;
 
-      d += `<div style="background:${PALETTE.blueSoft};border:1px solid ${PALETTE.blueLine};border-radius:10px;padding:10px 12px;margin-bottom:12px">`;
-      d += `<div style="font-size:9px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:${PALETTE.blue};margin-bottom:6px">Patient</div>`;
-      d += `<table style="width:100%;border-collapse:collapse"><tr>`;
-      d += `<td style="border:none;padding:2px 8px 2px 0;width:50%;font-size:11px;color:${PALETTE.ink};vertical-align:top"><span style="color:${PALETTE.muted};font-size:9px">Name</span><br/><strong>${patientDisplayName(data)}</strong></td>`;
-      d += `<td style="border:none;padding:2px 0;width:50%;font-size:11px;color:${PALETTE.ink};vertical-align:top"><span style="color:${PALETTE.muted};font-size:9px">Mobile</span><br/><strong>${data.mobile_number || "—"}</strong></td>`;
+      // Compact patient block — max vertical space saved for tests table
+      d += `<div style="background:${PALETTE.blueSoft};border:1px solid ${PALETTE.blueLine};border-radius:6px;padding:4px 8px;margin:0 0 6px">`;
+      d += `<table style="width:100%;border-collapse:collapse;font-size:10px;line-height:1.25">`;
+      d += `<tr>`;
+      d += `<td style="border:none;padding:1px 6px 1px 0;width:50%;vertical-align:top"><span style="color:${PALETTE.muted};font-size:8px">Name</span> <strong style="color:${PALETTE.ink}">${patientDisplayName(data)}</strong></td>`;
+      d += `<td style="border:none;padding:1px 0;width:50%;vertical-align:top"><span style="color:${PALETTE.muted};font-size:8px">Mobile</span> <strong style="color:${PALETTE.ink}">${data.mobile_number || "—"}</strong></td>`;
       d += `</tr>`;
       if (data.gender || age || data.doctor_name) {
         d += `<tr>`;
-        if (data.gender || age) {
-          d += `<td style="border:none;padding:6px 8px 2px 0;font-size:11px;color:${PALETTE.ink};vertical-align:top"><span style="color:${PALETTE.muted};font-size:9px">Age / Gender</span><br/><strong>${[age, data.gender].filter(Boolean).join(" · ") || "—"}</strong></td>`;
-        } else {
-          d += `<td style="border:none;padding:6px 8px 2px 0"></td>`;
-        }
-        if (data.doctor_name) {
-          d += `<td style="border:none;padding:6px 0 2px;font-size:11px;color:${PALETTE.ink};vertical-align:top"><span style="color:${PALETTE.muted};font-size:9px">Doctor</span><br/><strong>${data.doctor_name}</strong></td>`;
-        } else {
-          d += `<td style="border:none;padding:6px 0 2px"></td>`;
-        }
+        d += `<td style="border:none;padding:1px 6px 1px 0;vertical-align:top"><span style="color:${PALETTE.muted};font-size:8px">Age / Gender</span> <strong style="color:${PALETTE.ink}">${[age, data.gender].filter(Boolean).join(" · ") || "—"}</strong></td>`;
+        d += `<td style="border:none;padding:1px 0;vertical-align:top"><span style="color:${PALETTE.muted};font-size:8px">Doctor</span> <strong style="color:${PALETTE.ink}">${data.doctor_name || "—"}</strong></td>`;
         d += `</tr>`;
       }
       d += `</table></div>`;
@@ -380,7 +373,7 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
     };
 
     const tableHeaderHtml = () => {
-      const th = `padding:9px 6px;font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:${PALETTE.blue};border-bottom:2px solid ${PALETTE.blue};background:${PALETTE.blueSoft}`;
+      const th = `padding:5px 4px;font-size:10px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:${PALETTE.blue};border-bottom:2px solid ${PALETTE.blue};background:${PALETTE.blueSoft}`;
       let h = `<tr>`;
       h += `<th style="${th};width:1%;white-space:nowrap;text-align:center">#</th>`;
       h += `<th style="${th};text-align:left">Test / Investigation</th>`;
@@ -396,10 +389,10 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
     };
 
     const testRowHtml = (t: any, globalIndex: number) => {
-      const td = `padding:9px 6px;font-size:13px;color:${PALETTE.ink};border-bottom:1px solid ${PALETTE.line}`;
+      const td = `padding:5px 4px;font-size:12px;color:${PALETTE.ink};border-bottom:1px solid ${PALETTE.line};line-height:1.25`;
       let r = `<tr>`;
       r += `<td style="${td};text-align:center;width:1%;white-space:nowrap;color:${PALETTE.muted}">${globalIndex + 1}</td>`;
-      r += `<td style="${td}">${t.test_name}</td>`;
+      r += `<td style="${td};font-weight:600">${t.test_name}</td>`;
       if (hasAnyDiscount) {
         r += `<td style="${td};text-align:right;white-space:nowrap">₹${t.price}</td>`;
         r += `<td style="${td};text-align:right;white-space:nowrap;color:${PALETTE.discount}">${Number(t.discount || 0) > 0 ? `-₹${t.discount}` : "—"}</td>`;
@@ -445,79 +438,79 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
           const bg = opts?.bg || "transparent";
           const size = opts?.size || "11px";
           const amountSize = opts?.amountSize || size;
-          const pad = "3px 0";
+          const pad = "1px 0";
           return `<tr>
-            <td style="padding:${pad};font-size:${size};font-weight:${weight};color:${color};background:${bg};text-align:left;vertical-align:middle;border:0;width:70%">${label}</td>
-            <td style="padding:${pad};font-size:${amountSize};font-weight:${weight};color:${color};background:${bg};text-align:right;vertical-align:middle;white-space:nowrap;border:0;width:30%">${amount}</td>
+            <td style="padding:${pad};font-size:${size};font-weight:${weight};color:${color};background:${bg};text-align:left;vertical-align:middle;border:0;width:70%;line-height:1.2">${label}</td>
+            <td style="padding:${pad};font-size:${amountSize};font-weight:${weight};color:${color};background:${bg};text-align:right;vertical-align:middle;white-space:nowrap;border:0;width:30%;line-height:1.2">${amount}</td>
           </tr>`;
         };
 
-        summaryHtml = `<div style="margin-top:4px;padding:0">`;
+        summaryHtml = `<div style="margin-top:3px;padding:0">`;
         summaryHtml += `<table style="width:100%;border-collapse:collapse;table-layout:fixed">`;
         if (showGross) {
-          summaryHtml += moneyRow("Gross Amount", `₹${activeGross}`, { color: PALETTE.muted, weight: "500" });
+          summaryHtml += moneyRow("Gross Amount", `₹${activeGross}`, { color: PALETTE.muted, weight: "500", size: "10px" });
           if (activeDiscount > 0) {
-            summaryHtml += moneyRow("Discount", `-₹${activeDiscount}`, { color: PALETTE.discount, weight: "600" });
+            summaryHtml += moneyRow("Discount", `-₹${activeDiscount}`, { color: PALETTE.discount, weight: "600", size: "10px" });
           }
           if (Number(data.home_visit_charges || 0) > 0) {
-            summaryHtml += moneyRow("Home Visit Charges", `+₹${data.home_visit_charges}`, { color: PALETTE.muted, weight: "500" });
+            summaryHtml += moneyRow("Home Visit Charges", `+₹${data.home_visit_charges}`, { color: PALETTE.muted, weight: "500", size: "10px" });
           }
         }
-        summaryHtml += moneyRow("Final Amount", `₹${activeFinal}`, { color: PALETTE.ink, weight: "800", size: "12px", amountSize: "12px" });
+        summaryHtml += moneyRow("Final Amount", `₹${activeFinal}`, { color: PALETTE.ink, weight: "800", size: "11px", amountSize: "11px" });
         if (payments.length > 0) {
           payments.forEach((p: any) => {
             summaryHtml += moneyRow(
               `${p.mode}${p.date ? ` (${format(new Date(p.date), "dd-MM-yyyy hh:mm a")})` : ""}`,
               `₹${p.amount}`,
-              { color: PALETTE.muted, weight: "500", size: "10px" },
+              { color: PALETTE.muted, weight: "500", size: "9px" },
             );
           });
         }
-        summaryHtml += moneyRow("Paid", `₹${data.paid_amount}`, { color: PALETTE.ink, weight: "700" });
+        summaryHtml += moneyRow("Paid", `₹${data.paid_amount}`, { color: PALETTE.ink, weight: "700", size: "10px" });
         if (data.due_amount > 0) {
-          summaryHtml += moneyRow("Due", `₹${data.due_amount}`, { color: PALETTE.red, weight: "800", bg: "#FEF2F2" });
+          summaryHtml += moneyRow("Due", `₹${data.due_amount}`, { color: PALETTE.red, weight: "800", bg: "#FEF2F2", size: "10px" });
         }
         if (data.refund_amount > 0) {
-          summaryHtml += moneyRow("Refund Amount", `₹${data.refund_amount}`, { color: PALETTE.orange, weight: "700" });
-          summaryHtml += moneyRow("Refund Mode", `${data.refund_mode || "—"}`, { color: PALETTE.muted, weight: "500", size: "10px" });
+          summaryHtml += moneyRow("Refund Amount", `₹${data.refund_amount}`, { color: PALETTE.orange, weight: "700", size: "10px" });
+          summaryHtml += moneyRow("Refund Mode", `${data.refund_mode || "—"}`, { color: PALETTE.muted, weight: "500", size: "9px" });
           if (data.refund_date) {
             summaryHtml += moneyRow("Refund Date", format(new Date(data.refund_date), "dd-MM-yyyy hh:mm a"), {
               color: PALETTE.muted,
               weight: "500",
-              size: "10px",
+              size: "9px",
             });
           }
         }
         summaryHtml += `</table>`;
         if (Number(data.paid_amount || 0) > 0) {
-          summaryHtml += `<div style="font-size:9px;margin-top:4px;color:${PALETTE.muted}">Received with thanks from <strong style="color:${PALETTE.ink}">${patientDisplayName(data)}</strong> a sum of Rs. ${Number(data.paid_amount).toFixed(2)}/- (${numberToWords(Number(data.paid_amount))} Rupees)</div>`;
+          summaryHtml += `<div style="font-size:8px;margin-top:2px;color:${PALETTE.muted};line-height:1.2">Received with thanks from <strong style="color:${PALETTE.ink}">${patientDisplayName(data)}</strong> a sum of Rs. ${Number(data.paid_amount).toFixed(2)}/- (${numberToWords(Number(data.paid_amount))} Rupees)</div>`;
         }
         if (cancelledTests.length > 0) {
-          summaryHtml += `<div style="font-size:8px;color:${PALETTE.muted};margin-top:2px">Cancelled Tests: ${cancelledTests.map((ct: any) => ct.test_name || ct.test_id).join(", ")}</div>`;
+          summaryHtml += `<div style="font-size:7px;color:${PALETTE.muted};margin-top:1px">Cancelled Tests: ${cancelledTests.map((ct: any) => ct.test_name || ct.test_id).join(", ")}</div>`;
         }
         if (hvcRefund > 0) {
-          summaryHtml += `<div style="font-size:8px;color:${PALETTE.muted};margin-top:2px">Home Visit Charges Refunded: ₹${hvcRefund}</div>`;
+          summaryHtml += `<div style="font-size:7px;color:${PALETTE.muted};margin-top:1px">Home Visit Charges Refunded: ₹${hvcRefund}</div>`;
         }
         summaryHtml += `</div>`;
 
         const barcodePng = barcodeRef.current?.toDataURL?.("image/png");
         if (barcodePng) {
-          summaryHtml += `<div style="margin-top:6px;text-align:center"><img src="${barcodePng}" style="height:24px;display:inline-block" /></div>`;
+          summaryHtml += `<div style="margin-top:3px;text-align:center;line-height:0"><img src="${barcodePng}" style="height:18px;display:inline-block" /></div>`;
         }
 
-        summaryHtml += `<div style="text-align:center;font-size:8px;color:${PALETTE.muted};margin-top:6px">`;
+        summaryHtml += `<div style="text-align:center;font-size:7px;color:${PALETTE.muted};margin-top:3px;line-height:1.2">`;
         summaryHtml += `<p style="margin:0;font-weight:600;color:${PALETTE.blue}">Thank you for choosing PH PathLabs</p>`;
-        summaryHtml += `<p style="margin:3px 0 0;font-size:7px">This is an electronically generated receipt and does not require a signature</p>`;
+        summaryHtml += `<p style="margin:1px 0 0;font-size:6px">This is an electronically generated receipt and does not require a signature</p>`;
         summaryHtml += `</div>`;
       }
 
       const printNow = format(new Date(), "dd-MM-yyyy hh:mm a");
       const preparedDate = format(createdAt, "dd-MM-yyyy hh:mm a");
       const currentUser = getCurrentUserName() || "—";
-      const preparedPrintedFooter = `<table style="width:100%;border-collapse:collapse;margin-top:6px;border-top:1px solid ${PALETTE.line}">
+      const preparedPrintedFooter = `<table style="width:100%;border-collapse:collapse;margin-top:3px;border-top:1px solid ${PALETTE.line}">
         <tr>
-          <td style="padding-top:4px;font-size:7px;color:${PALETTE.muted};text-align:left;border:0">Prepared by ${data.registered_by || "—"} · ${preparedDate}</td>
-          <td style="padding-top:4px;font-size:7px;color:${PALETTE.muted};text-align:right;border:0">Printed by ${currentUser} · ${printNow}</td>
+          <td style="padding-top:2px;font-size:6px;color:${PALETTE.muted};text-align:left;border:0;line-height:1.2">Prepared by ${data.registered_by || "—"} · ${preparedDate}</td>
+          <td style="padding-top:2px;font-size:6px;color:${PALETTE.muted};text-align:right;border:0;line-height:1.2">Printed by ${currentUser} · ${printNow}</td>
         </tr>
       </table>`;
 
@@ -535,14 +528,14 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
     printWindow.document.write(`
       <html><head><title>Invoice ${data.invoice_number}</title>
       <style>
-        @page { size: A5; margin: 8mm; }
+        @page { size: A5; margin: 5mm; }
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box; }
         html, body { margin: 0; padding: 0; }
         body { font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif; color: ${PALETTE.ink}; }
-        /* A5 printable area (210mm - 16mm margins). Clip so scale never creates page 2. */
+        /* A5 printable area (210mm - 10mm margins). Clip so scale never creates page 2. */
         #invoice-page {
-          width: 132mm;
-          height: 194mm;
+          width: 138mm;
+          height: 200mm;
           overflow: hidden;
           margin: 0 auto;
           page-break-after: avoid;
@@ -566,7 +559,7 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
             if (!page || !sheet) return;
             sheet.style.transform = "none";
             sheet.style.width = "100%";
-            var maxH = page.clientHeight || Math.round((194 / 25.4) * 96);
+            var maxH = page.clientHeight || Math.round((200 / 25.4) * 96);
             var h = sheet.scrollHeight;
             var scale = h > maxH ? Math.max(0.5, maxH / h) : 1;
             if (scale < 1) {
@@ -624,49 +617,51 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
             fontFamily: '"Segoe UI", system-ui, -apple-system, Arial, sans-serif',
             width: 560,
             margin: "0 auto",
-            padding: 28,
+            padding: "10px 16px 12px",
             color: PALETTE.ink,
           }}
         >
-          {/* Brand header */}
-          <div style={{ borderTop: `4px solid ${PALETTE.blue}`, borderBottom: `2px solid ${PALETTE.red}`, padding: "10px 0 14px", marginBottom: 16 }}>
+          {/* Brand header — no top blue line, minimal top margin */}
+          <div style={{ borderBottom: `2px solid ${PALETTE.red}`, padding: "0 0 4px", marginBottom: 6 }}>
             {brand.invoice_logo_url && (
-              <div style={{ textAlign: brand.invoice_logo_align as any }}>
-                <img src={brand.invoice_logo_url} alt="Logo" style={{ maxHeight: 56, display: "inline-block" }} />
+              <div style={{ textAlign: brand.invoice_logo_align as any, lineHeight: 0 }}>
+                <img src={brand.invoice_logo_url} alt="Logo" style={{ maxHeight: 44, display: "inline-block" }} />
               </div>
             )}
             {labVisible && (
-              <h2 style={{ margin: "8px 0 0", textAlign: brand.invoice_lab_name_align as any, letterSpacing: "-0.02em", ...textStyle(brand, "invoice_lab_name", "18", PALETTE.blue) }}>
+              <h2 style={{ margin: "2px 0 0", textAlign: brand.invoice_lab_name_align as any, letterSpacing: "-0.02em", lineHeight: 1.15, ...textStyle(brand, "invoice_lab_name", "15", PALETTE.blue) }}>
                 {brand.invoice_lab_name}
               </h2>
             )}
             {brand.invoice_contact && (
-              <p style={{ margin: "4px 0 0", textAlign: brand.invoice_lab_name_align as any, ...textStyle(brand, "invoice_contact", "10", PALETTE.muted) }}>
+              <p style={{ margin: "1px 0 0", lineHeight: 1.2, textAlign: brand.invoice_lab_name_align as any, ...textStyle(brand, "invoice_contact", "9", PALETTE.muted) }}>
                 {brand.invoice_contact}
               </p>
             )}
             {brand.invoice_address && (
-              <p style={{ margin: "2px 0 0", whiteSpace: "pre-line", textAlign: brand.invoice_address_align as any, ...textStyle(brand, "invoice_address", "9", PALETTE.muted) }}>
+              <p style={{ margin: 0, whiteSpace: "pre-line", lineHeight: 1.2, textAlign: brand.invoice_address_align as any, ...textStyle(brand, "invoice_address", "8", PALETTE.muted) }}>
                 {brand.invoice_address}
               </p>
             )}
           </div>
 
-          {/* Invoice meta */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 14 }}>
+          {/* Invoice meta — compact */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 4 }}>
             <div>
-              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: PALETTE.blue, marginBottom: 4 }}>
+              <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: PALETTE.blue, lineHeight: 1 }}>
                 {brand.invoice_tagline || "Receipt Memo"}
               </div>
-              <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-0.02em", color: PALETTE.ink }}>#{data.invoice_number}</div>
-              <div style={{ fontSize: 10, color: PALETTE.muted, marginTop: 2 }}>{format(createdAt, "dd MMM yyyy · hh:mm a")}</div>
+              <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: "-0.02em", color: PALETTE.ink, lineHeight: 1.15 }}>
+                #{data.invoice_number}{" "}
+                <span style={{ fontSize: 9, fontWeight: 500, color: PALETTE.muted }}>{format(createdAt, "dd MMM yyyy · hh:mm a")}</span>
+              </div>
             </div>
-            <div style={{ textAlign: "right", fontSize: 10, color: PALETTE.muted }}>
-              <div style={{ display: "inline-block", background: PALETTE.blueSoft, color: PALETTE.blue, fontWeight: 700, fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", padding: "4px 10px", borderRadius: 999 }}>
+            <div style={{ textAlign: "right", fontSize: 9, color: PALETTE.muted, whiteSpace: "nowrap" }}>
+              <div style={{ display: "inline-block", background: PALETTE.blueSoft, color: PALETTE.blue, fontWeight: 700, fontSize: 8, letterSpacing: "0.05em", textTransform: "uppercase", padding: "2px 7px", borderRadius: 999 }}>
                 {visitLabel || "Visit"}
               </div>
               {data.umr_number && (
-                <div style={{ marginTop: 6 }}>
+                <div style={{ marginTop: 2 }}>
                   <span style={{ color: PALETTE.muted }}>UMR </span>
                   <strong style={{ color: PALETTE.ink }}>{data.umr_number}</strong>
                 </div>
@@ -674,69 +669,68 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
             </div>
           </div>
 
-          {/* Patient card */}
-          <div style={{ background: PALETTE.blueSoft, border: `1px solid ${PALETTE.blueLine}`, borderRadius: 10, padding: "10px 12px", marginBottom: 14 }}>
-            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: PALETTE.blue, marginBottom: 6 }}>Patient</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 12px", fontSize: 11 }}>
+          {/* Patient — compact inline rows */}
+          <div style={{ background: PALETTE.blueSoft, border: `1px solid ${PALETTE.blueLine}`, borderRadius: 6, padding: "4px 8px", marginBottom: 6 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px 8px", fontSize: 10, lineHeight: 1.25 }}>
               <div>
-                <div style={{ color: PALETTE.muted, fontSize: 9 }}>Name</div>
+                <span style={{ color: PALETTE.muted, fontSize: 8 }}>Name </span>
                 <strong>{patientDisplayName(data)}</strong>
               </div>
               <div>
-                <div style={{ color: PALETTE.muted, fontSize: 9 }}>Mobile</div>
+                <span style={{ color: PALETTE.muted, fontSize: 8 }}>Mobile </span>
                 <strong>{data.mobile_number || "—"}</strong>
               </div>
               {(data.gender || age) && (
                 <div>
-                  <div style={{ color: PALETTE.muted, fontSize: 9 }}>Age / Gender</div>
+                  <span style={{ color: PALETTE.muted, fontSize: 8 }}>Age / Gender </span>
                   <strong>{[age, data.gender].filter(Boolean).join(" · ")}</strong>
                 </div>
               )}
               {data.doctor_name && (
                 <div>
-                  <div style={{ color: PALETTE.muted, fontSize: 9 }}>Doctor</div>
+                  <span style={{ color: PALETTE.muted, fontSize: 8 }}>Doctor </span>
                   <strong>{data.doctor_name}</strong>
                 </div>
               )}
             </div>
           </div>
 
-          <table style={{ width: "100%", borderCollapse: "collapse", margin: "0 0 4px", tableLayout: "fixed" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", margin: 0, tableLayout: "fixed" }}>
             <thead>
               <tr>
-                <th style={{ padding: "9px 6px", fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, width: "8%", whiteSpace: "nowrap", textAlign: "center" }}>#</th>
-                <th style={{ padding: "9px 6px", fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, textAlign: "left" }}>Test / Investigation</th>
+                <th style={{ padding: "5px 4px", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, width: "8%", whiteSpace: "nowrap", textAlign: "center" }}>#</th>
+                <th style={{ padding: "5px 4px", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, textAlign: "left" }}>Test / Investigation</th>
                 {hasAnyDiscount ? (
                   <>
-                    <th style={{ padding: "9px 6px", fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, textAlign: "right", width: "16%", whiteSpace: "nowrap" }}>Price</th>
-                    <th style={{ padding: "9px 6px", fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, textAlign: "right", width: "14%", whiteSpace: "nowrap" }}>Disc</th>
-                    <th style={{ padding: "9px 6px", fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, textAlign: "right", width: "16%", whiteSpace: "nowrap" }}>Net</th>
+                    <th style={{ padding: "5px 4px", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, textAlign: "right", width: "16%", whiteSpace: "nowrap" }}>Price</th>
+                    <th style={{ padding: "5px 4px", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, textAlign: "right", width: "14%", whiteSpace: "nowrap" }}>Disc</th>
+                    <th style={{ padding: "5px 4px", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, textAlign: "right", width: "16%", whiteSpace: "nowrap" }}>Net</th>
                   </>
                 ) : (
-                  <th style={{ padding: "9px 6px", fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, textAlign: "right", width: "22%", whiteSpace: "nowrap" }}>Amount</th>
+                  <th style={{ padding: "5px 4px", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, textAlign: "right", width: "22%", whiteSpace: "nowrap" }}>Amount</th>
                 )}
               </tr>
             </thead>
             <tbody>
               {tests.map((t: any, i: number) => (
                 <tr key={i}>
-                  <td style={{ padding: "9px 6px", fontSize: 13, textAlign: "center", whiteSpace: "nowrap", color: PALETTE.muted, borderBottom: `1px solid ${PALETTE.line}` }}>{i + 1}</td>
-                  <td style={{ padding: "9px 6px", fontSize: 13, borderBottom: `1px solid ${PALETTE.line}`, fontWeight: 600 }}>{t.test_name}</td>
+                  <td style={{ padding: "5px 4px", fontSize: 12, textAlign: "center", whiteSpace: "nowrap", color: PALETTE.muted, borderBottom: `1px solid ${PALETTE.line}`, lineHeight: 1.25 }}>{i + 1}</td>
+                  <td style={{ padding: "5px 4px", fontSize: 12, borderBottom: `1px solid ${PALETTE.line}`, fontWeight: 600, lineHeight: 1.25 }}>{t.test_name}</td>
                   {hasAnyDiscount ? (
                     <>
-                      <td style={{ padding: "9px 6px", fontSize: 13, textAlign: "right", whiteSpace: "nowrap", borderBottom: `1px solid ${PALETTE.line}` }}>₹{t.price}</td>
-                      <td style={{ padding: "9px 6px", fontSize: 13, textAlign: "right", whiteSpace: "nowrap", color: PALETTE.discount, borderBottom: `1px solid ${PALETTE.line}`, fontWeight: 600 }}>{Number(t.discount || 0) > 0 ? `-₹${t.discount}` : "—"}</td>
-                      <td style={{ padding: "9px 6px", fontSize: 13, textAlign: "right", whiteSpace: "nowrap", fontWeight: 700, borderBottom: `1px solid ${PALETTE.line}` }}>₹{t.discounted_price || t.discountedPrice}</td>
+                      <td style={{ padding: "5px 4px", fontSize: 12, textAlign: "right", whiteSpace: "nowrap", borderBottom: `1px solid ${PALETTE.line}`, lineHeight: 1.25 }}>₹{t.price}</td>
+                      <td style={{ padding: "5px 4px", fontSize: 12, textAlign: "right", whiteSpace: "nowrap", color: PALETTE.discount, borderBottom: `1px solid ${PALETTE.line}`, fontWeight: 600, lineHeight: 1.25 }}>{Number(t.discount || 0) > 0 ? `-₹${t.discount}` : "—"}</td>
+                      <td style={{ padding: "5px 4px", fontSize: 12, textAlign: "right", whiteSpace: "nowrap", fontWeight: 700, borderBottom: `1px solid ${PALETTE.line}`, lineHeight: 1.25 }}>₹{t.discounted_price || t.discountedPrice}</td>
                     </>
                   ) : (
-                    <td style={{ padding: "9px 6px", fontSize: 13, textAlign: "right", whiteSpace: "nowrap", fontWeight: 700, borderBottom: `1px solid ${PALETTE.line}` }}>₹{t.price}</td>
+                    <td style={{ padding: "5px 4px", fontSize: 12, textAlign: "right", whiteSpace: "nowrap", fontWeight: 700, borderBottom: `1px solid ${PALETTE.line}`, lineHeight: 1.25 }}>₹{t.price}</td>
                   )}
                 </tr>
               ))}
             </tbody>
           </table>
 
-          <div style={{ marginTop: 8, padding: 0 }}>
+          <div style={{ marginTop: 4, padding: 0 }}>
             <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
               <colgroup>
                 <col style={{ width: "70%" }} />
@@ -746,100 +740,100 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
                 {showGross && (
                   <>
                     <tr>
-                      <td style={{ padding: "3px 0", fontSize: 12, color: PALETTE.muted, textAlign: "left", border: "none" }}>Gross Amount</td>
-                      <td style={{ padding: "3px 0", fontSize: 12, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none" }}>₹{activeGross}</td>
+                      <td style={{ padding: "1px 0", fontSize: 11, color: PALETTE.muted, textAlign: "left", border: "none", lineHeight: 1.2 }}>Gross Amount</td>
+                      <td style={{ padding: "1px 0", fontSize: 11, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none", lineHeight: 1.2 }}>₹{activeGross}</td>
                     </tr>
                     {activeDiscount > 0 && (
                       <tr>
-                        <td style={{ padding: "3px 0", fontSize: 12, color: PALETTE.discount, fontWeight: 600, textAlign: "left", border: "none" }}>Discount</td>
-                        <td style={{ padding: "3px 0", fontSize: 12, color: PALETTE.discount, fontWeight: 600, textAlign: "right", whiteSpace: "nowrap", border: "none" }}>-₹{activeDiscount}</td>
+                        <td style={{ padding: "1px 0", fontSize: 11, color: PALETTE.discount, fontWeight: 600, textAlign: "left", border: "none", lineHeight: 1.2 }}>Discount</td>
+                        <td style={{ padding: "1px 0", fontSize: 11, color: PALETTE.discount, fontWeight: 600, textAlign: "right", whiteSpace: "nowrap", border: "none", lineHeight: 1.2 }}>-₹{activeDiscount}</td>
                       </tr>
                     )}
                     {Number(data.home_visit_charges || 0) > 0 && (
                       <tr>
-                        <td style={{ padding: "3px 0", fontSize: 12, color: PALETTE.muted, textAlign: "left", border: "none" }}>Home Visit Charges</td>
-                        <td style={{ padding: "3px 0", fontSize: 12, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none" }}>+₹{data.home_visit_charges}</td>
+                        <td style={{ padding: "1px 0", fontSize: 11, color: PALETTE.muted, textAlign: "left", border: "none", lineHeight: 1.2 }}>Home Visit Charges</td>
+                        <td style={{ padding: "1px 0", fontSize: 11, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none", lineHeight: 1.2 }}>+₹{data.home_visit_charges}</td>
                       </tr>
                     )}
                   </>
                 )}
                 <tr>
-                  <td style={{ padding: "3px 0", fontSize: 12, fontWeight: 800, color: PALETTE.ink, textAlign: "left", border: "none" }}>Final Amount</td>
-                  <td style={{ padding: "3px 0", fontSize: 12, fontWeight: 800, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none" }}>₹{activeFinal}</td>
+                  <td style={{ padding: "1px 0", fontSize: 12, fontWeight: 800, color: PALETTE.ink, textAlign: "left", border: "none", lineHeight: 1.2 }}>Final Amount</td>
+                  <td style={{ padding: "1px 0", fontSize: 12, fontWeight: 800, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none", lineHeight: 1.2 }}>₹{activeFinal}</td>
                 </tr>
                 {payments.map((p: any, i: number) => (
                   <tr key={i}>
-                    <td style={{ padding: "3px 0", fontSize: 11, color: PALETTE.muted, textAlign: "left", border: "none" }}>
+                    <td style={{ padding: "1px 0", fontSize: 10, color: PALETTE.muted, textAlign: "left", border: "none", lineHeight: 1.2 }}>
                       {p.mode}{p.date ? ` (${format(new Date(p.date), "dd-MM-yyyy hh:mm a")})` : ""}
                     </td>
-                    <td style={{ padding: "3px 0", fontSize: 11, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none" }}>₹{p.amount}</td>
+                    <td style={{ padding: "1px 0", fontSize: 10, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none", lineHeight: 1.2 }}>₹{p.amount}</td>
                   </tr>
                 ))}
                 <tr>
-                  <td style={{ padding: "3px 0", fontSize: 12, fontWeight: 700, color: PALETTE.ink, textAlign: "left", border: "none" }}>Paid</td>
-                  <td style={{ padding: "3px 0", fontSize: 12, fontWeight: 700, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none" }}>₹{data.paid_amount}</td>
+                  <td style={{ padding: "1px 0", fontSize: 11, fontWeight: 700, color: PALETTE.ink, textAlign: "left", border: "none", lineHeight: 1.2 }}>Paid</td>
+                  <td style={{ padding: "1px 0", fontSize: 11, fontWeight: 700, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none", lineHeight: 1.2 }}>₹{data.paid_amount}</td>
                 </tr>
                 {data.due_amount > 0 && (
                   <tr>
-                    <td style={{ padding: "3px 0", fontSize: 12, fontWeight: 800, color: PALETTE.red, background: "#FEF2F2", textAlign: "left", border: "none" }}>Due</td>
-                    <td style={{ padding: "3px 0", fontSize: 12, fontWeight: 800, color: PALETTE.red, background: "#FEF2F2", textAlign: "right", whiteSpace: "nowrap", border: "none" }}>₹{data.due_amount}</td>
+                    <td style={{ padding: "1px 0", fontSize: 11, fontWeight: 800, color: PALETTE.red, background: "#FEF2F2", textAlign: "left", border: "none", lineHeight: 1.2 }}>Due</td>
+                    <td style={{ padding: "1px 0", fontSize: 11, fontWeight: 800, color: PALETTE.red, background: "#FEF2F2", textAlign: "right", whiteSpace: "nowrap", border: "none", lineHeight: 1.2 }}>₹{data.due_amount}</td>
                   </tr>
                 )}
               </tbody>
             </table>
             {Number(data.paid_amount || 0) > 0 && (
-              <div style={{ fontSize: 11, marginTop: 4, color: PALETTE.muted }}>
+              <div style={{ fontSize: 9, marginTop: 2, color: PALETTE.muted, lineHeight: 1.2 }}>
                 Received with thanks from <strong style={{ color: PALETTE.ink }}>{patientDisplayName(data)}</strong> a sum of Rs. {Number(data.paid_amount).toFixed(2)}/- ({numberToWords(Number(data.paid_amount))} Rupees)
               </div>
             )}
             {data.refund_amount > 0 && (
-              <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", marginTop: 8, borderTop: `1px solid ${PALETTE.line}` }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", marginTop: 4, borderTop: `1px solid ${PALETTE.line}` }}>
                 <colgroup>
                   <col style={{ width: "70%" }} />
                   <col style={{ width: "30%" }} />
                 </colgroup>
                 <tbody>
                   <tr>
-                    <td style={{ padding: "8px 4px 4px", fontSize: 12, fontWeight: 700, color: PALETTE.orange, textAlign: "left", border: "none" }}>Refund Amount</td>
-                    <td style={{ padding: "8px 4px 4px", fontSize: 12, fontWeight: 700, color: PALETTE.orange, textAlign: "right", whiteSpace: "nowrap", border: "none" }}>₹{data.refund_amount}</td>
+                    <td style={{ padding: "4px 0 1px", fontSize: 11, fontWeight: 700, color: PALETTE.orange, textAlign: "left", border: "none" }}>Refund Amount</td>
+                    <td style={{ padding: "4px 0 1px", fontSize: 11, fontWeight: 700, color: PALETTE.orange, textAlign: "right", whiteSpace: "nowrap", border: "none" }}>₹{data.refund_amount}</td>
                   </tr>
                   <tr>
-                    <td style={{ padding: "4px", fontSize: 11, color: PALETTE.muted, textAlign: "left", border: "none" }}>Refund Mode</td>
-                    <td style={{ padding: "4px", fontSize: 11, color: PALETTE.muted, textAlign: "right", border: "none" }}>{data.refund_mode || "—"}</td>
+                    <td style={{ padding: "1px 0", fontSize: 10, color: PALETTE.muted, textAlign: "left", border: "none" }}>Refund Mode</td>
+                    <td style={{ padding: "1px 0", fontSize: 10, color: PALETTE.muted, textAlign: "right", border: "none" }}>{data.refund_mode || "—"}</td>
                   </tr>
                   {data.refund_date && (
                     <tr>
-                      <td style={{ padding: "4px", fontSize: 11, color: PALETTE.muted, textAlign: "left", border: "none" }}>Refund Date</td>
-                      <td style={{ padding: "4px", fontSize: 11, color: PALETTE.muted, textAlign: "right", border: "none" }}>{format(new Date(data.refund_date), "dd-MM-yyyy hh:mm a")}</td>
+                      <td style={{ padding: "1px 0", fontSize: 10, color: PALETTE.muted, textAlign: "left", border: "none" }}>Refund Date</td>
+                      <td style={{ padding: "1px 0", fontSize: 10, color: PALETTE.muted, textAlign: "right", border: "none" }}>{format(new Date(data.refund_date), "dd-MM-yyyy hh:mm a")}</td>
                     </tr>
                   )}
                 </tbody>
               </table>
             )}
             {cancelledTests.length > 0 && (
-              <div style={{ fontSize: 10, color: PALETTE.muted, marginTop: 6 }}>
+              <div style={{ fontSize: 9, color: PALETTE.muted, marginTop: 2 }}>
                 Cancelled Tests: {cancelledTests.map((ct: any) => ct.test_name || ct.test_id).join(", ")}
               </div>
             )}
             {hvcRefund > 0 && (
-              <div style={{ fontSize: 10, color: PALETTE.muted, marginTop: 3 }}>
+              <div style={{ fontSize: 9, color: PALETTE.muted, marginTop: 1 }}>
                 Home Visit Charges Refunded: ₹{hvcRefund}
               </div>
             )}
           </div>
 
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 8, color: PALETTE.muted, marginTop: 14, borderTop: `1px solid ${PALETTE.line}`, paddingTop: 8 }}>
+          {data.umr_number && (
+            <div style={{ marginTop: 4, textAlign: "center", lineHeight: 0 }}>
+              <canvas ref={barcodeRef} style={{ display: "block", margin: "0 auto", maxWidth: "100%", height: 18 }} />
+            </div>
+          )}
+          <div style={{ textAlign: "center", fontSize: 8, color: PALETTE.muted, marginTop: 3, lineHeight: 1.2 }}>
+            <p style={{ margin: 0, fontWeight: 600, color: PALETTE.blue }}>Thank you for choosing PH PathLabs</p>
+            <p style={{ margin: "1px 0 0", fontSize: 7 }}>This is an electronically generated receipt and does not require a signature</p>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 7, color: PALETTE.muted, marginTop: 3, borderTop: `1px solid ${PALETTE.line}`, paddingTop: 2 }}>
             <div>Prepared by {data.registered_by || "—"} · {format(createdAt, "dd-MM-yyyy hh:mm a")}</div>
             <div>Printed by {getCurrentUserName() || "—"} · {format(new Date(), "dd-MM-yyyy hh:mm a")}</div>
-          </div>
-          <div style={{ textAlign: "center", fontSize: 9, color: PALETTE.muted, marginTop: 10 }}>
-            <p style={{ margin: 0, fontWeight: 600, color: PALETTE.blue }}>Thank you for choosing PH PathLabs</p>
-            {data.umr_number && (
-              <div style={{ marginTop: 8, textAlign: "center" }}>
-                <canvas ref={barcodeRef} style={{ display: "block", margin: "0 auto", maxWidth: "100%" }} />
-              </div>
-            )}
-            <p style={{ margin: "8px 0 0", fontSize: 8 }}>This is an electronically generated receipt and does not require a signature</p>
           </div>
         </div>
 
