@@ -361,7 +361,7 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
       d += `</td>`;
       d += `<td style="border:none;vertical-align:middle;text-align:right;padding:0;width:38%;white-space:nowrap">`;
       d += `<div style="display:inline-block;color:${PALETTE.blue};font-weight:700;font-size:8px;letter-spacing:0.05em;text-transform:uppercase;padding:0">${visitLabel || "Visit"}</div>`;
-      if (data.umr_number) d += `<div style="margin-top:2px;font-size:9px"><span style="color:${PALETTE.muted}">UMR</span> <strong style="color:${PALETTE.ink}">${data.umr_number}</strong></div>`;
+      if (data.umr_number) d += `<div style="margin-top:2px;font-size:9px;font-weight:700;color:${PALETTE.ink}">${data.umr_number}</div>`;
       d += `</td></tr></table>`;
 
       // Compact patient block — no fill on print (ink-saving, like report PDFs)
@@ -680,9 +680,8 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
                     {visitLabel || "Visit"}
                   </div>
                   {data.umr_number && (
-                    <div style={{ marginTop: 2 }}>
-                      <span style={{ color: PALETTE.muted }}>UMR </span>
-                      <strong style={{ color: PALETTE.ink }}>{data.umr_number}</strong>
+                    <div style={{ marginTop: 2, fontWeight: 700, color: PALETTE.ink }}>
+                      {data.umr_number}
                     </div>
                   )}
                 </td>
