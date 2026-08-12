@@ -320,64 +320,9 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
-    // Dynamic pagination: estimate heights in mm relative to A5 usable area
-    const ROW_HEIGHT = 7; // mm per test row (larger fonts)
-    const USABLE_HEIGHT = 186; // A5 (210mm) minus 24mm margins
-    const HEADER_HEIGHT = 82; // logo bar + patient card + table header + page footer
-
-    // Estimate summary section height based on actual data
-    let summaryRows = 3; // final amount + paid + thank-you footer
-    if (showGross) summaryRows += 1;
-    if (activeDiscount > 0) summaryRows += 1;
-    if (Number(data.home_visit_charges || 0) > 0) summaryRows += 1;
-    summaryRows += payments.length;
-    if (Number(data.paid_amount || 0) > 0) summaryRows += 1; // "received with thanks"
-    if (data.due_amount > 0) summaryRows += 1;
-    if (data.refund_amount > 0) {
-      summaryRows += 2; // refund amount + mode
-      if (data.refund_date) summaryRows += 1;
-      if (cancelledTests.length > 0) summaryRows += 1;
-      if (hvcRefund > 0) summaryRows += 1;
-    }
-    if (data.umr_number) summaryRows += 2; // barcode
-    const SUMMARY_HEIGHT = summaryRows * 5 + 30; // base padding + rows
-
-    const normalPageCapacity = Math.max(5, Math.floor((USABLE_HEIGHT - HEADER_HEIGHT) / ROW_HEIGHT));
-    const lastPageCapacity = Math.max(3, Math.floor((USABLE_HEIGHT - HEADER_HEIGHT - SUMMARY_HEIGHT) / ROW_HEIGHT));
-
-    // Extra safety buffer for complex summaries
-    const hasRefund = data.refund_amount > 0;
-    const hasMultiplePayments = payments.length > 2;
-    const safetyBuffer = (hasRefund ? 3 : 0) + (hasMultiplePayments ? 2 : 0) + (cancelledTests.length > 0 ? 1 : 0);
-    const safeLastPageCapacity = Math.max(1, lastPageCapacity - safetyBuffer);
-
-    // Build pages: fill each page to normalPageCapacity, last page gets summary
-    const pages: any[][] = [];
-    const totalTests = tests.length;
-    if (totalTests <= safeLastPageCapacity) {
-      // Everything fits on one page with summary
-      pages.push(tests);
-    } else {
-      let idx = 0;
-      let remaining = totalTests;
-      // Fill pages forward until remainder fits on last page with summary
-      while (remaining > safeLastPageCapacity) {
-        const take = Math.min(normalPageCapacity, remaining);
-        pages.push(tests.slice(idx, idx + take));
-        idx += take;
-        remaining -= take;
-      }
-      if (remaining > 0) {
-        pages.push(tests.slice(idx)); // last page with summary
-      }
-    }
-
-    // If last page is at or above safe capacity, push summary to dedicated page
-    if (pages.length > 0 && pages[pages.length - 1].length >= safeLastPageCapacity && pages[pages.length - 1].length >= lastPageCapacity) {
-      pages.push([]); // empty page just for summary
-    }
-
-    const totalPages = pages.length;
+    // Always one page — content auto-scales in the print window.
+    const pages: any[][] = [tests];
+    const totalPages = 1;
 
     const headerHtml = () => {
       let h = `<div style="border-top:4px solid ${PALETTE.blue};border-bottom:2px solid ${PALETTE.red};padding:10px 0 12px;margin-bottom:14px">`;
@@ -493,23 +438,22 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
         const moneyRow = (
           label: string,
           amount: string,
-          opts?: { color?: string; weight?: string; bg?: string; pad?: string; size?: string; amountSize?: string },
+          opts?: { color?: string; weight?: string; bg?: string; size?: string; amountSize?: string },
         ) => {
           const color = opts?.color || PALETTE.ink;
           const weight = opts?.weight || "600";
           const bg = opts?.bg || "transparent";
-          const pad = opts?.pad || "5px 4px";
-          const size = opts?.size || "12px";
+          const size = opts?.size || "11px";
           const amountSize = opts?.amountSize || size;
+          const pad = "3px 0";
           return `<tr>
-            <td style="padding:${pad};font-size:${size};font-weight:${weight};color:${color};background:${bg};text-align:left;vertical-align:middle;border:none">${label}</td>
-            <td style="padding:${pad};font-size:${amountSize};font-weight:${weight};color:${color};background:${bg};text-align:right;vertical-align:middle;white-space:nowrap;border:none">${amount}</td>
+            <td style="padding:${pad};font-size:${size};font-weight:${weight};color:${color};background:${bg};text-align:left;vertical-align:middle;border:0;width:70%">${label}</td>
+            <td style="padding:${pad};font-size:${amountSize};font-weight:${weight};color:${color};background:${bg};text-align:right;vertical-align:middle;white-space:nowrap;border:0;width:30%">${amount}</td>
           </tr>`;
         };
 
-        summaryHtml = `<div style="margin-top:12px;background:${PALETTE.soft};border:1px solid ${PALETTE.line};border-radius:10px;padding:10px 12px">`;
+        summaryHtml = `<div style="margin-top:6px;background:${PALETTE.soft};border:1px solid ${PALETTE.line};border-radius:8px;padding:6px 8px">`;
         summaryHtml += `<table style="width:100%;border-collapse:collapse;table-layout:fixed">`;
-        summaryHtml += `<colgroup><col style="width:70%" /><col style="width:30%" /></colgroup>`;
         if (showGross) {
           summaryHtml += moneyRow("Gross Amount", `₹${activeGross}`, { color: PALETTE.muted, weight: "500" });
           if (activeDiscount > 0) {
@@ -523,9 +467,8 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
           color: "#ffffff",
           weight: "800",
           bg: PALETTE.blue,
-          pad: "10px 12px",
           size: "10px",
-          amountSize: "16px",
+          amountSize: "13px",
         });
         if (payments.length > 0) {
           payments.forEach((p: any) => {
@@ -536,25 +479,11 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
             );
           });
         }
-        summaryHtml += moneyRow("Paid", `₹${data.paid_amount}`, { color: PALETTE.ink, weight: "700", pad: "8px 4px", size: "12px" });
-        summaryHtml += `</table>`;
-        if (Number(data.paid_amount || 0) > 0) {
-          summaryHtml += `<div style="font-size:10px;margin-top:6px;color:${PALETTE.muted}">Received with thanks from <strong style="color:${PALETTE.ink}">${patientDisplayName(data)}</strong> a sum of Rs. ${Number(data.paid_amount).toFixed(2)}/- (${numberToWords(Number(data.paid_amount))} Rupees)</div>`;
-        }
+        summaryHtml += moneyRow("Paid", `₹${data.paid_amount}`, { color: PALETTE.ink, weight: "700" });
         if (data.due_amount > 0) {
-          summaryHtml += `<table style="width:100%;border-collapse:collapse;table-layout:fixed;margin-top:8px">`;
-          summaryHtml += `<colgroup><col style="width:70%" /><col style="width:30%" /></colgroup>`;
-          summaryHtml += moneyRow("Due", `₹${data.due_amount}`, {
-            color: PALETTE.red,
-            weight: "800",
-            bg: "#FEF2F2",
-            pad: "8px 10px",
-          });
-          summaryHtml += `</table>`;
+          summaryHtml += moneyRow("Due", `₹${data.due_amount}`, { color: PALETTE.red, weight: "800", bg: "#FEF2F2" });
         }
         if (data.refund_amount > 0) {
-          summaryHtml += `<table style="width:100%;border-collapse:collapse;table-layout:fixed;margin-top:8px;border-top:1px solid ${PALETTE.line};padding-top:8px">`;
-          summaryHtml += `<colgroup><col style="width:70%" /><col style="width:30%" /></colgroup>`;
           summaryHtml += moneyRow("Refund Amount", `₹${data.refund_amount}`, { color: PALETTE.orange, weight: "700" });
           summaryHtml += moneyRow("Refund Mode", `${data.refund_mode || "—"}`, { color: PALETTE.muted, weight: "500", size: "10px" });
           if (data.refund_date) {
@@ -564,60 +493,78 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
               size: "10px",
             });
           }
-          summaryHtml += `</table>`;
-          if (cancelledTests.length > 0) {
-            summaryHtml += `<div style="font-size:9px;color:${PALETTE.muted};margin-top:3px">Cancelled Tests: ${cancelledTests.map((ct: any) => ct.test_name || ct.test_id).join(", ")}</div>`;
-          }
-          if (hvcRefund > 0) {
-            summaryHtml += `<div style="font-size:9px;color:${PALETTE.muted};margin-top:3px">Home Visit Charges Refunded: ₹${hvcRefund}</div>`;
-          }
+        }
+        summaryHtml += `</table>`;
+        if (Number(data.paid_amount || 0) > 0) {
+          summaryHtml += `<div style="font-size:9px;margin-top:4px;color:${PALETTE.muted}">Received with thanks from <strong style="color:${PALETTE.ink}">${patientDisplayName(data)}</strong> a sum of Rs. ${Number(data.paid_amount).toFixed(2)}/- (${numberToWords(Number(data.paid_amount))} Rupees)</div>`;
+        }
+        if (cancelledTests.length > 0) {
+          summaryHtml += `<div style="font-size:8px;color:${PALETTE.muted};margin-top:2px">Cancelled Tests: ${cancelledTests.map((ct: any) => ct.test_name || ct.test_id).join(", ")}</div>`;
+        }
+        if (hvcRefund > 0) {
+          summaryHtml += `<div style="font-size:8px;color:${PALETTE.muted};margin-top:2px">Home Visit Charges Refunded: ₹${hvcRefund}</div>`;
         }
         summaryHtml += `</div>`;
 
         const barcodePng = barcodeRef.current?.toDataURL?.("image/png");
         if (barcodePng) {
-          summaryHtml += `<div style="margin-top:12px;text-align:center"><img src="${barcodePng}" style="height:28px;display:inline-block" /></div>`;
+          summaryHtml += `<div style="margin-top:6px;text-align:center"><img src="${barcodePng}" style="height:24px;display:inline-block" /></div>`;
         }
 
-        summaryHtml += `<div style="text-align:center;font-size:9px;color:${PALETTE.muted};margin-top:14px">`;
+        summaryHtml += `<div style="text-align:center;font-size:8px;color:${PALETTE.muted};margin-top:6px">`;
         summaryHtml += `<p style="margin:0;font-weight:600;color:${PALETTE.blue}">Thank you for choosing PH PathLabs</p>`;
-        summaryHtml += `<p style="margin:6px 0 0;font-size:8px">This is an electronically generated receipt and does not require a signature</p>`;
+        summaryHtml += `<p style="margin:3px 0 0;font-size:7px">This is an electronically generated receipt and does not require a signature</p>`;
         summaryHtml += `</div>`;
       }
 
       const printNow = format(new Date(), "dd-MM-yyyy hh:mm a");
       const preparedDate = format(createdAt, "dd-MM-yyyy hh:mm a");
       const currentUser = getCurrentUserName() || "—";
-      const preparedPrintedFooter = `<table style="width:100%;border-collapse:collapse;margin-top:14px;border-top:1px solid ${PALETTE.line}">
+      const preparedPrintedFooter = `<table style="width:100%;border-collapse:collapse;margin-top:6px;border-top:1px solid ${PALETTE.line}">
         <tr>
-          <td style="padding-top:8px;font-size:8px;color:${PALETTE.muted};text-align:left;border:none">Prepared by ${data.registered_by || "—"} · ${preparedDate}</td>
-          <td style="padding-top:8px;font-size:8px;color:${PALETTE.muted};text-align:right;border:none">Printed by ${currentUser} · ${printNow}</td>
+          <td style="padding-top:4px;font-size:7px;color:${PALETTE.muted};text-align:left;border:0">Prepared by ${data.registered_by || "—"} · ${preparedDate}</td>
+          <td style="padding-top:4px;font-size:7px;color:${PALETTE.muted};text-align:right;border:0">Printed by ${currentUser} · ${printNow}</td>
         </tr>
       </table>`;
 
-      pagesHtml += `<div style="${pageBreak}${pageIdx > 0 ? 'padding-top:8mm;' : ''}">`;
+      pagesHtml += `<div id="invoice-sheet">`;
       pagesHtml += headerHtml();
       pagesHtml += demographicsHtml();
       if (pageTests.length > 0) {
-        pagesHtml += `<table style="width:100%;border-collapse:collapse;margin:4px 0 0"><thead>${tableHeaderHtml()}</thead><tbody>${tableRows}${subtotalRow}</tbody></table>`;
+        pagesHtml += `<table style="width:100%;border-collapse:collapse;margin:0"><thead>${tableHeaderHtml()}</thead><tbody>${tableRows}</tbody></table>`;
       }
       pagesHtml += summaryHtml;
       pagesHtml += preparedPrintedFooter;
-      pagesHtml += `<div style="text-align:center;font-size:8px;color:${PALETTE.muted};margin-top:8px">Page ${pageIdx + 1} of ${totalPages}</div>`;
       pagesHtml += `</div>`;
     });
 
     printWindow.document.write(`
       <html><head><title>Invoice ${data.invoice_number}</title>
       <style>
-        @page { size: A5; margin: 10mm; }
-        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-        body { font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif; padding: 6mm; max-width: 148mm; margin: auto; font-size: 10px; line-height: 1.5; color: ${PALETTE.ink}; }
+        @page { size: A5; margin: 8mm; }
+        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; }
+        body { font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif; color: ${PALETTE.ink}; }
+        #invoice-sheet { width: 132mm; margin: 0 auto; transform-origin: top center; }
         table { width: 100%; border-collapse: collapse; }
         td, th { vertical-align: middle; }
       </style></head><body>
       ${pagesHtml}
-      <script>window.print(); window.close();<\/script>
+      <script>
+        (function () {
+          function fit() {
+            var sheet = document.getElementById("invoice-sheet");
+            if (!sheet) return;
+            sheet.style.transform = "none";
+            var maxH = (194 / 25.4) * 96;
+            var h = sheet.scrollHeight;
+            var scale = h > maxH ? Math.max(0.52, maxH / h) : 1;
+            sheet.style.transform = "scale(" + scale + ")";
+          }
+          fit();
+          setTimeout(function () { fit(); window.print(); window.close(); }, 150);
+        })();
+      <\/script>
       </body></html>
     `);
     printWindow.document.close();
@@ -751,7 +698,7 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
             </tbody>
           </table>
 
-          <div style={{ marginTop: 12, background: PALETTE.soft, border: `1px solid ${PALETTE.line}`, borderRadius: 10, padding: "10px 12px" }}>
+          <div style={{ marginTop: 8, background: PALETTE.soft, border: `1px solid ${PALETTE.line}`, borderRadius: 8, padding: "6px 8px" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
               <colgroup>
                 <col style={{ width: "70%" }} />
@@ -761,59 +708,51 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
                 {showGross && (
                   <>
                     <tr>
-                      <td style={{ padding: "5px 4px", fontSize: 12, color: PALETTE.muted, textAlign: "left", border: "none" }}>Gross Amount</td>
-                      <td style={{ padding: "5px 4px", fontSize: 12, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none" }}>₹{activeGross}</td>
+                      <td style={{ padding: "3px 0", fontSize: 12, color: PALETTE.muted, textAlign: "left", border: "none" }}>Gross Amount</td>
+                      <td style={{ padding: "3px 0", fontSize: 12, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none" }}>₹{activeGross}</td>
                     </tr>
                     {activeDiscount > 0 && (
                       <tr>
-                        <td style={{ padding: "5px 4px", fontSize: 12, color: PALETTE.discount, fontWeight: 600, textAlign: "left", border: "none" }}>Discount</td>
-                        <td style={{ padding: "5px 4px", fontSize: 12, color: PALETTE.discount, fontWeight: 600, textAlign: "right", whiteSpace: "nowrap", border: "none" }}>-₹{activeDiscount}</td>
+                        <td style={{ padding: "3px 0", fontSize: 12, color: PALETTE.discount, fontWeight: 600, textAlign: "left", border: "none" }}>Discount</td>
+                        <td style={{ padding: "3px 0", fontSize: 12, color: PALETTE.discount, fontWeight: 600, textAlign: "right", whiteSpace: "nowrap", border: "none" }}>-₹{activeDiscount}</td>
                       </tr>
                     )}
                     {Number(data.home_visit_charges || 0) > 0 && (
                       <tr>
-                        <td style={{ padding: "5px 4px", fontSize: 12, color: PALETTE.muted, textAlign: "left", border: "none" }}>Home Visit Charges</td>
-                        <td style={{ padding: "5px 4px", fontSize: 12, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none" }}>+₹{data.home_visit_charges}</td>
+                        <td style={{ padding: "3px 0", fontSize: 12, color: PALETTE.muted, textAlign: "left", border: "none" }}>Home Visit Charges</td>
+                        <td style={{ padding: "3px 0", fontSize: 12, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none" }}>+₹{data.home_visit_charges}</td>
                       </tr>
                     )}
                   </>
                 )}
                 <tr>
-                  <td style={{ padding: "10px 12px", fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase", color: "#fff", background: PALETTE.blue, textAlign: "left", border: "none", borderRadius: "8px 0 0 8px" }}>Final Amount</td>
-                  <td style={{ padding: "10px 12px", fontSize: 16, fontWeight: 800, color: "#fff", background: PALETTE.blue, textAlign: "right", whiteSpace: "nowrap", border: "none", borderRadius: "0 8px 8px 0" }}>₹{activeFinal}</td>
+                  <td style={{ padding: "3px 0", fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase", color: "#fff", background: PALETTE.blue, textAlign: "left", border: "none" }}>Final Amount</td>
+                  <td style={{ padding: "3px 0", fontSize: 14, fontWeight: 800, color: "#fff", background: PALETTE.blue, textAlign: "right", whiteSpace: "nowrap", border: "none" }}>₹{activeFinal}</td>
                 </tr>
                 {payments.map((p: any, i: number) => (
                   <tr key={i}>
-                    <td style={{ padding: "5px 4px", fontSize: 11, color: PALETTE.muted, textAlign: "left", border: "none" }}>
+                    <td style={{ padding: "3px 0", fontSize: 11, color: PALETTE.muted, textAlign: "left", border: "none" }}>
                       {p.mode}{p.date ? ` (${format(new Date(p.date), "dd-MM-yyyy hh:mm a")})` : ""}
                     </td>
-                    <td style={{ padding: "5px 4px", fontSize: 11, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none" }}>₹{p.amount}</td>
+                    <td style={{ padding: "3px 0", fontSize: 11, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none" }}>₹{p.amount}</td>
                   </tr>
                 ))}
                 <tr>
-                  <td style={{ padding: "8px 4px", fontSize: 12, fontWeight: 700, color: PALETTE.ink, textAlign: "left", border: "none" }}>Paid</td>
-                  <td style={{ padding: "8px 4px", fontSize: 12, fontWeight: 700, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none" }}>₹{data.paid_amount}</td>
+                  <td style={{ padding: "3px 0", fontSize: 12, fontWeight: 700, color: PALETTE.ink, textAlign: "left", border: "none" }}>Paid</td>
+                  <td style={{ padding: "3px 0", fontSize: 12, fontWeight: 700, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none" }}>₹{data.paid_amount}</td>
                 </tr>
+                {data.due_amount > 0 && (
+                  <tr>
+                    <td style={{ padding: "3px 0", fontSize: 12, fontWeight: 800, color: PALETTE.red, background: "#FEF2F2", textAlign: "left", border: "none" }}>Due</td>
+                    <td style={{ padding: "3px 0", fontSize: 12, fontWeight: 800, color: PALETTE.red, background: "#FEF2F2", textAlign: "right", whiteSpace: "nowrap", border: "none" }}>₹{data.due_amount}</td>
+                  </tr>
+                )}
               </tbody>
             </table>
             {Number(data.paid_amount || 0) > 0 && (
-              <div style={{ fontSize: 11, marginTop: 6, color: PALETTE.muted }}>
+              <div style={{ fontSize: 11, marginTop: 4, color: PALETTE.muted }}>
                 Received with thanks from <strong style={{ color: PALETTE.ink }}>{patientDisplayName(data)}</strong> a sum of Rs. {Number(data.paid_amount).toFixed(2)}/- ({numberToWords(Number(data.paid_amount))} Rupees)
               </div>
-            )}
-            {data.due_amount > 0 && (
-              <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", marginTop: 8 }}>
-                <colgroup>
-                  <col style={{ width: "70%" }} />
-                  <col style={{ width: "30%" }} />
-                </colgroup>
-                <tbody>
-                  <tr>
-                    <td style={{ padding: "8px 10px", fontSize: 12, fontWeight: 800, color: PALETTE.red, background: "#FEF2F2", textAlign: "left", border: "none", borderRadius: "8px 0 0 8px" }}>Due</td>
-                    <td style={{ padding: "8px 10px", fontSize: 12, fontWeight: 800, color: PALETTE.red, background: "#FEF2F2", textAlign: "right", whiteSpace: "nowrap", border: "none", borderRadius: "0 8px 8px 0" }}>₹{data.due_amount}</td>
-                  </tr>
-                </tbody>
-              </table>
             )}
             {data.refund_amount > 0 && (
               <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", marginTop: 8, borderTop: `1px solid ${PALETTE.line}` }}>
