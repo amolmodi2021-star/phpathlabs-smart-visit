@@ -40,6 +40,8 @@ export const MODULE_KEYS: Record<LimsModule, string[]> = {
     "results_accepted_count",
     "results_accepted_tubes",
     "results_reg_detail",
+    "results_machine_filtered_ids",
+    "results_tests_instrument_map",
     "patient_results_existing",
     "outsourced_manual_results",
     "results_outsourced_snips",

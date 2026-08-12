@@ -204,6 +204,12 @@ const ResultsEntry = () => {
     return () => clearTimeout(t);
   }, [search]);
 
+  // Reset page + collapse when switching patient/machine mode or machine filter
+  useEffect(() => {
+    setRePage(0);
+    setExpandedPatient(null);
+  }, [mode, selectedMachine]);
+
   const { data: pendingIds = [] as string[], isLoading: loadingIds } = useQuery({
     queryKey: ["results_accepted_count", debouncedSearch],
     queryFn: async (): Promise<string[]> => {
@@ -213,8 +219,61 @@ const ResultsEntry = () => {
     placeholderData: keepPreviousData,
     staleTime: 120_000,
   });
-  const reCount = pendingIds.length;
-  const pageIds: string[] = pendingIds.slice(rePage * pageSize, (rePage + 1) * pageSize);
+
+  const machineFilterActive = mode === "machine" && selectedMachine !== "all";
+
+  // Lean instrument map for machine-wise list filtering (no params until expand)
+  const { data: testsInstrumentMap = {} as Record<string, string> } = useQuery({
+    queryKey: ["results_tests_instrument_map"],
+    enabled: mode === "machine",
+    queryFn: async () => {
+      const { data } = await supabase.from("tests").select("id, instrument_name");
+      const map: Record<string, string> = {};
+      (data || []).forEach((t: any) => {
+        map[t.id] = String(t.instrument_name || "").trim();
+      });
+      return map;
+    },
+    staleTime: 600_000,
+  });
+
+  // Among Results candidates, keep only regs with accepted-tube tests for the selected machine
+  const pendingIdsKey = shortIdsKey(pendingIds, "re-c");
+  const { data: machineFilteredIds = [] as string[], isLoading: loadingMachineFilter } = useQuery({
+    queryKey: ["results_machine_filtered_ids", pendingIdsKey, selectedMachine],
+    enabled: machineFilterActive && pendingIds.length > 0 && Object.keys(testsInstrumentMap).length > 0,
+    queryFn: async (): Promise<string[]> => {
+      const want = selectedMachine === "others" ? "" : selectedMachine;
+      const machineTestIds = new Set(
+        Object.entries(testsInstrumentMap)
+          .filter(([, inst]) => inst === want)
+          .map(([id]) => id),
+      );
+      if (machineTestIds.size === 0) return [];
+
+      const tubes = await fetchAllByIds<any>(
+        "sample_tubes",
+        "registration_id, test_ids",
+        "registration_id",
+        pendingIds,
+        { eq: { status: "accepted" } },
+      );
+      const match = new Set<string>();
+      for (const tube of tubes) {
+        const ids = Array.isArray(tube.test_ids) ? tube.test_ids : [];
+        if (ids.some((id: string) => id && machineTestIds.has(id))) {
+          match.add(tube.registration_id);
+        }
+      }
+      return pendingIds.filter((id) => match.has(id));
+    },
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
+  });
+
+  const displayIds = machineFilterActive ? machineFilteredIds : pendingIds;
+  const reCount = displayIds.length;
+  const pageIds: string[] = displayIds.slice(rePage * pageSize, (rePage + 1) * pageSize);
   const pageKey = shortIdsKey(pageIds, "re");
 
   // ─── Fetch accepted registrations (list headers — page only) ───
@@ -233,6 +292,11 @@ const ResultsEntry = () => {
     placeholderData: keepPreviousData,
     staleTime: 120_000,
   });
+
+  const listLoading =
+    loadingIds ||
+    (pageIds.length > 0 && loadingRegs) ||
+    (machineFilterActive && (loadingMachineFilter || Object.keys(testsInstrumentMap).length === 0));
 
   const reTotalPages = Math.max(1, Math.ceil(reCount / pageSize));
   const regIds = acceptedRegs.map((r: any) => r.id);
@@ -1228,7 +1292,7 @@ const ResultsEntry = () => {
     }
   };
 
-  // ─── Filter entries: keep all page patients as headers; filter params only when expanded ───
+  // ─── Filter entries: lean headers; machine mode shows only that machine's tests on expand ───
   const filteredEntries = useMemo(() => {
     const activeEntries = patientEntries.map(e => {
       if (e.registration.id !== expandedPatient) return e;
@@ -1244,18 +1308,25 @@ const ResultsEntry = () => {
       return { ...e, parameters: activeParams };
     });
 
-    if (mode === "patient") return activeEntries;
-    if (selectedMachine === "all") return activeEntries;
+    if (mode === "patient" || selectedMachine === "all") return activeEntries;
+
     const filterMachine = selectedMachine === "others" ? "" : selectedMachine;
-    return activeEntries
-      .map(e => {
-        if (e.registration.id !== expandedPatient) return e;
-        return {
-          ...e,
-          parameters: e.parameters.filter(p => (p.machineName || "") === filterMachine),
-        };
-      });
-  }, [patientEntries, mode, selectedMachine, expandedPatient]);
+    const matchesMachine = (testId: string, machineName?: string) => {
+      if (machineName !== undefined) return (machineName || "") === filterMachine;
+      const inst = (testsMap[testId]?.instrument_name || testsInstrumentMap[testId] || "").trim();
+      return inst === filterMachine;
+    };
+
+    return activeEntries.map((e) => {
+      if (e.registration.id !== expandedPatient) return e;
+      return {
+        ...e,
+        parameters: e.parameters.filter((p) => matchesMachine(p.testId, p.machineName)),
+        incompleteTests: e.incompleteTests.filter((t) => matchesMachine(t.testId)),
+        snipOnlyTests: e.snipOnlyTests.filter((t) => matchesMachine(t.testId)),
+      };
+    });
+  }, [patientEntries, mode, selectedMachine, expandedPatient, testsMap, testsInstrumentMap]);
 
   // ─── NEW arrivals badge tracker ───
   const filteredRegIds = useMemo(() => filteredEntries.map(e => e.registration.id), [filteredEntries]);
@@ -1886,11 +1957,13 @@ const ResultsEntry = () => {
               <SelectItem value="all">All Machines</SelectItem>
               {(() => {
                 const machines = new Set<string>();
-                masterMachines.forEach((m: any) => machines.add(m.value));
-                patientEntries.forEach(e => e.parameters.forEach(p => { if (p.machineName) machines.add(p.machineName); }));
+                masterMachines.forEach((m: any) => { if (m.value) machines.add(m.value); });
+                Object.values(testsInstrumentMap).forEach((inst) => {
+                  if (inst) machines.add(inst);
+                });
                 machines.add("Others");
-                return Array.from(machines).sort((a, b) => a === "Others" ? 1 : b === "Others" ? -1 : a.localeCompare(b));
-              })().map(m => (
+                return Array.from(machines).sort((a, b) => (a === "Others" ? 1 : b === "Others" ? -1 : a.localeCompare(b)));
+              })().map((m) => (
                 <SelectItem key={m} value={m === "Others" ? "others" : m}>{m}</SelectItem>
               ))}
             </SelectContent>
@@ -1900,8 +1973,10 @@ const ResultsEntry = () => {
           queryKeys={[
             "results_accepted_count",
             "results_accepted_regs",
+            "results_machine_filtered_ids",
+            "results_tests_instrument_map",
             ...(expandedPatient
-              ? ["patient_results_existing", "results_accepted_tubes", "results_outsourced_snips"]
+              ? ["patient_results_existing", "results_accepted_tubes", "results_outsourced_snips", "results_reg_detail"]
               : []),
           ]}
           className="ml-auto shrink-0"
@@ -1944,13 +2019,15 @@ const ResultsEntry = () => {
       ) : (
         <>
           {/* Patient list */}
-          {(loadingIds || loadingRegs) ? (
+          {(listLoading) ? (
             <Card><CardContent className="p-8 text-center text-muted-foreground">Loading…</CardContent></Card>
           ) : filteredEntries.length === 0 ? (
             <Card>
               <CardContent className="p-8 text-center text-muted-foreground">
                 <FlaskConical className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                No accepted samples pending results
+                {machineFilterActive
+                  ? `No pending results for ${selectedMachine === "others" ? "Others" : selectedMachine}`
+                  : "No accepted samples pending results"}
               </CardContent>
             </Card>
           ) : (
