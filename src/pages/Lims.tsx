@@ -1,7 +1,8 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { Component, lazy, Suspense, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getAllowedSections } from "@/lib/auth";
+import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 
 const PatientRegistration = lazy(() => import("@/components/lims/PatientRegistration"));
@@ -43,6 +44,51 @@ const TabFallback = () => (
   </div>
 );
 
+/** Catch render/chunk errors so a failed tab doesn't leave a blank panel. */
+class TabErrorBoundary extends Component<
+  { tabKey: string; children: ReactNode },
+  { error: Error | null; resetKey: number }
+> {
+  state = { error: null as Error | null, resetKey: 0 };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error(`[LIMS tab ${this.props.tabKey}]`, error);
+  }
+
+  componentDidUpdate(prevProps: { tabKey: string }) {
+    if (prevProps.tabKey !== this.props.tabKey && this.state.error) {
+      this.setState({ error: null });
+    }
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex flex-col items-center justify-center gap-3 py-12 text-sm">
+          <p className="text-muted-foreground">This tab failed to load.</p>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => this.setState((s) => ({ error: null, resetKey: s.resetKey + 1 }))}
+            >
+              Retry
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => window.location.reload()}>
+              Refresh page
+            </Button>
+          </div>
+        </div>
+      );
+    }
+    return <div key={this.state.resetKey}>{this.props.children}</div>;
+  }
+}
+
 const Lims = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const allowed = getAllowedSections("/lims");
@@ -52,17 +98,29 @@ const Lims = () => {
     ? activeTab
     : (visibleTabs[0]?.key ?? "register");
 
-  // First click mounts + loads; later visits reuse the same mounted panel (cached UI + RQ data).
+  // Keep visited panels mounted so RQ cache + UI state survive tab switches.
   const [mountedTabs, setMountedTabs] = useState<Set<string>>(() => new Set([safeTab]));
 
-  useEffect(() => {
+  // Mount the active tab during render (not in useEffect) so the first paint after a
+  // tab click already has TabsContent — avoids intermittent blank panels after login.
+  if (!mountedTabs.has(safeTab)) {
     setMountedTabs((prev) => {
       if (prev.has(safeTab)) return prev;
       const next = new Set(prev);
       next.add(safeTab);
       return next;
     });
-  }, [safeTab]);
+  }
+
+  const switchTab = (v: string) => {
+    setMountedTabs((prev) => {
+      if (prev.has(v)) return prev;
+      const next = new Set(prev);
+      next.add(v);
+      return next;
+    });
+    setSearchParams({ tab: v }, { replace: true });
+  };
 
   if (visibleTabs.length === 0) {
     return (
@@ -76,7 +134,7 @@ const Lims = () => {
   return (
     <div className="space-y-4 animate-fade-in">
       <h1 className="text-xl font-bold">LIMS</h1>
-      <Tabs value={safeTab} onValueChange={(v) => setSearchParams({ tab: v }, { replace: true })} className="w-full">
+      <Tabs value={safeTab} onValueChange={switchTab} className="w-full">
         <TabsList className="w-full justify-start flex-wrap h-auto gap-1">
           {visibleTabs.map((t) => (
             <TabsTrigger key={t.key} value={t.key}>
@@ -94,9 +152,11 @@ const Lims = () => {
               forceMount
               className="data-[state=inactive]:hidden mt-3"
             >
-              <Suspense fallback={<TabFallback />}>
-                <Comp />
-              </Suspense>
+              <TabErrorBoundary tabKey={t.key}>
+                <Suspense fallback={<TabFallback />}>
+                  <Comp />
+                </Suspense>
+              </TabErrorBoundary>
             </TabsContent>
           );
         })}
