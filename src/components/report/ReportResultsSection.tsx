@@ -89,10 +89,10 @@ const isNumericResult = (value?: string): boolean => {
   if (!v) return false;
   // Time values like "2:30" are treated as numeric so they render centred under the Result column.
   if (isCanonicalTimeValue(v)) return true;
-  // Treat plain numbers (incl. decimals, negatives, "<10", ">100", "1.2e3") as numeric so
-  // they render centered under the Result column instead of as wide descriptive text.
-  // Examples that must be numeric: "11.48" (BUN/Creat ratio), "0.84", "-0.5", "<10".
-  return /^[<>]?\s*-?\d+(\.\d+)?(e[+-]?\d+)?\s*$/i.test(v);
+  // Treat plain numbers (incl. decimals, negatives, "<10", ">100", "1.2e3") and number+unit
+  // ("10 ml", "5.2 g/dL") as numeric so they render centered under the Result column.
+  // Examples that must be numeric: "11.48" (BUN/Creat ratio), "0.84", "-0.5", "<10", "10 ml".
+  return /^[<>]?\s*-?\d+(\.\d+)?(e[+-]?\d+)?(\s*[a-zA-Z%µμ/²³°]+)?\s*$/i.test(v);
 };
 
 const isDescriptiveResult = (r: TestResult): boolean => {
@@ -100,6 +100,14 @@ const isDescriptiveResult = (r: TestResult): boolean => {
   const hasRefText = !!(r.normal_range_text && String(r.normal_range_text).trim());
   const hasRefBounds = r.normal_range_low != null && r.normal_range_high != null;
   return !hasRefText && !hasRefBounds;
+};
+
+/** Long free-text (no ref) may span Result+Reference left-aligned; short values stay centered. */
+const isWideDescriptiveText = (value?: string): boolean => {
+  const v = String(value || "").trim();
+  if (!v) return false;
+  if (/\r?\n/.test(v)) return true;
+  return v.length > 40;
 };
 
 const isAbnormalFlag = (flag?: string): boolean => {
@@ -127,8 +135,10 @@ const ParamRow = ({ r, rowKey, compact, isMorph, showFlagText, rowFontSize, colC
   const hasRefText = !!(r.normal_range_text && String(r.normal_range_text).trim());
   const hasRefBounds = r.normal_range_low != null && r.normal_range_high != null;
   const hasReference = hasRefText || hasRefBounds;
-  // Blank Display Text → Result uses Result+Reference (+Flag if no HIGH/LOW badge)
-  const widenResult = !hasReference && (isDescriptiveResult(r) || isMorph);
+  // Blank Display Text: only widen for morphology / long free-text.
+  // Short undefined-range values (e.g. Quantity "10 ml") stay in Result, centered.
+  const widenResult =
+    isMorph || (!hasReference && isDescriptiveResult(r) && isWideDescriptiveText(r.result_value));
   const py = compact ? 'py-[2px]' : 'py-0.5';
 
   // Bold styling only for abnormal rows
