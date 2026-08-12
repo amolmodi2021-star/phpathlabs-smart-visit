@@ -217,29 +217,59 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
       return;
     }
     setWaSending(true);
+    const host = document.createElement("div");
     try {
-      // Canvas barcode captures reliably in html2canvas (SVG often blank).
+      // Match on-screen receipt exactly — capture an off-screen clone (dialog overflow
+      // and html2canvas onclone layout hacks were distorting WhatsApp images).
       renderBarcode();
-      await new Promise((r) => setTimeout(r, 50));
-      const canvas = await html2canvas(receiptRef.current, {
+      await new Promise((r) => setTimeout(r, 80));
+
+      const source = receiptRef.current;
+      const imgs = Array.from(source.querySelectorAll("img"));
+      await Promise.all(
+        imgs.map(
+          (img) =>
+            img.complete
+              ? Promise.resolve()
+              : new Promise<void>((resolve) => {
+                  img.onload = () => resolve();
+                  img.onerror = () => resolve();
+                }),
+        ),
+      );
+
+      host.setAttribute("data-invoice-wa-capture", "1");
+      host.style.cssText =
+        "position:fixed;left:-10000px;top:0;width:560px;background:#ffffff;z-index:-1;pointer-events:none;";
+      const clone = source.cloneNode(true) as HTMLElement;
+      clone.style.margin = "0";
+      clone.style.width = "560px";
+      host.appendChild(clone);
+      document.body.appendChild(host);
+
+      // Canvas pixels are not copied by cloneNode — redraw barcode into the clone.
+      const srcCanvases = source.querySelectorAll("canvas");
+      const dstCanvases = clone.querySelectorAll("canvas");
+      srcCanvases.forEach((src, i) => {
+        const dst = dstCanvases[i] as HTMLCanvasElement | undefined;
+        if (!dst) return;
+        dst.width = (src as HTMLCanvasElement).width;
+        dst.height = (src as HTMLCanvasElement).height;
+        const ctx = dst.getContext("2d");
+        if (ctx) ctx.drawImage(src as HTMLCanvasElement, 0, 0);
+      });
+
+      const canvas = await html2canvas(clone, {
         backgroundColor: "#ffffff",
         scale: 2,
         useCORS: true,
+        allowTaint: false,
         width: 560,
         windowWidth: 560,
-        // Keep cloned layout metrics close to on-screen so summary spacing matches preview.
+        height: clone.scrollHeight,
+        windowHeight: clone.scrollHeight,
         logging: false,
-        onclone: (_doc, cloned) => {
-          const root = cloned as HTMLElement;
-          root.style.lineHeight = "1.55";
-          root.querySelectorAll("div").forEach((el) => {
-            const style = (el as HTMLElement).style;
-            // Ensure tiny paddings aren't lost when borders sit between flex rows.
-            if (style.borderTop && style.borderTop !== "none" && style.borderTop !== "") {
-              if (!style.marginTop || style.marginTop === "0px") style.marginTop = "8px";
-            }
-          });
-        },
+        imageTimeout: 5000,
       });
       const blob = await new Promise<Blob | null>((resolve) =>
         canvas.toBlob((b) => resolve(b), "image/jpeg", 0.95),
@@ -275,6 +305,7 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
     } catch (e: any) {
       toast.error(e?.message || "WhatsApp WA API queue failed");
     } finally {
+      host.remove();
       setWaSending(false);
     }
   }, [open, data, brand.invoice_lab_name, renderBarcode, isPickupInvoice]);
@@ -689,30 +720,34 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
             </tbody>
           </table>
 
-          {/* Patient — compact inline rows */}
+          {/* Patient — table layout (html2canvas-safe; matches print) */}
           <div style={{ background: PALETTE.blueSoft, border: `1px solid ${PALETTE.blueLine}`, borderRadius: 6, padding: "4px 8px", marginBottom: 6 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px 8px", fontSize: 10, lineHeight: 1.25 }}>
-              <div>
-                <span style={{ color: PALETTE.muted, fontSize: 8 }}>Name </span>
-                <strong>{patientDisplayName(data)}</strong>
-              </div>
-              <div>
-                <span style={{ color: PALETTE.muted, fontSize: 8 }}>Mobile </span>
-                <strong>{data.mobile_number || "—"}</strong>
-              </div>
-              {(data.gender || age) && (
-                <div>
-                  <span style={{ color: PALETTE.muted, fontSize: 8 }}>Age / Gender </span>
-                  <strong>{[age, data.gender].filter(Boolean).join(" · ")}</strong>
-                </div>
-              )}
-              {data.doctor_name && (
-                <div>
-                  <span style={{ color: PALETTE.muted, fontSize: 8 }}>Doctor </span>
-                  <strong>{data.doctor_name}</strong>
-                </div>
-              )}
-            </div>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, lineHeight: 1.25 }}>
+              <tbody>
+                <tr>
+                  <td style={{ border: "none", padding: "1px 6px 1px 0", width: "50%", verticalAlign: "top" }}>
+                    <span style={{ color: PALETTE.muted, fontSize: 8 }}>Name </span>
+                    <strong>{patientDisplayName(data)}</strong>
+                  </td>
+                  <td style={{ border: "none", padding: "1px 0", width: "50%", verticalAlign: "top" }}>
+                    <span style={{ color: PALETTE.muted, fontSize: 8 }}>Mobile </span>
+                    <strong>{data.mobile_number || "—"}</strong>
+                  </td>
+                </tr>
+                {(data.gender || age || data.doctor_name) && (
+                  <tr>
+                    <td style={{ border: "none", padding: "1px 6px 1px 0", verticalAlign: "top" }}>
+                      <span style={{ color: PALETTE.muted, fontSize: 8 }}>Age / Gender </span>
+                      <strong>{[age, data.gender].filter(Boolean).join(" · ") || "—"}</strong>
+                    </td>
+                    <td style={{ border: "none", padding: "1px 0", verticalAlign: "top" }}>
+                      <span style={{ color: PALETTE.muted, fontSize: 8 }}>Doctor </span>
+                      <strong>{data.doctor_name || "—"}</strong>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
 
           <table style={{ width: "100%", borderCollapse: "collapse", margin: 0, tableLayout: "fixed" }}>
