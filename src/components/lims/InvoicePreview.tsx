@@ -452,7 +452,7 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
           </tr>`;
         };
 
-        summaryHtml = `<div style="margin-top:6px;background:${PALETTE.soft};border:1px solid ${PALETTE.line};border-radius:8px;padding:6px 8px">`;
+        summaryHtml = `<div style="margin-top:4px;padding:0">`;
         summaryHtml += `<table style="width:100%;border-collapse:collapse;table-layout:fixed">`;
         if (showGross) {
           summaryHtml += moneyRow("Gross Amount", `₹${activeGross}`, { color: PALETTE.muted, weight: "500" });
@@ -521,7 +521,7 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
         </tr>
       </table>`;
 
-      pagesHtml += `<div id="invoice-sheet">`;
+      pagesHtml += `<div id="invoice-page"><div id="invoice-sheet">`;
       pagesHtml += headerHtml();
       pagesHtml += demographicsHtml();
       if (pageTests.length > 0) {
@@ -529,7 +529,7 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
       }
       pagesHtml += summaryHtml;
       pagesHtml += preparedPrintedFooter;
-      pagesHtml += `</div>`;
+      pagesHtml += `</div></div>`;
     });
 
     printWindow.document.write(`
@@ -539,24 +539,68 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box; }
         html, body { margin: 0; padding: 0; }
         body { font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif; color: ${PALETTE.ink}; }
-        #invoice-sheet { width: 132mm; margin: 0 auto; transform-origin: top center; }
+        /* A5 printable area (210mm - 16mm margins). Clip so scale never creates page 2. */
+        #invoice-page {
+          width: 132mm;
+          height: 194mm;
+          overflow: hidden;
+          margin: 0 auto;
+          page-break-after: avoid;
+          page-break-inside: avoid;
+        }
+        #invoice-sheet {
+          width: 100%;
+          transform-origin: top left;
+        }
         table { width: 100%; border-collapse: collapse; }
         td, th { vertical-align: middle; }
       </style></head><body>
       ${pagesHtml}
       <script>
         (function () {
+          // CBC-style fit: uniform scale from top-left, widen layout by 1/scale so
+          // visual width stays full page (no horizontal squeeze) while height fits A5.
           function fit() {
+            var page = document.getElementById("invoice-page");
             var sheet = document.getElementById("invoice-sheet");
-            if (!sheet) return;
+            if (!page || !sheet) return;
             sheet.style.transform = "none";
-            var maxH = (194 / 25.4) * 96;
+            sheet.style.width = "100%";
+            var maxH = page.clientHeight || Math.round((194 / 25.4) * 96);
             var h = sheet.scrollHeight;
-            var scale = h > maxH ? Math.max(0.52, maxH / h) : 1;
-            sheet.style.transform = "scale(" + scale + ")";
+            var scale = h > maxH ? Math.max(0.5, maxH / h) : 1;
+            if (scale < 1) {
+              sheet.style.transformOrigin = "top left";
+              sheet.style.transform = "scale(" + scale + ")";
+              sheet.style.width = (100 / scale) + "%";
+            }
           }
-          fit();
-          setTimeout(function () { fit(); window.print(); window.close(); }, 150);
+          function whenReady(cb) {
+            var imgs = Array.prototype.slice.call(document.images || []);
+            var pending = imgs.filter(function (img) { return !img.complete; }).length;
+            if (!pending) { cb(); return; }
+            var done = false;
+            var finish = function () {
+              if (done) return;
+              done = true;
+              cb();
+            };
+            imgs.forEach(function (img) {
+              if (img.complete) return;
+              img.onload = img.onerror = function () {
+                pending -= 1;
+                if (pending <= 0) finish();
+              };
+            });
+            setTimeout(finish, 600);
+          }
+          whenReady(function () {
+            fit();
+            requestAnimationFrame(function () {
+              fit();
+              setTimeout(function () { window.print(); window.close(); }, 80);
+            });
+          });
         })();
       <\/script>
       </body></html>
@@ -692,7 +736,7 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
             </tbody>
           </table>
 
-          <div style={{ marginTop: 8, background: PALETTE.soft, border: `1px solid ${PALETTE.line}`, borderRadius: 8, padding: "6px 8px" }}>
+          <div style={{ marginTop: 8, padding: 0 }}>
             <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
               <colgroup>
                 <col style={{ width: "70%" }} />
