@@ -328,7 +328,7 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
 
     const headerHtml = () => {
       // No top blue line; modest top padding above logo.
-      let h = `<div style="border-bottom:2px solid ${PALETTE.red};padding:8px 0 4px;margin:0 0 6px">`;
+      let h = `<div style="border-bottom:2px solid ${PALETTE.red};padding:20px 0 4px;margin:0 0 6px">`;
       if (brand.invoice_logo_url) {
         h += `<div style="text-align:${brand.invoice_logo_align};line-height:0"><img src="${brand.invoice_logo_url}" style="max-height:40px;display:inline-block" /></div>`;
       }
@@ -626,7 +626,7 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
           }}
         >
           {/* Brand header — no top blue line, minimal top margin */}
-          <div style={{ borderBottom: `2px solid ${PALETTE.red}`, padding: "8px 0 4px", marginBottom: 6 }}>
+          <div style={{ borderBottom: `2px solid ${PALETTE.red}`, padding: "20px 0 4px", marginBottom: 6 }}>
             {brand.invoice_logo_url && (
               <div style={{ textAlign: brand.invoice_logo_align as any, lineHeight: 0 }}>
                 <img src={brand.invoice_logo_url} alt="Logo" style={{ maxHeight: 44, display: "inline-block" }} />
