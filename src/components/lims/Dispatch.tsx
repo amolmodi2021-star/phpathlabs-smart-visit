@@ -23,7 +23,7 @@ import { Calendar as DatePickerCalendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Search, Loader2, Send, Eye, Truck, Circle, Phone, Calendar as CalendarIcon, FileText, User, Clock, ChevronRight, ArrowLeft, MessageSquare, Download } from "lucide-react";
 import { toast } from "sonner";
-import { format, startOfDay, endOfDay, subDays } from "date-fns";
+import { format, startOfDay, endOfDay, subDays, isSameDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 import { PATIENT_RESULTS_SELECT_DISPATCH } from "@/lib/patientResultsSelect";
@@ -241,6 +241,8 @@ const Dispatch = () => {
   const [mobileShowDetail, setMobileShowDetail] = useState(false);
   const [pageSize, setPageSize] = useState<LimsPageSize>(() => readLimsPageSize(10));
   const [dispatchPage, setDispatchPage] = useState(0);
+  /** After Today: Current board lists every matching patient (no page chunking). */
+  const [showAllForDay, setShowAllForDay] = useState(false);
   const [dueBlockEntry, setDueBlockEntry] = useState<DispatchEntry | null>(null);
 
   useEffect(() => {
@@ -251,7 +253,7 @@ const Dispatch = () => {
   useEffect(() => {
     setDispatchPage(0);
     setSelectedPatientId(null);
-  }, [debouncedSearch, dateFrom, dateTo, includeOlderPending, listMode, pageSize]);
+  }, [debouncedSearch, dateFrom, dateTo, includeOlderPending, listMode, pageSize, showAllForDay]);
 
   const { data: filteredDispatchIds = [] as string[], isLoading: loadingIds } = useQuery({
     queryKey: [
@@ -280,16 +282,24 @@ const Dispatch = () => {
   });
 
   const dispatchCount = filteredDispatchIds.length;
-  const totalPages = Math.max(1, Math.ceil(dispatchCount / pageSize) || 1);
+  const todayRange =
+    listMode === "current" &&
+    showAllForDay &&
+    isSameDay(dateFrom, dateTo) &&
+    isSameDay(dateFrom, new Date());
+  const effectivePageSize = todayRange
+    ? Math.max(pageSize, dispatchCount || pageSize)
+    : pageSize;
+  const totalPages = Math.max(1, Math.ceil(dispatchCount / effectivePageSize) || 1);
   const safePage = Math.min(dispatchPage, totalPages - 1);
   const pageIds = useMemo(
-    () => filteredDispatchIds.slice(safePage * pageSize, safePage * pageSize + pageSize),
-    [filteredDispatchIds, safePage, pageSize],
+    () => filteredDispatchIds.slice(safePage * effectivePageSize, safePage * effectivePageSize + effectivePageSize),
+    [filteredDispatchIds, safePage, effectivePageSize],
   );
   const pageKey = shortIdsKey(pageIds, "dp");
 
   const { data: registrations = [], isLoading: loadingRegs } = useQuery({
-    queryKey: ["dispatch_regs", pageKey, pageSize, safePage],
+    queryKey: ["dispatch_regs", pageKey, effectivePageSize, safePage],
     enabled: pageIds.length > 0,
     queryFn: async () => {
       const { data } = await supabase.from("patient_registrations")
@@ -448,20 +458,31 @@ const Dispatch = () => {
 
   /** Lightweight list cards — registrations only (no results/tubes/snips). */
   const listEntries = useMemo(() => {
-    const rows: DispatchEntry[] = registrations.map((reg: any) => {
-      const completionStatus = reg.bill_cancelled
-        ? "cancelled"
-        : dispatchDotFromRegStatus(reg.status);
-      return {
-        registration: reg,
-        tests: [],
-        completionStatus,
-        approvedCount: 0,
-        pendingCount: 0,
-        dispatchedCount: 0,
-        cancelledCount: 0,
-      } as DispatchEntry;
-    });
+    const rows: DispatchEntry[] = registrations
+      .map((reg: any) => {
+        let completionStatus: DispatchEntry["completionStatus"] = reg.bill_cancelled
+          ? "cancelled"
+          : dispatchDotFromRegStatus(reg.status);
+        // Pending Dispatch = still has approved work. Never show blue (fully dispatched).
+        if (listMode === "pending_dispatch" && completionStatus === "all_dispatched") {
+          completionStatus = "all_done";
+        }
+        return {
+          registration: reg,
+          tests: [],
+          completionStatus,
+          approvedCount: 0,
+          pendingCount: 0,
+          dispatchedCount: 0,
+          cancelledCount: 0,
+        } as DispatchEntry;
+      })
+      // Hide fully-dispatched regs from Pending (stale status / orphan approved rows).
+      .filter((entry) => {
+        if (listMode !== "pending_dispatch") return true;
+        const st = String(entry.registration.status || "").toLowerCase();
+        return st !== "dispatched";
+      });
     return [...rows].sort((a, b) => {
       const aCancelled = a.completionStatus === "cancelled" ? 1 : 0;
       const bCancelled = b.completionStatus === "cancelled" ? 1 : 0;
@@ -471,7 +492,7 @@ const Dispatch = () => {
       if (bActivestat !== aActivestat) return bActivestat - aActivestat;
       return String(b.registration.invoice_number || "").localeCompare(String(a.registration.invoice_number || ""));
     });
-  }, [registrations]);
+  }, [registrations, listMode]);
 
   const selectedReg = useMemo(
     () => registrations.find((r: any) => r.id === selectedPatientId) || null,
@@ -733,8 +754,18 @@ const Dispatch = () => {
     try { return format(new Date(dateStr), "dd MMM yyyy, hh:mm a"); } catch { return dateStr; }
   };
 
-  const showingFrom = dispatchCount === 0 ? 0 : safePage * pageSize + 1;
-  const showingTo = Math.min((safePage + 1) * pageSize, dispatchCount);
+  const showingFrom = dispatchCount === 0 ? 0 : safePage * effectivePageSize + 1;
+  const showingTo = Math.min((safePage + 1) * effectivePageSize, dispatchCount);
+
+  const goToToday = () => {
+    setListMode("current");
+    setIncludeOlderPending(false);
+    setDateFrom(startOfDay(new Date()));
+    setDateTo(endOfDay(new Date()));
+    setShowAllForDay(true);
+    setDispatchPage(0);
+    setSelectedPatientId(null);
+  };
 
   return (
     <div className="space-y-3">
@@ -751,7 +782,11 @@ const Dispatch = () => {
             <DatePickerCalendar
               mode="single"
               selected={dateFrom}
-              onSelect={(d) => d && setDateFrom(startOfDay(d))}
+              onSelect={(d) => {
+                if (!d) return;
+                setShowAllForDay(false);
+                setDateFrom(startOfDay(d));
+              }}
               initialFocus
               className={cn("p-3 pointer-events-auto")}
             />
@@ -769,20 +804,24 @@ const Dispatch = () => {
             <DatePickerCalendar
               mode="single"
               selected={dateTo}
-              onSelect={(d) => d && setDateTo(endOfDay(d))}
+              onSelect={(d) => {
+                if (!d) return;
+                setShowAllForDay(false);
+                setDateTo(endOfDay(d));
+              }}
               initialFocus
               className={cn("p-3 pointer-events-auto")}
             />
           </PopoverContent>
         </Popover>
-        <Button variant="ghost" size="sm" className="text-xs" onClick={() => { setDateFrom(startOfDay(new Date())); setDateTo(endOfDay(new Date())); }}>Today</Button>
+        <Button variant="ghost" size="sm" className="text-xs" onClick={goToToday}>Today</Button>
         <div className="flex items-center rounded-md border p-0.5 gap-0.5">
           <Button
             type="button"
             size="sm"
             variant={listMode === "current" ? "default" : "ghost"}
             className="h-7 text-xs px-2.5"
-            onClick={() => setListMode("current")}
+            onClick={() => { setShowAllForDay(false); setListMode("current"); }}
           >
             Current
           </Button>
@@ -791,7 +830,7 @@ const Dispatch = () => {
             size="sm"
             variant={listMode === "pending_dispatch" ? "default" : "ghost"}
             className="h-7 text-xs px-2.5"
-            onClick={() => setListMode("pending_dispatch")}
+            onClick={() => { setShowAllForDay(false); setListMode("pending_dispatch"); }}
           >
             Pending Dispatch
           </Button>
@@ -822,11 +861,13 @@ const Dispatch = () => {
           </Button>
         )}
         <RefreshButton queryKeys={refreshKeys} className="ml-auto" />
-        <PageSizeSelect value={pageSize} onChange={(n) => { setPageSize(n); setDispatchPage(0); }} />
+        <PageSizeSelect value={pageSize} onChange={(n) => { setShowAllForDay(false); setPageSize(n); setDispatchPage(0); }} />
         <span className="text-xs text-muted-foreground whitespace-nowrap">
           {dispatchCount === 0
             ? "0 records"
-            : `Showing ${showingFrom}–${showingTo} of ${dispatchCount}`}
+            : todayRange
+              ? `Showing all ${dispatchCount} for today`
+              : `Showing ${showingFrom}–${showingTo} of ${dispatchCount}`}
         </span>
         <Button variant="outline" size="sm" disabled={safePage <= 0} onClick={() => setDispatchPage((p) => Math.max(0, p - 1))}>
           Prev
@@ -841,8 +882,10 @@ const Dispatch = () => {
 
       <p className="text-[11px] text-muted-foreground -mt-1">
         {listMode === "current"
-          ? "Current — all bills in the date range (includes blue / fully dispatched)."
-          : `Pending Dispatch — approved reports not yet dispatched (blue patients hidden)${includeOlderPending ? "; includes older than range" : ""}.`}
+          ? todayRange
+            ? "Today — all patients registered today (Current board)."
+            : "Current — all bills in the date range (includes blue / fully dispatched)."
+          : `Pending Dispatch — approved reports not yet dispatched (fully dispatched / blue hidden)${includeOlderPending ? "; includes older than range" : ""}.`}
       </p>
 
       {(
