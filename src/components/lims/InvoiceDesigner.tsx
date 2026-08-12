@@ -310,7 +310,7 @@ const InvoiceDesigner = () => {
         <CardHeader><CardTitle className="text-base">Header Preview</CardTitle></CardHeader>
         <CardContent>
           <div className="bg-white text-black p-4 rounded border overflow-hidden" style={{ fontFamily: '"Segoe UI", system-ui, Arial, sans-serif' }}>
-            <div style={{ borderBottom: "2px solid #E41E26", padding: "4px 0", marginBottom: 6 }}>
+            <div style={{ borderBottom: "2px solid #E41E26", padding: "8px 0 4px", marginBottom: 6 }}>
               {settings.invoice_logo_url && (
                 <div style={{ textAlign: settings.invoice_logo_align as any, lineHeight: 0 }}>
                   <img src={settings.invoice_logo_url} alt="Logo" style={{ maxHeight: 40, display: "inline-block" }} />
