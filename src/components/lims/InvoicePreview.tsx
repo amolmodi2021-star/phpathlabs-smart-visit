@@ -463,13 +463,6 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
             summaryHtml += moneyRow("Home Visit Charges", `+₹${data.home_visit_charges}`, { color: PALETTE.muted, weight: "500" });
           }
         }
-        summaryHtml += moneyRow("FINAL AMOUNT", `₹${activeFinal}`, {
-          color: "#ffffff",
-          weight: "800",
-          bg: PALETTE.blue,
-          size: "10px",
-          amountSize: "13px",
-        });
         if (payments.length > 0) {
           payments.forEach((p: any) => {
             summaryHtml += moneyRow(
@@ -725,10 +718,6 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
                     )}
                   </>
                 )}
-                <tr>
-                  <td style={{ padding: "3px 0", fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase", color: "#fff", background: PALETTE.blue, textAlign: "left", border: "none" }}>Final Amount</td>
-                  <td style={{ padding: "3px 0", fontSize: 14, fontWeight: 800, color: "#fff", background: PALETTE.blue, textAlign: "right", whiteSpace: "nowrap", border: "none" }}>₹{activeFinal}</td>
-                </tr>
                 {payments.map((p: any, i: number) => (
                   <tr key={i}>
                     <td style={{ padding: "3px 0", fontSize: 11, color: PALETTE.muted, textAlign: "left", border: "none" }}>

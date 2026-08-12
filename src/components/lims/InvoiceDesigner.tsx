@@ -336,9 +336,6 @@ const InvoiceDesigner = () => {
               <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2E3192", marginBottom: 4 }}>Patient</div>
               Sample patient card preview
             </div>
-            <div style={{ marginTop: 10, padding: "8px 10px", background: "#2E3192", color: "#fff", borderRadius: 8, display: "flex", justifyContent: "space-between", fontWeight: 700, fontSize: 12 }}>
-              <span>FINAL AMOUNT</span><span>₹0</span>
-            </div>
           </div>
         </CardContent>
       </Card>
