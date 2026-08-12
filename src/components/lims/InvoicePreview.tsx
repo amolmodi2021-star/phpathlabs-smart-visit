@@ -174,8 +174,8 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
     try {
       JsBarcode(barcodeRef.current, data.umr_number, {
         format: "CODE128",
-        height: 28,
-        width: 1.4,
+        height: 22,
+        width: 1.2,
         displayValue: false,
         margin: 0,
         background: "#ffffff",
@@ -317,6 +317,8 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
   const visitLabel = formatVisitType(data.visit_type) + (channelName ? ` (${channelName})` : "");
 
   const handlePrint = () => {
+    renderBarcode();
+    const barcodePng = barcodeRef.current?.toDataURL?.("image/png") || "";
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
@@ -345,12 +347,19 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
 
     const demographicsHtml = () => {
       const tag = brand.invoice_tagline || "Receipt Memo";
-      let d = `<table style="width:100%;border-collapse:collapse;margin:0 0 4px"><tr>`;
-      d += `<td style="border:none;vertical-align:middle;text-align:left;padding:0">`;
+      // Left: memo + invoice# · Center: barcode · Right: visit + UMR
+      let d = `<table style="width:100%;border-collapse:collapse;table-layout:fixed;margin:0 0 4px"><tr>`;
+      d += `<td style="border:none;vertical-align:middle;text-align:left;padding:0;width:38%">`;
       d += `<div style="font-size:8px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:${PALETTE.blue};line-height:1">${tag}</div>`;
-      d += `<div style="font-size:15px;font-weight:800;color:${PALETTE.ink};letter-spacing:-0.02em;line-height:1.15">#${data.invoice_number} <span style="font-size:9px;font-weight:500;color:${PALETTE.muted}">${format(createdAt, "dd MMM yyyy · hh:mm a")}</span></div>`;
+      d += `<div style="font-size:15px;font-weight:800;color:${PALETTE.ink};letter-spacing:-0.02em;line-height:1.15">#${data.invoice_number}</div>`;
+      d += `<div style="font-size:9px;font-weight:500;color:${PALETTE.muted};line-height:1.2">${format(createdAt, "dd MMM yyyy · hh:mm a")}</div>`;
       d += `</td>`;
-      d += `<td style="border:none;vertical-align:middle;text-align:right;padding:0;white-space:nowrap">`;
+      d += `<td style="border:none;vertical-align:middle;text-align:center;padding:0 6px;width:24%">`;
+      if (barcodePng) {
+        d += `<img src="${barcodePng}" alt="barcode" style="height:20px;max-width:100%;display:inline-block;vertical-align:middle" />`;
+      }
+      d += `</td>`;
+      d += `<td style="border:none;vertical-align:middle;text-align:right;padding:0;width:38%;white-space:nowrap">`;
       d += `<div style="display:inline-block;background:${PALETTE.blueSoft};color:${PALETTE.blue};font-weight:700;font-size:8px;letter-spacing:0.05em;text-transform:uppercase;padding:2px 7px;border-radius:999px">${visitLabel || "Visit"}</div>`;
       if (data.umr_number) d += `<div style="margin-top:2px;font-size:9px"><span style="color:${PALETTE.muted}">UMR</span> <strong style="color:${PALETTE.ink}">${data.umr_number}</strong></div>`;
       d += `</td></tr></table>`;
@@ -492,11 +501,6 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
           summaryHtml += `<div style="font-size:7px;color:${PALETTE.muted};margin-top:1px">Home Visit Charges Refunded: ₹${hvcRefund}</div>`;
         }
         summaryHtml += `</div>`;
-
-        const barcodePng = barcodeRef.current?.toDataURL?.("image/png");
-        if (barcodePng) {
-          summaryHtml += `<div style="margin-top:3px;text-align:center;line-height:0"><img src="${barcodePng}" style="height:18px;display:inline-block" /></div>`;
-        }
 
         summaryHtml += `<div style="text-align:center;font-size:7px;color:${PALETTE.muted};margin-top:3px;line-height:1.2">`;
         summaryHtml += `<p style="margin:0;font-weight:600;color:${PALETTE.blue}">Thank you for choosing PH PathLabs</p>`;
@@ -645,29 +649,46 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
             )}
           </div>
 
-          {/* Invoice meta — compact */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 4 }}>
-            <div>
-              <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: PALETTE.blue, lineHeight: 1 }}>
-                {brand.invoice_tagline || "Receipt Memo"}
-              </div>
-              <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: "-0.02em", color: PALETTE.ink, lineHeight: 1.15 }}>
-                #{data.invoice_number}{" "}
-                <span style={{ fontSize: 9, fontWeight: 500, color: PALETTE.muted }}>{format(createdAt, "dd MMM yyyy · hh:mm a")}</span>
-              </div>
-            </div>
-            <div style={{ textAlign: "right", fontSize: 9, color: PALETTE.muted, whiteSpace: "nowrap" }}>
-              <div style={{ display: "inline-block", background: PALETTE.blueSoft, color: PALETTE.blue, fontWeight: 700, fontSize: 8, letterSpacing: "0.05em", textTransform: "uppercase", padding: "2px 7px", borderRadius: 999 }}>
-                {visitLabel || "Visit"}
-              </div>
-              {data.umr_number && (
-                <div style={{ marginTop: 2 }}>
-                  <span style={{ color: PALETTE.muted }}>UMR </span>
-                  <strong style={{ color: PALETTE.ink }}>{data.umr_number}</strong>
-                </div>
-              )}
-            </div>
-          </div>
+          {/* Invoice meta — left invoice#, center barcode, right UMR */}
+          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", marginBottom: 4 }}>
+            <tbody>
+              <tr>
+                <td style={{ border: "none", verticalAlign: "middle", textAlign: "left", padding: 0, width: "38%" }}>
+                  <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: PALETTE.blue, lineHeight: 1 }}>
+                    {brand.invoice_tagline || "Receipt Memo"}
+                  </div>
+                  <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: "-0.02em", color: PALETTE.ink, lineHeight: 1.15 }}>
+                    #{data.invoice_number}
+                  </div>
+                  <div style={{ fontSize: 9, fontWeight: 500, color: PALETTE.muted, lineHeight: 1.2 }}>
+                    {format(createdAt, "dd MMM yyyy · hh:mm a")}
+                  </div>
+                </td>
+                <td style={{ border: "none", verticalAlign: "middle", textAlign: "center", padding: "0 6px", width: "24%" }}>
+                  <canvas
+                    ref={barcodeRef}
+                    style={{
+                      display: data.umr_number ? "inline-block" : "none",
+                      maxWidth: "100%",
+                      height: 20,
+                      verticalAlign: "middle",
+                    }}
+                  />
+                </td>
+                <td style={{ border: "none", verticalAlign: "middle", textAlign: "right", padding: 0, width: "38%", whiteSpace: "nowrap", fontSize: 9, color: PALETTE.muted }}>
+                  <div style={{ display: "inline-block", background: PALETTE.blueSoft, color: PALETTE.blue, fontWeight: 700, fontSize: 8, letterSpacing: "0.05em", textTransform: "uppercase", padding: "2px 7px", borderRadius: 999 }}>
+                    {visitLabel || "Visit"}
+                  </div>
+                  {data.umr_number && (
+                    <div style={{ marginTop: 2 }}>
+                      <span style={{ color: PALETTE.muted }}>UMR </span>
+                      <strong style={{ color: PALETTE.ink }}>{data.umr_number}</strong>
+                    </div>
+                  )}
+                </td>
+              </tr>
+            </tbody>
+          </table>
 
           {/* Patient — compact inline rows */}
           <div style={{ background: PALETTE.blueSoft, border: `1px solid ${PALETTE.blueLine}`, borderRadius: 6, padding: "4px 8px", marginBottom: 6 }}>
@@ -822,11 +843,6 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
             )}
           </div>
 
-          {data.umr_number && (
-            <div style={{ marginTop: 4, textAlign: "center", lineHeight: 0 }}>
-              <canvas ref={barcodeRef} style={{ display: "block", margin: "0 auto", maxWidth: "100%", height: 18 }} />
-            </div>
-          )}
           <div style={{ textAlign: "center", fontSize: 8, color: PALETTE.muted, marginTop: 3, lineHeight: 1.2 }}>
             <p style={{ margin: 0, fontWeight: 600, color: PALETTE.blue }}>Thank you for choosing PH PathLabs</p>
             <p style={{ margin: "1px 0 0", fontSize: 7 }}>This is an electronically generated receipt and does not require a signature</p>
