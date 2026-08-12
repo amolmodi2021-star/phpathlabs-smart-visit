@@ -360,12 +360,12 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
       }
       d += `</td>`;
       d += `<td style="border:none;vertical-align:middle;text-align:right;padding:0;width:38%;white-space:nowrap">`;
-      d += `<div style="display:inline-block;background:${PALETTE.blueSoft};color:${PALETTE.blue};font-weight:700;font-size:8px;letter-spacing:0.05em;text-transform:uppercase;padding:2px 7px;border-radius:999px">${visitLabel || "Visit"}</div>`;
+      d += `<div style="display:inline-block;color:${PALETTE.blue};font-weight:700;font-size:8px;letter-spacing:0.05em;text-transform:uppercase;padding:0">${visitLabel || "Visit"}</div>`;
       if (data.umr_number) d += `<div style="margin-top:2px;font-size:9px"><span style="color:${PALETTE.muted}">UMR</span> <strong style="color:${PALETTE.ink}">${data.umr_number}</strong></div>`;
       d += `</td></tr></table>`;
 
-      // Compact patient block — max vertical space saved for tests table
-      d += `<div style="background:${PALETTE.blueSoft};border:1px solid ${PALETTE.blueLine};border-radius:6px;padding:4px 8px;margin:0 0 6px">`;
+      // Compact patient block — no fill on print (ink-saving, like report PDFs)
+      d += `<div style="border:1px solid ${PALETTE.line};border-radius:6px;padding:4px 8px;margin:0 0 6px">`;
       d += `<table style="width:100%;border-collapse:collapse;font-size:10px;line-height:1.25">`;
       d += `<tr>`;
       d += `<td style="border:none;padding:1px 6px 1px 0;width:50%;vertical-align:top"><span style="color:${PALETTE.muted};font-size:8px">Name</span> <strong style="color:${PALETTE.ink}">${patientDisplayName(data)}</strong></td>`;
@@ -382,7 +382,7 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
     };
 
     const tableHeaderHtml = () => {
-      const th = `padding:5px 4px;font-size:10px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:${PALETTE.blue};border-bottom:2px solid ${PALETTE.blue};background:${PALETTE.blueSoft}`;
+      const th = `padding:5px 4px;font-size:10px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:${PALETTE.blue};border-bottom:2px solid ${PALETTE.blue};background:transparent`;
       let h = `<tr>`;
       h += `<th style="${th};width:1%;white-space:nowrap;text-align:center">#</th>`;
       h += `<th style="${th};text-align:left">Test / Investigation</th>`;
@@ -477,7 +477,7 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
         }
         summaryHtml += moneyRow("Paid", `₹${data.paid_amount}`, { color: PALETTE.ink, weight: "700", size: "10px" });
         if (data.due_amount > 0) {
-          summaryHtml += moneyRow("Due", `₹${data.due_amount}`, { color: PALETTE.red, weight: "800", bg: "#FEF2F2", size: "10px" });
+          summaryHtml += moneyRow("Due", `₹${data.due_amount}`, { color: PALETTE.red, weight: "800", size: "10px" });
         }
         if (data.refund_amount > 0) {
           summaryHtml += moneyRow("Refund Amount", `₹${data.refund_amount}`, { color: PALETTE.orange, weight: "700", size: "10px" });
