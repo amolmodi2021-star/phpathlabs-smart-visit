@@ -48,16 +48,16 @@ const DEFAULTS: Record<string, string> = {
   invoice_address_align: "center",
   invoice_lab_name_size: "16",
   invoice_lab_name_bold: "true",
-  invoice_lab_name_color: "#0d9488",
+  invoice_lab_name_color: "#2E3192",
   invoice_contact_size: "10",
   invoice_contact_bold: "false",
-  invoice_contact_color: "#666666",
+  invoice_contact_color: "#6b7280",
   invoice_address_size: "9",
   invoice_address_bold: "false",
-  invoice_address_color: "#888888",
+  invoice_address_color: "#6b7280",
   invoice_tagline_size: "9",
   invoice_tagline_bold: "false",
-  invoice_tagline_color: "#888888",
+  invoice_tagline_color: "#6b7280",
 };
 
 const AlignToggle = ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
@@ -309,27 +309,35 @@ const InvoiceDesigner = () => {
       <Card>
         <CardHeader><CardTitle className="text-base">Header Preview</CardTitle></CardHeader>
         <CardContent>
-          <div className="bg-white text-black p-4 rounded border" style={{ fontFamily: "Arial, sans-serif" }}>
-            <div style={{ marginBottom: 10 }}>
+          <div className="bg-white text-black p-4 rounded border overflow-hidden" style={{ fontFamily: '"Segoe UI", system-ui, Arial, sans-serif' }}>
+            <div style={{ borderTop: "4px solid #2E3192", borderBottom: "2px solid #E41E26", padding: "10px 0 12px", marginBottom: 12 }}>
               {settings.invoice_logo_url && (
                 <div style={{ textAlign: settings.invoice_logo_align as any }}>
-                  <img src={settings.invoice_logo_url} alt="Logo" style={{ maxHeight: 50, display: "inline-block", marginBottom: 6 }} />
+                  <img src={settings.invoice_logo_url} alt="Logo" style={{ maxHeight: 52, display: "inline-block" }} />
                 </div>
               )}
               {labVisible && (
-                <h2 style={{ margin: 0, textAlign: settings.invoice_lab_name_align as any, ...styleOf("invoice_lab_name", "16", "#0d9488") }}>
+                <h2 style={{ margin: "6px 0 0", textAlign: settings.invoice_lab_name_align as any, ...styleOf("invoice_lab_name", "18", "#2E3192") }}>
                   {settings.invoice_lab_name || "Lab Name"}
                 </h2>
               )}
               {settings.invoice_contact && (
-                <p style={{ margin: "2px 0", textAlign: settings.invoice_lab_name_align as any, ...styleOf("invoice_contact", "10", "#666666") }}>{settings.invoice_contact}</p>
+                <p style={{ margin: "4px 0 0", textAlign: settings.invoice_lab_name_align as any, ...styleOf("invoice_contact", "10", "#6b7280") }}>{settings.invoice_contact}</p>
               )}
               {settings.invoice_address && (
-                <p style={{ margin: "2px 0", whiteSpace: "pre-line", textAlign: settings.invoice_address_align as any, ...styleOf("invoice_address", "9", "#888888") }}>{settings.invoice_address}</p>
+                <p style={{ margin: "2px 0 0", whiteSpace: "pre-line", textAlign: settings.invoice_address_align as any, ...styleOf("invoice_address", "9", "#6b7280") }}>{settings.invoice_address}</p>
               )}
-              <p style={{ margin: "2px 0", textAlign: settings.invoice_tagline_align as any, ...styleOf("invoice_tagline", "9", "#888888") }}>
-                {settings.invoice_tagline || "Invoice / Sample Receipt"}
-              </p>
+            </div>
+            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "#2E3192", marginBottom: 4 }}>
+              {settings.invoice_tagline || "Receipt Memo"}
+            </div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: "#111827" }}>#2608120001</div>
+            <div style={{ marginTop: 10, background: "#F0F1FA", border: "1px solid #D8DBF0", borderRadius: 8, padding: 10, fontSize: 11 }}>
+              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2E3192", marginBottom: 4 }}>Patient</div>
+              Sample patient card preview
+            </div>
+            <div style={{ marginTop: 10, padding: "8px 10px", background: "#2E3192", color: "#fff", borderRadius: 8, display: "flex", justifyContent: "space-between", fontWeight: 700, fontSize: 12 }}>
+              <span>FINAL AMOUNT</span><span>₹0</span>
             </div>
           </div>
         </CardContent>

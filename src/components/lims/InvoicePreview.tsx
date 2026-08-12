@@ -60,16 +60,32 @@ const DEFAULTS: Record<string, string> = {
   invoice_address_align: "center",
   invoice_lab_name_size: "16",
   invoice_lab_name_bold: "true",
-  invoice_lab_name_color: "#0d9488",
+  invoice_lab_name_color: "#2E3192",
   invoice_contact_size: "10",
   invoice_contact_bold: "false",
-  invoice_contact_color: "#666666",
+  invoice_contact_color: "#6b7280",
   invoice_address_size: "9",
   invoice_address_bold: "false",
-  invoice_address_color: "#888888",
+  invoice_address_color: "#6b7280",
   invoice_tagline_size: "9",
   invoice_tagline_bold: "false",
-  invoice_tagline_color: "#888888",
+  invoice_tagline_color: "#6b7280",
+};
+
+/** Logo-matched palette (PH PathLabs: royal blue + medical red). */
+const PALETTE = {
+  blue: "#2E3192",
+  blueDark: "#23266F",
+  blueSoft: "#F0F1FA",
+  blueLine: "#D8DBF0",
+  red: "#E41E26",
+  orange: "#F7941D",
+  ink: "#111827",
+  muted: "#6B7280",
+  line: "#E5E7EB",
+  soft: "#F8FAFC",
+  white: "#FFFFFF",
+  discount: "#059669",
 };
 
 function textStyle(brand: Record<string, string>, prefix: string, fallbackSize: string, fallbackColor: string) {
@@ -163,7 +179,7 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
         displayValue: false,
         margin: 0,
         background: "#ffffff",
-        lineColor: "#000000",
+        lineColor: PALETTE.blue,
       });
       return true;
     } catch {
@@ -307,7 +323,7 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
     // Dynamic pagination: estimate heights in mm relative to A5 usable area
     const ROW_HEIGHT = 6; // mm per test row
     const USABLE_HEIGHT = 186; // A5 (210mm) minus 24mm margins
-    const HEADER_HEIGHT = 70; // logo + demographics + table header + page footer
+    const HEADER_HEIGHT = 82; // logo bar + patient card + table header + page footer
 
     // Estimate summary section height based on actual data
     let summaryRows = 3; // final amount + paid + thank-you footer
@@ -364,65 +380,78 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
     const totalPages = pages.length;
 
     const headerHtml = () => {
-      let h = '';
+      let h = `<div style="border-top:4px solid ${PALETTE.blue};border-bottom:2px solid ${PALETTE.red};padding:10px 0 12px;margin-bottom:14px">`;
       if (brand.invoice_logo_url) {
-        h += `<div style="text-align:${brand.invoice_logo_align}"><img src="${brand.invoice_logo_url}" style="max-height:40px;display:inline-block;margin-bottom:4px" /></div>`;
+        h += `<div style="text-align:${brand.invoice_logo_align}"><img src="${brand.invoice_logo_url}" style="max-height:52px;display:inline-block" /></div>`;
       }
       if (labVisible) {
-        h += `<h2 style="margin:0;${textStyleCss(brand, "invoice_lab_name", "16", "#0d9488")};text-align:${brand.invoice_lab_name_align}">${brand.invoice_lab_name}</h2>`;
+        h += `<h2 style="margin:6px 0 0;${textStyleCss(brand, "invoice_lab_name", "18", PALETTE.blue)};text-align:${brand.invoice_lab_name_align};letter-spacing:-0.02em">${brand.invoice_lab_name}</h2>`;
       }
       if (brand.invoice_contact) {
-        h += `<p style="margin:2px 0;${textStyleCss(brand, "invoice_contact", "10", "#666666")};text-align:${brand.invoice_lab_name_align}">${brand.invoice_contact}</p>`;
+        h += `<p style="margin:4px 0 0;${textStyleCss(brand, "invoice_contact", "10", PALETTE.muted)};text-align:${brand.invoice_lab_name_align}">${brand.invoice_contact}</p>`;
       }
       if (brand.invoice_address) {
-        h += `<p style="margin:2px 0;${textStyleCss(brand, "invoice_address", "9", "#888888")};white-space:pre-line;text-align:${brand.invoice_address_align}">${brand.invoice_address}</p>`;
+        h += `<p style="margin:2px 0 0;${textStyleCss(brand, "invoice_address", "9", PALETTE.muted)};white-space:pre-line;text-align:${brand.invoice_address_align}">${brand.invoice_address}</p>`;
       }
-      h += `<p style="margin:2px 0;${textStyleCss(brand, "invoice_tagline", "9", "#888888")};text-align:${brand.invoice_tagline_align}">${brand.invoice_tagline}</p>`;
+      h += `</div>`;
       return h;
     };
 
     const demographicsHtml = () => {
-      let d = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;font-size:11px;margin-bottom:8px">`;
-      d += `<div><strong>Invoice #:</strong> ${data.invoice_number}</div>`;
-      d += `<div><strong>Date:</strong> ${format(createdAt, "dd-MM-yyyy HH:mm")}</div>`;
-      d += `<div><strong>Patient:</strong> ${patientDisplayName(data)}</div>`;
-      d += `<div><strong>Mobile:</strong> ${data.mobile_number}</div>`;
-      if (data.gender) d += `<div><strong>Gender:</strong> ${data.gender}</div>`;
-      if (age) d += `<div><strong>Age:</strong> ${age}</div>`;
-      if (data.doctor_name) d += `<div><strong>Doctor:</strong> ${data.doctor_name}</div>`;
-      if (data.umr_number) d += `<div><strong>UMR:</strong> ${data.umr_number}</div>`;
-      d += `<div><strong>Visit:</strong> ${visitLabel}</div>`;
+      const tag = brand.invoice_tagline || "Receipt Memo";
+      let d = `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px">`;
+      d += `<div>`;
+      d += `<div style="font-size:9px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:${PALETTE.blue};margin-bottom:4px">${tag}</div>`;
+      d += `<div style="font-size:18px;font-weight:800;color:${PALETTE.ink};letter-spacing:-0.02em">#${data.invoice_number}</div>`;
+      d += `<div style="font-size:10px;color:${PALETTE.muted};margin-top:2px">${format(createdAt, "dd MMM yyyy · hh:mm a")}</div>`;
       d += `</div>`;
+      d += `<div style="text-align:right;font-size:10px;color:${PALETTE.muted}">`;
+      d += `<div style="display:inline-block;background:${PALETTE.blueSoft};color:${PALETTE.blue};font-weight:700;font-size:9px;letter-spacing:0.06em;text-transform:uppercase;padding:4px 10px;border-radius:999px">${visitLabel || "Visit"}</div>`;
+      if (data.umr_number) d += `<div style="margin-top:6px"><span style="color:${PALETTE.muted}">UMR</span> <strong style="color:${PALETTE.ink}">${data.umr_number}</strong></div>`;
+      d += `</div></div>`;
+
+      d += `<div style="background:${PALETTE.blueSoft};border:1px solid ${PALETTE.blueLine};border-radius:10px;padding:10px 12px;margin-bottom:12px">`;
+      d += `<div style="font-size:9px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:${PALETTE.blue};margin-bottom:6px">Patient</div>`;
+      d += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:11px;color:${PALETTE.ink}">`;
+      d += `<div><span style="color:${PALETTE.muted}">Name</span><br/><strong>${patientDisplayName(data)}</strong></div>`;
+      d += `<div><span style="color:${PALETTE.muted}">Mobile</span><br/><strong>${data.mobile_number || "—"}</strong></div>`;
+      if (data.gender || age) {
+        d += `<div><span style="color:${PALETTE.muted}">Age / Gender</span><br/><strong>${[age, data.gender].filter(Boolean).join(" · ") || "—"}</strong></div>`;
+      }
+      if (data.doctor_name) {
+        d += `<div><span style="color:${PALETTE.muted}">Doctor</span><br/><strong>${data.doctor_name}</strong></div>`;
+      }
+      d += `</div></div>`;
       return d;
     };
 
     const tableHeaderHtml = () => {
-      const thStyle = `border:1px solid #ddd;padding:4px;font-size:10px`;
-      let h = `<tr style="background:#f5f5f5">`;
-      h += `<th style="${thStyle};width:1%;white-space:nowrap">#</th>`;
-      h += `<th style="${thStyle};text-align:left">Test</th>`;
+      const th = `padding:8px 6px;font-size:9px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:${PALETTE.blue};border-bottom:2px solid ${PALETTE.blue};background:${PALETTE.blueSoft}`;
+      let h = `<tr>`;
+      h += `<th style="${th};width:1%;white-space:nowrap;text-align:center">#</th>`;
+      h += `<th style="${th};text-align:left">Test / Investigation</th>`;
       if (hasAnyDiscount) {
-        h += `<th style="${thStyle};text-align:right;width:1%;white-space:nowrap">Price</th>`;
-        h += `<th style="${thStyle};text-align:right;width:1%;white-space:nowrap">Disc</th>`;
-        h += `<th style="${thStyle};text-align:right;width:1%;white-space:nowrap">Net</th>`;
+        h += `<th style="${th};text-align:right;width:1%;white-space:nowrap">Price</th>`;
+        h += `<th style="${th};text-align:right;width:1%;white-space:nowrap">Disc</th>`;
+        h += `<th style="${th};text-align:right;width:1%;white-space:nowrap">Net</th>`;
       } else {
-        h += `<th style="${thStyle};text-align:right;width:1%;white-space:nowrap">Amount</th>`;
+        h += `<th style="${th};text-align:right;width:1%;white-space:nowrap">Amount</th>`;
       }
       h += `</tr>`;
       return h;
     };
 
     const testRowHtml = (t: any, globalIndex: number) => {
-      const tdStyle = `border:1px solid #ddd;padding:4px;font-size:10px`;
+      const td = `padding:7px 6px;font-size:10px;color:${PALETTE.ink};border-bottom:1px solid ${PALETTE.line}`;
       let r = `<tr>`;
-      r += `<td style="${tdStyle};text-align:center;width:1%;white-space:nowrap">${globalIndex + 1}</td>`;
-      r += `<td style="${tdStyle}">${t.test_name}</td>`;
+      r += `<td style="${td};text-align:center;width:1%;white-space:nowrap;color:${PALETTE.muted}">${globalIndex + 1}</td>`;
+      r += `<td style="${td}">${t.test_name}</td>`;
       if (hasAnyDiscount) {
-        r += `<td style="${tdStyle};text-align:right;white-space:nowrap">₹${t.price}</td>`;
-        r += `<td style="${tdStyle};text-align:right;white-space:nowrap">${Number(t.discount || 0) > 0 ? `-₹${t.discount}` : "—"}</td>`;
-        r += `<td style="${tdStyle};text-align:right;white-space:nowrap">₹${t.discounted_price || t.discountedPrice}</td>`;
+        r += `<td style="${td};text-align:right;white-space:nowrap">₹${t.price}</td>`;
+        r += `<td style="${td};text-align:right;white-space:nowrap;color:${PALETTE.discount}">${Number(t.discount || 0) > 0 ? `-₹${t.discount}` : "—"}</td>`;
+        r += `<td style="${td};text-align:right;white-space:nowrap;font-weight:600">₹${t.discounted_price || t.discountedPrice}</td>`;
       } else {
-        r += `<td style="${tdStyle};text-align:right;white-space:nowrap">₹${t.price}</td>`;
+        r += `<td style="${td};text-align:right;white-space:nowrap;font-weight:600">₹${t.price}</td>`;
       }
       r += `</tr>`;
       return r;
@@ -444,87 +473,83 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
         globalTestIndex++;
       });
 
-      // Subtotal row on non-last pages
       const colSpan = hasAnyDiscount ? 4 : 2;
-      const subtotalRow = !isLast ? `<tr style="background:#f9f9f9"><td colspan="${colSpan}" style="border:1px solid #ddd;padding:4px;font-size:10px;text-align:right;font-weight:bold">Subtotal:</td><td style="border:1px solid #ddd;padding:4px;font-size:10px;text-align:right;font-weight:bold;white-space:nowrap">₹${pageSubtotal}</td></tr>` : '';
+      const subtotalRow = !isLast
+        ? `<tr><td colspan="${colSpan}" style="padding:8px 6px;font-size:10px;text-align:right;font-weight:700;color:${PALETTE.blue};border-bottom:1px solid ${PALETTE.line}">Subtotal</td><td style="padding:8px 6px;font-size:10px;text-align:right;font-weight:700;white-space:nowrap;color:${PALETTE.ink};border-bottom:1px solid ${PALETTE.line}">₹${pageSubtotal}</td></tr>`
+        : "";
 
       // Payment summary only on last page
       let summaryHtml = '';
       if (isLast) {
-        summaryHtml = `<div style="font-size:11px;margin-top:6px;line-height:1.55">`;
+        summaryHtml = `<div style="margin-top:12px;background:${PALETTE.soft};border:1px solid ${PALETTE.line};border-radius:10px;padding:12px;font-size:11px;line-height:1.55">`;
         if (showGross) {
-          summaryHtml += `<div style="display:flex;justify-content:space-between;padding:2px 0"><span>Gross Amount:</span><span>₹${activeGross}</span></div>`;
-          if (activeDiscount > 0) summaryHtml += `<div style="display:flex;justify-content:space-between;color:green;padding:2px 0"><span>Discount:</span><span>-₹${activeDiscount}</span></div>`;
-          if (Number(data.home_visit_charges || 0) > 0) summaryHtml += `<div style="display:flex;justify-content:space-between;padding:2px 0"><span>Home Visit Charges:</span><span>+₹${data.home_visit_charges}</span></div>`;
-          summaryHtml += `<div style="border-top:1px solid #ddd;margin:8px 0 0;height:0;overflow:hidden;font-size:0;line-height:0"></div>`;
+          summaryHtml += `<div style="display:flex;justify-content:space-between;padding:3px 0;color:${PALETTE.muted}"><span>Gross Amount</span><span style="color:${PALETTE.ink}">₹${activeGross}</span></div>`;
+          if (activeDiscount > 0) summaryHtml += `<div style="display:flex;justify-content:space-between;color:${PALETTE.discount};padding:3px 0"><span>Discount</span><span>-₹${activeDiscount}</span></div>`;
+          if (Number(data.home_visit_charges || 0) > 0) summaryHtml += `<div style="display:flex;justify-content:space-between;padding:3px 0;color:${PALETTE.muted}"><span>Home Visit Charges</span><span style="color:${PALETTE.ink}">+₹${data.home_visit_charges}</span></div>`;
         }
-        summaryHtml += `<div style="display:flex;justify-content:space-between;font-weight:bold;padding:8px 0 2px"><span>Final Amount:</span><span>₹${activeFinal}</span></div>`;
+        summaryHtml += `<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding:10px 12px;background:${PALETTE.blue};color:#fff;border-radius:8px;font-weight:800"><span style="letter-spacing:0.04em;text-transform:uppercase;font-size:10px">Final Amount</span><span style="font-size:16px">₹${activeFinal}</span></div>`;
         if (payments.length > 0) {
-          summaryHtml += `<div style="margin-top:4px">`;
+          summaryHtml += `<div style="margin-top:8px">`;
           payments.forEach((p: any) => {
-            summaryHtml += `<div style="display:flex;justify-content:space-between;font-size:10px;padding:2px 0"><span>${p.mode}${p.date ? ` (${format(new Date(p.date), "dd-MM-yyyy hh:mm a")})` : ""}:</span><span>₹${p.amount}</span></div>`;
+            summaryHtml += `<div style="display:flex;justify-content:space-between;font-size:10px;padding:2px 0;color:${PALETTE.muted}"><span>${p.mode}${p.date ? ` (${format(new Date(p.date), "dd-MM-yyyy hh:mm a")})` : ""}</span><span style="color:${PALETTE.ink}">₹${p.amount}</span></div>`;
           });
           summaryHtml += `</div>`;
         }
-        summaryHtml += `<div style="display:flex;justify-content:space-between;font-weight:bold;margin-top:4px;padding:2px 0"><span>Paid:</span><span>₹${data.paid_amount}</span></div>`;
+        summaryHtml += `<div style="display:flex;justify-content:space-between;font-weight:700;margin-top:6px;padding:4px 0;color:${PALETTE.ink}"><span>Paid</span><span>₹${data.paid_amount}</span></div>`;
         if (Number(data.paid_amount || 0) > 0) {
-          summaryHtml += `<div style="font-size:10px;margin-top:4px;font-style:italic;color:#444">Received with thanks from ${patientDisplayName(data)} a sum of Rs. ${Number(data.paid_amount).toFixed(2)}/- (${numberToWords(Number(data.paid_amount))} Rupees)</div>`;
+          summaryHtml += `<div style="font-size:10px;margin-top:6px;color:${PALETTE.muted}">Received with thanks from <strong style="color:${PALETTE.ink}">${patientDisplayName(data)}</strong> a sum of Rs. ${Number(data.paid_amount).toFixed(2)}/- (${numberToWords(Number(data.paid_amount))} Rupees)</div>`;
         }
         if (data.due_amount > 0) {
-          summaryHtml += `<div style="display:flex;justify-content:space-between;color:red;font-weight:bold;margin-top:3px"><span>Due:</span><span>₹${data.due_amount}</span></div>`;
+          summaryHtml += `<div style="display:flex;justify-content:space-between;color:${PALETTE.red};font-weight:800;margin-top:8px;padding:8px 10px;background:#FEF2F2;border-radius:8px"><span>Due</span><span>₹${data.due_amount}</span></div>`;
         }
         if (data.refund_amount > 0) {
-          summaryHtml += `<div style="margin-top:6px;border-top:1px solid #ddd;padding-top:4px">`;
-          summaryHtml += `<div style="display:flex;justify-content:space-between;color:#ea580c;font-weight:bold"><span>Refund Amount:</span><span>₹${data.refund_amount}</span></div>`;
-          summaryHtml += `<div style="display:flex;justify-content:space-between;font-size:10px"><span>Refund Mode:</span><span>${data.refund_mode || "—"}</span></div>`;
-          if (data.refund_date) summaryHtml += `<div style="display:flex;justify-content:space-between;font-size:10px"><span>Refund Date:</span><span>${format(new Date(data.refund_date), "dd-MM-yyyy hh:mm a")}</span></div>`;
-          if (cancelledTests.length > 0) summaryHtml += `<div style="font-size:9px;color:#888;margin-top:3px">Cancelled Tests: ${cancelledTests.map((ct: any) => ct.test_name || ct.test_id).join(", ")}</div>`;
-          if (hvcRefund > 0) summaryHtml += `<div style="font-size:9px;color:#888;margin-top:3px">Home Visit Charges Refunded: ₹${hvcRefund}</div>`;
+          summaryHtml += `<div style="margin-top:8px;border-top:1px solid ${PALETTE.line};padding-top:8px">`;
+          summaryHtml += `<div style="display:flex;justify-content:space-between;color:${PALETTE.orange};font-weight:700"><span>Refund Amount</span><span>₹${data.refund_amount}</span></div>`;
+          summaryHtml += `<div style="display:flex;justify-content:space-between;font-size:10px;color:${PALETTE.muted}"><span>Refund Mode</span><span>${data.refund_mode || "—"}</span></div>`;
+          if (data.refund_date) summaryHtml += `<div style="display:flex;justify-content:space-between;font-size:10px;color:${PALETTE.muted}"><span>Refund Date</span><span>${format(new Date(data.refund_date), "dd-MM-yyyy hh:mm a")}</span></div>`;
+          if (cancelledTests.length > 0) summaryHtml += `<div style="font-size:9px;color:${PALETTE.muted};margin-top:3px">Cancelled Tests: ${cancelledTests.map((ct: any) => ct.test_name || ct.test_id).join(", ")}</div>`;
+          if (hvcRefund > 0) summaryHtml += `<div style="font-size:9px;color:${PALETTE.muted};margin-top:3px">Home Visit Charges Refunded: ₹${hvcRefund}</div>`;
           summaryHtml += `</div>`;
         }
         summaryHtml += `</div>`;
 
-        // Barcode as PNG for print reliability
         const barcodePng = barcodeRef.current?.toDataURL?.("image/png");
         if (barcodePng) {
-          summaryHtml += `<div style="margin-top:6px;text-align:center"><img src="${barcodePng}" style="height:28px;display:inline-block" /></div>`;
+          summaryHtml += `<div style="margin-top:12px;text-align:center"><img src="${barcodePng}" style="height:28px;display:inline-block" /></div>`;
         }
 
-        // Footer
-        summaryHtml += `<div style="text-align:center;font-size:9px;color:#888;margin-top:10px">`;
-        summaryHtml += `<p style="margin:2px 0">Thank you for choosing us</p>`;
-        summaryHtml += `<p style="margin:4px 0 0;font-size:8px;color:#888">This is an Electronically Generated Receipt &amp; Does Not Require Signature</p>`;
+        summaryHtml += `<div style="text-align:center;font-size:9px;color:${PALETTE.muted};margin-top:14px">`;
+        summaryHtml += `<p style="margin:0;font-weight:600;color:${PALETTE.blue}">Thank you for choosing PH PathLabs</p>`;
+        summaryHtml += `<p style="margin:6px 0 0;font-size:8px">This is an electronically generated receipt and does not require a signature</p>`;
         summaryHtml += `</div>`;
       }
 
       const printNow = format(new Date(), "dd-MM-yyyy hh:mm a");
       const preparedDate = format(createdAt, "dd-MM-yyyy hh:mm a");
       const currentUser = getCurrentUserName() || "—";
-      const preparedPrintedFooter = `<div style="display:flex;justify-content:space-between;font-size:9px;color:#888;margin-top:10px;border-top:1px solid #eee;padding-top:4px">
-        <div>Prepared by: ${data.registered_by || "—"} | ${preparedDate}</div>
-        <div>Printed by: ${currentUser} | ${printNow}</div>
+      const preparedPrintedFooter = `<div style="display:flex;justify-content:space-between;font-size:8px;color:${PALETTE.muted};margin-top:14px;border-top:1px solid ${PALETTE.line};padding-top:8px">
+        <div>Prepared by ${data.registered_by || "—"} · ${preparedDate}</div>
+        <div>Printed by ${currentUser} · ${printNow}</div>
       </div>`;
 
       pagesHtml += `<div style="${pageBreak}${pageIdx > 0 ? 'padding-top:8mm;' : ''}">`;
-      pagesHtml += `<div style="margin-bottom:10px">${headerHtml()}</div>`;
+      pagesHtml += headerHtml();
       pagesHtml += demographicsHtml();
       if (pageTests.length > 0) {
-        pagesHtml += `<table style="width:100%;border-collapse:collapse;margin:6px 0"><thead>${tableHeaderHtml()}</thead><tbody>${tableRows}${subtotalRow}</tbody></table>`;
+        pagesHtml += `<table style="width:100%;border-collapse:collapse;margin:4px 0 0"><thead>${tableHeaderHtml()}</thead><tbody>${tableRows}${subtotalRow}</tbody></table>`;
       }
       pagesHtml += summaryHtml;
       pagesHtml += preparedPrintedFooter;
-      pagesHtml += `<div style="text-align:center;font-size:8px;color:#aaa;margin-top:8px">Page ${pageIdx + 1} of ${totalPages}</div>`;
+      pagesHtml += `<div style="text-align:center;font-size:8px;color:${PALETTE.muted};margin-top:8px">Page ${pageIdx + 1} of ${totalPages}</div>`;
       pagesHtml += `</div>`;
     });
 
     printWindow.document.write(`
       <html><head><title>Invoice ${data.invoice_number}</title>
       <style>
-        @page { size: A5; margin: 12mm; }
-        body { font-family: Arial, sans-serif; padding: 8mm; max-width: 148mm; margin: auto; font-size: 10px; line-height: 1.6; }
-        table { width: 100%; border-collapse: collapse; margin: 6px 0; }
-        th, td { border: 1px solid #ddd; padding: 4px; text-align: left; font-size: 10px; line-height: 1.5; }
-        th { background: #f5f5f5; }
+        @page { size: A5; margin: 10mm; }
+        body { font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif; padding: 6mm; max-width: 148mm; margin: auto; font-size: 10px; line-height: 1.5; color: ${PALETTE.ink}; }
+        table { width: 100%; border-collapse: collapse; }
       </style></head><body>
       ${pagesHtml}
       <script>window.print(); window.close();<\/script>
@@ -542,146 +567,199 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
           <DialogTitle>Invoice Generated — {data.invoice_number}</DialogTitle>
         </DialogHeader>
 
-        <div ref={receiptRef} className="bg-white text-black rounded" style={{ fontFamily: "Arial, sans-serif", width: 560, margin: "0 auto", padding: 32 }}>
-          <div style={{ marginBottom: 10 }}>
+        <div
+          ref={receiptRef}
+          className="bg-white text-black rounded"
+          style={{
+            fontFamily: '"Segoe UI", system-ui, -apple-system, Arial, sans-serif',
+            width: 560,
+            margin: "0 auto",
+            padding: 28,
+            color: PALETTE.ink,
+          }}
+        >
+          {/* Brand header */}
+          <div style={{ borderTop: `4px solid ${PALETTE.blue}`, borderBottom: `2px solid ${PALETTE.red}`, padding: "10px 0 14px", marginBottom: 16 }}>
             {brand.invoice_logo_url && (
               <div style={{ textAlign: brand.invoice_logo_align as any }}>
-                <img src={brand.invoice_logo_url} alt="Logo" style={{ maxHeight: 40, display: "inline-block", marginBottom: 4 }} />
+                <img src={brand.invoice_logo_url} alt="Logo" style={{ maxHeight: 56, display: "inline-block" }} />
               </div>
             )}
             {labVisible && (
-              <h2 style={{ margin: 0, textAlign: brand.invoice_lab_name_align as any, ...textStyle(brand, "invoice_lab_name", "16", "#0d9488") }}>{brand.invoice_lab_name}</h2>
+              <h2 style={{ margin: "8px 0 0", textAlign: brand.invoice_lab_name_align as any, letterSpacing: "-0.02em", ...textStyle(brand, "invoice_lab_name", "18", PALETTE.blue) }}>
+                {brand.invoice_lab_name}
+              </h2>
             )}
             {brand.invoice_contact && (
-              <p style={{ margin: "2px 0", textAlign: brand.invoice_lab_name_align as any, ...textStyle(brand, "invoice_contact", "10", "#666666") }}>{brand.invoice_contact}</p>
+              <p style={{ margin: "4px 0 0", textAlign: brand.invoice_lab_name_align as any, ...textStyle(brand, "invoice_contact", "10", PALETTE.muted) }}>
+                {brand.invoice_contact}
+              </p>
             )}
             {brand.invoice_address && (
-              <p style={{ margin: "2px 0", whiteSpace: "pre-line", textAlign: brand.invoice_address_align as any, ...textStyle(brand, "invoice_address", "9", "#888888") }}>{brand.invoice_address}</p>
+              <p style={{ margin: "2px 0 0", whiteSpace: "pre-line", textAlign: brand.invoice_address_align as any, ...textStyle(brand, "invoice_address", "9", PALETTE.muted) }}>
+                {brand.invoice_address}
+              </p>
             )}
-            <p style={{ margin: "2px 0", textAlign: brand.invoice_tagline_align as any, ...textStyle(brand, "invoice_tagline", "9", "#888888") }}>{brand.invoice_tagline}</p>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 3, fontSize: 11, marginBottom: 8 }}>
-            <div><strong>Invoice #:</strong> {data.invoice_number}</div>
-            <div><strong>Date:</strong> {format(createdAt, "dd-MM-yyyy HH:mm")}</div>
-            <div><strong>Patient:</strong> {patientDisplayName(data)}</div>
-            <div><strong>Mobile:</strong> {data.mobile_number}</div>
-            {data.gender && <div><strong>Gender:</strong> {data.gender}</div>}
-            {age && <div><strong>Age:</strong> {age}</div>}
-            {data.doctor_name && <div><strong>Doctor:</strong> {data.doctor_name}</div>}
-            {data.umr_number && <div><strong>UMR:</strong> {data.umr_number}</div>}
-            <div><strong>Visit:</strong> {visitLabel}</div>
+          {/* Invoice meta */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 14 }}>
+            <div>
+              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: PALETTE.blue, marginBottom: 4 }}>
+                {brand.invoice_tagline || "Receipt Memo"}
+              </div>
+              <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-0.02em", color: PALETTE.ink }}>#{data.invoice_number}</div>
+              <div style={{ fontSize: 10, color: PALETTE.muted, marginTop: 2 }}>{format(createdAt, "dd MMM yyyy · hh:mm a")}</div>
+            </div>
+            <div style={{ textAlign: "right", fontSize: 10, color: PALETTE.muted }}>
+              <div style={{ display: "inline-block", background: PALETTE.blueSoft, color: PALETTE.blue, fontWeight: 700, fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", padding: "4px 10px", borderRadius: 999 }}>
+                {visitLabel || "Visit"}
+              </div>
+              {data.umr_number && (
+                <div style={{ marginTop: 6 }}>
+                  <span style={{ color: PALETTE.muted }}>UMR </span>
+                  <strong style={{ color: PALETTE.ink }}>{data.umr_number}</strong>
+                </div>
+              )}
+            </div>
           </div>
 
-          <table style={{ width: "100%", borderCollapse: "collapse", margin: "6px 0" }}>
+          {/* Patient card */}
+          <div style={{ background: PALETTE.blueSoft, border: `1px solid ${PALETTE.blueLine}`, borderRadius: 10, padding: "10px 12px", marginBottom: 14 }}>
+            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: PALETTE.blue, marginBottom: 6 }}>Patient</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 12px", fontSize: 11 }}>
+              <div>
+                <div style={{ color: PALETTE.muted, fontSize: 9 }}>Name</div>
+                <strong>{patientDisplayName(data)}</strong>
+              </div>
+              <div>
+                <div style={{ color: PALETTE.muted, fontSize: 9 }}>Mobile</div>
+                <strong>{data.mobile_number || "—"}</strong>
+              </div>
+              {(data.gender || age) && (
+                <div>
+                  <div style={{ color: PALETTE.muted, fontSize: 9 }}>Age / Gender</div>
+                  <strong>{[age, data.gender].filter(Boolean).join(" · ")}</strong>
+                </div>
+              )}
+              {data.doctor_name && (
+                <div>
+                  <div style={{ color: PALETTE.muted, fontSize: 9 }}>Doctor</div>
+                  <strong>{data.doctor_name}</strong>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <table style={{ width: "100%", borderCollapse: "collapse", margin: "0 0 4px" }}>
             <thead>
-              <tr style={{ background: "#f5f5f5" }}>
-                <th style={{ border: "1px solid #ddd", padding: 4, fontSize: 10, width: "1%", whiteSpace: "nowrap" }}>#</th>
-                <th style={{ border: "1px solid #ddd", padding: 4, fontSize: 10, textAlign: "left" }}>Test</th>
+              <tr>
+                <th style={{ padding: "8px 6px", fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, width: "1%", whiteSpace: "nowrap", textAlign: "center" }}>#</th>
+                <th style={{ padding: "8px 6px", fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, textAlign: "left" }}>Test / Investigation</th>
                 {hasAnyDiscount ? (
                   <>
-                    <th style={{ border: "1px solid #ddd", padding: 4, fontSize: 10, textAlign: "right", width: "1%", whiteSpace: "nowrap" }}>Price</th>
-                    <th style={{ border: "1px solid #ddd", padding: 4, fontSize: 10, textAlign: "right", width: "1%", whiteSpace: "nowrap" }}>Disc</th>
-                    <th style={{ border: "1px solid #ddd", padding: 4, fontSize: 10, textAlign: "right", width: "1%", whiteSpace: "nowrap" }}>Net</th>
+                    <th style={{ padding: "8px 6px", fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, textAlign: "right", width: "1%", whiteSpace: "nowrap" }}>Price</th>
+                    <th style={{ padding: "8px 6px", fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, textAlign: "right", width: "1%", whiteSpace: "nowrap" }}>Disc</th>
+                    <th style={{ padding: "8px 6px", fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, textAlign: "right", width: "1%", whiteSpace: "nowrap" }}>Net</th>
                   </>
                 ) : (
-                  <th style={{ border: "1px solid #ddd", padding: 4, fontSize: 10, textAlign: "right", width: "1%", whiteSpace: "nowrap" }}>Amount</th>
+                  <th style={{ padding: "8px 6px", fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, textAlign: "right", width: "1%", whiteSpace: "nowrap" }}>Amount</th>
                 )}
               </tr>
             </thead>
             <tbody>
               {tests.map((t: any, i: number) => (
                 <tr key={i}>
-                  <td style={{ border: "1px solid #ddd", padding: 4, fontSize: 10, textAlign: "center", width: "1%", whiteSpace: "nowrap" }}>{i + 1}</td>
-                  <td style={{ border: "1px solid #ddd", padding: 4, fontSize: 10 }}>{t.test_name}</td>
+                  <td style={{ padding: "7px 6px", fontSize: 10, textAlign: "center", width: "1%", whiteSpace: "nowrap", color: PALETTE.muted, borderBottom: `1px solid ${PALETTE.line}` }}>{i + 1}</td>
+                  <td style={{ padding: "7px 6px", fontSize: 10, borderBottom: `1px solid ${PALETTE.line}` }}>{t.test_name}</td>
                   {hasAnyDiscount ? (
                     <>
-                      <td style={{ border: "1px solid #ddd", padding: 4, fontSize: 10, textAlign: "right", whiteSpace: "nowrap" }}>₹{t.price}</td>
-                      <td style={{ border: "1px solid #ddd", padding: 4, fontSize: 10, textAlign: "right", whiteSpace: "nowrap" }}>{Number(t.discount || 0) > 0 ? `-₹${t.discount}` : "—"}</td>
-                      <td style={{ border: "1px solid #ddd", padding: 4, fontSize: 10, textAlign: "right", whiteSpace: "nowrap" }}>₹{t.discounted_price || t.discountedPrice}</td>
+                      <td style={{ padding: "7px 6px", fontSize: 10, textAlign: "right", whiteSpace: "nowrap", borderBottom: `1px solid ${PALETTE.line}` }}>₹{t.price}</td>
+                      <td style={{ padding: "7px 6px", fontSize: 10, textAlign: "right", whiteSpace: "nowrap", color: PALETTE.discount, borderBottom: `1px solid ${PALETTE.line}` }}>{Number(t.discount || 0) > 0 ? `-₹${t.discount}` : "—"}</td>
+                      <td style={{ padding: "7px 6px", fontSize: 10, textAlign: "right", whiteSpace: "nowrap", fontWeight: 600, borderBottom: `1px solid ${PALETTE.line}` }}>₹{t.discounted_price || t.discountedPrice}</td>
                     </>
                   ) : (
-                    <td style={{ border: "1px solid #ddd", padding: 4, fontSize: 10, textAlign: "right", whiteSpace: "nowrap" }}>₹{t.price}</td>
+                    <td style={{ padding: "7px 6px", fontSize: 10, textAlign: "right", whiteSpace: "nowrap", fontWeight: 600, borderBottom: `1px solid ${PALETTE.line}` }}>₹{t.price}</td>
                   )}
                 </tr>
               ))}
             </tbody>
           </table>
 
-          <div style={{ fontSize: 11, marginTop: 6, lineHeight: 1.55 }}>
+          <div style={{ marginTop: 12, background: PALETTE.soft, border: `1px solid ${PALETTE.line}`, borderRadius: 10, padding: 12, fontSize: 11, lineHeight: 1.55 }}>
             {showGross && (
               <>
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "2px 0" }}><span>Gross Amount:</span><span>₹{activeGross}</span></div>
-                {activeDiscount > 0 && <div style={{ display: "flex", justifyContent: "space-between", color: "green", padding: "2px 0" }}><span>Discount:</span><span>-₹{activeDiscount}</span></div>}
-                {Number(data.home_visit_charges || 0) > 0 && <div style={{ display: "flex", justifyContent: "space-between", padding: "2px 0" }}><span>Home Visit Charges:</span><span>+₹{data.home_visit_charges}</span></div>}
-                {/* Separate border node — html2canvas collapses border-top on flex rows */}
-                <div style={{ borderTop: "1px solid #ddd", margin: "8px 0 0", height: 0, overflow: "hidden", fontSize: 0, lineHeight: 0 }} aria-hidden />
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", color: PALETTE.muted }}><span>Gross Amount</span><span style={{ color: PALETTE.ink }}>₹{activeGross}</span></div>
+                {activeDiscount > 0 && <div style={{ display: "flex", justifyContent: "space-between", color: PALETTE.discount, padding: "3px 0" }}><span>Discount</span><span>-₹{activeDiscount}</span></div>}
+                {Number(data.home_visit_charges || 0) > 0 && <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", color: PALETTE.muted }}><span>Home Visit Charges</span><span style={{ color: PALETTE.ink }}>+₹{data.home_visit_charges}</span></div>}
               </>
             )}
-            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", padding: "8px 0 2px" }}>
-              <span>Final Amount:</span><span>₹{activeFinal}</span>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, padding: "10px 12px", background: PALETTE.blue, color: "#fff", borderRadius: 8, fontWeight: 800 }}>
+              <span style={{ letterSpacing: "0.04em", textTransform: "uppercase", fontSize: 10 }}>Final Amount</span>
+              <span style={{ fontSize: 16 }}>₹{activeFinal}</span>
             </div>
             {payments.length > 0 && (
-              <div style={{ marginTop: 4 }}>
+              <div style={{ marginTop: 8 }}>
                 {payments.map((p: any, i: number) => (
-                  <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 10, padding: "2px 0" }}>
-                    <span>{p.mode}{p.date ? ` (${format(new Date(p.date), "dd-MM-yyyy hh:mm a")})` : ""}:</span><span>₹{p.amount}</span>
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 10, padding: "2px 0", color: PALETTE.muted }}>
+                    <span>{p.mode}{p.date ? ` (${format(new Date(p.date), "dd-MM-yyyy hh:mm a")})` : ""}</span>
+                    <span style={{ color: PALETTE.ink }}>₹{p.amount}</span>
                   </div>
                 ))}
               </div>
             )}
-            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", marginTop: 4, padding: "2px 0" }}>
-              <span>Paid:</span><span>₹{data.paid_amount}</span>
+            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, marginTop: 6, padding: "4px 0", color: PALETTE.ink }}>
+              <span>Paid</span><span>₹{data.paid_amount}</span>
             </div>
             {Number(data.paid_amount || 0) > 0 && (
-              <div style={{ fontSize: 10, marginTop: 4, fontStyle: "italic", color: "#444" }}>
-                Received with thanks from {patientDisplayName(data)} a sum of Rs. {Number(data.paid_amount).toFixed(2)}/- ({numberToWords(Number(data.paid_amount))} Rupees)
+              <div style={{ fontSize: 10, marginTop: 6, color: PALETTE.muted }}>
+                Received with thanks from <strong style={{ color: PALETTE.ink }}>{patientDisplayName(data)}</strong> a sum of Rs. {Number(data.paid_amount).toFixed(2)}/- ({numberToWords(Number(data.paid_amount))} Rupees)
               </div>
             )}
             {data.due_amount > 0 && (
-              <div style={{ display: "flex", justifyContent: "space-between", color: "red", fontWeight: "bold", marginTop: 3 }}>
-                <span>Due:</span><span>₹{data.due_amount}</span>
+              <div style={{ display: "flex", justifyContent: "space-between", color: PALETTE.red, fontWeight: 800, marginTop: 8, padding: "8px 10px", background: "#FEF2F2", borderRadius: 8 }}>
+                <span>Due</span><span>₹{data.due_amount}</span>
               </div>
             )}
             {data.refund_amount > 0 && (
-              <div style={{ marginTop: 6, borderTop: "1px solid #ddd", paddingTop: 4 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", color: "#ea580c", fontWeight: "bold" }}>
-                  <span>Refund Amount:</span><span>₹{data.refund_amount}</span>
+              <div style={{ marginTop: 8, borderTop: `1px solid ${PALETTE.line}`, paddingTop: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", color: PALETTE.orange, fontWeight: 700 }}>
+                  <span>Refund Amount</span><span>₹{data.refund_amount}</span>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10 }}>
-                  <span>Refund Mode:</span><span>{data.refund_mode || "—"}</span>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: PALETTE.muted }}>
+                  <span>Refund Mode</span><span>{data.refund_mode || "—"}</span>
                 </div>
                 {data.refund_date && (
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10 }}>
-                    <span>Refund Date:</span><span>{format(new Date(data.refund_date), "dd-MM-yyyy hh:mm a")}</span>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: PALETTE.muted }}>
+                    <span>Refund Date</span><span>{format(new Date(data.refund_date), "dd-MM-yyyy hh:mm a")}</span>
                   </div>
                 )}
                 {cancelledTests.length > 0 && (
-                  <div style={{ fontSize: 9, color: "#888", marginTop: 3 }}>
-                    <span>Cancelled Tests: {cancelledTests.map((ct: any) => ct.test_name || ct.test_id).join(", ")}</span>
+                  <div style={{ fontSize: 9, color: PALETTE.muted, marginTop: 3 }}>
+                    Cancelled Tests: {cancelledTests.map((ct: any) => ct.test_name || ct.test_id).join(", ")}
                   </div>
                 )}
                 {hvcRefund > 0 && (
-                  <div style={{ fontSize: 9, color: "#888", marginTop: 3 }}>
-                    <span>Home Visit Charges Refunded: ₹{hvcRefund}</span>
+                  <div style={{ fontSize: 9, color: PALETTE.muted, marginTop: 3 }}>
+                    Home Visit Charges Refunded: ₹{hvcRefund}
                   </div>
                 )}
               </div>
             )}
           </div>
 
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "#888", marginTop: 10, borderTop: "1px solid #eee", paddingTop: 4 }}>
-            <div>Prepared by: {data.registered_by || "—"} | {format(createdAt, "dd-MM-yyyy hh:mm a")}</div>
-            <div>Printed by: {getCurrentUserName() || "—"} | {format(new Date(), "dd-MM-yyyy hh:mm a")}</div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 8, color: PALETTE.muted, marginTop: 14, borderTop: `1px solid ${PALETTE.line}`, paddingTop: 8 }}>
+            <div>Prepared by {data.registered_by || "—"} · {format(createdAt, "dd-MM-yyyy hh:mm a")}</div>
+            <div>Printed by {getCurrentUserName() || "—"} · {format(new Date(), "dd-MM-yyyy hh:mm a")}</div>
           </div>
-          <div style={{ textAlign: "center", fontSize: 9, color: "#888", marginTop: 6 }}>
-            <p style={{ margin: "2px 0" }}>Thank you for choosing us</p>
+          <div style={{ textAlign: "center", fontSize: 9, color: PALETTE.muted, marginTop: 10 }}>
+            <p style={{ margin: 0, fontWeight: 600, color: PALETTE.blue }}>Thank you for choosing PH PathLabs</p>
             {data.umr_number && (
-              <div style={{ marginTop: 6, textAlign: "center" }}>
+              <div style={{ marginTop: 8, textAlign: "center" }}>
                 <canvas ref={barcodeRef} style={{ display: "block", margin: "0 auto", maxWidth: "100%" }} />
               </div>
             )}
-            <p style={{ margin: "4px 0 0", fontSize: 8, color: "#888" }}>This is an Electronically Generated Receipt &amp; Does Not Require Signature</p>
+            <p style={{ margin: "8px 0 0", fontSize: 8 }}>This is an electronically generated receipt and does not require a signature</p>
           </div>
         </div>
 
