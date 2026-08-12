@@ -38,6 +38,11 @@ import { PATIENT_RESULTS_SELECT_DOCTOR } from "@/lib/patientResultsSelect";
 import { shortIdsKey } from "@/lib/queryKeys";
 import { readLimsPageSize, type LimsPageSize } from "@/lib/limsListPrefs";
 import SyncingOverlay from "./SyncingOverlay";
+
+/** List headers — omit tests / cancelled_tests JSON (egress). */
+const REG_LIST_SELECT =
+  "id, invoice_number, patient_name, title, mobile_number, umr_number, status, is_stat, visit_type, gender, dob, email, address, created_at, updated_at, bill_cancelled, doctor_name, report_language";
+const REG_DETAIL_SELECT = `${REG_LIST_SELECT}, tests, cancelled_tests`;
 import NewBadge from "./NewBadge";
 
 const QUALITATIVE_PAIRS = [
@@ -184,7 +189,7 @@ const DoctorApproval = () => {
     enabled: pageIds.length > 0,
     queryFn: async () => {
       const { data } = await supabase.from("patient_registrations")
-        .select("id, invoice_number, patient_name, title, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, gender, dob, email, address, created_at, updated_at, bill_cancelled, doctor_name, report_language")
+        .select(REG_LIST_SELECT)
         .in("id", pageIds);
       const order = new Map(pageIds.map((id, i) => [id, i] as const));
       return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
@@ -228,7 +233,22 @@ const DoctorApproval = () => {
     return map;
   }, [regTubes]);
 
-  const detailReady = !detailEnabled || (resultsFetched && tubesFetched);
+  const { data: detailReg, isFetched: detailRegFetched } = useQuery({
+    queryKey: ["doctor_approval_reg_detail", expandedPatient],
+    enabled: detailEnabled,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("patient_registrations")
+        .select(REG_DETAIL_SELECT)
+        .eq("id", expandedPatient!)
+        .maybeSingle();
+      if (error) throw error;
+      return data as any;
+    },
+    staleTime: 60_000,
+  });
+
+  const detailReady = !detailEnabled || (resultsFetched && tubesFetched && detailRegFetched && !!detailReg);
   const listLoading = loadingIds || loadingRegs;
 
   const { data: outsourcedSnips = [] } = useQuery({
@@ -259,9 +279,39 @@ const DoctorApproval = () => {
     return { transferredTestKeys: testKeys, outsourcedParamSets: paramSets, outsourcedSnipDetails: details };
   }, [outsourcedSnips]);
 
-  const { data: testsMap = {} } = useQuery({ queryKey: ["results_tests_map"], queryFn: async () => { const { data } = await supabase.from("tests").select("id, test_name, department_id, instrument_name"); const map: Record<string, any> = {}; (data || []).forEach((t: any) => { map[t.id] = t; }); return map; } });
-  const { data: testParamsMap = {} } = useQuery({ queryKey: ["results_test_params_full"], queryFn: async () => { const { data } = await supabase.from("test_parameters").select("test_id, parameter_id, display_order, is_subheader, subheader_text, report_test_parameters(id, param_code, parameter_name, unit, normal_range_low, normal_range_high, normal_range_text, is_calculated, calculation_formula, send_for_interface)").order("display_order"); const map: Record<string, any[]> = {}; (data || []).forEach((tp: any) => { if (!tp.test_id) return; if (!map[tp.test_id]) map[tp.test_id] = []; map[tp.test_id].push(tp); }); return map; } });
-  const { data: normalRangesMap = {} } = useQuery({ queryKey: ["results_normal_ranges"], queryFn: async () => { const { data } = await supabase.from("parameter_normal_ranges").select("*").order("age_min"); const map: Record<string, any[]> = {}; (data || []).forEach((r: any) => { if (!map[r.parameter_id]) map[r.parameter_id] = []; map[r.parameter_id].push(r); }); return map; } });
+  const { data: testsMap = {} } = useQuery({
+    queryKey: ["results_tests_map"],
+    enabled: detailEnabled,
+    staleTime: 600_000,
+    queryFn: async () => {
+      const { data } = await supabase.from("tests").select("id, test_name, department_id, instrument_name");
+      const map: Record<string, any> = {};
+      (data || []).forEach((t: any) => { map[t.id] = t; });
+      return map;
+    },
+  });
+  const { data: testParamsMap = {} } = useQuery({
+    queryKey: ["results_test_params_full"],
+    enabled: detailEnabled,
+    staleTime: 600_000,
+    queryFn: async () => {
+      const { data } = await supabase.from("test_parameters").select("test_id, parameter_id, display_order, is_subheader, subheader_text, report_test_parameters(id, param_code, parameter_name, unit, normal_range_low, normal_range_high, normal_range_text, is_calculated, calculation_formula, send_for_interface)").order("display_order");
+      const map: Record<string, any[]> = {};
+      (data || []).forEach((tp: any) => { if (!tp.test_id) return; if (!map[tp.test_id]) map[tp.test_id] = []; map[tp.test_id].push(tp); });
+      return map;
+    },
+  });
+  const { data: normalRangesMap = {} } = useQuery({
+    queryKey: ["results_normal_ranges"],
+    enabled: detailEnabled,
+    staleTime: 600_000,
+    queryFn: async () => {
+      const { data } = await supabase.from("parameter_normal_ranges").select("*").order("age_min");
+      const map: Record<string, any[]> = {};
+      (data || []).forEach((r: any) => { if (!map[r.parameter_id]) map[r.parameter_id] = []; map[r.parameter_id].push(r); });
+      return map;
+    },
+  });
 
   // Historical
   const expandedUmr = useMemo(() => { if (!expandedPatient) return null; const reg = registrations.find((r: any) => r.id === expandedPatient); return reg?.umr_number || null; }, [expandedPatient, registrations]);
@@ -295,11 +345,12 @@ const DoctorApproval = () => {
 
   const patientEntries: PatientEntry[] = useMemo(() => {
     return registrations.map((reg: any) => {
-      if (reg.id !== expandedPatient || !detailReady) {
+      if (reg.id !== expandedPatient || !detailReady || !detailReg) {
         return { registration: reg, parameters: [], snipOnlyTests: [] };
       }
-      const tests = (reg.tests || []) as any[];
-      const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
+      const fullReg = { ...reg, ...detailReg };
+      const tests = (fullReg.tests || []) as any[];
+      const cancelledIds = new Set(((fullReg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
       const expandedTests = expandRegistrationTests(tests, leafIdsByReg[reg.id] ?? new Set<string>(), testsMap);
       const activeTests = expandedTests.filter((t: any) => !cancelledIds.has(t.test_id));
       const parameters: ParameterResult[] = [];
@@ -328,7 +379,7 @@ const DoctorApproval = () => {
           const isParamOutsourced = isFullTestOutsourced || (paramOutsourcedSet && paramOutsourcedSet.has(p.id));
           const existing = testVerifiedResults.find((r: any) => r.parameter_id === p.id);
           if (!existing && !isParamOutsourced) continue;
-          const resolved = resolveNormalRange(p.id, reg);
+          const resolved = resolveNormalRange(p.id, fullReg);
           const refText = resolved.text || p.normal_range_text || (p.normal_range_low != null && p.normal_range_high != null ? `${p.normal_range_low} - ${p.normal_range_high}` : "");
           const savedUnit = isParamOutsourced && existing?.unit ? existing.unit : (p.unit || "");
           const savedRefRange = resolved.rangeType === "descriptive"
@@ -351,9 +402,9 @@ const DoctorApproval = () => {
           });
         }
       }
-      return { registration: reg, parameters, snipOnlyTests };
+      return { registration: fullReg, parameters, snipOnlyTests };
     });
-  }, [registrations, expandedPatient, detailReady, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails, leafIdsByReg]);
+  }, [registrations, expandedPatient, detailReady, detailReg, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails, leafIdsByReg]);
 
   const loadedTestNotes = useMemo(() => {
     const map: Record<string, string> = {};

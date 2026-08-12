@@ -42,6 +42,13 @@ import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 import { fetchAllByIds } from "@/lib/fetchAllRows";
 import { PATIENT_RESULTS_SELECT_RESULTS } from "@/lib/patientResultsSelect";
 
+/** List headers — omit tests / cancelled_tests JSON (egress). */
+const REG_LIST_SELECT =
+  "id, invoice_number, patient_name, title, mobile_number, umr_number, status, is_stat, visit_type, gender, dob, created_at, updated_at, bill_cancelled, doctor_name";
+
+/** Expand — include test payloads needed to build parameter grids. */
+const REG_DETAIL_SELECT = `${REG_LIST_SELECT}, tests, cancelled_tests`;
+
 const QUALITATIVE_PAIRS = [
   { label: "Absent / Present", values: ["Absent", "Present"] },
   { label: "Reactive / Non Reactive", values: ["Reactive", "Non Reactive"] },
@@ -217,7 +224,7 @@ const ResultsEntry = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("patient_registrations")
-        .select("id, invoice_number, patient_name, title, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, gender, dob, created_at, updated_at, bill_cancelled, doctor_name")
+        .select(REG_LIST_SELECT)
         .in("id", pageIds);
       if (error) throw error;
       const order = new Map(pageIds.map((id, i) => [id, i] as const));
@@ -230,11 +237,15 @@ const ResultsEntry = () => {
   const reTotalPages = Math.max(1, Math.ceil(reCount / pageSize));
   const regIds = acceptedRegs.map((r: any) => r.id);
 
-  // (departments query removed – now using machine-wise grouping)
+  // Detail scope — gate masters + heavy fetches on expand (egress)
+  const detailRegIds = expandedPatient ? [expandedPatient] : [];
+  const detailKey = shortIdsKey(detailRegIds, "re-d");
+  const detailEnabled = !!expandedPatient;
 
-  // ─── Fetch tests master ───
+  // ─── Masters only after expand (cached; shared across Results/Verify/Doctor) ───
   const { data: testsMap = {} } = useQuery({
     queryKey: ["results_tests_map"],
+    enabled: detailEnabled,
     queryFn: async () => {
       const { data } = await supabase.from("tests").select("id, test_name, department_id, instrument_name");
       const map: Record<string, any> = {};
@@ -244,9 +255,9 @@ const ResultsEntry = () => {
     staleTime: 600_000,
   });
 
-  // ─── Fetch test_parameters with full param info ───
   const { data: testParamsMap = {} } = useQuery({
     queryKey: ["results_test_params_full"],
+    enabled: detailEnabled,
     queryFn: async () => {
       const { data } = await supabase
         .from("test_parameters")
@@ -263,9 +274,9 @@ const ResultsEntry = () => {
     staleTime: 600_000,
   });
 
-  // ─── Fetch parameter_normal_ranges for age/gender-specific reference ranges ───
   const { data: normalRangesMap = {} } = useQuery({
     queryKey: ["results_normal_ranges"],
+    enabled: detailEnabled,
     queryFn: async () => {
       const { data } = await supabase
         .from("parameter_normal_ranges")
@@ -281,10 +292,23 @@ const ResultsEntry = () => {
     staleTime: 600_000,
   });
 
+  // Registration tests JSON — only for expanded patient
+  const { data: detailReg, isFetched: detailRegFetched } = useQuery({
+    queryKey: ["results_reg_detail", expandedPatient],
+    enabled: detailEnabled,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("patient_registrations")
+        .select(REG_DETAIL_SELECT)
+        .eq("id", expandedPatient!)
+        .maybeSingle();
+      if (error) throw error;
+      return data as any;
+    },
+    staleTime: 60_000,
+  });
+
   // ─── Detail fetches ONLY for expanded patient (egress) ───
-  const detailRegIds = expandedPatient ? [expandedPatient] : [];
-  const detailKey = shortIdsKey(detailRegIds, "re-d");
-  const detailEnabled = !!expandedPatient;
 
   const { data: existingResults = [], isFetched: resultsFetched } = useQuery({
     queryKey: ["patient_results_existing", detailKey],
@@ -357,7 +381,7 @@ const ResultsEntry = () => {
   }, [acceptedTubes]);
   // Apply tube filter only after expanded patient's tube query has completed once.
   const tubesReady = !detailEnabled || tubesFetched;
-  const detailReady = !detailEnabled || (resultsFetched && tubesFetched);
+  const detailReady = !detailEnabled || (resultsFetched && tubesFetched && detailRegFetched && !!detailReg);
 
   // ─── Fetch outsourced_test_snips for expanded patient only ───
   const { data: outsourcedSnips = [] } = useQuery({
@@ -618,12 +642,13 @@ const ResultsEntry = () => {
       if (reg.id !== expandedPatient) {
         return { registration: reg, parameters: [], incompleteTests: [], snipOnlyTests: [] };
       }
-      if (!detailReady) {
+      if (!detailReady || !detailReg) {
         return { registration: reg, parameters: [], incompleteTests: [], snipOnlyTests: [] };
       }
 
-      const tests = (reg.tests || []) as any[];
-      const cancelledIds = new Set(((reg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
+      const fullReg = { ...reg, ...detailReg };
+      const tests = (fullReg.tests || []) as any[];
+      const cancelledIds = new Set(((fullReg.cancelled_tests || []) as any[]).map((t: any) => t.test_id));
       const acceptedTestIds = acceptedTestIdsByReg[reg.id];
       // Expand PRL/HLT container rows into their leaf tests using accepted-tube test_ids
       const expandedTests = expandRegistrationTests(tests, acceptedTestIds ?? new Set<string>(), testsMap);
@@ -681,7 +706,7 @@ const ResultsEntry = () => {
         for (const { param: p, tp, isParamOutsourced, existing, covered } of testParamResults) {
           // Sibling already completed this parameter — don't re-ask in Results
           if (covered || isResultPastPending(existing?.status)) continue;
-          const resolved = resolveNormalRange(p.id, reg);
+          const resolved = resolveNormalRange(p.id, fullReg);
           const refText = resolved.text || p.normal_range_text || (p.normal_range_low != null && p.normal_range_high != null ? `${p.normal_range_low} - ${p.normal_range_high}` : "");
           const rangeLow = resolved.low ?? p.normal_range_low;
           const rangeHigh = resolved.high ?? p.normal_range_high;
@@ -726,9 +751,9 @@ const ResultsEntry = () => {
           });
         }
       }
-      return { registration: reg, parameters, incompleteTests, snipOnlyTests };
+      return { registration: fullReg, parameters, incompleteTests, snipOnlyTests };
     });
-  }, [acceptedRegs, expandedPatient, detailReady, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails, acceptedTestIdsByReg, tubesReady]);
+  }, [acceptedRegs, expandedPatient, detailReady, detailReg, testsMap, testParamsMap, existingResults, resolveNormalRange, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails, acceptedTestIdsByReg, tubesReady]);
 
   // ─── Loaded test-level notes: first non-null test_note per (reg, test) ───
   const loadedTestNotes = useMemo(() => {

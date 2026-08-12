@@ -39,6 +39,7 @@ export const MODULE_KEYS: Record<LimsModule, string[]> = {
     "results_accepted_regs",
     "results_accepted_count",
     "results_accepted_tubes",
+    "results_reg_detail",
     "patient_results_existing",
     "outsourced_manual_results",
     "results_outsourced_snips",
@@ -49,6 +50,7 @@ export const MODULE_KEYS: Record<LimsModule, string[]> = {
   verification: [
     "verification_regs_v2",
     "verification_regs_count",
+    "verification_reg_detail",
     "verification_results_v2",
     "verification_outsourced_v2",
     "verification_tubes",
@@ -56,6 +58,7 @@ export const MODULE_KEYS: Record<LimsModule, string[]> = {
   doctor_approval: [
     "doctor_approval_regs",
     "doctor_approval_count",
+    "doctor_approval_reg_detail",
     "doctor_approval_results",
     "doctor_approval_snips",
     "doctor_approval_tubes",
