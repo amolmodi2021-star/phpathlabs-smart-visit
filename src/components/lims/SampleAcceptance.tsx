@@ -704,11 +704,6 @@ const SampleAcceptance = () => {
           </TabsTrigger>
           <TabsTrigger value="accepted">
             Accepted
-            {totalAcceptedCount > 0 && (
-              <Badge variant="secondary" className="ml-2 text-xs">
-                {hasMoreAccepted ? `${acceptedGroups.length} / ${totalAcceptedCount}` : totalAcceptedCount}
-              </Badge>
-            )}
           </TabsTrigger>
         </TabsList>
         <TabsContent value="pending">{renderTable(pendingGroups, false, isLoading)}</TabsContent>
