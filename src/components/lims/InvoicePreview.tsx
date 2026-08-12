@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Printer, Send, Loader2 } from "lucide-react";
 import { format } from "date-fns";
-import html2canvas from "html2canvas";
+import { toJpeg } from "html-to-image";
 import JsBarcode from "jsbarcode";
 import { logMessageSend } from "@/lib/messageLog";
 import { enqueueInvoiceForWhatsAppConsole } from "@/lib/whatsappConsoleBridge";
@@ -212,148 +212,50 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
       toast.error("Pickup point invoices are not sent on WhatsApp");
       return;
     }
+    if (!receiptRef.current) {
+      toast.error("Invoice not ready yet");
+      return;
+    }
     setWaSending(true);
     const host = document.createElement("div");
     try {
+      // Capture the exact on-screen receipt (html-to-image / SVG foreignObject).
+      // html2canvas was thickening the red rule and altering the patient box.
       renderBarcode();
       await new Promise((r) => setTimeout(r, 80));
-      const barcodePng = barcodeRef.current?.toDataURL?.("image/png") || "";
 
-      // Rebuild receipt HTML for capture — html2canvas distorts CSS borders/radius/canvas
-      // when cloning the dialog DOM (thicker red line, roomier patient box, etc.).
-      const allTests = data.tests || [];
-      const cancelledTests = Array.isArray(data.cancelled_tests) ? data.cancelled_tests : [];
-      const cancelledIds = new Set(cancelledTests.map((ct: any) => ct.test_id));
-      const tests = allTests.filter((t: any) => !cancelledIds.has(t.test_id));
-      const createdAt = data.created_at ? new Date(data.created_at) : new Date();
-      const payments = Array.isArray(data.payments) ? data.payments : [];
-      const activeGross = tests.reduce((sum: number, t: any) => sum + Number(t.price || 0), 0);
-      const activeNet = tests.reduce((sum: number, t: any) => sum + Number(t.discounted_price || t.discountedPrice || t.price || 0), 0);
-      const activeDiscount = activeGross - activeNet;
-      const activeFinal = activeNet + Number(data.home_visit_charges || 0);
-      const hasAnyDiscount = tests.some((t: any) => Number(t.discount || 0) > 0);
-      const showGross = activeGross !== activeFinal;
-      const labVisible = brand.invoice_lab_name_visible !== "false";
-      const ageYears = data.dob
-        ? `${Math.floor((Date.now() - new Date(data.dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000))} Years`
-        : "";
-      const visit = formatVisitType(data.visit_type) + (channelName ? ` (${channelName})` : "");
-      const th = `padding:5px 4px;font-size:10px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:${PALETTE.blue};border-bottom:2px solid ${PALETTE.blue};background:${PALETTE.blueSoft}`;
-      let rows = "";
-      tests.forEach((t: any, i: number) => {
-        const td = `padding:5px 4px;font-size:12px;color:${PALETTE.ink};border-bottom:1px solid ${PALETTE.line};line-height:1.25`;
-        rows += `<tr>`;
-        rows += `<td style="${td};text-align:center;color:${PALETTE.muted}">${i + 1}</td>`;
-        rows += `<td style="${td};font-weight:600">${t.test_name || ""}</td>`;
-        if (hasAnyDiscount) {
-          rows += `<td style="${td};text-align:right;white-space:nowrap">₹${t.price}</td>`;
-          rows += `<td style="${td};text-align:right;white-space:nowrap;color:${PALETTE.discount};font-weight:600">${Number(t.discount || 0) > 0 ? `-₹${t.discount}` : "—"}</td>`;
-          rows += `<td style="${td};text-align:right;white-space:nowrap;font-weight:700">₹${t.discounted_price || t.discountedPrice}</td>`;
-        } else {
-          rows += `<td style="${td};text-align:right;white-space:nowrap;font-weight:700">₹${t.price}</td>`;
-        }
-        rows += `</tr>`;
-      });
-      const money = (label: string, amount: string, opts?: { color?: string; weight?: string; size?: string }) => {
-        const color = opts?.color || PALETTE.ink;
-        const weight = opts?.weight || "600";
-        const size = opts?.size || "11px";
-        return `<tr>
-          <td style="padding:1px 0;font-size:${size};font-weight:${weight};color:${color};text-align:left;border:0;line-height:1.2">${label}</td>
-          <td style="padding:1px 0;font-size:${size};font-weight:${weight};color:${color};text-align:right;white-space:nowrap;border:0;line-height:1.2">${amount}</td>
-        </tr>`;
-      };
-      let moneyRows = "";
-      if (showGross) {
-        moneyRows += money("Gross Amount", `₹${activeGross}`, { color: PALETTE.muted, weight: "500" });
-        if (activeDiscount > 0) moneyRows += money("Discount", `-₹${activeDiscount}`, { color: PALETTE.discount, weight: "600" });
-        if (Number(data.home_visit_charges || 0) > 0) {
-          moneyRows += money("Home Visit Charges", `+₹${data.home_visit_charges}`, { color: PALETTE.muted, weight: "500" });
-        }
-      }
-      moneyRows += money("Final Amount", `₹${activeFinal}`, { weight: "800", size: "12px" });
-      payments.forEach((p: any) => {
-        moneyRows += money(
-          `${p.mode}${p.date ? ` (${format(new Date(p.date), "dd-MM-yyyy hh:mm a")})` : ""}`,
-          `₹${p.amount}`,
-          { color: PALETTE.muted, weight: "500", size: "10px" },
-        );
-      });
-      moneyRows += money("Paid", `₹${data.paid_amount}`, { weight: "700" });
-      if (Number(data.due_amount || 0) > 0) {
-        moneyRows += money("Due", `₹${data.due_amount}`, { color: PALETTE.red, weight: "800" });
-      }
+      const source = receiptRef.current;
+      const clone = source.cloneNode(true) as HTMLElement;
+      clone.style.margin = "0";
+      clone.style.borderRadius = "0";
+      clone.style.boxShadow = "none";
+      clone.style.width = "560px";
+      clone.style.maxWidth = "560px";
+      clone.style.background = "#ffffff";
+      clone.style.color = "#111827";
 
-      const logoAlign = brand.invoice_logo_align || "center";
-      const html = `<div style="font-family:'Segoe UI',system-ui,-apple-system,Arial,sans-serif;width:560px;margin:0;padding:10px 16px 12px;color:${PALETTE.ink};background:#fff;box-sizing:border-box">
-        <div style="padding:20px 0 4px;text-align:${logoAlign}">
-          ${brand.invoice_logo_url ? `<div style="line-height:0;text-align:${logoAlign}"><img src="${brand.invoice_logo_url}" crossorigin="anonymous" style="max-height:44px;display:inline-block"/></div>` : ""}
-          ${labVisible ? `<div style="margin:2px 0 0;${textStyleCss(brand, "invoice_lab_name", "15", PALETTE.blue)};text-align:${brand.invoice_lab_name_align || "center"};letter-spacing:-0.02em;line-height:1.15">${brand.invoice_lab_name || ""}</div>` : ""}
-          ${brand.invoice_contact ? `<div style="margin:1px 0 0;${textStyleCss(brand, "invoice_contact", "9", PALETTE.muted)};text-align:${brand.invoice_lab_name_align || "center"};line-height:1.2">${brand.invoice_contact}</div>` : ""}
-          ${brand.invoice_address ? `<div style="margin:0;${textStyleCss(brand, "invoice_address", "8", PALETTE.muted)};white-space:pre-line;text-align:${brand.invoice_address_align || "center"};line-height:1.2">${brand.invoice_address}</div>` : ""}
-        </div>
-        <div style="height:2px;background:${PALETTE.red};width:100%;margin:0 0 6px;padding:0;border:0"></div>
-        <table style="width:100%;border-collapse:collapse;table-layout:fixed;margin:0 0 4px"><tr>
-          <td style="border:none;vertical-align:middle;text-align:left;padding:0;width:38%">
-            <div style="font-size:8px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:${PALETTE.blue};line-height:1">${brand.invoice_tagline || "Receipt Memo"}</div>
-            <div style="font-size:15px;font-weight:800;color:${PALETTE.ink};letter-spacing:-0.02em;line-height:1.15">#${data.invoice_number}</div>
-            <div style="font-size:9px;font-weight:500;color:${PALETTE.muted};line-height:1.2">${format(createdAt, "dd MMM yyyy · hh:mm a")}</div>
-          </td>
-          <td style="border:none;vertical-align:middle;text-align:center;padding:0 6px;width:24%;line-height:0">
-            ${barcodePng ? `<img src="${barcodePng}" alt="" style="height:20px;max-width:100%;display:inline-block;vertical-align:middle"/>` : ""}
-          </td>
-          <td style="border:none;vertical-align:middle;text-align:right;padding:0;width:38%;white-space:nowrap;font-size:9px">
-            <div style="display:inline-block;background:${PALETTE.blueSoft};color:${PALETTE.blue};font-weight:700;font-size:8px;letter-spacing:0.05em;text-transform:uppercase;padding:2px 7px;border-radius:999px">${visit || "Visit"}</div>
-            ${data.umr_number ? `<div style="margin-top:2px;font-size:9px;font-weight:700;color:${PALETTE.ink}">${data.umr_number}</div>` : ""}
-          </td>
-        </tr></table>
-        <div style="background:${PALETTE.blueSoft};border:1px solid ${PALETTE.blueLine};border-radius:6px;padding:4px 8px;margin:0 0 6px">
-          <table style="width:100%;border-collapse:collapse;font-size:10px;line-height:1.25">
-            <tr>
-              <td style="border:none;padding:1px 6px 1px 0;width:50%;vertical-align:top"><span style="color:${PALETTE.muted};font-size:8px">Name </span><strong style="color:${PALETTE.ink}">${patientDisplayName(data)}</strong></td>
-              <td style="border:none;padding:1px 0;width:50%;vertical-align:top"><span style="color:${PALETTE.muted};font-size:8px">Mobile </span><strong style="color:${PALETTE.ink}">${data.mobile_number || "—"}</strong></td>
-            </tr>
-            <tr>
-              <td style="border:none;padding:1px 6px 1px 0;vertical-align:top"><span style="color:${PALETTE.muted};font-size:8px">Age / Gender </span><strong style="color:${PALETTE.ink}">${[ageYears, data.gender].filter(Boolean).join(" · ") || "—"}</strong></td>
-              <td style="border:none;padding:1px 0;vertical-align:top"><span style="color:${PALETTE.muted};font-size:8px">Doctor </span><strong style="color:${PALETTE.ink}">${data.doctor_name || "—"}</strong></td>
-            </tr>
-          </table>
-        </div>
-        <table style="width:100%;border-collapse:collapse;table-layout:fixed;margin:0">
-          <thead><tr>
-            <th style="${th};width:8%;text-align:center">#</th>
-            <th style="${th};text-align:left">Test / Investigation</th>
-            ${hasAnyDiscount
-              ? `<th style="${th};text-align:right;width:16%">Price</th><th style="${th};text-align:right;width:14%">Disc</th><th style="${th};text-align:right;width:16%">Net</th>`
-              : `<th style="${th};text-align:right;width:22%">Amount</th>`}
-          </tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-        <div style="margin-top:4px">
-          <table style="width:100%;border-collapse:collapse;table-layout:fixed">${moneyRows}</table>
-          ${Number(data.paid_amount || 0) > 0
-            ? `<div style="font-size:9px;margin-top:2px;color:${PALETTE.muted};line-height:1.2">Received with thanks from <strong style="color:${PALETTE.ink}">${patientDisplayName(data)}</strong> a sum of Rs. ${Number(data.paid_amount).toFixed(2)}/- (${numberToWords(Number(data.paid_amount))} Rupees)</div>`
-            : ""}
-        </div>
-        <div style="text-align:center;font-size:8px;color:${PALETTE.muted};margin-top:3px;line-height:1.2">
-          <div style="margin:0;font-weight:600;color:${PALETTE.blue}">Thank you for choosing PH PathLabs</div>
-          <div style="margin:1px 0 0;font-size:7px">This is an electronically generated receipt and does not require a signature</div>
-        </div>
-        <div style="height:1px;background:${PALETTE.line};width:100%;margin:3px 0 0"></div>
-        <table style="width:100%;border-collapse:collapse;margin-top:2px"><tr>
-          <td style="border:none;padding:0;font-size:7px;color:${PALETTE.muted};text-align:left">Prepared by ${data.registered_by || "—"} · ${format(createdAt, "dd-MM-yyyy hh:mm a")}</td>
-          <td style="border:none;padding:0;font-size:7px;color:${PALETTE.muted};text-align:right">Printed by ${getCurrentUserName() || "—"} · ${format(new Date(), "dd-MM-yyyy hh:mm a")}</td>
-        </tr></table>
-      </div>`;
+      // Canvas pixels do not clone — swap barcode for a PNG <img>.
+      const srcCanvas = barcodeRef.current;
+      const cloneCanvas = clone.querySelector("canvas");
+      if (srcCanvas && cloneCanvas && srcCanvas.width > 0) {
+        const img = document.createElement("img");
+        img.src = srcCanvas.toDataURL("image/png");
+        img.alt = "";
+        img.style.cssText =
+          cloneCanvas.getAttribute("style") ||
+          "display:inline-block;max-width:100%;height:20px;vertical-align:middle";
+        cloneCanvas.replaceWith(img);
+      } else if (cloneCanvas) {
+        cloneCanvas.remove();
+      }
 
       host.setAttribute("data-invoice-wa-capture", "1");
       host.style.cssText =
         "position:fixed;left:-10000px;top:0;width:560px;background:#ffffff;z-index:-1;pointer-events:none;";
-      host.innerHTML = html;
+      host.appendChild(clone);
       document.body.appendChild(host);
 
-      const sheet = host.firstElementChild as HTMLElement;
-      const imgs = Array.from(sheet.querySelectorAll("img"));
+      const imgs = Array.from(clone.querySelectorAll("img"));
       await Promise.all(
         imgs.map(
           (img) =>
@@ -366,25 +268,41 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
         ),
       );
 
-      const canvas = await html2canvas(sheet, {
-        backgroundColor: "#ffffff",
-        scale: 2,
-        useCORS: true,
-        allowTaint: false,
-        width: 560,
-        windowWidth: 560,
-        height: Math.ceil(sheet.scrollHeight),
-        windowHeight: Math.ceil(sheet.scrollHeight),
-        logging: false,
-        imageTimeout: 8000,
-      });
-      const blob = await new Promise<Blob | null>((resolve) =>
-        canvas.toBlob((b) => resolve(b), "image/jpeg", 0.95),
-      );
-      if (!blob) {
+      const width = 560;
+      const height = Math.max(clone.scrollHeight, clone.offsetHeight, 1);
+      let dataUrl = "";
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          dataUrl = await toJpeg(clone, {
+            quality: 0.95,
+            pixelRatio: 2,
+            cacheBust: true,
+            backgroundColor: "#ffffff",
+            width,
+            height,
+            style: {
+              transform: "none",
+              transformOrigin: "top left",
+              margin: "0",
+              width: `${width}px`,
+            },
+          });
+          if (dataUrl && dataUrl.length > 5000) break;
+        } catch {
+          // retry — html-to-image can intermittently return blank
+        }
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      if (!dataUrl) {
         toast.error("Could not generate invoice image for WhatsApp");
         return;
       }
+      const blob = await (await fetch(dataUrl)).blob();
+      if (!blob || blob.size < 1000) {
+        toast.error("Could not generate invoice image for WhatsApp");
+        return;
+      }
+
       const lab = brand.invoice_lab_name || "PH PathLabs";
       const caption =
         `📋 *${lab} — Invoice*\n` +
@@ -415,7 +333,7 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
       host.remove();
       setWaSending(false);
     }
-  }, [open, data, brand, channelName, renderBarcode, isPickupInvoice]);
+  }, [open, data, brand, renderBarcode, isPickupInvoice]);
 
   // New registration: queue invoice to durable outbox once barcode/layout is ready.
   useEffect(() => {
