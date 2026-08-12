@@ -179,7 +179,7 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
         displayValue: false,
         margin: 0,
         background: "#ffffff",
-        lineColor: PALETTE.blue,
+        lineColor: "#000000",
       });
       return true;
     } catch {
@@ -321,7 +321,7 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
     if (!printWindow) return;
 
     // Dynamic pagination: estimate heights in mm relative to A5 usable area
-    const ROW_HEIGHT = 6; // mm per test row
+    const ROW_HEIGHT = 7; // mm per test row (larger fonts)
     const USABLE_HEIGHT = 186; // A5 (210mm) minus 24mm margins
     const HEADER_HEIGHT = 82; // logo bar + patient card + table header + page footer
 
@@ -435,7 +435,7 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
     };
 
     const tableHeaderHtml = () => {
-      const th = `padding:8px 6px;font-size:9px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:${PALETTE.blue};border-bottom:2px solid ${PALETTE.blue};background:${PALETTE.blueSoft}`;
+      const th = `padding:9px 6px;font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:${PALETTE.blue};border-bottom:2px solid ${PALETTE.blue};background:${PALETTE.blueSoft}`;
       let h = `<tr>`;
       h += `<th style="${th};width:1%;white-space:nowrap;text-align:center">#</th>`;
       h += `<th style="${th};text-align:left">Test / Investigation</th>`;
@@ -451,16 +451,16 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
     };
 
     const testRowHtml = (t: any, globalIndex: number) => {
-      const td = `padding:7px 6px;font-size:10px;color:${PALETTE.ink};border-bottom:1px solid ${PALETTE.line}`;
+      const td = `padding:9px 6px;font-size:13px;color:${PALETTE.ink};border-bottom:1px solid ${PALETTE.line}`;
       let r = `<tr>`;
       r += `<td style="${td};text-align:center;width:1%;white-space:nowrap;color:${PALETTE.muted}">${globalIndex + 1}</td>`;
       r += `<td style="${td}">${t.test_name}</td>`;
       if (hasAnyDiscount) {
         r += `<td style="${td};text-align:right;white-space:nowrap">₹${t.price}</td>`;
         r += `<td style="${td};text-align:right;white-space:nowrap;color:${PALETTE.discount}">${Number(t.discount || 0) > 0 ? `-₹${t.discount}` : "—"}</td>`;
-        r += `<td style="${td};text-align:right;white-space:nowrap;font-weight:600">₹${t.discounted_price || t.discountedPrice}</td>`;
+        r += `<td style="${td};text-align:right;white-space:nowrap;font-weight:700">₹${t.discounted_price || t.discountedPrice}</td>`;
       } else {
-        r += `<td style="${td};text-align:right;white-space:nowrap;font-weight:600">₹${t.price}</td>`;
+        r += `<td style="${td};text-align:right;white-space:nowrap;font-weight:700">₹${t.price}</td>`;
       }
       r += `</tr>`;
       return r;
@@ -499,7 +499,7 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
           const weight = opts?.weight || "600";
           const bg = opts?.bg || "transparent";
           const pad = opts?.pad || "5px 4px";
-          const size = opts?.size || "11px";
+          const size = opts?.size || "12px";
           const amountSize = opts?.amountSize || size;
           return `<tr>
             <td style="padding:${pad};font-size:${size};font-weight:${weight};color:${color};background:${bg};text-align:left;vertical-align:middle;border:none">${label}</td>
@@ -536,7 +536,7 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
             );
           });
         }
-        summaryHtml += moneyRow("Paid", `₹${data.paid_amount}`, { color: PALETTE.ink, weight: "700", pad: "8px 4px" });
+        summaryHtml += moneyRow("Paid", `₹${data.paid_amount}`, { color: PALETTE.ink, weight: "700", pad: "8px 4px", size: "12px" });
         summaryHtml += `</table>`;
         if (Number(data.paid_amount || 0) > 0) {
           summaryHtml += `<div style="font-size:10px;margin-top:6px;color:${PALETTE.muted}">Received with thanks from <strong style="color:${PALETTE.ink}">${patientDisplayName(data)}</strong> a sum of Rs. ${Number(data.paid_amount).toFixed(2)}/- (${numberToWords(Number(data.paid_amount))} Rupees)</div>`;
@@ -716,99 +716,137 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
             </div>
           </div>
 
-          <table style={{ width: "100%", borderCollapse: "collapse", margin: "0 0 4px" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", margin: "0 0 4px", tableLayout: "fixed" }}>
             <thead>
               <tr>
-                <th style={{ padding: "8px 6px", fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, width: "1%", whiteSpace: "nowrap", textAlign: "center" }}>#</th>
-                <th style={{ padding: "8px 6px", fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, textAlign: "left" }}>Test / Investigation</th>
+                <th style={{ padding: "9px 6px", fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, width: "8%", whiteSpace: "nowrap", textAlign: "center" }}>#</th>
+                <th style={{ padding: "9px 6px", fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, textAlign: "left" }}>Test / Investigation</th>
                 {hasAnyDiscount ? (
                   <>
-                    <th style={{ padding: "8px 6px", fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, textAlign: "right", width: "1%", whiteSpace: "nowrap" }}>Price</th>
-                    <th style={{ padding: "8px 6px", fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, textAlign: "right", width: "1%", whiteSpace: "nowrap" }}>Disc</th>
-                    <th style={{ padding: "8px 6px", fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, textAlign: "right", width: "1%", whiteSpace: "nowrap" }}>Net</th>
+                    <th style={{ padding: "9px 6px", fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, textAlign: "right", width: "16%", whiteSpace: "nowrap" }}>Price</th>
+                    <th style={{ padding: "9px 6px", fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, textAlign: "right", width: "14%", whiteSpace: "nowrap" }}>Disc</th>
+                    <th style={{ padding: "9px 6px", fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, textAlign: "right", width: "16%", whiteSpace: "nowrap" }}>Net</th>
                   </>
                 ) : (
-                  <th style={{ padding: "8px 6px", fontSize: 9, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, textAlign: "right", width: "1%", whiteSpace: "nowrap" }}>Amount</th>
+                  <th style={{ padding: "9px 6px", fontSize: 11, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", color: PALETTE.blue, borderBottom: `2px solid ${PALETTE.blue}`, background: PALETTE.blueSoft, textAlign: "right", width: "22%", whiteSpace: "nowrap" }}>Amount</th>
                 )}
               </tr>
             </thead>
             <tbody>
               {tests.map((t: any, i: number) => (
                 <tr key={i}>
-                  <td style={{ padding: "7px 6px", fontSize: 10, textAlign: "center", width: "1%", whiteSpace: "nowrap", color: PALETTE.muted, borderBottom: `1px solid ${PALETTE.line}` }}>{i + 1}</td>
-                  <td style={{ padding: "7px 6px", fontSize: 10, borderBottom: `1px solid ${PALETTE.line}` }}>{t.test_name}</td>
+                  <td style={{ padding: "9px 6px", fontSize: 13, textAlign: "center", whiteSpace: "nowrap", color: PALETTE.muted, borderBottom: `1px solid ${PALETTE.line}` }}>{i + 1}</td>
+                  <td style={{ padding: "9px 6px", fontSize: 13, borderBottom: `1px solid ${PALETTE.line}`, fontWeight: 600 }}>{t.test_name}</td>
                   {hasAnyDiscount ? (
                     <>
-                      <td style={{ padding: "7px 6px", fontSize: 10, textAlign: "right", whiteSpace: "nowrap", borderBottom: `1px solid ${PALETTE.line}` }}>₹{t.price}</td>
-                      <td style={{ padding: "7px 6px", fontSize: 10, textAlign: "right", whiteSpace: "nowrap", color: PALETTE.discount, borderBottom: `1px solid ${PALETTE.line}` }}>{Number(t.discount || 0) > 0 ? `-₹${t.discount}` : "—"}</td>
-                      <td style={{ padding: "7px 6px", fontSize: 10, textAlign: "right", whiteSpace: "nowrap", fontWeight: 600, borderBottom: `1px solid ${PALETTE.line}` }}>₹{t.discounted_price || t.discountedPrice}</td>
+                      <td style={{ padding: "9px 6px", fontSize: 13, textAlign: "right", whiteSpace: "nowrap", borderBottom: `1px solid ${PALETTE.line}` }}>₹{t.price}</td>
+                      <td style={{ padding: "9px 6px", fontSize: 13, textAlign: "right", whiteSpace: "nowrap", color: PALETTE.discount, borderBottom: `1px solid ${PALETTE.line}`, fontWeight: 600 }}>{Number(t.discount || 0) > 0 ? `-₹${t.discount}` : "—"}</td>
+                      <td style={{ padding: "9px 6px", fontSize: 13, textAlign: "right", whiteSpace: "nowrap", fontWeight: 700, borderBottom: `1px solid ${PALETTE.line}` }}>₹{t.discounted_price || t.discountedPrice}</td>
                     </>
                   ) : (
-                    <td style={{ padding: "7px 6px", fontSize: 10, textAlign: "right", whiteSpace: "nowrap", fontWeight: 600, borderBottom: `1px solid ${PALETTE.line}` }}>₹{t.price}</td>
+                    <td style={{ padding: "9px 6px", fontSize: 13, textAlign: "right", whiteSpace: "nowrap", fontWeight: 700, borderBottom: `1px solid ${PALETTE.line}` }}>₹{t.price}</td>
                   )}
                 </tr>
               ))}
             </tbody>
           </table>
 
-          <div style={{ marginTop: 12, background: PALETTE.soft, border: `1px solid ${PALETTE.line}`, borderRadius: 10, padding: 12, fontSize: 11, lineHeight: 1.55 }}>
-            {showGross && (
-              <>
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", color: PALETTE.muted }}><span>Gross Amount</span><span style={{ color: PALETTE.ink }}>₹{activeGross}</span></div>
-                {activeDiscount > 0 && <div style={{ display: "flex", justifyContent: "space-between", color: PALETTE.discount, padding: "3px 0" }}><span>Discount</span><span>-₹{activeDiscount}</span></div>}
-                {Number(data.home_visit_charges || 0) > 0 && <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", color: PALETTE.muted }}><span>Home Visit Charges</span><span style={{ color: PALETTE.ink }}>+₹{data.home_visit_charges}</span></div>}
-              </>
-            )}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8, padding: "10px 12px", background: PALETTE.blue, color: "#fff", borderRadius: 8, fontWeight: 800 }}>
-              <span style={{ letterSpacing: "0.04em", textTransform: "uppercase", fontSize: 10 }}>Final Amount</span>
-              <span style={{ fontSize: 16 }}>₹{activeFinal}</span>
-            </div>
-            {payments.length > 0 && (
-              <div style={{ marginTop: 8 }}>
+          <div style={{ marginTop: 12, background: PALETTE.soft, border: `1px solid ${PALETTE.line}`, borderRadius: 10, padding: "10px 12px" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+              <colgroup>
+                <col style={{ width: "70%" }} />
+                <col style={{ width: "30%" }} />
+              </colgroup>
+              <tbody>
+                {showGross && (
+                  <>
+                    <tr>
+                      <td style={{ padding: "5px 4px", fontSize: 12, color: PALETTE.muted, textAlign: "left", border: "none" }}>Gross Amount</td>
+                      <td style={{ padding: "5px 4px", fontSize: 12, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none" }}>₹{activeGross}</td>
+                    </tr>
+                    {activeDiscount > 0 && (
+                      <tr>
+                        <td style={{ padding: "5px 4px", fontSize: 12, color: PALETTE.discount, fontWeight: 600, textAlign: "left", border: "none" }}>Discount</td>
+                        <td style={{ padding: "5px 4px", fontSize: 12, color: PALETTE.discount, fontWeight: 600, textAlign: "right", whiteSpace: "nowrap", border: "none" }}>-₹{activeDiscount}</td>
+                      </tr>
+                    )}
+                    {Number(data.home_visit_charges || 0) > 0 && (
+                      <tr>
+                        <td style={{ padding: "5px 4px", fontSize: 12, color: PALETTE.muted, textAlign: "left", border: "none" }}>Home Visit Charges</td>
+                        <td style={{ padding: "5px 4px", fontSize: 12, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none" }}>+₹{data.home_visit_charges}</td>
+                      </tr>
+                    )}
+                  </>
+                )}
+                <tr>
+                  <td style={{ padding: "10px 12px", fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase", color: "#fff", background: PALETTE.blue, textAlign: "left", border: "none", borderRadius: "8px 0 0 8px" }}>Final Amount</td>
+                  <td style={{ padding: "10px 12px", fontSize: 16, fontWeight: 800, color: "#fff", background: PALETTE.blue, textAlign: "right", whiteSpace: "nowrap", border: "none", borderRadius: "0 8px 8px 0" }}>₹{activeFinal}</td>
+                </tr>
                 {payments.map((p: any, i: number) => (
-                  <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 10, padding: "2px 0", color: PALETTE.muted }}>
-                    <span>{p.mode}{p.date ? ` (${format(new Date(p.date), "dd-MM-yyyy hh:mm a")})` : ""}</span>
-                    <span style={{ color: PALETTE.ink }}>₹{p.amount}</span>
-                  </div>
+                  <tr key={i}>
+                    <td style={{ padding: "5px 4px", fontSize: 11, color: PALETTE.muted, textAlign: "left", border: "none" }}>
+                      {p.mode}{p.date ? ` (${format(new Date(p.date), "dd-MM-yyyy hh:mm a")})` : ""}
+                    </td>
+                    <td style={{ padding: "5px 4px", fontSize: 11, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none" }}>₹{p.amount}</td>
+                  </tr>
                 ))}
-              </div>
-            )}
-            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, marginTop: 6, padding: "4px 0", color: PALETTE.ink }}>
-              <span>Paid</span><span>₹{data.paid_amount}</span>
-            </div>
+                <tr>
+                  <td style={{ padding: "8px 4px", fontSize: 12, fontWeight: 700, color: PALETTE.ink, textAlign: "left", border: "none" }}>Paid</td>
+                  <td style={{ padding: "8px 4px", fontSize: 12, fontWeight: 700, color: PALETTE.ink, textAlign: "right", whiteSpace: "nowrap", border: "none" }}>₹{data.paid_amount}</td>
+                </tr>
+              </tbody>
+            </table>
             {Number(data.paid_amount || 0) > 0 && (
-              <div style={{ fontSize: 10, marginTop: 6, color: PALETTE.muted }}>
+              <div style={{ fontSize: 11, marginTop: 6, color: PALETTE.muted }}>
                 Received with thanks from <strong style={{ color: PALETTE.ink }}>{patientDisplayName(data)}</strong> a sum of Rs. {Number(data.paid_amount).toFixed(2)}/- ({numberToWords(Number(data.paid_amount))} Rupees)
               </div>
             )}
             {data.due_amount > 0 && (
-              <div style={{ display: "flex", justifyContent: "space-between", color: PALETTE.red, fontWeight: 800, marginTop: 8, padding: "8px 10px", background: "#FEF2F2", borderRadius: 8 }}>
-                <span>Due</span><span>₹{data.due_amount}</span>
-              </div>
+              <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", marginTop: 8 }}>
+                <colgroup>
+                  <col style={{ width: "70%" }} />
+                  <col style={{ width: "30%" }} />
+                </colgroup>
+                <tbody>
+                  <tr>
+                    <td style={{ padding: "8px 10px", fontSize: 12, fontWeight: 800, color: PALETTE.red, background: "#FEF2F2", textAlign: "left", border: "none", borderRadius: "8px 0 0 8px" }}>Due</td>
+                    <td style={{ padding: "8px 10px", fontSize: 12, fontWeight: 800, color: PALETTE.red, background: "#FEF2F2", textAlign: "right", whiteSpace: "nowrap", border: "none", borderRadius: "0 8px 8px 0" }}>₹{data.due_amount}</td>
+                  </tr>
+                </tbody>
+              </table>
             )}
             {data.refund_amount > 0 && (
-              <div style={{ marginTop: 8, borderTop: `1px solid ${PALETTE.line}`, paddingTop: 8 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", color: PALETTE.orange, fontWeight: 700 }}>
-                  <span>Refund Amount</span><span>₹{data.refund_amount}</span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: PALETTE.muted }}>
-                  <span>Refund Mode</span><span>{data.refund_mode || "—"}</span>
-                </div>
-                {data.refund_date && (
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: PALETTE.muted }}>
-                    <span>Refund Date</span><span>{format(new Date(data.refund_date), "dd-MM-yyyy hh:mm a")}</span>
-                  </div>
-                )}
-                {cancelledTests.length > 0 && (
-                  <div style={{ fontSize: 9, color: PALETTE.muted, marginTop: 3 }}>
-                    Cancelled Tests: {cancelledTests.map((ct: any) => ct.test_name || ct.test_id).join(", ")}
-                  </div>
-                )}
-                {hvcRefund > 0 && (
-                  <div style={{ fontSize: 9, color: PALETTE.muted, marginTop: 3 }}>
-                    Home Visit Charges Refunded: ₹{hvcRefund}
-                  </div>
-                )}
+              <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", marginTop: 8, borderTop: `1px solid ${PALETTE.line}` }}>
+                <colgroup>
+                  <col style={{ width: "70%" }} />
+                  <col style={{ width: "30%" }} />
+                </colgroup>
+                <tbody>
+                  <tr>
+                    <td style={{ padding: "8px 4px 4px", fontSize: 12, fontWeight: 700, color: PALETTE.orange, textAlign: "left", border: "none" }}>Refund Amount</td>
+                    <td style={{ padding: "8px 4px 4px", fontSize: 12, fontWeight: 700, color: PALETTE.orange, textAlign: "right", whiteSpace: "nowrap", border: "none" }}>₹{data.refund_amount}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: "4px", fontSize: 11, color: PALETTE.muted, textAlign: "left", border: "none" }}>Refund Mode</td>
+                    <td style={{ padding: "4px", fontSize: 11, color: PALETTE.muted, textAlign: "right", border: "none" }}>{data.refund_mode || "—"}</td>
+                  </tr>
+                  {data.refund_date && (
+                    <tr>
+                      <td style={{ padding: "4px", fontSize: 11, color: PALETTE.muted, textAlign: "left", border: "none" }}>Refund Date</td>
+                      <td style={{ padding: "4px", fontSize: 11, color: PALETTE.muted, textAlign: "right", border: "none" }}>{format(new Date(data.refund_date), "dd-MM-yyyy hh:mm a")}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            )}
+            {cancelledTests.length > 0 && (
+              <div style={{ fontSize: 10, color: PALETTE.muted, marginTop: 6 }}>
+                Cancelled Tests: {cancelledTests.map((ct: any) => ct.test_name || ct.test_id).join(", ")}
+              </div>
+            )}
+            {hvcRefund > 0 && (
+              <div style={{ fontSize: 10, color: PALETTE.muted, marginTop: 3 }}>
+                Home Visit Charges Refunded: ₹{hvcRefund}
               </div>
             )}
           </div>
