@@ -506,7 +506,13 @@ const Dispatch = () => {
     return buildFullDispatchEntry(selectedReg, detailResults, detailTubes, detailSnips, testsMap);
   }, [selectedPatientId, selectedReg, detailLoading, detailResults, detailTubes, detailSnips, testsMap]);
 
-  const dispatchRegIds = useMemo(() => listEntries.map((e) => e.registration.id), [listEntries]);
+  const dispatchRegIds = useMemo(
+    () =>
+      listEntries
+        .filter((e) => e.completionStatus !== "all_dispatched" && e.completionStatus !== "cancelled")
+        .map((e) => e.registration.id),
+    [listEntries],
+  );
   const { isNew: isNewArrival, markSeen: markArrivalSeen } = useNewArrivalsBadge("dispatch", dispatchRegIds);
 
   // Do not auto-open a patient — detail fetch only on user click (egress).
