@@ -6,8 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Trash2, Pencil, Check, X, Link } from "lucide-react";
+import { Plus, Trash2, Pencil, Check, X, Link, Search } from "lucide-react";
 import { toast } from "sonner";
+import { MASTER_LIST_PAGE_SIZE, pageRange, sanitizeIlike } from "@/lib/masterListPaging";
+import PaginatedTableFooter from "@/components/ui/PaginatedTableFooter";
 
 interface CategoryDef {
   key: string;
@@ -37,6 +39,9 @@ interface LookupItem {
   mapped_value_2: string | null;
 }
 
+const LOOKUP_LIST_COLUMNS = "id, category, value, display_order, is_active, mapped_value, mapped_value_2";
+const PAGE_SIZE = MASTER_LIST_PAGE_SIZE;
+
 function CategorySection({ category, placeholder, mappedTo, mappedTo2 }: { category: string; placeholder: string; mappedTo?: string; mappedTo2?: string }) {
   const qc = useQueryClient();
   const [newValue, setNewValue] = useState("");
@@ -46,27 +51,39 @@ function CategorySection({ category, placeholder, mappedTo, mappedTo2 }: { categ
   const [editValue, setEditValue] = useState("");
   const [editMappedValue, setEditMappedValue] = useState("");
   const [editMappedValue2, setEditMappedValue2] = useState("");
+  const [search, setSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const [page, setPage] = useState(0);
 
-  const { data: items = [], isLoading } = useQuery({
-    queryKey: ["master_lookup", category],
+  const { data: pageData, isLoading } = useQuery({
+    queryKey: ["master_lookup", category, "page", appliedSearch, page],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { from, to } = pageRange({ page, pageSize: PAGE_SIZE });
+      let q = supabase
         .from("master_lookup")
-        .select("*")
+        .select(LOOKUP_LIST_COLUMNS, { count: "exact" })
         .eq("category", category)
         .order("display_order")
         .order("value");
+      const term = sanitizeIlike(appliedSearch);
+      if (term) q = q.ilike("value", `%${term}%`);
+      const { data, error, count } = await q.range(from, to);
       if (error) throw error;
-      return (data || []) as LookupItem[];
+      return { rows: (data || []) as LookupItem[], total: count ?? 0 };
     },
   });
+  const items = pageData?.rows ?? [];
+  const total = pageData?.total ?? 0;
+
+  const runSearch = () => { setPage(0); setAppliedSearch(search.trim()); };
+  const clearSearch = () => { setSearch(""); setAppliedSearch(""); setPage(0); };
 
   const addMutation = useMutation({
     mutationFn: async ({ value, mapped, mapped2 }: { value: string; mapped?: string; mapped2?: string }) => {
       const { error } = await supabase.from("master_lookup").insert({
         category,
         value: value.trim(),
-        display_order: items.length,
+        display_order: total,
         ...(mappedTo && mapped ? { mapped_value: mapped.trim() } : {}),
         ...(mappedTo2 && mapped2 ? { mapped_value_2: mapped2.trim() } : {}),
       } as any);
@@ -117,6 +134,23 @@ function CategorySection({ category, placeholder, mappedTo, mappedTo2 }: { categ
 
   return (
     <div className="space-y-3">
+      <div className="flex gap-2 items-end flex-wrap">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            className="pl-8"
+            placeholder={`Search ${category.replace(/_/g, " ")}...`}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); runSearch(); } }}
+          />
+        </div>
+        <Button size="sm" onClick={runSearch}>Search</Button>
+        {appliedSearch && (
+          <Button variant="ghost" size="sm" onClick={clearSearch}><X className="h-4 w-4 mr-1" />Clear</Button>
+        )}
+      </div>
+
       <div className="flex gap-2 items-end">
         <div className="flex-1 space-y-1">
           <label className="text-xs font-medium text-muted-foreground">{category === "machine_name" ? "Machine Name" : category === "sample_tube" ? "Sample Tube" : "Value"}</label>
@@ -141,7 +175,7 @@ function CategorySection({ category, placeholder, mappedTo, mappedTo2 }: { categ
           </div>
         )}
         {mappedTo2 && (
-          <div className="w-48 space-y-1">
+          <div className="w-40 space-y-1">
             <label className="text-xs font-medium text-muted-foreground flex items-center gap-1">
               <Link className="h-3 w-3" /> {mappedTo2}
             </label>
@@ -153,7 +187,7 @@ function CategorySection({ category, placeholder, mappedTo, mappedTo2 }: { categ
             />
           </div>
         )}
-        <Button size="sm" className="h-9" onClick={handleAdd} disabled={!newValue.trim() || addMutation.isPending}>
+        <Button onClick={handleAdd} disabled={addMutation.isPending || !newValue.trim()}>
           <Plus className="h-4 w-4 mr-1" />Add
         </Button>
       </div>
@@ -161,18 +195,17 @@ function CategorySection({ category, placeholder, mappedTo, mappedTo2 }: { categ
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Loading...</p>
       ) : items.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No items added yet. Add your first one above.</p>
+        <p className="text-sm text-muted-foreground py-4">No items yet.</p>
       ) : (
         <div className="flex flex-wrap gap-2">
           {items.map((item) => (
             <div key={item.id}>
               {editingId === item.id ? (
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 flex-wrap">
                   <Input
+                    className="h-8 w-40"
                     value={editValue}
                     onChange={(e) => setEditValue(e.target.value)}
-                    className="h-8 w-40 text-sm"
-                    autoFocus
                     onKeyDown={(e) => {
                       if (e.key === "Enter") updateMutation.mutate({ id: item.id, value: editValue, mapped: editMappedValue, mapped2: editMappedValue2 });
                       if (e.key === "Escape") setEditingId(null);
@@ -180,9 +213,9 @@ function CategorySection({ category, placeholder, mappedTo, mappedTo2 }: { categ
                   />
                   {mappedTo && (
                     <Input
+                      className="h-8 w-36"
                       value={editMappedValue}
                       onChange={(e) => setEditMappedValue(e.target.value)}
-                      className="h-8 w-32 text-sm"
                       placeholder={mappedTo}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") updateMutation.mutate({ id: item.id, value: editValue, mapped: editMappedValue, mapped2: editMappedValue2 });
@@ -192,9 +225,9 @@ function CategorySection({ category, placeholder, mappedTo, mappedTo2 }: { categ
                   )}
                   {mappedTo2 && (
                     <Input
+                      className="h-8 w-32"
                       value={editMappedValue2}
                       onChange={(e) => setEditMappedValue2(e.target.value)}
-                      className="h-8 w-32 text-sm"
                       placeholder={mappedTo2}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") updateMutation.mutate({ id: item.id, value: editValue, mapped: editMappedValue, mapped2: editMappedValue2 });
@@ -236,19 +269,22 @@ function CategorySection({ category, placeholder, mappedTo, mappedTo2 }: { categ
           ))}
         </div>
       )}
-      <p className="text-xs text-muted-foreground">{items.length} item{items.length !== 1 ? "s" : ""}</p>
+      <PaginatedTableFooter page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
     </div>
   );
 }
 
 export default function MasterLookupSettings() {
+  const [activeCategory, setActiveCategory] = useState(CATEGORIES[0].key);
+  const active = CATEGORIES.find((c) => c.key === activeCategory) || CATEGORIES[0];
+
   return (
     <div className="space-y-4">
       <h2 className="text-lg font-bold">Settings — Master Lists</h2>
       <p className="text-sm text-muted-foreground">
         Manage dropdown options used across Tests, Parameters, and Profiles. Keep your data clean and consistent.
       </p>
-      <Tabs defaultValue="unit" className="w-full">
+      <Tabs value={activeCategory} onValueChange={setActiveCategory} className="w-full">
         <TabsList className="flex flex-wrap h-auto gap-1">
           {CATEGORIES.map((c) => (
             <TabsTrigger key={c.key} value={c.key} className="text-xs">
@@ -256,25 +292,29 @@ export default function MasterLookupSettings() {
             </TabsTrigger>
           ))}
         </TabsList>
-        {CATEGORIES.map((c) => (
-          <TabsContent key={c.key} value={c.key}>
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">
-                  {c.label}
-                  {c.mappedTo && (
-                    <span className="text-xs font-normal text-muted-foreground ml-2">
-                      (mapped to {c.mappedTo}{c.mappedTo2 ? ` & ${c.mappedTo2}` : ""})
-                    </span>
-                  )}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <CategorySection category={c.key} placeholder={c.placeholder} mappedTo={c.mappedTo} mappedTo2={c.mappedTo2} />
-              </CardContent>
-            </Card>
-          </TabsContent>
-        ))}
+        <TabsContent value={active.key}>
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">
+                {active.label}
+                {active.mappedTo && (
+                  <span className="text-xs font-normal text-muted-foreground ml-2">
+                    (mapped to {active.mappedTo}{active.mappedTo2 ? ` & ${active.mappedTo2}` : ""})
+                  </span>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <CategorySection
+                key={active.key}
+                category={active.key}
+                placeholder={active.placeholder}
+                mappedTo={active.mappedTo}
+                mappedTo2={active.mappedTo2}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
     </div>
   );

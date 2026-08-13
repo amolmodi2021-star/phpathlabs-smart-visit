@@ -165,7 +165,10 @@ const ReportDepartments = ({ embedded }: { embedded?: boolean }) => {
 
   const load = async () => {
     setLoading(true);
-    const { data } = await supabase.from("report_departments").select("*").order("display_order");
+    const { data } = await supabase
+      .from("report_departments")
+      .select("id, department_name, display_order")
+      .order("display_order");
     setDepartments(data || []);
     setLoading(false);
   };

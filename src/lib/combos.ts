@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { MasterListPageOpts, pageRange, sanitizeIlike } from "@/lib/masterListPaging";
 
 export interface Combo {
   id: string;
@@ -41,6 +42,31 @@ export const getCombos = async (): Promise<Combo[]> => {
   const { data, error } = await (supabase as any).from("combos").select("*").order("combo_name");
   if (error) throw new Error(error.message);
   return (data || []) as Combo[];
+};
+
+const COMBO_LIST_COLUMNS =
+  "id, combo_code, combo_name, display_name, price, fasting_required, discount_applicable, bold_in_report, show_in_report, incentive_allowed, incentive_amount, is_active";
+
+export const getCombosPage = async (
+  opts: MasterListPageOpts = {},
+): Promise<{ rows: Combo[]; total: number }> => {
+  const { from, to } = pageRange(opts);
+  let q = (supabase as any)
+    .from("combos")
+    .select(COMBO_LIST_COLUMNS, { count: "exact" })
+    .order("combo_name");
+  if (!opts.showInactive) q = q.or("is_active.is.null,is_active.eq.true");
+  const term = opts.search ? sanitizeIlike(opts.search) : "";
+  if (term) q = q.or(`combo_name.ilike.%${term}%,combo_code.ilike.%${term}%`);
+  const { data, error, count } = await q.range(from, to);
+  if (error) throw new Error(error.message);
+  return { rows: (data || []) as Combo[], total: count ?? 0 };
+};
+
+export const getComboById = async (id: string): Promise<Combo | null> => {
+  const { data, error } = await (supabase as any).from("combos").select("*").eq("id", id).maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data as Combo) || null;
 };
 
 export const saveCombo = async (

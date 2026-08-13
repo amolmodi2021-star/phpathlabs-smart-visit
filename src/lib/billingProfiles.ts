@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { MasterListPageOpts, pageRange, sanitizeIlike } from "@/lib/masterListPaging";
 
 export interface BillingProfile {
   id: string;
@@ -38,6 +39,31 @@ export const getBillingProfiles = async (): Promise<BillingProfile[]> => {
   const { data, error } = await supabase.from("billing_profiles").select("*").order("profile_name");
   if (error) throw new Error(error.message);
   return (data || []) as BillingProfile[];
+};
+
+const PROFILE_LIST_COLUMNS =
+  "id, profile_code, profile_name, display_name, price, fasting_required, discount_applicable, incentive_allowed, incentive_amount, is_active, is_outsourced";
+
+export const getBillingProfilesPage = async (
+  opts: MasterListPageOpts = {},
+): Promise<{ rows: BillingProfile[]; total: number }> => {
+  const { from, to } = pageRange(opts);
+  let q = supabase
+    .from("billing_profiles")
+    .select(PROFILE_LIST_COLUMNS, { count: "exact" })
+    .order("profile_name");
+  if (!opts.showInactive) q = q.or("is_active.is.null,is_active.eq.true");
+  const term = opts.search ? sanitizeIlike(opts.search) : "";
+  if (term) q = q.or(`profile_name.ilike.%${term}%,profile_code.ilike.%${term}%`);
+  const { data, error, count } = await q.range(from, to);
+  if (error) throw new Error(error.message);
+  return { rows: (data || []) as BillingProfile[], total: count ?? 0 };
+};
+
+export const getBillingProfileById = async (id: string): Promise<BillingProfile | null> => {
+  const { data, error } = await supabase.from("billing_profiles").select("*").eq("id", id).maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data as BillingProfile) || null;
 };
 
 export const saveBillingProfile = async (

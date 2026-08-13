@@ -6,19 +6,22 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Search, Pencil, Trash2, Loader2, Lock, Unlock } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Loader2, Lock, Unlock, X } from "lucide-react";
 import { toast } from "sonner";
 import {
-  getCombos, saveCombo, deleteCombo,
+  getCombosPage, getComboById, saveCombo, deleteCombo,
   getComboTests, linkTestToCombo, unlinkTestFromCombo,
   getComboProfiles, linkProfileToCombo, unlinkProfileFromCombo,
   Combo,
 } from "@/lib/combos";
+import { MASTER_LIST_PAGE_SIZE } from "@/lib/masterListPaging";
+import PaginatedTableFooter from "@/components/ui/PaginatedTableFooter";
 import TestLinker from "@/components/TestLinker";
 import ProfileLinker from "@/components/ProfileLinker";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 
 const INCENTIVE_PASSWORD = "9819111107";
+const PAGE_SIZE = MASTER_LIST_PAGE_SIZE;
 
 const defaultForm = {
   combo_name: "", display_name: "", price: "",
@@ -31,6 +34,8 @@ const defaultForm = {
 const ComboManagement = () => {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const [page, setPage] = useState(0);
   const [showInactive, setShowInactive] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
@@ -39,10 +44,15 @@ const ComboManagement = () => {
   const [incentivePassword, setIncentivePassword] = useState("");
   const [form, setForm] = useState(defaultForm);
 
-  const { data: items = [], isLoading } = useQuery({
-    queryKey: ["combos"],
-    queryFn: getCombos,
+  const { data: pageData, isLoading } = useQuery({
+    queryKey: ["combos", "page", appliedSearch, showInactive, page],
+    queryFn: () => getCombosPage({ search: appliedSearch, showInactive, page, pageSize: PAGE_SIZE }),
   });
+  const items = pageData?.rows ?? [];
+  const total = pageData?.total ?? 0;
+
+  const runSearch = () => { setPage(0); setAppliedSearch(search.trim()); };
+  const clearSearch = () => { setSearch(""); setAppliedSearch(""); setPage(0); };
 
   const saveMutation = useMutation({
     mutationFn: async (values: typeof form) => {
@@ -72,30 +82,29 @@ const ComboManagement = () => {
 
   const resetForm = () => { setForm(defaultForm); setEditing(null); setIncentiveLocked(true); setIncentivePassword(""); };
 
-  const openEdit = (t: Combo) => {
-    setEditing(t);
-    setForm({
-      combo_name: t.combo_name,
-      display_name: t.display_name || "",
-      price: String(t.price),
-      fasting_required: t.fasting_required,
-      discount_applicable: t.discount_applicable,
-      bold_in_report: t.bold_in_report,
-      show_in_report: t.show_in_report,
-      incentive_allowed: t.incentive_allowed,
-      incentive_amount: t.incentive_amount ? String(t.incentive_amount) : "",
-      is_active: t.is_active !== false,
-    });
-    setIncentiveLocked(true);
-    setIncentivePassword("");
-    setDialogOpen(true);
+  const openEdit = async (t: Combo) => {
+    try {
+      const full = (await getComboById(t.id)) || t;
+      setEditing(full);
+      setForm({
+        combo_name: full.combo_name,
+        display_name: full.display_name || "",
+        price: String(full.price),
+        fasting_required: full.fasting_required,
+        discount_applicable: full.discount_applicable,
+        bold_in_report: full.bold_in_report,
+        show_in_report: full.show_in_report,
+        incentive_allowed: full.incentive_allowed,
+        incentive_amount: full.incentive_amount ? String(full.incentive_amount) : "",
+        is_active: full.is_active !== false,
+      });
+      setIncentiveLocked(true);
+      setIncentivePassword("");
+      setDialogOpen(true);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to load combo");
+    }
   };
-
-  const filtered = items.filter((t) => {
-    const matchesSearch = t.combo_name.toLowerCase().includes(search.toLowerCase());
-    const matchesActive = showInactive || t.is_active !== false;
-    return matchesSearch && matchesActive;
-  });
 
   const unlockIncentive = () => {
     if (incentivePassword === INCENTIVE_PASSWORD) { setIncentiveLocked(false); setIncentivePassword(""); }
@@ -186,14 +195,30 @@ const ComboManagement = () => {
         </Dialog>
       </div>
 
-      <div className="flex items-center gap-4">
-        <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Search combos..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
-        <div className="flex items-center gap-2"><Switch checked={showInactive} onCheckedChange={setShowInactive} /><Label className="text-sm whitespace-nowrap">Show Inactive</Label></div>
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="relative flex-1 min-w-[220px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            className="pl-9"
+            placeholder="Search combos..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); runSearch(); } }}
+          />
+        </div>
+        <Button size="sm" onClick={runSearch}>Search</Button>
+        {appliedSearch && (
+          <Button variant="ghost" size="sm" onClick={clearSearch}><X className="h-4 w-4 mr-1" />Clear</Button>
+        )}
+        <div className="flex items-center gap-2">
+          <Switch checked={showInactive} onCheckedChange={(v) => { setShowInactive(v); setPage(0); }} />
+          <Label className="text-sm whitespace-nowrap">Show Inactive</Label>
+        </div>
       </div>
 
       {isLoading ? <p className="text-muted-foreground text-sm">Loading...</p> : (
         <div className="grid gap-2">
-          {filtered.map((t) => (
+          {items.map((t) => (
             <Card key={t.id} className={`glass-card ${t.is_active === false ? "opacity-60" : ""}`}>
               <CardContent className="flex items-center justify-between p-3 gap-3">
                 <div className="flex-1 min-w-0">
@@ -214,7 +239,8 @@ const ComboManagement = () => {
               </CardContent>
             </Card>
           ))}
-          {filtered.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">No combos found.</p>}
+          {items.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">No combos found.</p>}
+          <PaginatedTableFooter page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
         </div>
       )}
       <DeletePasswordDialog

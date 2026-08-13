@@ -15,7 +15,9 @@ import { Plus, Search, Download, Upload, Trash2, Pencil, Loader2, Lock, Unlock, 
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { exportToExcel, parseExcelFile, downloadTemplate } from "@/lib/excel";
-import { getTests, saveTest, deleteTest, bulkInsertTests, getTestSampleTubes, saveTestSampleTubes, type TestSampleTube } from "@/lib/tests";
+import { getTests, getTestsPage, getTestById, saveTest, deleteTest, bulkInsertTests, getTestSampleTubes, saveTestSampleTubes, type TestSampleTube } from "@/lib/tests";
+import { MASTER_LIST_PAGE_SIZE } from "@/lib/masterListPaging";
+import PaginatedTableFooter from "@/components/ui/PaginatedTableFooter";
 import TestParameterManager from "@/components/TestParameterManager";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
@@ -28,6 +30,7 @@ import MasterLookupSettings from "@/components/MasterLookupSettings";
 import MasterLookupSelect from "@/components/MasterLookupSelect";
 
 const INCENTIVE_PASSWORD = "9819111107";
+const PAGE_SIZE = MASTER_LIST_PAGE_SIZE;
 
 const defaultForm = {
   test_name: "", price: "", fasting_required: false, discount_applicable: true,
@@ -62,7 +65,10 @@ function TubeColorDot({ color }: { color: string }) {
 const TestManagement = () => {
   useRealtimeSync("tests", ["tests"]);
   const qc = useQueryClient();
+  const [activeTab, setActiveTab] = useState("tests");
   const [search, setSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const [page, setPage] = useState(0);
   const [showInactive, setShowInactive] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<any>(null);
@@ -96,20 +102,38 @@ const TestManagement = () => {
     }
   }, [editing?.id]);
 
-  const { data: tests = [], isLoading, isError, error: queryError, refetch } = useQuery({
-    queryKey: ["tests"],
-    queryFn: getTests,
+  const { data: pageData, isLoading, isError, error: queryError, refetch } = useQuery({
+    queryKey: ["tests", "page", appliedSearch, showInactive, page],
+    queryFn: () => getTestsPage({ search: appliedSearch, showInactive, page, pageSize: PAGE_SIZE }),
+    enabled: activeTab === "tests",
     retry: 2,
     retryDelay: 3000,
   });
+  const tests = pageData?.rows ?? [];
+  const total = pageData?.total ?? 0;
 
   const { data: departments = [] } = useQuery({
-    queryKey: ["departments"],
+    queryKey: ["departments", "lean"],
     queryFn: async () => {
-      const { data } = await supabase.from("report_departments").select("*").order("display_order");
+      const { data } = await supabase
+        .from("report_departments")
+        .select("id, department_name, display_order")
+        .order("display_order");
       return data || [];
     },
+    enabled: dialogOpen,
   });
+
+  const runSearch = () => {
+    setPage(0);
+    setAppliedSearch(search.trim());
+  };
+
+  const clearSearch = () => {
+    setSearch("");
+    setAppliedSearch("");
+    setPage(0);
+  };
 
   const saveMutation = useMutation({
     mutationFn: async (values: typeof form) => {
@@ -193,34 +217,33 @@ const TestManagement = () => {
 
   const resetForm = () => { setForm(defaultForm); setEditing(null); setIncentiveLocked(true); setIncentivePassword(""); setSampleTubes([]); };
 
-  const openEdit = (t: any) => {
-    setEditing(t);
-    setForm({
-      test_name: t.test_name, price: String(t.price),
-      fasting_required: t.fasting_required, discount_applicable: t.discount_applicable,
-      description: t.description || "", incentive_allowed: t.incentive_allowed || false,
-      incentive_amount: t.incentive_amount ? String(t.incentive_amount) : "",
-      display_name: t.display_name || "", bold_in_report: t.bold_in_report ?? false,
-      show_in_report: t.show_in_report ?? true, is_single_parameter: t.is_single_parameter ?? false,
-      instrument_name: t.instrument_name || "", method: t.method || "",
-      sample_type: t.sample_type || "", sample_tube: t.sample_tube || "",
-      tube_color: (t as any).tube_color || "",
-      interpretation: t.interpretation || "",
-      is_outsourced: t.is_outsourced ?? false, outsourced_caption: t.outsourced_caption || "",
-      department_id: t.department_id || "",
-      is_active: t.is_active !== false,
-      fit_to_page: t.fit_to_page ?? false, dedicated_page: t.dedicated_page ?? false,
-    });
-    setIncentiveLocked(true);
-    setIncentivePassword("");
-    setDialogOpen(true);
+  const openEdit = async (t: any) => {
+    try {
+      const full = (await getTestById(t.id)) || t;
+      setEditing(full);
+      setForm({
+        test_name: full.test_name, price: String(full.price),
+        fasting_required: full.fasting_required, discount_applicable: full.discount_applicable,
+        description: full.description || "", incentive_allowed: full.incentive_allowed || false,
+        incentive_amount: full.incentive_amount ? String(full.incentive_amount) : "",
+        display_name: full.display_name || "", bold_in_report: full.bold_in_report ?? false,
+        show_in_report: full.show_in_report ?? true, is_single_parameter: full.is_single_parameter ?? false,
+        instrument_name: full.instrument_name || "", method: full.method || "",
+        sample_type: full.sample_type || "", sample_tube: (full as any).sample_tube || "",
+        tube_color: (full as any).tube_color || "",
+        interpretation: full.interpretation || "",
+        is_outsourced: (full as any).is_outsourced ?? false, outsourced_caption: (full as any).outsourced_caption || "",
+        department_id: (full as any).department_id || "",
+        is_active: full.is_active !== false,
+        fit_to_page: full.fit_to_page ?? false, dedicated_page: full.dedicated_page ?? false,
+      });
+      setIncentiveLocked(true);
+      setIncentivePassword("");
+      setDialogOpen(true);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to load test");
+    }
   };
-
-  const filtered = tests.filter((t: any) => {
-    const matchesSearch = t.test_name.toLowerCase().includes(search.toLowerCase());
-    const matchesActive = showInactive || t.is_active !== false;
-    return matchesSearch && matchesActive;
-  });
 
   const unlockIncentive = () => {
     if (incentivePassword === INCENTIVE_PASSWORD) { setIncentiveLocked(false); setIncentivePassword(""); }
@@ -230,7 +253,7 @@ const TestManagement = () => {
   return (
     <div className="space-y-4 animate-fade-in">
       <h1 className="text-xl font-bold">Test Management</h1>
-      <Tabs defaultValue="tests" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="tests">Tests</TabsTrigger>
           <TabsTrigger value="health_checkups">Health Check-Ups</TabsTrigger>
@@ -240,7 +263,8 @@ const TestManagement = () => {
           <TabsTrigger value="departments">Departments</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
-        <TabsContent value="tests">
+        <TabsContent value="tests" forceMount={false}>
+    {activeTab === "tests" && (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h2 className="text-lg font-bold">Tests</h2>
@@ -422,9 +446,38 @@ const TestManagement = () => {
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
-        <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input className="pl-9" placeholder="Search tests..." value={search} onChange={(e) => setSearch(e.target.value)} /></div>
-        <div className="flex items-center gap-2"><Switch checked={showInactive} onCheckedChange={setShowInactive} /><Label className="text-sm whitespace-nowrap">Show Inactive</Label></div>
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="relative flex-1 min-w-[220px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            className="pl-9"
+            placeholder="Search tests..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                runSearch();
+              }
+            }}
+          />
+        </div>
+        <Button size="sm" onClick={runSearch}>Search</Button>
+        {appliedSearch && (
+          <Button variant="ghost" size="sm" onClick={clearSearch}>
+            <X className="h-4 w-4 mr-1" />Clear
+          </Button>
+        )}
+        <div className="flex items-center gap-2">
+          <Switch
+            checked={showInactive}
+            onCheckedChange={(v) => {
+              setShowInactive(v);
+              setPage(0);
+            }}
+          />
+          <Label className="text-sm whitespace-nowrap">Show Inactive</Label>
+        </div>
       </div>
 
       {isLoading ? <p className="text-muted-foreground text-sm">Loading...</p> : isError ? (
@@ -436,7 +489,7 @@ const TestManagement = () => {
         </Card>
       ) : (
         <div className="grid gap-2">
-          {filtered.map((t: any) => (
+          {tests.map((t: any) => (
             <Card key={t.id} className={`glass-card ${t.is_active === false ? "opacity-60" : ""}`}>
               <CardContent className="flex items-center justify-between p-3 gap-3">
                 <div className="flex-1 min-w-0">
@@ -458,10 +511,35 @@ const TestManagement = () => {
               </CardContent>
             </Card>
           ))}
-          {filtered.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">No tests found.</p>}
+          {tests.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">No tests found.</p>}
+          <PaginatedTableFooter page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
         </div>
       )}
-      <ExportPasswordDialog open={exportDialog} onOpenChange={setExportDialog} onSuccess={() => exportToExcel(tests.map((t: any) => ({ "Test Code": t.test_code, "Test Name": t.test_name, "Display Name": t.display_name || "", Price: t.price, "Fasting Required": t.fasting_required ? "Yes" : "No", "Discount Applicable": t.discount_applicable ? "Yes" : "No", Description: t.description, "Bold in Report": t.bold_in_report ? "Yes" : "No", "Show in Report": t.show_in_report ? "Yes" : "No", "Single Parameter": t.is_single_parameter ? "Yes" : "No", "Incentive Allowed": t.incentive_allowed ? "Yes" : "No", "Incentive Amount": t.incentive_amount || 0 })), "tests_export")} />
+      <ExportPasswordDialog
+        open={exportDialog}
+        onOpenChange={setExportDialog}
+        onSuccess={async () => {
+          try {
+            const all = await getTests();
+            exportToExcel(all.map((t: any) => ({
+              "Test Code": t.test_code,
+              "Test Name": t.test_name,
+              "Display Name": t.display_name || "",
+              Price: t.price,
+              "Fasting Required": t.fasting_required ? "Yes" : "No",
+              "Discount Applicable": t.discount_applicable ? "Yes" : "No",
+              Description: t.description,
+              "Bold in Report": t.bold_in_report ? "Yes" : "No",
+              "Show in Report": t.show_in_report ? "Yes" : "No",
+              "Single Parameter": t.is_single_parameter ? "Yes" : "No",
+              "Incentive Allowed": t.incentive_allowed ? "Yes" : "No",
+              "Incentive Amount": t.incentive_amount || 0,
+            })), "tests_export");
+          } catch (e: any) {
+            toast.error(e?.message || "Export failed");
+          }
+        }}
+      />
       <DeletePasswordDialog
         open={!!deleteDialog}
         onOpenChange={(o) => !o && setDeleteDialog(null)}
@@ -469,24 +547,25 @@ const TestManagement = () => {
         description="Delete this test?"
       />
     </div>
+    )}
         </TabsContent>
         <TabsContent value="health_checkups">
-          <HealthCheckUpManagement />
+          {activeTab === "health_checkups" && <HealthCheckUpManagement />}
         </TabsContent>
         <TabsContent value="combos">
-          <ComboManagement />
+          {activeTab === "combos" && <ComboManagement />}
         </TabsContent>
         <TabsContent value="profiles">
-          <ProfileManagement />
+          {activeTab === "profiles" && <ProfileManagement />}
         </TabsContent>
         <TabsContent value="parameters">
-          <ReportParameters embedded />
+          {activeTab === "parameters" && <ReportParameters embedded />}
         </TabsContent>
         <TabsContent value="departments">
-          <ReportDepartments embedded />
+          {activeTab === "departments" && <ReportDepartments embedded />}
         </TabsContent>
         <TabsContent value="settings">
-          <MasterLookupSettings />
+          {activeTab === "settings" && <MasterLookupSettings />}
         </TabsContent>
       </Tabs>
     </div>

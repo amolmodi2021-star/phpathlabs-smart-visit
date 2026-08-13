@@ -13,12 +13,18 @@ import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Loader2, Search, Download, Upload } from "lucide-react";
+import { Plus, Pencil, Trash2, Loader2, Search, Download, Upload, X } from "lucide-react";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import { exportToExcel, parseExcelFile } from "@/lib/excel";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 import MasterLookupSelect from "@/components/MasterLookupSelect";
 import { secondsToMinSec, minSecToSeconds, formatTimeRange } from "@/lib/timeRange";
+import { MASTER_LIST_PAGE_SIZE, pageRange, sanitizeIlike } from "@/lib/masterListPaging";
+import PaginatedTableFooter from "@/components/ui/PaginatedTableFooter";
+
+const PAGE_SIZE = MASTER_LIST_PAGE_SIZE;
+const PARAM_LIST_COLUMNS =
+  "id, param_code, parameter_name, unit, send_for_interface, is_calculated, use_global_normal_range, store_for_analytics, is_active";
 
 const QUALITATIVE_PAIRS = [
   { label: "Absent / Present", values: ["Absent", "Present"] },
@@ -46,8 +52,11 @@ interface NormalRange {
 
 const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
   const [params, setParams] = useState<any[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const [page, setPage] = useState(0);
   const [showInactive, setShowInactive] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [exportPwdOpen, setExportPwdOpen] = useState(false);
@@ -55,6 +64,7 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
   const [deleteAllPwdOpen, setDeleteAllPwdOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editId, setEditId] = useState<string | null>(null);
+  const [editParamCode, setEditParamCode] = useState("");
   const [saving, setSaving] = useState(false);
 
   const [form, setForm] = useState({
@@ -83,21 +93,40 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
 
   const { toast } = useToast();
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
-    const { data: p } = await supabase.from("report_test_parameters").select("*").order("parameter_name");
-    setParams(p || []);
+    const { from, to } = pageRange({ page, pageSize: PAGE_SIZE });
+    let q = supabase
+      .from("report_test_parameters")
+      .select(PARAM_LIST_COLUMNS, { count: "exact" })
+      .order("parameter_name");
+    if (!showInactive) q = q.or("is_active.is.null,is_active.eq.true");
+    const term = sanitizeIlike(appliedSearch);
+    if (term) q = q.or(`parameter_name.ilike.%${term}%,param_code.ilike.%${term}%`);
+    const { data: p, count, error } = await q.range(from, to);
+    if (error) {
+      toast({ title: "Failed to load parameters", description: error.message, variant: "destructive" });
+      setParams([]);
+      setTotal(0);
+    } else {
+      setParams(p || []);
+      setTotal(count ?? 0);
+    }
     setLoading(false);
+  }, [appliedSearch, page, showInactive, toast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const runSearch = () => {
+    setPage(0);
+    setAppliedSearch(search.trim());
   };
 
-  useEffect(() => { load(); }, []);
-
-  const filtered = params.filter((p) => {
-    const matchesSearch = p.parameter_name.toLowerCase().includes(search.toLowerCase()) ||
-      (p.param_code || "").toLowerCase().includes(search.toLowerCase());
-    const matchesActive = showInactive || p.is_active !== false;
-    return matchesSearch && matchesActive;
-  });
+  const clearSearch = () => {
+    setSearch("");
+    setAppliedSearch("");
+    setPage(0);
+  };
 
   // Build normal ranges based on toggles
   const buildRangesFromToggles = useCallback(() => {
@@ -244,30 +273,37 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
 
   const handleEdit = async (p: any) => {
     setEditId(p.id);
-    setForm({
-      parameter_name: p.parameter_name,
-      parameter_description: p.parameter_description || "",
-      unit: p.unit || "",
-      store_for_analytics: p.store_for_analytics || false,
-      use_global_normal_range: p.use_global_normal_range || false,
-      same_for_gender: p.same_for_gender !== false,
-      same_for_all_ages: p.same_for_all_ages !== false,
-      normal_range_text: p.normal_range_text || "",
-      machine_name: p.machine_name || "",
-      machine_id: p.machine_id || "",
-      send_for_interface: p.send_for_interface !== false,
-      is_calculated: p.is_calculated || false,
-      calculation_formula: Array.isArray(p.calculation_formula) ? p.calculation_formula : [],
-      unit_conversion_enabled: p.unit_conversion_enabled || false,
-      unit_conversion_operator: p.unit_conversion_operator || "*",
-      unit_conversion_value: p.unit_conversion_value != null ? String(p.unit_conversion_value) : "",
-      is_active: p.is_active !== false,
-      custom_sample_suffix_enabled: p.custom_sample_suffix_enabled || false,
-      custom_sample_suffix: p.custom_sample_suffix || "",
-    });
+    setEditParamCode(p.param_code || "");
     setNormalRanges([]);
     setDialogOpen(true);
-    await loadNormalRanges(p.id);
+    const { data: full, error } = await supabase.from("report_test_parameters").select("*").eq("id", p.id).maybeSingle();
+    if (error || !full) {
+      toast({ title: "Failed to load parameter", description: error?.message, variant: "destructive" });
+      return;
+    }
+    setEditParamCode(full.param_code || "");
+    setForm({
+      parameter_name: full.parameter_name,
+      parameter_description: full.parameter_description || "",
+      unit: full.unit || "",
+      store_for_analytics: full.store_for_analytics || false,
+      use_global_normal_range: full.use_global_normal_range || false,
+      same_for_gender: full.same_for_gender !== false,
+      same_for_all_ages: full.same_for_all_ages !== false,
+      normal_range_text: full.normal_range_text || "",
+      machine_name: full.machine_name || "",
+      machine_id: full.machine_id || "",
+      send_for_interface: full.send_for_interface !== false,
+      is_calculated: full.is_calculated || false,
+      calculation_formula: Array.isArray(full.calculation_formula) ? full.calculation_formula : [],
+      unit_conversion_enabled: full.unit_conversion_enabled || false,
+      unit_conversion_operator: full.unit_conversion_operator || "*",
+      unit_conversion_value: full.unit_conversion_value != null ? String(full.unit_conversion_value) : "",
+      is_active: full.is_active !== false,
+      custom_sample_suffix_enabled: full.custom_sample_suffix_enabled || false,
+      custom_sample_suffix: full.custom_sample_suffix || "",
+    });
+    await loadNormalRanges(full.id);
   };
 
   const handleDelete = async (id: string) => {
@@ -289,7 +325,12 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
   };
 
   const handleDeleteAll = async () => {
-    const ids = params.map((p) => p.id);
+    const { data: allRows, error } = await supabase.from("report_test_parameters").select("id");
+    if (error) {
+      toast({ title: "Failed to load parameters for delete", description: error.message, variant: "destructive" });
+      return;
+    }
+    const ids = (allRows || []).map((p) => p.id);
     if (!ids.length) return;
     for (let i = 0; i < ids.length; i += 50) {
       await supabase.from("report_test_parameters").delete().in("id", ids.slice(i, i + 50));
@@ -308,15 +349,23 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
   };
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === filtered.length) {
+    if (selectedIds.size === params.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(filtered.map((p) => p.id)));
+      setSelectedIds(new Set(params.map((p) => p.id)));
     }
   };
 
-  const handleExport = () => {
-    const rows = params.map((p) => ({
+  const handleExport = async () => {
+    const { data: all, error } = await supabase
+      .from("report_test_parameters")
+      .select("param_code, parameter_name, parameter_description, unit, store_for_analytics, use_global_normal_range, normal_range_text")
+      .order("parameter_name");
+    if (error) {
+      toast({ title: "Export failed", description: error.message, variant: "destructive" });
+      return;
+    }
+    const rows = (all || []).map((p) => ({
       "Param Code": p.param_code || "",
       "Parameter Name": p.parameter_name || "",
       "Description": p.parameter_description || "",
@@ -357,6 +406,7 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
 
   const openNew = () => {
     setEditId(null);
+    setEditParamCode("");
     setForm({
       parameter_name: "", parameter_description: "", unit: "", store_for_analytics: false,
       use_global_normal_range: false, same_for_gender: true, same_for_all_ages: true,
@@ -434,12 +484,25 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
 
       <Card>
         <CardContent className="pt-6">
-          <div className="mb-4 flex items-center gap-4">
-            <div className="relative flex-1">
+          <div className="mb-4 flex items-center gap-4 flex-wrap">
+            <div className="relative flex-1 min-w-[220px]">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Search parameters..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8 max-w-sm" />
+              <Input
+                placeholder="Search parameters..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); runSearch(); } }}
+                className="pl-8 max-w-sm"
+              />
             </div>
-            <div className="flex items-center gap-2"><Switch checked={showInactive} onCheckedChange={setShowInactive} /><Label className="text-sm whitespace-nowrap">Show Inactive</Label></div>
+            <Button size="sm" onClick={runSearch}>Search</Button>
+            {appliedSearch && (
+              <Button variant="ghost" size="sm" onClick={clearSearch}><X className="h-4 w-4 mr-1" />Clear</Button>
+            )}
+            <div className="flex items-center gap-2">
+              <Switch checked={showInactive} onCheckedChange={(v) => { setShowInactive(v); setPage(0); }} />
+              <Label className="text-sm whitespace-nowrap">Show Inactive</Label>
+            </div>
           </div>
           {loading ? <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin" /></div> : (
             <div className="overflow-x-auto">
@@ -447,7 +510,7 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
                  <TableHeader>
                   <TableRow>
                      <TableHead className="w-[40px]">
-                      <Checkbox checked={filtered.length > 0 && selectedIds.size === filtered.length} onCheckedChange={toggleSelectAll} />
+                      <Checkbox checked={params.length > 0 && selectedIds.size === params.length} onCheckedChange={toggleSelectAll} />
                      </TableHead>
                      <TableHead>Code</TableHead>
                      <TableHead>Parameter</TableHead>
@@ -461,7 +524,7 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
                   </TableRow>
                  </TableHeader>
                  <TableBody>
-                  {filtered.map((p) => (
+                  {params.map((p) => (
                      <TableRow key={p.id} className={`${selectedIds.has(p.id) ? "bg-muted/50" : ""} ${p.is_active === false ? "opacity-60" : ""}`}>
                       <TableCell><Checkbox checked={selectedIds.has(p.id)} onCheckedChange={() => toggleSelect(p.id)} /></TableCell>
                       <TableCell className="font-mono text-xs text-muted-foreground">{p.param_code || "-"}</TableCell>
@@ -480,9 +543,10 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
                       </TableCell>
                      </TableRow>
                   ))}
-                  {filtered.length === 0 && <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No parameters found</TableCell></TableRow>}
+                  {params.length === 0 && <TableRow><TableCell colSpan={10} className="text-center py-8 text-muted-foreground">No parameters found</TableCell></TableRow>}
                  </TableBody>
               </Table>
+              <PaginatedTableFooter page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
             </div>
           )}
         </CardContent>
@@ -495,7 +559,7 @@ const ReportParameters = ({ embedded }: { embedded?: boolean }) => {
             {editId && (
               <div>
                 <Label className="text-muted-foreground text-xs">Param Code (auto-generated)</Label>
-                <Input value={params.find(p => p.id === editId)?.param_code || ""} disabled className="font-mono" />
+                <Input value={editParamCode} disabled className="font-mono" />
               </div>
             )}
             <div className="grid grid-cols-2 gap-4">

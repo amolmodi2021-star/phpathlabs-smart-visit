@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { MasterListPageOpts, pageRange, sanitizeIlike } from "@/lib/masterListPaging";
 
 export interface HealthCheckup {
   id: string;
@@ -31,6 +32,33 @@ export const getHealthCheckups = async (): Promise<HealthCheckup[]> => {
   const { data, error } = await supabase.from("health_checkups").select("*").order("health_checkup_name");
   if (error) throw new Error(error.message);
   return (data || []) as HealthCheckup[];
+};
+
+const HC_LIST_COLUMNS =
+  "id, health_checkup_code, health_checkup_name, display_name, price, fasting_required, discount_applicable, bold_in_report, show_in_report, incentive_allowed, incentive_amount, is_active";
+
+export const getHealthCheckupsPage = async (
+  opts: MasterListPageOpts = {},
+): Promise<{ rows: HealthCheckup[]; total: number }> => {
+  const { from, to } = pageRange(opts);
+  let q = supabase
+    .from("health_checkups")
+    .select(HC_LIST_COLUMNS, { count: "exact" })
+    .order("health_checkup_name");
+  if (!opts.showInactive) q = q.or("is_active.is.null,is_active.eq.true");
+  const term = opts.search ? sanitizeIlike(opts.search) : "";
+  if (term) {
+    q = q.or(`health_checkup_name.ilike.%${term}%,health_checkup_code.ilike.%${term}%`);
+  }
+  const { data, error, count } = await q.range(from, to);
+  if (error) throw new Error(error.message);
+  return { rows: (data || []) as HealthCheckup[], total: count ?? 0 };
+};
+
+export const getHealthCheckupById = async (id: string): Promise<HealthCheckup | null> => {
+  const { data, error } = await supabase.from("health_checkups").select("*").eq("id", id).maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data as HealthCheckup) || null;
 };
 
 export const saveHealthCheckup = async (

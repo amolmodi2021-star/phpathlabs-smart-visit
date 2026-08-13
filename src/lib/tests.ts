@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { MasterListPageOpts, pageRange, sanitizeIlike } from "@/lib/masterListPaging";
 
 export interface TestItem {
   id: string;
@@ -24,6 +25,10 @@ export interface TestItem {
   created_at?: string;
   updated_at?: string;
 }
+
+/** Lean columns for Test Management list cards. */
+export const TEST_LIST_COLUMNS =
+  "id, test_name, test_code, price, fasting_required, discount_applicable, incentive_allowed, incentive_amount, is_active, is_single_parameter";
 
 interface SaveTestPayload {
   test_name: string;
@@ -57,6 +62,32 @@ export const getTests = async (): Promise<TestItem[]> => {
     const { data, error } = await supabase.from("tests").select("*").order("test_name");
     if (error) throw new Error(error.message);
     return (data || []) as TestItem[];
+  });
+};
+
+export const getTestsPage = async (
+  opts: MasterListPageOpts = {},
+): Promise<{ rows: TestItem[]; total: number }> => {
+  return withRetry(async () => {
+    const { from, to } = pageRange(opts);
+    let q = supabase
+      .from("tests")
+      .select(TEST_LIST_COLUMNS, { count: "exact" })
+      .order("test_name");
+    if (!opts.showInactive) q = q.or("is_active.is.null,is_active.eq.true");
+    const term = opts.search ? sanitizeIlike(opts.search) : "";
+    if (term) q = q.or(`test_name.ilike.%${term}%,test_code.ilike.%${term}%`);
+    const { data, error, count } = await q.range(from, to);
+    if (error) throw new Error(error.message);
+    return { rows: (data || []) as TestItem[], total: count ?? 0 };
+  });
+};
+
+export const getTestById = async (id: string): Promise<TestItem | null> => {
+  return withRetry(async () => {
+    const { data, error } = await supabase.from("tests").select("*").eq("id", id).maybeSingle();
+    if (error) throw new Error(error.message);
+    return (data as TestItem) || null;
   });
 };
 
