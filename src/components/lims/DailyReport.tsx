@@ -165,6 +165,18 @@ const DailyReport = () => {
     return base;
   };
 
+  /**
+   * Due-collection rows are logged as money deltas with paid_amount=0 (to avoid double-counting
+   * the cumulative registration snapshot). Show the amount received in Paid via total_amount.
+   */
+  const getRowPaid = (r: any): number => {
+    const type = r.transaction_type;
+    if (type === "due_collection" || type === "old_due_recovered") {
+      return Number(r.total_amount || 0);
+    }
+    return Number(r.paid_amount || 0);
+  };
+
 
   // Derive invoice date from invoice number YYMMDD prefix (e.g. "2604160004" -> 16-04-2026)
   const formatInvoiceDate = (invoiceNumber: string | null | undefined): string => {
@@ -227,7 +239,7 @@ const DailyReport = () => {
       t.gross += getRowGross(r);
       t.discount += Number(r.discount_amount || 0);
       t.final += Number(r.final_amount || 0);
-      t.paid += Number(r.paid_amount || 0);
+      t.paid += getRowPaid(r);
       t.due += Number(r.due_amount || 0);
       t.refund += Number(r.refund_amount || 0);
       if (r.direction === "in") t.total_in += Number(r.total_amount || 0);
@@ -253,7 +265,7 @@ const DailyReport = () => {
         "Gross Amount": getRowGross(r),
         "Discount": Number(r.discount_amount || 0),
         "Final Amount": Number(r.final_amount || 0),
-        "Total Paid": Number(r.paid_amount || 0),
+        "Total Paid": getRowPaid(r),
         "Total Due": Number(r.due_amount || 0),
         "Cash": Number(r.cash_amount || 0),
         "GPay": Number(r.gpay_amount || 0),
@@ -440,7 +452,7 @@ const DailyReport = () => {
         gross: fmtAmt(getRowGross(r)),
         disc: fmtAmt(Number(r.discount_amount || 0)),
         final: fmtAmt(Number(r.final_amount || 0)),
-        paid: fmtAmt(Number(r.paid_amount || 0)),
+        paid: fmtAmt(getRowPaid(r)),
         due: fmtAmt(Number(r.due_amount || 0)),
         cash: fmtAmt(Number(r.cash_amount || 0)),
         gpay: fmtAmt(Number(r.gpay_amount || 0)),
@@ -674,7 +686,7 @@ const DailyReport = () => {
         gross: fmtAmt(getRowGross(r)),
         disc: fmtAmt(Number(r.discount_amount || 0)),
         final: fmtAmt(Number(r.final_amount || 0)),
-        paid: fmtAmt(Number(r.paid_amount || 0)),
+        paid: fmtAmt(getRowPaid(r)),
         due: fmtAmt(Number(r.due_amount || 0)),
         cash: fmtAmt(Number(r.cash_amount || 0)),
         gpay: fmtAmt(Number(r.gpay_amount || 0)),
@@ -752,7 +764,7 @@ const DailyReport = () => {
         t.gross += getRowGross(r);
         t.discount += Number(r.discount_amount || 0);
         t.final += Number(r.final_amount || 0);
-        t.paid += Number(r.paid_amount || 0);
+        t.paid += getRowPaid(r);
         t.due += Number(r.due_amount || 0);
         t.refund += Number(r.refund_amount || 0);
         if (r.direction === "in") t.total_in += Number(r.total_amount || 0);
@@ -1184,7 +1196,7 @@ const DailyReport = () => {
                   <TableCell className="text-right text-sm">₹{getRowGross(r)}</TableCell>
                   <TableCell className="text-right text-sm">₹{Number(r.discount_amount || 0)}</TableCell>
                   <TableCell className="text-right text-sm font-medium">₹{Number(r.final_amount || 0)}</TableCell>
-                  <TableCell className="text-right text-sm">₹{Number(r.paid_amount || 0)}</TableCell>
+                  <TableCell className="text-right text-sm">₹{getRowPaid(r)}</TableCell>
                   <TableCell className="text-right text-sm">{Number(r.due_amount || 0) > 0 ? <span className="text-destructive">₹{Number(r.due_amount)}</span> : "₹0"}</TableCell>
                   {(["cash_amount","gpay_amount","paytm_amount","neft_amount","credit_card_amount"] as const).map((k) => {
                     const v = Number(r[k] || 0);
