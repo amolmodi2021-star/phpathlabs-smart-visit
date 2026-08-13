@@ -65,7 +65,117 @@ function storagePathFromRow(row: any): string | null {
   return null;
 }
 
+type CloudinaryMediaRef = {
+  cloudName: string;
+  publicId: string;
+  resourceType: "image" | "raw" | "video";
+};
+
+function cloudinaryRefFromRow(row: any): CloudinaryMediaRef | null {
+  const p = row?.payload && typeof row.payload === "object" ? row.payload : null;
+  const publicId = typeof p?.cloudinary_public_id === "string" ? p.cloudinary_public_id.trim() : "";
+  if (!publicId) return null;
+  const cloudName =
+    (typeof p?.cloudinary_cloud_name === "string" && p.cloudinary_cloud_name.trim()) ||
+    "";
+  const rt = String(p?.cloudinary_resource_type || "").toLowerCase();
+  const resourceType: "image" | "raw" | "video" =
+    rt === "raw" ? "raw" : rt === "video" ? "video" : "image";
+  return { cloudName, publicId, resourceType };
+}
+
+async function sha1Hex(input: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(input));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function resolveCloudinaryCreds(
+  supabase: ReturnType<typeof sb>,
+  preferredCloudName?: string,
+): Promise<{ cloudName: string; apiKey: string; apiSecret: string } | null> {
+  const preferred = (preferredCloudName || "").trim();
+  if (preferred) {
+    const { data } = await supabase
+      .from("cloudinary_accounts")
+      .select("cloud_name, api_key, api_secret")
+      .eq("cloud_name", preferred)
+      .limit(1)
+      .maybeSingle();
+    if (data?.api_key && data?.api_secret) {
+      return { cloudName: data.cloud_name, apiKey: data.api_key, apiSecret: data.api_secret };
+    }
+  }
+  const { data: active } = await supabase
+    .from("cloudinary_accounts")
+    .select("cloud_name, api_key, api_secret")
+    .eq("is_active", true)
+    .maybeSingle();
+  if (active?.api_key && active?.api_secret) {
+    return { cloudName: active.cloud_name, apiKey: active.api_key, apiSecret: active.api_secret };
+  }
+  const apiKey = Deno.env.get("CLOUDINARY_API_KEY") || "";
+  const apiSecret = Deno.env.get("CLOUDINARY_API_SECRET") || "";
+  const cloudName = preferred || Deno.env.get("CLOUDINARY_CLOUD_NAME") || "dd7qn3t3d";
+  if (!apiKey || !apiSecret) return null;
+  return { cloudName, apiKey, apiSecret };
+}
+
+async function destroyCloudinaryResource(
+  cloudName: string,
+  apiKey: string,
+  apiSecret: string,
+  publicId: string,
+  resourceType: "image" | "raw" | "video",
+): Promise<boolean> {
+  const timestamp = Math.floor(Date.now() / 1000);
+  // Admin delete_resources signature: public_ids[]=...&timestamp=...
+  const rawToSign = `public_ids[]=${publicId}&timestamp=${timestamp}`;
+  const signature = await sha1Hex(rawToSign + apiSecret);
+  const fd = new FormData();
+  fd.append("public_ids[]", publicId);
+  fd.append("timestamp", String(timestamp));
+  fd.append("api_key", apiKey);
+  fd.append("signature", signature);
+  const url = `https://api.cloudinary.com/v1_1/${cloudName}/resources/${resourceType}/upload`;
+  const res = await fetch(url, { method: "DELETE", body: fd });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    console.warn(`Cloudinary destroy failed ${res.status} ${publicId}: ${text.slice(0, 180)}`);
+    // PDF often lands as image; retry image destroy once if raw failed.
+    if (resourceType === "raw") {
+      return destroyCloudinaryResource(cloudName, apiKey, apiSecret, publicId, "image");
+    }
+    return false;
+  }
+  const json = await res.json().catch(() => ({} as Record<string, unknown>));
+  const deletedMap = (json?.deleted ?? {}) as Record<string, string>;
+  const status = deletedMap[publicId];
+  return status === "deleted" || status === "not_found" || !status;
+}
+
 async function deleteInvoiceMedia(supabase: ReturnType<typeof sb>, row: any): Promise<void> {
+  const cref = cloudinaryRefFromRow(row);
+  if (cref) {
+    try {
+      const creds = await resolveCloudinaryCreds(supabase, cref.cloudName);
+      if (creds) {
+        const ok = await destroyCloudinaryResource(
+          creds.cloudName,
+          creds.apiKey,
+          creds.apiSecret,
+          cref.publicId,
+          cref.resourceType,
+        );
+        if (ok) return;
+      } else {
+        console.warn("Cloudinary credentials missing for outbox media delete", cref.publicId);
+      }
+    } catch (e) {
+      console.warn("Cloudinary media delete failed", cref.publicId, e);
+    }
+  }
+
+  // Legacy Supabase Storage path (pre-Cloudinary WA media)
   const path = storagePathFromRow(row);
   if (!path) return;
   try {
@@ -75,24 +185,129 @@ async function deleteInvoiceMedia(supabase: ReturnType<typeof sb>, row: any): Pr
   }
 }
 
-/** Drop outbox rows + storage objects older than 24 hours (cost control). */
+type ListedStorageObject = { path: string; createdAtMs: number };
+
+/**
+ * Grace period before orphan sweeps may delete a storage object.
+ * Prevents a race where LIMS uploads a file, prune runs before/while the
+ * outbox row is inserted, and WhatsApp Console then gets HTTP 400 on download.
+ */
+const ORPHAN_MEDIA_GRACE_MS = 60 * 60 * 1000;
+
+async function listStorageFolderObjects(
+  supabase: ReturnType<typeof sb>,
+  folder: string,
+): Promise<ListedStorageObject[]> {
+  const out: ListedStorageObject[] = [];
+  let offset = 0;
+  for (;;) {
+    const { data: listed } = await supabase.storage.from("chat-attachments").list(folder, {
+      limit: 100,
+      offset,
+      sortBy: { column: "name", order: "asc" },
+    });
+    const batch = listed || [];
+    for (const item of batch) {
+      if (!item?.name) continue;
+      const createdRaw =
+        (item as { created_at?: string }).created_at ||
+        (item as { updated_at?: string }).updated_at ||
+        "";
+      const createdAtMs = Date.parse(createdRaw);
+      out.push({
+        path: `${folder}/${item.name}`,
+        createdAtMs: Number.isFinite(createdAtMs) ? createdAtMs : 0,
+      });
+    }
+    if (batch.length < 100) break;
+    offset += batch.length;
+    if (offset > 8000) break;
+  }
+  return out;
+}
+
+/**
+ * Invoice JPEGs + report PDFs must not linger.
+ * Prefer Cloudinary destroy via outbox payload; also clean legacy Supabase
+ * Storage objects. Only sweep true Storage orphans after a grace period so
+ * in-flight uploads are never removed before the outbox row can claim them.
+ */
 async function pruneInvoiceOutbox24h(): Promise<{ rows: number; files: number }> {
   const supabase = sb();
+  const { data: active, error: activeErr } = await supabase
+    .from("whatsapp_console_outbox")
+    .select("id, media_url, payload, status")
+    .in("status", ["pending", "claimed"]);
+  if (activeErr) throw activeErr;
+
+  const keepStorage = new Set<string>();
+  const keepCloudinary = new Set<string>();
+  for (const row of active || []) {
+    const path = storagePathFromRow(row);
+    if (path) keepStorage.add(path);
+    const cref = cloudinaryRefFromRow(row);
+    if (cref) keepCloudinary.add(`${cref.resourceType}:${cref.publicId}`);
+  }
+
+  const { data: inactive } = await supabase
+    .from("whatsapp_console_outbox")
+    .select("id, media_url, payload, media_mime")
+    .in("status", ["sent", "failed", "cancelled"])
+    .limit(500);
+
+  let files = 0;
+  for (const row of inactive || []) {
+    const cref = cloudinaryRefFromRow(row);
+    const path = storagePathFromRow(row);
+    if (cref && keepCloudinary.has(`${cref.resourceType}:${cref.publicId}`)) continue;
+    if (path && keepStorage.has(path)) continue;
+    if (!cref && !path) continue;
+    await deleteInvoiceMedia(supabase, row);
+    files += 1;
+  }
+  const inactiveIds = (inactive || []).map((r) => r.id).filter(Boolean);
+  if (inactiveIds.length) {
+    await supabase
+      .from("whatsapp_console_outbox")
+      .update({ media_url: null, updated_at: new Date().toISOString() })
+      .in("id", inactiveIds)
+      .not("media_url", "is", null);
+  }
+
+  // Re-read keep immediately before orphan sweep (jobs may have arrived mid-prune).
+  const { data: activeAgain } = await supabase
+    .from("whatsapp_console_outbox")
+    .select("id, media_url, payload, status")
+    .in("status", ["pending", "claimed"]);
+  for (const row of activeAgain || []) {
+    const path = storagePathFromRow(row);
+    if (path) keepStorage.add(path);
+  }
+
+  const orphanCutoff = Date.now() - ORPHAN_MEDIA_GRACE_MS;
+  for (const folder of ["invoices", "reports"] as const) {
+    const listed = await listStorageFolderObjects(supabase, folder);
+    const stale = listed
+      .filter((obj) => !keepStorage.has(obj.path) && obj.createdAtMs > 0 && obj.createdAtMs < orphanCutoff)
+      .map((obj) => obj.path);
+    if (!stale.length) continue;
+    for (let i = 0; i < stale.length; i += 50) {
+      const chunk = stale.slice(i, i + 50);
+      const { error: rmErr } = await supabase.storage.from("chat-attachments").remove(chunk);
+      if (!rmErr) files += chunk.length;
+    }
+  }
+
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const { data: oldRows, error } = await supabase
     .from("whatsapp_console_outbox")
-    .select("id, media_url, payload")
+    .select("id, media_url, payload, media_mime")
     .lt("created_at", cutoff)
     .limit(500);
   if (error) throw error;
   const rows = oldRows || [];
-  let files = 0;
   for (const row of rows) {
-    const path = storagePathFromRow(row);
-    if (path) {
-      const { error: rmErr } = await supabase.storage.from("chat-attachments").remove([path]);
-      if (!rmErr) files += 1;
-    }
+    await deleteInvoiceMedia(supabase, row);
   }
   if (rows.length) {
     await supabase
@@ -103,39 +318,11 @@ async function pruneInvoiceOutbox24h(): Promise<{ rows: number; files: number }>
         rows.map((r) => r.id),
       );
   }
-  // Also sweep orphan invoice/report files older than 24h (paginate)
-  const cutoffMs = Date.now() - 24 * 60 * 60 * 1000;
-  for (const folder of ["invoices", "reports"] as const) {
-    let offset = 0;
-    for (;;) {
-      const { data: listed } = await supabase.storage.from("chat-attachments").list(folder, {
-        limit: 100,
-        offset,
-        sortBy: { column: "created_at", order: "asc" },
-      });
-      const batch = listed || [];
-      if (!batch.length) break;
-      const staleFiles: string[] = [];
-      for (const item of batch) {
-        if (!item?.name) continue;
-        const created = item.created_at ? Date.parse(item.created_at) : 0;
-        if (created && created < cutoffMs) staleFiles.push(`${folder}/${item.name}`);
-      }
-      if (staleFiles.length) {
-        const { error: rmErr } = await supabase.storage.from("chat-attachments").remove(staleFiles);
-        if (!rmErr) files += staleFiles.length;
-      }
-      if (batch.length < 100) break;
-      offset += batch.length;
-      // Safety: avoid infinite loops on weird list APIs
-      if (offset > 5000) break;
-    }
-  }
   return { rows: rows.length, files };
 }
 
 const STUCK_CLAIM_MS = 5 * 60 * 1000;
-const DEFAULT_MAX_ATTEMPTS = 8;
+const DEFAULT_MAX_ATTEMPTS = 2;
 
 /** Re-queue claims abandoned mid-send (Console crash / laptop sleep). */
 async function reclaimStuckClaims(supabase: ReturnType<typeof sb>) {
@@ -206,14 +393,28 @@ async function claimOutbox(limit = 5, claimedBy = "whatsapp-console") {
 }
 
 function retryDelaySeconds(attempts: number): number {
-  // 30s, 60s, 120s … capped at 15 min
-  return Math.min(30 * Math.pow(2, Math.max(0, attempts - 1)), 900);
+  // First retry quickly (~8s); then 30s, 60s, 120s … capped at 15 min
+  if (attempts <= 1) return 8;
+  return Math.min(30 * Math.pow(2, Math.max(0, attempts - 2)), 900);
 }
+
+function isUnrecoverableOutboxError(errText: string | null): boolean {
+  if (!errText) return false;
+  return /invalid_phone|empty_job|empty_text|cancelled|unsupported_kind|dead_media|localhost_media|127\.0\.0\.1|media download HTTP 400|media download HTTP 404|file missing/i.test(
+    errText,
+  );
+}
+
+type WaFeedback = {
+  ack?: number | null;
+  via?: string | null;
+};
 
 async function completeOutbox(
   id: string,
   status: "sent" | "failed" | "pending",
   lastError?: string | null,
+  wa?: WaFeedback,
 ) {
   const supabase = sb();
   const now = new Date().toISOString();
@@ -224,24 +425,37 @@ async function completeOutbox(
     .maybeSingle();
 
   const attempts = Number(existing?.attempts || 0);
-  const maxAttempts = Number(existing?.max_attempts || DEFAULT_MAX_ATTEMPTS);
+  const maxAttempts = DEFAULT_MAX_ATTEMPTS;
   const errText = lastError ?? null;
-  const terminalError =
-    !!errText &&
-    /invalid_phone|empty_job|empty_text|cancelled|unsupported_kind|dead_media|localhost_media|127\.0\.0\.1/i.test(
-      String(errText),
-    );
+  const terminalError = isUnrecoverableOutboxError(errText);
 
-  // Transient / retryable failures stay in the durable queue as pending.
+  // WhatsApp Console ack is the source of truth for sent vs failed.
+  // One automatic retry only — then fail (number may not be on WhatsApp).
   let finalStatus = status;
   if (status === "failed" && !terminalError && attempts < maxAttempts) {
     finalStatus = "pending";
   }
 
+  const prevPayload =
+    existing?.payload && typeof existing.payload === "object" && !Array.isArray(existing.payload)
+      ? { ...(existing.payload as Record<string, unknown>) }
+      : {};
+  const ackNum = typeof wa?.ack === "number" && Number.isFinite(wa.ack) ? wa.ack : null;
+  const viaStr = wa?.via ? String(wa.via) : null;
+  prevPayload.wa_feedback = {
+    ok: finalStatus === "sent",
+    ack: ackNum,
+    via: viaStr,
+    error: finalStatus === "sent" ? null : errText,
+    attempts,
+    at: now,
+  };
+
   const patch: Record<string, unknown> = {
     status: finalStatus,
     updated_at: now,
-    last_error: errText,
+    last_error: finalStatus === "sent" ? null : errText,
+    payload: prevPayload,
   };
   if (finalStatus === "sent") {
     patch.sent_at = now;
@@ -250,20 +464,24 @@ async function completeOutbox(
     patch.next_retry_at = null;
     patch.claimed_at = null;
     patch.claimed_by = null;
-  } else if (finalStatus === "pending") {
-    patch.claimed_at = null;
-    patch.claimed_by = null;
-    // Immediate retry when WA Web missing; otherwise exponential backoff.
-    const immediate =
-      !errText ||
-      /no_whatsapp_web|not.?connected|offline|network|timeout|temporar/i.test(String(errText));
-    patch.next_retry_at = immediate
-      ? null
-      : new Date(Date.now() + retryDelaySeconds(attempts) * 1000).toISOString();
   } else if (finalStatus === "failed") {
+    patch.media_url = null;
     patch.claimed_at = null;
     patch.claimed_by = null;
     patch.next_retry_at = null;
+  } else if (finalStatus === "pending") {
+    patch.claimed_at = null;
+    patch.claimed_by = null;
+    // First retry + WA-not-ready / ack timeouts: try again immediately.
+    const immediate =
+      attempts <= 1 ||
+      !errText ||
+      /no_whatsapp_web|not.?connected|offline|network|timeout|temporar|ack_|msg_not_delivered|msg_failed|sendToChat|no_webpack|send_no_msg|no_ack/i.test(
+        String(errText),
+      );
+    patch.next_retry_at = immediate
+      ? null
+      : new Date(Date.now() + retryDelaySeconds(attempts) * 1000).toISOString();
   }
 
   const { data, error } = await supabase
@@ -274,7 +492,7 @@ async function completeOutbox(
     .maybeSingle();
   if (error) throw error;
 
-  if (finalStatus === "sent" && existing) {
+  if ((finalStatus === "sent" || finalStatus === "failed") && existing) {
     await deleteInvoiceMedia(supabase, existing);
   }
   return data;
@@ -311,7 +529,19 @@ Deno.serve(async (req) => {
         if (!["sent", "failed", "pending"].includes(status)) {
           return json({ error: "status must be sent|failed|pending" }, 400);
         }
-        const row = await completeOutbox(id, status as "sent" | "failed" | "pending", body?.error ?? body?.last_error);
+        const ackRaw = body?.ack;
+        const ack =
+          typeof ackRaw === "number" && Number.isFinite(ackRaw)
+            ? ackRaw
+            : ackRaw != null && String(ackRaw).trim() !== "" && Number.isFinite(Number(ackRaw))
+              ? Number(ackRaw)
+              : null;
+        const row = await completeOutbox(
+          id,
+          status as "sent" | "failed" | "pending",
+          body?.error ?? body?.last_error,
+          { ack, via: body?.via != null ? String(body.via) : null },
+        );
         return json({ ok: true, data: row });
       }
 
@@ -402,19 +632,82 @@ Deno.serve(async (req) => {
 
     // Peek pending outbox (non-claiming) for Console UI / health
     if (type === "outbox") {
-      const { data, error } = await supabase
-        .from("whatsapp_console_outbox")
-        .select("id, kind, phone, patient_name, invoice_number, status, caption, media_url, created_at, attempts, last_error, next_retry_at, max_attempts")
-        .in("status", ["pending", "claimed", "failed"])
-        .order("created_at", { ascending: false })
-        .limit(100);
-      if (error) throw error;
-      const active = (data || []).filter((r: any) => r.status === "pending" || r.status === "claimed");
-      const failed = (data || []).filter((r: any) => r.status === "failed");
+      const cols =
+        "id, kind, phone, patient_name, invoice_number, status, caption, media_url, created_at, attempts, last_error, next_retry_at, max_attempts, sent_at, payload";
+      const [{ data: openRows, error: openErr }, { data: sentRows, error: sentErr }] = await Promise.all([
+        supabase
+          .from("whatsapp_console_outbox")
+          .select(cols)
+          .in("status", ["pending", "claimed", "failed"])
+          .order("created_at", { ascending: false })
+          .limit(100),
+        supabase
+          .from("whatsapp_console_outbox")
+          .select(cols)
+          .eq("status", "sent")
+          .order("sent_at", { ascending: false })
+          .limit(20),
+      ]);
+      if (openErr) throw openErr;
+      if (sentErr) throw sentErr;
+      const data = [...(openRows || []), ...(sentRows || [])];
+      const active = (openRows || []).filter((r: any) => r.status === "pending" || r.status === "claimed");
+      const failed = (openRows || []).filter((r: any) => r.status === "failed");
       return json({
-        count: { outbox: active.length, failed: failed.length, total: (data || []).length },
-        data: data || [],
+        count: { outbox: active.length, failed: failed.length, sent: (sentRows || []).length, total: data.length },
+        data,
         mode: "realtime_queue",
+      });
+    }
+
+    // Sender CRM: Registered Patients after old-software cutoff (invoice_number is YYMMDD+seq text).
+    if (type === "registrations" || type === "registered_patients" || type === "sender_crm") {
+      const afterInvoice = (url.searchParams.get("after_invoice") || "2608100018").trim() || "2608100018";
+      const rows = await fetchAll((f, t) =>
+        supabase
+          .from("patient_registrations")
+          .select(
+            "id, invoice_number, patient_name, title, mobile_number, umr_number, created_at, remarks, doctor_name, visit_type, payments, paid_amount, due_amount, gross_amount, global_discount_type, global_discount_value, discount_amount, bill_cancelled, channel_id, channels:channel_id(billing_type)",
+          )
+          .gt("invoice_number", afterInvoice)
+          .eq("bill_cancelled", false)
+          .neq("visit_type", "pickup_point")
+          .order("invoice_number", { ascending: true })
+          .range(f, t),
+      );
+      return json({
+        ok: true,
+        after_invoice: afterInvoice,
+        count: { registrations: rows.length },
+        data: rows.map((r: any) => {
+          const channel = Array.isArray(r.channels) ? r.channels[0] : r.channels;
+          // Lab / home visit = debit. Channel credit/debit follows channel billing_type.
+          // Pickup-point registrations are excluded above.
+          const billingMode: "credit" | "debit" =
+            r.channel_id && channel?.billing_type === "credit" ? "credit" : "debit";
+          return {
+            source: "registration",
+            id: r.id,
+            invoice_number: r.invoice_number,
+            patient_name: r.patient_name,
+            title: r.title,
+            mobile_number: r.mobile_number,
+            umr_number: r.umr_number,
+            created_at: r.created_at,
+            remarks: r.remarks,
+            doctor_name: r.doctor_name,
+            visit_type: r.visit_type,
+            payments: r.payments,
+            paid_amount: r.paid_amount,
+            due_amount: r.due_amount,
+            gross_amount: r.gross_amount,
+            global_discount_type: r.global_discount_type,
+            global_discount_value: r.global_discount_value,
+            discount_amount: r.discount_amount,
+            channel_billing_type: channel?.billing_type || null,
+            billing_mode: billingMode,
+          };
+        }),
       });
     }
 

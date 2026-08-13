@@ -1,6 +1,10 @@
 import { supabase } from "@/integrations/supabase/client";
+import { uploadBlobToCloudinary } from "@/lib/cardStorageCloudinary";
 
 export type WhatsAppConsoleOutboxKind = "invoice" | "report" | "text" | "image";
+
+/** Cloudinary folder root shared with loyalty cards (unsigned preset). */
+const WA_MEDIA_FOLDER_ROOT = "loyalty-cards";
 
 export interface EnqueueWhatsAppConsolePayload {
   kind?: WhatsAppConsoleOutboxKind;
@@ -97,7 +101,7 @@ export async function dismissAllFailedWhatsAppConsoleJobs(
   return { ok: true, cleared: (data || []).length };
 }
 
-/** Upload invoice JPEG and enqueue for Console delivery. */
+/** Upload invoice JPEG to Cloudinary (bytes unchanged) and enqueue for Console delivery. */
 export async function enqueueInvoiceForWhatsAppConsole(opts: {
   phone: string;
   patient_name?: string | null;
@@ -109,13 +113,21 @@ export async function enqueueInvoiceForWhatsAppConsole(opts: {
   const phone = phone10(opts.phone);
   if (phone.length !== 10) return { ok: false, error: "Valid 10-digit mobile required" };
 
-  const path = `invoices/${opts.invoice_number}-${Date.now()}.jpg`;
-  const { error: upErr } = await supabase.storage
-    .from("chat-attachments")
-    .upload(path, opts.blob, { contentType: "image/jpeg", upsert: true });
-  if (upErr) return { ok: false, error: upErr.message };
+  const safeInvoice = String(opts.invoice_number || "invoice").replace(/[^a-zA-Z0-9_-]+/g, "_");
+  // Nested public_id under preset folder (loyalty-cards) → loyalty-cards/invoices/...
+  const publicId = `invoices/${safeInvoice}-${Date.now()}`;
+  let uploaded;
+  try {
+    // Pass the capture blob through unchanged — no re-encode / quality change.
+    uploaded = await uploadBlobToCloudinary(opts.blob, {
+      resourceType: "image",
+      publicId,
+      filename: `${safeInvoice}.jpg`,
+    });
+  } catch (e) {
+    return { ok: false, error: (e as Error)?.message || "Cloudinary upload failed" };
+  }
 
-  const { data: pub } = supabase.storage.from("chat-attachments").getPublicUrl(path);
   return enqueueWhatsAppConsoleMessage({
     kind: "invoice",
     phone,
@@ -123,13 +135,19 @@ export async function enqueueInvoiceForWhatsAppConsole(opts: {
     registration_id: opts.registration_id,
     invoice_number: opts.invoice_number,
     caption: opts.caption,
-    media_url: pub.publicUrl,
+    media_url: uploaded.secure_url,
     media_mime: "image/jpeg",
-    payload: { storage_path: path },
+    payload: {
+      media_host: "cloudinary",
+      cloudinary_cloud_name: uploaded.cloud_name,
+      cloudinary_public_id: uploaded.public_id,
+      cloudinary_resource_type: uploaded.resource_type,
+      cloudinary_folder: `${WA_MEDIA_FOLDER_ROOT}/invoices`,
+    },
   });
 }
 
-/** Upload report PDF and enqueue for Console delivery (document + caption). */
+/** Upload report PDF to Cloudinary (bytes unchanged) and enqueue for Console delivery. */
 export async function enqueueReportForWhatsAppConsole(opts: {
   phone: string;
   patient_name?: string | null;
@@ -151,13 +169,20 @@ export async function enqueueReportForWhatsAppConsole(opts: {
       .replace(/\s+/g, " ")
       .trim()
       .replace(/\.pdf$/i, "") + ".pdf";
-  const path = `reports/${safeInvoice}-${Date.now()}.pdf`;
-  const { error: upErr } = await supabase.storage
-    .from("chat-attachments")
-    .upload(path, opts.blob, { contentType: "application/pdf", upsert: true });
-  if (upErr) return { ok: false, error: upErr.message };
+  const folderHint = `${WA_MEDIA_FOLDER_ROOT}/reports`;
+  const publicId = `reports/${safeInvoice}-${Date.now()}`;
+  let uploaded;
+  try {
+    // auto keeps original PDF bytes; works with the loyalty-cards unsigned preset.
+    uploaded = await uploadBlobToCloudinary(opts.blob, {
+      resourceType: "auto",
+      publicId,
+      filename,
+    });
+  } catch (e) {
+    return { ok: false, error: (e as Error)?.message || "Cloudinary upload failed" };
+  }
 
-  const { data: pub } = supabase.storage.from("chat-attachments").getPublicUrl(path);
   return enqueueWhatsAppConsoleMessage({
     kind: "report",
     phone,
@@ -165,8 +190,15 @@ export async function enqueueReportForWhatsAppConsole(opts: {
     registration_id: opts.registration_id,
     invoice_number: opts.invoice_number,
     caption: opts.caption,
-    media_url: pub.publicUrl,
+    media_url: uploaded.secure_url,
     media_mime: "application/pdf",
-    payload: { storage_path: path, filename },
+    payload: {
+      media_host: "cloudinary",
+      cloudinary_cloud_name: uploaded.cloud_name,
+      cloudinary_public_id: uploaded.public_id,
+      cloudinary_resource_type: uploaded.resource_type,
+      cloudinary_folder: folderHint,
+      filename,
+    },
   });
 }

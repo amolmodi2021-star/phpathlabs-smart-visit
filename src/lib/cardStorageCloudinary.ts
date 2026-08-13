@@ -62,17 +62,46 @@ function classifyCloudinaryError(err: unknown): CloudinaryFailureReason {
   return "cloudinary_network";
 }
 
+export type CloudinaryResourceType = "image" | "raw" | "auto";
+
+export interface CloudinaryUploadResult {
+  secure_url: string;
+  public_id: string;
+  cloud_name: string;
+  /** Effective type after upload (`auto` resolves to image|raw|video). */
+  resource_type: "image" | "raw" | "video";
+  /** Folder prefix requested at upload (e.g. loyalty-cards/invoices). */
+  folder?: string;
+}
+
 /**
- * Upload a JPEG blob to the active Cloudinary account via unsigned preset and
- * return the `secure_url`. Throws on failure (caller should classify with the
- * retry wrapper below).
+ * Upload a blob to the active Cloudinary account via unsigned preset.
+ * JPEG → image; PDF → auto (keeps original bytes; works with image-oriented presets).
+ * Bytes are sent as-is; callers must not re-encode for quality.
  */
-export async function uploadJpegToCloudinary(blob: Blob): Promise<string> {
+export async function uploadBlobToCloudinary(
+  blob: Blob,
+  opts: {
+    resourceType: CloudinaryResourceType;
+    /** Subfolder under the preset root, e.g. `invoices` (preset root is usually loyalty-cards). */
+    folder?: string;
+    /** Optional stable public id (without extension). Nested ids like `invoices/x` are fine. */
+    publicId?: string;
+    filename?: string;
+  },
+): Promise<CloudinaryUploadResult> {
   const acct = await getActiveAccount();
-  const url = `https://api.cloudinary.com/v1_1/${acct.cloudName}/image/upload`;
+  const resourceType = opts.resourceType;
+  const url = `https://api.cloudinary.com/v1_1/${acct.cloudName}/${resourceType}/upload`;
   const fd = new FormData();
-  fd.append("file", blob);
+  if (opts.filename) {
+    fd.append("file", blob, opts.filename);
+  } else {
+    fd.append("file", blob);
+  }
   fd.append("upload_preset", acct.uploadPreset);
+  if (opts.folder) fd.append("folder", opts.folder);
+  if (opts.publicId) fd.append("public_id", opts.publicId);
   let res: Response;
   try {
     res = await fetch(url, { method: "POST", body: fd });
@@ -87,9 +116,33 @@ export async function uploadJpegToCloudinary(blob: Blob): Promise<string> {
     } catch {}
     throw new Error(`cloudinary_${res.status}${detail ? `: ${detail}` : ""}`);
   }
-  const json = (await res.json()) as { secure_url?: string };
+  const json = (await res.json()) as {
+    secure_url?: string;
+    public_id?: string;
+    resource_type?: string;
+  };
   if (!json?.secure_url) throw new Error("cloudinary_4xx: missing secure_url");
-  return json.secure_url;
+  if (!json?.public_id) throw new Error("cloudinary_4xx: missing public_id");
+  const rtRaw = String(json.resource_type || resourceType || "image");
+  const rt: "image" | "raw" | "video" =
+    rtRaw === "raw" ? "raw" : rtRaw === "video" ? "video" : "image";
+  return {
+    secure_url: json.secure_url,
+    public_id: json.public_id,
+    cloud_name: acct.cloudName,
+    resource_type: rt,
+    folder: opts.folder,
+  };
+}
+
+/**
+ * Upload a JPEG blob to the active Cloudinary account via unsigned preset and
+ * return the `secure_url`. Throws on failure (caller should classify with the
+ * retry wrapper below).
+ */
+export async function uploadJpegToCloudinary(blob: Blob): Promise<string> {
+  const result = await uploadBlobToCloudinary(blob, { resourceType: "image" });
+  return result.secure_url;
 }
 
 /**
