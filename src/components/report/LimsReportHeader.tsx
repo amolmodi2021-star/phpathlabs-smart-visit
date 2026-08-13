@@ -50,7 +50,12 @@ const LimsReportHeader = ({
   mobileNumber, invoiceNumber, registrationDate,
   sampleCollectionDate, approvalDate, printDate, visitType,
 }: LimsReportHeaderProps) => {
-  const age = formatPatientAge({ dob, ageText });
+  // Prefer frozen snapshot age_text; else DOB age as of approval (not today).
+  const age = formatPatientAge({
+    dob,
+    ageText,
+    asOf: approvalDate || registrationDate || null,
+  });
   const displayName = formatPatientDisplayName(title, patientName, gender);
 
   return (

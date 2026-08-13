@@ -65,6 +65,8 @@ export async function syncPatientDemographicsByUmr(
 
   // 2. Approved report snapshots — patient demographics only.
   //    Clinical content (test_results, signatures) stays untouched.
+  //    age_text is intentionally NOT updated: it is frozen at approval so
+  //    reprints years later still show age-at-approval (not age-today).
   const approved = supabase
     .from("approved_reports")
     .update({
@@ -72,7 +74,6 @@ export async function syncPatientDemographicsByUmr(
       title: demo.title ?? null,
       gender: demo.gender ?? null,
       dob: demo.dob ?? null,
-      age_text: demo.age_text ?? null,
       email: demo.email ?? null,
       doctor_name: demo.doctor_name ?? null,
       address: demo.address ?? null,
