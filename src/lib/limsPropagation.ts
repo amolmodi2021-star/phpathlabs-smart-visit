@@ -95,6 +95,7 @@ export const MODULE_KEYS: Record<LimsModule, string[]> = {
   bad_debt: ["bad_debts_regs"],
   modified_approval: [
     "modified_approval_reports",
+    "modified_approval_report_detail",
     "modified_approval_results",
     "modified_approval_snips",
   ],

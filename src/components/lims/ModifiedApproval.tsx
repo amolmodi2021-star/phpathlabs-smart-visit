@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLimsPipelineRealtime } from "@/hooks/useLimsPipelineRealtime";
 import { MODULE_KEYS } from "@/lib/limsPropagation";
@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Search, ChevronDown, ChevronUp, Loader2, Save, Eye, FileCheck, Calculator, StickyNote, Trash2, AlertTriangle } from "lucide-react";
+import { Search, ChevronDown, ChevronUp, Loader2, Save, Eye, FileCheck, Calculator, StickyNote, Trash2, AlertTriangle, X } from "lucide-react";
 import { toast } from "sonner";
 import PaginatedTableFooter from "@/components/ui/PaginatedTableFooter";
 import { isSuspectNegativeResult, calculateResultFlag } from "@/lib/reportFlags";
@@ -24,13 +24,17 @@ import { PATIENT_RESULTS_SELECT_MODIFIED } from "@/lib/patientResultsSelect";
 import { shortIdsKey } from "@/lib/queryKeys";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 
-const PAGE_SIZE = 50;
+/** Lean list only — never pull test_results JSONB for the whole page. */
+const REPORT_LIST_SELECT =
+  "id, registration_id, invoice_number, umr_number, patient_name, title, gender, dob, mobile_number, is_held, approval_date, approved_by, registration_date";
+
+const PAGE_SIZE = 10;
 
 const ModifiedApproval = () => {
   const qc = useQueryClient();
   useLimsPipelineRealtime("modified_approval");
   const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
   const [page, setPage] = useState(0);
   const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
@@ -46,19 +50,36 @@ const ModifiedApproval = () => {
   const [viewSnipImages, setViewSnipImages] = useState<string[] | null>(null);
   const [diffConfirm, setDiffConfirm] = useState<{ report: any; testGroups: any[]; issues: { testName: string; sum: number; diff: number }[] } | null>(null);
 
-  useEffect(() => { const t = setTimeout(() => setDebouncedSearch(search), 400); return () => clearTimeout(t); }, [search]);
-  useEffect(() => { setPage(0); }, [debouncedSearch]);
+  const runSearch = () => {
+    setAppliedSearch(search.trim());
+    setPage(0);
+    setExpandedPatient(null);
+  };
+  const clearSearch = () => {
+    setSearch("");
+    setAppliedSearch("");
+    setPage(0);
+    setExpandedPatient(null);
+  };
 
-  // Fetch approved_reports — server-side paginated
+  // Lean approved_reports list — last PAGE_SIZE rows (no test_results JSONB)
   const { data: pagedReports, isLoading } = useQuery({
-    queryKey: ["modified_approval_reports", debouncedSearch, page],
+    queryKey: ["modified_approval_reports", appliedSearch, page],
     queryFn: async () => {
       const from = page * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
-      // Use estimated count when unfiltered (avoids full-table scan); exact when searching.
-      const useEstimated = !debouncedSearch;
-      let query = supabase.from("approved_reports").select("*", { count: useEstimated ? "estimated" : "exact" }).order("approval_date", { ascending: false }).range(from, to);
-      if (debouncedSearch) query = query.or(`patient_name.ilike.%${debouncedSearch}%,mobile_number.ilike.%${debouncedSearch}%,invoice_number.ilike.%${debouncedSearch}%,umr_number.ilike.%${debouncedSearch}%`);
+      const useEstimated = !appliedSearch;
+      let query = supabase
+        .from("approved_reports")
+        .select(REPORT_LIST_SELECT, { count: useEstimated ? "estimated" : "exact" })
+        .order("approval_date", { ascending: false })
+        .range(from, to);
+      if (appliedSearch) {
+        const q = appliedSearch.replace(/%/g, "");
+        query = query.or(
+          `patient_name.ilike.%${q}%,mobile_number.ilike.%${q}%,invoice_number.ilike.%${q}%,umr_number.ilike.%${q}%`,
+        );
+      }
       const { data, count } = await query;
       return { rows: (data || []) as any[], total: count || 0 };
     },
@@ -66,54 +87,120 @@ const ModifiedApproval = () => {
 
   const approvedReports = pagedReports?.rows || [];
   const totalReports = pagedReports?.total || 0;
+  const heldOnPage = approvedReports.filter((r: any) => r.is_held).length;
+  const readyOnPage = approvedReports.length - heldOnPage;
 
-  const regIds = approvedReports.map((r: any) => r.registration_id);
-  const regKey = shortIdsKey(regIds, "ma");
+  const expandedReport = useMemo(
+    () => approvedReports.find((r: any) => r.id === expandedPatient) || null,
+    [approvedReports, expandedPatient],
+  );
+  const detailRegId = expandedReport?.registration_id || null;
+  const detailEnabled = !!expandedPatient && !!detailRegId;
+  const detailKey = shortIdsKey(detailRegId ? [detailRegId] : [], "ma");
 
-  // Fetch approved patient_results for editing
-  const { data: approvedResults = [] } = useQuery({
-    queryKey: ["modified_approval_results", regKey],
-    enabled: regIds.length > 0,
+  // Detail fetches ONLY for the expanded report
+  const { data: detailSnapshot, isFetched: snapshotFetched } = useQuery({
+    queryKey: ["modified_approval_report_detail", expandedPatient],
+    enabled: detailEnabled,
     queryFn: async () => {
-      return await fetchAllByIds<any>("patient_results", PATIENT_RESULTS_SELECT_MODIFIED, "registration_id", regIds, { eq: { status: "approved" } });
+      const { data, error } = await supabase
+        .from("approved_reports")
+        .select("id, test_results, outsourced_snip_urls")
+        .eq("id", expandedPatient!)
+        .maybeSingle();
+      if (error) throw error;
+      return data as any;
+    },
+    staleTime: 60_000,
+  });
+
+  const { data: approvedResults = [], isFetched: resultsFetched } = useQuery({
+    queryKey: ["modified_approval_results", detailKey],
+    enabled: detailEnabled,
+    queryFn: async () => {
+      return await fetchAllByIds<any>(
+        "patient_results",
+        PATIENT_RESULTS_SELECT_MODIFIED,
+        "registration_id",
+        [detailRegId!],
+        { eq: { status: "approved" } },
+      );
     },
   });
 
-  // Fetch outsourced snips
-  const { data: approvedSnips = [] } = useQuery({
-    queryKey: ["modified_approval_snips", regKey],
-    enabled: regIds.length > 0,
+  const { data: approvedSnips = [], isFetched: snipsFetched } = useQuery({
+    queryKey: ["modified_approval_snips", detailKey],
+    enabled: detailEnabled,
     queryFn: async () => {
       return await fetchAllByIds<any>(
         "outsourced_test_snips",
         "id, registration_id, test_id, outsourced_parameter_ids, outsource_status, outsourced_lab_name, result_mode, snip_image_urls",
         "registration_id",
-        regIds,
+        [detailRegId!],
         { eq: { outsource_status: "approved" } },
       );
     },
   });
 
-  const { data: testsMap = {} } = useQuery({
+  const { data: testsMap = {}, isFetched: testsFetched } = useQuery({
     queryKey: ["results_tests_map"],
-    queryFn: async () => { const { data } = await supabase.from("tests").select("id, test_name, department_id, instrument_name"); const map: Record<string, any> = {}; (data || []).forEach((t: any) => { map[t.id] = t; }); return map; },
+    enabled: detailEnabled,
+    staleTime: 600_000,
+    queryFn: async () => {
+      const { data } = await supabase.from("tests").select("id, test_name, department_id, instrument_name");
+      const map: Record<string, any> = {};
+      (data || []).forEach((t: any) => { map[t.id] = t; });
+      return map;
+    },
   });
 
-  const { data: testParamsMap = {} } = useQuery({
+  const { data: testParamsMap = {}, isFetched: paramsFetched } = useQuery({
     queryKey: ["results_test_params_full"],
-    queryFn: async () => { const { data } = await supabase.from("test_parameters").select("test_id, parameter_id, display_order, is_subheader, subheader_text, report_test_parameters(id, param_code, parameter_name, parameter_description, unit, normal_range_low, normal_range_high, normal_range_text, is_calculated, calculation_formula, send_for_interface)").order("display_order"); const map: Record<string, any[]> = {}; (data || []).forEach((tp: any) => { if (!tp.test_id) return; if (!map[tp.test_id]) map[tp.test_id] = []; map[tp.test_id].push(tp); }); return map; },
+    enabled: detailEnabled,
+    staleTime: 600_000,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("test_parameters")
+        .select("test_id, parameter_id, display_order, is_subheader, subheader_text, report_test_parameters(id, param_code, parameter_name, parameter_description, unit, normal_range_low, normal_range_high, normal_range_text, is_calculated, calculation_formula, send_for_interface)")
+        .order("display_order");
+      const map: Record<string, any[]> = {};
+      (data || []).forEach((tp: any) => {
+        if (!tp.test_id) return;
+        if (!map[tp.test_id]) map[tp.test_id] = [];
+        map[tp.test_id].push(tp);
+      });
+      return map;
+    },
   });
 
-  const { data: normalRangesMap = {} } = useQuery({
+  const { data: normalRangesMap = {}, isFetched: rangesFetched } = useQuery({
     queryKey: ["results_normal_ranges"],
-    queryFn: async () => { const { data } = await supabase.from("parameter_normal_ranges").select("*").order("age_min"); const map: Record<string, any[]> = {}; (data || []).forEach((r: any) => { if (!map[r.parameter_id]) map[r.parameter_id] = []; map[r.parameter_id].push(r); }); return map; },
+    enabled: detailEnabled,
+    staleTime: 600_000,
+    queryFn: async () => {
+      const { data } = await supabase.from("parameter_normal_ranges").select("*").order("age_min");
+      const map: Record<string, any[]> = {};
+      (data || []).forEach((r: any) => {
+        if (!map[r.parameter_id]) map[r.parameter_id] = [];
+        map[r.parameter_id].push(r);
+      });
+      return map;
+    },
   });
 
-  // Build entries grouped by report
+  const detailReady =
+    !detailEnabled ||
+    (snapshotFetched && resultsFetched && snipsFetched && testsFetched && paramsFetched && rangesFetched);
+
+  // Build entries: lean headers always; full test groups only for expanded row
   const entries = useMemo(() => {
     return approvedReports.map((report: any) => {
+      if (report.id !== expandedPatient || !detailReady) {
+        return { report, testGroups: [] as any[] };
+      }
+
       const regId = report.registration_id;
-      const snapshotResults = Array.isArray(report.test_results) ? report.test_results : [];
+      const snapshotResults = Array.isArray(detailSnapshot?.test_results) ? detailSnapshot.test_results : [];
       const dbResults = approvedResults.filter((r: any) => r.registration_id === regId);
       const seenResultKeys = new Set<string>();
       const results = [...dbResults, ...snapshotResults.map((r: any) => ({
@@ -129,10 +216,10 @@ const ModifiedApproval = () => {
       });
       const snips = approvedSnips.filter((s: any) => s.registration_id === regId);
 
-      // Group results by test
       const testGroups: Record<string, { testId: string; testName: string; params: any[]; isOutsourced: boolean; labName: string | null; snipUrls: string[] }> = {};
 
       for (const r of results) {
+        if (!r.test_id) continue;
         if (!testGroups[r.test_id]) {
           const testInfo = testsMap[r.test_id] || {};
           const snip = snips.find((s: any) => s.test_id === r.test_id);
@@ -148,7 +235,6 @@ const ModifiedApproval = () => {
         testGroups[r.test_id].params.push(r);
       }
 
-      // Add snip-only tests (no results)
       for (const snip of snips) {
         if (!testGroups[snip.test_id]) {
           const testInfo = testsMap[snip.test_id] || {};
@@ -166,16 +252,11 @@ const ModifiedApproval = () => {
         }
       }
 
-      // Inject any parameters that exist in the test definition but are missing
-      // from saved patient_results — including subheaders. This guarantees the
-      // Modified Approval view always shows the full structure of every test
-      // (calculated params that didn't auto-evaluate, params that were skipped
-      // during entry, subheader rows, etc.) so nothing is silently hidden.
       Object.values(testGroups).forEach((tg) => {
         const defs = (testParamsMap as any)[tg.testId] || [];
         const existingPids = new Set(tg.params.map((p: any) => p.parameter_id));
         defs.forEach((tp: any) => {
-          if (tp.is_subheader) return; // subheaders aren't editable rows here
+          if (tp.is_subheader) return;
           const rtp = tp.report_test_parameters;
           if (!rtp) return;
           if (existingPids.has(tp.parameter_id)) return;
@@ -199,8 +280,6 @@ const ModifiedApproval = () => {
             display_order: tp.display_order ?? 9999,
           });
         });
-        // Sort by display_order from test definition so calculated params slot
-        // into their natural position rather than appearing at the end.
         const orderMap: Record<string, number> = {};
         defs.forEach((tp: any) => { orderMap[tp.parameter_id] = tp.display_order ?? 9999; });
         tg.params.sort((a: any, b: any) => {
@@ -211,8 +290,8 @@ const ModifiedApproval = () => {
       });
 
       return { report, testGroups: Object.values(testGroups) };
-    }).filter(e => e.testGroups.length > 0);
-  }, [approvedReports, approvedResults, approvedSnips, testsMap, testParamsMap]);
+    });
+  }, [approvedReports, expandedPatient, detailReady, detailSnapshot, approvedResults, approvedSnips, testsMap, testParamsMap]);
 
   // Loaded test-level notes: first non-null test_note per (regId, testId)
   const loadedTestNotes = useMemo(() => {
@@ -467,15 +546,34 @@ const ModifiedApproval = () => {
 
   return (
     <div className="space-y-4">
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input placeholder="Search by name, mobile, invoice, UMR…" value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+      <div className="flex items-center gap-2 flex-wrap max-w-xl">
+        <div className="relative flex-1 min-w-[220px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search by name, mobile, invoice, UMR…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                runSearch();
+              }
+            }}
+            className="pl-9"
+          />
+        </div>
+        <Button size="sm" onClick={runSearch}>Search</Button>
+        {appliedSearch && (
+          <Button variant="ghost" size="sm" onClick={clearSearch}>
+            <X className="h-4 w-4 mr-1" />Clear
+          </Button>
+        )}
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <Card className="p-3"><div className="text-xs text-muted-foreground">Total Approved Reports</div><div className="text-xl font-bold">{entries.length}</div></Card>
-        <Card className="p-3"><div className="text-xs text-muted-foreground">On Hold</div><div className="text-xl font-bold text-amber-600">{approvedReports.filter((r: any) => r.is_held).length}</div></Card>
-        <Card className="p-3"><div className="text-xs text-muted-foreground">Ready for Dispatch</div><div className="text-xl font-bold text-green-600">{approvedReports.filter((r: any) => !r.is_held).length}</div></Card>
+        <Card className="p-3"><div className="text-xs text-muted-foreground">Total Approved Reports</div><div className="text-xl font-bold">{totalReports}</div></Card>
+        <Card className="p-3"><div className="text-xs text-muted-foreground">On Hold (this page)</div><div className="text-xl font-bold text-amber-600">{heldOnPage}</div></Card>
+        <Card className="p-3"><div className="text-xs text-muted-foreground">Ready (this page)</div><div className="text-xl font-bold text-green-600">{readyOnPage}</div></Card>
       </div>
 
       {isLoading ? (
@@ -484,7 +582,7 @@ const ModifiedApproval = () => {
         <div className="text-center py-12 text-muted-foreground">
           <FileCheck className="h-12 w-12 mx-auto mb-3 opacity-30" />
           <p className="text-lg font-medium">No approved reports found</p>
-          <p className="text-sm">Reports will appear here after doctor approval</p>
+          <p className="text-sm">{appliedSearch ? "Try a different search" : "Reports will appear here after doctor approval"}</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -494,6 +592,7 @@ const ModifiedApproval = () => {
             const isHolding = actionKey === `${report.id}||hold`;
             const isHeld = report.is_held;
             const edited = hasEdits(report.registration_id);
+            const showDetail = isExpanded && detailReady;
 
             return (
               <Card key={report.id} className={isExpanded ? "ring-1 ring-primary/30" : ""}>
@@ -506,7 +605,8 @@ const ModifiedApproval = () => {
                         <span className="text-xs text-muted-foreground ml-2">{report.invoice_number}</span>
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {report.mobile_number} • {testGroups.length} test{testGroups.length !== 1 ? "s" : ""}
+                        {report.mobile_number || "—"}
+                        {showDetail ? ` • ${testGroups.length} test${testGroups.length !== 1 ? "s" : ""}` : ""}
                       </div>
                     </div>
                   </div>
@@ -520,7 +620,7 @@ const ModifiedApproval = () => {
                       <span className="text-xs text-muted-foreground">{isHeld ? "Held" : "Dispatching"}</span>
                       <Switch checked={isHeld} disabled={isHolding} onCheckedChange={() => toggleHold(report.id, isHeld)} />
                     </div>
-                    {edited && (
+                    {edited && showDetail && (
                       <Button size="sm" variant="default" className="h-7 text-xs gap-1" disabled={isSaving} onClick={() => saveChanges(report, testGroups)}>
                         {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Save Changes
                       </Button>
@@ -528,10 +628,20 @@ const ModifiedApproval = () => {
                   </div>
                 </div>
 
-                {isExpanded && (
+                {isExpanded && !detailReady && (
+                  <CardContent className="pt-0 pb-4 px-3">
+                    <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Loading results…
+                    </div>
+                  </CardContent>
+                )}
+
+                {showDetail && (
                   <CardContent className="pt-0 pb-3 px-3">
                     <div className="space-y-3">
-                      {testGroups.map(tg => (
+                      {testGroups.length === 0 ? (
+                        <div className="text-sm text-muted-foreground py-4 text-center">No approved results found for this report</div>
+                      ) : testGroups.map(tg => (
                         <div key={tg.testId} className="border rounded-lg overflow-hidden bg-background">
                           <div className="px-3 py-2 bg-muted/40">
                             <div className="flex items-center justify-between">
@@ -751,7 +861,12 @@ const ModifiedApproval = () => {
         </AlertDialogContent>
       </AlertDialog>
 
-      <PaginatedTableFooter page={page} pageSize={PAGE_SIZE} total={totalReports} onPageChange={setPage} />
+      <PaginatedTableFooter
+        page={page}
+        pageSize={PAGE_SIZE}
+        total={totalReports}
+        onPageChange={(p) => { setPage(p); setExpandedPatient(null); }}
+      />
     </div>
   );
 };
