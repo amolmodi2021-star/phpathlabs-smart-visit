@@ -191,7 +191,7 @@ const CloudinaryAccountsManager = () => {
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                Create the upload preset in Cloudinary with <b>Signing Mode = Unsigned</b> and folder <code>loyalty-cards</code>. API key/secret are only needed for automated cleanup.
+                Create the upload preset in Cloudinary with <b>Signing Mode = Unsigned</b> and folder <code>loyalty-cards</code>. API key/secret are only needed for automated cleanup. For lab report PDFs on WhatsApp: Settings → Security → enable <b>Allow delivery of PDF and ZIP files</b> (otherwise Media Library shows “Blocked for delivery” and WA gets HTTP 401).
               </p>
             </div>
             <UIDialogFooter>
