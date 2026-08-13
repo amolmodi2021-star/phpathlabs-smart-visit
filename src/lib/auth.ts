@@ -145,13 +145,13 @@ export async function bumpAuthEpoch(): Promise<void> {
   }
 }
 
+let authEpochCheckInFlight: Promise<boolean> | null = null;
+
 /**
  * Compares the locally-stamped epoch against the server. If they differ, this
  * session was invalidated by an admin "Logout All Users" action — clear local
  * auth and resolve with `true` so the caller can redirect to /login.
  */
-let authEpochCheckInFlight: Promise<boolean> | null = null;
-
 export async function checkAuthEpochAndLogoutIfStale(): Promise<boolean> {
   if (!isAuthenticated()) return false;
   if (authEpochCheckInFlight) return authEpochCheckInFlight;
