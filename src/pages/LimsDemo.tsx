@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +34,70 @@ interface TestItem {
   machine_id: string;
   machine_name: string;
 }
+
+interface InterfaceLogSummary {
+  id: string;
+  sample_id: string | null;
+  direction: string;
+  event_type: string;
+  created_at: string;
+  machine_id: string | null;
+}
+
+export const InterfaceLogEntry = ({ log }: { log: InterfaceLogSummary }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const {
+    data: payload,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["lims-log-payload", log.id],
+    enabled: isOpen,
+    queryFn: async () => {
+      const { data, error: payloadError } = await supabase
+        .from("lims_interface_logs")
+        .select("request_body, response_body")
+        .eq("id", log.id)
+        .maybeSingle();
+      if (payloadError) throw payloadError;
+      return data;
+    },
+    staleTime: Infinity,
+    gcTime: Infinity,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
+  return (
+    <div className="border rounded p-3 text-sm space-y-1">
+      <div className="flex items-center gap-2 flex-wrap">
+        <Badge variant={log.direction === "incoming" ? "default" : "secondary"}>{log.direction}</Badge>
+        <Badge variant="outline">{log.event_type}</Badge>
+        <span className="font-mono text-xs">{log.sample_id}</span>
+        {log.machine_id && (
+          <Badge variant="secondary" className="text-xs font-mono">🖥 {log.machine_id}</Badge>
+        )}
+        <span className="text-xs text-muted-foreground ml-auto">{new Date(log.created_at).toLocaleString()}</span>
+      </div>
+      <details onToggle={(event) => setIsOpen(event.currentTarget.open)}>
+        <summary className="cursor-pointer text-xs text-muted-foreground">Request / Response</summary>
+        {isOpen && isLoading && (
+          <p className="text-xs text-muted-foreground mt-1">Loading payload…</p>
+        )}
+        {isOpen && error && (
+          <p className="text-xs text-destructive mt-1">Unable to load request / response payload.</p>
+        )}
+        {isOpen && payload && (
+          <>
+            <pre className="text-xs bg-muted p-2 rounded mt-1 overflow-x-auto">{JSON.stringify(payload.request_body, null, 2)}</pre>
+            <pre className="text-xs bg-muted p-2 rounded mt-1 overflow-x-auto">{JSON.stringify(payload.response_body, null, 2)}</pre>
+          </>
+        )}
+      </details>
+    </div>
+  );
+};
 
 const COMMON_TESTS: TestItem[] = [
   { code: "CBC", name: "Complete Blood Count", unit: "", status: "pending", machine_id: "", machine_name: "" },
@@ -114,9 +177,6 @@ const LimsDemo = () => {
   const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID || "rpbkilhzulaugzrlatts";
   const apiUrl = `https://${projectId}.supabase.co/functions/v1/lims-interface`;
 
-  // Bounded polling for ops UI — never pull full lims_* history
-  const POLL_MS = 30_000;
-
   const { data: orders = [] } = useQuery({
     queryKey: ["lims-orders"],
     queryFn: async () => {
@@ -131,8 +191,7 @@ const LimsDemo = () => {
       if (error) throw error;
       return data || [];
     },
-    refetchInterval: (query) => (typeof document !== "undefined" && document.hidden ? false : POLL_MS),
-    refetchIntervalInBackground: false,
+    refetchOnMount: "always",
   });
 
   const { data: logs = [] } = useQuery({
@@ -140,13 +199,12 @@ const LimsDemo = () => {
     queryFn: async () => {
       const { data } = await supabase
         .from("lims_interface_logs")
-        .select("id, sample_id, direction, event_type, created_at, machine_id, request_body, response_body")
+        .select("id, sample_id, direction, event_type, created_at, machine_id")
         .order("created_at", { ascending: false })
         .limit(500);
       return data || [];
     },
-    refetchInterval: (query) => (typeof document !== "undefined" && document.hidden ? false : POLL_MS),
-    refetchIntervalInBackground: false,
+    refetchOnMount: "always",
   });
 
   const { data: unmappedResults = [] } = useQuery({
@@ -154,14 +212,13 @@ const LimsDemo = () => {
     queryFn: async () => {
       const { data } = await supabase
         .from("lims_unmapped_results")
-        .select("*")
+        .select("id, sample_id, machine_code, machine_id, result_value, unit, flag, received_at")
         .eq("is_resolved", false)
         .order("received_at", { ascending: false })
         .limit(300);
       return data || [];
     },
-    refetchInterval: (query) => (typeof document !== "undefined" && document.hidden ? false : POLL_MS),
-    refetchIntervalInBackground: false,
+    refetchOnMount: "always",
   });
 
   const { data: codeMappings = [] } = useQuery({
@@ -381,6 +438,7 @@ const LimsDemo = () => {
     onSuccess: () => {
       toast({ title: "Mapping updated" });
       queryClient.invalidateQueries({ queryKey: ["lims-code-mappings"] });
+      queryClient.invalidateQueries({ queryKey: ["lims-unmapped"] });
       setEditingMappingId(null);
       setEditingParamCode({});
     },
@@ -755,23 +813,8 @@ const LimsDemo = () => {
                 <p className="text-sm text-muted-foreground">No logs yet. Middleware interactions will appear here.</p>
               ) : (
                 <div className="space-y-2 max-h-[600px] overflow-y-auto">
-                  {logs.map((log) => (
-                    <div key={log.id} className="border rounded p-3 text-sm space-y-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Badge variant={log.direction === "incoming" ? "default" : "secondary"}>{log.direction}</Badge>
-                        <Badge variant="outline">{log.event_type}</Badge>
-                        <span className="font-mono text-xs">{log.sample_id}</span>
-                        {(log as any).machine_id && (
-                          <Badge variant="secondary" className="text-xs font-mono">🖥 {(log as any).machine_id}</Badge>
-                        )}
-                        <span className="text-xs text-muted-foreground ml-auto">{new Date(log.created_at).toLocaleString()}</span>
-                      </div>
-                      <details>
-                        <summary className="cursor-pointer text-xs text-muted-foreground">Request / Response</summary>
-                        <pre className="text-xs bg-muted p-2 rounded mt-1 overflow-x-auto">{JSON.stringify(log.request_body, null, 2)}</pre>
-                        <pre className="text-xs bg-muted p-2 rounded mt-1 overflow-x-auto">{JSON.stringify(log.response_body, null, 2)}</pre>
-                      </details>
-                    </div>
+                  {logs.map((log: InterfaceLogSummary) => (
+                    <InterfaceLogEntry key={log.id} log={log} />
                   ))}
                 </div>
               )}
