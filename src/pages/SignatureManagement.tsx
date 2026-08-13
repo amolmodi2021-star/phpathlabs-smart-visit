@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2, Loader2, Upload } from "lucide-react";
+import { invalidateCachedAsset } from "@/lib/reportAssetCache";
 
 const SignatureManagement = () => {
   const [signatures, setSignatures] = useState<any[]>([]);
@@ -44,6 +45,14 @@ const SignatureManagement = () => {
       const { error } = await supabase.storage.from("signatures").upload(path, sigFile);
       if (error) { toast({ title: "Upload failed", variant: "destructive" }); setSaving(false); return; }
       sigPath = path;
+    }
+
+    // If replacing signature on edit, drop old cached bytes
+    if (editId && sigPath) {
+      const existing = signatures.find((s) => s.id === editId);
+      if (existing?.signature_image_path) {
+        await invalidateCachedAsset("signatures", existing.signature_image_path);
+      }
     }
 
     const payload: any = {
@@ -82,6 +91,10 @@ const SignatureManagement = () => {
 
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this pathologist?")) return;
+    const existing = signatures.find((s) => s.id === id);
+    if (existing?.signature_image_path) {
+      await invalidateCachedAsset("signatures", existing.signature_image_path);
+    }
     await supabase.from("pathologist_signatures").delete().eq("id", id);
     load();
   };

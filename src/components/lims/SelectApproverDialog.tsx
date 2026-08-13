@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Loader2, AlertTriangle } from "lucide-react";
+import { getCachedSignatureDataUrl } from "@/lib/reportAssetCache";
 
 export interface ApproverChoice {
   pathologistName: string;
@@ -67,13 +68,15 @@ const SelectApproverDialog = ({ open, onOpenChange, onConfirm }: SelectApproverD
     return () => { cancelled = true; };
   }, [open]);
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     const doc = doctors.find(d => d.id === selectedId);
     if (!doc) return;
     let signatureUrl: string | null = null;
     if (doc.signature_image_path) {
       const { data } = supabase.storage.from("signatures").getPublicUrl(doc.signature_image_path);
-      signatureUrl = data.publicUrl;
+      signatureUrl =
+        (await getCachedSignatureDataUrl(doc.signature_image_path, data.publicUrl)) ||
+        data.publicUrl;
     }
     onConfirm({
       pathologistName: doc.pathologist_name,
@@ -128,7 +131,7 @@ const SelectApproverDialog = ({ open, onOpenChange, onConfirm }: SelectApproverD
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleConfirm} disabled={!selectedId || loading}>Confirm Approval</Button>
+          <Button onClick={() => void handleConfirm()} disabled={!selectedId || loading}>Confirm Approval</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

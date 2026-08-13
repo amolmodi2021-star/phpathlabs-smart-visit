@@ -1,4 +1,5 @@
 import { snapshotAgeAtApproval } from "@/lib/patientAge";
+import { getCachedSignatureDataUrl } from "@/lib/reportAssetCache";
 import RefreshButton from "@/components/lims/RefreshButton";
 import PageSizeSelect from "@/components/lims/PageSizeSelect";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
@@ -123,7 +124,9 @@ const DoctorApproval = () => {
           let signatureUrl: string | null = null;
           if (sigData.signature_image_path) {
             const { data: u } = supabase.storage.from("signatures").getPublicUrl(sigData.signature_image_path);
-            signatureUrl = u.publicUrl;
+            signatureUrl =
+              (await getCachedSignatureDataUrl(sigData.signature_image_path, u.publicUrl)) ||
+              u.publicUrl;
           }
           choice = {
             pathologistName: sigData.pathologist_name || currentUser.display_name || "Doctor",

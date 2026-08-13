@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { ArrowLeft, Upload, Trash2, Save } from "lucide-react";
 import { toast } from "sonner";
+import { invalidateCachedAsset, invalidateBucket } from "@/lib/reportAssetCache";
 
 const ReportLayoutSettings = () => {
   const navigate = useNavigate();
@@ -76,6 +77,7 @@ const ReportLayoutSettings = () => {
 
     if (letterheadPath) {
       await supabase.storage.from("letterheads").remove([letterheadPath]);
+      await invalidateCachedAsset("letterheads", letterheadPath);
     }
 
     const { error } = await supabase.storage.from("letterheads").upload(fileName, file, {
@@ -88,6 +90,8 @@ const ReportLayoutSettings = () => {
       setUploading(false);
       return;
     }
+    // New path → new cache key; also clear whole letterheads bucket variants to be safe.
+    await invalidateBucket("letterheads");
     setLetterheadPath(fileName);
     await loadPreview(fileName);
     toast.success("Letterhead uploaded");
@@ -98,6 +102,7 @@ const ReportLayoutSettings = () => {
   const handleRemoveLetterhead = async () => {
     if (letterheadPath) {
       await supabase.storage.from("letterheads").remove([letterheadPath]);
+      await invalidateCachedAsset("letterheads", letterheadPath);
     }
     setLetterheadPath(null);
     revokePreview();

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Clipboard, Image, Loader2, Plus, Trash2, FileText, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import * as pdfjsLib from "pdfjs-dist";
+import { getCachedLetterheadPng } from "@/lib/reportAssetCache";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.mjs`;
 
@@ -77,15 +78,22 @@ const SnipOnLetterhead = ({
         const { data: urlData } = supabase.storage
           .from("letterheads")
           .getPublicUrl(settings.letterhead_pdf_path);
-        const pdf = await pdfjsLib.getDocument(urlData.publicUrl).promise;
-        const page = await pdf.getPage(1);
-        const viewport = page.getViewport({ scale: 2 });
-        const canvas = document.createElement("canvas");
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        const ctx = canvas.getContext("2d")!;
-        await page.render({ canvasContext: ctx, viewport }).promise;
-        setLetterheadDataUrl(canvas.toDataURL("image/png"));
+        const png = await getCachedLetterheadPng(
+          settings.letterhead_pdf_path,
+          urlData.publicUrl,
+          async (pdfUrl) => {
+            const pdf = await pdfjsLib.getDocument(pdfUrl).promise;
+            const page = await pdf.getPage(1);
+            const viewport = page.getViewport({ scale: 2 });
+            const canvas = document.createElement("canvas");
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            const ctx = canvas.getContext("2d")!;
+            await page.render({ canvasContext: ctx, viewport }).promise;
+            return canvas.toDataURL("image/png");
+          },
+        );
+        setLetterheadDataUrl(png);
       } catch (err) {
         console.error("Failed to load letterhead:", err);
         setLetterheadDataUrl(null);

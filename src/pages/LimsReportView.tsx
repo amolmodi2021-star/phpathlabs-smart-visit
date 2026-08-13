@@ -19,6 +19,12 @@ import { logEvent, createShareLink } from "@/lib/reportShareLinks";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 import { enqueueReportForWhatsAppConsole } from "@/lib/whatsappConsoleBridge";
 import { resolveNormalRangeDisplay } from "@/lib/parameterNormalRange";
+import {
+  getCachedLetterheadPng,
+  getCachedSignatureDataUrl,
+  getOrFetchUrlAsDataUrl,
+  reportAssetCacheKey,
+} from "@/lib/reportAssetCache";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.mjs";
 
@@ -518,23 +524,17 @@ const LimsReportView = () => {
       };
       if (computedLayout.letterhead_pdf_path) {
         const { data: urlData } = supabase.storage.from("letterheads").getPublicUrl(computedLayout.letterhead_pdf_path);
-        computedLetterhead = await convertPdfToImage(urlData.publicUrl);
+        computedLetterhead = await getCachedLetterheadPng(
+          computedLayout.letterhead_pdf_path,
+          urlData.publicUrl,
+          convertPdfToImage,
+        );
       }
     }
 
-    // Helper: convert cross-origin image URL to inline data URL so html-to-image can rasterize reliably
-    const urlToDataUrl = async (url: string): Promise<string | null> => {
-      try {
-        const res = await fetch(url, { mode: "cors", cache: "no-cache" });
-        if (!res.ok) return null;
-        const blob = await res.blob();
-        return await new Promise((resolve) => {
-          const r = new FileReader();
-          r.onloadend = () => resolve(r.result as string);
-          r.onerror = () => resolve(null);
-          r.readAsDataURL(blob);
-        });
-      } catch { return null; }
+    // Helper: convert cross-origin image URL to inline data URL (IndexedDB-cached when possible)
+    const urlToDataUrl = async (url: string, cacheKey?: string | null): Promise<string | null> => {
+      return getOrFetchUrlAsDataUrl(url, cacheKey);
     };
 
     // Build signature map: approver display_name → signature info
@@ -558,7 +558,9 @@ const LimsReportView = () => {
         if (sig.signature_image_path) {
           const { data: sigUrlData } = supabase.storage.from("signatures").getPublicUrl(sig.signature_image_path);
           // Inline as data URL for reliable canvas rasterization in PDF/print capture
-          sigUrl = await urlToDataUrl(sigUrlData.publicUrl) || sigUrlData.publicUrl;
+          sigUrl =
+            (await getCachedSignatureDataUrl(sig.signature_image_path, sigUrlData.publicUrl)) ||
+            sigUrlData.publicUrl;
         }
         const info: SignatureInfo = {
           pathologist_name: sig.pathologist_name,
@@ -595,7 +597,12 @@ const LimsReportView = () => {
         const params = (tr.parameters || []) as any[];
         for (const p of params) {
           if (p.approved_by_signature_url && typeof p.approved_by_signature_url === "string" && !p.approved_by_signature_url.startsWith("data:")) {
-            const dataUrl = await urlToDataUrl(p.approved_by_signature_url);
+            const sigUrl = String(p.approved_by_signature_url);
+            const marker = "/signatures/";
+            const idx = sigUrl.indexOf(marker);
+            const sigPath = idx >= 0 ? decodeURIComponent(sigUrl.slice(idx + marker.length).split("?")[0] || "") : "";
+            const cacheKey = sigPath ? reportAssetCacheKey("signatures", sigPath) : `url:${sigUrl}`;
+            const dataUrl = await urlToDataUrl(sigUrl, cacheKey);
             if (dataUrl) p.approved_by_signature_url = dataUrl;
           }
         }
