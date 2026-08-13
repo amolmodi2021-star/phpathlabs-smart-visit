@@ -150,19 +150,34 @@ export async function bumpAuthEpoch(): Promise<void> {
  * session was invalidated by an admin "Logout All Users" action — clear local
  * auth and resolve with `true` so the caller can redirect to /login.
  */
+let authEpochCheckInFlight: Promise<boolean> | null = null;
+
 export async function checkAuthEpochAndLogoutIfStale(): Promise<boolean> {
   if (!isAuthenticated()) return false;
-  try {
-    const serverEpoch = await fetchAuthEpoch();
-    const localEpoch = localStorage.getItem(EPOCH_KEY) || "0";
-    if (serverEpoch !== localEpoch) {
-      logout();
-      return true;
+  if (authEpochCheckInFlight) return authEpochCheckInFlight;
+
+  const checkPromise = (async () => {
+    try {
+      const serverEpoch = await fetchAuthEpoch();
+      const localEpoch = localStorage.getItem(EPOCH_KEY) || "0";
+      if (serverEpoch !== localEpoch) {
+        logout();
+        return true;
+      }
+    } catch {
+      // Network issue — don't kick the user out on transient failure.
     }
-  } catch {
-    // Network issue — don't kick the user out on transient failure.
+    return false;
+  })();
+
+  authEpochCheckInFlight = checkPromise;
+  try {
+    return await checkPromise;
+  } finally {
+    if (authEpochCheckInFlight === checkPromise) {
+      authEpochCheckInFlight = null;
+    }
   }
-  return false;
 }
 
 export const PERMISSIONS_UPDATED_EVENT = "ph:permissions-updated";
