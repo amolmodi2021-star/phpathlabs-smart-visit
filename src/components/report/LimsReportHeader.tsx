@@ -1,11 +1,14 @@
 import { format } from "date-fns";
 import { formatPatientDisplayName } from "@/lib/patientDisplayName";
+import { formatPatientAge } from "@/lib/patientAge";
 
 interface LimsReportHeaderProps {
   patientName: string | null;
   title: string | null;
   gender: string | null;
   dob: string | null;
+  /** Pickup-point free-text age when DOB is absent. */
+  ageText?: string | null;
   umrNumber: string | null;
   doctorName: string | null;
   mobileNumber: string | null;
@@ -29,24 +32,6 @@ const formatDate = (d: string | null) => {
   }
 };
 
-const calculateAge = (dob: string | null): string => {
-  if (!dob) return "—";
-  try {
-    const birth = new Date(dob);
-    const now = new Date();
-    let years = now.getFullYear() - birth.getFullYear();
-    const m = now.getMonth() - birth.getMonth();
-    if (m < 0 || (m === 0 && now.getDate() < birth.getDate())) years--;
-    if (years < 1) {
-      const months = (now.getFullYear() - birth.getFullYear()) * 12 + now.getMonth() - birth.getMonth();
-      return `${months} months`;
-    }
-    return `${years} years`;
-  } catch {
-    return "—";
-  }
-};
-
 const formatVisitType = (visitType: string | null): string => {
   switch (visitType) {
     case "home_visit":
@@ -61,11 +46,11 @@ const formatVisitType = (visitType: string | null): string => {
 };
 
 const LimsReportHeader = ({
-  patientName, title, gender, dob, umrNumber, doctorName,
+  patientName, title, gender, dob, ageText, umrNumber, doctorName,
   mobileNumber, invoiceNumber, registrationDate,
   sampleCollectionDate, approvalDate, printDate, visitType,
 }: LimsReportHeaderProps) => {
-  const age = calculateAge(dob);
+  const age = formatPatientAge({ dob, ageText });
   const displayName = formatPatientDisplayName(title, patientName, gender);
 
   return (

@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { getCurrentUserName } from "@/lib/auth";
 import { patientDisplayName } from "@/lib/patientDisplayName";
+import { formatPatientAge } from "@/lib/patientAge";
 
 interface InvoicePreviewProps {
   data: any;
@@ -427,9 +428,9 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
       d += `<td style="border:none;padding:1px 6px 1px 0;width:50%;vertical-align:top"><span style="color:${PALETTE.muted};font-size:8px">Name</span> <strong style="color:${PALETTE.ink}">${patientDisplayName(data)}</strong></td>`;
       d += `<td style="border:none;padding:1px 0;width:50%;vertical-align:top"><span style="color:${PALETTE.muted};font-size:8px">Mobile</span> <strong style="color:${PALETTE.ink}">${data.mobile_number || "—"}</strong></td>`;
       d += `</tr>`;
-      if (data.gender || age || data.doctor_name) {
+      if (data.gender || ageDisplay || data.doctor_name) {
         d += `<tr>`;
-        d += `<td style="border:none;padding:1px 6px 1px 0;vertical-align:top"><span style="color:${PALETTE.muted};font-size:8px">Age / Gender</span> <strong style="color:${PALETTE.ink}">${[age, data.gender].filter(Boolean).join(" · ") || "—"}</strong></td>`;
+        d += `<td style="border:none;padding:1px 6px 1px 0;vertical-align:top"><span style="color:${PALETTE.muted};font-size:8px">Age / Gender</span> <strong style="color:${PALETTE.ink}">${[ageDisplay, data.gender].filter(Boolean).join(" · ") || "—"}</strong></td>`;
         d += `<td style="border:none;padding:1px 0;vertical-align:top"><span style="color:${PALETTE.muted};font-size:8px">Doctor</span> <strong style="color:${PALETTE.ink}">${data.doctor_name || "—"}</strong></td>`;
         d += `</tr>`;
       }
@@ -661,7 +662,8 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
     printWindow.document.close();
   };
 
-  const age = data.dob ? `${Math.floor((Date.now() - new Date(data.dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000))} Years` : "";
+  const age = formatPatientAge({ dob: data.dob, ageText: data.age_text });
+  const ageDisplay = age === "—" ? "" : age;
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -760,11 +762,11 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
                     <strong>{data.mobile_number || "—"}</strong>
                   </td>
                 </tr>
-                {(data.gender || age || data.doctor_name) && (
+                {(data.gender || ageDisplay || data.doctor_name) && (
                   <tr>
                     <td style={{ border: "none", padding: "1px 6px 1px 0", verticalAlign: "top" }}>
                       <span style={{ color: PALETTE.muted, fontSize: 8 }}>Age / Gender </span>
-                      <strong>{[age, data.gender].filter(Boolean).join(" · ") || "—"}</strong>
+                      <strong>{[ageDisplay, data.gender].filter(Boolean).join(" · ") || "—"}</strong>
                     </td>
                     <td style={{ border: "none", padding: "1px 0", verticalAlign: "top" }}>
                       <span style={{ color: PALETTE.muted, fontSize: 8 }}>Doctor </span>

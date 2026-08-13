@@ -20,6 +20,7 @@ export interface PatientDemographics {
   title?: string | null;
   gender?: string | null;
   dob?: string | null;
+  age_text?: string | null;
   email?: string | null;
   mobile_number?: string | null;
   address?: string | null;
@@ -53,6 +54,7 @@ export async function syncPatientDemographicsByUmr(
       title: demo.title ?? null,
       gender: demo.gender ?? null,
       dob: demo.dob ?? null,
+      age_text: demo.age_text ?? null,
       email: demo.email ?? null,
       doctor_name: demo.doctor_name ?? "SELF",
       address: demo.address ?? null,
@@ -70,6 +72,7 @@ export async function syncPatientDemographicsByUmr(
       title: demo.title ?? null,
       gender: demo.gender ?? null,
       dob: demo.dob ?? null,
+      age_text: demo.age_text ?? null,
       email: demo.email ?? null,
       doctor_name: demo.doctor_name ?? null,
       address: demo.address ?? null,
@@ -93,18 +96,7 @@ export async function syncPatientDemographicsByUmr(
     ? supabase.from("patient_master").update(masterUpd as any).eq("umr_id", umr)
     : Promise.resolve({ error: null } as any);
 
-  // 5. Estimates — same UMR
-  const estimates = supabase
-    .from("estimates")
-    .update({
-      patient_name: demo.patient_name,
-      title: demo.title ?? null,
-      gender: demo.gender ?? null,
-      dob: demo.dob ?? null,
-      email: demo.email ?? null,
-      doctor_name: demo.doctor_name ?? "SELF",
-    } as any)
-    .eq("umr_number", umr);
+  // 5. Estimates do not store UMR — skip.
 
   // 6. LIMS test orders — keyed by sample_id (= invoice number prefix).
   //    Pull all invoices belonging to this UMR first, then update by IN clause.

@@ -388,6 +388,7 @@ const LimsReportView = () => {
         title: regData.title,
         gender: regData.gender,
         dob: regData.dob,
+        age_text: regData.age_text ?? null,
         mobile_number: regData.mobile_number,
         email: regData.email,
         address: regData.address,
@@ -460,6 +461,8 @@ const LimsReportView = () => {
         title: r.title || regData.title || null,
         patient_name: r.patient_name || regData.patient_name || null,
         gender: r.gender || regData.gender || null,
+        age_text: r.age_text || regData.age_text || null,
+        dob: r.dob || regData.dob || null,
       }));
     }
 
@@ -1375,6 +1378,7 @@ const LimsReportView = () => {
                 title={report.title}
                 gender={report.gender}
                 dob={report.dob}
+                ageText={report.age_text ?? registration?.age_text ?? null}
                 umrNumber={report.umr_number}
                 doctorName={report.doctor_name}
                 mobileNumber={report.mobile_number}

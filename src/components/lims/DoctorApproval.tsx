@@ -627,6 +627,7 @@ const DoctorApproval = () => {
       await supabase.from("approved_reports").upsert({
         registration_id: reg.id, invoice_number: reg.invoice_number, umr_number: reg.umr_number,
         patient_name: reg.patient_name, title: reg.title, gender: reg.gender, dob: reg.dob,
+        age_text: (reg as any).age_text ?? null,
         mobile_number: reg.mobile_number, email: reg.email, address: reg.address,
         doctor_name: reg.doctor_name, visit_type: reg.visit_type, is_stat: reg.is_stat,
         report_language: reg.report_language, approved_by: approver.pathologistName,
@@ -734,6 +735,7 @@ const DoctorApproval = () => {
       await supabase.from("approved_reports").upsert({
         registration_id: reg.id, invoice_number: reg.invoice_number, umr_number: reg.umr_number,
         patient_name: reg.patient_name, title: reg.title, gender: reg.gender, dob: reg.dob,
+        age_text: (reg as any).age_text ?? null,
         mobile_number: reg.mobile_number, email: reg.email, address: reg.address,
         doctor_name: reg.doctor_name, visit_type: reg.visit_type, is_stat: reg.is_stat,
         report_language: reg.report_language, approved_by: approver.pathologistName,
@@ -985,7 +987,7 @@ const DoctorApproval = () => {
                     const newSnipUrls = [...new Set([...prevSnipUrls.filter((u: string) => !u.includes(st.testId)), ...st.snipUrls])];
                     const { data: tubesForColSnip } = await supabase.from("sample_tubes").select("collected_at").eq("registration_id", reg.id).not("collected_at", "is", null);
                     const firstCollectedAtSnip = tubesForColSnip?.length ? (tubesForColSnip.map((t: any) => t.collected_at).sort()[0] as string) : null;
-                    await supabase.from("approved_reports").upsert({ registration_id: reg.id, invoice_number: reg.invoice_number, umr_number: reg.umr_number, patient_name: reg.patient_name, title: reg.title, gender: reg.gender, dob: reg.dob, mobile_number: reg.mobile_number, email: reg.email, address: reg.address, doctor_name: reg.doctor_name, visit_type: reg.visit_type, is_stat: reg.is_stat, report_language: reg.report_language, approved_by: snipApproverChoice.pathologistName, registration_date: reg.created_at, approval_date: new Date().toISOString(), sample_collection_date: firstCollectedAtSnip, test_results: newResults, outsourced_snip_urls: newSnipUrls } as any, { onConflict: "registration_id" as any, ignoreDuplicates: false });
+                    await supabase.from("approved_reports").upsert({ registration_id: reg.id, invoice_number: reg.invoice_number, umr_number: reg.umr_number, patient_name: reg.patient_name, title: reg.title, gender: reg.gender, dob: reg.dob, age_text: (reg as any).age_text ?? null, mobile_number: reg.mobile_number, email: reg.email, address: reg.address, doctor_name: reg.doctor_name, visit_type: reg.visit_type, is_stat: reg.is_stat, report_language: reg.report_language, approved_by: snipApproverChoice.pathologistName, registration_date: reg.created_at, approval_date: new Date().toISOString(), sample_collection_date: firstCollectedAtSnip, test_results: newResults, outsourced_snip_urls: newSnipUrls } as any, { onConflict: "registration_id" as any, ignoreDuplicates: false });
                     await propagateRegistrationChange(qc, reg.id, ["doctor_approval", "dispatch"]);
                     toast.success(`${st.testName} approved`);
                   } catch (err: any) { toast.error(err.message || "Approval failed"); }

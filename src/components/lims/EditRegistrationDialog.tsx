@@ -35,6 +35,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   const [title, setTitle] = useState("");
   const [gender, setGender] = useState("");
   const [dob, setDob] = useState("");
+  const [ageText, setAgeText] = useState("");
   const [email, setEmail] = useState("");
   const [doctorName, setDoctorName] = useState("");
   const [umrNumber, setUmrNumber] = useState("");
@@ -85,6 +86,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       setTitle(reg.title || "");
       setGender(reg.gender || "");
       setDob(reg.dob || "");
+      setAgeText(reg.age_text || "");
       setEmail(reg.email || "");
       setDoctorName(reg.doctor_name || "");
       setUmrNumber(reg.umr_number || "");
@@ -246,6 +248,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         title,
         gender,
         dob: dob || null,
+        age_text: reg.visit_type === "pickup_point" ? (ageText.trim() || null) : null,
         email: email || null,
         doctor_name: (doctorName || "SELF").toUpperCase(),
         address: address.replace(/\s+/g, ' ').trim().toUpperCase(),
@@ -285,6 +288,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
           title: updateData.title,
           gender: updateData.gender,
           dob: updateData.dob,
+          age_text: updateData.age_text,
           email: updateData.email,
           mobile_number: updateData.mobile_number,
           address: updateData.address,
@@ -293,6 +297,23 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         if (syncResult.warnings.length > 0) {
           // eslint-disable-next-line no-console
           console.warn("[EditRegistration] demographic sync warnings:", syncResult.warnings);
+        }
+        // Pickup (no UMR): still refresh this registration's approved report snapshot.
+        if (!String(reg.umr_number || "").trim()) {
+          await supabase
+            .from("approved_reports")
+            .update({
+              patient_name: updateData.patient_name,
+              title: updateData.title ?? null,
+              gender: updateData.gender ?? null,
+              dob: updateData.dob ?? null,
+              age_text: updateData.age_text ?? null,
+              email: updateData.email ?? null,
+              mobile_number: updateData.mobile_number ?? null,
+              address: updateData.address ?? null,
+              doctor_name: updateData.doctor_name ?? null,
+            } as any)
+            .eq("registration_id", reg.id);
         }
       } catch (syncErr) {
         // eslint-disable-next-line no-console
@@ -697,7 +718,12 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
     }
   };
 
-  const age = dob ? `${Math.floor((Date.now() - new Date(dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000))} Years` : "";
+  const isPickup = reg.visit_type === "pickup_point";
+  const age = isPickup
+    ? (ageText.trim() || "")
+    : dob
+      ? `${Math.floor((Date.now() - new Date(dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000))} Years`
+      : "";
 
   return (
     <>
@@ -745,8 +771,22 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>DOB {age && <span className="text-muted-foreground ml-1">({age})</span>}</Label>
-                <Input type="date" value={dob} onChange={e => setDob(e.target.value)} disabled={isBillCancelled} />
+                {isPickup ? (
+                  <>
+                    <Label>Age *</Label>
+                    <Input
+                      value={ageText}
+                      onChange={(e) => setAgeText(e.target.value)}
+                      placeholder="e.g. 35 Years"
+                      disabled={isBillCancelled}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <Label>DOB {age && <span className="text-muted-foreground ml-1">({age})</span>}</Label>
+                    <Input type="date" value={dob} onChange={e => setDob(e.target.value)} disabled={isBillCancelled} />
+                  </>
+                )}
               </div>
               <div>
                 <Label>Email</Label>

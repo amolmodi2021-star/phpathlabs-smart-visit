@@ -478,6 +478,7 @@ const PatientRegistration = () => {
         title,
         gender,
         dob: dob || null,
+        age_text: isPickup ? manualAge.trim() || null : null,
         email: email || null,
         address: visitType === "pickup_point" ? (selectedPickup?.address || "") : address.replace(/\s+/g, ' ').trim().toUpperCase(),
         doctor_name: (doctorName || "SELF").toUpperCase(),
