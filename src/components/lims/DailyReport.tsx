@@ -88,7 +88,7 @@ const DailyReport = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("patient_registrations")
-        .select("id, visit_type, channel_id, pickup_point_id, title, gender, patient_name")
+        .select("id, visit_type, channel_id, pickup_point_id, title, gender, patient_name, home_visit_charges")
         .in("id", registrationIds);
       if (error) throw error;
       return (data || []) as any[];
@@ -147,6 +147,22 @@ const DailyReport = () => {
       billing = ch?.billing_type === "credit" ? "credit" : "debit";
     }
     return { visit, source, billing };
+  };
+
+  /**
+   * Gross on payment_transactions is tests-only. Include home visit charges so Daily Report
+   * matches invoice/Dashboard (Final = Gross − Discount, with HVC inside Gross).
+   * Bill-cancellation markers already bake HVC into gross_amount — do not add again.
+   */
+  const getRowGross = (r: any): number => {
+    const base = Number(r.gross_amount || 0);
+    const type = r.transaction_type;
+    if (type === "bill_cancellation" || type === "old_bill_cancellation") return base;
+    if (type === "registration_payment" || type === "discount_applied") {
+      const hvc = Number(regMap[r.registration_id]?.home_visit_charges || 0);
+      return base + hvc;
+    }
+    return base;
   };
 
 
@@ -208,7 +224,7 @@ const DailyReport = () => {
       t.paytm += Number(r.paytm_amount || 0);
       t.credit_card += Number(r.credit_card_amount || 0);
       t.neft += Number(r.neft_amount || 0);
-      t.gross += Number(r.gross_amount || 0);
+      t.gross += getRowGross(r);
       t.discount += Number(r.discount_amount || 0);
       t.final += Number(r.final_amount || 0);
       t.paid += Number(r.paid_amount || 0);
@@ -218,7 +234,7 @@ const DailyReport = () => {
       else t.total_out += Number(r.total_amount || 0);
     });
     return t;
-  }, [filtered]);
+  }, [filtered, regMap]);
 
   const exportToExcel = () => {
     const rows = filtered.map((r: any) => {
@@ -234,7 +250,7 @@ const DailyReport = () => {
         "Visit Type": info.visit,
         "Pickup/Channel Name": info.source,
         "Billing": info.billing === "—" ? "" : info.billing.toUpperCase(),
-        "Gross Amount": Number(r.gross_amount || 0),
+        "Gross Amount": getRowGross(r),
         "Discount": Number(r.discount_amount || 0),
         "Final Amount": Number(r.final_amount || 0),
         "Total Paid": Number(r.paid_amount || 0),
@@ -421,7 +437,7 @@ const DailyReport = () => {
         visit: visitShort(info.visit),
         source: info.source || "-",
         billing: info.billing === "—" ? "-" : info.billing.toUpperCase().slice(0, 3),
-        gross: fmtAmt(Number(r.gross_amount || 0)),
+        gross: fmtAmt(getRowGross(r)),
         disc: fmtAmt(Number(r.discount_amount || 0)),
         final: fmtAmt(Number(r.final_amount || 0)),
         paid: fmtAmt(Number(r.paid_amount || 0)),
@@ -655,7 +671,7 @@ const DailyReport = () => {
         visit: visitShort(info.visit),
         source: info.source || "-",
         billing: info.billing === "—" ? "-" : info.billing.toUpperCase().slice(0, 3),
-        gross: fmtAmt(Number(r.gross_amount || 0)),
+        gross: fmtAmt(getRowGross(r)),
         disc: fmtAmt(Number(r.discount_amount || 0)),
         final: fmtAmt(Number(r.final_amount || 0)),
         paid: fmtAmt(Number(r.paid_amount || 0)),
@@ -733,7 +749,7 @@ const DailyReport = () => {
         t.paytm += Number(r.paytm_amount || 0);
         t.credit_card += Number(r.credit_card_amount || 0);
         t.neft += Number(r.neft_amount || 0);
-        t.gross += Number(r.gross_amount || 0);
+        t.gross += getRowGross(r);
         t.discount += Number(r.discount_amount || 0);
         t.final += Number(r.final_amount || 0);
         t.paid += Number(r.paid_amount || 0);
@@ -1165,7 +1181,7 @@ const DailyReport = () => {
                       </>
                     );
                   })()}
-                  <TableCell className="text-right text-sm">₹{Number(r.gross_amount || 0)}</TableCell>
+                  <TableCell className="text-right text-sm">₹{getRowGross(r)}</TableCell>
                   <TableCell className="text-right text-sm">₹{Number(r.discount_amount || 0)}</TableCell>
                   <TableCell className="text-right text-sm font-medium">₹{Number(r.final_amount || 0)}</TableCell>
                   <TableCell className="text-right text-sm">₹{Number(r.paid_amount || 0)}</TableCell>
