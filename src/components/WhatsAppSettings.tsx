@@ -360,7 +360,7 @@ const WhatsAppSettings = () => {
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              Create the upload preset in your Cloudinary dashboard with <b>Signing Mode = Unsigned</b> and folder <code>loyalty-cards</code>. API key/secret are only needed for automated cleanup of old images.
+              Create the upload preset in your Cloudinary dashboard with <b>Signing Mode = Unsigned</b> and folder <code>loyalty-cards</code>. API key/secret are only needed for automated cleanup of old images. For report PDFs: Security → enable <b>Allow delivery of PDF and ZIP files</b>.
             </p>
           </div>
           <DialogFooter>
