@@ -147,7 +147,12 @@ export async function enqueueInvoiceForWhatsAppConsole(opts: {
   });
 }
 
-/** Upload report PDF to Cloudinary (bytes unchanged) and enqueue for Console delivery. */
+/** Upload report PDF to Supabase Storage and enqueue for Console delivery.
+ * Reports stay on Supabase (not Cloudinary): Free Cloudinary accounts block PDF
+ * delivery by default (`HTTP 401 deny or ACL failure`) until
+ * Settings → Security → “Allow delivery of PDF and ZIP files” is enabled on
+ * every account. Invoice JPEGs remain on Cloudinary. Bytes are uploaded as-is.
+ */
 export async function enqueueReportForWhatsAppConsole(opts: {
   phone: string;
   patient_name?: string | null;
@@ -169,20 +174,13 @@ export async function enqueueReportForWhatsAppConsole(opts: {
       .replace(/\s+/g, " ")
       .trim()
       .replace(/\.pdf$/i, "") + ".pdf";
-  const folderHint = `${WA_MEDIA_FOLDER_ROOT}/reports`;
-  const publicId = `reports/${safeInvoice}-${Date.now()}`;
-  let uploaded;
-  try {
-    // auto keeps original PDF bytes; works with the loyalty-cards unsigned preset.
-    uploaded = await uploadBlobToCloudinary(opts.blob, {
-      resourceType: "auto",
-      publicId,
-      filename,
-    });
-  } catch (e) {
-    return { ok: false, error: (e as Error)?.message || "Cloudinary upload failed" };
-  }
+  const path = `reports/${safeInvoice}-${Date.now()}.pdf`;
+  const { error: upErr } = await supabase.storage
+    .from("chat-attachments")
+    .upload(path, opts.blob, { contentType: "application/pdf", upsert: true });
+  if (upErr) return { ok: false, error: upErr.message };
 
+  const { data: pub } = supabase.storage.from("chat-attachments").getPublicUrl(path);
   return enqueueWhatsAppConsoleMessage({
     kind: "report",
     phone,
@@ -190,15 +188,8 @@ export async function enqueueReportForWhatsAppConsole(opts: {
     registration_id: opts.registration_id,
     invoice_number: opts.invoice_number,
     caption: opts.caption,
-    media_url: uploaded.secure_url,
+    media_url: pub.publicUrl,
     media_mime: "application/pdf",
-    payload: {
-      media_host: "cloudinary",
-      cloudinary_cloud_name: uploaded.cloud_name,
-      cloudinary_public_id: uploaded.public_id,
-      cloudinary_resource_type: uploaded.resource_type,
-      cloudinary_folder: folderHint,
-      filename,
-    },
+    payload: { media_host: "supabase", storage_path: path, filename },
   });
 }
