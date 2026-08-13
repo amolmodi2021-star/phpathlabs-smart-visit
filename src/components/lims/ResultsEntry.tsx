@@ -143,8 +143,6 @@ const handleResultTabKey = (e: React.KeyboardEvent) => {
 
 const ResultsEntry = () => {
   const qc = useQueryClient();
-  // Full pipeline realtime: new accepts, cancellations, and machine values.
-  useLimsPipelineRealtime("results");
   const { data: masterMachines = [] } = useMasterLookup("machine_name");
   const [mode, setMode] = useState<"patient" | "machine" | "outsourced">("patient");
   const [search, setSearch] = useState("");
@@ -218,6 +216,13 @@ const ResultsEntry = () => {
     },
     placeholderData: keepPreviousData,
     staleTime: 120_000,
+  });
+
+  // Analyzer writes emit tiny lims_result_notify rows. Revalidate only the
+  // affected expanded patient and the lightweight queue membership query.
+  useLimsPipelineRealtime("results", 750, {
+    expandedRegistrationId: expandedPatient,
+    candidateRegistrationIds: pendingIds,
   });
 
   const machineFilterActive = mode === "machine" && selectedMachine !== "all";
