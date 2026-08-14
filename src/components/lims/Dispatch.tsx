@@ -961,7 +961,7 @@ const Dispatch = () => {
             ? "Today — all patients registered today (lean list)."
             : "Date range — lean patient list. Click a filter to narrow; click again to clear."
           : listMode === "pending_dispatch"
-            ? "Pending Dispatch — at least one test not yet dispatched (any status). Includes due bills."
+            ? "Pending — at least one test not yet dispatched (any status). Includes due bills."
             : listMode === "all_approved"
               ? "All Approved — every active test approved and ready to dispatch. Includes due bills."
               : "Partially Approved — at least one approved (not dispatched) test, and other tests still incomplete. Includes due bills."}
@@ -997,7 +997,7 @@ const Dispatch = () => {
                       {listMode === "all"
                         ? "No patients in this date range"
                         : listMode === "pending_dispatch"
-                          ? "No pending dispatch"
+                          ? "No pending bills"
                           : listMode === "all_approved"
                             ? "No fully approved bills"
                             : "No partially approved bills"}
