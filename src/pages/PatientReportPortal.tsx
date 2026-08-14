@@ -154,8 +154,8 @@ const PatientReportPortal = () => {
     let alive = true;
     const id = setInterval(() => {
       if (!alive || document.hidden) return;
-      heartbeatSession(sid, 10);
-    }, 10_000);
+      heartbeatSession(sid, 60);
+    }, 60_000);
     const onHide = () => {
       if (document.hidden) heartbeatSession(sid, 5);
     };

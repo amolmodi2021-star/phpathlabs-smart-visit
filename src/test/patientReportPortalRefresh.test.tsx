@@ -100,6 +100,10 @@ const flushEffects = async () => {
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-08-14T05:00:00.000Z"));
+  Object.defineProperty(document, "hidden", {
+    configurable: true,
+    value: false,
+  });
   routerMock.token = "portal-token-1";
   localStorage.clear();
   localStorage.setItem(
@@ -121,6 +125,7 @@ afterEach(() => {
   cleanup();
   vi.clearAllTimers();
   vi.useRealTimers();
+  vi.restoreAllMocks();
   vi.clearAllMocks();
   localStorage.clear();
 });
@@ -143,8 +148,8 @@ describe("PatientReportPortal manual status refresh", () => {
     await flushEffects();
 
     expect(portalMock.fetchPortalBundle).toHaveBeenCalledTimes(1);
-    expect(portalMock.heartbeatSession).toHaveBeenCalledTimes(30);
-    expect(portalMock.heartbeatSession).toHaveBeenLastCalledWith("session-1", 10);
+    expect(portalMock.heartbeatSession).toHaveBeenCalledTimes(5);
+    expect(portalMock.heartbeatSession).toHaveBeenLastCalledWith("session-1", 60);
   });
 
   it("shows refresh progress and prevents rapid duplicate requests", async () => {
@@ -201,6 +206,52 @@ describe("PatientReportPortal manual status refresh", () => {
     );
   });
 
+  it("uses one heartbeat timer, pauses while hidden, and cleans up on unmount", async () => {
+    const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
+    const clearIntervalSpy = vi.spyOn(globalThis, "clearInterval");
+    const view = render(<PatientReportPortal />);
+    await flushEffects();
+
+    expect(setIntervalSpy).toHaveBeenCalledTimes(1);
+    expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 60_000);
+    const heartbeatTimer = setIntervalSpy.mock.results[0].value;
+
+    act(() => {
+      vi.advanceTimersByTime(59_999);
+    });
+    expect(portalMock.heartbeatSession).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(portalMock.heartbeatSession).toHaveBeenCalledTimes(1);
+    expect(portalMock.heartbeatSession).toHaveBeenLastCalledWith("session-1", 60);
+
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: true,
+    });
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(portalMock.heartbeatSession).toHaveBeenCalledTimes(2);
+    expect(portalMock.heartbeatSession).toHaveBeenLastCalledWith("session-1", 5);
+
+    act(() => {
+      vi.advanceTimersByTime(2 * 60_000);
+    });
+    expect(portalMock.heartbeatSession).toHaveBeenCalledTimes(2);
+
+    view.unmount();
+    expect(clearIntervalSpy).toHaveBeenCalledWith(heartbeatTimer);
+
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      vi.advanceTimersByTime(2 * 60_000);
+    });
+    expect(portalMock.heartbeatSession).toHaveBeenCalledTimes(2);
+  });
+
   it("contains no automatic portal bundle polling timer", () => {
     const source = fs.readFileSync(
       path.resolve(process.cwd(), "src/pages/PatientReportPortal.tsx"),
@@ -210,7 +261,9 @@ describe("PatientReportPortal manual status refresh", () => {
     expect(source).not.toContain("120_000");
     expect(source).not.toContain("120000");
     expect(source.match(/setInterval/g)).toHaveLength(1);
-    expect(source).toContain("heartbeatSession(sid, 10)");
-    expect(source).toContain("}, 10_000);");
+    expect(source).not.toContain("heartbeatSession(sid, 10)");
+    expect(source).not.toContain("}, 10_000);");
+    expect(source).toContain("heartbeatSession(sid, 60)");
+    expect(source).toContain("}, 60_000);");
   });
 });
