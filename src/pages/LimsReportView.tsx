@@ -10,6 +10,7 @@ import jsPDF from "jspdf";
 import * as pdfjsLib from "pdfjs-dist";
 import LimsReportHeader from "@/components/report/LimsReportHeader";
 import ReportSignatureBlock from "@/components/report/ReportSignatureBlock";
+import ReportInvoiceBarcode from "@/components/report/ReportInvoiceBarcode";
 import ReportResultsSection from "@/components/report/ReportResultsSection";
 import AutoScaleContent from "@/components/report/AutoScaleContent";
 import type { TestResult, ProfileMeta } from "@/components/report/ReportResultsSection";
@@ -20,6 +21,7 @@ import { patientDisplayName } from "@/lib/patientDisplayName";
 import { enqueueReportForWhatsAppConsole } from "@/lib/whatsappConsoleBridge";
 import { resolveNormalRangeDisplay } from "@/lib/parameterNormalRange";
 import { resolveReportAgeText } from "@/lib/patientAge";
+import { renderCode128Png, replaceCanvasesWithPngImages, stampInvoiceBarcodeOnPage } from "@/lib/code128Png";
 import {
   getCachedLetterheadPng,
   getCachedSignatureDataUrl,
@@ -34,6 +36,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs
 // finished loading. Without this, html-to-image can occasionally produce
 // blank pages because the DOM is captured before resources resolve.
 const waitForCaptureReady = async (root: HTMLElement) => {
+  // Canvas pixels do not survive html-to-image (SVG foreignObject). Same fix as invoice WhatsApp.
+  replaceCanvasesWithPngImages(root);
   try {
     if ((document as any).fonts?.ready) {
       await (document as any).fonts.ready;
@@ -116,7 +120,7 @@ const captureWithRetry = async (
 const PAGE_HEIGHT_MM = 297;
 const PAGE_WIDTH_MM = 210;
 const HEADER_HEIGHT_MM = 28;
-const SIGNATURE_HEIGHT_MM = 16;
+const SIGNATURE_HEIGHT_MM = 18;
 const PAGE_NUM_HEIGHT_MM = 6;
 const DEPT_HEADER_MM = 10;
 const TEST_HEADER_MM = 8;
@@ -309,6 +313,13 @@ const LimsReportView = () => {
   const [testParamsMap, setTestParamsMap] = useState<Record<string, any[]>>({});
   const [snipImages, setSnipImages] = useState<SnipPage[]>([]);
   const [pickupFooterNote, setPickupFooterNote] = useState<string>("");
+
+  const invoiceNumberForBarcode =
+    approvedReports[0]?.invoice_number || registration?.invoice_number || "";
+  const [invoiceBarcodePng, setInvoiceBarcodePng] = useState<string | null>(null);
+  useEffect(() => {
+    setInvoiceBarcodePng(renderCode128Png(invoiceNumberForBarcode));
+  }, [invoiceNumberForBarcode]);
 
   useEffect(() => { if (registrationId) loadAllData(); }, [registrationId]);
 
@@ -872,6 +883,17 @@ const LimsReportView = () => {
   }, [approvedReports, departments, testsMap, testParamsMap, snipImages, layoutSettings, pickupFooterNote, collectionDateByTestId]);
 
   // ── PDF export ──
+  const stampBarcodeOnCapture = async (dataUrl: string, format: "png" | "jpeg") => {
+    const png = invoiceBarcodePng || renderCode128Png(invoiceNumberForBarcode);
+    const bottomMm = (layoutSettings.bottom_margin_cm || 1.5) * 10;
+    return stampInvoiceBarcodeOnPage({
+      pageDataUrl: dataUrl,
+      barcodePng: png,
+      bottomMm,
+      output: format,
+    });
+  };
+
   const buildPdfBlob = async (): Promise<{ blob: Blob; filename: string } | null> => {
     if (!printRef.current) return null;
     const pageElements = printRef.current.querySelectorAll("[data-page]");
@@ -887,10 +909,16 @@ const LimsReportView = () => {
       const el = pageElements[i] as HTMLElement;
       const isSnipPage = !!el.querySelector('img[data-snip-image]');
       if (isSnipPage) {
-        const png = await captureWithRetry(el, NATIVE_W, NATIVE_H, "png");
+        const png = await stampBarcodeOnCapture(
+          await captureWithRetry(el, NATIVE_W, NATIVE_H, "png"),
+          "png",
+        );
         pdf.addImage(png, "PNG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM);
       } else {
-        const jpeg = await captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg");
+        const jpeg = await stampBarcodeOnCapture(
+          await captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg"),
+          "jpeg",
+        );
         pdf.addImage(jpeg, "JPEG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, undefined, "FAST");
       }
     }
@@ -973,13 +1001,14 @@ const LimsReportView = () => {
     if (!isPublic) return;
     if (loading) return;
     if (pages.length === 0) return;
+    if (invoiceNumberForBarcode && !invoiceBarcodePng) return;
     if (autoDownloadStartedRef.current) return;
     autoDownloadStartedRef.current = true;
     // Small delay to let layout settle (images, fonts)
     const t = setTimeout(() => { handleDownloadPdf(); }, 600);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPublic, loading, pages.length]);
+  }, [isPublic, loading, pages.length, invoiceBarcodePng]);
 
   // ── Auto-share once PDF is ready (when share=1 in URL) ──
   useEffect(() => {
@@ -998,6 +1027,7 @@ const LimsReportView = () => {
     if (!queueWaRequested) return;
     if (loading) return;
     if (pages.length === 0) return;
+    if (invoiceNumberForBarcode && !invoiceBarcodePng) return;
     if (autoQueueWaStartedRef.current) return;
     autoQueueWaStartedRef.current = true;
     const t = setTimeout(async () => {
@@ -1062,13 +1092,14 @@ const LimsReportView = () => {
     }, 800);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queueWaRequested, loading, pages.length]);
+  }, [queueWaRequested, loading, pages.length, invoiceBarcodePng]);
 
   // ── Failed Console send: download PDF only (staff send manually) ──
   useEffect(() => {
     if (!manualWaRequested) return;
     if (loading) return;
     if (pages.length === 0) return;
+    if (invoiceNumberForBarcode && !invoiceBarcodePng) return;
     if (autoManualWaStartedRef.current) return;
     autoManualWaStartedRef.current = true;
     const t = setTimeout(async () => {
@@ -1095,7 +1126,7 @@ const LimsReportView = () => {
     }, 800);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [manualWaRequested, loading, pages.length]);
+  }, [manualWaRequested, loading, pages.length, invoiceBarcodePng]);
 
   // ── Share on WhatsApp ──
   const handleShareWhatsApp = async () => {
@@ -1157,9 +1188,15 @@ const LimsReportView = () => {
         const el = pageElements[i] as HTMLElement;
         const isSnipPage = !!el.querySelector('img[data-snip-image]');
         if (isSnipPage) {
-          imageUrls.push(await captureWithRetry(el, NATIVE_W, NATIVE_H, "png"));
+          imageUrls.push(await stampBarcodeOnCapture(
+            await captureWithRetry(el, NATIVE_W, NATIVE_H, "png"),
+            "png",
+          ));
         } else {
-          imageUrls.push(await captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg"));
+          imageUrls.push(await stampBarcodeOnCapture(
+            await captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg"),
+            "jpeg",
+          ));
         }
       }
 
@@ -1463,9 +1500,14 @@ const LimsReportView = () => {
                 </div>
               )}
 
-              {/* Signature */}
+              {/* Footer: invoice barcode (left) + doctor signatures (right) */}
               <div className={pickupFooterNote ? "" : "mt-auto"}>
-                {!isProvisional && (() => {
+                <div className="pt-1 border-t flex justify-between items-end gap-3 print:break-inside-avoid">
+                  <ReportInvoiceBarcode
+                    invoiceNumber={invoiceNumberForBarcode}
+                    barcodePng={invoiceBarcodePng}
+                  />
+                  {!isProvisional && (() => {
                   const pageApprovers = page.approvers && page.approvers.length > 0
                     ? page.approvers
                     : Object.keys(signatureMap).length > 0 ? [Object.keys(signatureMap)[0]] : [];
@@ -1500,16 +1542,19 @@ const LimsReportView = () => {
                     // Fallback: show first signature
                     const fallback = Object.values(signatureMap)[0];
                     return (
-                      <ReportSignatureBlock
-                        signatureUrl={fallback.signatureUrl}
-                        pathologistName={fallback.pathologist_name}
-                        qualification={fallback.qualification || undefined}
-                        designation={fallback.designation || undefined}
-                      />
+                      <div className="ml-auto">
+                        <ReportSignatureBlock
+                          embedded
+                          signatureUrl={fallback.signatureUrl}
+                          pathologistName={fallback.pathologist_name}
+                          qualification={fallback.qualification || undefined}
+                          designation={fallback.designation || undefined}
+                        />
+                      </div>
                     );
                   }
                   return (
-                    <div className="pt-1 border-t flex justify-end items-start gap-6 print:break-inside-avoid flex-nowrap">
+                    <div className="flex justify-end items-start gap-6 flex-nowrap ml-auto">
                       {uniqueSigs.map((sig, idx) => (
                         <div key={idx} className="text-center" style={{ minWidth: 0, flexShrink: 0 }}>
                           {sig.signatureUrl && <img src={sig.signatureUrl} crossOrigin="anonymous" alt="Signature" className="h-8 mx-auto mb-0" />}
@@ -1521,6 +1566,7 @@ const LimsReportView = () => {
                     </div>
                   );
                 })()}
+                </div>
                 {/* Page Number */}
                 <div className="text-center mt-0.5" style={{ fontSize: "7px", color: "hsl(var(--muted-foreground))" }}>
                   Page {pageIdx + 1} of {totalPages}
