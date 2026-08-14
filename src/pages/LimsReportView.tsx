@@ -10,6 +10,7 @@ import jsPDF from "jspdf";
 import * as pdfjsLib from "pdfjs-dist";
 import LimsReportHeader from "@/components/report/LimsReportHeader";
 import ReportSignatureBlock from "@/components/report/ReportSignatureBlock";
+import ReportInvoiceBarcode from "@/components/report/ReportInvoiceBarcode";
 import ReportResultsSection from "@/components/report/ReportResultsSection";
 import AutoScaleContent from "@/components/report/AutoScaleContent";
 import type { TestResult, ProfileMeta } from "@/components/report/ReportResultsSection";
@@ -19,6 +20,7 @@ import { logEvent, createShareLink } from "@/lib/reportShareLinks";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 import { enqueueReportForWhatsAppConsole } from "@/lib/whatsappConsoleBridge";
 import { resolveNormalRangeDisplay } from "@/lib/parameterNormalRange";
+import { renderCode128Png, replaceCanvasesWithPngImages } from "@/lib/code128Png";
 import {
   getCachedLetterheadPng,
   getCachedSignatureDataUrl,
@@ -33,6 +35,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs
 // finished loading. Without this, html-to-image can occasionally produce
 // blank pages because the DOM is captured before resources resolve.
 const waitForCaptureReady = async (root: HTMLElement) => {
+  // Canvas pixels do not survive html-to-image (SVG foreignObject). Same fix as invoice WhatsApp.
+  replaceCanvasesWithPngImages(root);
   try {
     if ((document as any).fonts?.ready) {
       await (document as any).fonts.ready;
@@ -308,6 +312,13 @@ const LimsReportView = () => {
   const [testParamsMap, setTestParamsMap] = useState<Record<string, any[]>>({});
   const [snipImages, setSnipImages] = useState<SnipPage[]>([]);
   const [pickupFooterNote, setPickupFooterNote] = useState<string>("");
+
+  const invoiceNumberForBarcode =
+    approvedReports[0]?.invoice_number || registration?.invoice_number || "";
+  const invoiceBarcodePng = useMemo(
+    () => renderCode128Png(invoiceNumberForBarcode),
+    [invoiceNumberForBarcode],
+  );
 
   useEffect(() => { if (registrationId) loadAllData(); }, [registrationId]);
 
@@ -1461,9 +1472,14 @@ const LimsReportView = () => {
                 </div>
               )}
 
-              {/* Signature */}
+              {/* Footer: invoice barcode (left) + doctor signatures (right) */}
               <div className={pickupFooterNote ? "" : "mt-auto"}>
-                {!isProvisional && (() => {
+                <div className="pt-1 border-t flex justify-between items-end gap-3 print:break-inside-avoid">
+                  <ReportInvoiceBarcode
+                    invoiceNumber={invoiceNumberForBarcode}
+                    barcodePng={invoiceBarcodePng}
+                  />
+                  {!isProvisional && (() => {
                   const pageApprovers = page.approvers && page.approvers.length > 0
                     ? page.approvers
                     : Object.keys(signatureMap).length > 0 ? [Object.keys(signatureMap)[0]] : [];
@@ -1498,16 +1514,19 @@ const LimsReportView = () => {
                     // Fallback: show first signature
                     const fallback = Object.values(signatureMap)[0];
                     return (
-                      <ReportSignatureBlock
-                        signatureUrl={fallback.signatureUrl}
-                        pathologistName={fallback.pathologist_name}
-                        qualification={fallback.qualification || undefined}
-                        designation={fallback.designation || undefined}
-                      />
+                      <div className="ml-auto">
+                        <ReportSignatureBlock
+                          embedded
+                          signatureUrl={fallback.signatureUrl}
+                          pathologistName={fallback.pathologist_name}
+                          qualification={fallback.qualification || undefined}
+                          designation={fallback.designation || undefined}
+                        />
+                      </div>
                     );
                   }
                   return (
-                    <div className="pt-1 border-t flex justify-end items-start gap-6 print:break-inside-avoid flex-nowrap">
+                    <div className="flex justify-end items-start gap-6 flex-nowrap ml-auto">
                       {uniqueSigs.map((sig, idx) => (
                         <div key={idx} className="text-center" style={{ minWidth: 0, flexShrink: 0 }}>
                           {sig.signatureUrl && <img src={sig.signatureUrl} crossOrigin="anonymous" alt="Signature" className="h-8 mx-auto mb-0" />}
@@ -1519,6 +1538,7 @@ const LimsReportView = () => {
                     </div>
                   );
                 })()}
+                </div>
                 {/* Page Number */}
                 <div className="text-center mt-0.5" style={{ fontSize: "7px", color: "hsl(var(--muted-foreground))" }}>
                   Page {pageIdx + 1} of {totalPages}
