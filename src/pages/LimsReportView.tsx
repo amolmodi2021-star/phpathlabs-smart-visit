@@ -807,15 +807,16 @@ const LimsReportView = () => {
       });
     });
 
-    // Sort by collection date/time, then department order, then test order
+    // Department hierarchy first (Haematology → Biochemistry → …), then collection
+    // date/time so different timestamps still page-break without jumping to the PDF end.
     testBlocks.sort((a, b) => {
-      if (a.collectionDateKey !== b.collectionDateKey) return a.collectionDateKey.localeCompare(b.collectionDateKey);
       if (a.departmentOrder !== b.departmentOrder) return a.departmentOrder - b.departmentOrder;
+      if (a.collectionDateKey !== b.collectionDateKey) return a.collectionDateKey.localeCompare(b.collectionDateKey);
       if (a.testOrder !== b.testOrder) return a.testOrder - b.testOrder;
       return a.testName.localeCompare(b.testName);
     });
 
-    // Build pages — new page when collection date/time changes OR department changes
+    // Build pages — new page when department changes OR collection date/time changes
     const allPages: PageContent[] = [];
     let currentPageBlocks: TestBlock[] = [];
     let usedHeight = DEPT_HEADER_MM;
