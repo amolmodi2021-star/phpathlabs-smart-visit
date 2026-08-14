@@ -891,7 +891,7 @@ const Dispatch = () => {
           ? todayRange
             ? "Today — all patients registered today (Current board)."
             : "Current — all bills in the date range (includes blue / fully dispatched)."
-          : `Pending Dispatch — approved reports not yet dispatched (fully dispatched / blue hidden)${includeOlderPending ? "; includes older than range" : ""}.`}
+          : `Pending Dispatch — approved waiting to send, plus partially dispatched (incomplete) bills; fully dispatched hidden${includeOlderPending ? "; includes older than range" : ""}. Search by invoice ignores the date range.`}
       </p>
 
       {(
@@ -940,7 +940,7 @@ const Dispatch = () => {
                             <div className="flex items-center gap-1.5">
                               {reg.is_stat && entry.completionStatus !== "all_done" && entry.completionStatus !== "all_dispatched" && entry.completionStatus !== "cancelled" && <span className="relative flex h-2 w-2 shrink-0"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" /><span className="relative inline-flex rounded-full h-2 w-2 bg-destructive" /></span>}
                               <span className={cn("font-semibold text-sm truncate tracking-wide", entry.completionStatus === "cancelled" && "line-through text-muted-foreground")}>{reg.invoice_number}</span>
-                              <NewBadge show={isNewArrival(reg.id)} />
+                              <NewBadge show={isNewArrival(reg.id) && entry.completionStatus !== "all_dispatched"} />
                               {entry.completionStatus === "cancelled" && <Badge variant="destructive" className="text-[10px] px-1 py-0">Cancelled</Badge>}
                               {showHeld && <Badge variant="outline" className="text-[10px] px-1 py-0 border-amber-500 text-amber-700">Held</Badge>}
                             </div>
