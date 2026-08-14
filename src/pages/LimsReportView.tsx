@@ -209,7 +209,7 @@ interface TestBlock {
   departmentName: string;
   departmentOrder: number;
   testOrder: number;
-  /** YYYY-MM-DD of sample_tubes.collected_at for this test; drives page breaks */
+  /** yyyy-MM-dd HH:mm of sample_tubes.collected_at for this test; drives page breaks */
   collectionDateKey: string;
   collectionDateIso: string | null;
   params: TestResultEntry[];
@@ -235,7 +235,7 @@ interface PageContent {
   testBlocks?: TestBlock[];
   snipImage?: string;
   approvers?: string[];
-  /** Per-page sample collection date (ISO) — different dates never share a page */
+  /** Per-page sample collection datetime (ISO) — different date/time never share a page */
   sampleCollectionDate?: string | null;
 }
 
@@ -475,7 +475,7 @@ const LimsReportView = () => {
 
     // Fallback: if any report is missing sample_collection_date (legacy approvals before
     // collection-date capture), derive it from MIN(sample_tubes.collected_at) for this registration.
-    // Also build per-test collection dates so multi-visit samples page-break correctly.
+    // Also build per-test collection datetimes so multi-visit samples page-break correctly.
     const { data: tubesForDates } = await supabase
       .from("sample_tubes")
       .select("test_ids, collected_at")
@@ -755,8 +755,10 @@ const LimsReportView = () => {
       const collectionDateIso = collectionDateByTestId[testId]
         || approvedReports[0]?.sample_collection_date
         || null;
+      // Minute precision matches header "Collection:" display; same Print & Collect batch
+      // shares one ISO timestamp so those tests stay on the same page.
       const collectionDateKey = collectionDateIso
-        ? format(new Date(collectionDateIso), "yyyy-MM-dd")
+        ? format(new Date(collectionDateIso), "yyyy-MM-dd HH:mm")
         : "unknown";
 
       const explicitDisplay = String(testInfo?.display_name || "").trim();
@@ -792,7 +794,7 @@ const LimsReportView = () => {
       });
     });
 
-    // Sort by collection date, then department order, then test order (keeps hierarchy within a visit day)
+    // Sort by collection date/time, then department order, then test order
     testBlocks.sort((a, b) => {
       if (a.collectionDateKey !== b.collectionDateKey) return a.collectionDateKey.localeCompare(b.collectionDateKey);
       if (a.departmentOrder !== b.departmentOrder) return a.departmentOrder - b.departmentOrder;
@@ -800,7 +802,7 @@ const LimsReportView = () => {
       return a.testName.localeCompare(b.testName);
     });
 
-    // Build pages — new page when collection date changes OR department changes (existing rules)
+    // Build pages — new page when collection date/time changes OR department changes
     const allPages: PageContent[] = [];
     let currentPageBlocks: TestBlock[] = [];
     let usedHeight = DEPT_HEADER_MM;
