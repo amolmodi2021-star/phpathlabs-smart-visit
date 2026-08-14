@@ -57,3 +57,19 @@ export function snapshotAgeAtApproval(reg: {
   const age = formatPatientAge({ dob: reg.dob, asOf: approvalIso });
   return age === "—" ? null : age;
 }
+
+/**
+ * Report PDF age source: keep the frozen approval snapshot when present.
+ * If the snapshot was never stored (older pickup approvals omitted age_text
+ * from the doctor-approval query), fall back to the live registration value.
+ * Used by both final and provisional report PDFs.
+ */
+export function resolveReportAgeText(
+  snapshotAgeText?: string | null,
+  liveAgeText?: string | null,
+): string | null {
+  const frozen = String(snapshotAgeText || "").trim();
+  if (frozen) return frozen;
+  const live = String(liveAgeText || "").trim();
+  return live || null;
+}

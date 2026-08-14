@@ -43,7 +43,7 @@ import SyncingOverlay from "./SyncingOverlay";
 
 /** List headers — omit tests / cancelled_tests JSON (egress). */
 const REG_LIST_SELECT =
-  "id, invoice_number, patient_name, title, mobile_number, umr_number, status, is_stat, visit_type, gender, dob, email, address, created_at, updated_at, bill_cancelled, doctor_name, report_language";
+  "id, invoice_number, patient_name, title, mobile_number, umr_number, status, is_stat, visit_type, gender, dob, age_text, email, address, created_at, updated_at, bill_cancelled, doctor_name, report_language";
 const REG_DETAIL_SELECT = `${REG_LIST_SELECT}, tests, cancelled_tests`;
 import NewBadge from "./NewBadge";
 
