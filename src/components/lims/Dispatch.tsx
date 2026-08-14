@@ -11,8 +11,6 @@ import { useLimsPipelineRealtime } from "@/hooks/useLimsPipelineRealtime";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -27,7 +25,10 @@ import { format, startOfDay, endOfDay, subDays, isSameDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 import { PATIENT_RESULTS_SELECT_DISPATCH } from "@/lib/patientResultsSelect";
-import { fetchDispatchStatusIds, fetchDispatchPendingDispatchIds } from "@/lib/limsPendingCandidates";
+import {
+  fetchDispatchFilterIds,
+  type DispatchListMode,
+} from "@/lib/limsPendingCandidates";
 import { shortIdsKey } from "@/lib/queryKeys";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import NewBadge from "./NewBadge";
@@ -227,9 +228,8 @@ const Dispatch = () => {
   const qc = useQueryClient();
   useLimsPipelineRealtime("dispatch");
   const [search, setSearch] = useState("");
-  /** Current = full status board (includes blue). Pending = approved undispached only (no blue). */
-  const [listMode, setListMode] = useState<"current" | "pending_dispatch">("current");
-  const [includeOlderPending, setIncludeOlderPending] = useState(false);
+  /** all = lean date-range list; filters = pending / all-approved / partially-approved. */
+  const [listMode, setListMode] = useState<DispatchListMode>("all");
   const [dateFrom, setDateFrom] = useState<Date>(startOfDay(subDays(new Date(), 7)));
   const [dateTo, setDateTo] = useState<Date>(endOfDay(new Date()));
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
@@ -253,7 +253,7 @@ const Dispatch = () => {
   useEffect(() => {
     setDispatchPage(0);
     setSelectedPatientId(null);
-  }, [debouncedSearch, dateFrom, dateTo, includeOlderPending, listMode, pageSize, showAllForDay]);
+  }, [debouncedSearch, dateFrom, dateTo, listMode, pageSize, showAllForDay]);
 
   const { data: filteredDispatchIds = [] as string[], isLoading: loadingIds } = useQuery({
     queryKey: [
@@ -262,17 +262,9 @@ const Dispatch = () => {
       debouncedSearch,
       dateFrom.toISOString(),
       dateTo.toISOString(),
-      listMode === "pending_dispatch" ? includeOlderPending : false,
     ],
     queryFn: async (): Promise<string[]> => {
-      if (listMode === "pending_dispatch") {
-        return await fetchDispatchPendingDispatchIds(debouncedSearch, {
-          dateFromIso: dateFrom.toISOString(),
-          dateToIso: dateTo.toISOString(),
-          includeOlder: includeOlderPending,
-        });
-      }
-      return await fetchDispatchStatusIds(debouncedSearch, {
+      return await fetchDispatchFilterIds(listMode, debouncedSearch, {
         dateFromIso: dateFrom.toISOString(),
         dateToIso: dateTo.toISOString(),
       });
@@ -283,7 +275,7 @@ const Dispatch = () => {
 
   const dispatchCount = filteredDispatchIds.length;
   const todayRange =
-    listMode === "current" &&
+    listMode === "all" &&
     showAllForDay &&
     isSameDay(dateFrom, dateTo) &&
     isSameDay(dateFrom, new Date());
@@ -458,31 +450,20 @@ const Dispatch = () => {
 
   /** Lightweight list cards — registrations only (no results/tubes/snips). */
   const listEntries = useMemo(() => {
-    const rows: DispatchEntry[] = registrations
-      .map((reg: any) => {
-        let completionStatus: DispatchEntry["completionStatus"] = reg.bill_cancelled
-          ? "cancelled"
-          : dispatchDotFromRegStatus(reg.status);
-        // Pending Dispatch = still has approved work. Never show blue (fully dispatched).
-        if (listMode === "pending_dispatch" && completionStatus === "all_dispatched") {
-          completionStatus = "all_done";
-        }
-        return {
-          registration: reg,
-          tests: [],
-          completionStatus,
-          approvedCount: 0,
-          pendingCount: 0,
-          dispatchedCount: 0,
-          cancelledCount: 0,
-        } as DispatchEntry;
-      })
-      // Hide fully-dispatched regs from Pending (stale status / orphan approved rows).
-      .filter((entry) => {
-        if (listMode !== "pending_dispatch") return true;
-        const st = String(entry.registration.status || "").toLowerCase();
-        return st !== "dispatched";
-      });
+    const rows: DispatchEntry[] = registrations.map((reg: any) => {
+      const completionStatus: DispatchEntry["completionStatus"] = reg.bill_cancelled
+        ? "cancelled"
+        : dispatchDotFromRegStatus(reg.status);
+      return {
+        registration: reg,
+        tests: [],
+        completionStatus,
+        approvedCount: 0,
+        pendingCount: 0,
+        dispatchedCount: 0,
+        cancelledCount: 0,
+      } as DispatchEntry;
+    });
     return [...rows].sort((a, b) => {
       const aCancelled = a.completionStatus === "cancelled" ? 1 : 0;
       const bCancelled = b.completionStatus === "cancelled" ? 1 : 0;
@@ -492,7 +473,7 @@ const Dispatch = () => {
       if (bActivestat !== aActivestat) return bActivestat - aActivestat;
       return String(b.registration.invoice_number || "").localeCompare(String(a.registration.invoice_number || ""));
     });
-  }, [registrations, listMode]);
+  }, [registrations]);
 
   const selectedReg = useMemo(
     () => registrations.find((r: any) => r.id === selectedPatientId) || null,
@@ -764,13 +745,17 @@ const Dispatch = () => {
   const showingTo = Math.min((safePage + 1) * effectivePageSize, dispatchCount);
 
   const goToToday = () => {
-    setListMode("current");
-    setIncludeOlderPending(false);
+    setListMode("all");
     setDateFrom(startOfDay(new Date()));
     setDateTo(endOfDay(new Date()));
     setShowAllForDay(true);
     setDispatchPage(0);
     setSelectedPatientId(null);
+  };
+
+  const toggleFilterMode = (mode: Exclude<DispatchListMode, "all">) => {
+    setShowAllForDay(false);
+    setListMode((prev) => (prev === mode ? "all" : mode));
   };
 
   return (
@@ -821,38 +806,35 @@ const Dispatch = () => {
           </PopoverContent>
         </Popover>
         <Button variant="ghost" size="sm" className="text-xs" onClick={goToToday}>Today</Button>
-        <div className="flex items-center rounded-md border p-0.5 gap-0.5">
-          <Button
-            type="button"
-            size="sm"
-            variant={listMode === "current" ? "default" : "ghost"}
-            className="h-7 text-xs px-2.5"
-            onClick={() => { setShowAllForDay(false); setListMode("current"); }}
-          >
-            Current
-          </Button>
+        <div className="flex items-center rounded-md border p-0.5 gap-0.5 flex-wrap">
           <Button
             type="button"
             size="sm"
             variant={listMode === "pending_dispatch" ? "default" : "ghost"}
             className="h-7 text-xs px-2.5"
-            onClick={() => { setShowAllForDay(false); setListMode("pending_dispatch"); }}
+            onClick={() => toggleFilterMode("pending_dispatch")}
           >
             Pending Dispatch
           </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={listMode === "all_approved" ? "default" : "ghost"}
+            className="h-7 text-xs px-2.5"
+            onClick={() => toggleFilterMode("all_approved")}
+          >
+            All Approved
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={listMode === "partially_approved" ? "default" : "ghost"}
+            className="h-7 text-xs px-2.5"
+            onClick={() => toggleFilterMode("partially_approved")}
+          >
+            Partially Approved
+          </Button>
         </div>
-        {listMode === "pending_dispatch" && (
-          <div className="flex items-center gap-2 rounded-md border px-2.5 py-1.5">
-            <Switch
-              id="dispatch-include-older"
-              checked={includeOlderPending}
-              onCheckedChange={setIncludeOlderPending}
-            />
-            <Label htmlFor="dispatch-include-older" className="text-xs font-normal cursor-pointer">
-              Show older than date range
-            </Label>
-          </div>
-        )}
         {failedWaJobs.length > 0 && (
           <Button
             type="button"
@@ -887,11 +869,15 @@ const Dispatch = () => {
       </div>
 
       <p className="text-[11px] text-muted-foreground -mt-1">
-        {listMode === "current"
+        {listMode === "all"
           ? todayRange
-            ? "Today — all patients registered today (Current board)."
-            : "Current — all bills in the date range (includes blue / fully dispatched)."
-          : `Pending Dispatch — approved waiting to send, plus partially dispatched (incomplete) bills; fully dispatched hidden${includeOlderPending ? "; includes older than range" : ""}. Search by invoice ignores the date range.`}
+            ? "Today — all patients registered today (lean list)."
+            : "Date range — lean patient list. Click a filter to narrow; click again to clear."
+          : listMode === "pending_dispatch"
+            ? "Pending Dispatch — at least one test not yet dispatched (any status). Includes due bills."
+            : listMode === "all_approved"
+              ? "All Approved — every active test approved and ready to dispatch. Includes due bills."
+              : "Partially Approved — at least one approved (not dispatched) test, and other tests still incomplete. Includes due bills."}
       </p>
 
       {(
@@ -912,14 +898,18 @@ const Dispatch = () => {
                   <div className="text-center py-12 text-muted-foreground px-3">
                     <Truck className="h-10 w-10 mx-auto mb-3 opacity-30" />
                     <p className="text-sm font-medium">
-                      {listMode === "pending_dispatch" ? "No pending dispatch" : "No patients in this date range"}
+                      {listMode === "all"
+                        ? "No patients in this date range"
+                        : listMode === "pending_dispatch"
+                          ? "No pending dispatch"
+                          : listMode === "all_approved"
+                            ? "No fully approved bills"
+                            : "No partially approved bills"}
                     </p>
                     <p className="text-xs">
-                      {listMode === "pending_dispatch"
-                        ? (includeOlderPending
-                          ? "No bills with approved reports waiting to dispatch"
-                          : "No pending bills in this date range — try widening dates or enable older")
-                        : "Adjust dates or search to check patient status"}
+                      {listMode === "all"
+                        ? "Adjust dates or search to find patients"
+                        : "Widen the date range, clear the filter, or search by invoice"}
                     </p>
                   </div>
                 ) : (

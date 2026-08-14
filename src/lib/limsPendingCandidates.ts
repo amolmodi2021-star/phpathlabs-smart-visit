@@ -1,8 +1,11 @@
 /**
  * LIMS pending-candidate id resolvers (server-side RPCs).
  * See supabase/migrations/20260808153000_reliability_hardening.sql
+ * Dispatch filters: 20260815010000_dispatch_list_filter_modes.sql
  */
 import { supabase } from "@/integrations/supabase/client";
+
+export type DispatchListMode = "all" | "pending_dispatch" | "all_approved" | "partially_approved";
 
 async function rpcUuidArray(fn: string, args: Record<string, any> = {}): Promise<string[]> {
   const { data, error } = await (supabase as any).rpc(fn, args);
@@ -28,7 +31,7 @@ export async function fetchDispatchCandidateIds(): Promise<string[]> {
   return rpcUuidArray("lims_dispatch_candidate_ids");
 }
 
-/** Full Dispatch status board (includes pending + cancelled bills in date range). */
+/** Full Dispatch date-range board (lean list). */
 export async function fetchDispatchStatusIds(
   search: string,
   opts: { dateFromIso?: string; dateToIso?: string } = {},
@@ -40,7 +43,21 @@ export async function fetchDispatchStatusIds(
   });
 }
 
-/** Bills with ≥1 approved report still not dispatched (date range; optional older). */
+/** Dispatch list filter modes (pending / all-approved / partially-approved / all). */
+export async function fetchDispatchFilterIds(
+  mode: DispatchListMode,
+  search: string,
+  opts: { dateFromIso?: string; dateToIso?: string } = {},
+): Promise<string[]> {
+  return rpcUuidArray("lims_dispatch_filter_ids", {
+    p_mode: mode,
+    p_search: search || null,
+    p_date_from: opts.dateFromIso || null,
+    p_date_to: opts.dateToIso || null,
+  });
+}
+
+/** @deprecated Prefer fetchDispatchFilterIds('pending_dispatch', ...) */
 export async function fetchDispatchPendingDispatchIds(
   search: string,
   opts: {
@@ -49,11 +66,9 @@ export async function fetchDispatchPendingDispatchIds(
     includeOlder?: boolean;
   } = {},
 ): Promise<string[]> {
-  return rpcUuidArray("lims_dispatch_pending_dispatch_ids", {
-    p_search: search || null,
-    p_date_from: opts.dateFromIso || null,
-    p_date_to: opts.dateToIso || null,
-    p_include_older: !!opts.includeOlder,
+  return fetchDispatchFilterIds("pending_dispatch", search, {
+    dateFromIso: opts.includeOlder ? undefined : opts.dateFromIso,
+    dateToIso: opts.dateToIso,
   });
 }
 
