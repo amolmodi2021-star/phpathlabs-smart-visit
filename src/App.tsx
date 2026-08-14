@@ -106,9 +106,8 @@ function GlobalAuthEpochGuard() {
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisible);
 
-    // Background poll — short enough that a forgotten mobile tab catches up
-    // within seconds of being foregrounded again.
-    const interval = window.setInterval(run, 15_000);
+    // Background fallback; focus/visibility and Realtime handle prompt checks.
+    const interval = window.setInterval(run, 60_000);
 
     // Realtime: instant logout when an admin bumps the epoch, no polling delay.
     const channel = supabase

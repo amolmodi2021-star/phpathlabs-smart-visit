@@ -145,6 +145,8 @@ export async function bumpAuthEpoch(): Promise<void> {
   }
 }
 
+let authEpochCheckInFlight: Promise<boolean> | null = null;
+
 /**
  * Compares the locally-stamped epoch against the server. If they differ, this
  * session was invalidated by an admin "Logout All Users" action — clear local
@@ -152,17 +154,30 @@ export async function bumpAuthEpoch(): Promise<void> {
  */
 export async function checkAuthEpochAndLogoutIfStale(): Promise<boolean> {
   if (!isAuthenticated()) return false;
-  try {
-    const serverEpoch = await fetchAuthEpoch();
-    const localEpoch = localStorage.getItem(EPOCH_KEY) || "0";
-    if (serverEpoch !== localEpoch) {
-      logout();
-      return true;
+  if (authEpochCheckInFlight) return authEpochCheckInFlight;
+
+  const checkPromise = (async () => {
+    try {
+      const serverEpoch = await fetchAuthEpoch();
+      const localEpoch = localStorage.getItem(EPOCH_KEY) || "0";
+      if (serverEpoch !== localEpoch) {
+        logout();
+        return true;
+      }
+    } catch {
+      // Network issue — don't kick the user out on transient failure.
     }
-  } catch {
-    // Network issue — don't kick the user out on transient failure.
+    return false;
+  })();
+
+  authEpochCheckInFlight = checkPromise;
+  try {
+    return await checkPromise;
+  } finally {
+    if (authEpochCheckInFlight === checkPromise) {
+      authEpochCheckInFlight = null;
+    }
   }
-  return false;
 }
 
 export const PERMISSIONS_UPDATED_EVENT = "ph:permissions-updated";

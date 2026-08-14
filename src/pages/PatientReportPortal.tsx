@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -46,7 +46,7 @@ type LinkState =
   | { kind: "expired" }
   | { kind: "needs_verify"; link: any; registration: any }
   | { kind: "locked"; until: number }
-  | { kind: "ready"; link: any; registration: any };
+  | { kind: "ready"; link: any; registration: any; token: string };
 
 const LOCK_KEY_PREFIX = "ph_portal_lock_";
 const VERIFY_KEY_PREFIX = "ph_portal_verified_";
@@ -61,11 +61,14 @@ const PatientReportPortal = () => {
   const [verifyInput, setVerifyInput] = useState("");
   const [verifying, setVerifying] = useState(false);
   const [verifyError, setVerifyError] = useState<string | null>(null);
-  const [tick, setTick] = useState(0); // forces refresh
   const [data, setData] = useState<any>(null);
   const [loadingData, setLoadingData] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const heartbeatStartedRef = useRef(false);
+  const activeTokenRef = useRef(token);
+  const portalBundleRequestRef = useRef<{ token: string; promise: Promise<void> } | null>(null);
+  activeTokenRef.current = token;
 
   // Set noindex meta and page title
   useEffect(() => {
@@ -81,6 +84,9 @@ const PatientReportPortal = () => {
 
   // Initial link lookup
   useEffect(() => {
+    setState({ kind: "loading" });
+    setData(null);
+    setLastUpdatedAt(null);
     (async () => {
       try {
         // Lock check
@@ -124,7 +130,7 @@ const PatientReportPortal = () => {
         const vRaw = localStorage.getItem(VERIFY_KEY_PREFIX + token);
         const verifiedAt = vRaw ? parseInt(vRaw, 10) : 0;
         if (verifiedAt && Date.now() - verifiedAt < VERIFY_TTL_MS) {
-          setState({ kind: "ready", link, registration: reg });
+          setState({ kind: "ready", link, registration: reg, token });
           await logEvent(token, "opened", sessionIdRef.current || undefined);
         } else {
           setState({ kind: "needs_verify", link, registration: reg });
@@ -138,19 +144,6 @@ const PatientReportPortal = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  // Auto-refresh status every 120s, and skip ticks while the tab is hidden so
-  // backgrounded sessions don't keep hitting the database. Lower bound matches
-  // the rest of the app's "manual-refresh wins" cost stance — patients can still
-  // tap Refresh in the UI for a fresh pull.
-  useEffect(() => {
-    if (state.kind !== "ready") return;
-    const id = setInterval(() => {
-      if (document.hidden) return;
-      setTick((t) => t + 1);
-    }, 120_000);
-    return () => clearInterval(id);
-  }, [state.kind]);
-
   // Dwell heartbeat
   useEffect(() => {
     if (state.kind !== "ready" || heartbeatStartedRef.current) return;
@@ -161,8 +154,8 @@ const PatientReportPortal = () => {
     let alive = true;
     const id = setInterval(() => {
       if (!alive || document.hidden) return;
-      heartbeatSession(sid, 10);
-    }, 10_000);
+      heartbeatSession(sid, 60);
+    }, 60_000);
     const onHide = () => {
       if (document.hidden) heartbeatSession(sid, 5);
     };
@@ -174,14 +167,20 @@ const PatientReportPortal = () => {
     };
   }, [state.kind, token]);
 
-  // Load full status data via token-scoped RPC (no anon PHI table SELECT)
-  useEffect(() => {
-    if (state.kind !== "ready") return;
-    (async () => {
+  // Initial and patient-requested refreshes share one guarded bundle request.
+  const refreshPortalData = useCallback(async () => {
+    if (state.kind !== "ready" || state.token !== token) return;
+    if (portalBundleRequestRef.current?.token === token) {
+      await portalBundleRequestRef.current.promise;
+      return;
+    }
+
+    const request = (async () => {
       setLoadingData(true);
       try {
         const reg = state.registration;
         const bundle = await fetchPortalBundle(token);
+        if (activeTokenRef.current !== token) return;
         if (!bundle) {
           setData(null);
           return;
@@ -220,11 +219,31 @@ const PatientReportPortal = () => {
           abnormal: {},
           previous: bundle.previous || [],
         });
+        setLastUpdatedAt(new Date());
+      } catch (error) {
+        console.error("Failed to refresh patient report status:", error);
       } finally {
-        setLoadingData(false);
+        if (activeTokenRef.current === token) {
+          setLoadingData(false);
+        }
       }
     })();
-  }, [state, tick, token]);
+
+    portalBundleRequestRef.current = { token, promise: request };
+    try {
+      await request;
+    } finally {
+      if (portalBundleRequestRef.current?.promise === request) {
+        portalBundleRequestRef.current = null;
+      }
+    }
+  }, [state, token]);
+
+  // Preserve the initial load and re-run when a ready route/token changes.
+  useEffect(() => {
+    if (state.kind !== "ready") return;
+    void refreshPortalData();
+  }, [state.kind, token, refreshPortalData]);
 
   const handleVerify = async () => {
     if (state.kind !== "needs_verify") return;
@@ -261,7 +280,7 @@ const PatientReportPortal = () => {
         localStorage.setItem(VERIFY_KEY_PREFIX + token, String(Date.now()));
         localStorage.removeItem(ATTEMPTS_KEY_PREFIX + token);
         await logEvent(token, "verified");
-        setState({ kind: "ready", link: state.link, registration: reg });
+        setState({ kind: "ready", link: state.link, registration: reg, token });
       } else {
         const attRaw = localStorage.getItem(ATTEMPTS_KEY_PREFIX + token);
         const att = (attRaw ? parseInt(attRaw, 10) : 0) + 1;
@@ -617,14 +636,27 @@ const PatientReportPortal = () => {
                 </span>
               </div>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setTick((t) => t + 1)}
-              className="gap-1"
-            >
-              <RefreshCw className="h-3.5 w-3.5" /> Refresh
-            </Button>
+            <div className="flex flex-col items-end gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void refreshPortalData()}
+                disabled={loadingData}
+                className="gap-1"
+              >
+                {loadingData ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3.5 w-3.5" />
+                )}
+                {loadingData ? "Refreshing…" : "Refresh Status"}
+              </Button>
+              {lastUpdatedAt && (
+                <span className="text-[10px] text-muted-foreground">
+                  Last updated: {format(lastUpdatedAt, "dd MMM, hh:mm a")}
+                </span>
+              )}
+            </div>
           </div>
         </Card>
 
