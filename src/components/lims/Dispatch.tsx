@@ -901,7 +901,7 @@ const Dispatch = () => {
             className="h-7 text-xs px-2.5"
             onClick={() => toggleFilterMode("pending_dispatch")}
           >
-            Pending Dispatch
+            Pending
           </Button>
           <Button
             type="button"
