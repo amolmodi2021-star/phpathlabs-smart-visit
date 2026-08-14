@@ -4,36 +4,45 @@ interface ReportInvoiceBarcodeProps {
 }
 
 /**
- * Invoice-number CODE128 for the report footer.
- * Must be an img (PNG data URL), never a live canvas — WhatsApp/PDF
- * capture uses html-to-image which cannot clone canvas pixels.
+ * Invoice-number CODE128 for the report footer (left of signatures).
+ * PNG img only — never a live canvas — so preview, PDF, and WhatsApp capture
+ * can rasterize it. PDF export also restamps this PNG after JPEG capture.
  */
 const ReportInvoiceBarcode = ({ invoiceNumber, barcodePng }: ReportInvoiceBarcodeProps) => {
   const label = String(invoiceNumber || "").trim();
   if (!barcodePng && !label) return null;
   return (
-    <div className="flex-shrink-0" style={{ minWidth: 0, textAlign: "left" }}>
-      {barcodePng && (
+    <div
+      data-report-barcode="1"
+      className="flex-shrink-0"
+      style={{
+        minWidth: 120,
+        textAlign: "left",
+        background: "#ffffff",
+        padding: "2px 4px",
+        zIndex: 5,
+        position: "relative",
+      }}
+    >
+      {barcodePng ? (
         <img
           src={barcodePng}
           alt={label ? `Invoice ${label}` : "Invoice barcode"}
           style={{
-            height: 28,
-            maxWidth: 170,
+            width: 170,
+            height: 48,
+            objectFit: "contain",
+            objectPosition: "left bottom",
             display: "block",
             background: "#ffffff",
           }}
         />
-      )}
-      {label && (
+      ) : (
         <div
           style={{
-            fontSize: "8px",
+            fontSize: "11px",
             fontWeight: 700,
             fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-            letterSpacing: "0.04em",
-            lineHeight: 1.2,
-            marginTop: 1,
             color: "#111",
           }}
         >

@@ -20,7 +20,7 @@ import { logEvent, createShareLink } from "@/lib/reportShareLinks";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 import { enqueueReportForWhatsAppConsole } from "@/lib/whatsappConsoleBridge";
 import { resolveNormalRangeDisplay } from "@/lib/parameterNormalRange";
-import { renderCode128Png, replaceCanvasesWithPngImages } from "@/lib/code128Png";
+import { renderCode128Png, replaceCanvasesWithPngImages, stampInvoiceBarcodeOnPage } from "@/lib/code128Png";
 import {
   getCachedLetterheadPng,
   getCachedSignatureDataUrl,
@@ -119,7 +119,7 @@ const captureWithRetry = async (
 const PAGE_HEIGHT_MM = 297;
 const PAGE_WIDTH_MM = 210;
 const HEADER_HEIGHT_MM = 28;
-const SIGNATURE_HEIGHT_MM = 16;
+const SIGNATURE_HEIGHT_MM = 18;
 const PAGE_NUM_HEIGHT_MM = 6;
 const DEPT_HEADER_MM = 10;
 const TEST_HEADER_MM = 8;
@@ -315,10 +315,10 @@ const LimsReportView = () => {
 
   const invoiceNumberForBarcode =
     approvedReports[0]?.invoice_number || registration?.invoice_number || "";
-  const invoiceBarcodePng = useMemo(
-    () => renderCode128Png(invoiceNumberForBarcode),
-    [invoiceNumberForBarcode],
-  );
+  const [invoiceBarcodePng, setInvoiceBarcodePng] = useState<string | null>(null);
+  useEffect(() => {
+    setInvoiceBarcodePng(renderCode128Png(invoiceNumberForBarcode));
+  }, [invoiceNumberForBarcode]);
 
   useEffect(() => { if (registrationId) loadAllData(); }, [registrationId]);
 
@@ -881,6 +881,17 @@ const LimsReportView = () => {
   }, [approvedReports, departments, testsMap, testParamsMap, snipImages, layoutSettings, pickupFooterNote, collectionDateByTestId]);
 
   // ── PDF export ──
+  const stampBarcodeOnCapture = async (dataUrl: string, format: "png" | "jpeg") => {
+    const png = invoiceBarcodePng || renderCode128Png(invoiceNumberForBarcode);
+    const bottomMm = (layoutSettings.bottom_margin_cm || 1.5) * 10;
+    return stampInvoiceBarcodeOnPage({
+      pageDataUrl: dataUrl,
+      barcodePng: png,
+      bottomMm,
+      output: format,
+    });
+  };
+
   const buildPdfBlob = async (): Promise<{ blob: Blob; filename: string } | null> => {
     if (!printRef.current) return null;
     const pageElements = printRef.current.querySelectorAll("[data-page]");
@@ -896,10 +907,16 @@ const LimsReportView = () => {
       const el = pageElements[i] as HTMLElement;
       const isSnipPage = !!el.querySelector('img[data-snip-image]');
       if (isSnipPage) {
-        const png = await captureWithRetry(el, NATIVE_W, NATIVE_H, "png");
+        const png = await stampBarcodeOnCapture(
+          await captureWithRetry(el, NATIVE_W, NATIVE_H, "png"),
+          "png",
+        );
         pdf.addImage(png, "PNG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM);
       } else {
-        const jpeg = await captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg");
+        const jpeg = await stampBarcodeOnCapture(
+          await captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg"),
+          "jpeg",
+        );
         pdf.addImage(jpeg, "JPEG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, undefined, "FAST");
       }
     }
@@ -982,13 +999,14 @@ const LimsReportView = () => {
     if (!isPublic) return;
     if (loading) return;
     if (pages.length === 0) return;
+    if (invoiceNumberForBarcode && !invoiceBarcodePng) return;
     if (autoDownloadStartedRef.current) return;
     autoDownloadStartedRef.current = true;
     // Small delay to let layout settle (images, fonts)
     const t = setTimeout(() => { handleDownloadPdf(); }, 600);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPublic, loading, pages.length]);
+  }, [isPublic, loading, pages.length, invoiceBarcodePng]);
 
   // ── Auto-share once PDF is ready (when share=1 in URL) ──
   useEffect(() => {
@@ -1007,6 +1025,7 @@ const LimsReportView = () => {
     if (!queueWaRequested) return;
     if (loading) return;
     if (pages.length === 0) return;
+    if (invoiceNumberForBarcode && !invoiceBarcodePng) return;
     if (autoQueueWaStartedRef.current) return;
     autoQueueWaStartedRef.current = true;
     const t = setTimeout(async () => {
@@ -1071,13 +1090,14 @@ const LimsReportView = () => {
     }, 800);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queueWaRequested, loading, pages.length]);
+  }, [queueWaRequested, loading, pages.length, invoiceBarcodePng]);
 
   // ── Failed Console send: download PDF only (staff send manually) ──
   useEffect(() => {
     if (!manualWaRequested) return;
     if (loading) return;
     if (pages.length === 0) return;
+    if (invoiceNumberForBarcode && !invoiceBarcodePng) return;
     if (autoManualWaStartedRef.current) return;
     autoManualWaStartedRef.current = true;
     const t = setTimeout(async () => {
@@ -1104,7 +1124,7 @@ const LimsReportView = () => {
     }, 800);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [manualWaRequested, loading, pages.length]);
+  }, [manualWaRequested, loading, pages.length, invoiceBarcodePng]);
 
   // ── Share on WhatsApp ──
   const handleShareWhatsApp = async () => {
@@ -1166,9 +1186,15 @@ const LimsReportView = () => {
         const el = pageElements[i] as HTMLElement;
         const isSnipPage = !!el.querySelector('img[data-snip-image]');
         if (isSnipPage) {
-          imageUrls.push(await captureWithRetry(el, NATIVE_W, NATIVE_H, "png"));
+          imageUrls.push(await stampBarcodeOnCapture(
+            await captureWithRetry(el, NATIVE_W, NATIVE_H, "png"),
+            "png",
+          ));
         } else {
-          imageUrls.push(await captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg"));
+          imageUrls.push(await stampBarcodeOnCapture(
+            await captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg"),
+            "jpeg",
+          ));
         }
       }
 
