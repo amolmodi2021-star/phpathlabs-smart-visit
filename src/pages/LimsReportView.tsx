@@ -21,7 +21,7 @@ import { patientDisplayName } from "@/lib/patientDisplayName";
 import { enqueueReportForWhatsAppConsole } from "@/lib/whatsappConsoleBridge";
 import { resolveNormalRangeDisplay } from "@/lib/parameterNormalRange";
 import { resolveReportAgeText } from "@/lib/patientAge";
-import { renderCode128Png, replaceCanvasesWithPngImages, stampInvoiceBarcodeOnPage } from "@/lib/code128Png";
+import { renderCode128Png, replaceCanvasesWithPngImages } from "@/lib/code128Png";
 import {
   getCachedLetterheadPng,
   getCachedSignatureDataUrl,
@@ -105,7 +105,7 @@ const captureWithRetry = async (
     try {
       lastUrl = format === "png"
         ? await toPng(el, { ...opts, quality: 1 })
-        : await toJpeg(el, { ...opts, quality: 0.85 });
+        : await toJpeg(el, { ...opts, quality: 0.92 });
       const blank = await isBlankDataUrl(lastUrl);
       if (!blank) return lastUrl;
     } catch {
@@ -120,7 +120,7 @@ const captureWithRetry = async (
 const PAGE_HEIGHT_MM = 297;
 const PAGE_WIDTH_MM = 210;
 const HEADER_HEIGHT_MM = 28;
-const SIGNATURE_HEIGHT_MM = 18;
+const SIGNATURE_HEIGHT_MM = 16;
 const PAGE_NUM_HEIGHT_MM = 6;
 const DEPT_HEADER_MM = 10;
 const TEST_HEADER_MM = 8;
@@ -883,17 +883,6 @@ const LimsReportView = () => {
   }, [approvedReports, departments, testsMap, testParamsMap, snipImages, layoutSettings, pickupFooterNote, collectionDateByTestId]);
 
   // ── PDF export ──
-  const stampBarcodeOnCapture = async (dataUrl: string, format: "png" | "jpeg") => {
-    const png = invoiceBarcodePng || renderCode128Png(invoiceNumberForBarcode);
-    const bottomMm = (layoutSettings.bottom_margin_cm || 1.5) * 10;
-    return stampInvoiceBarcodeOnPage({
-      pageDataUrl: dataUrl,
-      barcodePng: png,
-      bottomMm,
-      output: format,
-    });
-  };
-
   const buildPdfBlob = async (): Promise<{ blob: Blob; filename: string } | null> => {
     if (!printRef.current) return null;
     const pageElements = printRef.current.querySelectorAll("[data-page]");
@@ -909,16 +898,10 @@ const LimsReportView = () => {
       const el = pageElements[i] as HTMLElement;
       const isSnipPage = !!el.querySelector('img[data-snip-image]');
       if (isSnipPage) {
-        const png = await stampBarcodeOnCapture(
-          await captureWithRetry(el, NATIVE_W, NATIVE_H, "png"),
-          "png",
-        );
+        const png = await captureWithRetry(el, NATIVE_W, NATIVE_H, "png");
         pdf.addImage(png, "PNG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM);
       } else {
-        const jpeg = await stampBarcodeOnCapture(
-          await captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg"),
-          "jpeg",
-        );
+        const jpeg = await captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg");
         pdf.addImage(jpeg, "JPEG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, undefined, "FAST");
       }
     }
@@ -1188,15 +1171,9 @@ const LimsReportView = () => {
         const el = pageElements[i] as HTMLElement;
         const isSnipPage = !!el.querySelector('img[data-snip-image]');
         if (isSnipPage) {
-          imageUrls.push(await stampBarcodeOnCapture(
-            await captureWithRetry(el, NATIVE_W, NATIVE_H, "png"),
-            "png",
-          ));
+          imageUrls.push(await captureWithRetry(el, NATIVE_W, NATIVE_H, "png"));
         } else {
-          imageUrls.push(await stampBarcodeOnCapture(
-            await captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg"),
-            "jpeg",
-          ));
+          imageUrls.push(await captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg"));
         }
       }
 

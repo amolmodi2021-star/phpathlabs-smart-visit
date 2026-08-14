@@ -1,27 +1,11 @@
 import { describe, it, expect } from "vitest";
-import {
-  renderCode128Png,
-  replaceCanvasesWithPngImages,
-  reportBarcodeYMm,
-  REPORT_BARCODE_LAYOUT,
-} from "@/lib/code128Png";
+import { renderCode128Png, replaceCanvasesWithPngImages } from "@/lib/code128Png";
 
 describe("renderCode128Png", () => {
   it("returns null when there is no invoice number", () => {
     expect(renderCode128Png("")).toBeNull();
     expect(renderCode128Png(null)).toBeNull();
     expect(renderCode128Png("   ")).toBeNull();
-  });
-});
-
-describe("reportBarcodeYMm", () => {
-  it("places the barcode above the page number and letterhead bottom margin", () => {
-    const y = reportBarcodeYMm(15, 297);
-    expect(y).toBe(
-      297 - 15 - REPORT_BARCODE_LAYOUT.pageNumMm - REPORT_BARCODE_LAYOUT.heightMm - 0.5,
-    );
-    expect(y).toBeGreaterThan(250);
-    expect(y + REPORT_BARCODE_LAYOUT.heightMm).toBeLessThan(297 - 15);
   });
 });
 

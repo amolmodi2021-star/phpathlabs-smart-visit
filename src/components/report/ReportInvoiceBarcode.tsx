@@ -4,9 +4,9 @@ interface ReportInvoiceBarcodeProps {
 }
 
 /**
- * Invoice-number CODE128 for the report footer (left of signatures).
- * PNG img only — never a live canvas — so preview, PDF, and WhatsApp capture
- * can rasterize it. PDF export also restamps this PNG after JPEG capture.
+ * Invoice-number CODE128 for the report footer, left of signatures.
+ * One HTML block (PNG bars + invoice text) is captured as-is for PDF/WhatsApp
+ * so preview and download match. No second overlay.
  */
 const ReportInvoiceBarcode = ({ invoiceNumber, barcodePng }: ReportInvoiceBarcodeProps) => {
   const label = String(invoiceNumber || "").trim();
@@ -16,34 +16,34 @@ const ReportInvoiceBarcode = ({ invoiceNumber, barcodePng }: ReportInvoiceBarcod
       data-report-barcode="1"
       className="flex-shrink-0"
       style={{
-        minWidth: 120,
         textAlign: "left",
         background: "#ffffff",
-        padding: "2px 4px",
-        zIndex: 5,
-        position: "relative",
+        padding: "1px 2px 0 0",
+        lineHeight: 1.15,
       }}
     >
-      {barcodePng ? (
+      {barcodePng && (
         <img
           src={barcodePng}
           alt={label ? `Invoice ${label}` : "Invoice barcode"}
           style={{
-            width: 170,
-            height: 48,
-            objectFit: "contain",
-            objectPosition: "left bottom",
+            height: 28,
+            width: "auto",
+            maxWidth: 150,
             display: "block",
             background: "#ffffff",
           }}
         />
-      ) : (
+      )}
+      {label && (
         <div
           style={{
-            fontSize: "11px",
+            fontSize: "8px",
             fontWeight: 700,
             fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+            letterSpacing: "0.04em",
             color: "#111",
+            marginTop: 1,
           }}
         >
           {label}
