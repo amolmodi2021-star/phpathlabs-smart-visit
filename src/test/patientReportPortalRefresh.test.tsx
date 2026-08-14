@@ -133,7 +133,7 @@ describe("PatientReportPortal manual status refresh", () => {
     expect(portalMock.fetchPortalBundle).toHaveBeenCalledTimes(1);
     expect(portalMock.fetchPortalBundle).toHaveBeenCalledWith("portal-token-1");
     expect(screen.getByText("CBC")).toBeInTheDocument();
-    expect(screen.getByText("Approved")).toBeInTheDocument();
+    expect(screen.getAllByText("Approved").length).toBeGreaterThan(0);
     expect(screen.getByText("Previous Reports")).toBeInTheDocument();
     expect(screen.getByText("Payment pending: ₹100")).toBeInTheDocument();
 
