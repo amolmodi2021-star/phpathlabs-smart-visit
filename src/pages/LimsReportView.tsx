@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Loader2, Printer, ArrowLeft, Download, Share2 } from "lucide-react";
@@ -254,6 +254,7 @@ interface SignatureInfo {
 const LimsReportView = () => {
   const { registrationId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const selectedTestIdsParam = searchParams.get("tests");
   const selectedTestIds = selectedTestIdsParam ? new Set(selectedTestIdsParam.split(",")) : null;
@@ -276,6 +277,15 @@ const LimsReportView = () => {
   const [sharingWa, setSharingWa] = useState(false);
   const [showLetterhead, setShowLetterhead] = useState(!isProvisional);
   const [previewScale, setPreviewScale] = useState(1);
+
+  const goBackFromReport = () => {
+    const from = (location.state as { from?: string } | null)?.from;
+    if (from === "dispatch" || from === "verification") {
+      navigate(-1);
+      return;
+    }
+    navigate(isProvisional ? "/lims?tab=verification" : "/lims?tab=dispatch");
+  };
 
   // A4 width at 96dpi ≈ 794px. Recompute scale on resize so the page fits the viewport on mobile.
   useEffect(() => {
@@ -1268,7 +1278,7 @@ const LimsReportView = () => {
   if (!report) {
     return (
       <div className="p-6 space-y-4">
-        <Button variant="outline" onClick={() => navigate("/lims?tab=dispatch")}>
+        <Button variant="outline" onClick={goBackFromReport}>
           <ArrowLeft className="h-4 w-4 mr-1" />Back
         </Button>
         <div className="text-center py-12 text-muted-foreground">
@@ -1288,7 +1298,7 @@ const LimsReportView = () => {
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2 sm:gap-3 print:hidden">
         {!isPublic && (
-          <Button variant="outline" size="sm" onClick={() => navigate(isProvisional ? "/lims?tab=verification" : "/lims?tab=dispatch")}>
+          <Button variant="outline" size="sm" onClick={goBackFromReport}>
             <ArrowLeft className="h-4 w-4 sm:mr-1" />
             <span className="hidden sm:inline">Back</span>
           </Button>

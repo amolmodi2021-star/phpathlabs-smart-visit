@@ -1,6 +1,7 @@
 import RefreshButton from "@/components/lims/RefreshButton";
 import PageSizeSelect from "@/components/lims/PageSizeSelect";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
 import SyncingOverlay from "./SyncingOverlay";
 import { formatAgeGender } from "@/lib/ageGender";
@@ -39,6 +40,31 @@ import {
   readLimsPageSize,
   type LimsPageSize,
 } from "@/lib/limsListPrefs";
+
+const DISPATCH_LIST_SCROLL_KEY = "lims-dispatch-list-scroll";
+const DISPATCH_UI_RESTORE_KEY = "lims-dispatch-ui-restore";
+
+type DispatchUiRestore = {
+  scrollTop: number;
+  selectedPatientId: string | null;
+  mobileShowDetail: boolean;
+};
+
+function readDispatchUiRestore(): DispatchUiRestore | null {
+  try {
+    const raw = sessionStorage.getItem(DISPATCH_UI_RESTORE_KEY);
+    if (!raw) return null;
+    sessionStorage.removeItem(DISPATCH_UI_RESTORE_KEY);
+    const parsed = JSON.parse(raw) as DispatchUiRestore;
+    return {
+      scrollTop: Number(parsed.scrollTop) || 0,
+      selectedPatientId: parsed.selectedPatientId || null,
+      mobileShowDetail: !!parsed.mobileShowDetail,
+    };
+  } catch {
+    return null;
+  }
+}
 import {
   AlertDialog,
   AlertDialogAction,
@@ -225,20 +251,28 @@ function buildFullDispatchEntry(
 
 const Dispatch = () => {
   const isMobile = useIsMobile();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   useLimsPipelineRealtime("dispatch");
+  const restoredUiRef = useRef<DispatchUiRestore | null>(readDispatchUiRestore());
+  const listScrollRef = useRef<HTMLDivElement | null>(null);
+  const listScrollTopRef = useRef(restoredUiRef.current?.scrollTop ?? 0);
   const [search, setSearch] = useState("");
   /** all = lean date-range list; filters = pending / all-approved / partially-approved. */
   const [listMode, setListMode] = useState<DispatchListMode>("all");
   const [dateFrom, setDateFrom] = useState<Date>(startOfDay(subDays(new Date(), 7)));
   const [dateTo, setDateTo] = useState<Date>(endOfDay(new Date()));
-  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(
+    () => restoredUiRef.current?.selectedPatientId ?? null,
+  );
   const [actionKey, setActionKey] = useState<string | null>(null);
   const [viewSnipImages, setViewSnipImages] = useState<string[] | null>(null);
   const [reportSelectEntry, setReportSelectEntry] = useState<DispatchEntry | null>(null);
   const [selectedTestIds, setSelectedTestIds] = useState<Set<string>>(new Set());
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [mobileShowDetail, setMobileShowDetail] = useState(false);
+  const [mobileShowDetail, setMobileShowDetail] = useState(
+    () => restoredUiRef.current?.mobileShowDetail ?? false,
+  );
   const [pageSize, setPageSize] = useState<LimsPageSize>(() => readLimsPageSize(10));
   const [dispatchPage, setDispatchPage] = useState(0);
   /** After Today: Current board lists every matching patient (no page chunking). */
@@ -250,10 +284,39 @@ const Dispatch = () => {
     return () => clearTimeout(t);
   }, [search]);
 
+  const skipFilterSelectionReset = useRef(!!restoredUiRef.current?.selectedPatientId);
   useEffect(() => {
     setDispatchPage(0);
+    if (skipFilterSelectionReset.current) {
+      skipFilterSelectionReset.current = false;
+      return;
+    }
     setSelectedPatientId(null);
   }, [debouncedSearch, dateFrom, dateTo, listMode, pageSize, showAllForDay]);
+
+  const persistListScroll = (scrollTop: number) => {
+    listScrollTopRef.current = scrollTop;
+    try {
+      sessionStorage.setItem(DISPATCH_LIST_SCROLL_KEY, String(scrollTop));
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const saveDispatchUiForReturn = () => {
+    const payload: DispatchUiRestore = {
+      scrollTop: listScrollRef.current?.scrollTop ?? listScrollTopRef.current,
+      selectedPatientId,
+      mobileShowDetail,
+    };
+    listScrollTopRef.current = payload.scrollTop;
+    try {
+      sessionStorage.setItem(DISPATCH_UI_RESTORE_KEY, JSON.stringify(payload));
+      sessionStorage.setItem(DISPATCH_LIST_SCROLL_KEY, String(payload.scrollTop));
+    } catch {
+      /* ignore */
+    }
+  };
 
   const {
     data: filteredDispatchIds = [] as string[],
@@ -511,11 +574,27 @@ const Dispatch = () => {
 
   // Do not auto-open a patient — detail fetch only on user click (egress).
   useEffect(() => {
+    if (listLoading) return;
     if (selectedPatientId && !listEntries.find((e) => e.registration.id === selectedPatientId)) {
       setSelectedPatientId(null);
       if (isMobile) setMobileShowDetail(false);
     }
-  }, [listEntries, selectedPatientId, isMobile]);
+  }, [listEntries, selectedPatientId, isMobile, listLoading]);
+
+  // Restore list scroll after returning from report (component remount).
+  useEffect(() => {
+    if (listLoading) return;
+    const y = listScrollTopRef.current;
+    if (y <= 0) return;
+    const el = listScrollRef.current;
+    if (!el) return;
+    const apply = () => {
+      el.scrollTop = y;
+    };
+    apply();
+    const t = window.setTimeout(apply, 50);
+    return () => window.clearTimeout(t);
+  }, [listLoading, listEntries.length, dispatchPage, listMode]);
 
   const refreshKeys = useMemo(() => {
     const keys = ["dispatch_filtered_ids", "dispatch_regs"];
@@ -693,16 +772,11 @@ const Dispatch = () => {
     if (!reportSelectEntry || selectedTestIds.size === 0) return;
     const regId = reportSelectEntry.registration.id;
     const queryParam = Array.from(selectedTestIds).join(",");
-    const win = window.open(
-      `/lims/report/${regId}?tests=${encodeURIComponent(queryParam)}`,
-      "_blank",
-      "noopener,noreferrer",
-    );
-    if (!win) {
-      toast.error("Popup blocked — allow popups to view the report");
-      return;
-    }
+    saveDispatchUiForReturn();
     setReportSelectEntry(null);
+    navigate(`/lims/report/${regId}?tests=${encodeURIComponent(queryParam)}`, {
+      state: { from: "dispatch" },
+    });
   };
 
   const downloadAndSendManually = async (entry: DispatchEntry) => {
@@ -895,16 +969,25 @@ const Dispatch = () => {
 
       {(
         <div className={cn("flex gap-3", isMobile && "flex-col")} style={{ height: "calc(100vh - 180px)" }}>
-          {/* LEFT PANEL — Patient List */}
-          {(!isMobile || !mobileShowDetail) && (
-            <Card className={cn("flex flex-col overflow-hidden", isMobile ? "w-full" : "w-[380px] shrink-0")}>
+          {/* LEFT PANEL — Patient List (keep mounted on mobile so scroll position survives Back) */}
+          <Card
+            className={cn(
+              "flex flex-col overflow-hidden",
+              isMobile ? "w-full" : "w-[380px] shrink-0",
+              isMobile && mobileShowDetail && "hidden",
+            )}
+          >
               <div className="p-3 border-b">
                 <div className="relative">
                   <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input placeholder="Search name, mobile, invoice..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8 h-9 text-sm" />
                 </div>
               </div>
-              <div className="flex-1 min-h-0 overflow-y-auto">
+              <div
+                ref={listScrollRef}
+                className="flex-1 min-h-0 overflow-y-auto"
+                onScroll={(e) => persistListScroll(e.currentTarget.scrollTop)}
+              >
                 {listLoading ? (
                   <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
                 ) : listEntries.length === 0 ? (
@@ -980,7 +1063,6 @@ const Dispatch = () => {
                 )}
               </div>
             </Card>
-          )}
 
           {/* RIGHT PANEL — Selected Patient Details */}
           {(!isMobile || mobileShowDetail) && (
