@@ -106,8 +106,8 @@ function GlobalAuthEpochGuard() {
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisible);
 
-    // Background fallback; focus/visibility and Realtime handle prompt checks.
-    const interval = window.setInterval(run, 60_000);
+    // Background fallback; Realtime handles prompt logout. Keep interval light for egress.
+    const interval = window.setInterval(run, 5 * 60_000);
 
     // Realtime: instant logout when an admin bumps the epoch, no polling delay.
     const channel = supabase

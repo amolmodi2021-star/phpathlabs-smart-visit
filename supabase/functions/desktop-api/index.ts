@@ -89,11 +89,25 @@ async function sha1Hex(input: string): Promise<string> {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+type CloudinaryCreds = { cloudName: string; apiKey: string; apiSecret: string };
+const CLOUDINARY_CREDS_CACHE_MS = 30 * 60 * 1000;
+const cloudinaryCredsCache = new Map<string, { value: CloudinaryCreds | null; ts: number }>();
+
+function cloudinaryCacheKey(preferredCloudName?: string): string {
+  return (preferredCloudName || "").trim() || "__active__";
+}
+
 async function resolveCloudinaryCreds(
   supabase: ReturnType<typeof sb>,
   preferredCloudName?: string,
-): Promise<{ cloudName: string; apiKey: string; apiSecret: string } | null> {
+): Promise<CloudinaryCreds | null> {
+  const key = cloudinaryCacheKey(preferredCloudName);
+  const hit = cloudinaryCredsCache.get(key);
+  const now = Date.now();
+  if (hit && now - hit.ts < CLOUDINARY_CREDS_CACHE_MS) return hit.value;
+
   const preferred = (preferredCloudName || "").trim();
+  let resolved: CloudinaryCreds | null = null;
   if (preferred) {
     const { data } = await supabase
       .from("cloudinary_accounts")
@@ -102,22 +116,28 @@ async function resolveCloudinaryCreds(
       .limit(1)
       .maybeSingle();
     if (data?.api_key && data?.api_secret) {
-      return { cloudName: data.cloud_name, apiKey: data.api_key, apiSecret: data.api_secret };
+      resolved = { cloudName: data.cloud_name, apiKey: data.api_key, apiSecret: data.api_secret };
     }
   }
-  const { data: active } = await supabase
-    .from("cloudinary_accounts")
-    .select("cloud_name, api_key, api_secret")
-    .eq("is_active", true)
-    .maybeSingle();
-  if (active?.api_key && active?.api_secret) {
-    return { cloudName: active.cloud_name, apiKey: active.api_key, apiSecret: active.api_secret };
+  if (!resolved) {
+    const { data: active } = await supabase
+      .from("cloudinary_accounts")
+      .select("cloud_name, api_key, api_secret")
+      .eq("is_active", true)
+      .maybeSingle();
+    if (active?.api_key && active?.api_secret) {
+      resolved = { cloudName: active.cloud_name, apiKey: active.api_key, apiSecret: active.api_secret };
+    }
   }
-  const apiKey = Deno.env.get("CLOUDINARY_API_KEY") || "";
-  const apiSecret = Deno.env.get("CLOUDINARY_API_SECRET") || "";
-  const cloudName = preferred || Deno.env.get("CLOUDINARY_CLOUD_NAME") || "dd7qn3t3d";
-  if (!apiKey || !apiSecret) return null;
-  return { cloudName, apiKey, apiSecret };
+  if (!resolved) {
+    const apiKey = Deno.env.get("CLOUDINARY_API_KEY") || "";
+    const apiSecret = Deno.env.get("CLOUDINARY_API_SECRET") || "";
+    const cloudName = preferred || Deno.env.get("CLOUDINARY_CLOUD_NAME") || "dd7qn3t3d";
+    if (apiKey && apiSecret) resolved = { cloudName, apiKey, apiSecret };
+  }
+
+  cloudinaryCredsCache.set(key, { value: resolved, ts: now });
+  return resolved;
 }
 
 async function destroyCloudinaryResource(
@@ -231,8 +251,23 @@ async function listStorageFolderObjects(
  * Prefer Cloudinary destroy via outbox payload; also clean legacy Supabase
  * Storage objects. Only sweep true Storage orphans after a grace period so
  * in-flight uploads are never removed before the outbox row can claim them.
+ *
+ * Call from the Console/Reception 30‑minute prune timer (or explicit prune_outbox).
+ * Do NOT run on every idle claim — that caused massive PostgREST egress via
+ * repeated cloudinary_accounts lookups.
  */
-async function pruneInvoiceOutbox24h(): Promise<{ rows: number; files: number }> {
+const MIN_PRUNE_INTERVAL_MS = 15 * 60 * 1000;
+let lastPruneAtMs = 0;
+
+async function pruneInvoiceOutbox24h(
+  opts: { force?: boolean } = {},
+): Promise<{ rows: number; files: number; skipped?: boolean }> {
+  const nowMs = Date.now();
+  if (!opts.force && lastPruneAtMs > 0 && nowMs - lastPruneAtMs < MIN_PRUNE_INTERVAL_MS) {
+    return { rows: 0, files: 0, skipped: true };
+  }
+  lastPruneAtMs = nowMs;
+
   const supabase = sb();
   const { data: active, error: activeErr } = await supabase
     .from("whatsapp_console_outbox")
@@ -249,11 +284,13 @@ async function pruneInvoiceOutbox24h(): Promise<{ rows: number; files: number }>
     if (cref) keepCloudinary.add(`${cref.resourceType}:${cref.publicId}`);
   }
 
+  // Only rows that still have media — already-cleared rows skip Cloudinary lookups.
   const { data: inactive } = await supabase
     .from("whatsapp_console_outbox")
     .select("id, media_url, payload, media_mime")
     .in("status", ["sent", "failed", "cancelled"])
-    .limit(500);
+    .not("media_url", "is", null)
+    .limit(100);
 
   let files = 0;
   for (const row of inactive || []) {
@@ -303,7 +340,7 @@ async function pruneInvoiceOutbox24h(): Promise<{ rows: number; files: number }>
     .from("whatsapp_console_outbox")
     .select("id, media_url, payload, media_mime")
     .lt("created_at", cutoff)
-    .limit(500);
+    .limit(100);
   if (error) throw error;
   const rows = oldRows || [];
   for (const row of rows) {
@@ -322,10 +359,16 @@ async function pruneInvoiceOutbox24h(): Promise<{ rows: number; files: number }>
 }
 
 const STUCK_CLAIM_MS = 5 * 60 * 1000;
+const RECLAIM_MIN_INTERVAL_MS = 2 * 60 * 1000;
 const DEFAULT_MAX_ATTEMPTS = 2;
+let lastReclaimAtMs = 0;
 
 /** Re-queue claims abandoned mid-send (Console crash / laptop sleep). */
 async function reclaimStuckClaims(supabase: ReturnType<typeof sb>) {
+  const nowMs = Date.now();
+  if (lastReclaimAtMs > 0 && nowMs - lastReclaimAtMs < RECLAIM_MIN_INTERVAL_MS) return;
+  lastReclaimAtMs = nowMs;
+
   const cutoff = new Date(Date.now() - STUCK_CLAIM_MS).toISOString();
   const now = new Date().toISOString();
   await supabase
@@ -342,6 +385,9 @@ async function reclaimStuckClaims(supabase: ReturnType<typeof sb>) {
     .lt("claimed_at", cutoff);
 }
 
+const CLAIM_OUTBOX_COLS =
+  "id, kind, phone, patient_name, invoice_number, caption, media_url, media_mime, payload, status, attempts, max_attempts, next_retry_at, created_at, last_error";
+
 /** Atomically claim pending outbox rows for WhatsApp Console. */
 async function claimOutbox(limit = 5, claimedBy = "whatsapp-console") {
   const supabase = sb();
@@ -352,7 +398,7 @@ async function claimOutbox(limit = 5, claimedBy = "whatsapp-console") {
   // Due pending rows: never-scheduled OR retry time reached
   const { data: pending, error } = await supabase
     .from("whatsapp_console_outbox")
-    .select("*")
+    .select(CLAIM_OUTBOX_COLS)
     .eq("status", "pending")
     .or(`next_retry_at.is.null,next_retry_at.lte."${nowIso}"`)
     .order("created_at", { ascending: true })
@@ -360,15 +406,9 @@ async function claimOutbox(limit = 5, claimedBy = "whatsapp-console") {
   if (error) throw error;
   const rows = pending || [];
 
-  // Only prune when idle — avoids extra storage work on every busy claim.
-  if (!rows.length) {
-    try {
-      await pruneInvoiceOutbox24h();
-    } catch (e) {
-      console.warn("pruneInvoiceOutbox24h", e);
-    }
-    return [];
-  }
+  // Idle claim must NOT prune — Reception already runs prune on a 30‑minute timer.
+  // Pruning here caused ~145k cloudinary_accounts PostgREST calls (Database Egress).
+  if (!rows.length) return [];
 
   const now = new Date().toISOString();
   const claimed: any[] = [];
@@ -385,7 +425,7 @@ async function claimOutbox(limit = 5, claimedBy = "whatsapp-console") {
       })
       .eq("id", row.id)
       .eq("status", "pending")
-      .select("*")
+      .select(CLAIM_OUTBOX_COLS)
       .maybeSingle();
     if (!updErr && data) claimed.push(data);
   }

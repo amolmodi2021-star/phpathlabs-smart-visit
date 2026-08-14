@@ -183,10 +183,21 @@ export async function checkAuthEpochAndLogoutIfStale(): Promise<boolean> {
 export const PERMISSIONS_UPDATED_EVENT = "ph:permissions-updated";
 
 let refreshInFlight: Promise<AppUser | null> | null = null;
+let lastPermissionsRefreshAt = 0;
+const PERMISSIONS_REFRESH_MIN_MS = 5 * 60_000;
 
-export async function refreshCurrentUserPermissions(): Promise<AppUser | null> {
+export async function refreshCurrentUserPermissions(
+  opts: { force?: boolean } = {},
+): Promise<AppUser | null> {
   const current = getCurrentUser();
   if (!current?.id) return null;
+  if (
+    !opts.force &&
+    lastPermissionsRefreshAt > 0 &&
+    Date.now() - lastPermissionsRefreshAt < PERMISSIONS_REFRESH_MIN_MS
+  ) {
+    return current;
+  }
   if (refreshInFlight) return refreshInFlight;
 
   refreshInFlight = (async () => {
@@ -215,6 +226,8 @@ export async function refreshCurrentUserPermissions(): Promise<AppUser | null> {
         role_id: userRow.role_id,
         permissions,
       };
+
+      lastPermissionsRefreshAt = Date.now();
 
       const prevJson = JSON.stringify(current);
       const nextJson = JSON.stringify(refreshed);
