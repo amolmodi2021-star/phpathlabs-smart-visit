@@ -6,7 +6,7 @@ import SyncingOverlay from "./SyncingOverlay";
 import { formatAgeGender } from "@/lib/ageGender";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 import { getCurrentUserName } from "@/lib/auth";
-import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLimsPipelineRealtime } from "@/hooks/useLimsPipelineRealtime";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
@@ -255,7 +255,11 @@ const Dispatch = () => {
     setSelectedPatientId(null);
   }, [debouncedSearch, dateFrom, dateTo, listMode, pageSize, showAllForDay]);
 
-  const { data: filteredDispatchIds = [] as string[], isLoading: loadingIds } = useQuery({
+  const {
+    data: filteredDispatchIds = [] as string[],
+    isLoading: loadingIds,
+    isPlaceholderData: idsPlaceholder,
+  } = useQuery({
     queryKey: [
       "dispatch_filtered_ids",
       listMode,
@@ -269,7 +273,13 @@ const Dispatch = () => {
         dateToIso: dateTo.toISOString(),
       });
     },
-    placeholderData: keepPreviousData,
+    // Keep previous results only while paging/searching within the same filter mode.
+    // Crossing modes must not leave pending patients on All/Partial Approved.
+    placeholderData: (previousData, previousQuery) => {
+      const prevMode = previousQuery?.queryKey?.[1];
+      if (prevMode !== listMode) return undefined;
+      return previousData;
+    },
     staleTime: 120_000,
   });
 
@@ -290,8 +300,8 @@ const Dispatch = () => {
   );
   const pageKey = shortIdsKey(pageIds, "dp");
 
-  const { data: registrations = [], isLoading: loadingRegs } = useQuery({
-    queryKey: ["dispatch_regs", pageKey, effectivePageSize, safePage],
+  const { data: registrationsRaw = [], isLoading: loadingRegs } = useQuery({
+    queryKey: ["dispatch_regs", listMode, pageKey, effectivePageSize, safePage],
     enabled: pageIds.length > 0,
     queryFn: async () => {
       const { data } = await supabase.from("patient_registrations")
@@ -300,9 +310,12 @@ const Dispatch = () => {
       const order = new Map(pageIds.map((id, i) => [id, i]));
       return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     },
-    placeholderData: keepPreviousData,
     staleTime: 120_000,
   });
+
+  // Disabled queries keep last cached rows — force empty when the filter resolved to none.
+  const registrations =
+    !idsPlaceholder && filteredDispatchIds.length === 0 ? [] : registrationsRaw;
 
   const listLoading = loadingIds || (pageIds.length > 0 && loadingRegs);
   const regIds = registrations.map((r: any) => r.id);
