@@ -18,7 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Search, User, Monitor, Save, Calculator, Wifi, WifiOff, ChevronDown, ChevronUp, Check, Loader2, FlaskConical, Package, SendHorizonal, ArrowRightLeft, Eye, Trash2, StickyNote, RefreshCw, AlertTriangle } from "lucide-react";
+import { Search, User, Monitor, Save, Calculator, Wifi, WifiOff, ChevronDown, ChevronUp, Check, Loader2, FlaskConical, Package, SendHorizonal, ArrowRightLeft, Eye, Trash2, StickyNote, RefreshCw, AlertTriangle, Image, Keyboard } from "lucide-react";
 import { DescriptiveCombobox } from "./DescriptiveCombobox";
 import TimeResultInput from "./TimeResultInput";
 import { parseTimeResultToSeconds } from "@/lib/timeRange";
@@ -35,13 +35,14 @@ import { readLimsPageSize, type LimsPageSize } from "@/lib/limsListPrefs";
 import SyncingOverlay from "./SyncingOverlay";
 import NewBadge from "./NewBadge";
 import OutsourcedResults from "./OutsourcedResults";
+import SnipOnLetterhead from "./SnipOnLetterhead";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { formatDateDDMMYYYY } from "@/lib/utils";
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 import { fetchAllByIds } from "@/lib/fetchAllRows";
 import { PATIENT_RESULTS_SELECT_RESULTS } from "@/lib/patientResultsSelect";
-import { isSnipResultDetail } from "@/lib/outsourcedResultMode";
+import { isSnipResultDetail, appendOutsourcedSnipImage, clearTypedOutsourcedResults } from "@/lib/outsourcedResultMode";
 
 /** List headers — omit tests / cancelled_tests JSON (egress). */
 const REG_LIST_SELECT =
@@ -152,6 +153,12 @@ const ResultsEntry = () => {
   const [pageSize, setPageSize] = useState<LimsPageSize>(() => readLimsPageSize());
   const [expandedPatient, setExpandedPatient] = useState<string | null>(null);
   const [expandedTests, setExpandedTests] = useState<Set<string>>(new Set());
+  const [snipEntryKeys, setSnipEntryKeys] = useState<Set<string>>(new Set());
+  const [uploadingSnipKey, setUploadingSnipKey] = useState<string | null>(null);
+  const [savingSnipKey, setSavingSnipKey] = useState<string | null>(null);
+  const [snipModeConfirm, setSnipModeConfirm] = useState<{
+    regId: string; testId: string; testName: string; paramIds?: string[]; target: "snip" | "manual";
+  } | null>(null);
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
   const [editedUnits, setEditedUnits] = useState<Record<string, string>>({});
   const [editedRefRanges, setEditedRefRanges] = useState<Record<string, string>>({});
@@ -662,6 +669,171 @@ const ResultsEntry = () => {
       toast.error(err.message || "Transfer failed");
     } finally {
       setTransferringKey(null);
+    }
+  };
+
+  const outsourcedParamIdsForTest = (regId: string, testId: string): string[] | undefined => {
+    const set = outsourcedParamSets[`${regId}||${testId}`];
+    if (!set || set.size === 0) return undefined;
+    return Array.from(set);
+  };
+
+  const applySnipEntry = async (regId: string, testId: string) => {
+    const testKey = `${regId}||${testId}`;
+    const paramIds = outsourcedParamIdsForTest(regId, testId);
+    await clearTypedOutsourcedResults(supabase, regId, testId, paramIds);
+    const { error } = await supabase.from("outsourced_test_snips").upsert({
+      registration_id: regId,
+      test_id: testId,
+      result_mode: "snip",
+      outsource_status: outsourcedSnipDetails[testKey]?.status || "sent",
+    } as any, { onConflict: "registration_id,test_id" });
+    if (error) throw error;
+    setSnipEntryKeys((prev) => new Set(prev).add(testKey));
+    setExpandedTests((prev) => new Set(prev).add(testKey));
+    qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] });
+    qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+    qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
+  };
+
+  const applyManualEntry = async (regId: string, testId: string) => {
+    const testKey = `${regId}||${testId}`;
+    const { error } = await supabase.from("outsourced_test_snips").upsert({
+      registration_id: regId,
+      test_id: testId,
+      result_mode: "manual",
+      snip_image_url: null,
+      snip_image_urls: [],
+    } as any, { onConflict: "registration_id,test_id" });
+    if (error) throw error;
+    setSnipEntryKeys((prev) => {
+      const next = new Set(prev);
+      next.delete(testKey);
+      return next;
+    });
+    setExpandedTests((prev) => new Set(prev).add(testKey));
+    qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] });
+    qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+  };
+
+  const beginSnipEntry = async (regId: string, testId: string, testName: string, hasTypedValues: boolean) => {
+    const paramIds = outsourcedParamIdsForTest(regId, testId);
+    if (hasTypedValues) {
+      setSnipModeConfirm({ regId, testId, testName, paramIds, target: "snip" });
+      return;
+    }
+    try {
+      await applySnipEntry(regId, testId);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to switch to snipped image");
+    }
+  };
+
+  const beginManualEntry = async (regId: string, testId: string, testName: string, hasImages: boolean) => {
+    const paramIds = outsourcedParamIdsForTest(regId, testId);
+    if (hasImages) {
+      setSnipModeConfirm({ regId, testId, testName, paramIds, target: "manual" });
+      return;
+    }
+    try {
+      await applyManualEntry(regId, testId);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to switch to typed values");
+    }
+  };
+
+  const handlePatientSnipPaste = async (regId: string, testId: string, event: React.ClipboardEvent) => {
+    const items = event.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (!item.type.startsWith("image/")) continue;
+      event.preventDefault();
+      const file = item.getAsFile();
+      if (!file) continue;
+      await handlePatientSnipUpload(regId, testId, file);
+      return;
+    }
+  };
+
+  const handlePatientSnipUpload = async (regId: string, testId: string, file: File) => {
+    const key = `${regId}||${testId}`;
+    setUploadingSnipKey(key);
+    try {
+      const existing = outsourcedSnipDetails[key]?.snipImageUrls || [];
+      const newUrls = await appendOutsourcedSnipImage(
+        supabase, regId, testId, file, existing, outsourcedParamIdsForTest(regId, testId),
+      );
+      toast.success(`Page ${newUrls.length} added successfully`);
+      setSnipEntryKeys((prev) => new Set(prev).add(key));
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] }),
+        qc.invalidateQueries({ queryKey: ["outsourced_snips"] }),
+        qc.invalidateQueries({ queryKey: ["patient_results_existing"] }),
+      ]);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to upload image");
+    } finally {
+      setUploadingSnipKey(null);
+    }
+  };
+
+  const handlePatientSnipDeletePage = async (regId: string, testId: string, pageIndex: number) => {
+    const key = `${regId}||${testId}`;
+    const current = outsourcedSnipDetails[key]?.snipImageUrls || [];
+    const newUrls = current.filter((_, i) => i !== pageIndex);
+    try {
+      if (newUrls.length === 0) {
+        await supabase.from("outsourced_test_snips").update({
+          snip_image_url: null,
+          snip_image_urls: [],
+          result_mode: "manual",
+          outsource_status: "sent",
+        } as any).eq("registration_id", regId).eq("test_id", testId);
+        setSnipEntryKeys((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+        toast.success("All pages removed — switched back to typed values");
+      } else {
+        await supabase.from("outsourced_test_snips").update({
+          snip_image_url: newUrls[0],
+          snip_image_urls: newUrls,
+        } as any).eq("registration_id", regId).eq("test_id", testId);
+        toast.success(`Page ${pageIndex + 1} removed`);
+      }
+      qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] });
+      qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete page");
+    }
+  };
+
+  const savePatientSnipResults = async (regId: string, testId: string, testName: string) => {
+    const key = `${regId}||${testId}`;
+    setSavingSnipKey(key);
+    try {
+      await clearTypedOutsourcedResults(supabase, regId, testId, outsourcedParamIdsForTest(regId, testId));
+      const { error } = await supabase.from("outsourced_test_snips").upsert({
+        registration_id: regId,
+        test_id: testId,
+        result_mode: "snip",
+        outsource_status: "results_saved",
+        entered_at: new Date().toISOString(),
+        entered_by: getCurrentUserName(),
+      } as any, { onConflict: "registration_id,test_id" });
+      if (error) throw error;
+      toast.success(`Snip saved for ${testName}`);
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] }),
+        qc.invalidateQueries({ queryKey: ["outsourced_snips"] }),
+        qc.invalidateQueries({ queryKey: ["patient_results_existing"] }),
+      ]);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save snip");
+    } finally {
+      setSavingSnipKey(null);
     }
   };
 
@@ -1871,6 +2043,35 @@ const ResultsEntry = () => {
                           <span className="hidden sm:inline">Transfer to Outsourced</span><span className="sm:hidden">Outsource</span>
                         </Button>
                       )}
+                      {(isFullTestOutsourced || tg.params.some((p) => p.isOutsourced)) && !(snipEntryKeys.has(testKey) || testSnipDetail?.resultMode === "snip") && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-[11px] gap-1 border-blue-300 text-blue-700 hover:bg-blue-50"
+                          onClick={() => {
+                            const hasTyped = tg.params.some((p) => {
+                              const k = `${reg.id}||${p.parameterId}`;
+                              const v = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
+                              return !!(v && v.trim());
+                            });
+                            beginSnipEntry(reg.id, tg.testId, tg.testName, hasTyped);
+                          }}
+                        >
+                          <Image className="h-3.5 w-3.5" />
+                          Add snipped image
+                        </Button>
+                      )}
+                      {(isFullTestOutsourced || tg.params.some((p) => p.isOutsourced)) && (snipEntryKeys.has(testKey) || testSnipDetail?.resultMode === "snip") && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-[11px] gap-1"
+                          onClick={() => beginManualEntry(reg.id, tg.testId, tg.testName, (testSnipDetail?.snipImageUrls?.length || 0) > 0)}
+                        >
+                          <Keyboard className="h-3.5 w-3.5" />
+                          Type parameter values
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         variant="outline"
@@ -1907,7 +2108,42 @@ const ResultsEntry = () => {
                       <Trash2 className="h-3 w-3 text-destructive/60 hover:text-destructive cursor-pointer shrink-0" onClick={() => setEditedTestNotes(prev => ({ ...prev, [testKey]: "" }))} />
                     </div>
                   )}
-                  {isTestExpanded && (
+                  {isTestExpanded && (snipEntryKeys.has(testKey) || testSnipDetail?.resultMode === "snip") && (
+                    <div className="mt-2 space-y-2 px-1" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-[11px] gap-1"
+                          onClick={() => beginManualEntry(reg.id, tg.testId, tg.testName, (testSnipDetail?.snipImageUrls?.length || 0) > 0)}
+                        >
+                          <Keyboard className="h-3.5 w-3.5" /> Type parameter values
+                        </Button>
+                      </div>
+                      <SnipOnLetterhead
+                        regId={reg.id}
+                        testId={tg.testId}
+                        imageUrls={testSnipDetail?.snipImageUrls || []}
+                        isUploading={uploadingSnipKey === testKey}
+                        onPaste={handlePatientSnipPaste}
+                        onFileUpload={handlePatientSnipUpload}
+                        onDeletePage={handlePatientSnipDeletePage}
+                      />
+                      {(testSnipDetail?.snipImageUrls?.length || 0) > 0 && (
+                        <div className="flex justify-end">
+                          <Button
+                            size="sm"
+                            onClick={() => savePatientSnipResults(reg.id, tg.testId, tg.testName)}
+                            disabled={savingSnipKey === testKey}
+                          >
+                            {savingSnipKey === testKey ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
+                            Save Snipped Image
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {isTestExpanded && !(snipEntryKeys.has(testKey) || testSnipDetail?.resultMode === "snip") && (
                     <div className="overflow-x-auto -mx-1">
                     <Table>
                       <TableHeader>
@@ -2412,6 +2648,38 @@ const ResultsEntry = () => {
           </div>
         </DialogContent>
       </Dialog>
+      <AlertDialog open={!!snipModeConfirm} onOpenChange={(open) => { if (!open) setSnipModeConfirm(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {snipModeConfirm?.target === "snip" ? "Switch to snipped image?" : "Switch to typed values?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {snipModeConfirm?.target === "snip"
+                ? `Typed results for ${snipModeConfirm?.testName || "this test"} will be removed. You can only keep a snipped image or typed values — not both.`
+                : `Snipped images for ${snipModeConfirm?.testName || "this test"} will be removed. You can only keep typed values or a snipped image — not both.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                if (!snipModeConfirm) return;
+                const { regId, testId, target } = snipModeConfirm;
+                setSnipModeConfirm(null);
+                try {
+                  if (target === "snip") await applySnipEntry(regId, testId);
+                  else await applyManualEntry(regId, testId);
+                } catch (err: any) {
+                  toast.error(err.message || "Failed to switch entry method");
+                }
+              }}
+            >
+              Switch
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {reTotalPages > 1 && (
         <div className="flex items-center justify-between mt-4">
           <Button variant="outline" size="sm" disabled={rePage === 0} onClick={() => setRePage(p => p - 1)}>Prev</Button>

@@ -35,3 +35,50 @@ export function isSnipResultDetail(detail: {
   if (!detail || detail.resultMode !== "snip") return false;
   return Array.isArray(detail.snipImageUrls) && detail.snipImageUrls.length > 0;
 }
+
+export async function clearTypedOutsourcedResults(
+  client: { from: (table: string) => any },
+  regId: string,
+  testId: string,
+  outsourcedParamIds?: string[],
+) {
+  let q = client.from("patient_results")
+    .delete()
+    .eq("registration_id", regId)
+    .eq("test_id", testId)
+    .in("status", ["pending", "entered", "results_entered"]);
+  if (outsourcedParamIds && outsourcedParamIds.length > 0) {
+    q = q.in("parameter_id", outsourcedParamIds);
+  }
+  const { error } = await q;
+  if (error) throw error;
+}
+
+export async function appendOutsourcedSnipImage(
+  client: { from: (table: string) => any; storage: { from: (bucket: string) => any } },
+  regId: string,
+  testId: string,
+  file: File,
+  existingUrls: string[],
+  outsourcedParamIds?: string[],
+): Promise<string[]> {
+  const ext = (file.name.split(".").pop() || "png").replace(/[^a-zA-Z0-9]/g, "") || "png";
+  const fileName = `${regId}_${testId}_${Date.now()}.${ext}`;
+  const { error: uploadError } = await client.storage
+    .from("outsourced-snips")
+    .upload(fileName, file, { contentType: file.type || "image/png", upsert: true });
+  if (uploadError) throw uploadError;
+  const { data: urlData } = client.storage.from("outsourced-snips").getPublicUrl(fileName);
+  const newUrls = [...existingUrls, urlData.publicUrl];
+  const { error: upsertErr } = await client.from("outsourced_test_snips").upsert({
+    registration_id: regId,
+    test_id: testId,
+    snip_image_url: newUrls[0],
+    snip_image_urls: newUrls,
+    result_mode: "snip",
+    outsource_status: "sent",
+  }, { onConflict: "registration_id,test_id" });
+  if (upsertErr) throw upsertErr;
+  await clearTypedOutsourcedResults(client, regId, testId, outsourcedParamIds);
+  return newUrls;
+}

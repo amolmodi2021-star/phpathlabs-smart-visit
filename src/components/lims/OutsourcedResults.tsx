@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -994,6 +994,28 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
             )}
           </div>
           <div className="flex items-center gap-2">
+            {canEnterResults && hasParams && currentMode !== "snip" && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-[11px] gap-1 border-blue-300 text-blue-700 hover:bg-blue-50"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setExpandedTest(testKey);
+                  if (hasManualResults(regId, test.testId)) {
+                    setModeSwitchConfirm({
+                      regId, testId: test.testId, testName: test.testName, to: "snip",
+                      outsourcedParamIds: test.outsourcedParameterIds,
+                    });
+                  } else {
+                    setSnipMode(regId, test.testId, test.outsourcedParameterIds);
+                  }
+                }}
+              >
+                <Image className="h-3.5 w-3.5" />
+                Add snipped image
+              </Button>
+            )}
             {test.isTransferredInhouse && !test.isParameterLevel && status !== "results_saved" && (
               <Button
                 size="sm"
@@ -1060,46 +1082,48 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
               </div>
             )}
             {hasParams && (
-              <div className="text-xs text-muted-foreground bg-muted/40 border rounded px-3 py-2">
-                Choose <strong>Manual Entry</strong> or <strong>Snip / Image</strong> — not both. Switching clears the other method.
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant={currentMode === "manual" ? "default" : "outline"}
+                  className="h-9 text-xs gap-1.5"
+                  onClick={() => {
+                    if (currentMode === "manual") return;
+                    if (getSnipImageUrls(regId, test.testId).length > 0) {
+                      setModeSwitchConfirm({
+                        regId, testId: test.testId, testName: test.testName, to: "manual",
+                        outsourcedParamIds: test.outsourcedParameterIds,
+                      });
+                      return;
+                    }
+                    setManualMode(regId, test.testId);
+                  }}
+                >
+                  <Keyboard className="h-3.5 w-3.5" /> Type parameter values
+                </Button>
+                <Button
+                  type="button"
+                  variant={currentMode === "snip" ? "default" : "outline"}
+                  className="h-9 text-xs gap-1.5"
+                  onClick={() => {
+                    if (currentMode === "snip") return;
+                    if (hasManualResults(regId, test.testId)) {
+                      setModeSwitchConfirm({
+                        regId, testId: test.testId, testName: test.testName, to: "snip",
+                        outsourcedParamIds: test.outsourcedParameterIds,
+                      });
+                      return;
+                    }
+                    setSnipMode(regId, test.testId, test.outsourcedParameterIds);
+                  }}
+                >
+                  <Image className="h-3.5 w-3.5" /> Add snipped image
+                </Button>
               </div>
             )}
             <Tabs
               value={currentMode === "snip" || !hasParams ? "snip" : "manual"}
-              onValueChange={(v) => {
-                if (v === currentMode) return;
-                if (v === "manual" && hasParams) {
-                  if (getSnipImageUrls(regId, test.testId).length > 0) {
-                    setModeSwitchConfirm({
-                      regId, testId: test.testId, testName: test.testName, to: "manual",
-                      outsourcedParamIds: test.outsourcedParameterIds,
-                    });
-                    return;
-                  }
-                  setManualMode(regId, test.testId);
-                }
-                if (v === "snip") {
-                  if (hasManualResults(regId, test.testId)) {
-                    setModeSwitchConfirm({
-                      regId, testId: test.testId, testName: test.testName, to: "snip",
-                      outsourcedParamIds: test.outsourcedParameterIds,
-                    });
-                    return;
-                  }
-                  setSnipMode(regId, test.testId, test.outsourcedParameterIds);
-                }
-              }}
             >
-              <TabsList className="h-8">
-                {hasParams && (
-                  <TabsTrigger value="manual" className="text-xs gap-1 h-6">
-                    <Keyboard className="h-3 w-3" /> Manual Entry
-                  </TabsTrigger>
-                )}
-                <TabsTrigger value="snip" className="text-xs gap-1 h-6">
-                  <Image className="h-3 w-3" /> Snip / Image
-                </TabsTrigger>
-              </TabsList>
 
               {hasParams && (
                 <TabsContent value="manual" className="mt-2">
