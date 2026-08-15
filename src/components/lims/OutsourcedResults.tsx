@@ -1073,21 +1073,26 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
           </div>
         )}
 
-        {/* Expanded: result entry / snip for sent tests */}
-        {isExpanded && canEnterResults && (
+        {canEnterResults && (
           <div className="border-t p-3 space-y-3 bg-muted/10">
             {!hasParams && (
               <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-                No report parameters are linked for this test. Use <strong>Snip / Image</strong> to attach the outsourced report, then Save.
+                No report parameters are linked for this test. Use <strong>Add snipped image</strong> to attach the outsourced report, then Save.
               </div>
             )}
             {hasParams && (
-              <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-md border border-blue-200 bg-blue-50/80 p-2 space-y-2">
+                <div className="text-xs font-medium text-blue-900">
+                  Outsourced result — type parameter values or add a snipped image, not both.
+                </div>
+                <div className="grid grid-cols-2 gap-2">
                 <Button
                   type="button"
                   variant={currentMode === "manual" ? "default" : "outline"}
                   className="h-9 text-xs gap-1.5"
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setExpandedTest(testKey);
                     if (currentMode === "manual") return;
                     if (getSnipImageUrls(regId, test.testId).length > 0) {
                       setModeSwitchConfirm({
@@ -1105,7 +1110,9 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                   type="button"
                   variant={currentMode === "snip" ? "default" : "outline"}
                   className="h-9 text-xs gap-1.5"
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setExpandedTest(testKey);
                     if (currentMode === "snip") return;
                     if (hasManualResults(regId, test.testId)) {
                       setModeSwitchConfirm({
@@ -1119,6 +1126,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                 >
                   <Image className="h-3.5 w-3.5" /> Add snipped image
                 </Button>
+                </div>
               </div>
             )}
             <Tabs

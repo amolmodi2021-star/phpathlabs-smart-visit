@@ -489,6 +489,25 @@ const ResultsEntry = () => {
     return { transferredTestKeys: testKeys, outsourcedParamSets: paramSets, outsourcedSnipDetails: details };
   }, [outsourcedSnips]);
 
+  const autoExpandedRegRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!expandedPatient) {
+      autoExpandedRegRef.current = null;
+      return;
+    }
+    const keys = new Set<string>();
+    transferredTestKeys.forEach((k) => { if (k.startsWith(`${expandedPatient}||`)) keys.add(k); });
+    Object.keys(outsourcedParamSets).forEach((k) => { if (k.startsWith(`${expandedPatient}||`)) keys.add(k); });
+    Object.keys(outsourcedSnipDetails).forEach((k) => { if (k.startsWith(`${expandedPatient}||`)) keys.add(k); });
+    if (keys.size === 0 || autoExpandedRegRef.current === expandedPatient) return;
+    autoExpandedRegRef.current = expandedPatient;
+    setExpandedTests((prev) => {
+      const next = new Set(prev);
+      keys.forEach((k) => next.add(k));
+      return next;
+    });
+  }, [expandedPatient, transferredTestKeys, outsourcedParamSets, outsourcedSnipDetails]);
+
   // ─── Fetch historical results for expanded patient (prev 1 & prev 2) ───
   const expandedUmr = useMemo(() => {
     if (!expandedPatient) return null;
@@ -1960,8 +1979,10 @@ const ResultsEntry = () => {
             {groupByTest(mg.params).map((tg) => {
               const testKey = `${reg.id}||${tg.testId}`;
               const isTestSaving = saveMutation.isPending && savingTestKey === testKey;
-              const isFullTestOutsourced = transferredTestKeys.has(testKey);
+              const isFullTestOutsourced = transferredTestKeys.has(testKey) || !!outsourcedSnipDetails[testKey];
               const testSnipDetail = outsourcedSnipDetails[testKey];
+              const isOutsourcedTest = isFullTestOutsourced || tg.params.some((p) => p.isOutsourced);
+              const isSnipMode = snipEntryKeys.has(testKey) || testSnipDetail?.resultMode === "snip";
               const isTestExpanded = expandedTests.has(testKey);
               const filledCount = tg.params.filter(p => {
                 const k = `${reg.id}||${p.parameterId}`;
@@ -2043,35 +2064,6 @@ const ResultsEntry = () => {
                           <span className="hidden sm:inline">Transfer to Outsourced</span><span className="sm:hidden">Outsource</span>
                         </Button>
                       )}
-                      {(isFullTestOutsourced || tg.params.some((p) => p.isOutsourced)) && !(snipEntryKeys.has(testKey) || testSnipDetail?.resultMode === "snip") && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 text-[11px] gap-1 border-blue-300 text-blue-700 hover:bg-blue-50"
-                          onClick={() => {
-                            const hasTyped = tg.params.some((p) => {
-                              const k = `${reg.id}||${p.parameterId}`;
-                              const v = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
-                              return !!(v && v.trim());
-                            });
-                            beginSnipEntry(reg.id, tg.testId, tg.testName, hasTyped);
-                          }}
-                        >
-                          <Image className="h-3.5 w-3.5" />
-                          Add snipped image
-                        </Button>
-                      )}
-                      {(isFullTestOutsourced || tg.params.some((p) => p.isOutsourced)) && (snipEntryKeys.has(testKey) || testSnipDetail?.resultMode === "snip") && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 text-[11px] gap-1"
-                          onClick={() => beginManualEntry(reg.id, tg.testId, tg.testName, (testSnipDetail?.snipImageUrls?.length || 0) > 0)}
-                        >
-                          <Keyboard className="h-3.5 w-3.5" />
-                          Type parameter values
-                        </Button>
-                      )}
                       <Button
                         size="sm"
                         variant="outline"
@@ -2108,42 +2100,66 @@ const ResultsEntry = () => {
                       <Trash2 className="h-3 w-3 text-destructive/60 hover:text-destructive cursor-pointer shrink-0" onClick={() => setEditedTestNotes(prev => ({ ...prev, [testKey]: "" }))} />
                     </div>
                   )}
-                  {isTestExpanded && (snipEntryKeys.has(testKey) || testSnipDetail?.resultMode === "snip") && (
-                    <div className="mt-2 space-y-2 px-1" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center gap-2">
+                  {isOutsourcedTest && (
+                    <div className="mt-2 mx-1 rounded-md border border-blue-200 bg-blue-50/80 p-2 space-y-2" onClick={(e) => e.stopPropagation()}>
+                      <div className="text-xs font-medium text-blue-900">
+                        Outsourced result — type parameter values or add a snipped image, not both.
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
                         <Button
+                          type="button"
                           size="sm"
-                          variant="outline"
-                          className="h-7 text-[11px] gap-1"
+                          variant={!isSnipMode ? "default" : "outline"}
+                          className="h-9 text-xs gap-1.5"
                           onClick={() => beginManualEntry(reg.id, tg.testId, tg.testName, (testSnipDetail?.snipImageUrls?.length || 0) > 0)}
                         >
                           <Keyboard className="h-3.5 w-3.5" /> Type parameter values
                         </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={isSnipMode ? "default" : "outline"}
+                          className="h-9 text-xs gap-1.5"
+                          onClick={() => {
+                            const hasTyped = tg.params.some((p) => {
+                              const k = `${reg.id}||${p.parameterId}`;
+                              const v = editedValues[k] !== undefined ? editedValues[k] : p.resultValue;
+                              return !!(v && v.trim());
+                            });
+                            beginSnipEntry(reg.id, tg.testId, tg.testName, hasTyped);
+                          }}
+                        >
+                          <Image className="h-3.5 w-3.5" /> Add snipped image
+                        </Button>
                       </div>
-                      <SnipOnLetterhead
-                        regId={reg.id}
-                        testId={tg.testId}
-                        imageUrls={testSnipDetail?.snipImageUrls || []}
-                        isUploading={uploadingSnipKey === testKey}
-                        onPaste={handlePatientSnipPaste}
-                        onFileUpload={handlePatientSnipUpload}
-                        onDeletePage={handlePatientSnipDeletePage}
-                      />
-                      {(testSnipDetail?.snipImageUrls?.length || 0) > 0 && (
-                        <div className="flex justify-end">
-                          <Button
-                            size="sm"
-                            onClick={() => savePatientSnipResults(reg.id, tg.testId, tg.testName)}
-                            disabled={savingSnipKey === testKey}
-                          >
-                            {savingSnipKey === testKey ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
-                            Save Snipped Image
-                          </Button>
-                        </div>
+                      {isSnipMode && (
+                        <>
+                          <SnipOnLetterhead
+                            regId={reg.id}
+                            testId={tg.testId}
+                            imageUrls={testSnipDetail?.snipImageUrls || []}
+                            isUploading={uploadingSnipKey === testKey}
+                            onPaste={handlePatientSnipPaste}
+                            onFileUpload={handlePatientSnipUpload}
+                            onDeletePage={handlePatientSnipDeletePage}
+                          />
+                          {(testSnipDetail?.snipImageUrls?.length || 0) > 0 && (
+                            <div className="flex justify-end">
+                              <Button
+                                size="sm"
+                                onClick={() => savePatientSnipResults(reg.id, tg.testId, tg.testName)}
+                                disabled={savingSnipKey === testKey}
+                              >
+                                {savingSnipKey === testKey ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
+                                Save Snipped Image
+                              </Button>
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   )}
-                  {isTestExpanded && !(snipEntryKeys.has(testKey) || testSnipDetail?.resultMode === "snip") && (
+                  {(isTestExpanded || isOutsourcedTest) && !isSnipMode && (
                     <div className="overflow-x-auto -mx-1">
                     <Table>
                       <TableHeader>
