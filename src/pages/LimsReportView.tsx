@@ -28,6 +28,7 @@ import {
   getOrFetchUrlAsDataUrl,
   reportAssetCacheKey,
 } from "@/lib/reportAssetCache";
+import { isSnipResultRow, snipImageUrlsFromRow } from "@/lib/outsourcedResultMode";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.mjs";
 
@@ -322,6 +323,7 @@ const LimsReportView = () => {
   const [testsMap, setTestsMap] = useState<Record<string, any>>({});
   const [testParamsMap, setTestParamsMap] = useState<Record<string, any[]>>({});
   const [snipImages, setSnipImages] = useState<SnipPage[]>([]);
+  const [snipModeTestIds, setSnipModeTestIds] = useState<Set<string>>(new Set());
   const [pickupFooterNote, setPickupFooterNote] = useState<string>("");
 
   const invoiceNumberForBarcode =
@@ -600,15 +602,16 @@ const LimsReportView = () => {
       }
     }
 
-    // Snip images — inline as data URLs for reliable PDF/print capture
+    // Snip images — inline as data URLs for reliable PDF/print capture.
+    // Only result_mode=snip counts; leftover images from a later manual entry are ignored.
     const snipPages: SnipPage[] = [];
     const rawSnipUrls: string[] = [];
+    const snipIds = new Set<string>();
     (snips || []).forEach((s: any) => {
       if (selectedTestIds && !selectedTestIds.has(s.test_id)) return;
-      const urls = Array.isArray(s.snip_image_urls) ? s.snip_image_urls : [];
-      if (s.result_mode === "snip" || urls.length > 0) {
-        urls.forEach((url: string) => rawSnipUrls.push(url));
-      }
+      if (!isSnipResultRow(s)) return;
+      snipIds.add(s.test_id);
+      snipImageUrlsFromRow(s).forEach((url: string) => rawSnipUrls.push(url));
     });
     const inlinedSnipUrls = await Promise.all(rawSnipUrls.map(async (u) => (await urlToDataUrl(u)) || u));
     inlinedSnipUrls.forEach((url) => snipPages.push({ imageUrl: url }));
@@ -661,6 +664,7 @@ const LimsReportView = () => {
     setLetterheadImageUrl(computedLetterhead);
     setSignatureMap(sigMap);
     setSnipImages(snipPages);
+    setSnipModeTestIds(snipIds);
     setTestParamsMap(computedTpMap);
     setPickupFooterNote(computedFooterNote);
     setLoading(false);
@@ -692,6 +696,7 @@ const LimsReportView = () => {
     approvedReports.forEach((report: any) => {
       const results = (report.test_results || []) as TestResultEntry[];
       results.forEach(r => {
+        if (snipModeTestIds.has(r.test_id)) return;
         if (r.result_value && r.result_value.toString().trim()) {
           allResults.push(r);
         }
@@ -893,7 +898,7 @@ const LimsReportView = () => {
     });
 
     return { pages: allPages, totalPages: allPages.length };
-  }, [approvedReports, departments, testsMap, testParamsMap, snipImages, layoutSettings, pickupFooterNote, collectionDateByTestId]);
+  }, [approvedReports, departments, testsMap, testParamsMap, snipImages, snipModeTestIds, layoutSettings, pickupFooterNote, collectionDateByTestId]);
 
   // ── PDF export ──
   const buildPdfBlob = async (): Promise<{ blob: Blob; filename: string } | null> => {

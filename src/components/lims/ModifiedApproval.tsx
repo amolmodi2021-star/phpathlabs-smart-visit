@@ -23,6 +23,7 @@ import { fetchAllByIds } from "@/lib/fetchAllRows";
 import { PATIENT_RESULTS_SELECT_MODIFIED } from "@/lib/patientResultsSelect";
 import { shortIdsKey } from "@/lib/queryKeys";
 import { patientDisplayName } from "@/lib/patientDisplayName";
+import { isSnipResultRow, snipImageUrlsFromRow } from "@/lib/outsourcedResultMode";
 
 /** Lean list only — never pull test_results JSONB for the whole page. */
 const REPORT_LIST_SELECT =
@@ -220,16 +221,20 @@ const ModifiedApproval = () => {
 
       for (const r of results) {
         if (!r.test_id) continue;
+        const snip = snips.find((s: any) => s.test_id === r.test_id);
+        const snipParamIds = Array.isArray(snip?.outsourced_parameter_ids) ? snip.outsourced_parameter_ids : [];
+        const fullSnip = isSnipResultRow(snip) && snipParamIds.length === 0;
+        if (fullSnip) continue;
+        if (isSnipResultRow(snip) && snipParamIds.includes(r.parameter_id)) continue;
         if (!testGroups[r.test_id]) {
           const testInfo = testsMap[r.test_id] || {};
-          const snip = snips.find((s: any) => s.test_id === r.test_id);
           testGroups[r.test_id] = {
             testId: r.test_id,
             testName: testInfo.test_name || r.parameter_name || "Unknown",
             params: [],
             isOutsourced: !!snip,
             labName: snip?.outsourced_lab_name || null,
-            snipUrls: snip?.result_mode === "snip" && Array.isArray(snip?.snip_image_urls) ? snip.snip_image_urls : [],
+            snipUrls: isSnipResultRow(snip) ? snipImageUrlsFromRow(snip) : [],
           };
         }
         testGroups[r.test_id].params.push(r);
@@ -238,7 +243,7 @@ const ModifiedApproval = () => {
       for (const snip of snips) {
         if (!testGroups[snip.test_id]) {
           const testInfo = testsMap[snip.test_id] || {};
-          const urls = snip.result_mode === "snip" && Array.isArray(snip.snip_image_urls) ? snip.snip_image_urls : [];
+          const urls = isSnipResultRow(snip) ? snipImageUrlsFromRow(snip) : [];
           if (urls.length > 0) {
             testGroups[snip.test_id] = {
               testId: snip.test_id,
@@ -253,6 +258,13 @@ const ModifiedApproval = () => {
       }
 
       Object.values(testGroups).forEach((tg) => {
+        const snip = snips.find((s: any) => s.test_id === tg.testId);
+        const snipParamIds = Array.isArray(snip?.outsourced_parameter_ids) ? snip.outsourced_parameter_ids : [];
+        // Full-test snip: do not invent typed parameter rows
+        if (isSnipResultRow(snip) && snipParamIds.length === 0) {
+          tg.params = [];
+          return;
+        }
         const defs = (testParamsMap as any)[tg.testId] || [];
         const existingPids = new Set(tg.params.map((p: any) => p.parameter_id));
         defs.forEach((tp: any) => {
@@ -260,6 +272,7 @@ const ModifiedApproval = () => {
           const rtp = tp.report_test_parameters;
           if (!rtp) return;
           if (existingPids.has(tp.parameter_id)) return;
+          if (isSnipResultRow(snip) && snipParamIds.includes(tp.parameter_id)) return;
           tg.params.push({
             registration_id: regId,
             test_id: tg.testId,

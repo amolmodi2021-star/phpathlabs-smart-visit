@@ -37,6 +37,7 @@ import { readLimsPageSize, type LimsPageSize } from "@/lib/limsListPrefs";
 import { fetchVerificationCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPendingCandidates";
 import SyncingOverlay from "./SyncingOverlay";
 import NewBadge from "./NewBadge";
+import { isSnipResultDetail } from "@/lib/outsourcedResultMode";
 
 /** List headers — omit tests / cancelled_tests JSON (egress). */
 const REG_LIST_SELECT =
@@ -411,6 +412,14 @@ const ResultVerification = () => {
         const snipDetail = outsourcedSnipDetails[testSnipKey];
         const params = testParamsMap[t.test_id] || [];
         const validParams = params.filter((tp: any) => !tp.is_subheader && tp.report_test_parameters);
+        const isSnipResult = isSnipResultDetail(snipDetail);
+        const isParamLevel = !!(paramOutsourcedSet && paramOutsourcedSet.size > 0);
+
+        // Snip-mode (including tests that have parameters) — verify the image, not typed values
+        if (isSnipResult && !isParamLevel && ["results_entered", "entered"].includes(snipDetail.status)) {
+          snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, outsourceStatus: snipDetail.status });
+          continue;
+        }
 
         // Snip-only test: no params but has outsourced snip with results_entered status
         if (validParams.length === 0) {
@@ -418,6 +427,9 @@ const ResultVerification = () => {
             snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, outsourceStatus: snipDetail.status });
           }
           continue;
+        }
+        if (isSnipResult && isParamLevel && ["results_entered", "entered"].includes(snipDetail.status)) {
+          snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, outsourceStatus: snipDetail.status });
         }
 
         const testEnteredResults = existingResults.filter((r: any) => r.registration_id === reg.id && r.test_id === t.test_id);
@@ -428,6 +440,7 @@ const ResultVerification = () => {
           const p = tp.report_test_parameters;
           if (!p) continue;
           const isParamOutsourced = isFullTestOutsourced || (paramOutsourcedSet && paramOutsourcedSet.has(p.id));
+          if (isSnipResult && isParamOutsourced) continue;
           const existing = testEnteredResults.find((r: any) => r.parameter_id === p.id);
           if (!existing && !isParamOutsourced) continue;
           

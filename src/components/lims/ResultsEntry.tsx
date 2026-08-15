@@ -41,6 +41,7 @@ import { formatDateDDMMYYYY } from "@/lib/utils";
 import { expandRegistrationTests } from "@/lib/expandRegistrationTests";
 import { fetchAllByIds } from "@/lib/fetchAllRows";
 import { PATIENT_RESULTS_SELECT_RESULTS } from "@/lib/patientResultsSelect";
+import { isSnipResultDetail } from "@/lib/outsourcedResultMode";
 
 /** List headers — omit tests / cancelled_tests JSON (egress). */
 const REG_LIST_SELECT =
@@ -742,9 +743,16 @@ const ResultsEntry = () => {
         const snipDetail = outsourcedSnipDetails[testSnipKey];
 
         const params = testParamsMap[t.test_id] || [];
+        const isSnipResult = isSnipResultDetail(snipDetail);
+        const isParamLevel = !!(paramOutsourcedSet && paramOutsourcedSet.size > 0);
         
         // Track tests with no parameters configured
         const validParams = params.filter((tp: any) => !tp.is_subheader && tp.report_test_parameters);
+        // Snip-mode outsourced tests (even when parameters exist) skip typed entry
+        if (isSnipResult && !isParamLevel && !["results_entered", "verified", "approved", "dispatched"].includes(snipDetail.status)) {
+          snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, outsourceStatus: snipDetail.status });
+          continue;
+        }
         if (validParams.length === 0) {
           // Check if this is a snip-only outsourced test
           if (snipDetail && snipDetail.snipImageUrls.length > 0 && !["results_entered", "verified", "approved", "dispatched"].includes(snipDetail.status)) {
@@ -754,6 +762,9 @@ const ResultsEntry = () => {
           }
           continue;
         }
+        if (isSnipResult && isParamLevel && !["results_entered", "verified", "approved", "dispatched"].includes(snipDetail.status)) {
+          snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, outsourceStatus: snipDetail.status });
+        }
         
         // Collect params for this test first to check if ALL are already entered
         const testParamResults: { param: any; tp: any; isParamOutsourced: boolean; existing: any; covered: boolean }[] = [];
@@ -762,6 +773,8 @@ const ResultsEntry = () => {
           const p = tp.report_test_parameters;
           if (!p) continue;
           const isParamOutsourced = isFullTestOutsourced || (paramOutsourcedSet && paramOutsourcedSet.has(p.id));
+          // Snip-mode outsourced params are handled via the snip card, not typed values
+          if (isSnipResult && isParamOutsourced) continue;
           const resolved = resolveResultForResultsEntry(existingResults, reg.id, t.test_id, p.id);
           testParamResults.push({ param: p, tp, isParamOutsourced, existing: resolved.row, covered: resolved.covered });
         }

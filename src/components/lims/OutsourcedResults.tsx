@@ -33,6 +33,11 @@ import { fetchOutsourcedCandidateIds, fetchFilteredSortedIds } from "@/lib/limsP
 import { shortIdsKey } from "@/lib/queryKeys";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { isSnipResultRow, snipImageUrlsFromRow } from "@/lib/outsourcedResultMode";
 
 interface OutsourcedTest {
   testId: string;
@@ -75,6 +80,16 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
 
   // Return to inhouse state
   const [returningKey, setReturningKey] = useState<string | null>(null);
+
+  // Exclusive mode switch: confirm before wiping the other entry method
+  const [modeSwitchConfirm, setModeSwitchConfirm] = useState<{
+    regId: string;
+    testId: string;
+    testName: string;
+    to: "manual" | "snip";
+    outsourcedParamIds?: string[];
+  } | null>(null);
+  const [modeOverride, setModeOverride] = useState<Record<string, "manual" | "snip">>({});
 
   // Return entire test to inhouse
   const returnToInhouse = async (regId: string, testId: string, testName: string) => {
@@ -375,18 +390,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
 
   // Get all image URLs for a snip (multi-page support)
   const getSnipImageUrls = (regId: string, testId: string): string[] => {
-    const snip = getSnip(regId, testId);
-    if (!snip) return [];
-    const urls: string[] = [];
-    // Check new jsonb array first
-    if (snip.snip_image_urls && Array.isArray(snip.snip_image_urls) && snip.snip_image_urls.length > 0) {
-      urls.push(...(snip.snip_image_urls as string[]));
-    }
-    // Fallback to legacy single URL if urls array is empty
-    if (urls.length === 0 && snip.snip_image_url) {
-      urls.push(snip.snip_image_url);
-    }
-    return urls;
+    return snipImageUrlsFromRow(getSnip(regId, testId));
   };
 
   const hasManualResults = (regId: string, testId: string) => {
@@ -536,6 +540,28 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     }
   };
 
+  const clearManualResultsForTest = useCallback(async (regId: string, testId: string, outsourcedParamIds?: string[]) => {
+    let q = supabase.from("patient_results")
+      .delete()
+      .eq("registration_id", regId)
+      .eq("test_id", testId)
+      .in("status", ["pending", "entered", "results_entered"]);
+    if (outsourcedParamIds && outsourcedParamIds.length > 0) {
+      q = q.in("parameter_id", outsourcedParamIds);
+    }
+    const { error } = await q;
+    if (error) throw error;
+    setEditedValues((prev) => {
+      const next = { ...prev };
+      if (outsourcedParamIds && outsourcedParamIds.length > 0) {
+        outsourcedParamIds.forEach((pid) => { delete next[`${regId}||${pid}`]; });
+      } else {
+        Object.keys(next).forEach((k) => { if (k.startsWith(`${regId}||`)) delete next[k]; });
+      }
+      return next;
+    });
+  }, []);
+
   // Handle paste from clipboard
   const handlePaste = useCallback(async (regId: string, testId: string, event: React.ClipboardEvent) => {
     const items = event.clipboardData?.items;
@@ -567,8 +593,15 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
             outsource_status: "sent",
           } as any, { onConflict: "registration_id,test_id" });
           if (upsertErr) throw upsertErr;
+          const snipRow = getSnip(regId, testId);
+          const paramIds = Array.isArray((snipRow as any)?.outsourced_parameter_ids)
+            ? (snipRow as any).outsourced_parameter_ids
+            : undefined;
+          await clearManualResultsForTest(regId, testId, paramIds);
           toast.success(`Page ${newUrls.length} added successfully`);
           qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+          qc.invalidateQueries({ queryKey: ["outsourced_manual_results"] });
+          qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
         } catch (err: any) {
           toast.error(err.message || "Failed to upload snip");
         } finally {
@@ -577,7 +610,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         return;
       }
     }
-  }, [qc, existingSnips]);
+  }, [qc, existingSnips, clearManualResultsForTest]);
 
   // Handle file upload
   const handleFileUpload = useCallback(async (regId: string, testId: string, file: File) => {
@@ -602,14 +635,21 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         outsource_status: "sent",
       } as any, { onConflict: "registration_id,test_id" });
       if (upsertErr) throw upsertErr;
+      const snipRow = getSnip(regId, testId);
+      const paramIds = Array.isArray((snipRow as any)?.outsourced_parameter_ids)
+        ? (snipRow as any).outsourced_parameter_ids
+        : undefined;
+      await clearManualResultsForTest(regId, testId, paramIds);
       toast.success(`Page ${newUrls.length} added successfully`);
       qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+      qc.invalidateQueries({ queryKey: ["outsourced_manual_results"] });
+      qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
     } catch (err: any) {
       toast.error(err.message || "Failed to upload image");
     } finally {
       setUploadingKey(null);
     }
-  }, [qc, existingSnips]);
+  }, [qc, existingSnips, clearManualResultsForTest]);
 
   // Delete a specific snip page
   const deleteSnipPage = useCallback(async (regId: string, testId: string, pageIndex: number) => {
@@ -624,6 +664,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
           result_mode: "manual",
           outsource_status: "sent",
         } as any).eq("registration_id", regId).eq("test_id", testId);
+        setModeOverride((prev) => ({ ...prev, [`${regId}||${testId}`]: "manual" }));
         toast.success("All pages removed — test moved back to awaiting results");
       } else {
         await supabase.from("outsourced_test_snips").update({
@@ -638,22 +679,50 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     }
   }, [qc, existingSnips]);
 
-  // Set manual mode
+  // Set manual mode (clears any snipped images — the two methods are exclusive)
   const setManualMode = useCallback(async (regId: string, testId: string) => {
     try {
+      const existing = getSnip(regId, testId);
       const { error } = await supabase.from("outsourced_test_snips").upsert({
         registration_id: regId,
         test_id: testId,
         result_mode: "manual",
         snip_image_url: null,
         snip_image_urls: [],
+        outsource_status: isSnipResultRow(existing) ? "sent" : ((existing as any)?.outsource_status || "sent"),
       } as any, { onConflict: "registration_id,test_id" });
       if (error) throw error;
+      setModeOverride((prev) => ({ ...prev, [`${regId}||${testId}`]: "manual" }));
       qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+      qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] });
     } catch (err: any) {
       toast.error(err.message || "Failed to set manual mode");
     }
-  }, [qc]);
+  }, [qc, existingSnips]);
+
+  // Set snip mode (clears typed parameter values — the two methods are exclusive)
+  const setSnipMode = useCallback(async (regId: string, testId: string, outsourcedParamIds?: string[]) => {
+    try {
+      await clearManualResultsForTest(regId, testId, outsourcedParamIds);
+      const existing = getSnip(regId, testId);
+      const { error } = await supabase.from("outsourced_test_snips").upsert({
+        registration_id: regId,
+        test_id: testId,
+        result_mode: "snip",
+        outsource_status: (existing as any)?.outsource_status === "results_saved" && !isSnipResultRow(existing)
+          ? "sent"
+          : ((existing as any)?.outsource_status || "sent"),
+      } as any, { onConflict: "registration_id,test_id" });
+      if (error) throw error;
+      setModeOverride((prev) => ({ ...prev, [`${regId}||${testId}`]: "snip" }));
+      qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+      qc.invalidateQueries({ queryKey: ["outsourced_manual_results"] });
+      qc.invalidateQueries({ queryKey: ["results_outsourced_snips"] });
+      qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to set snip mode");
+    }
+  }, [qc, existingSnips, clearManualResultsForTest]);
 
   // Save manual results
   const saveManualResults = useCallback(async (regId: string, testId: string, testName: string, outsourcedParamIds?: string[], reg?: any) => {
@@ -703,10 +772,12 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
         const { error } = await supabase.from("patient_results").insert(upserts as any);
         if (error) throw error;
       }
-      // Update snip record status
+      // Update snip record status — wipe any snipped images so both methods cannot coexist
       const { error: snipErr } = await supabase.from("outsourced_test_snips").upsert({
         registration_id: regId, test_id: testId,
         result_mode: "manual", outsource_status: "results_saved",
+        snip_image_url: null,
+        snip_image_urls: [],
         entered_at: new Date().toISOString(),
         entered_by: getCurrentUserName(),
       } as any, { onConflict: "registration_id,test_id" });
@@ -731,10 +802,11 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   }, [editedValues, testParamsMap, qc, resolveNormalRange]);
 
   // Save snip results and move to verification
-  const saveSnipResults = useCallback(async (regId: string, testId: string, testName: string) => {
+  const saveSnipResults = useCallback(async (regId: string, testId: string, testName: string, outsourcedParamIds?: string[]) => {
     const key = `${regId}||${testId}`;
     setSavingKey(key);
     try {
+      await clearManualResultsForTest(regId, testId, outsourcedParamIds);
       const { error } = await supabase.from("outsourced_test_snips").upsert({
         registration_id: regId, test_id: testId,
         result_mode: "snip", outsource_status: "results_saved",
@@ -745,6 +817,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
 
       toast.success(`Snip saved for ${testName}`);
       qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
+      qc.invalidateQueries({ queryKey: ["outsourced_manual_results"] });
       qc.invalidateQueries({ queryKey: ["verification_results"] });
       qc.invalidateQueries({ queryKey: ["verification_outsourced"] });
       qc.invalidateQueries({ queryKey: ["patient_results_existing"] });
@@ -753,7 +826,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     } finally {
       setSavingKey(null);
     }
-  }, [qc]);
+  }, [qc, clearManualResultsForTest]);
 
   const saveEditLabName = async () => {
     if (!editLabKey || !editLabName.trim()) return;
@@ -881,7 +954,9 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     const isUploading = uploadingKey === testKey;
     const isSaving = savingKey === testKey;
     // Prefer snip when there are no enterable parameters (snip-only / misconfigured tests)
-    const currentMode = hasParams ? (snip?.result_mode || "manual") : "snip";
+    const currentMode = !hasParams
+      ? "snip"
+      : (modeOverride[testKey] || snip?.result_mode || "manual");
     const isSelected = selectedTests.has(testKey);
     const canSelect = status === "not_sent";
     const canEnterResults = status === "awaiting_results" || status === "results_saved";
@@ -984,21 +1059,34 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                 No report parameters are linked for this test. Use <strong>Snip / Image</strong> to attach the outsourced report, then Save.
               </div>
             )}
+            {hasParams && (
+              <div className="text-xs text-muted-foreground bg-muted/40 border rounded px-3 py-2">
+                Choose <strong>Manual Entry</strong> or <strong>Snip / Image</strong> — not both. Switching clears the other method.
+              </div>
+            )}
             <Tabs
               value={currentMode === "snip" || !hasParams ? "snip" : "manual"}
               onValueChange={(v) => {
-                if (v === "manual" && hasParams) setManualMode(regId, test.testId);
+                if (v === currentMode) return;
+                if (v === "manual" && hasParams) {
+                  if (getSnipImageUrls(regId, test.testId).length > 0) {
+                    setModeSwitchConfirm({
+                      regId, testId: test.testId, testName: test.testName, to: "manual",
+                      outsourcedParamIds: test.outsourcedParameterIds,
+                    });
+                    return;
+                  }
+                  setManualMode(regId, test.testId);
+                }
                 if (v === "snip") {
-                  // Flip mode to snip without wiping existing images
-                  supabase.from("outsourced_test_snips").upsert({
-                    registration_id: regId,
-                    test_id: test.testId,
-                    result_mode: "snip",
-                    outsource_status: (snip as any)?.outsource_status || "sent",
-                  } as any, { onConflict: "registration_id,test_id" }).then(({ error }) => {
-                    if (error) toast.error(error.message);
-                    else qc.invalidateQueries({ queryKey: ["outsourced_snips"] });
-                  });
+                  if (hasManualResults(regId, test.testId)) {
+                    setModeSwitchConfirm({
+                      regId, testId: test.testId, testName: test.testName, to: "snip",
+                      outsourcedParamIds: test.outsourcedParameterIds,
+                    });
+                    return;
+                  }
+                  setSnipMode(regId, test.testId, test.outsourcedParameterIds);
                 }
               }}
             >
@@ -1106,7 +1194,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                   <div className="flex justify-end">
                     <Button
                       size="sm"
-                      onClick={() => saveSnipResults(regId, test.testId, test.testName)}
+                      onClick={() => saveSnipResults(regId, test.testId, test.testName, test.outsourcedParameterIds)}
                       disabled={savingKey === `${regId}||${test.testId}`}
                     >
                       {savingKey === `${regId}||${test.testId}` ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
@@ -1295,6 +1383,35 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!modeSwitchConfirm} onOpenChange={(open) => { if (!open) setModeSwitchConfirm(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {modeSwitchConfirm?.to === "snip" ? "Switch to snipped image?" : "Switch to manual entry?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {modeSwitchConfirm?.to === "snip"
+                ? `Typed results for ${modeSwitchConfirm?.testName || "this test"} will be removed. You can only keep a snipped image or manual values — not both.`
+                : `Snipped images for ${modeSwitchConfirm?.testName || "this test"} will be removed. You can only keep manual values or a snipped image — not both.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!modeSwitchConfirm) return;
+                const { regId, testId, to, outsourcedParamIds } = modeSwitchConfirm;
+                if (to === "manual") setManualMode(regId, testId);
+                else setSnipMode(regId, testId, outsourcedParamIds);
+                setModeSwitchConfirm(null);
+              }}
+            >
+              Switch
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Edit Lab Name Dialog */}
       <Dialog open={!!editLabKey} onOpenChange={(open) => { if (!open) { setEditLabKey(null); setEditLabName(""); } }}>

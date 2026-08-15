@@ -46,6 +46,7 @@ const REG_LIST_SELECT =
   "id, invoice_number, patient_name, title, mobile_number, umr_number, status, is_stat, visit_type, gender, dob, age_text, email, address, created_at, updated_at, bill_cancelled, doctor_name, report_language";
 const REG_DETAIL_SELECT = `${REG_LIST_SELECT}, tests, cancelled_tests`;
 import NewBadge from "./NewBadge";
+import { isSnipResultDetail } from "@/lib/outsourcedResultMode";
 
 const QUALITATIVE_PAIRS = [
   { label: "Absent / Present", values: ["Absent", "Present"] },
@@ -367,12 +368,22 @@ const DoctorApproval = () => {
         const snipDetail = outsourcedSnipDetails[testSnipKey];
         const params = testParamsMap[t.test_id] || [];
         const validParams = params.filter((tp: any) => !tp.is_subheader && tp.report_test_parameters);
+        const isSnipResult = isSnipResultDetail(snipDetail);
+        const isParamLevel = !!(paramOutsourcedSet && paramOutsourcedSet.size > 0);
+
+        if (isSnipResult && !isParamLevel && snipDetail.status === "verified") {
+          snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, outsourceStatus: snipDetail.status });
+          continue;
+        }
 
         if (validParams.length === 0) {
           if (snipDetail && snipDetail.snipImageUrls.length > 0 && snipDetail.status === "verified") {
             snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, outsourceStatus: snipDetail.status });
           }
           continue;
+        }
+        if (isSnipResult && isParamLevel && snipDetail.status === "verified") {
+          snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, outsourceStatus: snipDetail.status });
         }
 
         const testVerifiedResults = existingResults.filter((r: any) => r.registration_id === reg.id && r.test_id === t.test_id);
@@ -381,6 +392,7 @@ const DoctorApproval = () => {
           if (tp.is_subheader) continue;
           const p = tp.report_test_parameters; if (!p) continue;
           const isParamOutsourced = isFullTestOutsourced || (paramOutsourcedSet && paramOutsourcedSet.has(p.id));
+          if (isSnipResult && isParamOutsourced) continue;
           const existing = testVerifiedResults.find((r: any) => r.parameter_id === p.id);
           if (!existing && !isParamOutsourced) continue;
           const resolved = resolveNormalRange(p.id, fullReg);
@@ -723,6 +735,23 @@ const DoctorApproval = () => {
           test_note: u.test_note || null,
         }));
       }
+      const snipOnlyIds = new Set(entry.snipOnlyTests.map((s) => s.testId));
+      for (const st of entry.snipOnlyTests) {
+        await supabase.from("outsourced_test_snips").update({
+          outsource_status: "approved",
+          approved_at: new Date().toISOString(),
+          approved_by: approver.pathologistName,
+        } as any).eq("registration_id", reg.id).eq("test_id", st.testId).eq("outsource_status", "verified");
+        allSnipUrls.push(...(st.snipUrls || []));
+        allTestResults.push({
+          test_id: st.testId, test_name: st.testName, is_outsourced: true,
+          outsource_lab_name: st.labName,
+          approved_by: approver.pathologistName,
+          approved_by_qualification: approver.qualification,
+          approved_by_designation: approver.designation,
+          approved_by_signature_url: approver.signatureUrl,
+        });
+      }
       // Archive combined snapshot — merge with existing approved_reports data
       const { data: existingReportAll } = await supabase.from("approved_reports").select("test_results, outsourced_snip_urls").eq("registration_id", reg.id).maybeSingle();
       const existingResultsAll = Array.isArray((existingReportAll as any)?.test_results) ? (existingReportAll as any).test_results : [];
@@ -731,7 +760,7 @@ const DoctorApproval = () => {
         allTestResults.map((r: any) => `${r.test_id}||${r.parameter_id}`),
       );
       const mergedResultsAll = existingResultsAll
-        .filter((r: any) => !incomingKeysAll.has(`${r.test_id}||${r.parameter_id}`))
+        .filter((r: any) => !snipOnlyIds.has(r.test_id) && !incomingKeysAll.has(`${r.test_id}||${r.parameter_id}`))
         .concat(allTestResults);
       const mergedSnipUrlsAll = [...new Set([...existingSnipUrlsAll, ...allSnipUrls])];
       // First barcode print timestamp = MIN(sample_tubes.collected_at) — reprint-safe
