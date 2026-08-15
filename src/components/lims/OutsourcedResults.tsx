@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -940,7 +939,8 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
   // Render test card
   const renderTestCard = (entry: OutsourcedPatient, test: OutsourcedTest) => {
     const regId = entry.registration.id;
-    const testKey = `${regId}||${test.testId}`;
+    const testId = test.testId;
+    const testKey = `${regId}||${testId}`;
     const isExpanded = expandedTest === testKey;
     const snip = getSnip(regId, test.testId);
     const status = getTestStatus(regId, test.testId);
@@ -1129,12 +1129,8 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                 </div>
               </div>
             )}
-            <Tabs
-              value={currentMode === "snip" || !hasParams ? "snip" : "manual"}
-            >
-
-              {hasParams && (
-                <TabsContent value="manual" className="mt-2">
+            {hasParams && currentMode === "manual" && (
+                <div className="mt-2">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -1209,33 +1205,34 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                       Save Results
                     </Button>
                   </div>
-                </TabsContent>
-              )}
+                </div>
+            )}
 
-              <TabsContent value="snip" className="mt-2 space-y-3">
+            {(currentMode === "snip" || !hasParams) && (
+              <div className="mt-2 space-y-3">
                 <SnipOnLetterhead
                   regId={regId}
-                  testId={test.testId}
-                  imageUrls={getSnipImageUrls(regId, test.testId)}
+                  testId={testId}
+                  imageUrls={getSnipImageUrls(regId, testId)}
                   isUploading={isUploading}
                   onPaste={handlePaste}
                   onFileUpload={handleFileUpload}
                   onDeletePage={deleteSnipPage}
                 />
-                {getSnipImageUrls(regId, test.testId).length > 0 && (
+                {getSnipImageUrls(regId, testId).length > 0 && (
                   <div className="flex justify-end">
                     <Button
                       size="sm"
-                      onClick={() => saveSnipResults(regId, test.testId, test.testName, test.outsourcedParameterIds)}
-                      disabled={savingKey === `${regId}||${test.testId}`}
+                      onClick={() => saveSnipResults(regId, testId, test.testName, test.outsourcedParameterIds)}
+                      disabled={savingKey === `${regId}||${testId}`}
                     >
-                      {savingKey === `${regId}||${test.testId}` ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
+                      {savingKey === `${regId}||${testId}` ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
                       Save Results
                     </Button>
                   </div>
                 )}
-              </TabsContent>
-            </Tabs>
+              </div>
+            )}
           </div>
         )}
       </div>
