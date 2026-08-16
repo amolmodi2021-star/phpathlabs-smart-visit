@@ -44,7 +44,11 @@ const ReportAbnormalSummary = ({ abnormalResults, isContinuation = false }: Repo
               <td className="py-0.5 break-words">{r.parameter_name}</td>
               <td className="py-0.5">{r.result_value}</td>
               <td className="py-0.5">{r.unit}</td>
-              <td className="py-0.5 break-words">{r.normal_range_text || `${r.normal_range_low || ""}-${r.normal_range_high || ""}`}</td>
+              <td className="py-0.5 break-words text-left" style={{ whiteSpace: "pre-wrap" }}>
+                {r.normal_range_text != null && String(r.normal_range_text).trim().length > 0
+                  ? String(r.normal_range_text)
+                  : `${r.normal_range_low || ""}-${r.normal_range_high || ""}`}
+              </td>
               <td className="py-0.5"><span className="bg-red-600 text-white px-1.5 py-0.5 rounded text-xs">{r.flag}</span></td>
             </tr>
           ))}

@@ -145,7 +145,8 @@ const STANDALONE_DIVIDER_MM = 3;    // border-t-2 + 3mm gap between standalone p
 // the renderer adds to a row: wrapped result value, wrapped reference range,
 // italic parameter description (under name), and remark/note row.
 const rowHeightMm = (p: any, descriptionText?: string | null): number => {
-  const refText: string = String(p?.reference_range ?? "").trim();
+  // Keep spaces for wrap estimate — Display Text spacing is intentional on advisory ranges.
+  const refText: string = String(p?.reference_range ?? "");
   const resultText: string = String(p?.result_value ?? "").trim();
   const description: string = String(descriptionText ?? "").trim();
   const note: string = String(p?.note ?? "").trim();
@@ -154,7 +155,7 @@ const rowHeightMm = (p: any, descriptionText?: string | null): number => {
   const refLines = Math.max(
     1,
     Math.ceil((refText.length || 1) / 38),
-    refText ? refText.split(/\r?\n/).length : 1,
+    refText.trim() ? refText.split(/\r?\n/).length : 1,
   );
   // Result col ~20% width (~22 chars). Blank Display Text → Result spans Ref (~55 chars/line).
   const isDescriptive = !refText;

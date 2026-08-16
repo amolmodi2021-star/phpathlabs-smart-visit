@@ -14,14 +14,15 @@ export type NormalRangeRow = {
   descriptive_options?: string[] | null;
 };
 
-/** Build display text: prefer stored text, else low-high / one-sided bounds. */
+/** Build display text: prefer stored text (spaces preserved), else low-high / one-sided bounds. */
 export function formatNormalRangeDisplayText(
   row: Pick<NormalRangeRow, "normal_range_text" | "normal_range_low" | "normal_range_high"> | null | undefined,
   unit?: string | null,
 ): string {
   if (!row) return "";
-  const text = String(row.normal_range_text ?? "").trim();
-  if (text) return text;
+  const text = String(row.normal_range_text ?? "");
+  // Do not trim display text — advisory/multi-line ranges may use intentional spacing.
+  if (text.trim().length > 0) return text;
   const low = row.normal_range_low;
   const high = row.normal_range_high;
   const u = String(unit ?? "").trim();

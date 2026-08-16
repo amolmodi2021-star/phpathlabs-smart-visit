@@ -190,17 +190,19 @@ const ParamRow = ({ r, rowKey, compact, isMorph, showFlagText, rowFontSize, colC
           <td className={`text-center ${resultWeight} ${py}`}>
             {displayResult}
           </td>
-          <td className={`text-center text-gray-600 ${rangeWeight} ${py}`} style={{ whiteSpace: 'pre-line' }}>
-            {(r.normal_range_text && r.normal_range_text.trim())
-              || (() => {
-                const low = r.normal_range_low;
-                const high = r.normal_range_high;
-                const u = r.unit ? ` ${r.unit}` : '';
-                if (low != null && high != null) return `${low} - ${high}${u}`;
-                if (high != null && low == null) return `< ${high}${u}`;
-                if (low != null && high == null) return `> ${low}${u}`;
-                return '';
-              })()}
+          <td className={`text-left px-2 text-gray-600 ${rangeWeight} ${py}`} style={{ whiteSpace: "pre-wrap" }}>
+            {(() => {
+              const rawText = r.normal_range_text != null ? String(r.normal_range_text) : "";
+              // Emptiness check may trim; displayed value must keep leading/trailing/extra spaces.
+              if (rawText.trim().length > 0) return rawText;
+              const low = r.normal_range_low;
+              const high = r.normal_range_high;
+              const u = r.unit ? ` ${r.unit}` : "";
+              if (low != null && high != null) return `${low} - ${high}${u}`;
+              if (high != null && low == null) return `< ${high}${u}`;
+              if (low != null && high == null) return `> ${low}${u}`;
+              return "";
+            })()}
           </td>
           {showFlagText && (
             <td className={`text-center ${py}`}>
@@ -225,7 +227,7 @@ const TableHeader = ({ showFlagText, fontSize }: { showFlagText: boolean; fontSi
       <th className="text-left py-0.5 px-3" style={{ width: showFlagText ? '40%' : '42%' }}>Parameter</th>
       {!showFlagText && <th style={{ width: '24px' }}></th>}
       <th className="text-center py-0.5" style={{ width: '20%' }}>Result</th>
-      <th className="text-center py-0.5" style={{ width: showFlagText ? '25%' : '30%' }}>Reference Range</th>
+      <th className="text-left py-0.5 px-2" style={{ width: showFlagText ? '25%' : '30%' }}>Reference Range</th>
       {showFlagText && <th className="text-center py-0.5" style={{ width: '15%' }}>Flag</th>}
     </tr>
   </thead>
