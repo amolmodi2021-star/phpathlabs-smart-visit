@@ -237,6 +237,9 @@ const EditAndRegisterHomeVisitDialog = ({ visit, open, onClose }: Props) => {
       if (!gender) throw new Error("Gender is required");
       if (selectedTests.length === 0) throw new Error("Select at least one test");
       if (!address.trim()) throw new Error("Address is required");
+      if (totalPaid > calculations.finalAmount + 0.01) {
+        throw new Error("Payment amount cannot exceed the bill value");
+      }
 
       const cleanNumber = whatsappNumber.replace(/\D/g, "").slice(-10);
 

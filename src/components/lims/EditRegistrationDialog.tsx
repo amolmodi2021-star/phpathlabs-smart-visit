@@ -16,6 +16,7 @@ import { Save, Ban, RotateCcw, Lock } from "lucide-react";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
 import { logPaymentTransaction, syncRegistrationPaymentRow, splitPaymentModes } from "@/lib/paymentTransactions";
+import { mergeEditedRegistrationSplit, splitRegistrationAndDuePayments, sumPaymentEntries } from "@/lib/billPayment";
 import { syncPatientDemographicsByUmr, invalidatePatientCaches } from "@/lib/syncPatientDemographics";
 import DoctorAutocomplete, { ensureDoctor } from "@/components/lims/DoctorAutocomplete";
 
@@ -95,12 +96,14 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
       setStatus(reg.status || "registered");
       setRemarks(reg.remarks || "");
       setIsStat(reg.is_stat || false);
-      // Populate payments
+      // Populate only the original at-registration split (no `date`).
+      // Due-collection rows must not be treated as a second registration payment.
       const existingPayments: any[] = Array.isArray(reg.payments) ? reg.payments : [];
-      const modes = new Set<string>(existingPayments.map((p: any) => p.mode));
+      const { registration: originalSplit } = splitRegistrationAndDuePayments(existingPayments);
+      const modes = new Set<string>(originalSplit.map((p: any) => p.mode).filter(Boolean));
       setSelectedModes(modes);
       const amounts: Record<string, number> = {};
-      existingPayments.forEach((p: any) => { amounts[p.mode] = Number(p.amount) || 0; });
+      originalSplit.forEach((p: any) => { amounts[p.mode] = Number(p.amount) || 0; });
       setModeAmounts(amounts);
       const existing = Array.isArray(reg.cancelled_tests) ? reg.cancelled_tests : [];
       setCancelledTestIds(new Set(existing.map((t: any) => t.test_id || t)));
@@ -159,6 +162,10 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
 
   const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card", "NEFT"];
   const lockedPaidAmount = Number(reg?.paid_amount || 0);
+  const originalRegPaid = useMemo(() => {
+    const existingPayments: any[] = Array.isArray(reg?.payments) ? reg.payments : [];
+    return sumPaymentEntries(splitRegistrationAndDuePayments(existingPayments).registration);
+  }, [reg?.payments]);
 
   const togglePaymentMode = (mode: string) => {
     setSelectedModes(prev => {
@@ -169,13 +176,14 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
     });
   };
 
-  // Auto-fill when single mode selected
+  // Auto-fill when single mode selected — only the original registration payment,
+  // never the later due-collection total (that caused a second GPay line).
   useEffect(() => {
     if (selectedModes.size === 1) {
       const mode = Array.from(selectedModes)[0];
-      setModeAmounts({ [mode]: lockedPaidAmount });
+      setModeAmounts({ [mode]: originalRegPaid });
     }
-  }, [selectedModes.size, lockedPaidAmount]);
+  }, [selectedModes.size, originalRegPaid]);
 
   // Discount calculations
   const discountCalc = useMemo(() => {
@@ -218,7 +226,7 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
   };
 
   const editPaidAmount = Array.from(selectedModes).reduce((sum, mode) => sum + (modeAmounts[mode] || 0), 0);
-  const paymentModesMismatch = lockedPaidAmount > 0 && selectedModes.size > 1 && Math.abs(editPaidAmount - lockedPaidAmount) > 0.01;
+  const paymentModesMismatch = originalRegPaid > 0 && selectedModes.size > 1 && Math.abs(editPaidAmount - originalRegPaid) > 0.01;
 
   // Overpayment detection when discount reduces final below paid
   const discountOverpayment = discountChanged && discountCalc.finalAmount < lockedPaidAmount
@@ -236,12 +244,10 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
         .filter(m => (modeAmounts[m] || 0) > 0)
         .map(m => ({ mode: m, amount: modeAmounts[m] || 0 }));
 
-      // Preserve due-collection entries (have a `date` field) — only the original
-      // at-registration split (entries without `date`) is replaced by the dialog edits.
       const existingPayments: any[] = Array.isArray(reg.payments) ? reg.payments : [];
-      const dueCollectionEntries = existingPayments.filter((p: any) => p && p.date);
-      const originalRegEntries = existingPayments.filter((p: any) => p && !p.date);
-      const payments = [...editedSplit, ...dueCollectionEntries];
+      const { registration: originalRegEntries } = splitRegistrationAndDuePayments(existingPayments);
+      const newFinalForCap = discountChanged ? discountCalc.finalAmount : Number(reg.final_amount || 0);
+      const payments = mergeEditedRegistrationSplit(existingPayments, editedSplit, newFinalForCap);
 
       const updateData: any = {
         patient_name: patientName.replace(/\s+/g, ' ').trim().toUpperCase(),
@@ -813,11 +819,11 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
               <Switch id="edit-stat-toggle" checked={isStat} onCheckedChange={setIsStat} className="data-[state=checked]:bg-destructive" disabled={isBillCancelled} />
             </div>
 
-            {/* Payment Mode Redistribution — only shown when payment exists */}
-            {!isBillCancelled && lockedPaidAmount > 0 && (
+            {/* Payment Mode Redistribution — only the original registration split */}
+            {!isBillCancelled && originalRegPaid > 0 && (
               <div className="space-y-2">
                 <h3 className="font-semibold text-sm">Payment Mode</h3>
-                <div className="text-sm text-muted-foreground mb-1">Amount Paid: <span className="font-semibold text-foreground">₹{lockedPaidAmount}</span></div>
+                <div className="text-sm text-muted-foreground mb-1">Paid at registration: <span className="font-semibold text-foreground">₹{originalRegPaid}</span></div>
 
                 {isPaymentLocked && (
                   <div className="p-3 rounded border border-orange-300 bg-orange-50 space-y-2">
@@ -852,10 +858,10 @@ const EditRegistrationDialog = ({ open, onOpenChange, registration: reg }: EditR
                   ))}
                   {selectedModes.size > 1 && (
                     <div className="text-sm space-y-1 pt-1">
-                      <div className="flex justify-between"><span>Allocated:</span><span className={`font-medium ${paymentModesMismatch ? "text-destructive" : ""}`}>₹{editPaidAmount} / ₹{lockedPaidAmount}</span></div>
+                      <div className="flex justify-between"><span>Allocated:</span><span className={`font-medium ${paymentModesMismatch ? "text-destructive" : ""}`}>₹{editPaidAmount} / ₹{originalRegPaid}</span></div>
                       {paymentModesMismatch && (
                         <div className="text-destructive text-xs font-medium">
-                          ⚠ Split amounts must equal ₹{lockedPaidAmount}
+                          ⚠ Split amounts must equal ₹{originalRegPaid}
                         </div>
                       )}
                     </div>

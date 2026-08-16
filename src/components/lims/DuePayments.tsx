@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import InvoicePreview from "./InvoicePreview";
 import { logPaymentTransaction } from "@/lib/paymentTransactions";
+import { capAmountToRemaining, remainingDue, sumPaymentEntries } from "@/lib/billPayment";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 
 const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card", "NEFT"];
@@ -115,7 +116,8 @@ const DuePayments = () => {
     const othersTotal = Object.entries(modeAmounts)
       .filter(([m]) => m !== mode && selectedModes.has(m))
       .reduce((sum, [, v]) => sum + (v || 0), 0);
-    const maxForThis = Math.max(0, (selected?.due_amount || 0) - othersTotal);
+    const liveDue = remainingDue(Number(selected?.final_amount || 0), Number(selected?.paid_amount || 0));
+    const maxForThis = Math.max(0, liveDue - othersTotal);
     setModeAmounts(prev => ({ ...prev, [mode]: Math.min(num, maxForThis) }));
   };
 
@@ -125,13 +127,32 @@ const DuePayments = () => {
       toast.error("Select at least one payment mode");
       return;
     }
-    if (totalPaying <= 0 || totalPaying > selected.due_amount) {
-      toast.error(`Total must be between ₹1 and ₹${selected.due_amount}`);
-      return;
-    }
     setSaving(true);
     try {
-      const existingPayments = Array.isArray(selected.payments) ? selected.payments : [];
+      const { data: live, error: liveErr } = await supabase
+        .from("patient_registrations")
+        .select("id, payments, paid_amount, due_amount, final_amount")
+        .eq("id", selected.id)
+        .single();
+      if (liveErr) throw liveErr;
+      if (!live) throw new Error("Bill not found");
+
+      const finalAmount = Number(live.final_amount || 0);
+      const paidSoFar = Number(live.paid_amount || 0);
+      const dueNow = remainingDue(finalAmount, paidSoFar);
+      if (dueNow <= 0) {
+        throw new Error("This bill has no remaining due");
+      }
+
+      const collectTotal = capAmountToRemaining(totalPaying, paidSoFar, finalAmount);
+      if (collectTotal <= 0 || collectTotal > dueNow) {
+        throw new Error(`Total must be between ₹1 and ₹${dueNow}`);
+      }
+      if (totalPaying > dueNow) {
+        throw new Error(`Payment cannot exceed the remaining due of ₹${dueNow}`);
+      }
+
+      const existingPayments = Array.isArray(live.payments) ? live.payments : [];
       const now = new Date().toISOString();
       const newEntries = Array.from(selectedModes)
         .filter(mode => (modeAmounts[mode] || 0) > 0)
@@ -143,27 +164,38 @@ const DuePayments = () => {
         return;
       }
 
+      const newPaid = paidSoFar + collectTotal;
+      if (newPaid > finalAmount + 0.01) {
+        throw new Error(`Payment cannot exceed the bill value of ₹${finalAmount}`);
+      }
+      const newDue = remainingDue(finalAmount, newPaid);
       const newPayments = [...existingPayments, ...newEntries];
-      const newPaid = (selected.paid_amount || 0) + totalPaying;
-      const newDue = (selected.due_amount || 0) - totalPaying;
+      if (sumPaymentEntries(newPayments) > finalAmount + 0.01) {
+        throw new Error(`Payment cannot exceed the bill value of ₹${finalAmount}`);
+      }
 
-      const { error } = await supabase
+      const { data: updated, error } = await supabase
         .from("patient_registrations")
         .update({
           payments: newPayments,
           paid_amount: newPaid,
-          due_amount: Math.max(0, newDue),
+          due_amount: newDue,
         })
-        .eq("id", selected.id);
+        .eq("id", selected.id)
+        .gte("due_amount", collectTotal)
+        .select("id");
 
       if (error) throw error;
+      if (!updated || updated.length === 0) {
+        throw new Error("This bill was already collected or the due changed. Refresh and try again.");
+      }
       toast.success("Payment collected successfully");
       setCollectOpen(false);
       setInvoiceData({
         ...selected,
         payments: newPayments,
         paid_amount: newPaid,
-        due_amount: Math.max(0, newDue),
+        due_amount: newDue,
       });
       // Log due collection transaction — use "old_due_recovered" if original bill is from a previous day
       const todayStr = format(new Date(), "dd-MM-yyyy");
@@ -178,7 +210,7 @@ const DuePayments = () => {
         transaction_type: isCrossDay ? "old_due_recovered" : "due_collection",
         direction: "in",
         payments: newEntries,
-        total_amount: totalPaying,
+        total_amount: collectTotal,
         // Delta-only row: snapshot fields zeroed so Daily Report totals don't double-count
         gross_amount: 0,
         discount_amount: 0,
@@ -299,7 +331,8 @@ const DuePayments = () => {
               <div className="text-sm space-y-1">
                 <p><strong>{patientDisplayName(selected)}</strong></p>
                 <p>Invoice: {selected.invoice_number}</p>
-                <p>Due: <span className="text-destructive font-semibold">₹{selected.due_amount}</span></p>
+                <p>Bill: <span className="font-semibold">₹{Number(selected.final_amount || 0)}</span></p>
+                <p>Due: <span className="text-destructive font-semibold">₹{remainingDue(Number(selected.final_amount || 0), Number(selected.paid_amount || 0))}</span></p>
               </div>
               <div className="space-y-2">
                 <Label>Payment Mode(s)</Label>
@@ -323,15 +356,15 @@ const DuePayments = () => {
                     value={modeAmounts[mode] || ""}
                     onChange={(e) => handleModeAmountChange(mode, e.target.value)}
                     min={0}
-                    max={selected.due_amount}
+                    max={remainingDue(Number(selected.final_amount || 0), Number(selected.paid_amount || 0))}
                   />
                 </div>
               ))}
               {selectedModes.size > 0 && (
                 <div className="text-sm font-medium flex justify-between border-t pt-2">
                   <span>Total Paying:</span>
-                  <span className={totalPaying > selected.due_amount ? "text-destructive" : ""}>
-                    ₹{totalPaying.toFixed(2)} / ₹{selected.due_amount}
+                  <span className={totalPaying > remainingDue(Number(selected.final_amount || 0), Number(selected.paid_amount || 0)) ? "text-destructive" : ""}>
+                    ₹{totalPaying.toFixed(2)} / ₹{remainingDue(Number(selected.final_amount || 0), Number(selected.paid_amount || 0))}
                   </span>
                 </div>
               )}
@@ -339,7 +372,7 @@ const DuePayments = () => {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setCollectOpen(false)}>Cancel</Button>
-            <Button onClick={handleCollect} disabled={saving || totalPaying <= 0 || totalPaying > (selected?.due_amount || 0)}>
+            <Button onClick={handleCollect} disabled={saving || totalPaying <= 0 || totalPaying > remainingDue(Number(selected?.final_amount || 0), Number(selected?.paid_amount || 0))}>
               {saving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
               Collect Payment
             </Button>
