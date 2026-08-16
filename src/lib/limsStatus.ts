@@ -19,13 +19,13 @@ import { supabase } from "@/integrations/supabase/client";
 export async function recalculateRegistrationStatus(registrationId: string): Promise<void> {
   const [{ data: tubes }, { data: results }, { data: snips }, { data: reg }] = await Promise.all([
     supabase.from("sample_tubes" as any).select("status, test_ids").eq("registration_id", registrationId),
-    supabase.from("patient_results").select("status, result_value, test_id").eq("registration_id", registrationId),
+    supabase.from("patient_results").select("status, result_value, test_id, parameter_id").eq("registration_id", registrationId),
     supabase.from("outsourced_test_snips").select("outsource_status, test_id").eq("registration_id", registrationId),
     supabase.from("patient_registrations").select("cancelled_tests, status, repeat_tests").eq("id", registrationId).maybeSingle(),
   ]);
 
   const t = (tubes || []) as any[];
-  const r = (results || []) as any[];
+  const rAll = (results || []) as any[];
   const s = (snips || []) as any[];
   const currentStatus = String((reg as any)?.status || "");
   const cancelledTestIds = new Set<string>(
@@ -33,6 +33,27 @@ export async function recalculateRegistrationStatus(registrationId: string): Pro
       .map((x: any) => (typeof x === "string" ? x : x?.test_id || x?.id))
       .filter(Boolean),
   );
+
+  // Ignore orphan patient_results whose parameter is not on the test master list
+  // (e.g. leftover "Sample Type" that stranded 2608140022 in Doctor Approval).
+  const resultTestIds = [...new Set(rAll.map((x: any) => x.test_id).filter(Boolean))];
+  let linkedParamKeys = new Set<string>();
+  if (resultTestIds.length > 0) {
+    const { data: tps } = await supabase
+      .from("test_parameters")
+      .select("test_id, parameter_id, is_subheader")
+      .in("test_id", resultTestIds);
+    linkedParamKeys = new Set(
+      ((tps || []) as any[])
+        .filter((tp: any) => tp.parameter_id && !tp.is_subheader)
+        .map((tp: any) => `${tp.test_id}||${tp.parameter_id}`),
+    );
+  }
+  const r = rAll.filter((x: any) => {
+    if (!x.test_id) return false;
+    if (!x.parameter_id) return true;
+    return linkedParamKeys.has(`${x.test_id}||${x.parameter_id}`);
+  });
   const repeatTestsRaw = Array.isArray((reg as any)?.repeat_tests) ? ((reg as any).repeat_tests as any[]) : [];
   const pendingRepeatTests = repeatTestsRaw.filter((rt: any) => {
     const tid = rt?.test_id;
