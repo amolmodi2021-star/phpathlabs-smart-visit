@@ -500,6 +500,12 @@ const ModifiedApproval = () => {
             normal_range_low: p.normal_range_low, normal_range_high: p.normal_range_high,
             flag: newFlag, is_calculated: p.is_calculated, is_outsourced: tg.isOutsourced,
             outsource_lab_name: tg.labName,
+            // Keep original approval signature metadata so reprints/WhatsApp years later
+            // still show the approving pathologist after a Modified Approval edit.
+            approved_by: p.approved_by || report.approved_by || null,
+            approved_by_qualification: p.approved_by_qualification || null,
+            approved_by_designation: p.approved_by_designation || null,
+            approved_by_signature_url: p.approved_by_signature_url || null,
             note: newNote,
             test_note: newTestNote,
           });
@@ -512,6 +518,7 @@ const ModifiedApproval = () => {
             allTestResults.push({
               test_id: tg.testId, test_name: tg.testName,
               is_outsourced: true, outsource_lab_name: tg.labName,
+              approved_by: report.approved_by || null,
               test_note: newTestNote,
             });
           }
@@ -520,6 +527,8 @@ const ModifiedApproval = () => {
 
       // Re-save snapshot — keep any approved/dispatched snapshot rows not in this
       // edit session so concurrent/partial saves cannot drop tests (e.g. CBC).
+      // Also restore signature metadata from the prior snapshot when the live/UI
+      // row did not carry those fields (db patient_results has no signature URL).
       const { data: existingSnap } = await supabase
         .from("approved_reports")
         .select("test_results")
@@ -528,8 +537,24 @@ const ModifiedApproval = () => {
       const prevSnap = Array.isArray((existingSnap as any)?.test_results)
         ? (existingSnap as any).test_results
         : [];
+      const prevByKey = new Map<string, any>();
+      for (const r of prevSnap) {
+        if (r?.test_id && r?.parameter_id) prevByKey.set(`${r.test_id}||${r.parameter_id}`, r);
+      }
+      const stampedResults = allTestResults.map((r: any) => {
+        if (!r?.parameter_id) return r;
+        const prev = prevByKey.get(`${r.test_id}||${r.parameter_id}`);
+        if (!prev) return r;
+        return {
+          ...r,
+          approved_by: r.approved_by || prev.approved_by || report.approved_by || null,
+          approved_by_qualification: r.approved_by_qualification || prev.approved_by_qualification || null,
+          approved_by_designation: r.approved_by_designation || prev.approved_by_designation || null,
+          approved_by_signature_url: r.approved_by_signature_url || prev.approved_by_signature_url || null,
+        };
+      });
       const incomingKeys = new Set(
-        allTestResults
+        stampedResults
           .filter((r: any) => r.test_id && r.parameter_id)
           .map((r: any) => `${r.test_id}||${r.parameter_id}`),
       );
@@ -540,7 +565,7 @@ const ModifiedApproval = () => {
           !incomingKeys.has(`${r.test_id}||${r.parameter_id}`),
       );
       await supabase.from("approved_reports").update({
-        test_results: [...preserved, ...allTestResults],
+        test_results: [...preserved, ...stampedResults],
         outsourced_snip_urls: allSnipUrls,
         approval_date: new Date().toISOString(),
       } as any).eq("id", report.id);
