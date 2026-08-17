@@ -545,6 +545,11 @@ const ModifiedApproval = () => {
         approval_date: new Date().toISOString(),
       } as any).eq("id", report.id);
 
+      // Safety net: any approved/dispatched live rows still missing from snapshot.
+      await (supabase as any).rpc("lims_heal_approved_report_from_live", {
+        p_registration_id: regId,
+      });
+
       await Promise.all(
         [...MODULE_KEYS.modified_approval, ...MODULE_KEYS.dispatch].map((k) =>
           qc.invalidateQueries({ queryKey: [k], refetchType: "active" }),

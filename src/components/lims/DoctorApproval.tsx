@@ -1,4 +1,4 @@
-import { snapshotAgeAtApproval } from "@/lib/patientAge";
+import { mergeApprovedReportSnapshot, approvedReportHeaderFromReg } from "@/lib/approvedReportSnapshot";
 import { getCachedSignatureDataUrl } from "@/lib/reportAssetCache";
 import RefreshButton from "@/components/lims/RefreshButton";
 import PageSizeSelect from "@/components/lims/PageSizeSelect";
@@ -346,8 +346,7 @@ const DoctorApproval = () => {
   const resolveNormalRange = useCallback((parameterId: string, reg: any) => {
     const ranges = normalRangesMap[parameterId];
     if (!ranges || ranges.length === 0) return { text: "", low: null as number | null, high: null as number | null, rangeType: "numeric", descriptiveOptions: [] as string[], expectedValue: "", normalFindings: "" };
-    let patientAge: number | null = null;
-    if (reg.dob) { patientAge = Math.floor((Date.now() - new Date(reg.dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000)); }
+    let patientAge: number | null = patientAgeYears(reg?.dob, reg?.age_text);
     const pg = (reg.gender || "").toLowerCase().charAt(0);
     let candidates = ranges.filter((r: any) => { const g = (r.gender || "all").toLowerCase(); return g === "all" || (g === "male" && pg === "m") || (g === "female" && pg === "f"); });
     if (patientAge != null) { const am = candidates.filter((r: any) => { if (r.age_min == null && r.age_max == null) return true; if (r.age_min != null && patientAge! < r.age_min) return false; if (r.age_max != null && patientAge! > r.age_max) return false; return true; }); if (am.length > 0) candidates = am; }
@@ -622,7 +621,7 @@ const DoctorApproval = () => {
       }
       await supabase.from("outsourced_test_snips").update({ outsource_status: "approved", approved_at: new Date().toISOString(), approved_by: approver.pathologistName } as any).eq("registration_id", reg.id).eq("test_id", testId).eq("outsource_status", "verified");
 
-      // Archive snapshot — merge with existing approved_reports data
+      // Atomic DB merge (row lock) — prevents concurrent approvals from dropping tests.
       const snipKey = `${reg.id}||${testId}`;
       const snipDetail = outsourcedSnipDetails[snipKey];
       const snipUrls = snipDetail?.snipImageUrls || [];
@@ -640,35 +639,19 @@ const DoctorApproval = () => {
         note: u.note || null,
         test_note: u.test_note || null,
       }));
-      // Fetch existing approved_reports to merge
-      const { data: existingReport } = await supabase.from("approved_reports").select("test_results, outsourced_snip_urls").eq("registration_id", reg.id).maybeSingle();
-      const existingResults = Array.isArray((existingReport as any)?.test_results) ? (existingReport as any).test_results : [];
-      const existingSnipUrls = Array.isArray((existingReport as any)?.outsourced_snip_urls) ? (existingReport as any).outsourced_snip_urls : [];
-      // Parameter-scoped merge: keep already-approved siblings on the same test
-      // (e.g. T3/T4 stay when TSH is approved later). Replacing by test_id alone
-      // wiped partial TFT profiles from the printed report.
-      const incomingKeys = new Set(
-        testResultsSnapshot.map((r: any) => `${r.test_id}||${r.parameter_id}`),
-      );
-      const mergedResults = existingResults
-        .filter((r: any) => !incomingKeys.has(`${r.test_id}||${r.parameter_id}`))
-        .concat(testResultsSnapshot);
-      const mergedSnipUrls = [...new Set([...existingSnipUrls.filter((u: string) => !u.includes(testId)), ...snipUrls])];
-      // First barcode print timestamp = MIN(sample_tubes.collected_at) — reprint-safe
       const { data: tubesForCol } = await supabase.from("sample_tubes").select("collected_at").eq("registration_id", reg.id).not("collected_at", "is", null);
       const firstCollectedAt = tubesForCol?.length ? (tubesForCol.map((t: any) => t.collected_at).sort()[0] as string) : null;
       const approvalAt = new Date().toISOString();
-      await supabase.from("approved_reports").upsert({
-        registration_id: reg.id, invoice_number: reg.invoice_number, umr_number: reg.umr_number,
-        patient_name: reg.patient_name, title: reg.title, gender: reg.gender, dob: reg.dob,
-        age_text: snapshotAgeAtApproval(reg, approvalAt),
-        mobile_number: reg.mobile_number, email: reg.email, address: reg.address,
-        doctor_name: reg.doctor_name, visit_type: reg.visit_type, is_stat: reg.is_stat,
-        report_language: reg.report_language, approved_by: approver.pathologistName,
-        registration_date: reg.created_at, approval_date: approvalAt,
-        sample_collection_date: firstCollectedAt,
-        test_results: mergedResults, outsourced_snip_urls: mergedSnipUrls,
-      } as any, { onConflict: "registration_id" as any, ignoreDuplicates: false });
+      await mergeApprovedReportSnapshot({
+        registrationId: reg.id,
+        incoming: testResultsSnapshot,
+        snipUrls,
+        header: approvedReportHeaderFromReg(reg, {
+          approvedBy: approver.pathologistName,
+          approvalAt,
+          sampleCollectionDate: firstCollectedAt,
+        }),
+      });
 
       // Status is recalculated authoritatively by propagateRegistrationChange below
       // (which calls recalculateRegistrationStatus). Do NOT write status directly here:
@@ -769,32 +752,21 @@ const DoctorApproval = () => {
           approved_by_signature_url: approver.signatureUrl,
         });
       }
-      // Archive combined snapshot — merge with existing approved_reports data
-      const { data: existingReportAll } = await supabase.from("approved_reports").select("test_results, outsourced_snip_urls").eq("registration_id", reg.id).maybeSingle();
-      const existingResultsAll = Array.isArray((existingReportAll as any)?.test_results) ? (existingReportAll as any).test_results : [];
-      const existingSnipUrlsAll = Array.isArray((existingReportAll as any)?.outsourced_snip_urls) ? (existingReportAll as any).outsourced_snip_urls : [];
-      const incomingKeysAll = new Set(
-        allTestResults.map((r: any) => `${r.test_id}||${r.parameter_id}`),
-      );
-      const mergedResultsAll = existingResultsAll
-        .filter((r: any) => !snipOnlyIds.has(r.test_id) && !incomingKeysAll.has(`${r.test_id}||${r.parameter_id}`))
-        .concat(allTestResults);
-      const mergedSnipUrlsAll = [...new Set([...existingSnipUrlsAll, ...allSnipUrls])];
-      // First barcode print timestamp = MIN(sample_tubes.collected_at) — reprint-safe
+      // Atomic DB merge — also removes prior snip-only markers for these tests.
       const { data: tubesForColAll } = await supabase.from("sample_tubes").select("collected_at").eq("registration_id", reg.id).not("collected_at", "is", null);
       const firstCollectedAtAll = tubesForColAll?.length ? (tubesForColAll.map((t: any) => t.collected_at).sort()[0] as string) : null;
       const approvalAtAll = new Date().toISOString();
-      await supabase.from("approved_reports").upsert({
-        registration_id: reg.id, invoice_number: reg.invoice_number, umr_number: reg.umr_number,
-        patient_name: reg.patient_name, title: reg.title, gender: reg.gender, dob: reg.dob,
-        age_text: snapshotAgeAtApproval(reg, approvalAtAll),
-        mobile_number: reg.mobile_number, email: reg.email, address: reg.address,
-        doctor_name: reg.doctor_name, visit_type: reg.visit_type, is_stat: reg.is_stat,
-        report_language: reg.report_language, approved_by: approver.pathologistName,
-        registration_date: reg.created_at, approval_date: approvalAtAll,
-        sample_collection_date: firstCollectedAtAll,
-        test_results: mergedResultsAll, outsourced_snip_urls: mergedSnipUrlsAll,
-      } as any, { onConflict: "registration_id" as any, ignoreDuplicates: false });
+      await mergeApprovedReportSnapshot({
+        registrationId: reg.id,
+        incoming: allTestResults,
+        snipUrls: allSnipUrls,
+        removeTestIds: [...snipOnlyIds],
+        header: approvedReportHeaderFromReg(reg, {
+          approvedBy: approver.pathologistName,
+          approvalAt: approvalAtAll,
+          sampleCollectionDate: firstCollectedAtAll,
+        }),
+      });
       // Status is recalculated authoritatively by propagateRegistrationChange below.
       // Do NOT write status='approved' directly: that bypasses the guard for accepted
       // tube tests that have no patient_results / no terminal outsourced snip and can
@@ -1031,16 +1003,29 @@ const DoctorApproval = () => {
                   setActionKey(`${testKey}||approve`);
                   try {
                     await supabase.from("outsourced_test_snips").update({ outsource_status: "approved", approved_at: new Date().toISOString(), approved_by: snipApproverChoice.pathologistName } as any).eq("registration_id", reg.id).eq("test_id", st.testId).eq("outsource_status", "verified");
-                    // Merge with existing approved_reports data
-                    const { data: existSnipReport } = await supabase.from("approved_reports").select("test_results, outsourced_snip_urls").eq("registration_id", reg.id).maybeSingle();
-                    const prevResults = Array.isArray((existSnipReport as any)?.test_results) ? (existSnipReport as any).test_results : [];
-                    const prevSnipUrls = Array.isArray((existSnipReport as any)?.outsourced_snip_urls) ? (existSnipReport as any).outsourced_snip_urls : [];
-                    const newResults = prevResults.filter((r: any) => r.test_id !== st.testId).concat([{ test_id: st.testId, test_name: st.testName, is_outsourced: true, outsource_lab_name: st.labName, approved_by: snipApproverChoice.pathologistName, approved_by_qualification: snipApproverChoice.qualification, approved_by_designation: snipApproverChoice.designation, approved_by_signature_url: snipApproverChoice.signatureUrl }]);
-                    const newSnipUrls = [...new Set([...prevSnipUrls.filter((u: string) => !u.includes(st.testId)), ...st.snipUrls])];
                     const { data: tubesForColSnip } = await supabase.from("sample_tubes").select("collected_at").eq("registration_id", reg.id).not("collected_at", "is", null);
                     const firstCollectedAtSnip = tubesForColSnip?.length ? (tubesForColSnip.map((t: any) => t.collected_at).sort()[0] as string) : null;
                     const approvalAtSnip = new Date().toISOString();
-                    await supabase.from("approved_reports").upsert({ registration_id: reg.id, invoice_number: reg.invoice_number, umr_number: reg.umr_number, patient_name: reg.patient_name, title: reg.title, gender: reg.gender, dob: reg.dob, age_text: snapshotAgeAtApproval(reg, approvalAtSnip), mobile_number: reg.mobile_number, email: reg.email, address: reg.address, doctor_name: reg.doctor_name, visit_type: reg.visit_type, is_stat: reg.is_stat, report_language: reg.report_language, approved_by: snipApproverChoice.pathologistName, registration_date: reg.created_at, approval_date: approvalAtSnip, sample_collection_date: firstCollectedAtSnip, test_results: newResults, outsourced_snip_urls: newSnipUrls } as any, { onConflict: "registration_id" as any, ignoreDuplicates: false });
+                    await mergeApprovedReportSnapshot({
+                      registrationId: reg.id,
+                      removeTestIds: [st.testId],
+                      snipUrls: st.snipUrls || [],
+                      incoming: [{
+                        test_id: st.testId,
+                        test_name: st.testName,
+                        is_outsourced: true,
+                        outsource_lab_name: st.labName,
+                        approved_by: snipApproverChoice.pathologistName,
+                        approved_by_qualification: snipApproverChoice.qualification,
+                        approved_by_designation: snipApproverChoice.designation,
+                        approved_by_signature_url: snipApproverChoice.signatureUrl,
+                      }],
+                      header: approvedReportHeaderFromReg(reg, {
+                        approvedBy: snipApproverChoice.pathologistName,
+                        approvalAt: approvalAtSnip,
+                        sampleCollectionDate: firstCollectedAtSnip,
+                      }),
+                    });
                     await propagateRegistrationChange(qc, reg.id, ["doctor_approval", "dispatch"]);
                     toast.success(`${st.testName} approved`);
                   } catch (err: any) { toast.error(err.message || "Approval failed"); }

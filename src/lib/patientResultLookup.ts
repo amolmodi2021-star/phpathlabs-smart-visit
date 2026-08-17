@@ -443,10 +443,19 @@ export async function healApprovedReportSnapshotFromLive(
  * All / Send Reports before PDF generation.
  */
 export async function ensureApprovedReportSnapshotHealed(
-  supabase: { from: (table: string) => any },
+  supabase: { from: (table: string) => any; rpc?: (fn: string, args: Record<string, any>) => any },
   registrationId: string,
 ): Promise<number> {
   if (!registrationId) return 0;
+
+  // Prefer DB heal (row lock) when available.
+  if (typeof (supabase as any).rpc === "function") {
+    const { data, error } = await (supabase as any).rpc("lims_heal_approved_report_from_live", {
+      p_registration_id: registrationId,
+    });
+    if (!error) return Number(data ?? 0);
+  }
+
   const { data: report, error } = await supabase
     .from("approved_reports")
     .select("*")
