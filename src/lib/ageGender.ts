@@ -1,6 +1,9 @@
 /**
  * Age + gender formatting helpers used across the LIMS workflow.
  * Renders compact "36/M" badges next to patient names.
+ *
+ * Lab/home visits use DOB. Pickup-point visits often have no DOB and store
+ * free-text age in `age_text` instead.
  */
 
 export function calcAgeYears(dob: string | null | undefined): number | null {
@@ -22,11 +25,28 @@ export function shortGender(gender: string | null | undefined): string {
   return "O";
 }
 
+/** Compact age fragment for badges from pickup free-text (`45 Years` → `45`). */
+export function compactAgeFromText(ageText: string | null | undefined): string | null {
+  const t = String(ageText || "").trim();
+  if (!t) return null;
+  const m = t.match(/^(\d+(?:\.\d+)?)\s*(years?|yrs?|y|months?|mos?|m|days?|d)?\b/i);
+  if (!m) return t;
+  const n = m[1];
+  const unit = (m[2] || "").toLowerCase();
+  if (!unit || unit.startsWith("y")) return n;
+  if (unit.startsWith("mo") || unit === "m") return `${n}m`;
+  if (unit.startsWith("d")) return `${n}d`;
+  return n;
+}
+
 export function formatAgeGender(
   dob: string | null | undefined,
   gender: string | null | undefined,
+  ageText?: string | null,
 ): string {
-  const age = calcAgeYears(dob);
+  const fromDob = calcAgeYears(dob);
+  const age =
+    fromDob !== null ? String(fromDob) : compactAgeFromText(ageText);
   const g = shortGender(gender);
   if (age === null && !g) return "—";
   return `${age === null ? "—" : age}/${g || "—"}`;

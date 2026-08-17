@@ -368,7 +368,7 @@ const Dispatch = () => {
     enabled: pageIds.length > 0,
     queryFn: async () => {
       const { data } = await supabase.from("patient_registrations")
-        .select("id, invoice_number, patient_name, title, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, gender, dob, created_at, updated_at, bill_cancelled, registered_by, due_amount, pickup_point_id")
+        .select("id, invoice_number, patient_name, title, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, gender, dob, age_text, created_at, updated_at, bill_cancelled, registered_by, due_amount, pickup_point_id")
         .in("id", pageIds);
       const order = new Map(pageIds.map((id, i) => [id, i]));
       return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
@@ -1032,7 +1032,7 @@ const Dispatch = () => {
                             </div>
                             <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
                               <span className={cn("text-xs text-muted-foreground truncate", entry.completionStatus === "cancelled" && "line-through")}>{patientDisplayName(reg)}</span>
-                              <Badge variant="outline" className="text-[10px] font-mono shrink-0 px-1 py-0">{formatAgeGender(reg.dob, reg.gender)}</Badge>
+                              <Badge variant="outline" className="text-[10px] font-mono shrink-0 px-1 py-0">{formatAgeGender(reg.dob, reg.gender, reg.age_text)}</Badge>
                             </div>
                             <div className="flex items-center gap-2 mt-0.5">
                               <span className="text-xs text-muted-foreground flex items-center gap-1"><Phone className="h-3 w-3" />{reg.mobile_number}</span>
@@ -1093,7 +1093,7 @@ const Dispatch = () => {
                         <div className="flex items-center gap-2 mt-1 flex-wrap">
                           <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                           <span className={cn("text-sm text-muted-foreground", selectedEntry.completionStatus === "cancelled" && "line-through")}>{patientDisplayName(selectedEntry.registration)}</span>
-                          <Badge variant="outline" className="text-xs font-mono">{formatAgeGender(selectedEntry.registration.dob, selectedEntry.registration.gender)}</Badge>
+                          <Badge variant="outline" className="text-xs font-mono">{formatAgeGender(selectedEntry.registration.dob, selectedEntry.registration.gender, selectedEntry.registration.age_text)}</Badge>
                         </div>
                         <div className={cn("flex items-center gap-4 mt-1 text-sm text-muted-foreground flex-wrap", isMobile && "gap-2 text-xs")}>
                           <span className="flex items-center gap-1"><Phone className="h-3.5 w-3.5" />{selectedEntry.registration.mobile_number}</span>
