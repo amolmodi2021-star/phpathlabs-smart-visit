@@ -93,39 +93,6 @@ async function fetchAddressesForMobile(mobile10: string): Promise<KnownAddress[]
   return out;
 }
 
-/** Persist the booked address onto matching patient_master / registration rows. */
-async function syncAddressToPatientData(mobile10: string, patientName: string, address: string) {
-  const cleanName = patientName.replace(/\s+/g, " ").trim().toUpperCase();
-  const cleanAddr = normalizeAddress(address);
-  if (!cleanAddr) return;
-
-  const { data: masters } = await supabase
-    .from("patient_master")
-    .select("id, patient_name, address")
-    .ilike("mobile_number", `%${mobile10}%`)
-    .limit(20);
-
-  const rows = masters || [];
-  const byName = cleanName
-    ? rows.filter((m) => String(m.patient_name || "").replace(/\s+/g, " ").trim().toUpperCase() === cleanName)
-    : [];
-  const targets = byName.length > 0 ? byName : rows.length === 1 ? rows : [];
-
-  for (const m of targets) {
-    if (normalizeAddress(m.address) === cleanAddr) continue;
-    await supabase.from("patient_master").update({ address: cleanAddr }).eq("id", m.id);
-  }
-
-  if (cleanName) {
-    await supabase
-      .from("patient_registrations")
-      .update({ address: cleanAddr })
-      .ilike("mobile_number", `%${mobile10}%`)
-      .eq("patient_name", cleanName)
-      .eq("bill_cancelled", false);
-  }
-}
-
 const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
   const qc = useQueryClient();
   const { data: templates } = useMessageTemplates();
@@ -359,13 +326,6 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
       });
       if (visitError) throw visitError;
 
-      // Keep patient master / registrations in sync with the booked address
-      try {
-        await syncAddressToPatientData(cleanNumber, cleanName, cleanAddress);
-      } catch (e) {
-        console.warn("Address sync to patient data failed:", e);
-      }
-
       // Share on WhatsApp
       if (templates) {
         const tests = calculations.testDetails.map(t => ({ name: t.test_name, price: t.price, fasting: t.fasting_required }));
@@ -398,7 +358,6 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["home_visits"] });
       qc.invalidateQueries({ queryKey: ["estimates"] });
-      qc.invalidateQueries({ queryKey: ["patient_master"] });
       toast.success("Home visit created & WhatsApp confirmation sent!");
       onClose();
     },
