@@ -12,6 +12,11 @@ import { toast } from "sonner";
 import { getCurrentUserName } from "@/lib/auth";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 import { formatPatientAge } from "@/lib/patientAge";
+import {
+  fetchPackageIncludedTestNames,
+  formatPackageIncludedTests,
+  isInvoicePackageItem,
+} from "@/lib/invoicePackageTests";
 
 interface InvoicePreviewProps {
   data: any;
@@ -89,6 +94,14 @@ const PALETTE = {
   discount: "#059669",
 };
 
+function escapeInvoiceHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 function textStyle(brand: Record<string, string>, prefix: string, fallbackSize: string, fallbackColor: string) {
   const size = Number(brand[`${prefix}_size`] || fallbackSize);
   const bold = brand[`${prefix}_bold`] !== "false";
@@ -140,15 +153,31 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
   const [channelName, setChannelName] = useState("");
   const [consoleQueued, setConsoleQueued] = useState(false);
   const [waSending, setWaSending] = useState(false);
+  const [packageTestsById, setPackageTestsById] = useState<Map<string, string[]>>(new Map());
+  const [packageNamesReady, setPackageNamesReady] = useState(false);
 
   useEffect(() => {
     if (!open) {
       setConsoleQueued(false);
       setWaSending(false);
+      setPackageNamesReady(false);
       return;
     }
     setConsoleQueued(queuedInvoiceRef.current === String(data?.invoice_number || ""));
     (async () => {
+      const packageIds = (Array.isArray(data?.tests) ? data.tests : [])
+        .filter((t: any) => isInvoicePackageItem(t) && t.test_id)
+        .map((t: any) => String(t.test_id));
+      if (packageIds.length === 0) {
+        setPackageTestsById(new Map());
+      } else {
+        try {
+          setPackageTestsById(await fetchPackageIncludedTestNames(packageIds));
+        } catch {
+          setPackageTestsById(new Map());
+        }
+      }
+      setPackageNamesReady(true);
       const { data: rows } = await supabase
         .from("app_settings")
         .select("setting_key, setting_value")
@@ -339,6 +368,7 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
   // New registration: queue invoice to durable outbox once barcode/layout is ready.
   useEffect(() => {
     if (!autoQueueWhatsApp || !open || !data?.invoice_number || !data?.mobile_number) return;
+    if (!packageNamesReady) return;
     if (isPickupInvoice(data)) return;
     const invoiceNo = String(data.invoice_number);
     if (autoQueuedRef.current === invoiceNo || queuedInvoiceRef.current === invoiceNo) return;
@@ -348,7 +378,7 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
       void queueInvoiceViaWaApi();
     }, 900);
     return () => clearTimeout(timer);
-  }, [autoQueueWhatsApp, open, data, data?.invoice_number, data?.mobile_number, queueInvoiceViaWaApi, isPickupInvoice]);
+  }, [autoQueueWhatsApp, open, data, data?.invoice_number, data?.mobile_number, queueInvoiceViaWaApi, isPickupInvoice, packageNamesReady]);
 
   if (!data) return null;
 
@@ -372,6 +402,11 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
   const showGross = activeGross !== activeFinal;
 
   const visitLabel = formatVisitType(data.visit_type) + (channelName ? ` (${channelName})` : "");
+
+  const includedTestsLine = (t: any) =>
+    isInvoicePackageItem(t)
+      ? formatPackageIncludedTests(packageTestsById.get(String(t?.test_id || "")))
+      : "";
 
   const handlePrint = () => {
     renderBarcode();
@@ -455,10 +490,15 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
     };
 
     const testRowHtml = (t: any, globalIndex: number) => {
-      const td = `padding:5px 4px;font-size:12px;color:${PALETTE.ink};border-bottom:1px solid ${PALETTE.line};line-height:1.25`;
+      const td = `padding:5px 4px;font-size:12px;color:${PALETTE.ink};border-bottom:1px solid ${PALETTE.line};line-height:1.25;vertical-align:top`;
+      const included = includedTestsLine(t);
       let r = `<tr>`;
       r += `<td style="${td};text-align:center;width:1%;white-space:nowrap;color:${PALETTE.muted}">${globalIndex + 1}</td>`;
-      r += `<td style="${td};font-weight:600">${t.test_name}</td>`;
+      r += `<td style="${td};font-weight:600">${escapeInvoiceHtml(String(t.test_name || ""))}`;
+      if (included) {
+        r += `<div style="font-size:9px;font-style:italic;font-weight:400;color:${PALETTE.muted};line-height:1.3;margin-top:2px">${escapeInvoiceHtml(included)}</div>`;
+      }
+      r += `</td>`;
       if (hasAnyDiscount) {
         r += `<td style="${td};text-align:right;white-space:nowrap">₹${t.price}</td>`;
         r += `<td style="${td};text-align:right;white-space:nowrap;color:${PALETTE.discount}">${Number(t.discount || 0) > 0 ? `-₹${t.discount}` : "—"}</td>`;
@@ -622,7 +662,7 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
             sheet.style.width = "100%";
             var maxH = page.clientHeight || Math.round((200 / 25.4) * 96);
             var h = sheet.scrollHeight;
-            var scale = h > maxH ? Math.max(0.5, maxH / h) : 1;
+            var scale = h > maxH ? Math.max(0.38, maxH / h) : 1;
             if (scale < 1) {
               sheet.style.transformOrigin = "top left";
               sheet.style.transform = "scale(" + scale + ")";
@@ -795,10 +835,19 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
               </tr>
             </thead>
             <tbody>
-              {tests.map((t: any, i: number) => (
+              {tests.map((t: any, i: number) => {
+                const included = includedTestsLine(t);
+                return (
                 <tr key={i}>
-                  <td style={{ padding: "5px 4px", fontSize: 12, textAlign: "center", whiteSpace: "nowrap", color: PALETTE.muted, borderBottom: `1px solid ${PALETTE.line}`, lineHeight: 1.25 }}>{i + 1}</td>
-                  <td style={{ padding: "5px 4px", fontSize: 12, borderBottom: `1px solid ${PALETTE.line}`, fontWeight: 600, lineHeight: 1.25 }}>{t.test_name}</td>
+                  <td style={{ padding: "5px 4px", fontSize: 12, textAlign: "center", whiteSpace: "nowrap", color: PALETTE.muted, borderBottom: `1px solid ${PALETTE.line}`, lineHeight: 1.25, verticalAlign: "top" }}>{i + 1}</td>
+                  <td style={{ padding: "5px 4px", fontSize: 12, borderBottom: `1px solid ${PALETTE.line}`, fontWeight: 600, lineHeight: 1.25, verticalAlign: "top" }}>
+                    {t.test_name}
+                    {included ? (
+                      <div style={{ fontSize: 9, fontStyle: "italic", fontWeight: 400, color: PALETTE.muted, lineHeight: 1.3, marginTop: 2 }}>
+                        {included}
+                      </div>
+                    ) : null}
+                  </td>
                   {hasAnyDiscount ? (
                     <>
                       <td style={{ padding: "5px 4px", fontSize: 12, textAlign: "right", whiteSpace: "nowrap", borderBottom: `1px solid ${PALETTE.line}`, lineHeight: 1.25 }}>₹{t.price}</td>
@@ -809,7 +858,8 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
                     <td style={{ padding: "5px 4px", fontSize: 12, textAlign: "right", whiteSpace: "nowrap", fontWeight: 700, borderBottom: `1px solid ${PALETTE.line}`, lineHeight: 1.25 }}>₹{t.price}</td>
                   )}
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
 
