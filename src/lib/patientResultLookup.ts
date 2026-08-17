@@ -437,3 +437,36 @@ export async function healApprovedReportSnapshotFromLive(
   return { added: missing.length, reportsArr: healed };
 }
 
+/**
+ * Load approved_reports for a registration and merge any approved/dispatched
+ * patient_results rows that are missing from the snapshot. Used by Dispatch
+ * All / Send Reports before PDF generation.
+ */
+export async function ensureApprovedReportSnapshotHealed(
+  supabase: { from: (table: string) => any },
+  registrationId: string,
+): Promise<number> {
+  if (!registrationId) return 0;
+  const { data: report, error } = await supabase
+    .from("approved_reports")
+    .select("*")
+    .eq("registration_id", registrationId)
+    .maybeSingle();
+  if (error || !report) return 0;
+
+  const { data: tests } = await supabase.from("tests").select("id, test_name");
+  const testNameById: Record<string, string> = {};
+  (tests || []).forEach((t: any) => {
+    testNameById[t.id] = t.test_name;
+  });
+
+  const healed = await healApprovedReportSnapshotFromLive(
+    supabase,
+    registrationId,
+    [report],
+    testNameById,
+  );
+  return healed.added;
+}
+
+

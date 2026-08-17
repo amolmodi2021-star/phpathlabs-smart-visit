@@ -34,6 +34,7 @@ import { shortIdsKey } from "@/lib/queryKeys";
 import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import NewBadge from "./NewBadge";
 import { openReportForManualWhatsApp, queueApprovedReportWhatsApp } from "@/lib/dispatchReportWhatsApp";
+import { ensureApprovedReportSnapshotHealed } from "@/lib/patientResultLookup";
 import { dismissFailedWhatsAppConsoleJobs, dismissAllFailedWhatsAppConsoleJobs } from "@/lib/whatsappConsoleBridge";
 import {
   dispatchDotFromRegStatus,
@@ -632,6 +633,8 @@ const Dispatch = () => {
     setActionKey(`${reg.id}||dispatch`);
     try {
       toast.message("Generating report PDF for WhatsApp…");
+      // approved_reports.test_results ← backfill from patient_results if needed
+      await ensureApprovedReportSnapshotHealed(supabase, reg.id);
       const queued = await queueApprovedReportWhatsApp({
         registrationId: reg.id,
         testIds,
@@ -698,6 +701,8 @@ const Dispatch = () => {
     setActionKey(`${reg.id}||send`);
     try {
       toast.message("Generating report PDF for WhatsApp…");
+      // approved_reports.test_results ← backfill from patient_results if needed
+      await ensureApprovedReportSnapshotHealed(supabase, reg.id);
       const queued = await queueApprovedReportWhatsApp({
         registrationId: reg.id,
         testIds,
@@ -789,6 +794,7 @@ const Dispatch = () => {
     }
     setActionKey(`${entry.registration.id}||manualWa`);
     try {
+      await ensureApprovedReportSnapshotHealed(supabase, entry.registration.id);
       const opened = openReportForManualWhatsApp({
         registrationId: entry.registration.id,
         testIds,
