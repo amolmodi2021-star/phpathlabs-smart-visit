@@ -216,7 +216,7 @@ const ResultsEntry = () => {
     setExpandedPatient(null);
   }, [mode, selectedMachine]);
 
-  const { data: pendingIds = [] as string[], isLoading: loadingIds } = useQuery({
+  const { data: pendingIds = [] as string[], isLoading: loadingIds, isPlaceholderData: idsPlaceholder } = useQuery({
     queryKey: ["results_accepted_count", debouncedSearch],
     queryFn: async (): Promise<string[]> => {
       const candidates = await fetchResultsEntryCandidateIds();
@@ -284,13 +284,19 @@ const ResultsEntry = () => {
     staleTime: 60_000,
   });
 
-  const displayIds = machineFilterActive ? machineFilteredIds : pendingIds;
+  // When queue is freshly empty, drop machine-filter placeholder leftovers too.
+  const displayIds =
+    !idsPlaceholder && pendingIds.length === 0
+      ? []
+      : machineFilterActive
+        ? machineFilteredIds
+        : pendingIds;
   const reCount = displayIds.length;
   const pageIds: string[] = displayIds.slice(rePage * pageSize, (rePage + 1) * pageSize);
   const pageKey = shortIdsKey(pageIds, "re");
 
   // ─── Fetch accepted registrations (list headers — page only) ───
-  const { data: acceptedRegs = [], isLoading: loadingRegs } = useQuery({
+  const { data: acceptedRegsRaw = [], isLoading: loadingRegs } = useQuery({
     queryKey: ["results_accepted_regs", pageKey],
     enabled: pageIds.length > 0,
     queryFn: async () => {
@@ -305,6 +311,16 @@ const ResultsEntry = () => {
     placeholderData: keepPreviousData,
     staleTime: 120_000,
   });
+
+  // Disabled queries keep last rows; never show approved/dispatched leftovers.
+  const acceptedRegs = useMemo(() => {
+    if (!idsPlaceholder && pendingIds.length === 0) return [];
+    if (pageIds.length === 0) return [];
+    const onPage = new Set(pageIds);
+    return (acceptedRegsRaw as any[]).filter(
+      (r) => onPage.has(r.id) && r.status !== "approved" && r.status !== "dispatched",
+    );
+  }, [acceptedRegsRaw, pageIds, pendingIds.length, idsPlaceholder]);
 
   const listLoading =
     loadingIds ||

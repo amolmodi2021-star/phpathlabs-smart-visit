@@ -397,6 +397,13 @@ const DoctorApproval = () => {
 
         const testVerifiedResults = existingResults.filter((r: any) => r.registration_id === reg.id && r.test_id === t.test_id);
         if (testVerifiedResults.length === 0 && !snipDetail) continue;
+        // Fully approved/dispatched tests belong in Modified Approval / Dispatch only
+        if (
+          testVerifiedResults.length > 0 &&
+          testVerifiedResults.every((r: any) => r.status === "approved" || r.status === "dispatched")
+        ) {
+          continue;
+        }
         for (const tp of params) {
           if (tp.is_subheader) continue;
           const p = tp.report_test_parameters; if (!p) continue;
@@ -404,6 +411,7 @@ const DoctorApproval = () => {
           if (isSnipResult && isParamOutsourced) continue;
           const existing = testVerifiedResults.find((r: any) => r.parameter_id === p.id);
           if (!existing && !isParamOutsourced) continue;
+          if (existing?.status === "approved" || existing?.status === "dispatched") continue;
           const resolved = resolveNormalRange(p.id, fullReg);
           const refText = resolved.text || p.normal_range_text || (p.normal_range_low != null && p.normal_range_high != null ? `${p.normal_range_low} - ${p.normal_range_high}` : "");
           const savedUnit = isParamOutsourced && existing?.unit ? existing.unit : (p.unit || "");
