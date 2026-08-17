@@ -188,7 +188,7 @@ const PatientRegistration = ({
     allowHvCharges ? (d?.homeVisitCharges ?? 0) : 0,
   );
   const [completingPhleboName, setCompletingPhleboName] = useState(
-    homeVisitPrefill?.completingPhleboName?.trim() || "",
+    () => (homeVisitOnly ? (getCurrentUserName()?.trim() || homeVisitPrefill?.completingPhleboName?.trim() || "") : ""),
   );
 
   // Payment
@@ -293,7 +293,9 @@ const PatientRegistration = ({
     } else if (!allowHvCharges) {
       setHomeVisitCharges(0);
     }
-    if (homeVisitPrefill.completingPhleboName) {
+    if (homeVisitOnly) {
+      setCompletingPhleboName(getCurrentUserName()?.trim() || homeVisitPrefill?.completingPhleboName?.trim() || "");
+    } else if (homeVisitPrefill.completingPhleboName) {
       setCompletingPhleboName(homeVisitPrefill.completingPhleboName.trim());
     }
     if (digits.length === 10) {
@@ -589,7 +591,9 @@ const PatientRegistration = ({
     reportLanguage,
     remarks: remarks.replace(/\s+/g, " ").trim().toUpperCase() || null,
     channelId: channelId || null,
-    completingPhleboName: completingPhleboName.trim() || null,
+    completingPhleboName: homeVisitOnly
+      ? (getCurrentUserName()?.trim() || completingPhleboName.trim() || null)
+      : (completingPhleboName.trim() || null),
     calculations: {
       totalAmount: calculations.totalAmount,
       totalDiscount: calculations.totalDiscount,
@@ -611,7 +615,9 @@ const PatientRegistration = ({
     if (isPickup && !manualAge.trim()) throw new Error("Age is required for pickup point registrations");
     if (selectedTests.length === 0) throw new Error("Select at least one test");
     if (visitType !== "pickup_point" && !address.trim()) throw new Error("Address is required");
-    if (homeVisitOnly && !completingPhleboName.trim()) throw new Error("Enter the phlebotomist who completed this visit");
+    if (homeVisitOnly && !(getCurrentUserName()?.trim() || completingPhleboName.trim())) {
+      throw new Error("Signed-in user name required for Completed by (Phlebo)");
+    }
     if (!deferPayment && paidAmount > calculations.finalAmount) {
       throw new Error("Payment amount cannot exceed the final amount");
     }
@@ -688,7 +694,7 @@ const PatientRegistration = ({
         report_language: visitType === "pickup_point" ? "ENGLISH" : reportLanguage.toUpperCase(),
         registered_by: stampedBy,
         completing_phlebo_name: homeVisitOnly
-          ? (completingPhleboName.trim() || homeVisitPrefill?.completingPhleboName?.trim() || null)
+          ? (getCurrentUserName()?.trim() || completingPhleboName.trim() || homeVisitPrefill?.completingPhleboName?.trim() || null)
           : null,
         home_visit_id: homeVisitOnly ? (homeVisitPrefill?.homeVisitId || null) : null,
       };
@@ -1117,14 +1123,14 @@ const PatientRegistration = ({
 
           {homeVisitOnly && (
             <div>
-              <Label className={triedSave && !completingPhleboName.trim() ? "text-destructive" : ""}>
-                Completed by (Phlebo) *
-              </Label>
+              <Label>Completed by (Phlebo)</Label>
               <Input
                 value={completingPhleboName}
-                onChange={(e) => setCompletingPhleboName(e.target.value)}
-                placeholder="Phlebotomist name"
+                readOnly
+                disabled
+                className="bg-muted"
               />
+              <p className="text-[10px] text-muted-foreground mt-1">Locked to signed-in user</p>
             </div>
           )}
 
@@ -1428,8 +1434,8 @@ const PatientRegistration = ({
               className="flex-1"
               onClick={() => {
                 setTriedSave(true);
-                if (homeVisitOnly && !completingPhleboName.trim()) {
-                  toast.error("Enter the phlebotomist who completed this visit");
+                if (homeVisitOnly && !(getCurrentUserName()?.trim() || completingPhleboName.trim())) {
+                  toast.error("Signed-in user name required");
                   return;
                 }
                 if (deferPayment) {

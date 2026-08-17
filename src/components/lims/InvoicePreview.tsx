@@ -13,9 +13,8 @@ import { getCurrentUserName } from "@/lib/auth";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 import { formatPatientAge } from "@/lib/patientAge";
 import {
-  fetchPackageIncludedTestNames,
+  fetchPackageIncludedTestNamesFromLines,
   formatPackageIncludedTests,
-  isInvoicePackageItem,
 } from "@/lib/invoicePackageTests";
 
 interface InvoicePreviewProps {
@@ -26,6 +25,34 @@ interface InvoicePreviewProps {
   autoQueueWhatsApp?: boolean;
   /** Hide Print (e.g. home-visit completion receipt — WhatsApp only). */
   hidePrint?: boolean;
+  /** Increment to trigger a WhatsApp queue from parent (batch send). */
+  queueRequestId?: number;
+  /** Called when a triggered / button queue finishes. */
+  onQueueSettled?: (result: { ok: boolean; error?: string }) => void;
+  /** Optional status line shown above actions (e.g. batch send progress). */
+  statusHint?: string;
+}
+
+function invoiceLineAmount(t: any): number {
+  return Number(t?.price || 0);
+}
+
+function isInvoicePackageLine(t: any, packageTestsById: Map<string, string[]>): boolean {
+  if (String(t?.item_type || "").toLowerCase() === "package") return true;
+  const id = String(t?.test_id || "");
+  if (id && packageTestsById.has(id)) return true;
+  const nameKey = String(t?.test_name || "").trim().toLowerCase().replace(/\s+/g, " ");
+  return !!(nameKey && packageTestsById.has(nameKey));
+}
+
+/** Packages first (higher value first), then individual tests by descending price. */
+function sortInvoiceLines(lines: any[], packageTestsById: Map<string, string[]>): any[] {
+  return [...lines].sort((a, b) => {
+    const aPkg = isInvoicePackageLine(a, packageTestsById) ? 0 : 1;
+    const bPkg = isInvoicePackageLine(b, packageTestsById) ? 0 : 1;
+    if (aPkg !== bPkg) return aPkg - bPkg;
+    return invoiceLineAmount(b) - invoiceLineAmount(a);
+  });
 }
 
 const SETTING_KEYS = [
@@ -144,7 +171,16 @@ const numberToWords = (num: number): string => {
   return convert(Math.floor(Math.abs(num)));
 };
 
-const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePrint = false }: InvoicePreviewProps) => {
+const InvoicePreview = ({
+  data,
+  open,
+  onClose,
+  autoQueueWhatsApp = false,
+  hidePrint = false,
+  queueRequestId = 0,
+  onQueueSettled,
+  statusHint,
+}: InvoicePreviewProps) => {
   const receiptRef = useRef<HTMLDivElement>(null);
   const barcodeRef = useRef<HTMLCanvasElement>(null);
   const queuedInvoiceRef = useRef<string | null>(null);
@@ -164,18 +200,13 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
       return;
     }
     setConsoleQueued(queuedInvoiceRef.current === String(data?.invoice_number || ""));
+    setPackageNamesReady(false);
     (async () => {
-      const packageIds = (Array.isArray(data?.tests) ? data.tests : [])
-        .filter((t: any) => isInvoicePackageItem(t) && t.test_id)
-        .map((t: any) => String(t.test_id));
-      if (packageIds.length === 0) {
+      const lines = Array.isArray(data?.tests) ? data.tests : [];
+      try {
+        setPackageTestsById(await fetchPackageIncludedTestNamesFromLines(lines));
+      } catch {
         setPackageTestsById(new Map());
-      } else {
-        try {
-          setPackageTestsById(await fetchPackageIncludedTestNames(packageIds));
-        } catch {
-          setPackageTestsById(new Map());
-        }
       }
       setPackageNamesReady(true);
       const { data: rows } = await supabase
@@ -234,16 +265,23 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
 
   const queueInvoiceViaWaApi = useCallback(async () => {
     const invoiceNo = String(data?.invoice_number || "");
+    const patientLabel = patientDisplayName(data) || data?.patient_name || "patient";
+    const settle = (ok: boolean, error?: string) => {
+      onQueueSettled?.({ ok, error });
+    };
     if (!open || !invoiceNo || !data?.mobile_number) {
       toast.error("Mobile number required to send on WhatsApp");
+      settle(false, "mobile required");
       return;
     }
     if (isPickupInvoice(data)) {
       toast.error("Pickup point invoices are not sent on WhatsApp");
+      settle(false, "pickup");
       return;
     }
     if (!receiptRef.current) {
       toast.error("Invoice not ready yet");
+      settle(false, "not ready");
       return;
     }
     setWaSending(true);
@@ -325,11 +363,13 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
       }
       if (!dataUrl) {
         toast.error("Could not generate invoice image for WhatsApp");
+        settle(false, "image");
         return;
       }
       const blob = await (await fetch(dataUrl)).blob();
       if (!blob || blob.size < 1000) {
         toast.error("Could not generate invoice image for WhatsApp");
+        settle(false, "blob");
         return;
       }
 
@@ -337,7 +377,7 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
       const caption =
         `📋 *${lab} — Invoice*\n` +
         `Invoice No: ${invoiceNo}\n` +
-        `Patient: ${patientDisplayName(data)}\n` +
+        `Patient: ${patientLabel}\n` +
         `Amount: ₹${data.final_amount}`;
       const res = await enqueueInvoiceForWhatsAppConsole({
         phone: data.mobile_number,
@@ -349,21 +389,33 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
       });
       if (!res.ok) {
         toast.error(res.error || "Failed to queue invoice for WA API");
+        settle(false, res.error || "queue");
         return;
       }
       queuedInvoiceRef.current = invoiceNo;
       setConsoleQueued(true);
       logMessageSend(data.mobile_number, data.patient_name, "Invoice", data.umr_number);
-      toast.success("Invoice queued for WhatsApp (WA API)", {
-        description: `Sending to ${String(data.mobile_number).replace(/\D/g, "").slice(-10)} via WhatsApp Console`,
+      toast.success(`Sending invoice to ${patientLabel}`, {
+        description: `${invoiceNo} · ${String(data.mobile_number).replace(/\D/g, "").slice(-10)}`,
       });
+      settle(true);
     } catch (e: any) {
       toast.error(e?.message || "WhatsApp WA API queue failed");
+      settle(false, e?.message || "exception");
     } finally {
       host.remove();
       setWaSending(false);
     }
-  }, [open, data, brand, renderBarcode, isPickupInvoice]);
+  }, [open, data, brand, renderBarcode, isPickupInvoice, onQueueSettled]);
+
+  // Parent-driven batch queue (e.g. home-visit multi-invoice send).
+  const lastQueueReq = useRef(0);
+  useEffect(() => {
+    if (!queueRequestId || queueRequestId === lastQueueReq.current) return;
+    if (!open || !data?.invoice_number || !packageNamesReady) return;
+    lastQueueReq.current = queueRequestId;
+    void queueInvoiceViaWaApi();
+  }, [queueRequestId, open, data?.invoice_number, packageNamesReady, queueInvoiceViaWaApi]);
 
   // New registration: queue invoice to durable outbox once barcode/layout is ready.
   useEffect(() => {
@@ -385,7 +437,10 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
   const allTests = data.tests || [];
   const cancelledTests = Array.isArray(data.cancelled_tests) ? data.cancelled_tests : [];
   const cancelledTestIds = new Set(cancelledTests.map((ct: any) => ct.test_id));
-  const tests = allTests.filter((t: any) => !cancelledTestIds.has(t.test_id));
+  const tests = sortInvoiceLines(
+    allTests.filter((t: any) => !cancelledTestIds.has(t.test_id)),
+    packageTestsById,
+  );
   const createdAt = data.created_at ? new Date(data.created_at) : new Date();
   const payments = Array.isArray(data.payments) ? data.payments : [];
 
@@ -404,9 +459,10 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
   const visitLabel = formatVisitType(data.visit_type) + (channelName ? ` (${channelName})` : "");
 
   const includedTestsLine = (t: any) =>
-    isInvoicePackageItem(t)
-      ? formatPackageIncludedTests(packageTestsById.get(String(t?.test_id || "")))
-      : "";
+    formatPackageIncludedTests(
+      packageTestsById.get(String(t?.test_id || ""))
+      || packageTestsById.get(String(t?.test_name || "").trim().toLowerCase().replace(/\s+/g, " ")),
+    );
 
   const handlePrint = () => {
     renderBarcode();
@@ -966,7 +1022,10 @@ const InvoicePreview = ({ data, open, onClose, autoQueueWhatsApp = false, hidePr
           </div>
         </div>
 
-        <div className="flex gap-2 mt-2">
+        <div className="flex gap-2 mt-2 flex-wrap">
+          {statusHint ? (
+            <p className="w-full text-sm text-primary font-medium">{statusHint}</p>
+          ) : null}
           {!hidePrint && (
             <Button className="flex-1" variant="outline" onClick={handlePrint}>
               <Printer className="h-4 w-4 mr-2" />Print

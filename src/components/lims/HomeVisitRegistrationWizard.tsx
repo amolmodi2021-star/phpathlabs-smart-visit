@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useCallback } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { UserPlus, Save } from "lucide-react";
+import { UserPlus, Save, Send, Loader2 } from "lucide-react";
 import { getCurrentUserName } from "@/lib/auth";
 import { buildSampleTubeGroups } from "@/lib/sampleTubeGrouping";
 import { registerPatientAtomic } from "@/lib/registerPatientAtomic";
@@ -20,7 +20,7 @@ import InvoicePreview from "@/components/lims/InvoicePreview";
 
 const PAYMENT_MODES = ["Cash", "GPay", "Paytm", "Credit Card", "NEFT"];
 
-type Step = "form" | "session" | "payment";
+type Step = "form" | "session" | "payment" | "invoices";
 
 interface Props {
   visit: any;
@@ -30,7 +30,7 @@ interface Props {
 
 function mapVisitToPrefill(
   visit: any,
-  opts: { allowHomeVisitCharges: boolean; completingPhleboName: string; mobileOverride?: string },
+  opts: { allowHomeVisitCharges: boolean; completingPhleboName: string; mobileOverride?: string; blankPatientIdentity?: boolean },
 ): HomeVisitPrefill {
   const est = visit?.estimates || {};
   const tests = (est.estimate_tests || []).map((t: any) => ({
@@ -43,21 +43,22 @@ function mapVisitToPrefill(
     individual_discount_value: Number(t.individual_discount_value) || 0,
     item_type: t.item_type || "test",
   }));
+  const blank = !!opts.blankPatientIdentity;
   return {
     homeVisitId: visit.id,
     mobile: opts.mobileOverride ?? est.whatsapp_number ?? "",
-    title: est.title || "",
-    patientName: est.patient_name || "",
-    gender: est.gender || "",
-    dob: est.dob || "",
-    email: est.email || "",
-    doctorName: est.doctor_name || "SELF",
+    title: blank ? "" : (est.title || ""),
+    patientName: blank ? "" : (est.patient_name || ""),
+    gender: blank ? "" : (est.gender || ""),
+    dob: blank ? "" : (est.dob || ""),
+    email: blank ? "" : (est.email || ""),
+    doctorName: blank ? "SELF" : (est.doctor_name || "SELF"),
     address: visit.address || "",
     umr: null,
-    tests: opts.allowHomeVisitCharges ? tests : [],
+    tests: blank || !opts.allowHomeVisitCharges ? [] : tests,
     homeVisitCharges: opts.allowHomeVisitCharges ? Number(est.home_visit_charges) || 0 : 0,
-    globalDiscountType: (est.global_discount_type as "percent" | "amount") || "percent",
-    globalDiscountValue: Number(est.global_discount_value) || 0,
+    globalDiscountType: blank ? "percent" : ((est.global_discount_type as "percent" | "amount") || "percent"),
+    globalDiscountValue: blank ? 0 : (Number(est.global_discount_value) || 0),
     completingPhleboName: opts.completingPhleboName,
     allowHomeVisitCharges: opts.allowHomeVisitCharges,
   };
@@ -69,16 +70,19 @@ function mapVisitToPrefill(
  */
 const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
   const qc = useQueryClient();
-  const defaultPhlebo = visit?.phlebotomists?.name || "";
+  const lockedUserName = (getCurrentUserName() || "").trim();
   const [step, setStep] = useState<Step>("form");
   const [formKey, setFormKey] = useState(0);
   const [session, setSession] = useState<RegistrationSessionDraft[]>([]);
   const [addingExtra, setAddingExtra] = useState(false);
-  const [phleboName, setPhleboName] = useState(defaultPhlebo);
   const [selectedModes, setSelectedModes] = useState<Set<string>>(new Set());
   const [modeAmounts, setModeAmounts] = useState<Record<string, number>>({});
-  const [invoiceQueue, setInvoiceQueue] = useState<any[]>([]);
-  const [activeInvoice, setActiveInvoice] = useState<any>(null);
+  const [invoiceBatch, setInvoiceBatch] = useState<any[]>([]);
+  const [previewIndex, setPreviewIndex] = useState(0);
+  const [queueRequestId, setQueueRequestId] = useState(0);
+  const [batchSending, setBatchSending] = useState(false);
+  const [sendStatus, setSendStatus] = useState("");
+  const batchWaitRef = useRef<{ resolve: (ok: boolean) => void } | null>(null);
 
   const primaryMobile = String(visit?.estimates?.whatsapp_number || "").replace(/\D/g, "").slice(-10);
 
@@ -87,15 +91,16 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
     if (addingExtra) {
       return mapVisitToPrefill(visit, {
         allowHomeVisitCharges: false,
-        completingPhleboName: phleboName || defaultPhlebo,
+        completingPhleboName: lockedUserName,
         mobileOverride: primaryMobile || session[0]?.mobile || "",
+        blankPatientIdentity: true,
       });
     }
     return mapVisitToPrefill(visit, {
       allowHomeVisitCharges: true,
-      completingPhleboName: phleboName || defaultPhlebo,
+      completingPhleboName: lockedUserName,
     });
-  }, [visit, addingExtra, phleboName, defaultPhlebo, primaryMobile, session]);
+  }, [visit, addingExtra, lockedUserName, primaryMobile, session]);
 
   const grandTotal = useMemo(
     () => session.reduce((s, p) => s + Number(p.calculations.finalAmount || 0), 0),
@@ -126,9 +131,8 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
   const handleSessionContinue = (draft: RegistrationSessionDraft) => {
     const withPhlebo = {
       ...draft,
-      completingPhleboName: draft.completingPhleboName || phleboName || defaultPhlebo || null,
+      completingPhleboName: lockedUserName || draft.completingPhleboName || null,
     };
-    if (withPhlebo.completingPhleboName) setPhleboName(withPhlebo.completingPhleboName);
     setSession((prev) => [...prev, withPhlebo]);
     setAddingExtra(false);
     setStep("session");
@@ -140,13 +144,23 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
     setStep("form");
   };
 
+  /** Equal integer split; primary gets remainder (odd figure). Cap at each bill. */
   const distributePayments = (totalPaid: number, finals: number[]) => {
     const n = finals.length;
-    const sum = finals.reduce((a, b) => a + b, 0);
-    if (n === 1) return [Math.min(totalPaid, finals[0] || 0)];
-    const raw = finals.map((f) => (sum > 0 ? Math.floor((totalPaid * f) / sum) : 0));
-    raw[0] += totalPaid - raw.reduce((a, b) => a + b, 0);
-    return raw.map((p, i) => Math.min(p, finals[i] || 0));
+    if (n <= 0) return [];
+    const paidTotal = Math.max(0, Math.floor(totalPaid));
+    if (n === 1) return [Math.min(paidTotal, finals[0] || 0)];
+    const base = Math.floor(paidTotal / n);
+    const shares = Array.from({ length: n }, (_, i) => (i === 0 ? paidTotal - base * (n - 1) : base));
+    const paid = shares.map((share, i) => Math.min(share, Math.max(0, finals[i] || 0)));
+    let leftover = paidTotal - paid.reduce((a, b) => a + b, 0);
+    for (let i = 0; i < n && leftover > 0; i++) {
+      const room = Math.max(0, (finals[i] || 0) - paid[i]);
+      const add = Math.min(room, leftover);
+      paid[i] += add;
+      leftover -= add;
+    }
+    return paid;
   };
 
   const registerMutation = useMutation({
@@ -155,8 +169,8 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
       if (paidAmount > grandTotal) throw new Error("Payment cannot exceed grand total");
       const stampedBy = getCurrentUserName();
       if (!stampedBy) throw new Error("Please sign in again before saving");
-      const phlebo = (session[0]?.completingPhleboName || phleboName || defaultPhlebo || "").trim();
-      if (!phlebo) throw new Error("Enter the phlebotomist who completed this visit");
+      const phlebo = lockedUserName || stampedBy;
+      if (!phlebo) throw new Error("Signed-in user name required for Completed by (Phlebo)");
 
       const finals = session.map((p) => Number(p.calculations.finalAmount || 0));
       const paidPerPatient = distributePayments(paidAmount, finals);
@@ -315,32 +329,58 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
           ? `Registered — Invoice ${regs[0].invoice_number}`
           : `Registered ${regs.length} patients — invoices generated`,
       );
-      setInvoiceQueue(regs.slice(1));
-      setActiveInvoice(regs[0] || null);
-      if (!regs[0]) onClose();
+      setInvoiceBatch(regs);
+      setPreviewIndex(0);
+      setSendStatus("");
+      setStep("invoices");
     },
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const handleCloseInvoice = () => {
-    if (invoiceQueue.length > 0) {
-      const [next, ...rest] = invoiceQueue;
-      setInvoiceQueue(rest);
-      setActiveInvoice(next);
-      return;
+  const onQueueSettled = useCallback((result: { ok: boolean; error?: string }) => {
+    batchWaitRef.current?.resolve(!!result.ok);
+    batchWaitRef.current = null;
+  }, []);
+
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  const sendAllInvoices = async () => {
+    if (!invoiceBatch.length || batchSending) return;
+    setBatchSending(true);
+    try {
+      for (let i = 0; i < invoiceBatch.length; i++) {
+        const inv = invoiceBatch[i];
+        const name = `${inv.title || ""} ${inv.patient_name || ""}`.trim() || inv.patient_name || "patient";
+        setPreviewIndex(i);
+        setSendStatus(`Sending invoice to ${name}…`);
+        await sleep(400);
+        const wait = new Promise<boolean>((resolve) => {
+          batchWaitRef.current = { resolve };
+        });
+        setQueueRequestId((n) => n + 1);
+        const ok = await Promise.race([wait, sleep(45000).then(() => false)]);
+        if (!ok) toast.error(`Failed queuing invoice for ${name}`);
+        if (i < invoiceBatch.length - 1) {
+          setSendStatus(`Queued for ${name}. Next in 3 seconds…`);
+          await sleep(3000);
+        }
+      }
+      setSendStatus("All invoices queued for WhatsApp");
+      toast.success("All invoices queued one by one");
+    } finally {
+      setBatchSending(false);
     }
-    setActiveInvoice(null);
-    onClose();
   };
 
   if (!visit || !prefill) return null;
+  const activeInvoice = invoiceBatch[previewIndex] || null;
 
   return (
     <>
       <Dialog
-        open={open && !activeInvoice}
+        open={open}
         onOpenChange={(o) => {
-          if (!o && !registerMutation.isPending) onClose();
+          if (!o && !registerMutation.isPending && !batchSending) onClose();
         }}
       >
         <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
@@ -350,9 +390,11 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
                 ? "Collect payment & register"
                 : step === "session"
                   ? "Visit patients"
-                  : addingExtra
-                    ? "Add patient to visit"
-                    : "Complete home visit — register"}
+                  : step === "invoices"
+                    ? "Invoices"
+                    : addingExtra
+                      ? "Add patient to visit"
+                      : "Complete home visit — register"}
             </DialogTitle>
           </DialogHeader>
 
@@ -360,7 +402,7 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
             <PatientRegistration
               key={formKey}
               homeVisitOnly
-              homeVisitPrefill={{ ...prefill, completingPhleboName: phleboName || prefill.completingPhleboName }}
+              homeVisitPrefill={{ ...prefill, completingPhleboName: lockedUserName }}
               deferPayment
               embedded
               submitLabel={addingExtra ? "Add patient" : "Continue"}
@@ -423,22 +465,38 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
           {step === "payment" && (
             <div className="space-y-4">
               <div className="space-y-2">
-                {session.map((p, idx) => (
+                {session.map((p, idx) => {
+                  const finals = session.map((x) => Number(x.calculations.finalAmount || 0));
+                  const shares = distributePayments(paidAmount, finals);
+                  const share = shares[idx] || 0;
+                  const dueShare = Math.max(0, Number(p.calculations.finalAmount || 0) - share);
+                  return (
                   <div key={`pay-${idx}`} className="flex justify-between text-sm border-b pb-2">
                     <div>
                       <p className="font-medium">
                         {p.title} {p.patientName}
                       </p>
                       <p className="text-xs text-muted-foreground">{p.mobile}</p>
+                      {paidAmount > 0 && (
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          Paid share ₹{share} · Due ₹{dueShare}
+                        </p>
+                      )}
                     </div>
                     <p className="font-semibold">₹{p.calculations.finalAmount}</p>
                   </div>
-                ))}
+                  );
+                })}
               </div>
               <div className="flex justify-between rounded-lg bg-muted p-3 font-bold">
                 <span>Cumulative total</span>
                 <span>₹{grandTotal}</span>
               </div>
+              {session.length > 1 && (
+                <p className="text-xs text-muted-foreground">
+                  Partial payments split equally (no decimals). Primary gets any odd remainder; unpaid stays due per patient.
+                </p>
+              )}
 
               <div>
                 <Label className="text-base font-semibold">Payment</Label>
@@ -513,11 +571,59 @@ const HomeVisitRegistrationWizard = ({ visit, open, onClose }: Props) => {
               </div>
             </div>
           )}
+
+          {step === "invoices" && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                {invoiceBatch.map((inv, idx) => (
+                  <div
+                    key={inv.id || idx}
+                    className={`flex justify-between rounded-lg border p-3 text-sm ${previewIndex === idx ? "border-primary bg-primary/5" : ""}`}
+                  >
+                    <div>
+                      <p className="font-medium">{inv.title} {inv.patient_name}</p>
+                      <p className="text-xs text-muted-foreground">{inv.mobile_number}</p>
+                      <p className="text-xs font-mono mt-0.5">{inv.invoice_number}</p>
+                    </div>
+                    <p className="font-semibold">₹{inv.final_amount}</p>
+                  </div>
+                ))}
+              </div>
+              {sendStatus ? <p className="text-sm font-medium text-primary">{sendStatus}</p> : null}
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" disabled={batchSending} onClick={onClose}>
+                  Done
+                </Button>
+                <Button
+                  className="flex-1"
+                  disabled={batchSending || invoiceBatch.length === 0}
+                  onClick={() => void sendAllInvoices()}
+                >
+                  {batchSending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+                  {batchSending
+                    ? "Sending…"
+                    : invoiceBatch.length > 1
+                      ? "Send all invoices (WhatsApp)"
+                      : "Send invoice (WhatsApp)"}
+                </Button>
+              </div>
+            </div>
+          )}
+
         </DialogContent>
       </Dialog>
 
-      {activeInvoice && (
-        <InvoicePreview data={activeInvoice} open={!!activeInvoice} onClose={handleCloseInvoice} />
+      {step === "invoices" && activeInvoice && (
+        <InvoicePreview
+          key={String(activeInvoice.invoice_number || previewIndex)}
+          data={activeInvoice}
+          open={!!activeInvoice}
+          onClose={() => {}}
+          hidePrint
+          queueRequestId={queueRequestId}
+          onQueueSettled={onQueueSettled}
+          statusHint={sendStatus}
+        />
       )}
     </>
   );
