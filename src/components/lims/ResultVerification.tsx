@@ -137,7 +137,7 @@ const ResultVerification = () => {
 
   // Pending candidates (regs with at least one entered result/snip).
   // Pagination is computed from this set so the queue's "X total" matches reality.
-  const { data: pendingIds = [] as string[], isLoading: loadingIds } = useQuery({
+  const { data: pendingIds = [] as string[], isLoading: loadingIds, isPlaceholderData: idsPlaceholder } = useQuery({
     queryKey: ["verification_regs_count", debouncedSearch],
     queryFn: async (): Promise<string[]> => {
       const candidates = await fetchVerificationCandidateIds();
@@ -150,7 +150,7 @@ const ResultVerification = () => {
   const pageIds: string[] = pendingIds.slice(rvPage * pageSize, (rvPage + 1) * pageSize);
   const pageKey = shortIdsKey(pageIds, "rv-p");
 
-  const { data: registrations = [], isLoading: loadingRegs } = useQuery({
+  const { data: registrationsRaw = [], isLoading: loadingRegs } = useQuery({
     queryKey: ["verification_regs_v2", pageKey],
     enabled: pageIds.length > 0,
     queryFn: async () => {
@@ -161,9 +161,18 @@ const ResultVerification = () => {
       const order = new Map(pageIds.map((id, i) => [id, i] as const));
       return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     },
-    placeholderData: keepPreviousData,
     staleTime: 120_000,
   });
+
+  // Disabled queries keep last rows; never show approved/dispatched leftovers.
+  const registrations = useMemo(() => {
+    if (!idsPlaceholder && pendingIds.length === 0) return [];
+    if (pageIds.length === 0) return [];
+    const onPage = new Set(pageIds);
+    return (registrationsRaw as any[]).filter(
+      (r) => onPage.has(r.id) && r.status !== "approved" && r.status !== "dispatched",
+    );
+  }, [registrationsRaw, pageIds, pendingIds.length, idsPlaceholder]);
 
   const rvTotalPages = Math.max(1, Math.ceil(rvCount / pageSize));
 

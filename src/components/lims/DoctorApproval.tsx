@@ -176,7 +176,7 @@ const DoctorApproval = () => {
   };
   useEffect(() => { const t = setTimeout(() => { setDebouncedSearch(search); setDaPage(0); }, 400); return () => clearTimeout(t); }, [search]);
 
-  const { data: pendingIds = [] as string[], isLoading: loadingIds } = useQuery({
+  const { data: pendingIds = [] as string[], isLoading: loadingIds, isPlaceholderData: idsPlaceholder } = useQuery({
     queryKey: ["doctor_approval_count", debouncedSearch],
     queryFn: async (): Promise<string[]> => {
       const candidates = await fetchDoctorApprovalCandidateIds();
@@ -189,7 +189,7 @@ const DoctorApproval = () => {
   const pageIds: string[] = pendingIds.slice(daPage * pageSize, (daPage + 1) * pageSize);
   const pageKey = shortIdsKey(pageIds, "da-p");
 
-  const { data: registrations = [], isLoading: loadingRegs } = useQuery({
+  const { data: registrationsRaw = [], isLoading: loadingRegs } = useQuery({
     queryKey: ["doctor_approval_regs", pageKey],
     enabled: pageIds.length > 0,
     queryFn: async () => {
@@ -199,9 +199,18 @@ const DoctorApproval = () => {
       const order = new Map(pageIds.map((id, i) => [id, i] as const));
       return ((data || []) as any[]).sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
     },
-    placeholderData: keepPreviousData,
     staleTime: 120_000,
   });
+
+  // Disabled queries keep last rows; never show fully finished leftovers.
+  const registrations = useMemo(() => {
+    if (!idsPlaceholder && pendingIds.length === 0) return [];
+    if (pageIds.length === 0) return [];
+    const onPage = new Set(pageIds);
+    return (registrationsRaw as any[]).filter(
+      (r) => onPage.has(r.id) && r.status !== "approved" && r.status !== "dispatched",
+    );
+  }, [registrationsRaw, pageIds, pendingIds.length, idsPlaceholder]);
 
   const daTotalPages = Math.max(1, Math.ceil(daCount / pageSize));
 
