@@ -358,7 +358,7 @@ async function autoCalcDependentParams(supabase: any, registrationId: string): P
       .in("test_id", testIds);
     const calcParams: any[] = [];
     for (const tp of (tpRows || []) as any[]) {
-      const p = tp.report_test_parameters;
+      const p = unwrapEmbeddedRow(tp.report_test_parameters);
       if (!p || !p.is_calculated) continue;
       const formula = p.calculation_formula;
       if (!Array.isArray(formula) || formula.length === 0) continue;
@@ -524,15 +524,24 @@ async function deletePendingOutsideKeepTests(
   }
 }
 
+/** Unwrap PostgREST many-to-one embed (object or single-element array). */
+function unwrapEmbeddedRow<T extends { id?: string }>(raw: T | T[] | null | undefined): T | null {
+  if (!raw) return null;
+  if (Array.isArray(raw)) return raw[0] || null;
+  return raw;
+}
+
 /**
  * Auto "Save & Verify" once all interfaced values for a test have arrived.
  *
  * Completeness rule (per user):
- *   - Only parameters with send_for_interface=true AND is_calculated=false
- *     must have non-empty interface values.
- *   - Calculated and manual-entry parameters are IGNORED for the gate —
- *     stubs are created so the whole test moves to Result Verification,
- *     where the technician fills them.
+ *   - Require non-empty values for parameters that are send_for_interface,
+ *     not calculated, AND have at least one lims_code_mapping row — i.e. the
+ *     analyzer can actually deliver them.
+ *   - send_for_interface params with NO mapping (e.g. CBC Basophils / Eos /
+ *     Monocytes on a 3-part differential that only sends MXD%) are treated as
+ *     manual: they do not block promotion; blank stubs go to Verification.
+ *   - Calculated params are also ignored for the gate and stubbed.
  *
  * Stamp: entered_by = "Administrator" (shown on Dispatch "Results Entered").
  */
@@ -591,17 +600,42 @@ async function autoEnterCompleteInterfaceTests(
       send_for_interface: boolean;
     };
     const allParamsByTest: Record<string, ParamMeta[]> = {};
-    const interfaceParamIdsByTest: Record<string, string[]> = {};
+    const candidateIfaceParams: ParamMeta[] = [];
     for (const tp of (tpRows || []) as any[]) {
       if (tp.is_subheader) continue;
-      const p = tp.report_test_parameters;
+      const p = unwrapEmbeddedRow(tp.report_test_parameters);
       if (!p?.id) continue;
       if (!allParamsByTest[tp.test_id]) allParamsByTest[tp.test_id] = [];
       allParamsByTest[tp.test_id].push(p);
-      // Gate: only non-calculated interfaced parameters must be filled
-      if (p.send_for_interface && !p.is_calculated) {
-        if (!interfaceParamIdsByTest[tp.test_id]) interfaceParamIdsByTest[tp.test_id] = [];
-        interfaceParamIdsByTest[tp.test_id].push(p.id);
+      if (p.send_for_interface && !p.is_calculated) candidateIfaceParams.push(p);
+    }
+
+    // Only params that analyzers can deliver (have a code mapping) block auto-enter.
+    const mappedParamCodes = new Set<string>();
+    const ifaceCodes = Array.from(
+      new Set(candidateIfaceParams.map((p) => p.param_code).filter(Boolean)),
+    );
+    if (ifaceCodes.length > 0) {
+      const [{ data: byParam }, { data: byTest }] = await Promise.all([
+        supabase.from("lims_code_mapping").select("mapped_param_code").in("mapped_param_code", ifaceCodes),
+        supabase.from("lims_code_mapping").select("mapped_test_code").in("mapped_test_code", ifaceCodes),
+      ]);
+      for (const m of byParam || []) {
+        if (m.mapped_param_code) mappedParamCodes.add(m.mapped_param_code);
+      }
+      for (const m of byTest || []) {
+        if (m.mapped_test_code) mappedParamCodes.add(m.mapped_test_code);
+      }
+    }
+
+    const interfaceParamIdsByTest: Record<string, string[]> = {};
+    for (const [testId, params] of Object.entries(allParamsByTest)) {
+      for (const p of params) {
+        if (!p.send_for_interface || p.is_calculated) continue;
+        // Unmapped "interface" flags are manual in practice — do not gate on them.
+        if (!p.param_code || !mappedParamCodes.has(p.param_code)) continue;
+        if (!interfaceParamIdsByTest[testId]) interfaceParamIdsByTest[testId] = [];
+        interfaceParamIdsByTest[testId].push(p.id);
       }
     }
 
@@ -611,7 +645,7 @@ async function autoEnterCompleteInterfaceTests(
 
     for (const testId of candidateTestIds) {
       const interfaceParamIds = interfaceParamIdsByTest[testId] || [];
-      // No interfaced params configured → never auto-promote this test
+      // No deliverable interfaced params → never auto-promote this test
       if (interfaceParamIds.length === 0) continue;
 
       const rows = resultsByTest[testId] || [];
@@ -1487,6 +1521,7 @@ Deno.serve(async (req) => {
       let patientResultsWritten = 0;
       let skippedNoAcceptedOwner = 0;
       let registrationResolved = false;
+      let autoEnteredTests = 0;
       try {
         // 1) Resolve registration_id from sample_id (strip trailing letter suffix)
         const invoiceNumber = sample_id.replace(/-[A-Za-z0-9]+$/, "");
@@ -1630,6 +1665,7 @@ Deno.serve(async (req) => {
 
           // Fully-complete interfaced tests → Save & Verify (status=entered)
           const autoEntered = await autoEnterCompleteInterfaceTests(supabase, registrationId);
+          autoEnteredTests = autoEntered;
 
           if (patientResultsWritten > 0 || autoEntered > 0) {
             await notifyResultUpdate(supabase, registrationId, "interface");
@@ -1678,6 +1714,7 @@ Deno.serve(async (req) => {
         registration_resolved: registrationResolved,
         patient_results_written: patientResultsWritten,
         skipped_no_accepted_owner: skippedNoAcceptedOwner,
+        auto_entered_tests: autoEnteredTests,
       };
 
       await supabase.from("lims_interface_logs").insert({
