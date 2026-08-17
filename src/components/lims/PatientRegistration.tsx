@@ -43,6 +43,68 @@ interface SelectedTest {
   item_type?: "test" | "profile" | "package" | "combo";
 }
 
+export type HomeVisitPrefill = {
+  homeVisitId: string;
+  mobile?: string;
+  title?: string;
+  patientName?: string;
+  gender?: string;
+  dob?: string;
+  email?: string;
+  doctorName?: string;
+  address?: string;
+  umr?: string | null;
+  tests?: SelectedTest[];
+  homeVisitCharges?: number;
+  globalDiscountType?: "percent" | "amount";
+  globalDiscountValue?: number;
+  completingPhleboName?: string | null;
+  /** Primary patient may have HV charges; additional patients must not. */
+  allowHomeVisitCharges?: boolean;
+};
+
+export type RegistrationSessionDraft = {
+  mobile: string;
+  title: string;
+  patientName: string;
+  gender: string;
+  dob: string | null;
+  email: string | null;
+  doctorName: string;
+  umr: string | null;
+  address: string;
+  tests: SelectedTest[];
+  homeVisitCharges: number;
+  globalDiscountType: "percent" | "amount";
+  globalDiscountValue: number;
+  isStat: boolean;
+  reportLanguage: string;
+  remarks: string | null;
+  channelId: string | null;
+  completingPhleboName: string | null;
+  calculations: {
+    totalAmount: number;
+    totalDiscount: number;
+    homeVisitCharges: number;
+    finalAmount: number;
+    testDetails: any[];
+  };
+};
+
+export interface PatientRegistrationProps {
+  /** Dialog / HV completion mode — same form, trimmed fields. */
+  homeVisitOnly?: boolean;
+  homeVisitPrefill?: HomeVisitPrefill | null;
+  /** Hide payment; parent collects cumulative payment then registers. */
+  deferPayment?: boolean;
+  /** Called when deferPayment and user continues (patient added to session). */
+  onSessionContinue?: (draft: RegistrationSessionDraft) => void;
+  submitLabel?: string;
+  /** Compact layout inside a dialog */
+  embedded?: boolean;
+  onClose?: () => void;
+}
+
 interface PatientMatch {
   source: string;
   patient_name: string;
@@ -56,12 +118,24 @@ interface PatientMatch {
   mobile_number: string;
 }
 
-const PatientRegistration = () => {
+const PatientRegistration = ({
+  homeVisitOnly = false,
+  homeVisitPrefill = null,
+  deferPayment = false,
+  onSessionContinue,
+  submitLabel,
+  embedded = false,
+  onClose,
+}: PatientRegistrationProps = {}) => {
   const qc = useQueryClient();
   const searchRef = useRef<HTMLInputElement>(null);
   const draftBoot = useRef<RegistrationDraft | null | undefined>(undefined);
-  if (draftBoot.current === undefined) draftBoot.current = loadRegistrationDraft();
+  // Never restore walk-in draft when completing a home visit from the HV tab
+  if (draftBoot.current === undefined) {
+    draftBoot.current = homeVisitOnly ? null : loadRegistrationDraft();
+  }
   const d = draftBoot.current;
+  const prefillApplied = useRef(false);
 
   // Patient fields
   const [mobileNumber, setMobileNumber] = useState(d?.mobileNumber ?? "");
@@ -94,8 +168,10 @@ const PatientRegistration = () => {
   const [reportLanguage, setReportLanguage] = useState(d?.reportLanguage ?? "English");
 
   // Visit type
-  const [visitType, setVisitType] = useState(d?.visitType ?? "lab_visit");
-  const [pickupPointId, setPickupPointId] = useState(d?.pickupPointId ?? "");
+  const [visitType, setVisitType] = useState(
+    homeVisitOnly ? "home_visit" : (d?.visitType ?? "lab_visit"),
+  );
+  const [pickupPointId, setPickupPointId] = useState(homeVisitOnly ? "" : (d?.pickupPointId ?? ""));
 
   // Tests
   const [testSearch, setTestSearch] = useState("");
@@ -107,7 +183,13 @@ const PatientRegistration = () => {
   const [globalDiscountValue, setGlobalDiscountValue] = useState(d?.globalDiscountValue ?? 0);
   /** When on, discount applies even to tests/packages marked not discount-eligible. */
   const [allowIneligibleDiscount, setAllowIneligibleDiscount] = useState(d?.allowIneligibleDiscount ?? false);
-  const [homeVisitCharges, setHomeVisitCharges] = useState(d?.homeVisitCharges ?? 0);
+  const allowHvCharges = !homeVisitOnly || homeVisitPrefill?.allowHomeVisitCharges !== false;
+  const [homeVisitCharges, setHomeVisitCharges] = useState(
+    allowHvCharges ? (d?.homeVisitCharges ?? 0) : 0,
+  );
+  const [completingPhleboName, setCompletingPhleboName] = useState(
+    homeVisitPrefill?.completingPhleboName?.trim() || "",
+  );
 
   // Payment
   const [selectedModes, setSelectedModes] = useState<Set<string>>(
@@ -132,8 +214,9 @@ const PatientRegistration = () => {
     return () => window.clearTimeout(t);
   }, [testSearch]);
 
-  // Persist incomplete form across LIMS tab switches / remounts.
+  // Persist incomplete form across LIMS tab switches / remounts (not in HV dialog mode).
   useEffect(() => {
+    if (homeVisitOnly) return;
     const t = window.setTimeout(() => {
       saveRegistrationDraft({
         mobileNumber,
@@ -167,12 +250,57 @@ const PatientRegistration = () => {
     }, 400);
     return () => window.clearTimeout(t);
   }, [
+    homeVisitOnly,
     mobileNumber, title, patientName, gender, dob, dobDisplay, email, showEmail,
     doctorName, umrNumber, address, manualAge, remarks, isStat, channelId,
     reportLanguage, visitType, pickupPointId, selectedTests, globalDiscountType,
     globalDiscountValue, allowIneligibleDiscount, homeVisitCharges, selectedModes,
     modeAmounts, patientLocked, filledOnLock,
   ]);
+
+  // Prefill booked home-visit details + open patient picker when mobile is known.
+  useEffect(() => {
+    if (!homeVisitOnly || !homeVisitPrefill || prefillApplied.current) return;
+    prefillApplied.current = true;
+    setVisitType("home_visit");
+    setPickupPointId("");
+    const digits = String(homeVisitPrefill.mobile || "").replace(/\D/g, "").slice(-10);
+    if (digits) setMobileNumber(digits);
+    if (homeVisitPrefill.title) setTitle(normalizeTitle(homeVisitPrefill.title) || homeVisitPrefill.title);
+    if (homeVisitPrefill.patientName) setPatientName(homeVisitPrefill.patientName.toUpperCase());
+    if (homeVisitPrefill.gender) setGender(normalizeGender(homeVisitPrefill.gender) || homeVisitPrefill.gender);
+    if (homeVisitPrefill.dob) {
+      const iso = toDateInputValue(homeVisitPrefill.dob);
+      if (iso) {
+        setDob(iso);
+        setDobDisplay(isoToDmy(iso));
+      }
+    }
+    if (homeVisitPrefill.email) {
+      setEmail(homeVisitPrefill.email);
+      setShowEmail(true);
+    }
+    if (homeVisitPrefill.doctorName) setDoctorName(homeVisitPrefill.doctorName.toUpperCase());
+    if (homeVisitPrefill.address) setAddress(homeVisitPrefill.address.toUpperCase());
+    if (homeVisitPrefill.umr) setUmrNumber(homeVisitPrefill.umr);
+    if (homeVisitPrefill.tests?.length) setSelectedTests(homeVisitPrefill.tests);
+    if (homeVisitPrefill.globalDiscountType) setGlobalDiscountType(homeVisitPrefill.globalDiscountType);
+    if (typeof homeVisitPrefill.globalDiscountValue === "number") {
+      setGlobalDiscountValue(homeVisitPrefill.globalDiscountValue);
+    }
+    if (allowHvCharges && typeof homeVisitPrefill.homeVisitCharges === "number") {
+      setHomeVisitCharges(homeVisitPrefill.homeVisitCharges);
+    } else if (!allowHvCharges) {
+      setHomeVisitCharges(0);
+    }
+    if (homeVisitPrefill.completingPhleboName) {
+      setCompletingPhleboName(homeVisitPrefill.completingPhleboName.trim());
+    }
+    if (digits.length === 10) {
+      setPickerMobile(digits);
+      setShowPatientPicker(true);
+    }
+  }, [homeVisitOnly, homeVisitPrefill, allowHvCharges]);
 
   // Queries
   const { data: tests = [] } = useQuery({ queryKey: ["all_selectable_tests"], queryFn: getAllSelectableTests });
@@ -422,10 +550,10 @@ const PatientRegistration = () => {
       totalDiscount += discount;
       return { ...t, discountedPrice: t.price - discount, discount };
     });
-    const hvc = visitType === "home_visit" ? homeVisitCharges : 0;
+    const hvc = visitType === "home_visit" && allowHvCharges ? homeVisitCharges : 0;
     const finalAmount = totalAmount - totalDiscount + hvc;
     return { totalAmount, totalDiscount, finalAmount, testDetails, homeVisitCharges: hvc };
-  }, [selectedTests, effectiveDiscountType, effectiveDiscountValue, homeVisitCharges, visitType, allowIneligibleDiscount]);
+  }, [selectedTests, effectiveDiscountType, effectiveDiscountValue, homeVisitCharges, visitType, allowIneligibleDiscount, allowHvCharges]);
 
   // Payment
   const toggleMode = (mode: string) => {
@@ -443,19 +571,69 @@ const PatientRegistration = () => {
   );
   const dueAmount = Math.max(0, calculations.finalAmount - paidAmount);
 
+  const buildSessionDraft = (): RegistrationSessionDraft => ({
+    mobile: mobileNumber.replace(/\D/g, "").slice(-10),
+    title,
+    patientName: patientName.replace(/\s+/g, " ").trim().toUpperCase(),
+    gender,
+    dob: dob || null,
+    email: email || null,
+    doctorName: (doctorName || "SELF").toUpperCase(),
+    umr: umrNumber || null,
+    address: address.replace(/\s+/g, " ").trim().toUpperCase(),
+    tests: selectedTests,
+    homeVisitCharges: allowHvCharges ? calculations.homeVisitCharges : 0,
+    globalDiscountType,
+    globalDiscountValue,
+    isStat,
+    reportLanguage,
+    remarks: remarks.replace(/\s+/g, " ").trim().toUpperCase() || null,
+    channelId: channelId || null,
+    completingPhleboName: completingPhleboName.trim() || null,
+    calculations: {
+      totalAmount: calculations.totalAmount,
+      totalDiscount: calculations.totalDiscount,
+      homeVisitCharges: allowHvCharges ? calculations.homeVisitCharges : 0,
+      finalAmount: allowHvCharges
+        ? calculations.finalAmount
+        : calculations.totalAmount - calculations.totalDiscount,
+      testDetails: calculations.testDetails,
+    },
+  });
+
+  const validateBeforeSave = () => {
+    const cleanMobile = mobileNumber.replace(/\D/g, "").slice(-10);
+    if (!cleanMobile || cleanMobile.length < 10) throw new Error("Valid mobile number required");
+    if (!patientName.trim()) throw new Error("Patient name is required");
+    if (!title) throw new Error("Title is required");
+    if (!gender) throw new Error("Gender is required");
+    if (!isPickup && !dob) throw new Error("Date of birth is required");
+    if (isPickup && !manualAge.trim()) throw new Error("Age is required for pickup point registrations");
+    if (selectedTests.length === 0) throw new Error("Select at least one test");
+    if (visitType !== "pickup_point" && !address.trim()) throw new Error("Address is required");
+    if (homeVisitOnly && !completingPhleboName.trim()) throw new Error("Enter the phlebotomist who completed this visit");
+    if (!deferPayment && paidAmount > calculations.finalAmount) {
+      throw new Error("Payment amount cannot exceed the final amount");
+    }
+  };
+
+  const continueToSession = () => {
+    try {
+      setTriedSave(true);
+      validateBeforeSave();
+      if (!onSessionContinue) throw new Error("Session continue handler missing");
+      onSessionContinue(buildSessionDraft());
+    } catch (e: any) {
+      toast.error(e?.message || "Please fill required fields");
+    }
+  };
+
   // Save
   const saveMutation = useMutation({
     mutationFn: async () => {
+      validateBeforeSave();
       const cleanMobile = mobileNumber.replace(/\D/g, "").slice(-10);
-      if (!cleanMobile || cleanMobile.length < 10) throw new Error("Valid mobile number required");
-      if (!patientName.trim()) throw new Error("Patient name is required");
-      if (!title) throw new Error("Title is required");
-      if (!gender) throw new Error("Gender is required");
-      if (!isPickup && !dob) throw new Error("Date of birth is required");
-      if (isPickup && !manualAge.trim()) throw new Error("Age is required for pickup point registrations");
-      if (selectedTests.length === 0) throw new Error("Select at least one test");
-      if (visitType !== "pickup_point" && !address.trim()) throw new Error("Address is required");
-      if (paidAmount > calculations.finalAmount) throw new Error("Payment amount cannot exceed the final amount");
+      if (!deferPayment && paidAmount > calculations.finalAmount) throw new Error("Payment amount cannot exceed the final amount");
 
       const stampedBy = getCurrentUserName();
       if (!stampedBy) throw new Error("Please sign in again before saving the registration");
@@ -472,6 +650,9 @@ const PatientRegistration = () => {
         .filter(m => (modeAmounts[m] || 0) > 0)
         .map(m => ({ mode: m, amount: modeAmounts[m] || 0 }));
 
+      const hvc = allowHvCharges ? calculations.homeVisitCharges : 0;
+      const finalAmt = calculations.totalAmount - calculations.totalDiscount + hvc;
+
       const regData = {
         mobile_number: cleanMobile,
         patient_name: patientName.replace(/\s+/g, ' ').trim().toUpperCase(),
@@ -483,28 +664,33 @@ const PatientRegistration = () => {
         address: visitType === "pickup_point" ? (selectedPickup?.address || "") : address.replace(/\s+/g, ' ').trim().toUpperCase(),
         doctor_name: (doctorName || "SELF").toUpperCase(),
         umr_number: finalUmr,
-        visit_type: visitType,
+        visit_type: homeVisitOnly ? "home_visit" : visitType,
         pickup_point_id: visitType === "pickup_point" ? pickupPointId : null,
         channel_id: channelId || null,
         tests: calculations.testDetails.map(t => ({
           test_id: t.test_id, test_name: t.test_name, price: t.price,
           discount: t.discount, discounted_price: t.discountedPrice,
           fasting_required: t.fasting_required,
+          item_type: t.item_type || "test",
         })),
         gross_amount: calculations.totalAmount,
         discount_amount: calculations.totalDiscount,
         net_amount: calculations.totalAmount - calculations.totalDiscount,
-        home_visit_charges: calculations.homeVisitCharges,
-        final_amount: calculations.finalAmount,
+        home_visit_charges: hvc,
+        final_amount: finalAmt,
         payments,
         paid_amount: (isCreditPickup || isCreditChannel) ? 0 : paidAmount,
-        due_amount: (isCreditPickup || isCreditChannel) ? calculations.finalAmount : dueAmount,
+        due_amount: (isCreditPickup || isCreditChannel) ? finalAmt : Math.max(0, finalAmt - paidAmount),
         global_discount_type: globalDiscountValue > 0 ? globalDiscountType : null,
         global_discount_value: globalDiscountValue,
         remarks: remarks.replace(/\s+/g, ' ').trim().toUpperCase() || null,
         is_stat: isStat,
         report_language: visitType === "pickup_point" ? "ENGLISH" : reportLanguage.toUpperCase(),
         registered_by: stampedBy,
+        completing_phlebo_name: homeVisitOnly
+          ? (completingPhleboName.trim() || homeVisitPrefill?.completingPhleboName?.trim() || null)
+          : null,
+        home_visit_id: homeVisitOnly ? (homeVisitPrefill?.homeVisitId || null) : null,
       };
 
       const tubeGroups = await buildSampleTubeGroups(
@@ -523,10 +709,20 @@ const PatientRegistration = () => {
           total_amount: regData.paid_amount,
           gross_amount: calculations.totalAmount,
           discount_amount: calculations.totalDiscount,
-          final_amount: calculations.finalAmount,
+          final_amount: finalAmt,
           paid_amount: regData.paid_amount,
           due_amount: regData.due_amount,
         },
+        homeVisitId: homeVisitOnly ? (homeVisitPrefill?.homeVisitId || null) : null,
+        homeVisitPatch: homeVisitOnly && homeVisitPrefill?.homeVisitId
+          ? {
+              status: "Registered",
+              address: regData.address,
+              payment_mode: payments.map((p) => `${p.mode}: ₹${p.amount}`).join(", ") || null,
+              paid_amount: regData.paid_amount,
+              due_amount: regData.due_amount,
+            }
+          : null,
       });
 
       // Add doctor to master list (history) — non-fatal
@@ -586,10 +782,13 @@ const PatientRegistration = () => {
       return reg;
     },
     onSuccess: (reg: any) => {
-      clearRegistrationDraft();
-      draftBoot.current = null;
+      if (!homeVisitOnly) {
+        clearRegistrationDraft();
+        draftBoot.current = null;
+      }
       qc.invalidateQueries({ queryKey: ["patient_registrations"] });
       qc.invalidateQueries({ queryKey: ["patient_master"] });
+      qc.invalidateQueries({ queryKey: ["home_visits"] });
       toast.success(`Registration saved! Invoice: ${reg.invoice_number}`);
       setInvoiceData({
         ...reg,
@@ -607,7 +806,7 @@ const PatientRegistration = () => {
     setPatientName(""); setTitle(""); setGender("");
     setDob(""); setDobDisplay(""); setEmail(""); setShowEmail(false); setDoctorName("SELF"); setUmrNumber("");
     setAddress(""); setChannelId(""); setReportLanguage("English");
-    setVisitType("lab_visit"); setPickupPointId("");
+    setVisitType(homeVisitOnly ? "home_visit" : "lab_visit"); setPickupPointId("");
     setSelectedTests([]); setTestSearch(""); setDebouncedTestSearch(""); setTestHighlightIndex(-1);
     setGlobalDiscountType("percent"); setGlobalDiscountValue(0); setHomeVisitCharges(0);
     setAllowIneligibleDiscount(false);
@@ -617,6 +816,11 @@ const PatientRegistration = () => {
     setFilledOnLock({ title: false, gender: false, dob: false, address: false });
     setShowPatientPicker(false); setPickerMobile("");
     setDuplicateRegInfo(null);
+    if (homeVisitOnly) {
+      setCompletingPhleboName(homeVisitPrefill?.completingPhleboName?.trim() || "");
+    } else {
+      setCompletingPhleboName("");
+    }
     if (!opts?.silent) toast.success("Form cleared");
   };
 
@@ -652,12 +856,12 @@ const PatientRegistration = () => {
   };
 
   return (
-    <div className="space-y-4 max-w-2xl">
-      {invoiceData && (
+    <div className={embedded ? "space-y-4" : "space-y-4 max-w-2xl"}>
+      {invoiceData && !deferPayment && (
         <InvoicePreview
           data={invoiceData}
           open={!!invoiceData}
-          onClose={() => { setInvoiceData(null); resetForm({ silent: true }); }}
+          onClose={() => { setInvoiceData(null); resetForm({ silent: true }); onClose?.(); }}
         />
       )}
 
@@ -690,7 +894,9 @@ const PatientRegistration = () => {
 
       <Card>
         <CardHeader className="p-4 pb-0 flex flex-row items-center justify-between space-y-0">
-          <CardTitle className="text-base font-semibold">Patient details</CardTitle>
+          <CardTitle className="text-base font-semibold">
+            {homeVisitOnly ? "Home visit registration" : "Patient details"}
+          </CardTitle>
           <Button
             type="button"
             variant="outline"
@@ -702,8 +908,8 @@ const PatientRegistration = () => {
           </Button>
         </CardHeader>
         <CardContent className="p-4 space-y-4">
-          {/* Mobile Number + Pickup Point (side-by-side) */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* Mobile Number (+ Pickup Point for walk-in only) */}
+          <div className={homeVisitOnly ? "grid grid-cols-1 gap-3" : "grid grid-cols-2 gap-3"}>
             <div className="relative">
               <Label className={triedSave && (!mobileNumber || mobileNumber.replace(/\D/g, "").slice(-10).length < 10) ? "text-destructive" : ""}>Mobile Number *</Label>
               <div className="relative">
@@ -742,10 +948,6 @@ const PatientRegistration = () => {
                       type="button"
                       className="text-primary underline"
                       onClick={() => {
-                        // Keep current patient locked until user actually picks
-                        // a different patient or chooses "New Patient" in the dialog.
-                        // If they cancel the dialog, the form stays locked to the
-                        // previously selected patient.
                         const digits = mobileNumber.replace(/\D/g, "").slice(-10);
                         if (digits.length === 10) {
                           setPickerMobile(digits);
@@ -759,6 +961,7 @@ const PatientRegistration = () => {
                 </p>
               )}
             </div>
+            {!homeVisitOnly && (
             <div>
               <Label>Pickup Point</Label>
               <Select
@@ -788,6 +991,7 @@ const PatientRegistration = () => {
                 </p>
               )}
             </div>
+            )}
           </div>
 
           {/* Demographics — existing UMR locks filled fields; blanks stay editable and save back to master */}
@@ -894,18 +1098,35 @@ const PatientRegistration = () => {
           {/* Visit Type */}
           <div>
             <Label>Visit Type</Label>
-            <RadioGroup value={visitType} onValueChange={(v) => { setVisitType(v); if (v !== "pickup_point") setPickupPointId(""); }} className="flex gap-4 mt-1">
-              <div className="flex items-center gap-1.5">
-                <RadioGroupItem value="lab_visit" id="lab" /><Label htmlFor="lab" className="cursor-pointer text-sm">Lab Visit</Label>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <RadioGroupItem value="home_visit" id="home" /><Label htmlFor="home" className="cursor-pointer text-sm">Home Visit</Label>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <RadioGroupItem value="pickup_point" id="pickup" disabled={!!channelId} /><Label htmlFor="pickup" className={`cursor-pointer text-sm ${channelId ? "opacity-50" : ""}`}>Pickup Point</Label>
-              </div>
-            </RadioGroup>
+            {homeVisitOnly ? (
+              <p className="mt-1 text-sm font-medium">Home Visit</p>
+            ) : (
+              <RadioGroup value={visitType} onValueChange={(v) => { setVisitType(v); if (v !== "pickup_point") setPickupPointId(""); }} className="flex gap-4 mt-1">
+                <div className="flex items-center gap-1.5">
+                  <RadioGroupItem value="lab_visit" id="lab" /><Label htmlFor="lab" className="cursor-pointer text-sm">Lab Visit</Label>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <RadioGroupItem value="home_visit" id="home" /><Label htmlFor="home" className="cursor-pointer text-sm">Home Visit</Label>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <RadioGroupItem value="pickup_point" id="pickup" disabled={!!channelId} /><Label htmlFor="pickup" className={`cursor-pointer text-sm ${channelId ? "opacity-50" : ""}`}>Pickup Point</Label>
+                </div>
+              </RadioGroup>
+            )}
           </div>
+
+          {homeVisitOnly && (
+            <div>
+              <Label className={triedSave && !completingPhleboName.trim() ? "text-destructive" : ""}>
+                Completed by (Phlebo) *
+              </Label>
+              <Input
+                value={completingPhleboName}
+                onChange={(e) => setCompletingPhleboName(e.target.value)}
+                placeholder="Phlebotomist name"
+              />
+            </div>
+          )}
 
           {/* Report Language - hidden for pickup point */}
           {visitType !== "pickup_point" && (
@@ -1092,8 +1313,8 @@ const PatientRegistration = () => {
             </div>
           )}
 
-          {/* Home Visit Charges */}
-          {visitType === "home_visit" && (
+          {/* Home Visit Charges — primary patient only in HV multi-patient sessions */}
+          {visitType === "home_visit" && allowHvCharges && (
             <div>
               <Label>Home Visit Charges (₹)</Label>
               <Input type="number" value={homeVisitCharges || ""} onChange={e => setHomeVisitCharges(parseFloat(e.target.value) || 0)} />
@@ -1110,8 +1331,8 @@ const PatientRegistration = () => {
             </div>
           )}
 
-          {/* Payment Section */}
-          {!isCreditPickup && selectedTests.length > 0 && (
+          {/* Payment Section — deferred for HV multi-patient wizard */}
+          {!deferPayment && !isCreditPickup && selectedTests.length > 0 && (
             <div className="space-y-3">
               <Label className="text-base font-semibold">Payment</Label>
               <div className="grid grid-cols-3 gap-2">
@@ -1151,6 +1372,12 @@ const PatientRegistration = () => {
                 <span>Paid: <strong>₹{paidAmount}</strong></span>
                 {dueAmount > 0 && <span className="text-destructive">Due: <strong>₹{dueAmount}</strong></span>}
               </div>
+            </div>
+          )}
+
+          {deferPayment && selectedTests.length > 0 && (
+            <div className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">
+              Payment is collected once for all patients on this visit (after you finish adding patients).
             </div>
           )}
 
@@ -1197,15 +1424,32 @@ const PatientRegistration = () => {
             >
               <RotateCcw className="h-4 w-4 mr-2" />Reset Form
             </Button>
-            <Button className="flex-1" onClick={() => {
-              setTriedSave(true);
-              if (visitType === "home_visit" && (!homeVisitCharges || homeVisitCharges === 0)) {
-                setShowHvcConfirm(true);
-                return;
-              }
-              saveMutation.mutate();
-            }} disabled={saveMutation.isPending || selectedTests.length === 0}>
-              <Save className="h-4 w-4 mr-2" />Save & Generate Invoice
+            <Button
+              className="flex-1"
+              onClick={() => {
+                setTriedSave(true);
+                if (homeVisitOnly && !completingPhleboName.trim()) {
+                  toast.error("Enter the phlebotomist who completed this visit");
+                  return;
+                }
+                if (deferPayment) {
+                  if (allowHvCharges && visitType === "home_visit" && (!homeVisitCharges || homeVisitCharges === 0)) {
+                    setShowHvcConfirm(true);
+                    return;
+                  }
+                  continueToSession();
+                  return;
+                }
+                if (visitType === "home_visit" && allowHvCharges && (!homeVisitCharges || homeVisitCharges === 0)) {
+                  setShowHvcConfirm(true);
+                  return;
+                }
+                saveMutation.mutate();
+              }}
+              disabled={saveMutation.isPending || selectedTests.length === 0}
+            >
+              <Save className="h-4 w-4 mr-2" />
+              {submitLabel || (deferPayment ? "Continue" : "Save & Generate Invoice")}
             </Button>
           </div>
         </CardContent>
@@ -1227,7 +1471,11 @@ const PatientRegistration = () => {
             <AlertDialogCancel className="mt-0">Go Back</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => { setShowHvcConfirm(false); saveMutation.mutate(); }}
+              onClick={() => {
+                setShowHvcConfirm(false);
+                if (deferPayment) continueToSession();
+                else saveMutation.mutate();
+              }}
             >
               Save Without Charges
             </AlertDialogAction>

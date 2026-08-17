@@ -1,35 +1,28 @@
 import RefreshButton from "@/components/lims/RefreshButton";
 import { useEffect, useState } from "react";
-import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useLimsPipelineRealtime } from "@/hooks/useLimsPipelineRealtime";
 import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Search, CheckCircle, Eye, ChevronDown, ChevronUp, Pencil } from "lucide-react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { format } from "date-fns";
-import { toast } from "sonner";
-import EditAndRegisterHomeVisitDialog from "@/components/lims/EditAndRegisterHomeVisitDialog";
-import { getCurrentUserName } from "@/lib/auth";
-import { buildSampleTubeGroups } from "@/lib/sampleTubeGrouping";
-import { registerPatientAtomic } from "@/lib/registerPatientAtomic";
-import { homeVisitHasPatientChoice, umrForHomeVisitRegistration } from "@/lib/findPatientUmr";
 import PaginatedTableFooter from "@/components/ui/PaginatedTableFooter";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 
 const PAGE_SIZE = 50;
 
+/**
+ * Read-only history of home visits that reached Completed/Registered.
+ * Registration now happens from Home Visits → Completed (same New Registration form).
+ */
 const CompletedHomeVisits = () => {
-  const qc = useQueryClient();
   useLimsPipelineRealtime("completed_hv");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(0);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
-  const [reviewVisit, setReviewVisit] = useState<any>(null);
-  const [editVisit, setEditVisit] = useState<any>(null);
 
   const handleSearch = (val: string) => {
     setSearch(val);
@@ -37,10 +30,8 @@ const CompletedHomeVisits = () => {
     (window as any).__chvSearchTimeout = setTimeout(() => setDebouncedSearch(val), 400);
   };
 
-  // Reset to first page whenever search changes
   useEffect(() => { setPage(0); }, [debouncedSearch]);
 
-  // Fetch completed home visits — server-side paginated
   const { data: pagedData, isLoading } = useQuery({
     queryKey: ["completed_home_visits", debouncedSearch, page],
     queryFn: async () => {
@@ -71,7 +62,6 @@ const CompletedHomeVisits = () => {
   const completedVisits = pagedData?.rows || [];
   const total = pagedData?.total || 0;
 
-  // Fetch already registered home_visit_ids
   const { data: registeredIds = new Set() } = useQuery({
     queryKey: ["registered_home_visit_ids"],
     queryFn: async () => {
@@ -79,153 +69,28 @@ const CompletedHomeVisits = () => {
         .from("patient_registrations")
         .select("home_visit_id")
         .not("home_visit_id", "is", null);
-      return new Set((data || []).map((r: any) => r.home_visit_id));
+      return new Set((data || []).map((r: any) => r.home_visit_id).filter(Boolean));
     },
   });
-
-  // Fetch estimate tests for review
-  const { data: reviewTests = [] } = useQuery({
-    queryKey: ["review_estimate_tests", reviewVisit?.estimate_id],
-    enabled: !!reviewVisit?.estimate_id,
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("estimate_tests")
-        .select("*")
-        .eq("estimate_id", reviewVisit.estimate_id);
-      return (data || []) as any[];
-    },
-  });
-
-  // Register mutation (atomic: registration + sample tubes + payment + HV status)
-  const registerMutation = useMutation({
-    mutationFn: async (visit: any) => {
-      const e = visit.estimates;
-      const { data: tests } = await supabase
-        .from("estimate_tests")
-        .select("*")
-        .eq("estimate_id", visit.estimate_id);
-      const testList = (tests || []).map((t: any) => ({
-        test_id: t.test_id,
-        test_name: t.test_name,
-        price: t.price,
-        discounted_price: t.discounted_price,
-        discount_applicable: t.discount_applicable,
-        fasting_required: t.fasting_required,
-        item_type: t.item_type || "test",
-      }));
-
-      const grossAmount = testList.reduce((s: number, t: any) => s + Number(t.price), 0);
-      const netAmount = testList.reduce((s: number, t: any) => s + Number(t.discounted_price), 0);
-      const homeCharges = Number(e.home_visit_charges || 0);
-      const finalAmount = netAmount + homeCharges;
-      const paidAmount = Number(visit.paid_amount || 0);
-      const dueAmount = Math.max(0, finalAmount - paidAmount);
-
-      const payments: any[] = [];
-      if (visit.payment_mode) {
-        const parts = visit.payment_mode.split(",").map((p: string) => p.trim());
-        for (const part of parts) {
-          const match = part.match(/^(.+?):\s*₹?(\d+(?:\.\d+)?)$/);
-          if (match) {
-            payments.push({ mode: match[1].trim(), amount: Number(match[2]) });
-          }
-        }
-      }
-      if (payments.length === 0 && paidAmount > 0) {
-        payments.push({ mode: "Cash", amount: paidAmount });
-      }
-
-      // Invoice + new-patient UMR allocated inside register_patient_atomic at save time.
-      if (!homeVisitHasPatientChoice(visit)) {
-        throw new Error("Open Edit and complete patient selection (existing UMR or new patient) first");
-      }
-      const existingUmr = umrForHomeVisitRegistration(visit);
-
-      const stampedBy = getCurrentUserName();
-      if (!stampedBy) throw new Error("Please sign in again before saving the registration");
-
-      const tubeGroups = await buildSampleTubeGroups(
-        testList.map((t: any) => ({
-          test_id: t.test_id,
-          test_name: t.test_name,
-          item_type: t.item_type || "test",
-        })),
-      );
-
-      await registerPatientAtomic({
-        registration: {
-          patient_name: e.patient_name || "",
-          mobile_number: e.whatsapp_number || "",
-          title: e.title || null,
-          gender: e.gender || null,
-          dob: e.dob || null,
-          email: e.email || null,
-          doctor_name: e.doctor_name || "SELF",
-          umr_number: existingUmr,
-          address: visit.address || "",
-          visit_type: "home_visit",
-          tests: testList,
-          gross_amount: grossAmount,
-          discount_amount: Number(e.discount_amount || 0),
-          net_amount: netAmount,
-          home_visit_charges: homeCharges,
-          final_amount: finalAmount,
-          paid_amount: paidAmount,
-          due_amount: dueAmount,
-          payments,
-          status: "registered",
-          home_visit_id: visit.id,
-          global_discount_type: e.global_discount_type || null,
-          global_discount_value: Number(e.global_discount_value || 0),
-          registered_by: stampedBy,
-          is_stat: !!visit.is_stat,
-          report_language: visit.report_language || "English",
-        },
-        tubes: tubeGroups,
-        payment: {
-          payments,
-          total_amount: paidAmount,
-          gross_amount: grossAmount,
-          discount_amount: Number(e.discount_amount || 0),
-          final_amount: finalAmount,
-          paid_amount: paidAmount,
-          due_amount: dueAmount,
-        },
-        homeVisitId: visit.id,
-        homeVisitPatch: { status: "Registered" },
-      });
-    },
-    onSuccess: () => {
-      toast.success("Home visit registered successfully!");
-      qc.invalidateQueries({ queryKey: ["completed_home_visits"] });
-      qc.invalidateQueries({ queryKey: ["home_visits"] });
-      qc.invalidateQueries({ queryKey: ["registered_home_visit_ids"] });
-      qc.invalidateQueries({ queryKey: ["patient_registrations"] });
-      qc.invalidateQueries({ queryKey: ["patient_registrations_count"] });
-      setReviewVisit(null);
-    },
-    onError: (e: any) => toast.error(e.message),
-  });
-
-  const pending = completedVisits.filter((v: any) => !(registeredIds as Set<string>).has(v.id));
-  const registered = completedVisits.filter((v: any) => (registeredIds as Set<string>).has(v.id));
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="relative max-w-sm flex-1">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input value={search} onChange={e => handleSearch(e.target.value)} placeholder="Search by name, mobile, UMR..." className="pl-8" />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">Completed Home Visits</h2>
+          <p className="text-sm text-muted-foreground">
+            History only. Register patients from Home Visits by choosing Completed — that opens the main registration form.
+          </p>
         </div>
-        <RefreshButton
-          queryKeys={["completed_home_visits", "registered_home_visit_ids", "review_estimate_tests", "home_visits", "patient_registrations", "patient_registrations_count"]}
-          className="ml-auto"
-        />
+        <RefreshButton queryKeys={[["completed_home_visits"], ["registered_home_visit_ids"]]} />
       </div>
 
-      <div className="text-sm text-muted-foreground">
-        {pending.length} pending registration(s), {registered.length} already registered (this page) • {total.toLocaleString()} total
-      </div>
+      <Input
+        placeholder="Search patient or mobile…"
+        value={search}
+        onChange={(e) => handleSearch(e.target.value)}
+        className="max-w-sm"
+      />
 
       <div className="rounded-md border">
         <Table>
@@ -239,14 +104,13 @@ const CompletedHomeVisits = () => {
               <TableHead>Address</TableHead>
               <TableHead className="text-right">Amount</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
             ) : completedVisits.length === 0 ? (
-              <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">No completed home visits found</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No completed home visits found</TableCell></TableRow>
             ) : completedVisits.map((v: any) => {
               const e = v.estimates;
               const isRegistered = (registeredIds as Set<string>).has(v.id) || v.status === "Registered";
@@ -275,32 +139,8 @@ const CompletedHomeVisits = () => {
                     </TableCell>
                     <TableCell>
                       <Badge variant={isRegistered ? "default" : "secondary"}>
-                        {isRegistered ? "Registered" : "Pending"}
+                        {isRegistered ? "Registered" : v.status}
                       </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          title="Edit Visit"
-                          disabled={isRegistered}
-                          onClick={() => setEditVisit(v)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          title="Review & Register"
-                          disabled={isRegistered}
-                          onClick={() => setReviewVisit(v)}
-                        >
-                          {isRegistered ? <CheckCircle className="h-4 w-4 text-green-600" /> : <Eye className="h-4 w-4" />}
-                        </Button>
-                      </div>
                     </TableCell>
                   </TableRow>
                   {isExpanded && (
@@ -329,77 +169,6 @@ const CompletedHomeVisits = () => {
       </div>
 
       <PaginatedTableFooter page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
-
-      {/* Review & Register Dialog */}
-      <Dialog open={!!reviewVisit} onOpenChange={o => !o && setReviewVisit(null)}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Review & Register Home Visit</DialogTitle>
-          </DialogHeader>
-          {reviewVisit && (() => {
-            const e = reviewVisit.estimates;
-            const grossAmount = reviewTests.reduce((s: number, t: any) => s + Number(t.price), 0);
-            const netAmount = reviewTests.reduce((s: number, t: any) => s + Number(t.discounted_price), 0);
-            const homeCharges = Number(e?.home_visit_charges || 0);
-            const finalAmount = netAmount + homeCharges;
-
-            return (
-              <div className="space-y-4 text-sm">
-                <div className="grid grid-cols-2 gap-2">
-                  <div><span className="font-medium text-muted-foreground">Name:</span> {patientDisplayName(e)}</div>
-                  <div><span className="font-medium text-muted-foreground">Mobile:</span> {e?.whatsapp_number}</div>
-                  <div><span className="font-medium text-muted-foreground">Gender:</span> {e?.gender || "—"}</div>
-                  <div><span className="font-medium text-muted-foreground">DOB:</span> {e?.dob || "—"}</div>
-                  <div><span className="font-medium text-muted-foreground">Doctor:</span> {e?.doctor_name || "SELF"}</div>
-                  <div><span className="font-medium text-muted-foreground">Visit Date:</span> {reviewVisit.visit_date ? format(new Date(reviewVisit.visit_date), "dd-MM-yyyy") : "—"}</div>
-                  <div className="col-span-2"><span className="font-medium text-muted-foreground">Address:</span> {reviewVisit.address}</div>
-                </div>
-
-                <div>
-                  <span className="font-medium text-muted-foreground">Tests:</span>
-                  <div className="mt-1 space-y-0.5">
-                    {reviewTests.map((t: any) => (
-                      <div key={t.id} className="text-xs flex justify-between">
-                        <span>• {t.test_name}</span>
-                        <span>₹{t.discounted_price} {Number(t.price) !== Number(t.discounted_price) && <span className="line-through text-muted-foreground ml-1">₹{t.price}</span>}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="border-t pt-2 space-y-1 text-xs">
-                  <div className="flex justify-between"><span>Gross Amount</span><span>₹{grossAmount}</span></div>
-                  <div className="flex justify-between"><span>Discount</span><span>₹{Number(e?.discount_amount || 0)}</span></div>
-                  <div className="flex justify-between"><span>Net Amount</span><span>₹{netAmount}</span></div>
-                  <div className="flex justify-between"><span>Home Visit Charges</span><span>₹{homeCharges}</span></div>
-                  <div className="flex justify-between font-medium text-sm"><span>Final Amount</span><span>₹{finalAmount}</span></div>
-                  <div className="flex justify-between"><span>Paid</span><span>₹{reviewVisit.paid_amount}</span></div>
-                  <div className="flex justify-between text-destructive"><span>Due</span><span>₹{Math.max(0, finalAmount - Number(reviewVisit.paid_amount || 0))}</span></div>
-                  <div className="flex justify-between"><span>Payment Mode</span><span>{reviewVisit.payment_mode || "—"}</span></div>
-                </div>
-              </div>
-            );
-          })()}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setReviewVisit(null)}>Cancel</Button>
-            <Button
-              onClick={() => registerMutation.mutate(reviewVisit)}
-              disabled={registerMutation.isPending}
-            >
-              {registerMutation.isPending ? "Registering..." : "Confirm & Register"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      {/* Edit & Register Home Visit Dialog */}
-      <EditAndRegisterHomeVisitDialog
-        visit={editVisit}
-        open={!!editVisit}
-        onClose={() => {
-          setEditVisit(null);
-          qc.invalidateQueries({ queryKey: ["completed_home_visits"] });
-        }}
-      />
     </div>
   );
 };

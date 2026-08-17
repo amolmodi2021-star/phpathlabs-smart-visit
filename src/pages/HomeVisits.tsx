@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { Download, Phone, MapPin, ChevronDown, ChevronUp, Pencil, Trash2, Plus, AlertTriangle, Clock, FileImage, Eye, UserPlus } from "lucide-react";
+import { Download, Phone, MapPin, ChevronDown, ChevronUp, Pencil, Trash2, Plus, AlertTriangle, Clock, FileImage, Eye } from "lucide-react";
 import { exportToExcel } from "@/lib/excel";
 import { formatDateDDMMYYYY } from "@/lib/utils";
 import { useState, useCallback, useMemo } from "react";
@@ -20,9 +20,8 @@ import { Separator } from "@/components/ui/separator";
 import ExportPasswordDialog from "@/components/ExportPasswordDialog";
 import DeletePasswordDialog from "@/components/DeletePasswordDialog";
 import EditHomeVisitDialog from "@/components/EditHomeVisitDialog";
-import CompleteHomeVisitDetailsDialog from "@/components/CompleteHomeVisitDetailsDialog";
+import HomeVisitRegistrationWizard from "@/components/lims/HomeVisitRegistrationWizard";
 import AddHomeVisitDialog from "@/components/AddHomeVisitDialog";
-import AddPatientToVisitDialog from "@/components/AddPatientToVisitDialog";
 import PaymentDetailsDialog from "@/components/PaymentDetailsDialog";
 import ReceiptViewDialog from "@/components/ReceiptViewDialog";
 import MessagePreviewDialog from "@/components/MessagePreviewDialog";
@@ -81,16 +80,7 @@ const HomeVisits = () => {
   const [previewMessage, setPreviewMessage] = useState<string | null>(null);
   const { data: templates } = useMessageTemplates();
 
-  // Multi-patient session state
-  const [multiPatientSession, setMultiPatientSession] = useState<{
-    primaryVisitId: string;
-    visitDate: string;
-    visitTime: string;
-    address: string;
-    phlebotomistId: string | null;
-    allVisitIds: string[];
-  } | null>(null);
-  const [addPatientDialogOpen, setAddPatientDialogOpen] = useState(false);
+  // Legacy payment edit for already-completed visits (pre-redesign)
   const [consolidatedPaymentVisits, setConsolidatedPaymentVisits] = useState<any[] | null>(null);
 
   // Compute the date window for the server query based on the active date filter.
@@ -917,143 +907,18 @@ const HomeVisits = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Completion form — registration-style; marks Completed + invoice (no LIMS register yet) */}
-      {(completionEditVisit || false) && (
-        <CompleteHomeVisitDetailsDialog
+      {/* Completed → same New Registration form (trimmed) + multi-patient + LIMS invoices */}
+      {completionEditVisit && (
+        <HomeVisitRegistrationWizard
           visit={completionEditVisit}
           open={!!completionEditVisit}
-          onClose={() => setCompletionEditVisit(null)}
-          onCompleted={async () => {
-            const visit = completionEditVisit;
-            const visitId = visit?.id;
+          onClose={() => {
             setCompletionEditVisit(null);
-            await qc.refetchQueries({ queryKey: ["home_visits"] });
-            if (!visitId) return;
-            setMultiPatientSession({
-              primaryVisitId: visitId,
-              visitDate: visit?.visit_date || "",
-              visitTime: visit?.visit_time || "",
-              address: visit?.address || "",
-              phlebotomistId: visit?.phlebotomist_id || null,
-              allVisitIds: [visitId],
-              primaryAlreadyCompleted: true,
-            } as any);
+            qc.invalidateQueries({ queryKey: ["home_visits"] });
           }}
         />
       )}
 
-      {/* Multi-patient intermediate dialog */}
-      <Dialog open={!!multiPatientSession && !addPatientDialogOpen} onOpenChange={(o) => { if (!o) { /* Don't allow closing without action */ } }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Visit Patients</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            {/* List patients in this session */}
-            <div className="space-y-2">
-              {multiPatientSession?.allVisitIds.map((vid, idx) => {
-                const v = visits.find((x: any) => x.id === vid);
-                const est = v?.estimates;
-                return (
-                  <div key={vid} className="flex items-center justify-between bg-muted/50 rounded-lg p-3">
-                    <div>
-                      <p className="text-sm font-medium">{patientDisplayName(est)}</p>
-                      <p className="text-xs text-muted-foreground">{est?.whatsapp_number}</p>
-                      <div className="flex gap-1 mt-1 flex-wrap">
-                        {(est?.estimate_tests || []).map((t: any) => (
-                          <span key={t.id} className="text-[10px] bg-accent rounded px-1 py-0.5">{t.test_name}</span>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-bold">₹{est?.final_amount || 0}</p>
-                      {idx === 0 && Number(est?.home_visit_charges) > 0 && (
-                        <p className="text-[10px] text-muted-foreground">incl. HV ₹{est?.home_visit_charges}</p>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Grand total */}
-            {multiPatientSession && multiPatientSession.allVisitIds.length > 0 && (() => {
-              const grandTotal = multiPatientSession.allVisitIds.reduce((sum, vid) => {
-                const v = visits.find((x: any) => x.id === vid);
-                return sum + Number(v?.estimates?.final_amount || 0);
-              }, 0);
-              return (
-                <div className="rounded-lg bg-muted p-3 text-sm font-bold flex justify-between">
-                  <span>Grand Total ({multiPatientSession.allVisitIds.length} patient{multiPatientSession.allVisitIds.length > 1 ? "s" : ""})</span>
-                  <span>₹{grandTotal}</span>
-                </div>
-              );
-            })()}
-
-            <div className="flex gap-2">
-              <Button variant="outline" className="flex-1 gap-1" onClick={() => setAddPatientDialogOpen(true)}>
-                <UserPlus className="h-4 w-4" />Add Patient
-              </Button>
-              <Button className="flex-1" onClick={async () => {
-                await qc.refetchQueries({ queryKey: ["home_visits"] });
-                const allIds = multiPatientSession?.allVisitIds || [];
-                const primaryId = multiPatientSession?.primaryVisitId;
-                const primaryAlreadyCompleted = !!(multiPatientSession as any)?.primaryAlreadyCompleted;
-
-                // Primary was already completed + invoiced in Complete Missing Details.
-                // Extra patients stay Pending until each is marked Completed separately.
-                if (primaryAlreadyCompleted) {
-                  setMultiPatientSession(null);
-                  toast.success("Visit completed — pending patients can be completed from the list");
-                  return;
-                }
-
-                let primaryVisit: any = visits.find((v: any) => v.id === primaryId);
-                let allVisits: any[] = allIds.map(id => visits.find((v: any) => v.id === id)).filter(Boolean);
-
-                if (!primaryVisit && primaryId) {
-                  const { data } = await supabase.from("home_visits").select("*, estimates(*), phlebotomists(name)").eq("id", primaryId).maybeSingle();
-                  if (data) primaryVisit = data;
-                }
-                if (allVisits.length !== allIds.length && allIds.length > 0) {
-                  const { data } = await supabase.from("home_visits").select("*, estimates(*), phlebotomists(name)").in("id", allIds);
-                  if (data && data.length) allVisits = data;
-                }
-
-                setMultiPatientSession(null);
-                if (primaryVisit) {
-                  if (allIds.length > 1) {
-                    setConsolidatedPaymentVisits(allVisits);
-                  } else {
-                    setPaymentVisit(primaryVisit);
-                  }
-                } else {
-                  toast.error("Could not load visit — please refresh and try again.");
-                }
-              }}>
-                {(multiPatientSession as any)?.primaryAlreadyCompleted ? "Done" : "Proceed to Payment →"}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Add patient to visit dialog */}
-      <AddPatientToVisitDialog
-        open={addPatientDialogOpen}
-        onClose={() => setAddPatientDialogOpen(false)}
-        visitDate={multiPatientSession?.visitDate || ""}
-        visitTime={multiPatientSession?.visitTime || ""}
-        address={multiPatientSession?.address || ""}
-        phlebotomistId={multiPatientSession?.phlebotomistId || null}
-        onSaved={(newVisitId) => {
-          setAddPatientDialogOpen(false);
-          setMultiPatientSession(prev => prev ? {
-            ...prev,
-            allVisitIds: [...prev.allVisitIds, newVisitId],
-          } : null);
-          // Refetch to get the new visit data
-          qc.refetchQueries({ queryKey: ["home_visits"] });
-        }}
-      />
       <Dialog open={!!delayReasonDialog} onOpenChange={(o) => { if (!o) setDelayReasonDialog(null); }}>
         <DialogContent>
           <DialogHeader><DialogTitle>Visit Delayed — Reason Required</DialogTitle></DialogHeader>
@@ -1085,7 +950,7 @@ const HomeVisits = () => {
                 saveDelayReasonAndProceed.mutate({ visitId: delayReasonDialog.id, reason });
               }}
             >
-              {saveDelayReasonAndProceed.isPending ? "Saving..." : "Submit & Proceed to Payment"}
+              {saveDelayReasonAndProceed.isPending ? "Saving..." : "Submit & Proceed to Registration"}
             </Button>
           </div>
         </DialogContent>
@@ -1099,7 +964,7 @@ const HomeVisits = () => {
         open={deleteConfirmOpen}
         onOpenChange={setDeleteConfirmOpen}
         onSuccess={() => deleteVisits.mutate(Array.from(selectedIds))}
-        description={`Delete ${selectedIds.size} home visit${selectedIds.size !== 1 ? 's' : ''}? This cannot be undone.`}
+        description={`Delete ${selectedIds.size} home visit${selectedIds.size !== 1 ? "s" : ""}? This cannot be undone.`}
       />
 
       <ExportPasswordDialog open={exportDialog} onOpenChange={setExportDialog} onSuccess={handleExport} />

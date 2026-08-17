@@ -25,7 +25,7 @@ const LIST_BATCH = 10;
 
 /** Lean columns for the table only — no tests/payments JSON (egress). */
 const LIST_SELECT =
-  "id, invoice_number, created_at, patient_name, title, umr_number, mobile_number, visit_type, pickup_point_id, channel_id, remarks, registered_by, gross_amount, discount_amount, net_amount, home_visit_charges, paid_amount, refund_amount, due_amount, status, bill_cancelled, is_stat";
+  "id, invoice_number, created_at, patient_name, title, umr_number, mobile_number, visit_type, pickup_point_id, channel_id, remarks, registered_by, completing_phlebo_name, gross_amount, discount_amount, net_amount, home_visit_charges, paid_amount, refund_amount, due_amount, status, bill_cancelled, is_stat";
 
 const RegisteredPatients = () => {
   const qc = useQueryClient();
@@ -475,6 +475,9 @@ const RegisteredPatients = () => {
                           <div><span className="font-medium text-muted-foreground">Paid:</span> ₹{Number(r.paid_amount || 0).toFixed(2)}</div>
                           <div><span className="font-medium text-muted-foreground">Due:</span> ₹{Number(r.due_amount || 0).toFixed(2)}</div>
                           <div><span className="font-medium text-muted-foreground">Status:</span> {r.bill_cancelled ? "cancelled" : statusLabel(r.status)}</div>
+                          {r.completing_phlebo_name ? (
+                            <div><span className="font-medium text-muted-foreground">Completed by (Phlebo):</span> {r.completing_phlebo_name}</div>
+                          ) : null}
                         </div>
                         <p className="text-xs text-muted-foreground mt-2">
                           Test list and bill details load only when you open View Bill or Edit.
