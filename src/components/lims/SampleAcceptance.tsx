@@ -41,7 +41,7 @@ const TUBE_DETAIL_SELECT =
   "id, sample_uid, registration_id, tube_type, tube_color, sample_type, suffix, test_ids, test_names, status, collected_at, accepted_at, created_at";
 
 const REG_LIST_SELECT =
-  "id, invoice_number, patient_name, title, mobile_number, umr_number, dob, gender, visit_type, pickup_point_id, is_stat, status, created_at, updated_at, bill_cancelled, cancelled_tests, remarks";
+  "id, invoice_number, patient_name, title, mobile_number, umr_number, dob, age_text, gender, visit_type, pickup_point_id, is_stat, status, created_at, updated_at, bill_cancelled, cancelled_tests, remarks";
 
 interface SampleTubeRow {
   id: string;
@@ -518,7 +518,7 @@ const SampleAcceptance = () => {
                             <Badge variant="outline" className="ml-2 text-xs">{statusLabel(reg.status)}</Badge>
                           )}
                         </TableCell>
-                        <TableCell className="text-sm font-mono">{formatAgeGender(reg.dob, reg.gender)}</TableCell>
+                        <TableCell className="text-sm font-mono">{formatAgeGender(reg.dob, reg.gender, reg.age_text)}</TableCell>
                         <TableCell>{reg.mobile_number}</TableCell>
                         <TableCell>
                           {isAccepted || listTubes.length === 0 ? (

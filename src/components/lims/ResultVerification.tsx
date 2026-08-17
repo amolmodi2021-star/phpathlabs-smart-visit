@@ -2,7 +2,7 @@ import RefreshButton from "@/components/lims/RefreshButton";
 import PageSizeSelect from "@/components/lims/PageSizeSelect";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
-import { formatAgeGender } from "@/lib/ageGender";
+import { formatAgeGender, patientAgeYears } from "@/lib/ageGender";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 import { isSuspectNegativeResult, calculateResultFlag } from "@/lib/reportFlags";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
@@ -41,7 +41,7 @@ import { isSnipResultDetail } from "@/lib/outsourcedResultMode";
 
 /** List headers — omit tests / cancelled_tests JSON (egress). */
 const REG_LIST_SELECT =
-  "id, invoice_number, patient_name, title, mobile_number, umr_number, status, is_stat, visit_type, gender, dob, created_at, updated_at, bill_cancelled, doctor_name";
+  "id, invoice_number, patient_name, title, mobile_number, umr_number, status, is_stat, visit_type, gender, dob, age_text, created_at, updated_at, bill_cancelled, doctor_name";
 const REG_DETAIL_SELECT = `${REG_LIST_SELECT}, tests, cancelled_tests`;
 
 const QUALITATIVE_PAIRS = [
@@ -375,11 +375,7 @@ const ResultVerification = () => {
   const resolveNormalRange = useCallback((parameterId: string, reg: any) => {
     const ranges = normalRangesMap[parameterId];
     if (!ranges || ranges.length === 0) return { text: "", low: null as number | null, high: null as number | null, rangeType: "numeric", descriptiveOptions: [] as string[], expectedValue: "", normalFindings: "" };
-    let patientAge: number | null = null;
-    if (reg.dob) {
-      const birth = new Date(reg.dob);
-      patientAge = Math.floor((Date.now() - birth.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
-    }
+    let patientAge: number | null = patientAgeYears(reg?.dob, reg?.age_text);
     const patientGender = (reg.gender || "").toLowerCase().charAt(0);
     let candidates = ranges.filter((r: any) => {
       const g = (r.gender || "all").toLowerCase();
@@ -1270,7 +1266,7 @@ const ResultVerification = () => {
               </span>
             )}
             <span className="text-sm text-muted-foreground ml-2">{patientDisplayName(reg)}</span>
-            <Badge variant="outline" className="text-[10px] font-mono ml-1">{formatAgeGender(reg.dob, reg.gender)}</Badge>
+            <Badge variant="outline" className="text-[10px] font-mono ml-1">{formatAgeGender(reg.dob, reg.gender, reg.age_text)}</Badge>
           </div>
         </div>
 
@@ -1480,7 +1476,7 @@ const ResultVerification = () => {
                         </span>
                       )}
                         <span className="text-sm text-muted-foreground">{patientDisplayName(reg)}</span>
-                        <Badge variant="outline" className="text-[10px] font-mono">{formatAgeGender(reg.dob, reg.gender)}</Badge>
+                        <Badge variant="outline" className="text-[10px] font-mono">{formatAgeGender(reg.dob, reg.gender, reg.age_text)}</Badge>
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {reg.mobile_number}

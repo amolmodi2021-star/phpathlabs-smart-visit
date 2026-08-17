@@ -39,6 +39,24 @@ export function compactAgeFromText(ageText: string | null | undefined): string |
   return n;
 }
 
+/** Numeric age in years for range matching — DOB first, else pickup age_text years. */
+export function patientAgeYears(
+  dob?: string | null,
+  ageText?: string | null,
+): number | null {
+  const fromDob = calcAgeYears(dob);
+  if (fromDob !== null) return fromDob;
+  const compact = compactAgeFromText(ageText);
+  if (!compact) return null;
+  if (/^\d+(\.\d+)?$/.test(compact)) {
+    const n = Number(compact);
+    return Number.isFinite(n) ? Math.floor(n) : null;
+  }
+  // Months/days → treat as under 1 year for adult vs pediatric ranges
+  if (/^\d+(\.\d+)?[md]$/i.test(compact)) return 0;
+  return null;
+}
+
 export function formatAgeGender(
   dob: string | null | undefined,
   gender: string | null | undefined,

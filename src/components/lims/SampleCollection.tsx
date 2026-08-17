@@ -40,7 +40,7 @@ const TUBE_DETAIL_SELECT =
 
 /** List headers — no tests/payments JSON (egress). */
 const REG_LIST_SELECT =
-  "id, invoice_number, patient_name, title, mobile_number, umr_number, dob, gender, visit_type, pickup_point_id, is_stat, status, created_at, bill_cancelled, cancelled_tests, repeat_tests";
+  "id, invoice_number, patient_name, title, mobile_number, umr_number, dob, age_text, gender, visit_type, pickup_point_id, is_stat, status, created_at, bill_cancelled, cancelled_tests, repeat_tests";
 
 const TUBE_COLOR_MAP: Record<string, string> = {
   red: "#e53e3e", lavender: "#b794f4", purple: "#9f7aea", yellow: "#ecc94b",
@@ -1051,7 +1051,7 @@ const SampleCollection = () => {
                       )}
                     </div>
                   </TableCell>
-                  <TableCell className="text-sm font-mono">{formatAgeGender(reg.dob, reg.gender)}</TableCell>
+                  <TableCell className="text-sm font-mono">{formatAgeGender(reg.dob, reg.gender, reg.age_text)}</TableCell>
                   <TableCell className="text-sm">{reg.mobile_number}</TableCell>
                   <TableCell><Badge variant="outline" className="text-xs">{getVisitLabel(reg.visit_type)}</Badge></TableCell>
                   <TableCell className="text-sm">

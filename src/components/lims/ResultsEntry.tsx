@@ -2,7 +2,7 @@ import RefreshButton from "@/components/lims/RefreshButton";
 import PageSizeSelect from "@/components/lims/PageSizeSelect";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
-import { formatAgeGender } from "@/lib/ageGender";
+import { formatAgeGender, patientAgeYears } from "@/lib/ageGender";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 import { isSuspectNegativeResult, calculateResultFlag } from "@/lib/reportFlags";
 import { getCurrentUser, getCurrentUserName } from "@/lib/auth";
@@ -46,7 +46,7 @@ import { isSnipResultDetail, appendOutsourcedSnipImage, clearTypedOutsourcedResu
 
 /** List headers — omit tests / cancelled_tests JSON (egress). */
 const REG_LIST_SELECT =
-  "id, invoice_number, patient_name, title, mobile_number, umr_number, status, is_stat, visit_type, gender, dob, created_at, updated_at, bill_cancelled, doctor_name";
+  "id, invoice_number, patient_name, title, mobile_number, umr_number, status, is_stat, visit_type, gender, dob, age_text, created_at, updated_at, bill_cancelled, doctor_name";
 
 /** Expand — include test payloads needed to build parameter grids. */
 const REG_DETAIL_SELECT = `${REG_LIST_SELECT}, tests, cancelled_tests`;
@@ -878,16 +878,7 @@ const ResultsEntry = () => {
     if (!ranges || ranges.length === 0) return { text: "", low: null as number | null, high: null as number | null, rangeType: "numeric", descriptiveOptions: [] as string[], expectedValue: "", normalFindings: "" };
     // Prefer gender-specific then all; within that, age-matching
     const gender = (reg?.gender || "").toLowerCase();
-    const ageYears = (() => {
-      if (!reg?.dob) return null;
-      const d = new Date(reg.dob);
-      if (isNaN(d.getTime())) return null;
-      const now = new Date();
-      let age = now.getFullYear() - d.getFullYear();
-      const m = now.getMonth() - d.getMonth();
-      if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
-      return age;
-    })();
+    const ageYears = patientAgeYears(reg?.dob, reg?.age_text);
 
     const matchesAge = (r: any) => {
       if (r.age_min == null && r.age_max == null) return true;
@@ -1941,7 +1932,7 @@ const ResultsEntry = () => {
               </span>
             )}
             <span className="text-sm text-muted-foreground ml-2">{patientDisplayName(reg)}</span>
-            <Badge variant="outline" className="text-[10px] font-mono ml-1">{formatAgeGender(reg.dob, reg.gender)}</Badge>
+            <Badge variant="outline" className="text-[10px] font-mono ml-1">{formatAgeGender(reg.dob, reg.gender, reg.age_text)}</Badge>
           </div>
           <Badge variant={completion === 100 ? "default" : "outline"} className="text-xs">
             {completion}% Complete
@@ -2355,7 +2346,7 @@ const ResultsEntry = () => {
                             </span>
                           )}
                           <span className="text-sm text-muted-foreground">{patientDisplayName(reg)}</span>
-                          <Badge variant="outline" className="text-[10px] font-mono">{formatAgeGender(reg.dob, reg.gender)}</Badge>
+                          <Badge variant="outline" className="text-[10px] font-mono">{formatAgeGender(reg.dob, reg.gender, reg.age_text)}</Badge>
                         </div>
                         <div className="text-xs text-muted-foreground">
                           {reg.mobile_number}

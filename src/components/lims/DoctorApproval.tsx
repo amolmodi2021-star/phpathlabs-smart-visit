@@ -4,7 +4,7 @@ import RefreshButton from "@/components/lims/RefreshButton";
 import PageSizeSelect from "@/components/lims/PageSizeSelect";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { recalculateRegistrationStatus } from "@/lib/limsStatus";
-import { formatAgeGender } from "@/lib/ageGender";
+import { formatAgeGender, patientAgeYears } from "@/lib/ageGender";
 import { patientDisplayName } from "@/lib/patientDisplayName";
 import { isSuspectNegativeResult, calculateResultFlag } from "@/lib/reportFlags";
 import TimeResultInput from "./TimeResultInput";
@@ -1004,7 +1004,7 @@ const DoctorApproval = () => {
           )}
           {reg.is_stat && <span className="relative inline-flex h-2.5 w-2.5 ml-1.5 align-middle"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-75" /><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive" /></span>}
           <span className="text-sm text-muted-foreground">{patientDisplayName(reg)}</span>
-          <Badge variant="outline" className="text-[10px] font-mono">{formatAgeGender(reg.dob, reg.gender)}</Badge>
+          <Badge variant="outline" className="text-[10px] font-mono">{formatAgeGender(reg.dob, reg.gender, reg.age_text)}</Badge>
         </div>
         {/* Snip-only outsourced tests */}
         {entry.snipOnlyTests.length > 0 && entry.snipOnlyTests.map(st => {

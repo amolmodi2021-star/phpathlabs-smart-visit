@@ -174,7 +174,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("patient_registrations")
-        .select("id, invoice_number, patient_name, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, gender, dob, created_at, updated_at, bill_cancelled, doctor_name, title")
+        .select("id, invoice_number, patient_name, mobile_number, umr_number, status, is_stat, tests, cancelled_tests, visit_type, gender, dob, age_text, created_at, updated_at, bill_cancelled, doctor_name, title")
         .in("id", pageIds);
       if (error) throw error;
       const order = new Map(pageIds.map((id, i) => [id, i] as const));
@@ -1347,7 +1347,7 @@ const OutsourcedResults = ({ externalSearch }: { externalSearch?: string }) => {
                         </span>
                       )}
                       <span className="text-sm text-muted-foreground">{patientDisplayName(reg)}</span>
-                      <Badge variant="outline" className="text-[10px] font-mono">{formatAgeGender(reg.dob, reg.gender)}</Badge>
+                      <Badge variant="outline" className="text-[10px] font-mono">{formatAgeGender(reg.dob, reg.gender, reg.age_text)}</Badge>
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {reg.mobile_number} • {entry.outsourcedTests.length} test{entry.outsourcedTests.length > 1 ? "s" : ""}
