@@ -336,3 +336,104 @@ export async function restoreMissingApprovedFromReports(
 
   return { restored };
 }
+
+export type HealApprovedSnapshotResult = {
+  added: number;
+  reportsArr: any[];
+};
+
+/**
+ * View Report / PDF reads approved_reports.test_results. If Doctor Approval
+ * races or a later save drops a test, live patient_results can still be
+ * approved/dispatched while the snapshot omits them (CBC on 2608170010).
+ * Merge any missing live rows into the in-memory report (and persist).
+ */
+export async function healApprovedReportSnapshotFromLive(
+  supabase: { from: (table: string) => any },
+  registrationId: string,
+  reportsArr: any[],
+  testNameById: Record<string, string> = {},
+): Promise<HealApprovedSnapshotResult> {
+  if (!registrationId || !reportsArr.length) {
+    return { added: 0, reportsArr };
+  }
+
+  const { data: liveRows, error } = await supabase
+    .from("patient_results")
+    .select(
+      "test_id, parameter_id, param_code, parameter_name, result_value, unit, reference_range, normal_range_low, normal_range_high, flag, is_calculated, note, test_note, approved_by, approved_at",
+    )
+    .eq("registration_id", registrationId)
+    .in("status", ["approved", "dispatched"]);
+  if (error || !liveRows?.length) return { added: 0, reportsArr };
+
+  const primary = reportsArr[0];
+  const existing = Array.isArray(primary?.test_results) ? [...primary.test_results] : [];
+  const existingKeys = new Set(
+    existing
+      .filter((r: any) => r?.test_id && r?.parameter_id)
+      .map((r: any) => `${r.test_id}||${r.parameter_id}`),
+  );
+
+  // Reuse signature metadata from an existing snapshot row for the same approver.
+  const metaByApprover = new Map<string, any>();
+  for (const r of existing) {
+    const by = String(r?.approved_by || "").trim();
+    if (!by || metaByApprover.has(by)) continue;
+    if (r?.approved_by_signature_url || r?.approved_by_qualification || r?.approved_by_designation) {
+      metaByApprover.set(by, {
+        approved_by_qualification: r.approved_by_qualification || null,
+        approved_by_designation: r.approved_by_designation || null,
+        approved_by_signature_url: r.approved_by_signature_url || null,
+      });
+    }
+  }
+
+  const missing: any[] = [];
+  for (const row of liveRows as any[]) {
+    if (!row.test_id || !row.parameter_id) continue;
+    const key = `${row.test_id}||${row.parameter_id}`;
+    if (existingKeys.has(key)) continue;
+    const by = String(row.approved_by || "").trim();
+    const meta = metaByApprover.get(by) || {};
+    missing.push({
+      test_id: row.test_id,
+      test_name: testNameById[row.test_id] || "",
+      parameter_id: row.parameter_id,
+      param_code: row.param_code || null,
+      parameter_name: row.parameter_name || null,
+      result_value: row.result_value ?? null,
+      unit: row.unit ?? null,
+      reference_range: row.reference_range ?? null,
+      normal_range_low: row.normal_range_low ?? null,
+      normal_range_high: row.normal_range_high ?? null,
+      flag: row.flag ?? null,
+      is_calculated: !!row.is_calculated,
+      is_outsourced: false,
+      outsource_lab_name: null,
+      approved_by: row.approved_by || primary?.approved_by || null,
+      approved_by_qualification: meta.approved_by_qualification || null,
+      approved_by_designation: meta.approved_by_designation || null,
+      approved_by_signature_url: meta.approved_by_signature_url || null,
+      note: row.note || null,
+      test_note: row.test_note || null,
+    });
+    existingKeys.add(key);
+  }
+
+  if (missing.length === 0) return { added: 0, reportsArr };
+
+  const mergedResults = existing.concat(missing);
+  const healed = reportsArr.map((r, i) =>
+    i === 0 ? { ...r, test_results: mergedResults } : r,
+  );
+
+  // Persist so Dispatch / Modified Approval stay consistent after this view.
+  await supabase
+    .from("approved_reports")
+    .update({ test_results: mergedResults } as any)
+    .eq("registration_id", registrationId);
+
+  return { added: missing.length, reportsArr: healed };
+}
+

@@ -518,9 +518,29 @@ const ModifiedApproval = () => {
         }
       }
 
-      // Re-save snapshot to approved_reports
+      // Re-save snapshot — keep any approved/dispatched snapshot rows not in this
+      // edit session so concurrent/partial saves cannot drop tests (e.g. CBC).
+      const { data: existingSnap } = await supabase
+        .from("approved_reports")
+        .select("test_results")
+        .eq("id", report.id)
+        .maybeSingle();
+      const prevSnap = Array.isArray((existingSnap as any)?.test_results)
+        ? (existingSnap as any).test_results
+        : [];
+      const incomingKeys = new Set(
+        allTestResults
+          .filter((r: any) => r.test_id && r.parameter_id)
+          .map((r: any) => `${r.test_id}||${r.parameter_id}`),
+      );
+      const preserved = prevSnap.filter(
+        (r: any) =>
+          r?.test_id &&
+          r?.parameter_id &&
+          !incomingKeys.has(`${r.test_id}||${r.parameter_id}`),
+      );
       await supabase.from("approved_reports").update({
-        test_results: allTestResults,
+        test_results: [...preserved, ...allTestResults],
         outsourced_snip_urls: allSnipUrls,
         approval_date: new Date().toISOString(),
       } as any).eq("id", report.id);

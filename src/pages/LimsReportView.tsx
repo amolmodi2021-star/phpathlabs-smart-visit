@@ -29,6 +29,7 @@ import {
   reportAssetCacheKey,
 } from "@/lib/reportAssetCache";
 import { isSnipResultRow, snipImageUrlsFromRow } from "@/lib/outsourcedResultMode";
+import { healApprovedReportSnapshotFromLive } from "@/lib/patientResultLookup";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.mjs";
 
@@ -433,6 +434,20 @@ const LimsReportView = () => {
         test_results: synthResults,
         outsourced_snip_urls: [],
       }];
+    }
+
+    // Final reports: backfill approved/dispatched live rows missing from the snapshot
+    // (e.g. concurrent Doctor Approval upserts dropping CBC from approved_reports).
+    if (!isProvisional && registrationId && reportsArr.length > 0) {
+      const testNameById: Record<string, string> = {};
+      (allTests || []).forEach((t: any) => { testNameById[t.id] = t.test_name; });
+      const healed = await healApprovedReportSnapshotFromLive(
+        supabase,
+        registrationId,
+        reportsArr,
+        testNameById,
+      );
+      reportsArr = healed.reportsArr;
     }
 
     // Reference Range patch from parameter_normal_ranges:
