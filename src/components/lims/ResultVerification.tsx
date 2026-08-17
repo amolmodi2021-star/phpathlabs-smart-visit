@@ -164,14 +164,14 @@ const ResultVerification = () => {
     staleTime: 120_000,
   });
 
-  // Disabled queries keep last rows; never show approved/dispatched leftovers.
+  // Disabled queries keep last rows; clear when the queue is freshly empty.
+  // Do NOT hide partially_approved / partially_dispatched bills by registration
+  // status — remaining entered tests must stay visible.
   const registrations = useMemo(() => {
     if (!idsPlaceholder && pendingIds.length === 0) return [];
     if (pageIds.length === 0) return [];
     const onPage = new Set(pageIds);
-    return (registrationsRaw as any[]).filter(
-      (r) => onPage.has(r.id) && r.status !== "approved" && r.status !== "dispatched",
-    );
+    return (registrationsRaw as any[]).filter((r) => onPage.has(r.id));
   }, [registrationsRaw, pageIds, pendingIds.length, idsPlaceholder]);
 
   const rvTotalPages = Math.max(1, Math.ceil(rvCount / pageSize));
@@ -439,6 +439,11 @@ const ResultVerification = () => {
         }
         if (isSnipResult && isParamLevel && ["results_entered", "entered"].includes(snipDetail.status)) {
           snipOnlyTests.push({ testId: t.test_id, testName: t.test_name || testInfo.test_name || "", labName: snipDetail.labName, snipUrls: snipDetail.snipImageUrls, outsourceStatus: snipDetail.status });
+        }
+
+        // Fully approved/dispatched snips belong in Modified Approval / Dispatch only
+        if (snipDetail && ["approved", "dispatched"].includes(snipDetail.status) && !isParamLevel) {
+          continue;
         }
 
         const testEnteredResults = existingResults.filter((r: any) => r.registration_id === reg.id && r.test_id === t.test_id);

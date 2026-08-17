@@ -312,14 +312,14 @@ const ResultsEntry = () => {
     staleTime: 120_000,
   });
 
-  // Disabled queries keep last rows; never show approved/dispatched leftovers.
+  // Disabled queries keep last rows; clear when the queue is freshly empty.
+  // Do NOT hide partially_approved / partially_dispatched bills by registration
+  // status — remaining unentered tests must stay visible.
   const acceptedRegs = useMemo(() => {
     if (!idsPlaceholder && pendingIds.length === 0) return [];
     if (pageIds.length === 0) return [];
     const onPage = new Set(pageIds);
-    return (acceptedRegsRaw as any[]).filter(
-      (r) => onPage.has(r.id) && r.status !== "approved" && r.status !== "dispatched",
-    );
+    return (acceptedRegsRaw as any[]).filter((r) => onPage.has(r.id));
   }, [acceptedRegsRaw, pageIds, pendingIds.length, idsPlaceholder]);
 
   const listLoading =
