@@ -44,7 +44,7 @@ export function queueApprovedReportWhatsApp(opts: {
     }
 
     let settled = false;
-    const timeoutMs = opts.timeoutMs ?? 120_000;
+  const timeoutMs = opts.timeoutMs ?? 180_000;
     const timeout = window.setTimeout(() => {
       finish({ ok: false, error: "Timed out generating report PDF for WhatsApp" });
     }, timeoutMs);

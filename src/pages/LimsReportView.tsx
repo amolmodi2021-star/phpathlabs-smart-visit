@@ -37,6 +37,15 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs
 // Wait until web fonts are ready and every <img> inside a container has
 // finished loading. Without this, html-to-image can occasionally produce
 // blank pages because the DOM is captured before resources resolve.
+const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> =>
+  new Promise<T>((resolve, reject) => {
+    const t = window.setTimeout(() => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`)), ms);
+    promise.then(
+      (v) => { window.clearTimeout(t); resolve(v); },
+      (e) => { window.clearTimeout(t); reject(e); },
+    );
+  });
+
 const waitForCaptureReady = async (root: HTMLElement) => {
   // Canvas pixels do not survive html-to-image (SVG foreignObject). Same fix as invoice WhatsApp.
   replaceCanvasesWithPngImages(root);
@@ -64,10 +73,15 @@ const waitForCaptureReady = async (root: HTMLElement) => {
 
 // Detect a near-blank capture by sampling pixels from a downscaled copy.
 const isBlankDataUrl = async (dataUrl: string): Promise<boolean> => {
+  if (!dataUrl) return true;
   try {
     const img = new Image();
     img.src = dataUrl;
-    await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = () => rej(); });
+    await withTimeout(
+      new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = () => rej(new Error("img")); }),
+      8000,
+      "blank-check decode",
+    );
     const w = 64, h = Math.max(1, Math.round((img.height / img.width) * 64));
     const c = document.createElement("canvas");
     c.width = w; c.height = h;
@@ -87,33 +101,44 @@ const isBlankDataUrl = async (dataUrl: string): Promise<boolean> => {
 };
 
 // Capture a page with retries (handles intermittent blank captures from html-to-image).
-// pixelRatio 3 → sharp text when zoomed; JPEG q=0.85 keeps file size reasonable.
+// Structured pages: pixelRatio 3 for sharp text.
+// Snip pages: lower pixelRatio — full-page photo captures at PR3 hang / OOM and stuck the
+// WhatsApp popup on "Downloading…".
 const captureWithRetry = async (
   el: HTMLElement,
   width: number,
   height: number,
   format: "png" | "jpeg",
 ): Promise<string> => {
+  const isSnipPage = !!el.querySelector("img[data-snip-image]");
+  const pixelRatio = isSnipPage ? 1.5 : 3;
+  const attempts = isSnipPage ? 2 : 3;
+  const captureMs = isSnipPage ? 20_000 : 25_000;
   const opts = {
-    pixelRatio: 3,
+    pixelRatio,
     backgroundColor: "#ffffff",
     width,
     height,
-    cacheBust: true,
+    // data: URLs + cacheBust re-fetch loops can stall snip captures
+    cacheBust: !isSnipPage,
     style: { transform: "none", transformOrigin: "top left" } as Record<string, string>,
   };
   let lastUrl = "";
-  for (let attempt = 0; attempt < 3; attempt++) {
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt < attempts; attempt++) {
     try {
       lastUrl = format === "png"
-        ? await toPng(el, { ...opts, quality: 1 })
-        : await toJpeg(el, { ...opts, quality: 0.92 });
+        ? await withTimeout(toPng(el, { ...opts, quality: 1 }), captureMs, "snip/page PNG capture")
+        : await withTimeout(toJpeg(el, { ...opts, quality: 0.92 }), captureMs, "page JPEG capture");
       const blank = await isBlankDataUrl(lastUrl);
       if (!blank) return lastUrl;
-    } catch {
-      // retry
+    } catch (e) {
+      lastErr = e;
     }
     await new Promise((r) => setTimeout(r, 250));
+  }
+  if (!lastUrl) {
+    throw (lastErr instanceof Error ? lastErr : new Error("Page capture failed"));
   }
   return lastUrl;
 };
@@ -618,8 +643,8 @@ const LimsReportView = () => {
       }
     }
 
-    // Snip images — inline as data URLs for reliable PDF/print capture.
-    // Only result_mode=snip counts; leftover images from a later manual entry are ignored.
+    // Snip images — MUST be inlined as data URLs. Remote storage URLs +
+    // html-to-image (esp. with cacheBust) hang the WhatsApp popup on "Downloading…".
     const snipPages: SnipPage[] = [];
     const rawSnipUrls: string[] = [];
     const snipIds = new Set<string>();
@@ -629,8 +654,29 @@ const LimsReportView = () => {
       snipIds.add(s.test_id);
       snipImageUrlsFromRow(s).forEach((url: string) => rawSnipUrls.push(url));
     });
-    const inlinedSnipUrls = await Promise.all(rawSnipUrls.map(async (u) => (await urlToDataUrl(u)) || u));
-    inlinedSnipUrls.forEach((url) => snipPages.push({ imageUrl: url }));
+    const inlinedSnipUrls = await Promise.all(rawSnipUrls.map(async (u) => {
+      const marker = "/outsourced-snips/";
+      const idx = u.indexOf(marker);
+      const path = idx >= 0
+        ? decodeURIComponent(u.slice(idx + marker.length).split("?")[0] || "")
+        : "";
+      const cacheKey = path
+        ? reportAssetCacheKey("outsourced-snips", path)
+        : `url:${u}`;
+      try {
+        return await withTimeout(urlToDataUrl(u, cacheKey), 30_000, "snip image download");
+      } catch (e) {
+        console.error("Failed to inline snip image:", u, e);
+        return null;
+      }
+    }));
+    const failedSnips = inlinedSnipUrls.filter((u) => !u).length;
+    if (failedSnips > 0) {
+      toast.error(`Could not load ${failedSnips} snipped report image(s) for PDF`);
+    }
+    inlinedSnipUrls.forEach((url) => {
+      if (url) snipPages.push({ imageUrl: url });
+    });
 
     // Inline snapshot signature URLs embedded in approved_reports.test_results JSONB
     for (const r of filteredReports) {
@@ -694,7 +740,12 @@ const LimsReportView = () => {
 
   // ── Build structured content ──
   const { pages, totalPages } = useMemo(() => {
-    if (approvedReports.length === 0) return { pages: [] as PageContent[], totalPages: 0 };
+    if (approvedReports.length === 0 && snipImages.length === 0) {
+      return { pages: [] as PageContent[], totalPages: 0 };
+    }
+
+    // Snip-only reports still need a demography shell for header rendering.
+    // Pagination below tolerates empty structured results.
 
     const topMm = (layoutSettings.top_margin_cm || 2.5) * 10;
     const bottomMm = (layoutSettings.bottom_margin_cm || 1.5) * 10;
@@ -930,14 +981,9 @@ const LimsReportView = () => {
     for (let i = 0; i < pageElements.length; i++) {
       if (i > 0) pdf.addPage();
       const el = pageElements[i] as HTMLElement;
-      const isSnipPage = !!el.querySelector('img[data-snip-image]');
-      if (isSnipPage) {
-        const png = await captureWithRetry(el, NATIVE_W, NATIVE_H, "png");
-        pdf.addImage(png, "PNG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM);
-      } else {
-        const jpeg = await captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg");
-        pdf.addImage(jpeg, "JPEG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, undefined, "FAST");
-      }
+      // Snip pages use lower pixelRatio inside captureWithRetry (photos hang at PR3).
+      const jpeg = await captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg");
+      pdf.addImage(jpeg, "JPEG", 0, 0, PAGE_WIDTH_MM, PAGE_HEIGHT_MM, undefined, "FAST");
     }
 
     const patientNameRaw = patientDisplayName(approvedReports[0]);
@@ -1043,7 +1089,14 @@ const LimsReportView = () => {
   useEffect(() => {
     if (!queueWaRequested) return;
     if (loading) return;
-    if (pages.length === 0) return;
+    if (pages.length === 0) {
+      if (autoQueueWaStartedRef.current) return;
+      autoQueueWaStartedRef.current = true;
+      const msg = "No report pages to export — snipped images may have failed to load";
+      toast.error(msg);
+      notifyQueueWa(false, msg);
+      return;
+    }
     if (invoiceNumberForBarcode && !invoiceBarcodePng) return;
     if (autoQueueWaStartedRef.current) return;
     autoQueueWaStartedRef.current = true;
@@ -1203,12 +1256,7 @@ const LimsReportView = () => {
       const NATIVE_H = Math.round((PAGE_HEIGHT_MM / 25.4) * 96);
       for (let i = 0; i < pageElements.length; i++) {
         const el = pageElements[i] as HTMLElement;
-        const isSnipPage = !!el.querySelector('img[data-snip-image]');
-        if (isSnipPage) {
-          imageUrls.push(await captureWithRetry(el, NATIVE_W, NATIVE_H, "png"));
-        } else {
-          imageUrls.push(await captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg"));
-        }
+        imageUrls.push(await captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg"));
       }
 
       // Restore styles after capturing
@@ -1482,7 +1530,6 @@ const LimsReportView = () => {
                     <img
                       data-snip-image="true"
                       src={page.snipImage}
-                      crossOrigin="anonymous"
                       alt="Outsourced Report"
                       className="max-w-full object-contain"
                       style={{
