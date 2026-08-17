@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { X, Search, Send, AlertTriangle } from "lucide-react";
+import { X, Search, Send, AlertTriangle, MapPin, Plus } from "lucide-react";
 import { getAllSelectableTests } from "@/lib/allSelectableTests";
 import { useParamConflictHighlight } from "@/hooks/useParamConflictHighlight";
 import TimeSlotPicker from "@/components/TimeSlotPicker";
@@ -33,9 +33,97 @@ interface SelectedTest {
   item_type?: "test" | "profile" | "package" | "combo";
 }
 
+interface KnownAddress {
+  address: string;
+  patientName?: string;
+  source: string;
+}
+
 interface AddHomeVisitDialogProps {
   open: boolean;
   onClose: () => void;
+}
+
+function normalizeAddress(raw: string | null | undefined): string {
+  return String(raw || "").replace(/\s+/g, " ").trim().toUpperCase();
+}
+
+async function fetchAddressesForMobile(mobile10: string): Promise<KnownAddress[]> {
+  const seen = new Set<string>();
+  const out: KnownAddress[] = [];
+  const add = (addr: string | null | undefined, name?: string | null, source = "") => {
+    const a = normalizeAddress(addr);
+    if (!a || seen.has(a)) return;
+    seen.add(a);
+    out.push({
+      address: a,
+      patientName: name ? String(name).replace(/\s+/g, " ").trim().toUpperCase() : undefined,
+      source,
+    });
+  };
+
+  const [pmRes, regRes, estRes] = await Promise.all([
+    supabase
+      .from("patient_master")
+      .select("address, patient_name")
+      .ilike("mobile_number", `%${mobile10}%`)
+      .limit(50),
+    supabase
+      .from("patient_registrations")
+      .select("address, patient_name")
+      .ilike("mobile_number", `%${mobile10}%`)
+      .eq("bill_cancelled", false)
+      .order("created_at", { ascending: false })
+      .limit(50),
+    supabase
+      .from("estimates")
+      .select("patient_name, whatsapp_number, home_visits(address)")
+      .ilike("whatsapp_number", `%${mobile10}%`)
+      .order("created_at", { ascending: false })
+      .limit(40),
+  ]);
+
+  (pmRes.data || []).forEach((p: any) => add(p.address, p.patient_name, "Patient Master"));
+  (regRes.data || []).forEach((r: any) => add(r.address, r.patient_name, "Registration"));
+  (estRes.data || []).forEach((e: any) => {
+    const visits = Array.isArray(e.home_visits) ? e.home_visits : e.home_visits ? [e.home_visits] : [];
+    visits.forEach((v: any) => add(v?.address, e.patient_name, "Prior Home Visit"));
+  });
+
+  return out;
+}
+
+/** Persist the booked address onto matching patient_master / registration rows. */
+async function syncAddressToPatientData(mobile10: string, patientName: string, address: string) {
+  const cleanName = patientName.replace(/\s+/g, " ").trim().toUpperCase();
+  const cleanAddr = normalizeAddress(address);
+  if (!cleanAddr) return;
+
+  const { data: masters } = await supabase
+    .from("patient_master")
+    .select("id, patient_name, address")
+    .ilike("mobile_number", `%${mobile10}%`)
+    .limit(20);
+
+  const rows = masters || [];
+  const byName = cleanName
+    ? rows.filter((m) => String(m.patient_name || "").replace(/\s+/g, " ").trim().toUpperCase() === cleanName)
+    : [];
+  const targets = byName.length > 0 ? byName : rows.length === 1 ? rows : [];
+
+  for (const m of targets) {
+    if (normalizeAddress(m.address) === cleanAddr) continue;
+    await supabase.from("patient_master").update({ address: cleanAddr }).eq("id", m.id);
+  }
+
+  if (cleanName) {
+    await supabase
+      .from("patient_registrations")
+      .update({ address: cleanAddr })
+      .ilike("mobile_number", `%${mobile10}%`)
+      .eq("patient_name", cleanName)
+      .eq("bill_cancelled", false);
+  }
 }
 
 const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
@@ -49,6 +137,10 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
   const [visitDate, setVisitDate] = useState("");
   const [visitTime, setVisitTime] = useState("");
   const [address, setAddress] = useState("");
+  const [knownAddresses, setKnownAddresses] = useState<KnownAddress[]>([]);
+  const [loadingAddresses, setLoadingAddresses] = useState(false);
+  /** null = not chosen yet; "__new__" = typing a new address; else the selected known address */
+  const [addressChoice, setAddressChoice] = useState<string | null>(null);
   const [selectedTests, setSelectedTests] = useState<SelectedTest[]>([]);
   const [globalDiscountType, setGlobalDiscountType] = useState<"percent" | "amount">("percent");
   const [globalDiscountValue, setGlobalDiscountValue] = useState(0);
@@ -76,6 +168,9 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
       setVisitDate("");
       setVisitTime("");
       setAddress("");
+      setKnownAddresses([]);
+      setLoadingAddresses(false);
+      setAddressChoice(null);
       setSelectedTests([]);
       setGlobalDiscountType("percent");
       setGlobalDiscountValue(0);
@@ -85,6 +180,47 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
       setPhlebotomistId("");
     }
   }, [open]);
+
+  const mobile10 = useMemo(() => whatsappNumber.replace(/\D/g, "").slice(-10), [whatsappNumber]);
+
+  // Load known addresses once mobile is complete
+  useEffect(() => {
+    if (!open || mobile10.length !== 10) {
+      setKnownAddresses([]);
+      setAddressChoice(null);
+      return;
+    }
+    let cancelled = false;
+    setLoadingAddresses(true);
+    (async () => {
+      try {
+        const list = await fetchAddressesForMobile(mobile10);
+        if (cancelled) return;
+        setKnownAddresses(list);
+        if (list.length === 0) {
+          setAddressChoice("__new__");
+        } else {
+          setAddressChoice(null);
+        }
+      } finally {
+        if (!cancelled) setLoadingAddresses(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open, mobile10]);
+
+  const selectKnownAddress = (opt: KnownAddress) => {
+    setAddressChoice(opt.address);
+    setAddress(opt.address);
+    if (opt.patientName && !patientName.trim()) {
+      setPatientName(opt.patientName);
+    }
+  };
+
+  const chooseNewAddress = () => {
+    setAddressChoice("__new__");
+    setAddress("");
+  };
 
   const availableTests = allTests.filter((t: any) =>
     !selectedTests.find(s => s.test_id === t.id) &&
@@ -223,6 +359,13 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
       });
       if (visitError) throw visitError;
 
+      // Keep patient master / registrations in sync with the booked address
+      try {
+        await syncAddressToPatientData(cleanNumber, cleanName, cleanAddress);
+      } catch (e) {
+        console.warn("Address sync to patient data failed:", e);
+      }
+
       // Share on WhatsApp
       if (templates) {
         const tests = calculations.testDetails.map(t => ({ name: t.test_name, price: t.price, fasting: t.fasting_required }));
@@ -255,6 +398,7 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["home_visits"] });
       qc.invalidateQueries({ queryKey: ["estimates"] });
+      qc.invalidateQueries({ queryKey: ["patient_master"] });
       toast.success("Home visit created & WhatsApp confirmation sent!");
       onClose();
     },
@@ -273,8 +417,16 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
           </div>
           <div>
             <Label>WhatsApp Number *</Label>
-            <Input type="tel" value={whatsappNumber} onChange={(e) => setWhatsappNumber(e.target.value)} placeholder="Paste number (any format)" />
-            {whatsappNumber && <p className="text-xs text-muted-foreground mt-1">Formatted: {formatWhatsApp(whatsappNumber) || "Need 10+ digits"}</p>}
+            <Input type="tel" value={whatsappNumber} onChange={(e) => {
+              setWhatsappNumber(e.target.value);
+              // Clear address pick when number changes mid-entry
+              const digits = e.target.value.replace(/\D/g, "").slice(-10);
+              if (digits.length !== 10) {
+                setKnownAddresses([]);
+                setAddressChoice(null);
+              }
+            }} placeholder="Paste number (any format)" />
+            {whatsappNumber && <p className="text-xs text-muted-foreground mt-1">Formatted: {formatWhatsApp(whatsappNumber) || "Need 10+ digits"}{mobile10.length === 10 ? " ✓" : ""}</p>}
           </div>
 
           {/* Visit Details */}
@@ -338,9 +490,82 @@ const AddHomeVisitDialog = ({ open, onClose }: AddHomeVisitDialogProps) => {
               />
             </div>
           </div>
-          <div>
+
+          {/* Address — pick from history for this mobile, or add new */}
+          <div className="space-y-2">
             <Label>Address *</Label>
-            <Textarea value={address} onChange={(e) => setAddress(e.target.value.toUpperCase())} rows={2} className="uppercase" />
+            {mobile10.length !== 10 && (
+              <p className="text-xs text-muted-foreground">Enter a 10-digit mobile to load saved addresses.</p>
+            )}
+            {mobile10.length === 10 && loadingAddresses && (
+              <p className="text-xs text-muted-foreground">Looking up addresses for this mobile…</p>
+            )}
+            {mobile10.length === 10 && !loadingAddresses && knownAddresses.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-xs text-muted-foreground">Select an address for this visit:</p>
+                <div className="border rounded-md max-h-40 overflow-y-auto divide-y">
+                  {knownAddresses.map((opt) => {
+                    const selected = addressChoice === opt.address;
+                    return (
+                      <button
+                        key={opt.address}
+                        type="button"
+                        className={`w-full text-left px-3 py-2 text-sm transition-colors flex gap-2 items-start ${
+                          selected ? "bg-primary/10 ring-1 ring-inset ring-primary/30" : "hover:bg-accent"
+                        }`}
+                        onClick={() => selectKnownAddress(opt)}
+                      >
+                        <MapPin className={`h-3.5 w-3.5 mt-0.5 shrink-0 ${selected ? "text-primary" : "text-muted-foreground"}`} />
+                        <span className="min-w-0">
+                          <span className="block font-medium uppercase leading-snug">{opt.address}</span>
+                          {(opt.patientName || opt.source) && (
+                            <span className="text-[11px] text-muted-foreground">
+                              {[opt.patientName, opt.source].filter(Boolean).join(" · ")}
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={addressChoice === "__new__" ? "default" : "outline"}
+                  className="h-8 text-xs gap-1"
+                  onClick={chooseNewAddress}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add new address
+                </Button>
+              </div>
+            )}
+            {(addressChoice === "__new__" || (mobile10.length === 10 && !loadingAddresses && knownAddresses.length === 0) || (addressChoice && addressChoice !== "__new__")) && (
+              <Textarea
+                value={address}
+                onChange={(e) => {
+                  const v = e.target.value.toUpperCase();
+                  setAddress(v);
+                  // Typing over a known pick → treat as new/edited address
+                  if (addressChoice && addressChoice !== "__new__" && normalizeAddress(v) !== addressChoice) {
+                    setAddressChoice("__new__");
+                  }
+                }}
+                rows={2}
+                className="uppercase"
+                placeholder={addressChoice === "__new__" || knownAddresses.length === 0 ? "Enter visit address" : undefined}
+                readOnly={!!addressChoice && addressChoice !== "__new__"}
+              />
+            )}
+            {addressChoice && addressChoice !== "__new__" && (
+              <button
+                type="button"
+                className="text-xs text-primary hover:underline"
+                onClick={() => setAddressChoice("__new__")}
+              >
+                Edit this address
+              </button>
+            )}
           </div>
 
           {/* Test Search & Add */}
