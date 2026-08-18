@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Printer, Send, Loader2 } from "lucide-react";
 import { format } from "date-fns";
-import { toJpeg } from "html-to-image";
+import { toJpeg, getFontEmbedCSS } from "html-to-image";
 import JsBarcode from "jsbarcode";
 import { logMessageSend } from "@/lib/messageLog";
 import { enqueueInvoiceForWhatsAppConsole } from "@/lib/whatsappConsoleBridge";
@@ -120,6 +120,33 @@ const PALETTE = {
   white: "#FFFFFF",
   discount: "#059669",
 };
+
+/**
+ * Fonts that include U+20B9 (₹). Avoid Arial — it often has no rupee glyph (shows □).
+ * IBM Plex Sans is the app font; Noto Sans is the reliable ₹ fallback for print/WA capture.
+ */
+const INVOICE_FONT =
+  '"IBM Plex Sans", "Noto Sans", "Segoe UI", system-ui, sans-serif';
+
+const INVOICE_FONT_CSS_HREF =
+  "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Noto+Sans:wght@400;500;600;700&display=swap";
+
+async function ensureInvoiceFontsReady(): Promise<void> {
+  try {
+    if (typeof document !== "undefined" && document.fonts?.ready) {
+      await document.fonts.ready;
+      // Warm the faces used for ₹ so html-to-image can embed them.
+      await Promise.all([
+        document.fonts.load(`400 12px "IBM Plex Sans"`),
+        document.fonts.load(`700 12px "IBM Plex Sans"`),
+        document.fonts.load(`400 12px "Noto Sans"`),
+        document.fonts.load(`700 12px "Noto Sans"`),
+      ]);
+    }
+  } catch {
+    // non-fatal — capture still proceeds
+  }
+}
 
 function escapeInvoiceHtml(value: string): string {
   return value
@@ -301,6 +328,7 @@ const InvoicePreview = ({
       clone.style.maxWidth = "560px";
       clone.style.background = "#ffffff";
       clone.style.color = "#111827";
+      clone.style.fontFamily = INVOICE_FONT;
 
       // Canvas pixels do not clone — swap barcode for a PNG <img>.
       const srcCanvas = barcodeRef.current;
@@ -336,6 +364,14 @@ const InvoicePreview = ({
         ),
       );
 
+      await ensureInvoiceFontsReady();
+      let fontEmbedCSS = "";
+      try {
+        fontEmbedCSS = await getFontEmbedCSS(clone);
+      } catch {
+        fontEmbedCSS = "";
+      }
+
       const width = 560;
       const height = Math.max(clone.scrollHeight, clone.offsetHeight, 1);
       let dataUrl = "";
@@ -348,11 +384,13 @@ const InvoicePreview = ({
             backgroundColor: "#ffffff",
             width,
             height,
+            fontEmbedCSS: fontEmbedCSS || undefined,
             style: {
               transform: "none",
               transformOrigin: "top left",
               margin: "0",
               width: `${width}px`,
+              fontFamily: INVOICE_FONT,
             },
           });
           if (dataUrl && dataUrl.length > 5000) break;
@@ -684,11 +722,12 @@ const InvoicePreview = ({
 
     printWindow.document.write(`
       <html><head><title>Invoice ${data.invoice_number}</title>
+      <link rel="stylesheet" href="${INVOICE_FONT_CSS_HREF}" />
       <style>
         @page { size: A5; margin: 5mm; }
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box; }
         html, body { margin: 0; padding: 0; }
-        body { font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif; color: ${PALETTE.ink}; }
+        body { font-family: ${INVOICE_FONT}; color: ${PALETTE.ink}; }
         /* A5 printable area (210mm - 10mm margins). Clip so scale never creates page 2. */
         #invoice-page {
           width: 138mm;
@@ -728,32 +767,23 @@ const InvoicePreview = ({
           function whenReady(cb) {
             var imgs = Array.prototype.slice.call(document.images || []);
             var pending = imgs.filter(function (img) { return !img.complete; }).length;
-            if (!pending) { cb(); return; }
-            var done = false;
-            var finish = function () {
-              if (done) return;
-              done = true;
-              cb();
-            };
+            var fontsReady = document.fonts && document.fonts.ready
+              ? document.fonts.ready.catch(function () {})
+              : Promise.resolve();
+            function go() { fontsReady.then(function () { setTimeout(cb, 50); }); }
+            if (!pending) { go(); return; }
             imgs.forEach(function (img) {
               if (img.complete) return;
               img.onload = img.onerror = function () {
                 pending -= 1;
-                if (pending <= 0) finish();
+                if (pending <= 0) go();
               };
             });
-            setTimeout(finish, 600);
+            setTimeout(go, 2500);
           }
-          whenReady(function () {
-            fit();
-            requestAnimationFrame(function () {
-              fit();
-              setTimeout(function () { window.print(); window.close(); }, 80);
-            });
-          });
+          whenReady(function () { fit(); setTimeout(function () { window.focus(); window.print(); }, 120); });
         })();
-      <\/script>
-      </body></html>
+      <\/script></body></html>
     `);
     printWindow.document.close();
   };
@@ -772,7 +802,7 @@ const InvoicePreview = ({
           ref={receiptRef}
           className="bg-white text-black rounded"
           style={{
-            fontFamily: '"Segoe UI", system-ui, -apple-system, Arial, sans-serif',
+            fontFamily: INVOICE_FONT,
             width: 560,
             margin: "0 auto",
             padding: "10px 16px 12px",
