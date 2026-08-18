@@ -122,30 +122,56 @@ const PALETTE = {
 };
 
 /**
- * Fonts that include U+20B9 (₹). Avoid Arial — it often has no rupee glyph (shows □).
- * IBM Plex Sans is the app font; Noto Sans is the reliable ₹ fallback for print/WA capture.
+ * Fonts that include U+20B9 (₹). Prefer Noto Sans first — Google Fonts unicode-range
+ * subsets for IBM Plex sometimes load late, which caused intermittent □ boxes.
+ * Never fall back to Arial (no rupee glyph).
  */
 const INVOICE_FONT =
-  '"IBM Plex Sans", "Noto Sans", "Segoe UI", system-ui, sans-serif';
+  '"Noto Sans", "IBM Plex Sans", "Segoe UI", system-ui, sans-serif';
 
 const INVOICE_FONT_CSS_HREF =
   "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Noto+Sans:wght@400;500;600;700&display=swap";
 
+/** Force-download the unicode-range file that contains ₹ (lazy-loaded otherwise). */
 async function ensureInvoiceFontsReady(): Promise<void> {
+  if (typeof document === "undefined" || !document.fonts) return;
   try {
-    if (typeof document !== "undefined" && document.fonts?.ready) {
-      await document.fonts.ready;
-      // Warm the faces used for ₹ so html-to-image can embed them.
-      await Promise.all([
-        document.fonts.load(`400 12px "IBM Plex Sans"`),
-        document.fonts.load(`700 12px "IBM Plex Sans"`),
-        document.fonts.load(`400 12px "Noto Sans"`),
-        document.fonts.load(`700 12px "Noto Sans"`),
-      ]);
+    // Ensure stylesheet is present (print window / early open).
+    if (!document.querySelector(`link[data-invoice-fonts="1"]`)) {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = INVOICE_FONT_CSS_HREF;
+      link.setAttribute("data-invoice-fonts", "1");
+      document.head.appendChild(link);
+    }
+    await document.fonts.ready;
+    const specs = [
+      '400 12px "Noto Sans"',
+      '500 12px "Noto Sans"',
+      '600 12px "Noto Sans"',
+      '700 12px "Noto Sans"',
+      '400 12px "IBM Plex Sans"',
+      '700 12px "IBM Plex Sans"',
+    ];
+    // Second arg "₹" is critical — triggers the subset that actually has U+20B9.
+    await Promise.all(specs.map((spec) => document.fonts.load(spec, "₹").catch(() => undefined)));
+    for (let i = 0; i < 40; i++) {
+      if (
+        document.fonts.check('400 12px "Noto Sans"', "₹") ||
+        document.fonts.check('400 12px "IBM Plex Sans"', "₹")
+      ) {
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 50));
     }
   } catch {
-    // non-fatal — capture still proceeds
+    // non-fatal
   }
+}
+
+// Warm ₹ glyph as soon as this module loads (registration / invoice paths).
+if (typeof window !== "undefined") {
+  void ensureInvoiceFontsReady();
 }
 
 function escapeInvoiceHtml(value: string): string {
@@ -218,16 +244,23 @@ const InvoicePreview = ({
   const [waSending, setWaSending] = useState(false);
   const [packageTestsById, setPackageTestsById] = useState<Map<string, string[]>>(new Map());
   const [packageNamesReady, setPackageNamesReady] = useState(false);
+  const [fontsReady, setFontsReady] = useState(false);
 
   useEffect(() => {
     if (!open) {
       setConsoleQueued(false);
       setWaSending(false);
       setPackageNamesReady(false);
+      setFontsReady(false);
       return;
     }
     setConsoleQueued(queuedInvoiceRef.current === String(data?.invoice_number || ""));
     setPackageNamesReady(false);
+    setFontsReady(false);
+    let cancelled = false;
+    void ensureInvoiceFontsReady().then(() => {
+      if (!cancelled) setFontsReady(true);
+    });
     (async () => {
       const lines = Array.isArray(data?.tests) ? data.tests : [];
       try {
@@ -235,17 +268,18 @@ const InvoicePreview = ({
       } catch {
         setPackageTestsById(new Map());
       }
-      setPackageNamesReady(true);
+      if (!cancelled) setPackageNamesReady(true);
       const { data: rows } = await supabase
         .from("app_settings")
         .select("setting_key, setting_value")
         .in("setting_key", SETTING_KEYS);
-      if (rows) {
+      if (rows && !cancelled) {
         const merged = { ...DEFAULTS };
         rows.forEach((r) => { merged[r.setting_key] = r.setting_value; });
         setBrand(merged);
       }
     })();
+    return () => { cancelled = true; };
   }, [open, data?.invoice_number]);
 
 
@@ -276,12 +310,12 @@ const InvoicePreview = ({
   }, [data?.umr_number]);
 
   useEffect(() => {
-    if (!open || !data?.umr_number) return;
+    if (!open || !data?.umr_number || !fontsReady) return;
     const timer = setTimeout(() => {
       renderBarcode();
-    }, 200);
+    }, 50);
     return () => clearTimeout(timer);
-  }, [open, data?.umr_number, renderBarcode]);
+  }, [open, data?.umr_number, fontsReady, renderBarcode]);
 
   const isPickupInvoice = useCallback((row: any) => {
     if (!row) return false;
@@ -450,15 +484,15 @@ const InvoicePreview = ({
   const lastQueueReq = useRef(0);
   useEffect(() => {
     if (!queueRequestId || queueRequestId === lastQueueReq.current) return;
-    if (!open || !data?.invoice_number || !packageNamesReady) return;
+    if (!open || !data?.invoice_number || !packageNamesReady || !fontsReady) return;
     lastQueueReq.current = queueRequestId;
     void queueInvoiceViaWaApi();
-  }, [queueRequestId, open, data?.invoice_number, packageNamesReady, queueInvoiceViaWaApi]);
+  }, [queueRequestId, open, data?.invoice_number, packageNamesReady, fontsReady, queueInvoiceViaWaApi]);
 
   // New registration: queue invoice to durable outbox once barcode/layout is ready.
   useEffect(() => {
     if (!autoQueueWhatsApp || !open || !data?.invoice_number || !data?.mobile_number) return;
-    if (!packageNamesReady) return;
+    if (!packageNamesReady || !fontsReady) return;
     if (isPickupInvoice(data)) return;
     const invoiceNo = String(data.invoice_number);
     if (autoQueuedRef.current === invoiceNo || queuedInvoiceRef.current === invoiceNo) return;
@@ -468,7 +502,7 @@ const InvoicePreview = ({
       void queueInvoiceViaWaApi();
     }, 900);
     return () => clearTimeout(timer);
-  }, [autoQueueWhatsApp, open, data, data?.invoice_number, data?.mobile_number, queueInvoiceViaWaApi, isPickupInvoice, packageNamesReady]);
+  }, [autoQueueWhatsApp, open, data, data?.invoice_number, data?.mobile_number, queueInvoiceViaWaApi, isPickupInvoice, packageNamesReady, fontsReady]);
 
   if (!data) return null;
 
@@ -798,6 +832,13 @@ const InvoicePreview = ({
           <DialogTitle>Invoice Generated — {data.invoice_number}</DialogTitle>
         </DialogHeader>
 
+        {!fontsReady ? (
+          <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading invoice fonts…
+          </div>
+        ) : null}
+
         <div
           ref={receiptRef}
           className="bg-white text-black rounded"
@@ -807,6 +848,10 @@ const InvoicePreview = ({
             margin: "0 auto",
             padding: "10px 16px 12px",
             color: PALETTE.ink,
+            // Keep in DOM for capture sizing, but hide until ₹ font subset is ready
+            visibility: fontsReady ? "visible" : "hidden",
+            height: fontsReady ? undefined : 0,
+            overflow: fontsReady ? undefined : "hidden",
           }}
         >
           {/* Brand header — solid red rule (not CSS border: html2canvas thickens borders) */}
@@ -1057,7 +1102,7 @@ const InvoicePreview = ({
             <p className="w-full text-sm text-primary font-medium">{statusHint}</p>
           ) : null}
           {!hidePrint && (
-            <Button className="flex-1" variant="outline" onClick={handlePrint}>
+            <Button className="flex-1" variant="outline" onClick={handlePrint} disabled={!fontsReady}>
               <Printer className="h-4 w-4 mr-2" />Print
             </Button>
           )}
@@ -1065,7 +1110,7 @@ const InvoicePreview = ({
             <Button
               className="flex-1"
               onClick={() => void queueInvoiceViaWaApi()}
-              disabled={waSending || !data?.mobile_number}
+              disabled={waSending || !data?.mobile_number || !fontsReady}
             >
               {waSending ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
