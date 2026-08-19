@@ -24,6 +24,7 @@ export function findPatientResultRow(
 const PAST_PENDING = new Set([
   "entered",
   "results_entered",
+  "results_saved",
   "verified",
   "approved",
   "dispatched",

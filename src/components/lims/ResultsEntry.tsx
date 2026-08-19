@@ -973,15 +973,22 @@ const ResultsEntry = () => {
           testParamResults.push({ param: p, tp, isParamOutsourced, existing: resolved.row, covered: resolved.covered });
         }
         
-        // Skip this test entirely if EVERY parameter is already past Results Entry
-        // (on this test OR completed under a sibling test for the same parameter).
-        if (testParamResults.length > 0 && testParamResults.every(({ existing, covered }) => covered || isResultPastPending(existing?.status))) {
+        // Skip this test entirely once every enterable (non-calculated) param has
+        // left Results Entry — do not keep it visible for calculated leftovers.
+        const pendingEnterable = testParamResults.filter(
+          ({ param, existing, covered }) =>
+            !param.is_calculated && !covered && !isResultPastPending(existing?.status),
+        );
+        if (testParamResults.length > 0 && pendingEnterable.length === 0) {
           continue;
         }
 
         for (const { param: p, tp, isParamOutsourced, existing, covered } of testParamResults) {
           // Sibling already completed this parameter — don't re-ask in Results
           if (covered || isResultPastPending(existing?.status)) continue;
+          // Calculated-only leftovers after enterable work is done are skipped above;
+          // still skip calculated rows that somehow already progressed.
+          if (p.is_calculated && isResultPastPending(existing?.status)) continue;
           const resolved = resolveNormalRange(p.id, fullReg);
           const refText = resolved.text || p.normal_range_text || (p.normal_range_low != null && p.normal_range_high != null ? `${p.normal_range_low} - ${p.normal_range_high}` : "");
           const rangeLow = resolved.low ?? p.normal_range_low;
@@ -1549,20 +1556,21 @@ const ResultsEntry = () => {
     }
   };
 
-  // ─── Filter entries: lean headers; machine mode shows only that machine's tests on expand ───
+  // ─── Filter entries: lean headers; hide tests already past Results; machine mode scopes expand ───
   const filteredEntries = useMemo(() => {
-    const activeEntries = patientEntries.map(e => {
+    const activeEntries = patientEntries.map((e) => {
       if (e.registration.id !== expandedPatient) return e;
       const activeParams = e.parameters.filter((p) => {
         if (p.isOutsourced) {
-          return !["results_entered", "verified", "approved", "dispatched"].includes(p.outsourceStatus || "")
-            && !["entered", "verified", "approved", "dispatched"].includes(p.status || "");
+          return !isResultPastPending(p.outsourceStatus) && !isResultPastPending(p.status);
         }
-
-        return !["entered", "verified", "approved", "dispatched"].includes(p.status || "");
+        return !isResultPastPending(p.status);
       });
-
-      return { ...e, parameters: activeParams };
+      // Drop snip cards that already left Results
+      const snipOnlyTests = e.snipOnlyTests.filter(
+        (t) => !isResultPastPending(t.outsourceStatus),
+      );
+      return { ...e, parameters: activeParams, snipOnlyTests };
     });
 
     if (mode === "patient" || selectedMachine === "all") return activeEntries;
@@ -1574,16 +1582,38 @@ const ResultsEntry = () => {
       return inst === filterMachine;
     };
 
-    return activeEntries.map((e) => {
-      if (e.registration.id !== expandedPatient) return e;
-      return {
-        ...e,
-        parameters: e.parameters.filter((p) => matchesMachine(p.testId, p.machineName)),
-        incompleteTests: e.incompleteTests.filter((t) => matchesMachine(t.testId)),
-        snipOnlyTests: e.snipOnlyTests.filter((t) => matchesMachine(t.testId)),
-      };
-    });
-  }, [patientEntries, mode, selectedMachine, expandedPatient, testsMap, testsInstrumentMap]);
+    return activeEntries
+      .map((e) => {
+        if (e.registration.id !== expandedPatient) return e;
+        return {
+          ...e,
+          parameters: e.parameters.filter((p) => matchesMachine(p.testId, p.machineName)),
+          incompleteTests: e.incompleteTests.filter((t) => matchesMachine(t.testId)),
+          snipOnlyTests: e.snipOnlyTests.filter((t) => matchesMachine(t.testId)),
+        };
+      })
+      // Expanded with nothing left for this machine → drop the card (already past Results)
+      .filter((e) => {
+        if (e.registration.id !== expandedPatient || !detailReady) return true;
+        return (
+          e.parameters.length > 0 ||
+          e.incompleteTests.length > 0 ||
+          e.snipOnlyTests.length > 0
+        );
+      });
+  }, [patientEntries, mode, selectedMachine, expandedPatient, testsMap, testsInstrumentMap, detailReady]);
+
+  // If expand reveals nothing left in Results for this machine, drop selection and refresh queue.
+  useEffect(() => {
+    if (!expandedPatient || !detailReady) return;
+    const stillVisible = filteredEntries.some((e) => e.registration.id === expandedPatient);
+    if (stillVisible) return;
+    setExpandedPatient(null);
+    setExpandedTestKey(null);
+    if (machineFilterActive) {
+      qc.invalidateQueries({ queryKey: ["results_machine_filtered_ids"] });
+    }
+  }, [filteredEntries, expandedPatient, detailReady, machineFilterActive, qc]);
 
   // ─── NEW arrivals badge tracker ───
   const filteredRegIds = useMemo(() => filteredEntries.map(e => e.registration.id), [filteredEntries]);
@@ -1635,7 +1665,8 @@ const ResultsEntry = () => {
   };
 
   const getCompletionPct = (entry: PatientEntry) => {
-    if (entry.parameters.length === 0) return 100;
+    // 0 params means nothing left in Results for this view — not "100% complete"
+    if (entry.parameters.length === 0) return 0;
     let filled = 0;
     for (const p of entry.parameters) {
       const key = `${entry.registration.id}||${p.parameterId}`;
