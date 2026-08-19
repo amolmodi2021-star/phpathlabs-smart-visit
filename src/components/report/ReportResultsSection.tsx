@@ -33,6 +33,8 @@ export interface ProfileMeta {
   interpretation?: string;
   enable_test_grouping?: boolean;
   test_note?: string;
+  /** Stable id for measure-then-repack pagination */
+  test_id?: string;
 }
 
 export interface ReportResultsSectionProps {
@@ -257,6 +259,7 @@ const ReportResultsSection = ({
         <div key={dept} data-pdf-section="department">
           {!hideDeptHeader && (
             <div
+              data-report-dept-header
               className="px-3 py-1.5 rounded-t font-bold text-center bg-[#2E3192] text-white print:bg-transparent print:text-gray-900 print:border-2 print:border-gray-800"
               style={{ fontSize: deptFontSize }}
             >
@@ -366,8 +369,13 @@ const ReportResultsSection = ({
               const nonSubheaderParams = params.filter(p => !p.is_subheader);
 
               return (
-                <div key={profName} data-pdf-section="profile" className="print:break-inside-avoid">
+                <React.Fragment key={profName}>
                   {profIdx > 0 && <div style={{ height: useCompact ? '1.5mm' : '2mm' }} />}
+                  <div
+                    data-pdf-section="profile"
+                    data-pdf-test-id={profMeta?.test_id || undefined}
+                    className="print:break-inside-avoid"
+                  >
                   {shouldShowProfile(nonSubheaderParams) && (
                     <>
                       <div style={{ height: '1mm' }} />
@@ -451,6 +459,7 @@ const ReportResultsSection = ({
                     </div>
                   )}
                 </div>
+                </React.Fragment>
               );
             })}
           </div>

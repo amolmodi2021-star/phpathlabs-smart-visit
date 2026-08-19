@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useLayoutEffect } from "react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useParams, useNavigate, useSearchParams, useLocation } from "react-router-dom";
@@ -12,6 +12,7 @@ import LimsReportHeader from "@/components/report/LimsReportHeader";
 import ReportSignatureBlock from "@/components/report/ReportSignatureBlock";
 import ReportInvoiceBarcode from "@/components/report/ReportInvoiceBarcode";
 import ReportResultsSection from "@/components/report/ReportResultsSection";
+import CbcHistogramCharts, { pageHasCbcTest, type AnalyzerHistogram } from "@/components/report/CbcHistogramCharts";
 import AutoScaleContent from "@/components/report/AutoScaleContent";
 import type { TestResult, ProfileMeta } from "@/components/report/ReportResultsSection";
 import { toast } from "sonner";
@@ -30,6 +31,12 @@ import {
 } from "@/lib/reportAssetCache";
 import { isSnipResultRow, snipImageUrlsFromRow } from "@/lib/outsourcedResultMode";
 import { healApprovedReportSnapshotFromLive } from "@/lib/patientResultLookup";
+import {
+  hasRenderableHistograms,
+  healApprovedReportHistograms,
+  mergeHistogramSnapshots,
+  normalizeHistogramRows,
+} from "@/lib/analyzerHistograms";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.worker.min.mjs";
 
@@ -162,9 +169,11 @@ const INSTRUMENT_LINE_MM = 7;       // Instrument/Method line, allows 2 wraps
 const SUBHEADER_MM = 6;             // sub-header row inside a profile
 const TEST_NOTE_MM = 6;             // italic test_note row at bottom of profile
 const OUTSOURCED_MM = 6;            // outsourced caption row
-const INTER_PROFILE_GAP_MM = 4;     // 1mm + 2mm spacers between profiles
-const SAFETY_PAD_MM = 6;            // cushion for minor wrap differences (raised 5→6)
+const INTER_PROFILE_GAP_MM = 2;     // matches spacer outside profile; internal 1mm is inside measured block
+const SAFETY_PAD_MM = 3;            // first-pass cushion only; measure-then-repack uses real heights
 const FIT_TOLERANCE_MM = 2;         // never let estimate spill onto signature
+const MEASURE_FIT_GAP_MM = 1.5;     // measured pack: keep this gap above signature top
+const PX_PER_MM = 96 / 25.4;
 const STANDALONE_DIVIDER_MM = 3;    // border-t-2 + 3mm gap between standalone params
 
 // Compute a single parameter row's height accounting for every visual element
@@ -203,14 +212,106 @@ const rowHeightMm = (p: any, descriptionText?: string | null): number => {
   return Math.max(ROW_HEIGHT_MM, baseMm + descMm + noteMm + padMm);
 };
 
-// Length-aware interpretation height
+// Length-aware interpretation height (first-pass estimate; measure-then-repack corrects)
 const interpretationMm = (html?: string | null): number => {
   if (!html) return 0;
-  const text = String(html).replace(/<[^>]*>/g, "").trim();
+  const raw = String(html);
+  const text = raw.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
   if (!text) return 0;
-  const lines = Math.max(text.split(/\r?\n/).length, Math.ceil(text.length / 95));
-  return 6 /* "Interpretation:" label */ + lines * 4 + 2 /* padding */;
+  const blockBreaks = (raw.match(/<(?:p|div|li|br|tr|h[1-6])\b/gi) || []).length;
+  const lines = Math.max(
+    blockBreaks + 1,
+    text.split(/\r?\n/).filter(Boolean).length,
+    Math.ceil(text.length / 85),
+  );
+  return 6 /* "Interpretation:" label */ + lines * 4.2 + 2 /* padding */;
 };
+
+/** Pack tests into pages. Preserves department → collection datetime → test order. */
+function packStructuredTestBlocks(
+  testBlocks: TestBlock[],
+  getHeightMm: (block: TestBlock, isFirstOnPage: boolean) => number,
+  usableHeightMm: number,
+  deptHeaderMm: number = DEPT_HEADER_MM,
+): PageContent[] {
+  const allPages: PageContent[] = [];
+  let currentPageBlocks: TestBlock[] = [];
+  let usedHeight = deptHeaderMm;
+  let currentDeptName: string | null = null;
+  let currentDateKey: string | null = null;
+  const fitLimit = usableHeightMm - MEASURE_FIT_GAP_MM;
+
+  const collectApprovers = (blocks: TestBlock[]) => [...new Set(blocks.flatMap((b) => b.approvers || []))];
+  const flushPage = () => {
+    if (currentPageBlocks.length === 0) return;
+    allPages.push({
+      type: "structured",
+      departmentName: currentDeptName || "Results",
+      testBlocks: currentPageBlocks,
+      approvers: collectApprovers(currentPageBlocks),
+      sampleCollectionDate: currentPageBlocks[0]?.collectionDateIso || null,
+    });
+    currentPageBlocks = [];
+    usedHeight = deptHeaderMm;
+  };
+
+  testBlocks.forEach((block) => {
+    const dateChanged = currentDateKey != null && block.collectionDateKey !== currentDateKey;
+    const deptChanged = currentDeptName != null && block.departmentName !== currentDeptName;
+
+    if (block.dedicatedPage) {
+      flushPage();
+      allPages.push({
+        type: "structured",
+        departmentName: block.departmentName,
+        testBlocks: [block],
+        approvers: collectApprovers([block]),
+        sampleCollectionDate: block.collectionDateIso,
+      });
+      currentDeptName = null;
+      currentDateKey = null;
+      usedHeight = deptHeaderMm;
+      return;
+    }
+
+    if (dateChanged || deptChanged) {
+      flushPage();
+    }
+
+    let isFirst = currentPageBlocks.length === 0;
+    let blockH = getHeightMm(block, isFirst);
+    if (!isFirst && usedHeight + blockH > fitLimit) {
+      flushPage();
+      isFirst = true;
+      blockH = getHeightMm(block, true);
+    }
+
+    // Oversized first block still goes on its own page (never silently clip).
+    if (isFirst && blockH + deptHeaderMm > fitLimit) {
+      // keep packing; measure/overflow pass will bump if needed
+    }
+
+    if (isFirst) {
+      currentDeptName = block.departmentName;
+      currentDateKey = block.collectionDateKey;
+      usedHeight = deptHeaderMm;
+    }
+
+    currentPageBlocks.push(block);
+    usedHeight += blockH;
+  });
+  flushPage();
+  return allPages;
+}
+
+function pagesFingerprint(pages: PageContent[]): string {
+  return pages
+    .map((p) => {
+      if (p.type !== "structured") return `${p.type}`;
+      return `s:${p.departmentName}:${(p.testBlocks || []).map((b) => b.testId).join(",")}`;
+    })
+    .join("|");
+}
 
 interface TestResultEntry {
   test_id: string;
@@ -263,10 +364,11 @@ interface SnipPage {
 }
 
 interface PageContent {
-  type: "structured" | "snip";
+  type: "structured" | "snip" | "histogram";
   departmentName?: string;
   testBlocks?: TestBlock[];
   snipImage?: string;
+  histograms?: AnalyzerHistogram[];
   approvers?: string[];
   /** Per-page sample collection datetime (ISO) — different date/time never share a page */
   sampleCollectionDate?: string | null;
@@ -304,6 +406,7 @@ const LimsReportView = () => {
   const [hasDownloadedOnce, setHasDownloadedOnce] = useState(false);
   const [sharingWa, setSharingWa] = useState(false);
   const [showLetterhead, setShowLetterhead] = useState(!isProvisional);
+  const enableHistograms = true;
   const [previewScale, setPreviewScale] = useState(1);
 
   const goBackFromReport = () => {
@@ -352,6 +455,7 @@ const LimsReportView = () => {
   const [snipImages, setSnipImages] = useState<SnipPage[]>([]);
   const [snipModeTestIds, setSnipModeTestIds] = useState<Set<string>>(new Set());
   const [pickupFooterNote, setPickupFooterNote] = useState<string>("");
+  const [analyzerHistograms, setAnalyzerHistograms] = useState<AnalyzerHistogram[]>([]);
 
   const invoiceNumberForBarcode =
     approvedReports[0]?.invoice_number || registration?.invoice_number || "";
@@ -409,6 +513,15 @@ const LimsReportView = () => {
         ? Promise.resolve({ data: [] as any[] })
         : supabase.from("pathologist_signatures").select("*"),
     ]);
+
+    let histRows: any[] = [];
+    {
+      const { data, error } = await supabase
+        .from("analyzer_histograms")
+        .select("kind, bins, discriminators, x_min, x_max, x_label, estimated, source, sample_id")
+        .eq("registration_id", registrationId);
+      if (!error) histRows = data || [];
+    }
 
     // Pickup point footer note (printed on every report page)
     let computedFooterNote = "";
@@ -473,6 +586,21 @@ const LimsReportView = () => {
         testNameById,
       );
       reportsArr = healed.reportsArr;
+      try {
+        await healApprovedReportHistograms(supabase, registrationId);
+        const { data: healedReport } = await supabase
+          .from("approved_reports")
+          .select("histograms")
+          .eq("registration_id", registrationId)
+          .maybeSingle();
+        if (healedReport) {
+          reportsArr = reportsArr.map((r: any, i: number) =>
+            i === 0 ? { ...r, histograms: (healedReport as any).histograms ?? r.histograms } : r,
+          );
+        }
+      } catch (histHealErr) {
+        console.warn("histogram snapshot heal skipped", histHealErr);
+      }
     }
 
     // Reference Range patch from parameter_normal_ranges:
@@ -729,6 +857,9 @@ const LimsReportView = () => {
     setSnipModeTestIds(snipIds);
     setTestParamsMap(computedTpMap);
     setPickupFooterNote(computedFooterNote);
+    const snapshotHists = normalizeHistogramRows((filteredReports[0] as any)?.histograms);
+    const liveHists = normalizeHistogramRows(histRows);
+    setAnalyzerHistograms(mergeHistogramSnapshots(snapshotHists, liveHists));
     setLoading(false);
 
     } catch (err: any) {
@@ -738,10 +869,16 @@ const LimsReportView = () => {
     }
   };
 
-  // ── Build structured content ──
-  const { pages, totalPages } = useMemo(() => {
+  // ── Build structured content (first-pass estimate pack) ──
+  const packPlan = useMemo(() => {
     if (approvedReports.length === 0 && snipImages.length === 0) {
-      return { pages: [] as PageContent[], totalPages: 0 };
+      return {
+        pages: [] as PageContent[],
+        totalPages: 0,
+        sortedTestBlocks: [] as TestBlock[],
+        usableHeightMm: 0,
+        packKey: "empty",
+      };
     }
 
     // Snip-only reports still need a demography shell for header rendering.
@@ -841,7 +978,6 @@ const LimsReportView = () => {
         (blockTestNoteEarly ? TEST_NOTE_MM : 0) +
         (hasOutsourcedCaption ? OUTSOURCED_MM : 0) +
         interpretationMm(testInfo?.interpretation) +
-        INTER_PROFILE_GAP_MM +
         SAFETY_PAD_MM;
 
       // Collect unique approvers for this test block
@@ -898,78 +1034,223 @@ const LimsReportView = () => {
       return a.testName.localeCompare(b.testName);
     });
 
-    // Build pages — new page when department changes OR collection date/time changes
-    const allPages: PageContent[] = [];
-    let currentPageBlocks: TestBlock[] = [];
-    let usedHeight = DEPT_HEADER_MM;
-    let currentDeptName: string | null = null;
-    let currentDateKey: string | null = null;
+    // First-pass pack (estimates). Measure-then-repack refines using real DOM heights.
+    const structuredPages = packStructuredTestBlocks(
+      testBlocks,
+      (block, isFirst) => block.estimatedHeightMm + (isFirst ? 0 : INTER_PROFILE_GAP_MM),
+      usableHeight - FIT_TOLERANCE_MM,
+    );
 
-    const collectApprovers = (blocks: TestBlock[]) => [...new Set(blocks.flatMap(b => b.approvers || []))];
-    const flushPage = () => {
-      if (currentPageBlocks.length === 0) return;
-      allPages.push({
-        type: "structured",
-        departmentName: currentDeptName || "Results",
-        testBlocks: currentPageBlocks,
-        approvers: collectApprovers(currentPageBlocks),
-        sampleCollectionDate: currentPageBlocks[0]?.collectionDateIso || null,
-      });
-      currentPageBlocks = [];
-      usedHeight = DEPT_HEADER_MM;
-    };
-
-    testBlocks.forEach(block => {
-      const dateChanged = currentDateKey != null && block.collectionDateKey !== currentDateKey;
-      const deptChanged = currentDeptName != null && block.departmentName !== currentDeptName;
-
-      if (block.dedicatedPage) {
-        flushPage();
-        currentDeptName = block.departmentName;
-        currentDateKey = block.collectionDateKey;
-        allPages.push({
-          type: "structured",
-          departmentName: block.departmentName,
-          testBlocks: [block],
-          approvers: collectApprovers([block]),
-          sampleCollectionDate: block.collectionDateIso,
+    const pagesWithHistograms: PageContent[] = [];
+    let histogramPageInserted = false;
+    for (const page of structuredPages) {
+      pagesWithHistograms.push(page);
+      if (
+        enableHistograms
+        &&
+        !histogramPageInserted
+        && page.type === "structured"
+        && pageHasCbcTest(page.testBlocks)
+        && hasRenderableHistograms(analyzerHistograms)
+      ) {
+        pagesWithHistograms.push({
+          type: "histogram",
+          departmentName: page.departmentName || "Haematology",
+          histograms: analyzerHistograms,
+          approvers: page.approvers,
+          sampleCollectionDate: page.sampleCollectionDate,
         });
-        currentDeptName = null;
-        currentDateKey = null;
-        usedHeight = DEPT_HEADER_MM;
-        return;
+        histogramPageInserted = true;
       }
-
-      if (dateChanged || deptChanged) {
-        flushPage();
-      }
-
-      if (currentPageBlocks.length > 0 && (usedHeight + block.estimatedHeightMm) > (usableHeight - FIT_TOLERANCE_MM)) {
-        flushPage();
-      }
-
-      if (currentPageBlocks.length === 0) {
-        currentDeptName = block.departmentName;
-        currentDateKey = block.collectionDateKey;
-        usedHeight = DEPT_HEADER_MM;
-      }
-
-      currentPageBlocks.push(block);
-      usedHeight += block.estimatedHeightMm;
-    });
-    flushPage();
+    }
 
     // Add snip pages
     snipImages.forEach(snip => {
-      allPages.push({ type: "snip", snipImage: snip.imageUrl });
+      pagesWithHistograms.push({ type: "snip", snipImage: snip.imageUrl });
     });
 
-    return { pages: allPages, totalPages: allPages.length };
-  }, [approvedReports, departments, testsMap, testParamsMap, snipImages, snipModeTestIds, layoutSettings, pickupFooterNote, collectionDateByTestId]);
+    return {
+      pages: pagesWithHistograms,
+      totalPages: pagesWithHistograms.length,
+      sortedTestBlocks: testBlocks,
+      usableHeightMm: usableHeight,
+      packKey: pagesFingerprint(pagesWithHistograms) + `|u${usableHeight.toFixed(1)}`,
+    };
+  }, [approvedReports, departments, testsMap, testParamsMap, snipImages, snipModeTestIds, layoutSettings, pickupFooterNote, collectionDateByTestId, analyzerHistograms, enableHistograms]);
 
-  // ── PDF export ──
+  const [measuredPages, setMeasuredPages] = useState<PageContent[] | null>(null);
+  const [paginationReady, setPaginationReady] = useState(false);
+  const paginationReadyRef = useRef(false);
+  const measurePassRef = useRef(0);
+
+  useEffect(() => {
+    paginationReadyRef.current = paginationReady;
+  }, [paginationReady]);
+
+  useEffect(() => {
+    setMeasuredPages(null);
+    setPaginationReady(false);
+    measurePassRef.current = 0;
+  }, [packPlan.packKey]);
+
+  const pages = measuredPages ?? packPlan.pages;
+  const totalPages = pages.length;
+
+  useLayoutEffect(() => {
+    if (loading || !printRef.current) return;
+    if (packPlan.sortedTestBlocks.length === 0) {
+      setPaginationReady(true);
+      return;
+    }
+    if (measurePassRef.current >= 4) {
+      setPaginationReady(true);
+      return;
+    }
+
+    let cancelled = false;
+    const run = async () => {
+      try {
+        if ((document as any).fonts?.ready) await (document as any).fonts.ready;
+      } catch {}
+      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+      if (cancelled || !printRef.current) return;
+
+      const root = printRef.current;
+      const measured = new Map<string, number>();
+      root.querySelectorAll<HTMLElement>("[data-pdf-test-id]").forEach((el) => {
+        const id = el.getAttribute("data-pdf-test-id");
+        if (!id) return;
+        const hMm = el.offsetHeight / PX_PER_MM;
+        if (hMm > 0) measured.set(id, Math.max(measured.get(id) || 0, hMm));
+      });
+
+      let usableMm = packPlan.usableHeightMm;
+      let deptHeaderMm = DEPT_HEADER_MM;
+      const firstPage =
+        root.querySelector<HTMLElement>('[data-page][data-page-type="structured"]') ||
+        root.querySelector<HTMLElement>("[data-page]");
+      if (firstPage) {
+        const content = firstPage.querySelector<HTMLElement>("[data-report-content]");
+        // Use the flex content box height only (excludes pickup note + signature band below it).
+        if (content && content.clientHeight > 0) {
+          const slotMm = content.clientHeight / PX_PER_MM;
+          if (slotMm > 40) usableMm = slotMm;
+        }
+        const deptHeader = firstPage.querySelector<HTMLElement>("[data-report-dept-header]");
+        if (deptHeader && deptHeader.offsetHeight > 0) {
+          deptHeaderMm = deptHeader.offsetHeight / PX_PER_MM;
+        }
+      }
+
+      let overflowDetected = false;
+      root.querySelectorAll<HTMLElement>("[data-page]").forEach((pageEl) => {
+        if (pageEl.getAttribute("data-page-type") !== "structured") return;
+        const content = pageEl.querySelector<HTMLElement>("[data-report-content]");
+        const signature = pageEl.querySelector<HTMLElement>("[data-report-signature]");
+        if (!content || !signature) return;
+        // flex-1 box fills to signature; detect true child overflow only.
+        if (content.scrollHeight > content.clientHeight + 2) {
+          overflowDetected = true;
+          return;
+        }
+        const kids = Array.from(content.children) as HTMLElement[];
+        if (kids.length === 0) return;
+        const last = kids[kids.length - 1];
+        const childBottom = last.offsetTop + last.offsetHeight;
+        // Relative to content box; leave a tiny gap above signature.
+        if (childBottom > content.clientHeight - 1) overflowDetected = true;
+      });
+
+      if (measured.size === 0 && !overflowDetected) {
+        if (packPlan.sortedTestBlocks.length > 0 && measurePassRef.current < 3) {
+          measurePassRef.current += 1;
+          await new Promise((r) => setTimeout(r, 80));
+          if (cancelled || !printRef.current) return;
+          // Fall through by re-querying below via a nested remount pass.
+        } else {
+          setPaginationReady(true);
+          return;
+        }
+      }
+
+      // Re-measure after paint retry
+      if (measured.size === 0 && packPlan.sortedTestBlocks.length > 0) {
+        root.querySelectorAll<HTMLElement>("[data-pdf-test-id]").forEach((el) => {
+          const id = el.getAttribute("data-pdf-test-id");
+          if (!id) return;
+          const hMm = el.offsetHeight / PX_PER_MM;
+          if (hMm > 0) measured.set(id, Math.max(measured.get(id) || 0, hMm));
+        });
+        if (measured.size === 0 && !overflowDetected) {
+          setPaginationReady(true);
+          return;
+        }
+      }
+
+      const getHeight = (block: TestBlock, isFirst: boolean) => {
+        const base = measured.get(block.testId) ?? block.estimatedHeightMm;
+        // On overflow, prefer bumping measured heights slightly (fonts/images may still settle).
+        const bump = overflowDetected ? (measured.has(block.testId) ? 2 : 8) : 0;
+        return base + bump + (isFirst ? 0 : INTER_PROFILE_GAP_MM);
+      };
+
+      const structured = packStructuredTestBlocks(
+        packPlan.sortedTestBlocks,
+        getHeight,
+        Math.max(40, usableMm),
+        deptHeaderMm,
+      );
+
+      const nextPages: PageContent[] = [];
+      let histogramPageInserted = false;
+      for (const page of structured) {
+        nextPages.push(page);
+        if (
+          enableHistograms &&
+          !histogramPageInserted &&
+          page.type === "structured" &&
+          pageHasCbcTest(page.testBlocks) &&
+          hasRenderableHistograms(analyzerHistograms)
+        ) {
+          nextPages.push({
+            type: "histogram",
+            departmentName: page.departmentName || "Haematology",
+            histograms: analyzerHistograms,
+            approvers: page.approvers,
+            sampleCollectionDate: page.sampleCollectionDate,
+          });
+          histogramPageInserted = true;
+        }
+      }
+      packPlan.pages.forEach((pg) => {
+        if (pg.type === "snip") nextPages.push(pg);
+      });
+
+      measurePassRef.current += 1;
+      if (pagesFingerprint(nextPages) !== pagesFingerprint(pages)) {
+        setMeasuredPages(nextPages);
+        setPaginationReady(false);
+      } else {
+        setPaginationReady(true);
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, packPlan, pages, enableHistograms, analyzerHistograms]);
+
+
   const buildPdfBlob = async (): Promise<{ blob: Blob; filename: string } | null> => {
     if (!printRef.current) return null;
+
+    // Wait for measure-then-repack to settle so export matches densest safe layout.
+    const waitStart = Date.now();
+    while (!paginationReadyRef.current && Date.now() - waitStart < 10_000) {
+      await new Promise((r) => setTimeout(r, 40));
+    }
+
     const pageElements = printRef.current.querySelectorAll("[data-page]");
     if (pageElements.length === 0) return null;
 
@@ -1239,17 +1520,20 @@ const LimsReportView = () => {
   const handlePrint = async () => {
     if (!printRef.current) return;
     setDownloading(true);
+    const originalLetterhead = showLetterhead;
+    const histFills: SVGElement[] = [];
     try {
-      // Always print without letterhead
-      const originalLetterhead = showLetterhead;
+      // Always print without letterhead. Hide histogram fill so print uses less ink.
       setShowLetterhead(false);
       printRef.current.classList.add("print-strip-colors");
+      histFills.push(...Array.from(printRef.current.querySelectorAll<SVGElement>(".hist-fill")));
+      histFills.forEach((el) => { el.style.display = "none"; });
       await new Promise(r => setTimeout(r, 150));
 
       await waitForCaptureReady(printRef.current);
 
       const pageElements = printRef.current.querySelectorAll("[data-page]");
-      if (pageElements.length === 0) { toast.error("No pages to print"); setShowLetterhead(originalLetterhead); setDownloading(false); return; }
+      if (pageElements.length === 0) { toast.error("No pages to print"); return; }
 
       const imageUrls: string[] = [];
       const NATIVE_W = Math.round((PAGE_WIDTH_MM / 25.4) * 96);
@@ -1259,8 +1543,8 @@ const LimsReportView = () => {
         imageUrls.push(await captureWithRetry(el, NATIVE_W, NATIVE_H, "jpeg"));
       }
 
-      // Restore styles after capturing
       printRef.current.classList.remove("print-strip-colors");
+      histFills.forEach((el) => { el.style.display = ""; });
       setShowLetterhead(originalLetterhead);
 
       // Create hidden iframe for printing (no new tab)
@@ -1277,7 +1561,6 @@ const LimsReportView = () => {
       if (!iframeDoc || !iframe.contentWindow) {
         toast.error("Print failed");
         document.body.removeChild(iframe);
-        setDownloading(false);
         return;
       }
 
@@ -1320,8 +1603,12 @@ const LimsReportView = () => {
       }
     } catch (err: any) {
       toast.error("Print failed: " + (err.message || "Unknown error"));
+    } finally {
+      histFills.forEach((el) => { el.style.display = ""; });
+      printRef.current?.classList.remove("print-strip-colors");
+      setShowLetterhead(originalLetterhead);
+      setDownloading(false);
     }
-    setDownloading(false);
   };
 
   const report = approvedReports[0];
@@ -1433,6 +1720,7 @@ const LimsReportView = () => {
             >
             <div
               data-page={pageIdx}
+              data-page-type={page.type}
               className="bg-white shadow-lg relative overflow-hidden"
               style={{
                 width: `${PAGE_WIDTH_MM}mm`,
@@ -1477,8 +1765,9 @@ const LimsReportView = () => {
             )}
 
             {/* Content layer */}
-            <div className="relative" style={{ zIndex: 1, paddingTop: `${topMm}mm`, paddingBottom: `${bottomMm}mm`, paddingLeft: "8mm", paddingRight: "8mm", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column" }}>
+            <div data-report-page-inner className="relative" style={{ zIndex: 1, paddingTop: `${topMm}mm`, paddingBottom: `${bottomMm}mm`, paddingLeft: "8mm", paddingRight: "8mm", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column" }}>
               {/* Patient Demographics */}
+              <div data-report-header>
               <LimsReportHeader
                 patientName={report.patient_name}
                 title={report.title}
@@ -1497,9 +1786,10 @@ const LimsReportView = () => {
                 printDate={report.print_date}
                 visitType={report.visit_type}
               />
+              </div>
 
-              {/* Main Content Area */}
-              <div className="flex-1 overflow-visible">{/* overflow-visible: surfaces any pagination-estimate regression instead of silently clipping rows (e.g. RFT being truncated). The outer data-page wrapper still clips for capture. */}
+              {/* Main Content Area — packs down to top of signature band */}
+              <div data-report-content className={page.type === "histogram" ? "flex-1 min-h-0 overflow-hidden" : "flex-1 overflow-visible"}>{/* overflow-visible: surfaces any pagination-estimate regression instead of silently clipping rows (e.g. RFT being truncated). Histogram page must not paint over the signature. */}
                 {page.type === "structured" && page.testBlocks && (() => {
                   const hasFitToPage = page.testBlocks.some(b => b.fitToPage);
                   const resultsContent = (
@@ -1524,6 +1814,10 @@ const LimsReportView = () => {
                   }
                   return resultsContent;
                 })()}
+
+                {page.type === "histogram" && hasRenderableHistograms(page.histograms || analyzerHistograms) && (
+                  <CbcHistogramCharts histograms={page.histograms || analyzerHistograms} />
+                )}
 
                 {page.type === "snip" && page.snipImage && (
                   <div className="flex items-start justify-center h-full pt-1 overflow-hidden">
@@ -1558,8 +1852,8 @@ const LimsReportView = () => {
                 </div>
               )}
 
-              {/* Footer: invoice barcode (left) + doctor signatures (right) */}
-              <div className={pickupFooterNote ? "" : "mt-auto"}>
+              {/* Footer: invoice barcode (left) + doctor signatures (right). Top edge = content floor. */}
+              <div data-report-signature className={pickupFooterNote ? "" : "mt-auto"}>
                 <div className="pt-1 border-t flex justify-between items-end gap-3 print:break-inside-avoid">
                   <ReportInvoiceBarcode
                     invoiceNumber={invoiceNumberForBarcode}
@@ -1735,6 +2029,7 @@ function buildProfileMetaMap(
   const map: Record<string, ProfileMeta> = {};
   blocks.forEach(block => {
     map[block.testName] = {
+      test_id: block.testId,
       sample_type: block.sampleType || undefined,
       analyzer: block.instrument || undefined,
       method: block.method || undefined,
