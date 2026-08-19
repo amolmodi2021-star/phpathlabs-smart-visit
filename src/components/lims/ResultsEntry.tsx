@@ -272,7 +272,12 @@ const ResultsEntry = () => {
   // Among Results candidates, keep only regs with PENDING params for the selected machine
   // (not merely “has an accepted tube for that instrument”).
   const pendingIdsKey = shortIdsKey(pendingIds, "re-c");
-  const { data: machineFilteredIds = [] as string[], isLoading: loadingMachineFilter } = useQuery({
+  const {
+    data: machineFilteredIds = [] as string[],
+    isLoading: loadingMachineFilter,
+    isFetching: fetchingMachineFilter,
+    isFetched: machineFilterFetched,
+  } = useQuery({
     queryKey: ["results_machine_filtered_ids", pendingIdsKey, selectedMachine],
     enabled: machineFilterActive && pendingIds.length > 0,
     queryFn: async (): Promise<string[]> => {
@@ -282,16 +287,19 @@ const ResultsEntry = () => {
       const allow = new Set(machinePending);
       return pendingIds.filter((id) => allow.has(id));
     },
-    placeholderData: keepPreviousData,
-    staleTime: 60_000,
+    // Do NOT keepPreviousData — stale IDs from another machine/queue look like false positives.
+    staleTime: 30_000,
   });
 
-  // When queue is freshly empty, drop machine-filter placeholder leftovers too.
+  // When queue is freshly empty, drop machine-filter leftovers too.
+  // While machine filter is loading/refetching, show nothing (avoid flash of wrong patients).
   const displayIds =
     !idsPlaceholder && pendingIds.length === 0
       ? []
       : machineFilterActive
-        ? machineFilteredIds
+        ? !machineFilterFetched || fetchingMachineFilter
+          ? []
+          : machineFilteredIds
         : pendingIds;
   const reCount = displayIds.length;
   const pageIds: string[] = displayIds.slice(rePage * pageSize, (rePage + 1) * pageSize);
