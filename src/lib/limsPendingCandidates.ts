@@ -27,6 +27,13 @@ export async function fetchResultsEntryCandidateIds(): Promise<string[]> {
   return rpcUuidArray("lims_results_entry_candidate_ids");
 }
 
+/** Results Machine Wise: pending enterable params for one instrument ("" = Others). */
+export async function fetchResultsEntryMachineCandidateIds(instrument: string): Promise<string[]> {
+  return rpcUuidArray("lims_results_entry_machine_candidate_ids", {
+    p_instrument: instrument || null,
+  });
+}
+
 export async function fetchDispatchCandidateIds(): Promise<string[]> {
   return rpcUuidArray("lims_dispatch_candidate_ids");
 }

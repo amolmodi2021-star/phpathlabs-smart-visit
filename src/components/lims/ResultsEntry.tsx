@@ -38,7 +38,7 @@ import { useNewArrivalsBadge } from "@/hooks/useNewArrivalsBadge";
 import { signalSync } from "@/lib/limsSyncSignal";
 import { propagateRegistrationChange } from "@/lib/limsPropagation";
 import { isResultPastPending, resolveResultForResultsEntry, healOrphanPatientResults, restoreMissingApprovedFromReports } from "@/lib/patientResultLookup";
-import { fetchResultsEntryCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPendingCandidates";
+import { fetchResultsEntryCandidateIds, fetchResultsEntryMachineCandidateIds, fetchFilteredSortedIds } from "@/lib/limsPendingCandidates";
 import { shortIdsKey } from "@/lib/queryKeys";
 import { readLimsPageSize, type LimsPageSize } from "@/lib/limsListPrefs";
 import SyncingOverlay from "./SyncingOverlay";
@@ -254,7 +254,7 @@ const ResultsEntry = () => {
 
   const machineFilterActive = mode === "machine" && selectedMachine !== "all";
 
-  // Lean instrument map for machine-wise list filtering (no params until expand)
+  // Lean instrument map for machine-wise expand filter + machine dropdown
   const { data: testsInstrumentMap = {} as Record<string, string> } = useQuery({
     queryKey: ["results_tests_instrument_map"],
     enabled: mode === "machine",
@@ -269,35 +269,18 @@ const ResultsEntry = () => {
     staleTime: 600_000,
   });
 
-  // Among Results candidates, keep only regs with accepted-tube tests for the selected machine
+  // Among Results candidates, keep only regs with PENDING params for the selected machine
+  // (not merely “has an accepted tube for that instrument”).
   const pendingIdsKey = shortIdsKey(pendingIds, "re-c");
   const { data: machineFilteredIds = [] as string[], isLoading: loadingMachineFilter } = useQuery({
     queryKey: ["results_machine_filtered_ids", pendingIdsKey, selectedMachine],
-    enabled: machineFilterActive && pendingIds.length > 0 && Object.keys(testsInstrumentMap).length > 0,
+    enabled: machineFilterActive && pendingIds.length > 0,
     queryFn: async (): Promise<string[]> => {
       const want = selectedMachine === "others" ? "" : selectedMachine;
-      const machineTestIds = new Set(
-        Object.entries(testsInstrumentMap)
-          .filter(([, inst]) => inst === want)
-          .map(([id]) => id),
-      );
-      if (machineTestIds.size === 0) return [];
-
-      const tubes = await fetchAllByIds<any>(
-        "sample_tubes",
-        "registration_id, test_ids",
-        "registration_id",
-        pendingIds,
-        { eq: { status: "accepted" } },
-      );
-      const match = new Set<string>();
-      for (const tube of tubes) {
-        const ids = Array.isArray(tube.test_ids) ? tube.test_ids : [];
-        if (ids.some((id: string) => id && machineTestIds.has(id))) {
-          match.add(tube.registration_id);
-        }
-      }
-      return pendingIds.filter((id) => match.has(id));
+      const machinePending = await fetchResultsEntryMachineCandidateIds(want);
+      if (machinePending.length === 0) return [];
+      const allow = new Set(machinePending);
+      return pendingIds.filter((id) => allow.has(id));
     },
     placeholderData: keepPreviousData,
     staleTime: 60_000,
@@ -344,7 +327,7 @@ const ResultsEntry = () => {
   const listLoading =
     loadingIds ||
     (pageIds.length > 0 && loadingRegs) ||
-    (machineFilterActive && (loadingMachineFilter || Object.keys(testsInstrumentMap).length === 0));
+    (machineFilterActive && loadingMachineFilter);
 
   const reTotalPages = Math.max(1, Math.ceil(reCount / pageSize));
   const regIds = acceptedRegs.map((r: any) => r.id);

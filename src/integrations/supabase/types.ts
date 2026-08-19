@@ -2986,6 +2986,10 @@ export type Database = {
         }[]
       }
       lims_results_entry_candidate_ids: { Args: never; Returns: string[] }
+      lims_results_entry_machine_candidate_ids: {
+        Args: { p_instrument?: string }
+        Returns: string[]
+      }
       lims_verification_candidate_ids: { Args: never; Returns: string[] }
       prune_lims_result_notify: { Args: never; Returns: undefined }
       prune_messaging_logs_90d: { Args: never; Returns: undefined }
