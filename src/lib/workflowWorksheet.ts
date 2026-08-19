@@ -667,21 +667,49 @@ export function buildWorkflowPrintHtml(opts: {
 }
 
 export function openWorkflowPrintWindow(html: string): void {
-  const w = window.open("", "_blank", "noopener,noreferrer,width=1200,height=800");
-  if (!w) {
-    throw new Error("Pop-up blocked — allow pop-ups to print the worksheet");
+  // Hidden iframe — window.open(..., "noopener") opens a blank tab we cannot write to.
+  const iframe = document.createElement("iframe");
+  iframe.setAttribute("title", "Workflow print");
+  iframe.style.position = "fixed";
+  iframe.style.right = "0";
+  iframe.style.bottom = "0";
+  iframe.style.width = "0";
+  iframe.style.height = "0";
+  iframe.style.border = "0";
+  iframe.style.opacity = "0";
+  iframe.style.pointerEvents = "none";
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentDocument || iframe.contentWindow?.document;
+  if (!doc || !iframe.contentWindow) {
+    document.body.removeChild(iframe);
+    throw new Error("Print failed — could not create print frame");
   }
-  w.document.open();
-  w.document.write(html);
-  w.document.close();
-  setTimeout(() => {
+
+  doc.open();
+  doc.write(html);
+  doc.close();
+
+  const cleanup = () => {
     try {
-      w.focus();
-      w.print();
+      if (iframe.parentNode) document.body.removeChild(iframe);
     } catch {
       // ignore
     }
-  }, 200);
+  };
+
+  const runPrint = () => {
+    try {
+      iframe.contentWindow!.focus();
+      iframe.contentWindow!.print();
+    } catch (e) {
+      cleanup();
+      throw e;
+    }
+    setTimeout(cleanup, 60_000);
+  };
+
+  setTimeout(runPrint, 100);
 }
 
 /** Local calendar day YYYY-MM-DD */
